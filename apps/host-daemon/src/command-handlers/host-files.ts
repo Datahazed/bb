@@ -17,6 +17,7 @@ import {
 } from "./file-read.js";
 import {
   deleteRootRelativeFile,
+  deleteRootRelativePath,
   writeRootRelativeFile,
 } from "./file-write.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
@@ -184,6 +185,16 @@ export async function deleteHostRelativeFile(
   command: CommandOf<"host.delete_file_relative">,
 ): Promise<HostDaemonCommandResult<"host.delete_file_relative">> {
   return deleteRootRelativeFile({
+    rootPath: command.rootPath,
+    relativePath: command.path,
+    dotfiles: command.dotfiles,
+  });
+}
+
+export async function deleteHostRelativePath(
+  command: CommandOf<"host.delete_path_relative">,
+): Promise<HostDaemonCommandResult<"host.delete_path_relative">> {
+  return deleteRootRelativePath({
     rootPath: command.rootPath,
     relativePath: command.path,
     dotfiles: command.dotfiles,

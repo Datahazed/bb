@@ -236,6 +236,27 @@ describe("listPathsRecursively", () => {
     }
   });
 
+  it("does not return symlinked files as regular path entries", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
+    try {
+      await fs.writeFile(path.join(root, "state.json"), "{}");
+      await fs.symlink(path.join(root, "state.json"), path.join(root, "logo.svg"));
+
+      const result = await listPathsRecursively({
+        dir: root,
+        root,
+        includeFiles: true,
+        includeDirectories: false,
+      });
+
+      expect(result).toEqual([
+        { kind: "file", path: "state.json", name: "state.json" },
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes Windows separators before returning paths", () => {
     expect(normalizeListedPath("src\\components\\Button.tsx")).toBe(
       "src/components/Button.tsx",

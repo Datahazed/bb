@@ -21,6 +21,7 @@ import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerInternalCommandRoutes } from "./internal/commands.js";
 import { registerInternalCommandResultRoutes } from "./internal/command-result-route.js";
+import { registerInternalAppDataChangeRoutes } from "./internal/app-data-changes.js";
 import { registerInternalEnvironmentChangeRoutes } from "./internal/environment-changes.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -265,6 +266,7 @@ export function createApp(
   registerInternalCommandResultRoutes(internalApi, deps);
   registerInternalEnvironmentChangeRoutes(internalApi, deps);
   registerInternalStatusDataChangeRoutes(internalApi, deps);
+  registerInternalAppDataChangeRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);

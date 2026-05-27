@@ -13,8 +13,10 @@ import type {
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
+  appDataBroadcastMessageSchema,
   statusStateBroadcastMessageSchema,
   terminalServerMessageSchema,
+  type AppDataBroadcastMessage,
   type StatusStateBroadcastMessage,
   type TerminalServerMessage,
 } from "@bb/server-contract";
@@ -412,6 +414,13 @@ export class NotificationHub implements DbNotifier {
     this.notifyClientsByKey(
       subKey("thread", `${message.threadId}:status-data`),
       JSON.stringify(statusStateBroadcastMessageSchema.parse(message)),
+    );
+  }
+
+  notifyThreadAppData(message: AppDataBroadcastMessage): void {
+    this.notifyClientsByKey(
+      subKey("thread", `${message.threadId}:app:${message.appId}:data`),
+      JSON.stringify(appDataBroadcastMessageSchema.parse(message)),
     );
   }
 

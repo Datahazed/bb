@@ -7,6 +7,8 @@ import {
   type AgentRuntimeProcessExitInfo,
 } from "@bb/agent-runtime";
 import type {
+  AppDataPath,
+  AppId,
   PendingInteractionCreate,
   PendingInteractionResolution,
   StatusDataKey,
@@ -159,6 +161,14 @@ export interface ThreadStatusDataChangedNotification {
   threadStoragePath: string;
 }
 
+export interface ThreadAppDataChangedNotification {
+  appId: AppId;
+  environmentId: string;
+  path: AppDataPath;
+  threadId: string;
+  threadStoragePath: string;
+}
+
 export interface EnsureEnvironmentArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
@@ -190,6 +200,7 @@ export interface RuntimeManagerOptions {
   onThreadStatusDataChanged?: (
     args: ThreadStatusDataChangedNotification,
   ) => void;
+  onThreadAppDataChanged?: (args: ThreadAppDataChangedNotification) => void;
   onThreadStorageWatchError?: (args: {
     error: ThreadStorageWatchError;
   }) => void;
@@ -919,6 +930,18 @@ export class RuntimeManager {
             this.options.onThreadStatusDataChanged?.({
               environmentId: event.environmentId,
               key: event.key,
+              threadId: event.threadId,
+              threadStoragePath: path.join(
+                threadStorageRootPath,
+                event.threadId,
+              ),
+            });
+          }
+          if (event.kind === "thread-app-data-changed") {
+            this.options.onThreadAppDataChanged?.({
+              appId: event.appId,
+              environmentId: event.environmentId,
+              path: event.path,
               threadId: event.threadId,
               threadStoragePath: path.join(
                 threadStorageRootPath,

@@ -43,6 +43,12 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Base error details are omitted unless a route has structured detail payloads.",
   "apiErrorSchema.retryable":
     "Error payloads may omit retryability when the server has no retry guidance.",
+  "appDataListQuerySchema.prefix":
+    "App data listing may omit prefix to list every value file under the app data root.",
+  "appManifestSchema.entry":
+    "App manifests may omit entry so the server can resolve index.html then index.md at the boundary.",
+  "appManifestSchema.icon":
+    "App manifests may omit icon so the server can resolve a logo file or the GridView fallback.",
   "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "createAutomationRequestSchema.action.threadRequest.environment.hostId":
@@ -578,6 +584,73 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject({
       deleted: true,
       version: null,
+    });
+  });
+
+  it("validates app manifests, icon names, entries, and data broadcasts", () => {
+    const manifest = {
+      manifestVersion: 1,
+      id: "status",
+      name: "Status",
+      icon: "ListTodo",
+      entry: "index.html",
+      contributions: ["thread.app"],
+      capabilities: ["data", "message"],
+    };
+
+    expect(contract.appManifestSchema.parse(manifest)).toEqual(manifest);
+    expect(
+      contract.appManifestSchema.safeParse({
+        ...manifest,
+        icon: "MissingIcon",
+      }).success,
+    ).toBe(false);
+    expect(
+      contract.appManifestSchema.safeParse({
+        ...manifest,
+        entry: "../index.html",
+      }).success,
+    ).toBe(false);
+    expect(
+      contract.appManifestSchema.safeParse({
+        ...manifest,
+        contributions: ["thread.app", "sidebar"],
+      }).success,
+    ).toBe(false);
+
+    const message = {
+      type: "app-data.changed",
+      threadId: "thr_123",
+      appId: "status",
+      path: "state.json",
+      value: { workers: [] },
+      deleted: false,
+      version: "next-hash",
+    };
+    expect(contract.appDataBroadcastMessageSchema.parse(message)).toEqual(
+      message,
+    );
+    expect(
+      contract.appDataBroadcastMessageSchema.parse({
+        ...message,
+        value: null,
+        deleted: true,
+        version: null,
+      }),
+    ).toMatchObject({
+      deleted: true,
+      version: null,
+    });
+    expect(
+      contract.appDataBroadcastMessageSchema.parse({
+        type: "app-data.resync",
+        threadId: "thr_123",
+        appId: "status",
+      }),
+    ).toEqual({
+      type: "app-data.resync",
+      threadId: "thr_123",
+      appId: "status",
     });
   });
 
@@ -1285,6 +1358,8 @@ describe("server-contract clients", () => {
   it("keeps contract optional fields on an explicit allowlist", () => {
     const optionalFieldPaths = collectOptionalFieldPaths({
       apiErrorSchema: contract.apiErrorSchema,
+      appDataListQuerySchema: contract.appDataListQuerySchema,
+      appManifestSchema: contract.appManifestSchema,
       commitActionResponseSchema: contract.commitActionResponseSchema,
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,

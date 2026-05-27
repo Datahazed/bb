@@ -1,5 +1,11 @@
 import path from "node:path";
-import type { StatusDataKey } from "@bb/domain";
+import {
+  appDataPathSchema,
+  appIdSchema,
+  type AppDataPath,
+  type AppId,
+  type StatusDataKey,
+} from "@bb/domain";
 import {
   parseStatusDataFileName,
   STATUS_DATA_DIRECTORY_NAME,
@@ -26,6 +32,12 @@ interface ThreadStoragePath {
 
 interface ThreadStatusDataPath {
   key: StatusDataKey;
+  threadId: string;
+}
+
+interface ThreadAppDataPath {
+  appId: AppId;
+  path: AppDataPath;
   threadId: string;
 }
 
@@ -64,6 +76,10 @@ function isStatusDataSubtreePath(path: ThreadStoragePath): boolean {
   return path.parts[1] === STATUS_DATA_DIRECTORY_NAME;
 }
 
+function isAppDataSubtreePath(path: ThreadStoragePath): boolean {
+  return path.parts[1] === "apps" && path.parts[3] === "data";
+}
+
 function toThreadStatusDataPath(
   path: ThreadStoragePath,
 ): ThreadStatusDataPath | null {
@@ -80,11 +96,31 @@ function toThreadStatusDataPath(
   };
 }
 
+function toThreadAppDataPath(path: ThreadStoragePath): ThreadAppDataPath | null {
+  if (!isAppDataSubtreePath(path) || path.parts.length < 5) {
+    return null;
+  }
+  const appId = appIdSchema.safeParse(path.parts[2]);
+  if (!appId.success) {
+    return null;
+  }
+  const dataPath = appDataPathSchema.safeParse(path.parts.slice(4).join("/"));
+  if (!dataPath.success) {
+    return null;
+  }
+  return {
+    appId: appId.data,
+    threadId: path.threadId,
+    path: dataPath.data,
+  };
+}
+
 export function collectThreadStorageObservedChanges(
   args: CollectThreadStorageObservedChangesArgs,
 ): ThreadStorageObservedChange[] {
   const storageChanges = new Map<string, ThreadStorageWatchTarget>();
   const statusDataChanges = new Map<string, ThreadStorageObservedChange>();
+  const appDataChanges = new Map<string, ThreadStorageObservedChange>();
   for (const changedPath of args.changedPaths) {
     const storagePath = toThreadStoragePath({
       changedPath,
@@ -112,6 +148,22 @@ export function collectThreadStorageObservedChanges(
       }
       continue;
     }
+    if (isAppDataSubtreePath(storagePath)) {
+      const appDataPath = toThreadAppDataPath(storagePath);
+      if (appDataPath) {
+        appDataChanges.set(
+          `${target.environmentId}:${target.threadId}:${appDataPath.appId}:${appDataPath.path}`,
+          {
+            kind: "thread-app-data-changed",
+            appId: appDataPath.appId,
+            environmentId: target.environmentId,
+            path: appDataPath.path,
+            threadId: target.threadId,
+          },
+        );
+      }
+      continue;
+    }
     storageChanges.set(`${target.environmentId}:${target.threadId}`, target);
   }
 
@@ -124,6 +176,7 @@ export function collectThreadStorageObservedChanges(
     });
   }
   observedChanges.push(...statusDataChanges.values());
+  observedChanges.push(...appDataChanges.values());
   return observedChanges;
 }
 

@@ -22,10 +22,18 @@ import type {
 } from "./common.js";
 import type {
   Automation,
+  AppDataListQuery,
+  AppDataListResponse,
+  AppDataReadResponse,
+  AppDataWriteRequest,
+  AppDetail,
+  AppMessageRequest,
+  AppSummary,
   CreateAutomationRequest,
   CreateHostJoinRequest,
   CreateHostJoinResponse,
   CreateQueuedMessageRequest,
+  CreateThreadAppRequest,
   CreateManagerThreadRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -120,6 +128,7 @@ import type { ApiError } from "./errors.js";
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathProjectManagerThreadId = { param: { id: string; threadId: string } };
 type PathThreadStatusDataKey = { param: { id: string; key: string } };
+type PathThreadApp = { param: { id: string; appId: string } };
 
 export type PublicApiSchema = {
   // ─── Development Only ────────────────────────────────────────────────
@@ -580,6 +589,38 @@ export type PublicApiSchema = {
   "/threads/:id/status-data/:key": {
     /** Read one persistent reactive JSON state value for a STATUS dashboard. */
     $get: Endpoint<PathThreadStatusDataKey, ThreadStatusDataGetResponse>;
+  };
+  "/threads/:id/apps": {
+    /** List thread apps by reading validated manifests from thread storage. */
+    $get: Endpoint<PathId, AppSummary[]>;
+    /** Scaffold a new thread app under apps/<appId>/ using a server-owned template. */
+    $post: Endpoint<PathId & { json: CreateThreadAppRequest }, AppDetail, 201>;
+  };
+  "/threads/:id/apps/:appId": {
+    /** Resolve one thread app manifest, entry, and icon. */
+    $get: Endpoint<PathThreadApp, AppDetail>;
+    /** Remove one thread app directory from thread storage. */
+    $delete: Endpoint<PathThreadApp, { ok: true }>;
+  };
+  "/threads/:id/apps/:appId/data": {
+    /** List JSON value files at or below an app data prefix. */
+    $get: Endpoint<PathThreadApp & { query?: AppDataListQuery }, AppDataListResponse>;
+  };
+  "/threads/:id/apps/:appId/data/*": {
+    /**
+     * Read, write, or delete one app data JSON file. The wildcard suffix is
+     * validated by the route because hono-typed-routes only types named params.
+     */
+    $get: Endpoint<PathThreadApp, AppDataReadResponse>;
+    $put: Endpoint<
+      PathThreadApp & { json: AppDataWriteRequest },
+      AppDataReadResponse
+    >;
+    $delete: Endpoint<PathThreadApp, { ok: true }>;
+  };
+  "/threads/:id/apps/:appId/message": {
+    /** Send a message from an app iframe to its owning thread. */
+    $post: Endpoint<PathThreadApp & { json: AppMessageRequest }, { ok: true }>;
   };
   "/threads/:id/thread-storage/files": {
     /**

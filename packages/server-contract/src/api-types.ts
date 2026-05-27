@@ -35,8 +35,16 @@ import {
   managerTemplateNameSchema,
   jsonValueSchema,
   statusDataKeySchema,
+  appDataPathSchema,
+  appIdSchema,
 } from "@bb/domain";
-import type { GitBranchName, JsonValue, StatusDataKey } from "@bb/domain";
+import type {
+  AppDataPath,
+  AppId,
+  GitBranchName,
+  JsonValue,
+  StatusDataKey,
+} from "@bb/domain";
 import { apiErrorSchema } from "./errors.js";
 import { timelineRowSchema } from "./thread-timeline.js";
 
@@ -1146,6 +1154,295 @@ export const statusStateBroadcastMessageSchema = z.object({
 export type StatusStateBroadcastMessage = z.infer<
   typeof statusStateBroadcastMessageSchema
 >;
+
+// Keep app path limits in sync with packages/domain/src/apps.ts and the
+// injected app client validator in app-client-script.ts.
+const appEntryPathSegmentPattern = /^[A-Za-z0-9._-]{1,120}$/u;
+
+function isValidAppEntryPath(value: string): boolean {
+  if (
+    value.length === 0 ||
+    value.length > 512 ||
+    value.includes("\0") ||
+    value.includes("\\") ||
+    value.startsWith("/") ||
+    value.endsWith("/")
+  ) {
+    return false;
+  }
+
+  const segments = value.split("/");
+  return segments.every(
+    (segment) =>
+      segment !== "." &&
+      segment !== ".." &&
+      !segment.startsWith(".") &&
+      appEntryPathSegmentPattern.test(segment),
+  );
+}
+
+export const appIconNameValues = [
+  "AlertCircle",
+  "AlertTriangle",
+  "AlignLeft",
+  "Archive",
+  "ArchiveRestore",
+  "ArrowDown",
+  "ArrowRight",
+  "ArrowUp",
+  "AudioLines",
+  "Check",
+  "ChevronDown",
+  "ChevronLeft",
+  "ChevronRight",
+  "ChevronUp",
+  "ChevronsDown",
+  "ChevronsUp",
+  "Circle",
+  "CircleCheck",
+  "CircleDashed",
+  "CircleX",
+  "Columns2",
+  "Container",
+  "Copy",
+  "CornerDownLeft",
+  "CornerDownRight",
+  "Edit",
+  "ExternalLink",
+  "FileDiff",
+  "File",
+  "FileQuestion",
+  "FileX2",
+  "Folder",
+  "FolderOpen",
+  "FolderMinus",
+  "FolderPlus",
+  "GitBranch",
+  "GitMerge",
+  "GridView",
+  "Info",
+  "Laptop",
+  "ListTodo",
+  "Maximize2",
+  "MessageSquarePlus",
+  "MessageSquare",
+  "Mic",
+  "Minimize2",
+  "MoreHorizontal",
+  "PanelBottom",
+  "PanelLeft",
+  "PanelRight",
+  "Paperclip",
+  "Plus",
+  "RotateCcw",
+  "Rows2",
+  "Search",
+  "Settings",
+  "Spinner",
+  "Square",
+  "Terminal",
+  "Trash2",
+  "UserRound",
+  "UserRoundPlus",
+  "X",
+  "Zap",
+] as const;
+export const appIconNameSchema = z.enum(appIconNameValues);
+export type AppIconName = z.infer<typeof appIconNameSchema>;
+
+export const appEntryKindSchema = z.enum(["html", "md"]);
+export type AppEntryKind = z.infer<typeof appEntryKindSchema>;
+
+export const appEntryPathSchema = z
+  .string()
+  .refine(isValidAppEntryPath, "Invalid app entry path");
+export type AppEntryPath = z.infer<typeof appEntryPathSchema>;
+
+export const appEntrySchema = z
+  .object({
+    path: appEntryPathSchema,
+    kind: appEntryKindSchema,
+  })
+  .strict();
+export type AppEntry = z.infer<typeof appEntrySchema>;
+
+export const appCapabilitySchema = z.enum(["data", "message"]);
+export type AppCapability = z.infer<typeof appCapabilitySchema>;
+
+export const appContributionSchema = z.enum(["thread.app"]);
+export type AppContribution = z.infer<typeof appContributionSchema>;
+
+export const appManifestSchema = z
+  .object({
+    manifestVersion: z.literal(1),
+    id: appIdSchema,
+    name: z.string().min(1).max(80),
+    icon: appIconNameSchema.optional(),
+    entry: appEntryPathSchema.optional(),
+    contributions: z.array(appContributionSchema).min(1),
+    capabilities: z.array(appCapabilitySchema),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    if (
+      manifest.contributions.length !== 1 ||
+      manifest.contributions[0] !== "thread.app"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["contributions"],
+        message: 'Only ["thread.app"] is supported',
+      });
+    }
+  });
+export type AppManifest = z.infer<typeof appManifestSchema>;
+
+export const appIconSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("builtin"),
+      name: appIconNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("logo"),
+      url: z.string().min(1),
+    })
+    .strict(),
+]);
+export type AppIcon = z.infer<typeof appIconSchema>;
+
+export const appSummarySchema = z
+  .object({
+    id: appIdSchema,
+    name: z.string().min(1).max(80),
+    entry: appEntrySchema,
+    capabilities: z.array(appCapabilitySchema),
+    icon: appIconSchema,
+  })
+  .strict();
+export type AppSummary = z.infer<typeof appSummarySchema>;
+
+export const appDetailSchema = appSummarySchema;
+export type AppDetail = z.infer<typeof appDetailSchema>;
+
+export const appTemplateSchema = z.enum(["blank", "status"]);
+export type AppTemplate = z.infer<typeof appTemplateSchema>;
+
+export const createThreadAppRequestSchema = z
+  .object({
+    id: appIdSchema,
+    name: z.string().min(1).max(80),
+    template: appTemplateSchema,
+  })
+  .strict();
+export type CreateThreadAppRequest = z.infer<
+  typeof createThreadAppRequestSchema
+>;
+
+export const appDataEntrySchema = z
+  .object({
+    path: appDataPathSchema,
+    value: jsonValueSchema,
+    version: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative(),
+    modifiedAtMs: z.number().nonnegative(),
+  })
+  .strict();
+export type AppDataEntry = z.infer<typeof appDataEntrySchema>;
+
+export const appDataReadResponseSchema = appDataEntrySchema;
+export type AppDataReadResponse = z.infer<typeof appDataReadResponseSchema>;
+
+export const appDataListQuerySchema = z
+  .object({
+    prefix: appDataPathSchema.or(z.literal("")),
+  })
+  .partial();
+export type AppDataListQuery = z.infer<typeof appDataListQuerySchema>;
+
+export const appDataListResponseSchema = z
+  .object({
+    entries: z.array(appDataEntrySchema),
+  })
+  .strict();
+export type AppDataListResponse = z.infer<typeof appDataListResponseSchema>;
+
+export const appDataWriteRequestSchema = z
+  .object({
+    value: jsonValueSchema,
+  })
+  .strict();
+export type AppDataWriteRequest = z.infer<typeof appDataWriteRequestSchema>;
+
+export const appMessageRequestSchema = z
+  .object({
+    text: z.string().min(1),
+  })
+  .strict();
+export type AppMessageRequest = z.infer<typeof appMessageRequestSchema>;
+
+export const appDataChangedBroadcastMessageSchema = z
+  .object({
+    type: z.literal("app-data.changed"),
+    threadId: z.string().min(1),
+    appId: appIdSchema,
+    path: appDataPathSchema,
+    value: jsonValueSchema.nullable(),
+    deleted: z.boolean(),
+    version: z.string().min(1).nullable(),
+  })
+  .strict();
+export type AppDataChangedBroadcastMessage = z.infer<
+  typeof appDataChangedBroadcastMessageSchema
+>;
+
+export const appDataResyncBroadcastMessageSchema = z
+  .object({
+    type: z.literal("app-data.resync"),
+    threadId: z.string().min(1),
+    appId: appIdSchema,
+  })
+  .strict();
+export type AppDataResyncBroadcastMessage = z.infer<
+  typeof appDataResyncBroadcastMessageSchema
+>;
+
+export const appDataBroadcastMessageSchema = z.discriminatedUnion("type", [
+  appDataChangedBroadcastMessageSchema,
+  appDataResyncBroadcastMessageSchema,
+]);
+export type AppDataBroadcastMessage = z.infer<
+  typeof appDataBroadcastMessageSchema
+>;
+
+export interface BbDataEntry {
+  path: AppDataPath;
+  value: JsonValue;
+}
+
+export interface BbDataChangeEvent {
+  path: AppDataPath;
+  value: JsonValue | undefined;
+  deleted: boolean;
+}
+
+export type BbDataChangeCallback = (event: BbDataChangeEvent) => void;
+
+export interface BbData {
+  read(path: AppDataPath): Promise<JsonValue | undefined>;
+  write(path: AppDataPath, value: JsonValue): Promise<void>;
+  delete(path: AppDataPath): Promise<void>;
+  list(prefix?: AppDataPath | ""): Promise<BbDataEntry[]>;
+  onChange(prefix: AppDataPath | "", callback: BbDataChangeCallback): () => void;
+}
+
+export interface Bb {
+  appId: AppId;
+  data?: BbData;
+  message?(text: string): Promise<void>;
+}
 
 export const systemExecutionOptionsQuerySchema = z
   .object({

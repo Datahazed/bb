@@ -87,6 +87,52 @@ describe("NotificationHub", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
+  it("subscribes clients and delivers app data broadcasts", () => {
+    const hub = new NotificationHub();
+    const socket = createMockSocket();
+
+    hub.subscribe(socket, "thread", "thread-1:app:status:data");
+    hub.notifyThreadAppData({
+      type: "app-data.changed",
+      threadId: "thread-1",
+      appId: "status",
+      path: "state.json",
+      value: { workers: [] },
+      deleted: false,
+      version: "version-1",
+    });
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "app-data.changed",
+      threadId: "thread-1",
+      appId: "status",
+      path: "state.json",
+      value: { workers: [] },
+      deleted: false,
+      version: "version-1",
+    });
+  });
+
+  it("delivers app data resync broadcasts", () => {
+    const hub = new NotificationHub();
+    const socket = createMockSocket();
+
+    hub.subscribe(socket, "thread", "thread-1:app:status:data");
+    hub.notifyThreadAppData({
+      type: "app-data.resync",
+      threadId: "thread-1",
+      appId: "status",
+    });
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "app-data.resync",
+      threadId: "thread-1",
+      appId: "status",
+    });
+  });
+
   it("cleans up subscriptions on client disconnect", () => {
     const hub = new NotificationHub();
     const socket = createMockSocket();

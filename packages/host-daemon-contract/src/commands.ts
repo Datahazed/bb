@@ -27,7 +27,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 24 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 25 as const;
 
 export const FILE_LIST_QUERY_MAX_LENGTH = 256;
 export const FILE_LIST_LIMIT_MAX = 10_000;
@@ -59,6 +59,7 @@ export const HOST_DAEMON_COMMAND_TYPES = [
   "host.read_file_relative",
   "host.write_file_relative",
   "host.delete_file_relative",
+  "host.delete_path_relative",
   "provider.list",
   "provider.list_models",
   "environment.provision",
@@ -327,6 +328,15 @@ export const hostWriteFileRelativeCommandSchema = z
 export const hostDeleteFileRelativeCommandSchema = z
   .object({
     type: z.literal("host.delete_file_relative"),
+    rootPath: z.string().min(1),
+    path: z.string().min(1),
+    dotfiles: hostReadFileRelativeDotfilePolicySchema,
+  })
+  .strict();
+
+export const hostDeletePathRelativeCommandSchema = z
+  .object({
+    type: z.literal("host.delete_path_relative"),
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
@@ -676,6 +686,7 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   hostReadFileRelativeCommandSchema,
   hostWriteFileRelativeCommandSchema,
   hostDeleteFileRelativeCommandSchema,
+  hostDeletePathRelativeCommandSchema,
   providerListCommandSchema,
   providerListModelsCommandSchema,
   environmentDestroyCommandSchema,
@@ -716,6 +727,7 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "host.read_file_relative":
     case "host.write_file_relative":
     case "host.delete_file_relative":
+    case "host.delete_path_relative":
     case "codex.inference.complete":
     case "provider.list":
     case "provider.list_models":
@@ -742,6 +754,7 @@ const fileReadResultSchema = z.object({
   contentEncoding: z.enum(["base64", "utf8"]),
   mimeType: z.string().optional(),
   sizeBytes: z.number().int().nonnegative(),
+  modifiedAtMs: z.number().nonnegative().optional(),
 });
 
 const fileMetadataResultSchema = z.object({
@@ -761,6 +774,11 @@ const fileDeleteResultSchema = z.object({
   path: z.string(),
   deleted: z.boolean(),
   previousHash: z.string().nullable(),
+});
+
+const pathDeleteResultSchema = z.object({
+  path: z.string(),
+  deleted: z.boolean(),
 });
 
 const statusVersionResultSchema = z.object({
@@ -911,6 +929,7 @@ export const hostDaemonCommandResultSchemaByType = {
   "host.read_file_relative": fileReadResultSchema,
   "host.write_file_relative": fileWriteResultSchema,
   "host.delete_file_relative": fileDeleteResultSchema,
+  "host.delete_path_relative": pathDeleteResultSchema,
   "provider.list": z.object({
     providers: z.array(providerInfoSchema),
   }),

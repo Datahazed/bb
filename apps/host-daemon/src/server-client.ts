@@ -6,6 +6,8 @@ import {
   hostDaemonCommandResultResponseSchema,
   hostDaemonCommandResultReportSchema,
   hostDaemonCommandsQuerySchema,
+  hostDaemonAppDataChangeRequestSchema,
+  hostDaemonAppDataResyncRequestSchema,
   hostDaemonEnvironmentChangeRequestSchema,
   hostDaemonEventBatchRequestSchema,
   hostDaemonEventBatchResponseSchema,
@@ -23,6 +25,8 @@ import {
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonActiveThread,
+  type HostDaemonAppDataChangePayload,
+  type HostDaemonAppDataResyncPayload,
   type HostDaemonCommandEnvelope,
   type HostDaemonCommandResultReportWithoutSession,
   type HostDaemonEventEnvelope,
@@ -229,6 +233,8 @@ export interface ServerClient {
   postStatusDataChange(
     args: HostDaemonStatusDataChangePayload,
   ): Promise<void>;
+  postAppDataChange(args: HostDaemonAppDataChangePayload): Promise<void>;
+  postAppDataResync(args: HostDaemonAppDataResyncPayload): Promise<void>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -672,6 +678,44 @@ export function createServerClient(
 
       if (!response.ok) {
         throw await createResponseError("post STATUS-data change", response);
+      }
+    },
+
+    async postAppDataChange(args): Promise<void> {
+      const payload = hostDaemonAppDataChangeRequestSchema.parse({
+        sessionId: requireSessionId(),
+        ...args,
+      });
+      const response = await fetchFn(
+        buildInternalUrl("/session/app-data-change"),
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (!response.ok) {
+        throw await createResponseError("post app data change", response);
+      }
+    },
+
+    async postAppDataResync(args): Promise<void> {
+      const payload = hostDaemonAppDataResyncRequestSchema.parse({
+        sessionId: requireSessionId(),
+        ...args,
+      });
+      const response = await fetchFn(
+        buildInternalUrl("/session/app-data-resync"),
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (!response.ok) {
+        throw await createResponseError("post app data resync", response);
       }
     },
 

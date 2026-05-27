@@ -142,6 +142,7 @@ export async function listPathsRecursively(
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue;
     if (entry.name === "node_modules") continue;
+    if (entry.isSymbolicLink()) continue;
 
     const fullPath = path.join(args.dir, entry.name);
     const relativePath = normalizeListedPath(

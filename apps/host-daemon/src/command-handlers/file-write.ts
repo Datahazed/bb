@@ -68,6 +68,11 @@ interface DeleteRootRelativeFileResult {
   previousHash: string | null;
 }
 
+interface DeleteRootRelativePathResult {
+  deleted: boolean;
+  path: string;
+}
+
 function validateRootRelativeWritePath(
   args: ValidateRootRelativeWritePathArgs,
 ): ValidatedRootRelativeWritePath {
@@ -138,6 +143,9 @@ async function ensureWritableRoot(rootPath: string): Promise<string> {
 async function resolveWritableTarget(
   args: ResolveWritableTargetArgs,
 ): Promise<ResolvedWritableTarget> {
+  if (!path.isAbsolute(args.rootPath)) {
+    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
+  }
   const realRootPath = await ensureWritableRoot(args.rootPath);
   const absolutePath = path.join(realRootPath, ...args.relativePath.segments);
   const parentPath = path.dirname(absolutePath);
@@ -258,5 +266,70 @@ export async function deleteRootRelativeFile(
     path: target.resultPath,
     deleted: true,
     previousHash: existing.hash,
+  };
+}
+
+export async function deleteRootRelativePath(
+  args: DeleteRootRelativeFileArgs,
+): Promise<DeleteRootRelativePathResult> {
+  const relativePath = validateRootRelativeWritePath({
+    relativePath: args.relativePath,
+    dotfiles: args.dotfiles,
+  });
+  if (!path.isAbsolute(args.rootPath)) {
+    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
+  }
+  let realRootPath: string;
+  try {
+    realRootPath = await resolveNonSymlinkDirectoryPath({
+      description: "Root path",
+      path: args.rootPath,
+    });
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return {
+        path: relativePath.resultPath,
+        deleted: false,
+      };
+    }
+    throw error;
+  }
+  const targetPath = path.join(realRootPath, ...relativePath.segments);
+  const parentPath = path.dirname(targetPath);
+  const realParentPath = await resolveNonSymlinkDirectoryPath({
+    description: "Parent path",
+    path: parentPath,
+  });
+  if (!isPathWithinRoot(realParentPath, realRootPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      `Path "${relativePath.resultPath}" escapes delete root`,
+    );
+  }
+  const confinedPath = path.join(realParentPath, path.basename(targetPath));
+
+  let stat;
+  try {
+    stat = await fs.lstat(confinedPath);
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return {
+        path: relativePath.resultPath,
+        deleted: false,
+      };
+    }
+    throw error;
+  }
+  if (stat.isSymbolicLink()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "Path is a symlink, not a directory or file",
+    );
+  }
+
+  await fs.rm(confinedPath, { recursive: stat.isDirectory(), force: true });
+  return {
+    path: relativePath.resultPath,
+    deleted: true,
   };
 }

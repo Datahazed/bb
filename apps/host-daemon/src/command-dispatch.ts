@@ -21,6 +21,7 @@ import {
   listHostFiles,
   listHostPaths,
   deleteHostRelativeFile,
+  deleteHostRelativePath,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
@@ -341,6 +342,10 @@ const commandHandlers: CommandHandlerMap = {
     command: Extract<HostDaemonCommand, { type: "host.delete_file_relative" }>,
     _options: CommandDispatchOptions,
   ) => deleteHostRelativeFile(command),
+  "host.delete_path_relative": async (
+    command: Extract<HostDaemonCommand, { type: "host.delete_path_relative" }>,
+    _options: CommandDispatchOptions,
+  ) => deleteHostRelativePath(command),
   "provider.list": async (
     _command: Extract<HostDaemonCommand, { type: "provider.list" }>,
     options: CommandDispatchOptions,

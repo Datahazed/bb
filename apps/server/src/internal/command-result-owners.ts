@@ -747,6 +747,7 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "host.read_file_relative": null,
   "host.write_file_relative": null,
   "host.delete_file_relative": null,
+  "host.delete_path_relative": null,
   "host.status_version": null,
   "host.status_data.list": null,
   "host.status_data.get": null,

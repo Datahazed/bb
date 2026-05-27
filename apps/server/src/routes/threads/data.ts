@@ -75,6 +75,11 @@ import {
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
+import {
+  extractRoutePath,
+  parseSafeRelativeRoutePath,
+  type SafeRelativeRoutePath,
+} from "../relative-route-path.js";
 
 interface ThreadComposerExecutionOptionsSource {
   archivedAt: number | null;
@@ -159,13 +164,8 @@ type HostStatusVersionCommand = Extract<
   { type: "host.status_version" }
 >;
 
-interface StatusAssetPath {
-  relativePath: string;
-}
-
-interface RawFileRoutePath {
-  relativePath: string;
-}
+type StatusAssetPath = SafeRelativeRoutePath;
+type RawFileRoutePath = SafeRelativeRoutePath;
 
 const STATUS_DIRECTORY_NAME = "STATUS";
 const STATUS_INDEX_FILE_PATH = "index.html";
@@ -283,112 +283,38 @@ export async function requireThreadStorageTarget(
   };
 }
 
-function createStatusNotFoundError(relativePath: string): ApiError {
-  return new ApiError(404, "ENOENT", `Path does not exist: ${relativePath}`);
-}
-
-function createStatusInvalidPathError(): ApiError {
-  return new ApiError(400, "invalid_path", "Invalid status asset path");
-}
-
-function decodeStatusRoutePath(rawPath: string): string {
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    throw createStatusInvalidPathError();
-  }
-}
-
 function parseStatusAssetPath(rawPath: string): StatusAssetPath {
-  const decodedPath = decodeStatusRoutePath(rawPath);
-  const requestedDirectoryIndex = decodedPath.endsWith("/");
-  const relativePath = requestedDirectoryIndex
-    ? `${decodedPath}${STATUS_INDEX_FILE_PATH}`
-    : decodedPath;
-
-  if (
-    relativePath.length === 0 ||
-    relativePath.includes("\0") ||
-    relativePath.includes("\\") ||
-    path.posix.isAbsolute(relativePath)
-  ) {
-    throw createStatusInvalidPathError();
-  }
-
-  const segments = relativePath.split("/");
-  if (
-    segments.some(
-      (segment) => segment.length === 0 || segment === "." || segment === "..",
-    )
-  ) {
-    throw createStatusInvalidPathError();
-  }
-
-  if (segments.some((segment) => segment.startsWith("."))) {
-    throw createStatusNotFoundError(relativePath);
-  }
-
-  return {
-    relativePath: segments.join("/"),
-  };
-}
-
-function createRawFileInvalidPathError(): ApiError {
-  return new ApiError(400, "invalid_path", "Invalid file path");
-}
-
-function decodeRawFileRoutePath(rawPath: string): string {
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    throw createRawFileInvalidPathError();
-  }
+  return parseSafeRelativeRoutePath({
+    rawPath,
+    directoryIndexPath: STATUS_INDEX_FILE_PATH,
+    dotfileSegmentPolicy: "not-found",
+    invalidPathMessage: "Invalid status asset path",
+  });
 }
 
 function parseRawFileRoutePath(rawPath: string): RawFileRoutePath {
-  const relativePath = decodeRawFileRoutePath(rawPath);
-  if (
-    relativePath.length === 0 ||
-    relativePath.includes("\0") ||
-    relativePath.includes("\\") ||
-    path.posix.isAbsolute(relativePath)
-  ) {
-    throw createRawFileInvalidPathError();
-  }
-
-  const segments = relativePath.split("/");
-  if (
-    segments.some(
-      (segment) => segment.length === 0 || segment === "." || segment === "..",
-    )
-  ) {
-    throw createRawFileInvalidPathError();
-  }
-
-  return {
-    relativePath: segments.join("/"),
-  };
+  return parseSafeRelativeRoutePath({
+    rawPath,
+    dotfileSegmentPolicy: "allow",
+    invalidPathMessage: "Invalid file path",
+  });
 }
 
 function extractThreadStatusPath(requestUrl: string): string {
-  const requestPath = new URL(requestUrl).pathname;
-  const statusSegmentIndex = requestPath.indexOf(STATUS_ROUTE_SEGMENT);
-  if (statusSegmentIndex === -1) {
-    return "";
-  }
-  return requestPath.slice(statusSegmentIndex + STATUS_ROUTE_SEGMENT.length);
+  return extractRoutePath({
+    requestUrl,
+    routeSegment: STATUS_ROUTE_SEGMENT,
+  });
 }
 
 function extractRawFileRoutePath(
   requestUrl: string,
   routeSegment: string,
 ): string {
-  const requestPath = new URL(requestUrl).pathname;
-  const routeSegmentIndex = requestPath.indexOf(routeSegment);
-  if (routeSegmentIndex === -1) {
-    return "";
-  }
-  return requestPath.slice(routeSegmentIndex + routeSegment.length);
+  return extractRoutePath({
+    requestUrl,
+    routeSegment,
+  });
 }
 
 function shouldFallbackStatusRead(error: unknown): boolean {

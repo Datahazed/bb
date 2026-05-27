@@ -8,6 +8,8 @@ import {
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
   statusDataKeySchema,
+  appDataPathSchema,
+  appIdSchema,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
@@ -272,6 +274,79 @@ export const hostDaemonStatusDataChangeRequestSchema = z
   .superRefine(validateHostDaemonStatusDataChangePayload);
 export type HostDaemonStatusDataChangeRequest = z.infer<
   typeof hostDaemonStatusDataChangeRequestSchema
+>;
+
+const hostDaemonAppDataChangePayloadBaseSchema = z
+  .object({
+    threadId: z.string().min(1),
+    appId: appIdSchema,
+    path: appDataPathSchema,
+    value: jsonValueSchema.nullable(),
+    deleted: z.boolean(),
+    version: z.string().min(1).nullable(),
+  })
+  .strict();
+type HostDaemonAppDataChangePayloadBase = z.infer<
+  typeof hostDaemonAppDataChangePayloadBaseSchema
+>;
+
+function validateHostDaemonAppDataChangePayload(
+  payload: HostDaemonAppDataChangePayloadBase,
+  context: z.RefinementCtx,
+): void {
+  if (payload.deleted && payload.version !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["version"],
+      message: "version must be null for deleted app data changes",
+    });
+  }
+  if (!payload.deleted && payload.version === null) {
+    context.addIssue({
+      code: "custom",
+      path: ["version"],
+      message: "version is required for non-deleted app data changes",
+    });
+  }
+}
+
+export const hostDaemonAppDataChangePayloadSchema =
+  hostDaemonAppDataChangePayloadBaseSchema.superRefine(
+    validateHostDaemonAppDataChangePayload,
+  );
+export type HostDaemonAppDataChangePayload = z.infer<
+  typeof hostDaemonAppDataChangePayloadSchema
+>;
+
+export const hostDaemonAppDataChangeRequestSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    ...hostDaemonAppDataChangePayloadBaseSchema.shape,
+  })
+  .strict()
+  .superRefine(validateHostDaemonAppDataChangePayload);
+export type HostDaemonAppDataChangeRequest = z.infer<
+  typeof hostDaemonAppDataChangeRequestSchema
+>;
+
+export const hostDaemonAppDataResyncPayloadSchema = z
+  .object({
+    threadId: z.string().min(1),
+    appId: appIdSchema,
+  })
+  .strict();
+export type HostDaemonAppDataResyncPayload = z.infer<
+  typeof hostDaemonAppDataResyncPayloadSchema
+>;
+
+export const hostDaemonAppDataResyncRequestSchema =
+  hostDaemonAppDataResyncPayloadSchema
+    .extend({
+      sessionId: z.string().min(1),
+    })
+    .strict();
+export type HostDaemonAppDataResyncRequest = z.infer<
+  typeof hostDaemonAppDataResyncRequestSchema
 >;
 
 export const hostDaemonHeartbeatPayloadSchema = z.object({
@@ -578,6 +653,14 @@ export type HostDaemonInternalSchema = {
   "/session/status-data-change": {
     /** Used by the daemon to report host-local STATUS-data file changes for server websocket fan-out. */
     $post: Endpoint<{ json: HostDaemonStatusDataChangeRequest }, { ok: true }>;
+  };
+  "/session/app-data-change": {
+    /** Used by the daemon to report host-local app data file changes for server websocket fan-out. */
+    $post: Endpoint<{ json: HostDaemonAppDataChangeRequest }, { ok: true }>;
+  };
+  "/session/app-data-resync": {
+    /** Used by the daemon to request client-side app data resync after reconnect reconciliation. */
+    $post: Endpoint<{ json: HostDaemonAppDataResyncRequest }, { ok: true }>;
   };
   "/session/tool-call": {
     /** Used by the daemon to execute server-side tool calls on behalf of a provider (e.g. message_user). */

@@ -20,6 +20,7 @@ export interface ReadFileForTransportResult {
   content: string;
   contentEncoding: FileContentEncoding;
   mimeType?: string;
+  modifiedAtMs?: number;
   path: string;
   sizeBytes: number;
 }
@@ -325,6 +326,7 @@ export async function readFileForTransport(
         : fileContents.toString("base64"),
     contentEncoding,
     ...(mimeType ? { mimeType } : {}),
+    modifiedAtMs: stat.mtimeMs,
     sizeBytes: stat.size,
   };
 }
@@ -370,6 +372,7 @@ export async function readRootRelativeFileForTransport(
         : fileContents.toString("base64"),
     contentEncoding,
     ...(mimeType ? { mimeType } : {}),
+    modifiedAtMs: stat.mtimeMs,
     sizeBytes: stat.size,
   };
 }

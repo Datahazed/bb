@@ -34,6 +34,11 @@ interface BuiltInManagerTemplateFile {
   fileName: string;
 }
 
+interface TemplateFileToCopy {
+  relativePath: string;
+  sourcePath: string;
+}
+
 interface BuiltInManagerTemplateSet {
   files: readonly BuiltInManagerTemplateFile[];
   name: ManagerTemplateName;
@@ -91,6 +96,18 @@ const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
     {
       fileName: "STATUS.html",
       content: loadDefaultTemplateAsset("STATUS.html"),
+    },
+    {
+      fileName: "apps/status/manifest.json",
+      content: loadDefaultTemplateAsset("apps/status/manifest.json"),
+    },
+    {
+      fileName: "apps/status/assets/index.html",
+      content: loadDefaultTemplateAsset("apps/status/assets/index.html"),
+    },
+    {
+      fileName: "apps/status/data/state.json",
+      content: loadDefaultTemplateAsset("apps/status/data/state.json"),
     },
   ],
 };
@@ -167,9 +184,9 @@ async function readActiveManagerTemplateName(
 async function copyTemplateFiles(
   args: CopyTemplateFilesArgs,
 ): Promise<CopyTemplateFilesResult> {
-  let entries: Dirent[];
+  let files: TemplateFileToCopy[];
   try {
-    entries = await readdir(args.templateDirPath, { withFileTypes: true });
+    files = await collectTemplateFiles(args.templateDirPath);
   } catch (error) {
     if (isFsErrorWithCode({ error, code: "ENOENT" })) {
       return "missing";
@@ -179,14 +196,15 @@ async function copyTemplateFiles(
 
   await mkdir(args.threadStoragePath, { recursive: true });
 
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    const sourcePath = path.join(args.templateDirPath, entry.name);
-    const destinationPath = path.join(args.threadStoragePath, entry.name);
+  for (const file of files) {
+    const destinationPath = path.join(args.threadStoragePath, file.relativePath);
     try {
-      await copyFile(sourcePath, destinationPath, fsConstants.COPYFILE_EXCL);
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      await copyFile(
+        file.sourcePath,
+        destinationPath,
+        fsConstants.COPYFILE_EXCL,
+      );
     } catch (error) {
       if (isFsErrorWithCode({ error, code: "EEXIST" })) {
         continue;
@@ -194,7 +212,7 @@ async function copyTemplateFiles(
       if (isFsErrorWithCode({ error, code: "ENOENT" })) {
         args.logger.warn(
           {
-            sourcePath,
+            sourcePath: file.sourcePath,
             templateName: args.templateName,
             threadId: args.threadId,
           },
@@ -209,6 +227,42 @@ async function copyTemplateFiles(
   return "copied";
 }
 
+async function collectTemplateFiles(
+  rootPath: string,
+): Promise<TemplateFileToCopy[]> {
+  const pendingDirs = [rootPath];
+  const files: TemplateFileToCopy[] = [];
+
+  while (pendingDirs.length > 0) {
+    const currentDir = pendingDirs.shift();
+    if (!currentDir) {
+      continue;
+    }
+    const entries: Dirent[] = await readdir(currentDir, {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      const sourcePath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirs.push(sourcePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      files.push({
+        sourcePath,
+        relativePath: path
+          .relative(rootPath, sourcePath)
+          .split(path.sep)
+          .join("/"),
+      });
+    }
+  }
+
+  return files;
+}
+
 async function copyBuiltInTemplateFiles(
   args: CopyBuiltInTemplateFilesArgs,
 ): Promise<void> {
@@ -217,6 +271,7 @@ async function copyBuiltInTemplateFiles(
   for (const file of args.files) {
     const destinationPath = path.join(args.threadStoragePath, file.fileName);
     try {
+      await mkdir(path.dirname(destinationPath), { recursive: true });
       await writeFile(destinationPath, file.content, {
         encoding: "utf8",
         flag: "wx",

@@ -17,6 +17,7 @@ import {
   readHostStatusVersion,
   writeHostRelativeFile,
   deleteHostRelativeFile,
+  deleteHostRelativePath,
 } from "./host-files.js";
 
 const execFileAsync = promisify(execFile);
@@ -424,6 +425,50 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       path: "tasks.json",
       deleted: false,
       previousHash: null,
+    });
+  });
+
+  it("deletes directories recursively beneath the root", async () => {
+    const rootPath = await makeTempDir("bb-host-relative-delete-dir-");
+    await fs.mkdir(path.join(rootPath, "apps", "demo", "assets"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(rootPath, "apps", "demo", "manifest.json"),
+      "{}\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(rootPath, "apps", "demo", "assets", "index.html"),
+      "<h1>Demo</h1>",
+      "utf8",
+    );
+
+    await expect(
+      deleteHostRelativePath({
+        type: "host.delete_path_relative",
+        rootPath: path.join(rootPath, "apps"),
+        path: "demo",
+        dotfiles: "deny",
+      }),
+    ).resolves.toEqual({
+      path: "demo",
+      deleted: true,
+    });
+    await expect(
+      fs.stat(path.join(rootPath, "apps", "demo")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    await expect(
+      deleteHostRelativePath({
+        type: "host.delete_path_relative",
+        rootPath: path.join(rootPath, "apps"),
+        path: "demo",
+        dotfiles: "deny",
+      }),
+    ).resolves.toEqual({
+      path: "demo",
+      deleted: false,
     });
   });
 });

@@ -44,6 +44,7 @@ vi.mock("../daemon.js", () => ({
 
 import { createClient, unwrap } from "../client.js";
 import { fetchLocalHostId } from "../daemon.js";
+import { registerAppCommands } from "../commands/app.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
 import { registerHostCommands } from "../commands/host.js";
@@ -1174,6 +1175,134 @@ describe("CLI command output contracts", () => {
       ].join("\n"),
       "",
     ]);
+  });
+
+  it("bb app list renders resolved app summaries", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_current");
+    const apps = [
+      {
+        id: "status",
+        name: "Status",
+        entry: { path: "index.html", kind: "html" },
+        capabilities: ["data", "message"],
+        icon: { kind: "builtin", name: "ListTodo" },
+      },
+      {
+        id: "demo",
+        name: "Demo",
+        entry: { path: "readme.md", kind: "md" },
+        capabilities: [],
+        icon: {
+          kind: "logo",
+          url: "/api/v1/threads/thr_current/apps/demo/icon",
+        },
+      },
+    ];
+    const get = vi.fn(async () => apps);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            threads: {
+              ":id": {
+                apps: {
+                  $get: get,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(["app", "list"], (program) =>
+      registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(get).toHaveBeenCalledWith({ param: { id: "thr_current" } });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "ID                        Name                      Entry                     Capabilities              Icon\n------------------------  ------------------------  ------------------------  ------------------------  ------------------\nstatus                    Status                    html:index.html           data,message              ListTodo\n------------------------  ------------------------  ------------------------  ------------------------  ------------------\ndemo                      Demo                      md:readme.md              -                         logo",
+    ]);
+  });
+
+  it("bb app new targets the current thread and posts the selected template", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_current");
+    const created = {
+      id: "demo",
+      name: "Demo",
+      entry: { path: "index.html", kind: "html" },
+      capabilities: ["data", "message"],
+      icon: { kind: "builtin", name: "ListTodo" },
+    };
+    const post = vi.fn(async () => created);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            threads: {
+              ":id": {
+                apps: {
+                  $post: post,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(
+      ["app", "new", "demo", "--template", "status"],
+      (program) => registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thr_current" },
+      json: { id: "demo", name: "demo", template: "status" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "App created: demo",
+      "  Name:         Demo",
+      "  Entry:        html:index.html",
+      "  Capabilities: data,message",
+      "  Icon:         ListTodo",
+    ]);
+  });
+
+  it("bb app new derives a valid id from a display name", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_current");
+    const created = {
+      id: "my-app",
+      name: "My App",
+      entry: { path: "index.html", kind: "html" },
+      capabilities: ["data"],
+      icon: { kind: "builtin", name: "GridView" },
+    };
+    const post = vi.fn(async () => created);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            threads: {
+              ":id": {
+                apps: {
+                  $post: post,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(["app", "new", "My App"], (program) =>
+      registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thr_current" },
+      json: { id: "my-app", name: "My App", template: "blank" },
+    });
   });
 
   it("bb manager status includes managed child threads", async () => {

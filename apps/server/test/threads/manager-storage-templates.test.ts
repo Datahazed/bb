@@ -86,6 +86,16 @@ async function readBundledStatusTemplate(): Promise<string> {
   );
 }
 
+async function readBundledStatusAppFile(relativePath: string): Promise<string> {
+  return readFile(
+    new URL(
+      `../../src/services/threads/default-template/apps/status/${relativePath}`,
+      import.meta.url,
+    ),
+    "utf8",
+  );
+}
+
 async function writeManagerTemplateSet(
   args: WriteManagerTemplateSetArgs,
 ): Promise<void> {
@@ -95,7 +105,9 @@ async function writeManagerTemplateSet(
   );
   await mkdir(templateDir, { recursive: true });
   for (const [fileName, content] of Object.entries(args.files)) {
-    await writeFile(path.join(templateDir, fileName), content, "utf8");
+    const filePath = path.join(templateDir, fileName);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, "utf8");
   }
 }
 
@@ -159,6 +171,24 @@ describe("manager storage templates", () => {
         readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
       ).resolves.toBe(await readBundledStatusTemplate());
       await expect(
+        readFile(
+          path.join(threadStoragePath, "apps/status/manifest.json"),
+          "utf8",
+        ),
+      ).resolves.toBe(await readBundledStatusAppFile("manifest.json"));
+      await expect(
+        readFile(
+          path.join(threadStoragePath, "apps/status/assets/index.html"),
+          "utf8",
+        ),
+      ).resolves.toBe(await readBundledStatusAppFile("assets/index.html"));
+      await expect(
+        readFile(
+          path.join(threadStoragePath, "apps/status/data/state.json"),
+          "utf8",
+        ),
+      ).resolves.toBe(await readBundledStatusAppFile("data/state.json"));
+      await expect(
         stat(managerTemplateRootPath({ dataDir })),
       ).rejects.toThrow();
     } finally {
@@ -175,6 +205,8 @@ describe("manager storage templates", () => {
         name: DEFAULT_MANAGER_TEMPLATE_NAME,
         files: {
           "STATUS.html": "user status\n",
+          "apps/custom/manifest.json": "{}\n",
+          "apps/custom/assets/index.html": "<h1>Custom</h1>\n",
         },
       });
 
@@ -189,6 +221,12 @@ describe("manager storage templates", () => {
       await expect(
         readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
       ).resolves.toBe("user status\n");
+      await expect(
+        readFile(
+          path.join(threadStoragePath, "apps/custom/assets/index.html"),
+          "utf8",
+        ),
+      ).resolves.toBe("<h1>Custom</h1>\n");
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
@@ -298,6 +336,7 @@ describe("manager storage templates", () => {
         name: MINE_MANAGER_TEMPLATE_NAME,
         files: {
           "STATUS.html": "mine status\n",
+          "apps/mine/data/state.json": "{}\n",
         },
       });
 
@@ -312,6 +351,12 @@ describe("manager storage templates", () => {
       await expect(
         readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
       ).resolves.toBe("mine status\n");
+      await expect(
+        readFile(
+          path.join(threadStoragePath, "apps/mine/data/state.json"),
+          "utf8",
+        ),
+      ).resolves.toBe("{}\n");
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

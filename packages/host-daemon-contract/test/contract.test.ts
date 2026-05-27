@@ -555,6 +555,18 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.parse({
+        type: "host.delete_path_relative",
+        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps",
+        path: "demo",
+        dotfiles: "deny",
+      }),
+    ).toMatchObject({
+      type: "host.delete_path_relative",
+      path: "demo",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
@@ -1372,6 +1384,16 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
+      hostDaemonCommandResultSchemaByType["host.delete_path_relative"].parse({
+        path: "demo",
+        deleted: true,
+      }),
+    ).toEqual({
+      path: "demo",
+      deleted: true,
+    });
+
+    expect(
       hostDaemonCommandResultSchemaByType["host.status_version"].parse({
         source: "folder",
         hash: "abc123",
@@ -1858,6 +1880,65 @@ describe("host-daemon session schemas", () => {
     ).toThrow();
 
     expect(
+      contract.hostDaemonAppDataChangeRequestSchema.parse({
+        sessionId: "session_123",
+        threadId: "thr_123",
+        appId: "status",
+        path: "state.json",
+        value: { workers: [] },
+        deleted: false,
+        version: "next-hash",
+      }),
+    ).toEqual({
+      sessionId: "session_123",
+      threadId: "thr_123",
+      appId: "status",
+      path: "state.json",
+      value: { workers: [] },
+      deleted: false,
+      version: "next-hash",
+    });
+
+    expect(
+      contract.hostDaemonAppDataChangeRequestSchema.parse({
+        sessionId: "session_123",
+        threadId: "thr_123",
+        appId: "status",
+        path: "state.json",
+        value: null,
+        deleted: true,
+        version: null,
+      }),
+    ).toMatchObject({
+      deleted: true,
+      version: null,
+    });
+
+    expect(() =>
+      contract.hostDaemonAppDataChangeRequestSchema.parse({
+        sessionId: "session_123",
+        threadId: "thr_123",
+        appId: "status",
+        path: "state.json",
+        value: { workers: [] },
+        deleted: false,
+        version: null,
+      }),
+    ).toThrow();
+
+    expect(
+      contract.hostDaemonAppDataResyncRequestSchema.parse({
+        sessionId: "session_123",
+        threadId: "thr_123",
+        appId: "status",
+      }),
+    ).toEqual({
+      sessionId: "session_123",
+      threadId: "thr_123",
+      appId: "status",
+    });
+
+    expect(
       hostDaemonInteractiveRequestSchema.parse({
         sessionId: "session_123",
         interaction: {
@@ -2091,6 +2172,12 @@ describe("host-daemon session schemas", () => {
     );
     expect(client.session["status-data-change"].$url().pathname).toBe(
       "/internal/session/status-data-change",
+    );
+    expect(client.session["app-data-change"].$url().pathname).toBe(
+      "/internal/session/app-data-change",
+    );
+    expect(client.session["app-data-resync"].$url().pathname).toBe(
+      "/internal/session/app-data-resync",
     );
   });
 });

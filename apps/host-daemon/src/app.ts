@@ -34,6 +34,7 @@ import {
 } from "./terminals/terminal-manager.js";
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
+import { AppDataChangeReporter } from "./app-data-change-reporter.js";
 import { StatusDataChangeReporter } from "./status-data-change-reporter.js";
 import {
   ServerConnection,
@@ -377,6 +378,11 @@ export async function createHostDaemonApp(
     postStatusDataChange: (payload) =>
       serverClient.postStatusDataChange(payload),
   });
+  const appDataChangeReporter = new AppDataChangeReporter({
+    logger: options.logger,
+    postAppDataChange: (payload) => serverClient.postAppDataChange(payload),
+    postAppDataResync: (payload) => serverClient.postAppDataResync(payload),
+  });
 
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
@@ -548,6 +554,9 @@ export async function createHostDaemonApp(
     },
     onThreadStatusDataChanged: (change) => {
       void statusDataChangeReporter.observe(change);
+    },
+    onThreadAppDataChanged: (change) => {
+      void appDataChangeReporter.observe(change);
     },
     onThreadStorageWatchError: ({ error }) => {
       options.logger.warn(
@@ -749,6 +758,12 @@ export async function createHostDaemonApp(
         session.trackedThreadTargets,
       );
       void statusDataChangeReporter.replaceTrackedThreads({
+        targets: session.trackedThreadTargets.map((target) => ({
+          threadId: target.threadId,
+          threadStoragePath: path.join(threadStorageRootPath, target.threadId),
+        })),
+      });
+      void appDataChangeReporter.replaceTrackedThreads({
         targets: session.trackedThreadTargets.map((target) => ({
           threadId: target.threadId,
           threadStoragePath: path.join(threadStorageRootPath, target.threadId),

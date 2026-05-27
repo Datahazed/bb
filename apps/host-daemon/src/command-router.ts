@@ -39,7 +39,12 @@ interface EnvironmentLaneState {
 
 type FileWriteLaneCommand = Extract<
   HostDaemonCommandEnvelope["command"],
-  { type: "host.write_file_relative" | "host.delete_file_relative" }
+  {
+    type:
+      | "host.write_file_relative"
+      | "host.delete_file_relative"
+      | "host.delete_path_relative";
+  }
 >;
 type StatusDataSetCommand = Extract<
   HostDaemonCommand,
@@ -555,7 +560,8 @@ export class CommandRouter {
   ): command is FileWriteLaneCommand {
     return (
       command.type === "host.write_file_relative" ||
-      command.type === "host.delete_file_relative"
+      command.type === "host.delete_file_relative" ||
+      command.type === "host.delete_path_relative"
     );
   }
 
