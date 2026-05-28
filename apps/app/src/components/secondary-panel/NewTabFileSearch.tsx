@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import type { ThreadType } from "@bb/domain";
+import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
@@ -15,8 +16,26 @@ import {
   useFileSearchSuggestions,
   type FileSearchSuggestion,
 } from "@/hooks/useFileSearchSuggestions";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import { cn } from "@/lib/utils";
+import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
+
+export const CREATE_APP_PROMPT_TEMPLATE = `Create a new bb app called "[NAME]" that [DESCRIBE WHAT IT SHOULD DO].
+
+Use the bb apps system. Run \`bb guide app\` for the full reference. Layout:
+- apps/<id>/manifest.json — { manifestVersion: 1, id, name, icon | logo.svg, entry, contributions: ["thread.app"], capabilities: ["data"?, "message"?] }
+- apps/<id>/assets/index.html — self-contained inline HTML/CSS/JS/SVG so no build step is needed
+- apps/<id>/data/state.json — initial state if the app uses window.bb.data
+
+In the page, use window.bb.data for live state (read / write / delete / list / onChange; onChange replays + streams) and window.bb.message(text) to send the thread a prompt. Guard with window.bb?.data?.… because capabilities are advisory.
+
+Make the app self-contained and aesthetically polished: design tokens, useful animation only, and accessible UI.`;
+
+const CREATE_APP_PROMPT_DRAFT = {
+  text: CREATE_APP_PROMPT_TEMPLATE,
+  attachments: [],
+} satisfies PromptDraftState;
 
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
@@ -26,6 +45,7 @@ export interface NewTabFileSearchProps {
   focusRequest: number;
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
+  onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
 }
 
 interface FileSearchResultRowProps {
@@ -61,6 +81,7 @@ interface SplitPathResult {
 type SearchInputKeyDownHandler = (
   event: KeyboardEvent<HTMLInputElement>,
 ) => void;
+type CreateAppPromptPrefillHandler = () => void;
 type FileSearchSource = FileSearchSuggestion["source"];
 type FileSearchSectionKind = "apps" | "files";
 
@@ -286,12 +307,19 @@ export function NewTabFileSearch({
   focusRequest,
   initialQuery = "",
   onSelect,
+  onCreateAppPromptPrefill,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const promptDraft = usePromptDraftStorage({
+    projectId,
+    threadId: currentThreadId.length > 0 ? currentThreadId : null,
+  });
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
+  const canPrefillCreateAppPrompt =
+    promptDraft.storageKey !== null && currentThreadId.length > 0;
   const { suggestions, isLoading, isError, isDebouncing, isUnavailable } =
     useFileSearchSuggestions({
       projectId,
@@ -362,6 +390,30 @@ export function NewTabFileSearch({
     [onSelect],
   );
 
+  const handleCreateAppPromptPrefill = useCallback(() => {
+    if (!canPrefillCreateAppPrompt) {
+      return;
+    }
+
+    const currentDraft = promptDraft.getCurrent();
+    if (
+      !isPromptDraftEmpty(currentDraft) &&
+      !window.confirm(
+        "Replace the current composer draft with a Create App prompt?",
+      )
+    ) {
+      return;
+    }
+
+    promptDraft.setDraft(CREATE_APP_PROMPT_DRAFT);
+    onCreateAppPromptPrefill?.();
+  }, [
+    canPrefillCreateAppPrompt,
+    onCreateAppPromptPrefill,
+    promptDraft.getCurrent,
+    promptDraft.setDraft,
+  ]);
+
   const handleInputKeyDown = useCallback<SearchInputKeyDownHandler>(
     (event) => {
       if (visualSuggestions.length === 0) {
@@ -422,6 +474,23 @@ export function NewTabFileSearch({
         ) : null}
       </div>
 
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 w-full justify-start px-2.5 text-xs"
+        disabled={!canPrefillCreateAppPrompt}
+        onClick={handleCreateAppPromptPrefill}
+        title={
+          canPrefillCreateAppPrompt
+            ? "Prefill the composer with a new-app prompt"
+            : "Composer is unavailable"
+        }
+      >
+        <Icon name="Plus" className="size-3.5" aria-hidden />
+        <span>Create App…</span>
+      </Button>
+
       {isUnavailable ? (
         <FileSearchMessage
           iconName="FileQuestion"
@@ -434,10 +503,7 @@ export function NewTabFileSearch({
           className="min-h-0 flex-1 overflow-y-auto pb-1"
         >
           {sections.map((section, sectionIndex) => (
-            <div
-              key={section.kind}
-              className={cn(sectionIndex > 0 && "mt-2")}
-            >
+            <div key={section.kind} className={cn(sectionIndex > 0 && "mt-2")}>
               <div
                 className={cn(
                   "sticky top-0 z-10 bg-background px-2 pb-1 text-xs text-muted-foreground",

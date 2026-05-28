@@ -3,9 +3,15 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
+import {
+  parsePromptDraftStorage,
+  serializePromptDraftStorage,
+  type PromptDraftState,
+} from "@/lib/prompt-draft";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { NewTabPage } from "./NewTabPage";
+import { CREATE_APP_PROMPT_TEMPLATE } from "./NewTabFileSearch";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -35,8 +41,11 @@ interface RenderNewTabPageArgs {
   projectId?: string;
   currentThreadId?: string;
   currentThreadType?: "manager" | "standard";
+  onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   onSelect?: (selection: FileSearchSelection) => void;
 }
+
+type CreateAppPromptPrefillHandler = () => void;
 
 function getPathName(pathValue: string): string {
   return pathValue.split("/").at(-1) ?? pathValue;
@@ -69,6 +78,37 @@ const STATUS_APP: AppSummary = {
   icon: { kind: "builtin", name: "ListTodo" },
 };
 
+const THREAD_DRAFT_STORAGE_KEY = "bb.promptbox.contents-proj-1-thr-standard-3";
+
+const DRAFT_WITH_ATTACHMENT = {
+  text: "Keep this draft",
+  attachments: [
+    {
+      type: "localFile",
+      path: "/tmp/spec.md",
+      name: "spec.md",
+      sizeBytes: 42,
+      mimeType: "text/markdown",
+    },
+  ],
+} satisfies PromptDraftState;
+
+function getStoredThreadDraft(): PromptDraftState {
+  return parsePromptDraftStorage(
+    window.localStorage.getItem(THREAD_DRAFT_STORAGE_KEY),
+  );
+}
+
+function setStoredThreadDraft(draft: PromptDraftState): void {
+  const serialized = serializePromptDraftStorage(draft);
+  if (serialized === null) {
+    window.localStorage.removeItem(THREAD_DRAFT_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(THREAD_DRAFT_STORAGE_KEY, serialized);
+}
+
 function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
   const { wrapper } = createQueryClientTestHarness();
   const onSelect: (selection: FileSearchSelection) => void =
@@ -82,6 +122,7 @@ function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
         currentThreadId={args.currentThreadId ?? "thr-standard"}
         currentThreadType={args.currentThreadType ?? "standard"}
         focusRequest={0}
+        onCreateAppPromptPrefill={args.onCreateAppPromptPrefill}
         onSelect={onSelect}
       />,
       { wrapper },
@@ -91,6 +132,8 @@ function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -117,9 +160,7 @@ describe("NewTabPage", () => {
     expect(await screen.findByText("app.ts")).toBeTruthy();
     expect(await screen.findByText(/src/u)).toBeTruthy();
     expect(screen.queryByText("Manager Storage")).toBeNull();
-    fireEvent.click(
-      await screen.findByRole("option", { name: /app\.ts/u }),
-    );
+    fireEvent.click(await screen.findByRole("option", { name: /app\.ts/u }));
 
     expect(onSelect).toHaveBeenCalledWith({
       source: "workspace",
@@ -140,6 +181,43 @@ describe("NewTabPage", () => {
     expect(onSelect).toHaveBeenCalledWith({
       source: "app",
       appId: "status",
+    });
+  });
+
+  it("prefills the composer draft with the create-app prompt", () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    renderNewTabPage({ projectId: "proj-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+
+    expect(getStoredThreadDraft()).toEqual({
+      text: CREATE_APP_PROMPT_TEMPLATE,
+      attachments: [],
+    });
+  });
+
+  it("leaves a non-empty composer draft unchanged when replacement is canceled", () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
+    renderNewTabPage({ projectId: "proj-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+
+    expect(getStoredThreadDraft()).toEqual(DRAFT_WITH_ATTACHMENT);
+  });
+
+  it("replaces non-empty composer text and attachments after confirmation", () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
+    renderNewTabPage({ projectId: "proj-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+
+    expect(getStoredThreadDraft()).toEqual({
+      text: CREATE_APP_PROMPT_TEMPLATE,
+      attachments: [],
     });
   });
 

@@ -64,7 +64,10 @@ import { getThreadRoutePath } from "@/lib/app-route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { useThreadDetailTurnSummaryRows } from "./turn-summary/useThreadDetailTurnSummaryRows";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
-import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import {
+  ThreadDetailPromptArea,
+  THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
+} from "./ThreadDetailPromptArea";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -137,6 +140,28 @@ type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
+
+function focusThreadDetailComposer(): void {
+  window.requestAnimationFrame(() => {
+    const composer = document.getElementById(
+      THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
+    );
+    if (!(composer instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    composer.focus();
+    const namePlaceholderStart = composer.value.indexOf("[NAME]");
+    if (namePlaceholderStart >= 0) {
+      const nameSelectionStart = namePlaceholderStart + 1;
+      const nameSelectionEnd = nameSelectionStart + "NAME".length;
+      composer.setSelectionRange(nameSelectionStart, nameSelectionEnd);
+      return;
+    }
+
+    composer.setSelectionRange(0, 0);
+  });
+}
 
 function buildHostConnectionNotice(
   thread: ThreadWithRuntime,
@@ -481,6 +506,11 @@ export function ThreadDetailView() {
     openNewTab();
     setNewTabFocusRequest((current) => current + 1);
   }, [openNewTab]);
+  const handleCreateAppPromptPrefill = useCallback(() => {
+    closeNewTab();
+    closeSecondaryPanel();
+    focusThreadDetailComposer();
+  }, [closeNewTab, closeSecondaryPanel]);
   const handleTerminalPanelResize = useCallback(
     (sizePercent: number) => {
       const panelHeightPercent = Math.round(sizePercent);
@@ -1121,6 +1151,7 @@ export function ThreadDetailView() {
       currentThreadId={thread.id}
       currentThreadType={thread.type}
       focusRequest={newTabFocusRequest}
+      onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
       onSelect={selectFileSearchResult}
     />
   ) : activeAppId ? (

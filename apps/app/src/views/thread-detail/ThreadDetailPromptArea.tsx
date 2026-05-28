@@ -65,6 +65,9 @@ type ComposerQueryRefetchOnMount = boolean | "always";
 
 const ignorePromptBannerFileClick = () => {};
 
+export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
+  "thread-detail-follow-up-composer";
+
 interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
   composerQueriesEnabled: boolean;
@@ -852,6 +855,7 @@ export function ThreadDetailPromptArea({
 
   return (
     <FollowUpPromptBox
+      id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={attachmentsConfig}
       stack={promptStack}
       composer={composerConfig}

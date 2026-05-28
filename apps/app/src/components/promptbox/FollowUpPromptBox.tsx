@@ -119,6 +119,7 @@ type ContextWindowUsage = ComponentProps<
 >["usage"];
 
 export interface FollowUpPromptBoxProps {
+  id?: string;
   attachments: AttachmentsConfig;
   /**
    * Slot for the stack of context cards above the prompt input — today
@@ -151,6 +152,7 @@ export interface FollowUpPromptBoxProps {
 }
 
 export const FollowUpPromptBox = memo(function FollowUpPromptBox({
+  id,
   attachments,
   stack,
   composer,
@@ -225,6 +227,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
           {stack}
         </div>
         <PromptBoxWithScrollAnchor
+          id={id}
           promptBoxRef={promptBoxRef}
           voice={voice}
           minHeight={elasticTextareaMinHeight}
