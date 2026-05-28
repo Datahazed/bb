@@ -40,6 +40,10 @@ export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
 export const THREAD_STATUS_VERSION_QUERY_KEY = "threadStatusVersion";
 export const THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY =
   "threadStatusMarkdownPreview";
+export const THREAD_APPS_QUERY_KEY = "threadApps";
+export const THREAD_APP_QUERY_KEY = "threadApp";
+export const THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY =
+  "threadAppMarkdownPreview";
 export const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
 export const ENVIRONMENT_QUERY_KEY = "environment";
 export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
@@ -260,6 +264,21 @@ export type ThreadStatusVersionQueryKey = readonly [
 ];
 export type ThreadStatusMarkdownPreviewQueryKey = readonly [
   typeof THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY,
+  string,
+  string | null | undefined,
+];
+export type ThreadAppsQueryKey = readonly [
+  typeof THREAD_APPS_QUERY_KEY,
+  string,
+];
+export type ThreadAppQueryKey = readonly [
+  typeof THREAD_APP_QUERY_KEY,
+  string,
+  string,
+];
+export type ThreadAppMarkdownPreviewQueryKey = readonly [
+  typeof THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY,
+  string,
   string,
   string | null | undefined,
 ];
@@ -700,6 +719,25 @@ export function threadStatusMarkdownPreviewQueryKey(
   versionHash: string | null | undefined,
 ): ThreadStatusMarkdownPreviewQueryKey {
   return [THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY, threadId, versionHash];
+}
+
+export function threadAppsQueryKey(threadId: string): ThreadAppsQueryKey {
+  return [THREAD_APPS_QUERY_KEY, threadId];
+}
+
+export function threadAppQueryKey(
+  threadId: string,
+  appId: string,
+): ThreadAppQueryKey {
+  return [THREAD_APP_QUERY_KEY, threadId, appId];
+}
+
+export function threadAppMarkdownPreviewQueryKey(
+  threadId: string,
+  appId: string,
+  entryPath: string | null | undefined,
+): ThreadAppMarkdownPreviewQueryKey {
+  return [THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY, threadId, appId, entryPath];
 }
 
 export function threadHostFilePreviewQueryKey(

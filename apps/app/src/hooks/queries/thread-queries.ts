@@ -27,6 +27,8 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
+  AppDetail,
+  AppSummary,
 } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
 import type { PathListOptions } from "@/lib/path-list-options";
@@ -57,6 +59,9 @@ import {
   threadStorageFilePreviewQueryKey,
   threadStatusMarkdownPreviewQueryKey,
   threadStatusVersionQueryKey,
+  threadAppMarkdownPreviewQueryKey,
+  threadAppQueryKey,
+  threadAppsQueryKey,
   threadHostFilePreviewQueryKey,
   threadTimelineQueryKey,
   type ArchivedThreadsKindFilter,
@@ -669,6 +674,59 @@ export function useThreadStatusMarkdownPreview(
         signal,
       ),
     enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(versionHash),
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
+  });
+}
+
+export function useThreadApps(id: string, options?: QueryOptions) {
+  return useQuery<AppSummary[]>({
+    queryKey: threadAppsQueryKey(id),
+    queryFn: ({ signal }) =>
+      api.listThreadApps(requireThreadId(id, "useThreadApps"), signal),
+    enabled: (options?.enabled ?? true) && Boolean(id),
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
+  });
+}
+
+export function useThreadApp(
+  id: string,
+  appId: string | null | undefined,
+  options?: QueryOptions,
+) {
+  return useQuery<AppDetail>({
+    queryKey: threadAppQueryKey(id, appId ?? ""),
+    queryFn: ({ signal }) =>
+      api.getThreadApp(requireThreadId(id, "useThreadApp"), appId ?? "", signal),
+    enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(appId),
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
+  });
+}
+
+export function useThreadAppMarkdownPreview(
+  id: string,
+  appId: string | null | undefined,
+  entryPath: string | null | undefined,
+  options?: QueryOptions,
+) {
+  return useQuery<FilePreview>({
+    queryKey: threadAppMarkdownPreviewQueryKey(id, appId ?? "", entryPath),
+    queryFn: ({ signal }) =>
+      api.getThreadAppMarkdownPreview(
+        requireThreadId(id, "useThreadAppMarkdownPreview"),
+        appId ?? "",
+        entryPath ?? "",
+        signal,
+      ),
+    enabled:
+      (options?.enabled ?? true) &&
+      Boolean(id) &&
+      Boolean(appId) &&
+      Boolean(entryPath),
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
   });

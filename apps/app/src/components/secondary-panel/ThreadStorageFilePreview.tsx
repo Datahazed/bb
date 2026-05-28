@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { defaultUrlTransform, type UrlTransform } from "react-markdown";
 import {
   FilePreview as FilePreviewSurface,
   type FilePreviewFile,
@@ -18,6 +17,7 @@ import {
   buildThreadStatusContentUrl,
   buildThreadStorageRawContentUrl,
 } from "@/lib/file-content-urls";
+import { createAssetMarkdownUrlTransform } from "@/lib/markdown-url-transform";
 import type { ThreadStatusVersionResponse } from "@bb/server-contract";
 import type {
   FilePreview,
@@ -65,30 +65,6 @@ function buildTextPreviewFile({
   return {
     name: filePreview.name ?? activePath,
     contents: filePreview.content,
-  };
-}
-
-const STATUS_RELATIVE_ASSET_URL_PATTERN =
-  /^(?![a-z][a-z\d+.-]*:|\/\/|\/|#|\?)/iu;
-
-function isStatusRelativeAssetUrl(url: string): boolean {
-  return url.length > 0 && STATUS_RELATIVE_ASSET_URL_PATTERN.test(url);
-}
-
-function resolveStatusAssetUrl(assetBaseUrl: string, url: string): string {
-  const baseUrl = new URL(assetBaseUrl, window.location.origin);
-  const assetUrl = new URL(url, baseUrl);
-  return `${assetUrl.pathname}${assetUrl.search}${assetUrl.hash}`;
-}
-
-function createStatusMarkdownUrlTransform(assetBaseUrl: string): UrlTransform {
-  return (url) => {
-    const transformedUrl = defaultUrlTransform(url);
-    if (!isStatusRelativeAssetUrl(transformedUrl)) {
-      return transformedUrl;
-    }
-
-    return resolveStatusAssetUrl(assetBaseUrl, transformedUrl);
   };
 }
 
@@ -266,7 +242,7 @@ export function ThreadStorageFilePreview({
     [threadId],
   );
   const statusMarkdownUrlTransform = useMemo(() => {
-    return createStatusMarkdownUrlTransform(statusMarkdownAssetBaseUrl);
+    return createAssetMarkdownUrlTransform(statusMarkdownAssetBaseUrl);
   }, [statusMarkdownAssetBaseUrl]);
 
   if (isManagerStatusTab) {

@@ -28,6 +28,11 @@ interface ExecuteScriptArgs {
   windowObject: ScriptWindow;
 }
 
+interface DeferredResponse {
+  promise: Promise<Response>;
+  resolve(response: Response): void;
+}
+
 const bootstrap: AppClientBootstrap = {
   appId: "status",
   capabilities: ["data", "message"],
@@ -104,6 +109,17 @@ function requireBb(windowObject: ScriptWindow): Bb {
   return windowObject.bb;
 }
 
+function createDeferredResponse(): DeferredResponse {
+  let resolvePromise: DeferredResponse["resolve"] = () => {};
+  const promise = new Promise<Response>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve: resolvePromise,
+  };
+}
+
 async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -137,6 +153,55 @@ describe("app client script", () => {
       "/api/v1/threads/thr_123/apps/status/data",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("does not deliver initial replay entries after onChange unsubscribe", async () => {
+    const deferred = createDeferredResponse();
+    const fetchMock = vi.fn(async () => deferred.promise);
+    const windowObject: ScriptWindow = {};
+    executeScript({ fetchMock, windowObject });
+
+    const bb = requireBb(windowObject);
+    const callback = vi.fn();
+    const unsubscribe = bb.data?.onChange("", callback);
+    await Promise.resolve();
+    const socket = FakeWebSocket.instances[0];
+    if (!socket) {
+      throw new Error("Expected websocket");
+    }
+    socket.open();
+    await flushPromises();
+
+    unsubscribe?.();
+    deferred.resolve(
+      listResponse({
+        entries: [
+          {
+            path: "state.json",
+            value: { count: 1 },
+            version: "v1",
+            sizeBytes: 1,
+            modifiedAtMs: 1,
+          },
+        ],
+      }),
+    );
+    await flushPromises();
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "subscribe",
+        entity: "thread",
+        id: "thr_123:app:status:data",
+      },
+      {
+        type: "unsubscribe",
+        entity: "thread",
+        id: "thr_123:app:status:data",
+      },
+    ]);
   });
 
   it("replays existing data when a resync hint arrives", async () => {

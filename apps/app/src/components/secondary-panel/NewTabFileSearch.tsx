@@ -10,6 +10,7 @@ import type { ThreadType } from "@bb/domain";
 import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
+import { ResolvedAppIcon } from "./AppIcon";
 import {
   useFileSearchSuggestions,
   type FileSearchSuggestion,
@@ -47,7 +48,7 @@ interface FileSearchSectionItem {
 }
 
 interface FileSearchSection {
-  source: FileSearchSource;
+  kind: FileSearchSectionKind;
   label: string;
   items: FileSearchSectionItem[];
 }
@@ -61,6 +62,7 @@ type SearchInputKeyDownHandler = (
   event: KeyboardEvent<HTMLInputElement>,
 ) => void;
 type FileSearchSource = FileSearchSuggestion["source"];
+type FileSearchSectionKind = "apps" | "files";
 
 interface GetAvailableFileSearchSourcesArgs {
   projectId: string | undefined;
@@ -74,12 +76,18 @@ interface GroupFileSearchSectionsArgs {
 }
 
 const FILE_SEARCH_LIMIT = 20;
-const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSource[] = [
-  "workspace",
-  "thread-storage",
+const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
+  "apps",
+  "files",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
+  apps: "Apps",
+  files: "Files",
+} satisfies Record<FileSearchSectionKind, string>;
+
+const FILE_SEARCH_SOURCE_LABELS = {
+  app: "App",
   workspace: "Workspace",
   "thread-storage": "Manager Storage",
 } satisfies Record<FileSearchSource, string>;
@@ -90,6 +98,9 @@ function getAvailableFileSearchSources({
   currentThreadType,
 }: GetAvailableFileSearchSourcesArgs): readonly FileSearchSource[] {
   const sources: FileSearchSource[] = [];
+  if (currentThreadId.length > 0) {
+    sources.push("app");
+  }
   if (projectId) {
     sources.push("workspace");
   }
@@ -100,8 +111,10 @@ function getAvailableFileSearchSources({
 }
 
 function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
+  const idSegment =
+    suggestion.entryKind === "app" ? suggestion.appId : suggestion.path;
   return `file-search-result-${suggestion.source}-${encodeURIComponent(
-    suggestion.path,
+    idSegment,
   )}`;
 }
 
@@ -117,7 +130,16 @@ function splitPath(path: string): SplitPathResult {
 }
 
 function getFileSearchResultTitle(suggestion: FileSearchSuggestion): string {
-  return `${FILE_SEARCH_SECTION_LABELS[suggestion.source]}: ${suggestion.path}`;
+  if (suggestion.entryKind === "app") {
+    return `${FILE_SEARCH_SOURCE_LABELS.app}: ${suggestion.name}`;
+  }
+  return `${FILE_SEARCH_SOURCE_LABELS[suggestion.source]}: ${suggestion.path}`;
+}
+
+function getFileSearchSectionKind(
+  suggestion: FileSearchSuggestion,
+): FileSearchSectionKind {
+  return suggestion.entryKind === "app" ? "apps" : "files";
 }
 
 function groupFileSearchSections({
@@ -125,14 +147,15 @@ function groupFileSearchSections({
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
   const allowedSources = new Set<FileSearchSource>(availableSources);
-  const sectionsBySource = new Map<FileSearchSource, FileSearchSection>();
+  const sectionsByKind = new Map<FileSearchSectionKind, FileSearchSection>();
 
   for (const suggestion of suggestions) {
     const source = suggestion.source;
     if (!allowedSources.has(source)) {
       continue;
     }
-    const existing = sectionsBySource.get(source);
+    const sectionKind = getFileSearchSectionKind(suggestion);
+    const existing = sectionsByKind.get(sectionKind);
     if (existing) {
       existing.items.push({
         suggestion,
@@ -141,16 +164,16 @@ function groupFileSearchSections({
       continue;
     }
 
-    sectionsBySource.set(source, {
-      source,
-      label: FILE_SEARCH_SECTION_LABELS[source],
+    sectionsByKind.set(sectionKind, {
+      kind: sectionKind,
+      label: FILE_SEARCH_SECTION_LABELS[sectionKind],
       items: [{ suggestion, index: 0 }],
     });
   }
 
   let nextIndex = 0;
-  return FILE_SEARCH_SECTION_ORDER.flatMap((source) => {
-    const section = sectionsBySource.get(source);
+  return FILE_SEARCH_SECTION_ORDER.flatMap((sectionKind) => {
+    const section = sectionsByKind.get(sectionKind);
     if (!section) {
       return [];
     }
@@ -189,11 +212,40 @@ function FileSearchResultRow({
   onActivate,
   onSelect,
 }: FileSearchResultRowProps) {
-  const { directory } = splitPath(suggestion.path);
-  const secondaryDirectory = directory || null;
   const handleSelect = useCallback(() => {
     onSelect(suggestion);
   }, [onSelect, suggestion]);
+
+  if (suggestion.entryKind === "app") {
+    return (
+      <button
+        type="button"
+        id={id}
+        role="option"
+        aria-selected={isActive}
+        onClick={handleSelect}
+        onMouseEnter={onActivate}
+        title={getFileSearchResultTitle(suggestion)}
+        className={cn(
+          "w-full scroll-mt-7 rounded px-2 py-1.5 text-left text-xs transition-colors",
+          isActive ? "bg-state-active" : "hover:bg-state-hover",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          <ResolvedAppIcon icon={suggestion.app.icon} className="size-3.5" />
+          <span className="truncate">{suggestion.name}</span>
+          {suggestion.appId !== suggestion.name ? (
+            <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
+              {suggestion.appId}
+            </TruncateStart>
+          ) : null}
+        </div>
+      </button>
+    );
+  }
+
+  const { directory } = splitPath(suggestion.path);
+  const secondaryDirectory = directory || null;
 
   return (
     <button
@@ -294,6 +346,14 @@ export function NewTabFileSearch({
 
   const handleSuggestionSelect = useCallback(
     (suggestion: FileSearchSuggestion) => {
+      if (suggestion.entryKind === "app") {
+        onSelect({
+          source: "app",
+          appId: suggestion.appId,
+        });
+        return;
+      }
+
       onSelect({
         source: suggestion.source,
         path: suggestion.path,
@@ -343,11 +403,15 @@ export function NewTabFileSearch({
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleInputKeyDown}
           disabled={isUnavailable}
-          aria-label="Search files"
+          aria-label="Search apps and files"
           aria-activedescendant={
-            activeSuggestion ? getFileSearchResultId(activeSuggestion) : undefined
+            activeSuggestion
+              ? getFileSearchResultId(activeSuggestion)
+              : undefined
           }
-          placeholder={isUnavailable ? "No searchable source" : "Search files"}
+          placeholder={
+            isUnavailable ? "No searchable source" : "Search apps and files"
+          }
           className="h-8 pl-8 pr-8 text-xs focus-visible:ring-0"
         />
         {isDebouncing ? (
@@ -361,28 +425,17 @@ export function NewTabFileSearch({
       {isUnavailable ? (
         <FileSearchMessage
           iconName="FileQuestion"
-          message="No searchable file source is available."
-        />
-      ) : isError ? (
-        <FileSearchMessage
-          iconName="AlertCircle"
-          message="File search failed."
-        />
-      ) : isLoading ? (
-        <FileSearchMessage
-          iconName="Spinner"
-          iconClassName="animate-spin"
-          message="Searching files..."
+          message="No searchable app or file source is available."
         />
       ) : sections.length > 0 ? (
         <div
           role="listbox"
-          aria-label="File search results"
+          aria-label="App and file search results"
           className="min-h-0 flex-1 overflow-y-auto pb-1"
         >
           {sections.map((section, sectionIndex) => (
             <div
-              key={section.source}
+              key={section.kind}
               className={cn(sectionIndex > 0 && "mt-2")}
             >
               <div
@@ -396,7 +449,11 @@ export function NewTabFileSearch({
               <div className="flex flex-col gap-px">
                 {section.items.map(({ suggestion, index }) => (
                   <FileSearchResultRow
-                    key={`${suggestion.source}:${suggestion.path}`}
+                    key={`${suggestion.source}:${
+                      suggestion.entryKind === "app"
+                        ? suggestion.appId
+                        : suggestion.path
+                    }`}
                     id={getFileSearchResultId(suggestion)}
                     suggestion={suggestion}
                     isActive={index === activeIndex}
@@ -408,10 +465,25 @@ export function NewTabFileSearch({
             </div>
           ))}
         </div>
+      ) : isError ? (
+        <FileSearchMessage
+          iconName="AlertCircle"
+          message="App and file search failed."
+        />
+      ) : isLoading ? (
+        <FileSearchMessage
+          iconName="Spinner"
+          iconClassName="animate-spin"
+          message="Searching apps and files..."
+        />
       ) : (
         <FileSearchMessage
           iconName={hasQuery ? "FileQuestion" : "File"}
-          message={hasQuery ? "No files match." : "Type to search files."}
+          message={
+            hasQuery
+              ? "No apps or files match."
+              : "Type to search apps and files."
+          }
         />
       )}
     </div>

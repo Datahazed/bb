@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
+  createAppFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createNewTabFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
@@ -23,6 +24,10 @@ afterEach(() => {
 
 function workspaceFileTabId(path: string): string {
   return `workspace-file-preview:${encodeURIComponent(path)}`;
+}
+
+function appTabId(appId: string): string {
+  return `app:${encodeURIComponent(appId)}`;
 }
 
 function terminalTabId(terminalId: string): string {
@@ -76,6 +81,25 @@ describe("fixed panel tabs state storage", () => {
         initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
         now: NOW,
         storedValue,
+      }),
+    ).toEqual(state);
+  });
+
+  it("round-trips app tabs", () => {
+    const appTab = createAppFixedPanelTab({ appId: "status" });
+    const state = makeFixedPanelTabsState({
+      secondary: {
+        tabs: [appTab],
+        activeTabId: appTabId("status"),
+        isOpen: true,
+      },
+    });
+
+    expect(
+      parseFixedPanelTabsState({
+        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+        now: NOW,
+        storedValue: serializeFixedPanelTabsState({ state }),
       }),
     ).toEqual(state);
   });

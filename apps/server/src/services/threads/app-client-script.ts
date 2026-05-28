@@ -238,14 +238,17 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   var reconnectDelay = 1000;
   var listeners = [];
   var socketHasOpened = false;
+  var socketSubscribed = false;
   var subscriptionReady = null;
   var resolveSubscriptionReady = null;
+  var subscriptionEntityId = bootstrap.threadId + ":app:" + bootstrap.appId + ":data";
 
   function pathMatchesPrefix(path, prefix) {
     return prefix === "" || path === prefix || path.indexOf(prefix + "/") === 0;
   }
 
   function callListener(listener, event) {
+    if (!listener.active) return;
     if (!pathMatchesPrefix(event.path, listener.prefix)) return;
     try {
       listener.callback({
@@ -259,6 +262,7 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   }
 
   function deliverOrBufferListener(listener, event) {
+    if (!listener.active) return;
     if (!pathMatchesPrefix(event.path, listener.prefix)) return;
     if (listener.replaying) {
       listener.bufferedEvents.push(event);
@@ -295,10 +299,43 @@ function buildAppClientJavascript(bootstrapJson: string): string {
     });
   }
 
+  function sendSubscriptionMessage(type) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({
+      type: type,
+      entity: "thread",
+      id: subscriptionEntityId
+    }));
+  }
+
   function resetSubscriptionReady() {
     subscriptionReady = new Promise(function (resolve) {
       resolveSubscriptionReady = resolve;
     });
+  }
+
+  function closeSocketIfIdle() {
+    if (listeners.length > 0) return;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (!socket) return;
+    if (resolveSubscriptionReady) {
+      resolveSubscriptionReady();
+      resolveSubscriptionReady = null;
+    }
+    if (socket.readyState === WebSocket.OPEN && socketSubscribed) {
+      sendSubscriptionMessage("unsubscribe");
+      socketSubscribed = false;
+    }
+    if (
+      socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING
+    ) {
+      socketHasOpened = false;
+      socket.close();
+    }
   }
 
   function connectSocket() {
@@ -309,15 +346,15 @@ function buildAppClientJavascript(bootstrapJson: string): string {
       var reconnected = socketHasOpened;
       socketHasOpened = true;
       reconnectDelay = 1000;
-      socket.send(JSON.stringify({
-        type: "subscribe",
-        entity: "thread",
-        id: bootstrap.threadId + ":app:" + bootstrap.appId + ":data"
-      }));
+      if (listeners.length > 0) {
+        sendSubscriptionMessage("subscribe");
+        socketSubscribed = true;
+      }
       if (resolveSubscriptionReady) {
         resolveSubscriptionReady();
         resolveSubscriptionReady = null;
       }
+      closeSocketIfIdle();
       if (reconnected) {
         listeners.slice().forEach(function (listener) {
           replayExisting(listener);
@@ -333,7 +370,9 @@ function buildAppClientJavascript(bootstrapJson: string): string {
       }
     };
     socket.onclose = function () {
+      socketSubscribed = false;
       resetSubscriptionReady();
+      if (listeners.length === 0) return;
       if (reconnectTimer) return;
       reconnectTimer = setTimeout(function () {
         reconnectTimer = null;
@@ -348,12 +387,16 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   }
 
   function replayExisting(listener) {
+    if (!listener.active) return Promise.resolve();
     listener.replayPromise = (listener.replayPromise || Promise.resolve()).then(function () {
+      if (!listener.active) return;
       listener.replaying = true;
       listener.bufferedEvents = [];
       return connectSocket().then(function () {
+        if (!listener.active) return null;
         return listEntries(listener.prefix);
       }).then(function (entries) {
+        if (!listener.active || !entries) return;
         var replayedVersions = Object.create(null);
         entries.forEach(function (entry) {
           replayedVersions[entry.path] = entry.version;
@@ -372,6 +415,7 @@ function buildAppClientJavascript(bootstrapJson: string): string {
         listener.bufferedEvents = [];
       });
     }).catch(function (error) {
+      if (!listener.active) return;
       console.error("window.bb.data.onChange replay failed", error);
     });
     return listener.replayPromise;
@@ -386,6 +430,7 @@ function buildAppClientJavascript(bootstrapJson: string): string {
     var listener = {
       prefix: effectivePrefix,
       callback: callback,
+      active: true,
       replaying: false,
       bufferedEvents: [],
       replayPromise: null
@@ -393,9 +438,13 @@ function buildAppClientJavascript(bootstrapJson: string): string {
     listeners.push(listener);
     replayExisting(listener);
     return function () {
+      if (!listener.active) return;
+      listener.active = false;
+      listener.bufferedEvents = [];
       listeners = listeners.filter(function (candidate) {
         return candidate !== listener;
       });
+      closeSocketIfIdle();
     };
   }
 

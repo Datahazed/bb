@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type {
+  AppSummary,
   ThreadStoragePathListResponse,
   WorkspacePathEntry,
   WorkspacePathListResponse,
@@ -9,6 +10,7 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   projectPathsQueryKey,
+  threadAppsQueryKey,
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
@@ -89,6 +91,16 @@ const THREAD_STORAGE_PATH_RESPONSE: ThreadStoragePathListResponse = {
   truncated: false,
 };
 
+const THREAD_APPS_RESPONSE: AppSummary[] = [
+  {
+    id: "status",
+    name: "Status",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["data", "message"],
+    icon: { kind: "builtin", name: "ListTodo" },
+  },
+];
+
 interface PanelStageProps {
   children: ReactNode;
 }
@@ -127,6 +139,10 @@ function useStoryQueryClient() {
       WORKSPACE_PATH_RESPONSE,
     );
     queryClient.setQueryData(
+      threadAppsQueryKey(THREAD_ID),
+      THREAD_APPS_RESPONSE,
+    );
+    queryClient.setQueryData(
       threadStoragePathsQueryKey(THREAD_ID, {
         limit: STORY_SOURCE_LIMIT,
         query: INITIAL_QUERY,
@@ -148,8 +164,14 @@ function NewTabPanelStory() {
         ? [NEW_TAB]
         : [
             {
-              id: `${selection.source}:${selection.path}`,
-              filename: selection.path.split("/").at(-1) ?? selection.path,
+              id:
+                selection.source === "app"
+                  ? `app:${selection.appId}`
+                  : `${selection.source}:${selection.path}`,
+              filename:
+                selection.source === "app"
+                  ? selection.appId
+                  : (selection.path.split("/").at(-1) ?? selection.path),
               isActive: true,
               statusLabel: null,
               onSelect: noop,
@@ -175,11 +197,14 @@ function NewTabPanelStory() {
       <div className="flex min-h-full flex-col justify-center px-4 text-sm">
         <p className="font-medium text-foreground">
           Selected{" "}
-          {selection.source === "workspace" ? "workspace" : "thread storage"}{" "}
-          file
+          {selection.source === "app"
+            ? "app"
+            : selection.source === "workspace"
+              ? "workspace file"
+              : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
-          {selection.path}
+          {selection.source === "app" ? selection.appId : selection.path}
         </p>
       </div>
     );

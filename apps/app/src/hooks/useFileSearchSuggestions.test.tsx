@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { WorkspacePathEntry } from "@bb/server-contract";
+import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { useFileSearchSuggestions } from "./useFileSearchSuggestions";
+import {
+  useFileSearchSuggestions,
+  type FilePathSearchSuggestion,
+  type FileSearchSuggestion,
+} from "./useFileSearchSuggestions";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -13,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
+    listThreadApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -52,6 +57,20 @@ function makePathResponse(
   };
 }
 
+function isFilePathSearchSuggestion(
+  suggestion: FileSearchSuggestion,
+): suggestion is FilePathSearchSuggestion {
+  return suggestion.entryKind === "file";
+}
+
+const STATUS_APP: AppSummary = {
+  id: "status",
+  name: "Status",
+  entry: { path: "index.html", kind: "html" },
+  capabilities: ["data", "message"],
+  icon: { kind: "builtin", name: "ListTodo" },
+};
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -59,6 +78,7 @@ afterEach(() => {
 
 describe("useFileSearchSuggestions", () => {
   it("merges workspace and manager thread-storage file results", async () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([]);
     vi.mocked(api.searchProjectPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -99,10 +119,11 @@ describe("useFileSearchSuggestions", () => {
       expect(result.current.suggestions).toHaveLength(2);
     });
 
-    expect(result.current.suggestions.map((suggestion) => suggestion.path)).toEqual([
-      "notes/status.md",
-      "src/project.ts",
-    ]);
+    expect(
+      result.current.suggestions
+        .filter(isFilePathSearchSuggestion)
+        .map((suggestion) => suggestion.path),
+    ).toEqual(["notes/status.md", "src/project.ts"]);
     expect(api.searchProjectPaths).toHaveBeenCalledWith({
       projectId: "proj-1",
       query: "status",
@@ -120,6 +141,52 @@ describe("useFileSearchSuggestions", () => {
         includeDirectories: false,
       },
       signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("returns matching apps before files", async () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+      makePathResponse([
+        {
+          kind: "file",
+          path: "notes/status.md",
+          score: 90,
+        },
+      ]),
+    );
+    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
+      ...makePathResponse([]),
+      storageRootPath: "/tmp/thread-storage",
+    });
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useFileSearchSuggestions({
+          projectId: "proj-1",
+          query: "status",
+          environmentId: "env-1",
+          currentThreadId: "thr-manager",
+          currentThreadType: "manager",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.suggestions).toHaveLength(2);
+    });
+
+    expect(result.current.suggestions[0]).toMatchObject({
+      source: "app",
+      entryKind: "app",
+      appId: "status",
+      name: "Status",
+    });
+    expect(result.current.suggestions[1]).toMatchObject({
+      source: "workspace",
+      entryKind: "file",
+      path: "notes/status.md",
     });
   });
 

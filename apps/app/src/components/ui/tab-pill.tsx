@@ -1,5 +1,6 @@
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
 
@@ -12,6 +13,7 @@ export interface TabPillCloseAction {
 
 export interface TabPillProps {
   label: string;
+  leadingVisual?: ReactNode;
   secondaryLabel?: string | null;
   /** Extra classes for the label text (e.g. `line-through` for a done tab). */
   labelClassName?: string;
@@ -24,6 +26,7 @@ export interface TabPillProps {
 
 export function TabPill({
   label,
+  leadingVisual,
   secondaryLabel = null,
   labelClassName,
   title,
@@ -52,6 +55,11 @@ export function TabPill({
           isClosable ? "pr-1" : "rounded-r-md pr-2",
         )}
       >
+        {leadingVisual ? (
+          <span className="mr-1.5 inline-flex shrink-0 items-center">
+            {leadingVisual}
+          </span>
+        ) : null}
         <span className={cn("truncate", labelMaxWidthClass, labelClassName)}>
           {label}
         </span>

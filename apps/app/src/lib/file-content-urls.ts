@@ -45,6 +45,35 @@ export function buildThreadStatusContentUrl(
     : `${baseUrl}?v=${encodeURIComponent(hash)}`;
 }
 
+export function buildThreadAppEntryUrl(
+  threadId: string,
+  appId: string,
+): string {
+  return `/api/v1/threads/${encodeURIComponent(
+    threadId,
+  )}/apps/${encodeURIComponent(appId)}/`;
+}
+
+export function buildThreadAppAssetUrl(
+  threadId: string,
+  appId: string,
+  path: string,
+): string {
+  return `/api/v1/threads/${encodeURIComponent(
+    threadId,
+  )}/apps/${encodeURIComponent(appId)}/assets/${encodePathSegments(path)}`;
+}
+
+export function buildThreadAppAssetBaseUrl(
+  threadId: string,
+  appId: string,
+  entryPath: string,
+): string {
+  const lastSlash = entryPath.lastIndexOf("/");
+  const basePath = lastSlash === -1 ? "" : entryPath.slice(0, lastSlash + 1);
+  return buildThreadAppAssetUrl(threadId, appId, basePath);
+}
+
 export function buildThreadHostFileContentUrl(
   threadId: string,
   path: string,

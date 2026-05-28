@@ -32,6 +32,7 @@ import {
   getLatestPendingInteraction,
   useProjectThreadSubset,
   useThread,
+  useThreadApps,
   useThreadComposerBootstrap,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
@@ -79,9 +80,14 @@ import {
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
+import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
+import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import { useManagerStorageBrowser } from "@/components/secondary-panel/useManagerStorageBrowser";
-import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
+import {
+  STATUS_APP_ID,
+  useThreadFileTabs,
+} from "@/components/secondary-panel/useThreadFileTabs";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
@@ -266,11 +272,16 @@ export function ThreadDetailView() {
     threadId,
     threadType: thread?.type,
   });
+  const threadAppsQuery = useThreadApps(threadId ?? "", {
+    enabled: Boolean(threadId) && thread !== undefined,
+  });
   const {
+    activateAppTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
+    activeAppId,
     activeHostFileLineNumber,
     activeHostFilePath,
     activeStorageFilePath,
@@ -279,6 +290,7 @@ export function ThreadDetailView() {
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
     clearActiveFileTabs,
+    closeAppTab,
     closeHostFileTab,
     closeNewTab,
     closeStorageFileTab,
@@ -292,6 +304,7 @@ export function ThreadDetailView() {
     pinnedStorageFilePath,
     selectFileSearchResult,
   } = useThreadFileTabs({
+    apps: threadAppsQuery.data,
     threadId,
     environmentId: thread?.environmentId,
     threadType: thread?.type,
@@ -500,10 +513,32 @@ export function ThreadDetailView() {
     },
     [openSecondaryPanelDiffFile, openWorkspaceFile],
   );
+  const threadAppsById = useMemo(() => {
+    const entries = new Map(
+      (threadAppsQuery.data ?? []).map((app) => [app.id, app]),
+    );
+    return entries;
+  }, [threadAppsQuery.data]);
   const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = orderedSecondaryFileTabs.map((tab): SecondaryPanelFileTab => {
       switch (tab.kind) {
+        case "app": {
+          const app = threadAppsById.get(tab.appId);
+          const appName = app?.name ?? tab.appId;
+          return {
+            id: tab.id,
+            filename: appName,
+            isActive: tab.appId === activeAppId,
+            isPinned: tab.appId === STATUS_APP_ID,
+            leadingVisual: app ? (
+              <ResolvedAppIcon icon={app.icon} className="size-3.5" />
+            ) : undefined,
+            statusLabel: null,
+            onSelect: () => activateAppTab(tab.appId),
+            onClose: () => closeAppTab(tab.appId),
+          };
+        }
         case "workspace-file-preview":
           return {
             id: tab.id,
@@ -545,19 +580,23 @@ export function ThreadDetailView() {
     });
     return tabs.length > 0 ? tabs : undefined;
   }, [
+    activateAppTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
+    activeAppId,
     activeHostFilePath,
     activeStorageFilePath,
     activeWorkspaceFilePath,
+    closeAppTab,
     closeHostFileTab,
     closeNewTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
     isNewTabActive,
     orderedSecondaryFileTabs,
+    threadAppsById,
   ]);
   const requestedMergeBaseBranch =
     selectedMergeBaseBranch ?? environmentMergeBaseBranch;
@@ -1085,6 +1124,8 @@ export function ThreadDetailView() {
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
     />
+  ) : activeAppId ? (
+    <AppTabContent appId={activeAppId} threadId={thread.id} />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}

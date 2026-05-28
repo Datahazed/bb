@@ -53,6 +53,7 @@ export interface SecondaryPanelFileTab {
   filename: string;
   isActive: boolean;
   isPinned?: boolean;
+  leadingVisual?: ReactNode;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
   onSelect: () => void;
   onClose: () => void;
@@ -403,6 +404,7 @@ function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
   return (
     <TabPill
       label={tab.filename}
+      leadingVisual={tab.leadingVisual}
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
       isActive={tab.isActive}

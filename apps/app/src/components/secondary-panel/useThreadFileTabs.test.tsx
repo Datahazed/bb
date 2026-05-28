@@ -48,6 +48,7 @@ interface TestWrapperProps {
 }
 
 interface HookProps {
+  apps?: readonly { id: string }[];
   environmentId: string | null | undefined;
   storageFiles: readonly { path: string }[] | undefined;
   threadId: string;
@@ -144,6 +145,10 @@ function storageFilePaths(
   return tabs.filter(isStorageFilePreviewTab).map((tab) => tab.path);
 }
 
+function appTabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
+  return tabs.filter((tab) => tab.kind === "app").map((tab) => tab.appId);
+}
+
 function workspaceFileTabId(path: string): string {
   return `workspace-file-preview:${encodeURIComponent(path)}`;
 }
@@ -218,6 +223,12 @@ function getStoredStoragePaths(state: FixedPanelTabsState): string[] {
   return state.secondary.tabs
     .filter(isStorageFilePreviewTab)
     .map((tab) => tab.path);
+}
+
+function getStoredAppIds(state: FixedPanelTabsState): string[] {
+  return state.secondary.tabs
+    .filter((tab) => tab.kind === "app")
+    .map((tab) => tab.appId);
 }
 
 afterEach(() => {
@@ -865,6 +876,79 @@ describe("useThreadFileTabs", () => {
       "STATUS",
       "notes.md",
     ]);
+  });
+
+  it("adds a pinned status app tab alongside the existing manager STATUS tab", async () => {
+    const { result } = renderThreadFileTabsHook({
+      apps: [{ id: "status" }],
+      environmentId: null,
+      threadType: "manager",
+      storageFiles: [{ path: "STATUS" }],
+      threadId: "thr-manager-status-app",
+    });
+
+    await waitFor(() => {
+      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
+        ["STATUS"],
+      );
+      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+        "status",
+      ]);
+    });
+    expect(result.current.activeStorageFilePath).toBe("STATUS");
+    expect(result.current.activeAppId).toBeNull();
+  });
+
+  it("opens an app tab from launcher search selection", () => {
+    const { result } = renderThreadFileTabsHook({
+      apps: [{ id: "demo" }],
+      environmentId: "env-one",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-app-selection",
+    });
+
+    act(() => {
+      result.current.openNewTab();
+      result.current.selectFileSearchResult({
+        source: "app",
+        appId: "demo",
+      });
+    });
+
+    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+      "demo",
+    ]);
+    expect(result.current.activeAppId).toBe("demo");
+    expect(getStoredAppIds(readStoredState("thr-app-selection"))).toEqual([
+      "demo",
+    ]);
+  });
+
+  it("keeps the pinned status app tab open when close is requested", async () => {
+    const { result } = renderThreadFileTabsHook({
+      apps: [{ id: "status" }],
+      environmentId: null,
+      threadType: "manager",
+      storageFiles: [{ path: "STATUS" }],
+      threadId: "thr-manager-status-app-pinned",
+    });
+
+    await waitFor(() => {
+      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+        "status",
+      ]);
+    });
+
+    act(() => {
+      result.current.activateAppTab("status");
+      result.current.closeAppTab("status");
+    });
+
+    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+      "status",
+    ]);
+    expect(result.current.activeAppId).toBe("status");
   });
 
   it("does not rewrite workspace tabs for no-op callbacks", () => {

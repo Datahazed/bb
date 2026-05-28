@@ -76,6 +76,13 @@ const threadStorageFilePreviewFixedPanelTabSchema = z
     path: z.string().min(1),
   })
   .strict();
+const appFixedPanelTabSchema = z
+  .object({
+    appId: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.literal("app"),
+  })
+  .strict();
 const newTabFixedPanelTabSchema = z
   .object({
     id: z.literal(NEW_TAB_TAB_ID),
@@ -95,6 +102,7 @@ const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
+  appFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
 ]);
 const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
@@ -172,6 +180,12 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   path: string;
 }
 
+export interface AppFixedPanelTab {
+  appId: string;
+  id: string;
+  kind: "app";
+}
+
 export interface NewTabFixedPanelTab {
   id: typeof NEW_TAB_TAB_ID;
   kind: "new-tab";
@@ -189,6 +203,7 @@ export type SecondaryFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | AppFixedPanelTab
   | NewTabFixedPanelTab;
 
 /**
@@ -200,6 +215,7 @@ export type SecondaryFileFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | AppFixedPanelTab
   | NewTabFixedPanelTab;
 
 export type BottomFixedPanelTab = TerminalFixedPanelTab;
@@ -268,6 +284,10 @@ interface NormalizeFixedPanelTabGroupStateArgs {
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   isPinned: boolean;
   path: string;
+}
+
+interface CreateAppFixedPanelTabArgs {
+  appId: string;
 }
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
@@ -343,6 +363,16 @@ export function createThreadStorageFilePreviewFixedPanelTab({
     isPinned,
     kind: "thread-storage-file-preview",
     path,
+  };
+}
+
+export function createAppFixedPanelTab({
+  appId,
+}: CreateAppFixedPanelTabArgs): AppFixedPanelTab {
+  return {
+    appId,
+    id: `app:${encodeURIComponent(appId)}`,
+    kind: "app",
   };
 }
 
@@ -616,6 +646,8 @@ export function areFixedPanelTabsEquivalent(
         a.lineNumber === b.lineNumber &&
         a.path === b.path
       );
+    case "app":
+      return b.kind === "app" && a.appId === b.appId;
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&

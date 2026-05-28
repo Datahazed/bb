@@ -81,6 +81,8 @@ import type {
   ReplayCaptureListResponse,
   ReplayRunRequest,
   ReplayRunResponse,
+  AppDetail,
+  AppSummary,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -91,6 +93,7 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
+  buildThreadAppAssetUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -891,6 +894,47 @@ export async function getThreadStatusVersion(
       { param: { id } },
       requestOptions(signal),
     ),
+  );
+}
+
+export async function listThreadApps(
+  id: string,
+  signal?: AbortSignal,
+): Promise<AppSummary[]> {
+  return request<AppSummary[]>(
+    apiClient.threads[":id"].apps.$get(
+      { param: { id } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function getThreadApp(
+  id: string,
+  appId: string,
+  signal?: AbortSignal,
+): Promise<AppDetail> {
+  return request<AppDetail>(
+    apiClient.threads[":id"].apps[":appId"].$get(
+      { param: { id, appId } },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function getThreadAppMarkdownPreview(
+  id: string,
+  appId: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<FilePreview> {
+  return loadFilePreview(
+    {
+      name: path.split("/").at(-1),
+      path,
+      url: buildThreadAppAssetUrl(id, appId, path),
+    },
+    signal,
   );
 }
 
