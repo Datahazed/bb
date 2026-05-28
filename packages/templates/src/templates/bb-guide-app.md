@@ -51,6 +51,11 @@ and do not receive `window.bb`. `capabilities` controls which `window.bb`
 helpers are injected for HTML entries: `data` enables `window.bb.data`, and
 `message` enables `window.bb.message`.
 
+The served app URL is flat: `/api/v1/threads/<thread-id>/apps/<id>/<file>`
+maps to `apps/<id>/assets/<file>` on disk. HTML should use flat relative refs
+like `./index-abc.js`, not `./assets/index-abc.js`. For Vite builds, set
+`build.assetsDir = ""` so emitted files sit alongside `index.html`.
+
 The icon is optional and uses a built-in icon name. Icon resolution order is:
 
 1. `manifest.icon`, when present, as a built-in icon.

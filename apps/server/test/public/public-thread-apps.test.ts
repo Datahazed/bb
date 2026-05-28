@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   appDataListResponseSchema,
@@ -16,6 +19,7 @@ import {
   type QueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { createApp } from "../../src/server.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import {
   seedEnvironment,
@@ -145,7 +149,9 @@ function requireWriteFileRelativeCommand(
   throw new Error("Expected host.write_file_relative command");
 }
 
-async function reportManifestRead(args: ManifestReadArgs): Promise<QueuedCommand> {
+async function reportManifestRead(
+  args: ManifestReadArgs,
+): Promise<QueuedCommand> {
   const queued = args.afterCursor
     ? await waitForQueuedCommandAfter(
         args.harness,
@@ -227,11 +233,42 @@ describe("public thread app routes", () => {
     }
   });
 
+  it("returns a provisioned-app error when app detail is missing manifest.json", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/status`,
+      );
+      const manifestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appRoot(fixture, "status") &&
+          command.path === "manifest.json",
+      );
+      await reportQueuedCommandError(harness, manifestCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: manifest.json",
+      });
+
+      const response = await request;
+      expect(response.status).toBe(404);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "app_not_provisioned",
+        message: expect.stringContaining("missing manifest.json"),
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("serves HTML app entries with capability-scoped window.bb injection", async () => {
     const harness = await createTestAppHarness();
     try {
       const fixture = seedManagerThreadStorage(harness);
-      const html = "<!doctype html><html><head></head><body>Status</body></html>";
+      const html =
+        "<!doctype html><html><head></head><body>Status</body></html>";
       const request = harness.app.request(
         `/api/v1/threads/${fixture.threadId}/apps/status/`,
       );
@@ -283,6 +320,122 @@ describe("public thread app routes", () => {
       expect(body).toContain("<body>Status</body>");
     } finally {
       await harness.cleanup();
+    }
+  });
+
+  it("serves flat app asset URLs from the internal assets directory", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/status/index-Cd7sCqsN.js`,
+      );
+      const assetCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appAssetsRoot(fixture, "status") &&
+          command.path === "index-Cd7sCqsN.js",
+      );
+      expect(assetCommand.command).toMatchObject({ dotfiles: "deny" });
+      await reportQueuedCommandSuccess(
+        harness,
+        assetCommand,
+        readFileResult({
+          path: "index-Cd7sCqsN.js",
+          content: "console.log('status');",
+          mimeType: "application/javascript",
+        }),
+      );
+
+      const response = await request;
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "application/javascript",
+      );
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(response.text()).resolves.toBe("console.log('status');");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("serves nested flat app asset URLs without collapsing path segments", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/status/chunks/index-Cd7sCqsN.js`,
+      );
+      const assetCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appAssetsRoot(fixture, "status") &&
+          command.path === "chunks/index-Cd7sCqsN.js",
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        assetCommand,
+        readFileResult({
+          path: "chunks/index-Cd7sCqsN.js",
+          content: "export const status = true;",
+          mimeType: "application/javascript",
+        }),
+      );
+
+      const response = await request;
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "application/javascript",
+      );
+      await expect(response.text()).resolves.toBe(
+        "export const status = true;",
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns JSON 404 for missing flat app assets instead of the outer SPA shell", async () => {
+    const staticDir = await mkdtemp(path.join(tmpdir(), "bb-apps-static-"));
+    await writeFile(
+      path.join(staticDir, "index.html"),
+      '<!doctype html><html lang="en" class="bb-app-shell-root"><head><title>bb</title></head><body>shell</body></html>',
+      "utf8",
+    );
+    const harness = await createTestAppHarness();
+    const serverApp = createApp(harness.deps, { staticDir });
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = serverApp.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/status/missing.js`,
+      );
+      const assetCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appAssetsRoot(fixture, "status") &&
+          command.path === "missing.js",
+      );
+      await reportQueuedCommandError(harness, assetCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: missing.js",
+      });
+
+      const response = await request;
+      const body = await response.text();
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).toBe("application/json");
+      expect(body).not.toContain("bb-app-shell-root");
+      expect(JSON.parse(body)).toMatchObject({
+        code: "ENOENT",
+        message: "Path does not exist: missing.js",
+      });
+    } finally {
+      await serverApp.closeWebSockets();
+      await harness.cleanup();
+      await rm(staticDir, { recursive: true, force: true });
     }
   });
 
@@ -343,7 +496,9 @@ describe("public thread app routes", () => {
       });
       const listResponse = await listRequest;
       expect(listResponse.status).toBe(200);
-      expect(appDataListResponseSchema.parse(await readJson(listResponse))).toEqual({
+      expect(
+        appDataListResponseSchema.parse(await readJson(listResponse)),
+      ).toEqual({
         entries: [
           {
             path: "state.json",
@@ -396,15 +551,15 @@ describe("public thread app routes", () => {
       });
       const readResponse = await readRequest;
       expect(readResponse.status).toBe(200);
-      expect(appDataReadResponseSchema.parse(await readJson(readResponse))).toEqual(
-        {
-          path: "state.json",
-          value: { workers: [] },
-          version: sha256Text(stateJson),
-          sizeBytes: Buffer.byteLength(stateJson),
-          modifiedAtMs: 2345,
-        },
-      );
+      expect(
+        appDataReadResponseSchema.parse(await readJson(readResponse)),
+      ).toEqual({
+        path: "state.json",
+        value: { workers: [] },
+        version: sha256Text(stateJson),
+        sizeBytes: Buffer.byteLength(stateJson),
+        modifiedAtMs: 2345,
+      });
 
       const nextValue = { workers: [{ id: "worker-1" }] };
       const nextJson = `${JSON.stringify(nextValue, null, 2)}\n`;
@@ -444,15 +599,15 @@ describe("public thread app routes", () => {
       });
       const writeResponse = await writeRequest;
       expect(writeResponse.status).toBe(200);
-      expect(appDataReadResponseSchema.parse(await readJson(writeResponse))).toEqual(
-        {
-          path: "state.json",
-          value: nextValue,
-          version: sha256Text(nextJson),
-          sizeBytes: Buffer.byteLength(nextJson),
-          modifiedAtMs: 3456,
-        },
-      );
+      expect(
+        appDataReadResponseSchema.parse(await readJson(writeResponse)),
+      ).toEqual({
+        path: "state.json",
+        value: nextValue,
+        version: sha256Text(nextJson),
+        sizeBytes: Buffer.byteLength(nextJson),
+        modifiedAtMs: 3456,
+      });
 
       const deleteRequest = harness.app.request(
         `/api/v1/threads/${fixture.threadId}/apps/status/data/state.json`,
@@ -591,24 +746,26 @@ describe("public thread app routes", () => {
 
       const response = await request;
       expect(response.status).toBe(200);
-      expect(appDataListResponseSchema.parse(await readJson(response))).toEqual({
-        entries: [
-          {
-            path: "tasks/nested/two.json",
-            value: { title: "Two" },
-            version: sha256Text(twoJson),
-            sizeBytes: Buffer.byteLength(twoJson),
-            modifiedAtMs: 2222,
-          },
-          {
-            path: "tasks/one.json",
-            value: { title: "One" },
-            version: sha256Text(oneJson),
-            sizeBytes: Buffer.byteLength(oneJson),
-            modifiedAtMs: 1111,
-          },
-        ],
-      });
+      expect(appDataListResponseSchema.parse(await readJson(response))).toEqual(
+        {
+          entries: [
+            {
+              path: "tasks/nested/two.json",
+              value: { title: "Two" },
+              version: sha256Text(twoJson),
+              sizeBytes: Buffer.byteLength(twoJson),
+              modifiedAtMs: 2222,
+            },
+            {
+              path: "tasks/one.json",
+              value: { title: "One" },
+              version: sha256Text(oneJson),
+              sizeBytes: Buffer.byteLength(oneJson),
+              modifiedAtMs: 1111,
+            },
+          ],
+        },
+      );
     } finally {
       await harness.cleanup();
     }

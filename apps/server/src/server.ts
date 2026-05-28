@@ -255,6 +255,9 @@ export function createApp(
   registerManagerTemplateRoutes(publicApi, deps);
   registerDevelopmentOnlyReplayRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
+  app.use("/api/v1/*", () => {
+    throw new ApiError(404, "not_found", "Not found");
+  });
 
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);

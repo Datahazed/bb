@@ -124,6 +124,11 @@ interface CreateInjectedAppHtmlResponseArgs {
   threadId: string;
 }
 
+interface AppAssetRouteSegmentArgs {
+  appId: string;
+  threadId: string;
+}
+
 type AppAssetPath = SafeRelativeRoutePath;
 
 interface LogoResolution {
@@ -165,7 +170,6 @@ const HTML_ENTRY_MAX_BYTES = 5 * 1024 * 1024;
 const LOGO_MAX_BYTES = 1024 * 1024;
 const LOGO_EXTENSIONS = ["svg", "png", "jpg", "jpeg"] as const;
 const APP_ROUTE_DATA_SEGMENT = "/data/";
-const APP_ROUTE_ASSETS_SEGMENT = "/assets/";
 
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -201,7 +205,13 @@ function parseAppDataRoutePath(rawPath: string): AppDataPath {
   );
 }
 
-function parseOptionalAppDataPrefix(rawPrefix: string | undefined): AppDataPath | "" {
+function appAssetRouteSegment(args: AppAssetRouteSegmentArgs): string {
+  return `/threads/${encodeURIComponent(args.threadId)}/apps/${encodeURIComponent(args.appId)}/`;
+}
+
+function parseOptionalAppDataPrefix(
+  rawPrefix: string | undefined,
+): AppDataPath | "" {
   if (rawPrefix === undefined || rawPrefix === "") {
     return "";
   }
@@ -489,7 +499,24 @@ async function buildAppDetail(
   deps: AppDeps,
   args: AppDetailArgs,
 ): Promise<AppDetail> {
-  const manifest = await readAppManifest(deps, args);
+  let manifest: AppManifest;
+  try {
+    manifest = await readAppManifest(deps, args);
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.status === 404 &&
+      error.body.code === "ENOENT" &&
+      error.body.message.includes(MANIFEST_FILE_NAME)
+    ) {
+      throw new ApiError(
+        404,
+        "app_not_provisioned",
+        `App "${args.appId}" is not provisioned yet; missing ${MANIFEST_FILE_NAME}. Restart bb from a current build if this manager was created before app seeding was available.`,
+      );
+    }
+    throw error;
+  }
   return buildAppSummary(deps, {
     ...args,
     manifest,
@@ -711,8 +738,7 @@ async function serveAppIcon(
     path: logoPath,
     dotfiles: "deny",
   });
-  const contentType =
-    mimeTypes.lookup(logoPath) || "application/octet-stream";
+  const contentType = mimeTypes.lookup(logoPath) || "application/octet-stream";
   return new Response(decodeDaemonFileContent(result), {
     status: 200,
     headers: {
@@ -1115,18 +1141,6 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
     ),
   );
 
-  app.get("/threads/:id/apps/:appId/assets/*", async (context) =>
-    serveAppAsset(
-      deps,
-      context.req.param("id"),
-      context.req.param("appId"),
-      extractRoutePath({
-        requestUrl: context.req.url,
-        routeSegment: APP_ROUTE_ASSETS_SEGMENT,
-      }),
-    ),
-  );
-
   app.get("/threads/:id/apps/:appId/icon", async (context) =>
     serveAppIcon(deps, context.req.param("id"), context.req.param("appId")),
   );
@@ -1201,5 +1215,21 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
     const response = context.json({ ok: true });
     response.headers.set("cache-control", NO_STORE_CACHE_CONTROL);
     return response;
+  });
+
+  // Keep this flat asset wildcard last among GET app routes so typed app
+  // endpoints such as /data/* and /icon keep their route ownership.
+  app.get("/threads/:id/apps/:appId/*", async (context) => {
+    const threadId = context.req.param("id");
+    const appId = context.req.param("appId");
+    return serveAppAsset(
+      deps,
+      threadId,
+      appId,
+      extractRoutePath({
+        requestUrl: context.req.url,
+        routeSegment: appAssetRouteSegment({ threadId, appId }),
+      }),
+    );
   });
 }

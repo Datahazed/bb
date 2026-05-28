@@ -51,7 +51,7 @@ export function buildThreadAppAssetUrl(
 ): string {
   return `/api/v1/threads/${encodeURIComponent(
     threadId,
-  )}/apps/${encodeURIComponent(appId)}/assets/${encodePathSegments(path)}`;
+  )}/apps/${encodeURIComponent(appId)}/${encodePathSegments(path)}`;
 }
 
 export function buildThreadAppAssetBaseUrl(

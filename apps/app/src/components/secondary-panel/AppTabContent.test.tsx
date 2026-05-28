@@ -59,7 +59,7 @@ describe("AppTabContent", () => {
       kind: "text",
       path: "docs/index.md",
       name: "index.md",
-      url: "/api/v1/threads/thr_1/apps/readme/assets/docs/index.md",
+      url: "/api/v1/threads/thr_1/apps/readme/docs/index.md",
       mimeType: "text/markdown",
       content: "# App Notes\n\nStatic content.",
     });

@@ -1116,9 +1116,22 @@ describe("public thread manager and ownership routes", () => {
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
+      const storagePath = path.join(dataDir, "thread-storage", thread.id);
       await expect(
-        stat(path.join(dataDir, "thread-storage", thread.id, "PREFERENCES.md")),
+        stat(path.join(storagePath, "PREFERENCES.md")),
       ).rejects.toThrow();
+      await expect(
+        readFile(path.join(storagePath, "apps/status/manifest.json"), "utf8"),
+      ).resolves.toContain('"id": "status"');
+      await expect(
+        readFile(
+          path.join(storagePath, "apps/status/assets/index.html"),
+          "utf8",
+        ),
+      ).resolves.toContain("<title>Status</title>");
+      await expect(
+        readFile(path.join(storagePath, "apps/status/data/state.json"), "utf8"),
+      ).resolves.toContain('"landingMode": "pr"');
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

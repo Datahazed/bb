@@ -11,7 +11,7 @@ describe("production static cache headers", () => {
     await mkdir(join(staticDir, "assets"), { recursive: true });
     await writeFile(
       join(staticDir, "index.html"),
-      "<!doctype html><script type=\"module\" src=\"/assets/index-test.js\"></script>",
+      '<!doctype html><script type="module" src="/assets/index-test.js"></script>',
     );
     await writeFile(
       join(staticDir, "assets", "index-test.js"),
@@ -33,6 +33,19 @@ describe("production static cache headers", () => {
       expect(assetResponse.headers.get("cache-control")).toBe(
         "public, max-age=31536000, immutable",
       );
+
+      const apiMissResponse = await serverApp.app.request(
+        "/api/v1/does-not-exist.js",
+      );
+      const apiMissBody = await apiMissResponse.text();
+      expect(apiMissResponse.status).toBe(404);
+      expect(apiMissResponse.headers.get("content-type")).toBe(
+        "application/json",
+      );
+      expect(apiMissBody).not.toContain("index-test.js");
+      expect(JSON.parse(apiMissBody)).toMatchObject({
+        code: "not_found",
+      });
     } finally {
       await serverApp.closeWebSockets();
       await harness.cleanup();
