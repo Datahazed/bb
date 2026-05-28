@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import mimeTypes from "mime-types";
 import type { Hono } from "hono";
+import type { ZodIssue } from "zod";
 import {
   FILE_LIST_LIMIT_MAX,
   type HostDaemonCommand,
@@ -62,6 +63,15 @@ interface ThreadAppsTarget {
 interface AppManifestReadArgs {
   appId: AppId;
   target: ThreadAppsTarget;
+}
+
+interface InvalidAppManifestErrorArgs extends AppManifestReadArgs {
+  issues: AppManifestValidationIssues;
+}
+
+interface LogInvalidAppManifestArgs {
+  error: InvalidAppManifestError;
+  message: string;
 }
 
 interface AppSummaryArgs extends AppManifestReadArgs {
@@ -157,6 +167,9 @@ type HostCommandType =
   | "host.delete_file_relative"
   | "host.delete_path_relative";
 
+type AppManifestValidationIssues = readonly ZodIssue[];
+type AppManifestValidationLoggerDeps = Pick<AppDeps, "logger">;
+
 interface QueueHostCommandArgs<TType extends HostCommandType> {
   command: Extract<HostDaemonCommand, { type: TType }>;
   hostId: string;
@@ -173,6 +186,22 @@ const HTML_ENTRY_MAX_BYTES = 5 * 1024 * 1024;
 const LOGO_MAX_BYTES = 1024 * 1024;
 const LOGO_EXTENSIONS = ["svg", "png", "jpg", "jpeg"] as const;
 const APP_ROUTE_DATA_SEGMENT = "/data/";
+const INVALID_APP_MANIFEST_MESSAGE =
+  "App manifest failed validation. Inspect manifest.json or rebuild the app.";
+
+class InvalidAppManifestError extends ApiError {
+  readonly appId: AppId;
+  readonly manifestPath: string;
+  readonly issues: AppManifestValidationIssues;
+
+  constructor(args: InvalidAppManifestErrorArgs) {
+    super(422, "invalid_manifest", INVALID_APP_MANIFEST_MESSAGE);
+    this.name = "InvalidAppManifestError";
+    this.appId = args.appId;
+    this.manifestPath = path.join(appRootPath(args), MANIFEST_FILE_NAME);
+    this.issues = args.issues;
+  }
+}
 
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -254,6 +283,32 @@ function parseAppAssetPath(rawPath: string): AppAssetPath {
 
 function decodeDaemonTextFile(result: DaemonFileReadResult): string {
   return Buffer.from(decodeDaemonFileContent(result)).toString("utf8");
+}
+
+function summarizeAppManifestValidationIssues(
+  issues: AppManifestValidationIssues,
+): string {
+  return issues
+    .map((issue) => {
+      const issuePath = issue.path.map(String).join(".");
+      return `${issuePath || "<root>"}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+function logInvalidAppManifest(
+  deps: AppManifestValidationLoggerDeps,
+  args: LogInvalidAppManifestArgs,
+): void {
+  deps.logger.warn(
+    {
+      appId: args.error.appId,
+      manifestPath: args.error.manifestPath,
+      issueSummary: summarizeAppManifestValidationIssues(args.error.issues),
+      issues: args.error.issues,
+    },
+    args.message,
+  );
 }
 
 function remapAppCommandError(error: unknown): never {
@@ -361,7 +416,11 @@ async function readAppManifest(
   }
   const manifest = appManifestSchema.safeParse(parsedJson);
   if (!manifest.success) {
-    throw new ApiError(422, "invalid_request", "Invalid app manifest");
+    throw new InvalidAppManifestError({
+      appId: args.appId,
+      target: args.target,
+      issues: manifest.error.issues,
+    });
   }
   if (manifest.data.id !== args.appId) {
     throw new ApiError(
@@ -371,6 +430,23 @@ async function readAppManifest(
     );
   }
   return manifest.data;
+}
+
+async function readAppManifestForRequest(
+  deps: AppDeps,
+  args: AppManifestReadArgs,
+): Promise<AppManifest> {
+  try {
+    return await readAppManifest(deps, args);
+  } catch (error) {
+    if (error instanceof InvalidAppManifestError) {
+      logInvalidAppManifest(deps, {
+        error,
+        message: "Rejected invalid thread app manifest",
+      });
+    }
+    throw error;
+  }
 }
 
 function entryKindForPath(entryPath: string): AppEntry["kind"] {
@@ -504,7 +580,7 @@ async function buildAppDetail(
 ): Promise<AppDetail> {
   let manifest: AppManifest;
   try {
-    manifest = await readAppManifest(deps, args);
+    manifest = await readAppManifestForRequest(deps, args);
   } catch (error) {
     if (
       error instanceof ApiError &&
@@ -570,17 +646,37 @@ async function listThreadApps(
     .map((entry) => entry.data)
     .sort((left, right) => left.localeCompare(right));
 
-  return Promise.all(
-    appIds.map(async (appId) => {
+  const summaries: AppSummary[] = [];
+  for (const appId of appIds) {
+    try {
       const manifest = await readAppManifest(deps, { appId, target });
-      return buildAppSummary(deps, {
-        appId,
-        target,
-        manifest,
-        requestThreadId: threadId,
-      });
-    }),
-  );
+      summaries.push(
+        await buildAppSummary(deps, {
+          appId,
+          target,
+          manifest,
+          requestThreadId: threadId,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof InvalidAppManifestError) {
+        logInvalidAppManifest(deps, {
+          error,
+          message: "Skipping invalid thread app manifest",
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+  return summaries;
+}
+
+async function validateAppManifestForServe(
+  deps: AppDeps,
+  args: AppManifestReadArgs,
+): Promise<void> {
+  await readAppManifestForRequest(deps, args);
 }
 
 function createHtmlResponse(html: string): Response {
@@ -641,7 +737,7 @@ async function serveAppEntry(
 ): Promise<Response> {
   const appId = parseAppId(rawAppId);
   const target = await requireThreadAppsTarget(deps, threadId);
-  const manifest = await readAppManifest(deps, { appId, target });
+  const manifest = await readAppManifestForRequest(deps, { appId, target });
   const entry = await resolveAppEntry(deps, { appId, target, manifest });
   if (entry.kind !== "html") {
     throw new ApiError(404, "invalid_request", "App entry is not HTML");
@@ -685,6 +781,7 @@ async function serveAppAsset(
   const appId = parseAppId(rawAppId);
   const assetPath = parseAppAssetPath(rawPath);
   const target = await requireThreadAppsTarget(deps, threadId);
+  await validateAppManifestForServe(deps, { appId, target });
   try {
     const result = await readAppRelativeFile(deps, {
       appId,
@@ -711,7 +808,7 @@ async function serveAppIcon(
 ): Promise<Response> {
   const appId = parseAppId(rawAppId);
   const target = await requireThreadAppsTarget(deps, threadId);
-  const manifest = await readAppManifest(deps, { appId, target });
+  const manifest = await readAppManifestForRequest(deps, { appId, target });
   if (manifest.icon !== undefined) {
     throw new ApiError(404, "ENOENT", "App uses a built-in icon");
   }
@@ -951,7 +1048,7 @@ async function scaffoldApp(
   args: ScaffoldAppArgs,
 ): Promise<AppDetail> {
   try {
-    await readAppManifest(deps, {
+    await readAppManifestForRequest(deps, {
       appId: args.request.id,
       target: args.target,
     });
@@ -1052,7 +1149,7 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
       );
       const appId = parseAppId(context.req.param("appId"));
       assertAppCapability(
-        await readAppManifest(deps, { appId, target }),
+        await readAppManifestForRequest(deps, { appId, target }),
         "data",
       );
       const dataPath = parseOptionalAppDataPrefix(query.prefix);
@@ -1071,7 +1168,7 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
     appMessageRequestSchema,
     async (context, payload) => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
-      const manifest = await readAppManifest(deps, {
+      const manifest = await readAppManifestForRequest(deps, {
         appId: parseAppId(context.req.param("appId")),
         target: await requireThreadAppsTarget(deps, thread.id),
       });
@@ -1108,7 +1205,10 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
   get("/threads/:id/apps/:appId/data/*", async (context) => {
     const target = await requireThreadAppsTarget(deps, context.req.param("id"));
     const appId = parseAppId(context.req.param("appId"));
-    assertAppCapability(await readAppManifest(deps, { appId, target }), "data");
+    assertAppCapability(
+      await readAppManifestForRequest(deps, { appId, target }),
+      "data",
+    );
     const dataPath = parseAppDataRoutePath(
       extractRoutePath({
         requestUrl: context.req.url,
@@ -1135,7 +1235,10 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
         context.req.param("id"),
       );
       const appId = parseAppId(context.req.param("appId"));
-      const manifest = await readAppManifest(deps, { appId, target });
+      const manifest = await readAppManifestForRequest(deps, {
+        appId,
+        target,
+      });
       assertAppCapability(manifest, "data");
       const dataPath = parseAppDataRoutePath(
         extractRoutePath({
@@ -1159,7 +1262,7 @@ export function registerThreadAppRoutes(app: Hono, deps: AppDeps): void {
   del("/threads/:id/apps/:appId/data/*", async (context) => {
     const target = await requireThreadAppsTarget(deps, context.req.param("id"));
     const appId = parseAppId(context.req.param("appId"));
-    const manifest = await readAppManifest(deps, { appId, target });
+    const manifest = await readAppManifestForRequest(deps, { appId, target });
     assertAppCapability(manifest, "data");
     const dataPath = parseAppDataRoutePath(
       extractRoutePath({

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { JsonValue } from "@bb/domain";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   appDataListResponseSchema,
@@ -10,7 +11,7 @@ import {
   appSummarySchema,
   type AppManifest,
 } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -51,7 +52,7 @@ interface ManifestReadArgs {
   afterCursor?: number;
   fixture: ManagerThreadStorageFixture;
   harness: TestAppHarness;
-  manifest: AppManifest;
+  manifest: JsonValue;
 }
 
 type WriteFileRelativeQueuedCommand = QueuedCommand<
@@ -233,6 +234,66 @@ describe("public thread app routes", () => {
     }
   });
 
+  it("skips invalid app manifests when listing app summaries", async () => {
+    const harness = await createTestAppHarness();
+    const warn = vi.spyOn(harness.deps.logger, "warn");
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps`,
+      );
+      const listCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.list_paths" &&
+          command.path === `${fixture.storageRootPath}/apps`,
+      );
+      await reportQueuedCommandSuccess(harness, listCommand, {
+        paths: [
+          pathEntry({ kind: "directory", path: "broken" }),
+          pathEntry({ kind: "directory", path: "status" }),
+        ],
+        truncated: false,
+      });
+      await reportManifestRead({
+        harness,
+        fixture,
+        appId: "broken",
+        afterCursor: listCommand.row.cursor,
+        manifest: {
+          ...STATUS_MANIFEST,
+          id: "broken",
+          name: "Broken",
+          icon: "NotAnIcon",
+        },
+      });
+      await reportManifestRead({
+        harness,
+        fixture,
+        appId: "status",
+        afterCursor: listCommand.row.cursor,
+        manifest: STATUS_MANIFEST,
+      });
+
+      const response = await request;
+      expect(response.status).toBe(200);
+      const apps = appSummarySchema.array().parse(await readJson(response));
+      expect(apps.map((app) => app.id)).toEqual(["status"]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appId: "broken",
+          manifestPath: `${appRoot(fixture, "broken")}/manifest.json`,
+          issueSummary: expect.stringContaining("icon"),
+          issues: expect.any(Array),
+        }),
+        "Skipping invalid thread app manifest",
+      );
+    } finally {
+      warn.mockRestore();
+      await harness.cleanup();
+    }
+  });
+
   it("returns a provisioned-app error when app detail is missing manifest.json", async () => {
     const harness = await createTestAppHarness();
     try {
@@ -257,6 +318,68 @@ describe("public thread app routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "app_not_provisioned",
         message: expect.stringContaining("missing manifest.json"),
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns an invalid-manifest error when app detail manifest validation fails", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/broken`,
+      );
+      await reportManifestRead({
+        harness,
+        fixture,
+        appId: "broken",
+        manifest: {
+          ...STATUS_MANIFEST,
+          id: "broken",
+          name: "Broken",
+          icon: "NotAnIcon",
+        },
+      });
+
+      const response = await request;
+      expect(response.status).toBe(422);
+      const body = await readJson(response);
+      expect(body).toMatchObject({
+        code: "invalid_manifest",
+        message: expect.stringContaining("failed validation"),
+      });
+      expect(JSON.stringify(body)).not.toContain("NotAnIcon");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns an invalid-manifest error before serving app assets", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps/broken/index.html`,
+      );
+      await reportManifestRead({
+        harness,
+        fixture,
+        appId: "broken",
+        manifest: {
+          ...STATUS_MANIFEST,
+          id: "broken",
+          name: "Broken",
+          icon: "NotAnIcon",
+        },
+      });
+
+      const response = await request;
+      expect(response.status).toBe(422);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_manifest",
+        message: expect.stringContaining("failed validation"),
       });
     } finally {
       await harness.cleanup();
@@ -330,8 +453,15 @@ describe("public thread app routes", () => {
       const request = harness.app.request(
         `/api/v1/threads/${fixture.threadId}/apps/status/index-Cd7sCqsN.js`,
       );
-      const assetCommand = await waitForQueuedCommand(
+      const manifestCommand = await reportManifestRead({
         harness,
+        fixture,
+        appId: "status",
+        manifest: STATUS_MANIFEST,
+      });
+      const assetCommand = await waitForQueuedCommandAfter(
+        harness,
+        manifestCommand.row.cursor,
         ({ command }) =>
           command.type === "host.read_file_relative" &&
           command.rootPath === appAssetsRoot(fixture, "status") &&
@@ -367,8 +497,15 @@ describe("public thread app routes", () => {
       const request = harness.app.request(
         `/api/v1/threads/${fixture.threadId}/apps/status/chunks/index-Cd7sCqsN.js`,
       );
-      const assetCommand = await waitForQueuedCommand(
+      const manifestCommand = await reportManifestRead({
         harness,
+        fixture,
+        appId: "status",
+        manifest: STATUS_MANIFEST,
+      });
+      const assetCommand = await waitForQueuedCommandAfter(
+        harness,
+        manifestCommand.row.cursor,
         ({ command }) =>
           command.type === "host.read_file_relative" &&
           command.rootPath === appAssetsRoot(fixture, "status") &&
@@ -411,8 +548,15 @@ describe("public thread app routes", () => {
       const request = serverApp.app.request(
         `/api/v1/threads/${fixture.threadId}/apps/status/missing.js`,
       );
-      const assetCommand = await waitForQueuedCommand(
+      const manifestCommand = await reportManifestRead({
         harness,
+        fixture,
+        appId: "status",
+        manifest: STATUS_MANIFEST,
+      });
+      const assetCommand = await waitForQueuedCommandAfter(
+        harness,
+        manifestCommand.row.cursor,
         ({ command }) =>
           command.type === "host.read_file_relative" &&
           command.rootPath === appAssetsRoot(fixture, "status") &&

@@ -5,11 +5,12 @@ import {
   threadStatusSchema,
 } from "@bb/domain";
 
-/** Closed set of well-known error codes emitted by server-side domain logic.
+/** Closed set of well-known error codes emitted by server-side logic.
  *  The base public ApiError envelope keeps `code` open as a string so routes
  *  can return additional route-specific values without widening this enum. */
 export const domainErrorCodeSchema = z.enum([
   "invalid_request",
+  "invalid_manifest",
   "awaiting_user_interaction",
   "thread_not_found",
   "project_not_found",
