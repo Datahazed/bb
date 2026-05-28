@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
+import { escapeHtmlText } from "@bb/domain";
 import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,
   type LogViewerComponent,
@@ -48,10 +49,6 @@ export interface LogLineBuffer {
   flush(): void;
   lines(): LogViewerLine[];
   stop(): void;
-}
-
-interface EscapeHtmlArgs {
-  value: string;
 }
 
 interface ParseLogFileCandidateArgs {
@@ -112,24 +109,6 @@ interface LogLineBufferState {
   flushTimer: NodeJS.Timeout | null;
   pendingLines: LogViewerLine[];
   visibleLines: LogViewerLine[];
-}
-
-function escapeHtml(args: EscapeHtmlArgs): string {
-  return args.value.replace(/[&<>"']/gu, (character) => {
-    if (character === "&") {
-      return "&amp;";
-    }
-    if (character === "<") {
-      return "&lt;";
-    }
-    if (character === ">") {
-      return "&gt;";
-    }
-    if (character === '"') {
-      return "&quot;";
-    }
-    return "&#39;";
-  });
 }
 
 export function createLogLineBuffer(
@@ -210,7 +189,7 @@ export function createLogLineBuffer(
 }
 
 export function createLogViewerViewUrl(args: CreateLogViewerViewUrlArgs): string {
-  const escapedLogDir = escapeHtml({ value: args.logDir });
+  const escapedLogDir = escapeHtmlText(args.logDir);
   const html = `<!doctype html>
 <html>
 <head>

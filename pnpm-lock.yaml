@@ -314,6 +314,9 @@ importers:
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract

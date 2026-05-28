@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import { escapeHtmlText } from "@bb/domain";
 
 export type LocalViewModel = LoadingViewModel | StartupErrorViewModel;
 
@@ -19,24 +20,6 @@ export interface CreateLocalViewUrlArgs {
   viewModel: LocalViewModel;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/gu, (character) => {
-    if (character === "&") {
-      return "&amp;";
-    }
-    if (character === "<") {
-      return "&lt;";
-    }
-    if (character === ">") {
-      return "&gt;";
-    }
-    if (character === '"') {
-      return "&quot;";
-    }
-    return "&#39;";
-  });
-}
-
 function formatPlainLogText(value: string): string {
   return stripVTControlCharacters(value).replace(/\r\n?/gu, "\n");
 }
@@ -45,8 +28,8 @@ function renderLoadingView(viewModel: LoadingViewModel): string {
   return `
     <main class="shell">
       <div class="spinner"></div>
-      <h1>${escapeHtml(viewModel.title)}</h1>
-      <p>${escapeHtml(viewModel.message)}</p>
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.message)}</p>
     </main>
   `;
 }
@@ -54,11 +37,11 @@ function renderLoadingView(viewModel: LoadingViewModel): string {
 function renderErrorView(viewModel: StartupErrorViewModel): string {
   const logText = formatPlainLogText(viewModel.logText);
   const logs =
-    logText.trim().length > 0 ? `<pre>${escapeHtml(logText)}</pre>` : "";
+    logText.trim().length > 0 ? `<pre>${escapeHtmlText(logText)}</pre>` : "";
   return `
     <main class="shell shell-error">
-      <h1>${escapeHtml(viewModel.title)}</h1>
-      <p>${escapeHtml(viewModel.details)}</p>
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.details)}</p>
       ${logs}
     </main>
   `;

@@ -1005,4 +1005,269 @@ describe("public thread app routes", () => {
       await harness.cleanup();
     }
   });
+
+  it("scaffolds blank-template apps with the bb-styled index.html", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: "blank-demo",
+            name: "Blank Demo",
+            template: "blank",
+          }),
+        },
+      );
+      const existingCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appRoot(fixture, "blank-demo") &&
+          command.path === "manifest.json",
+      );
+      await reportQueuedCommandError(harness, existingCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: manifest.json",
+      });
+
+      const manifestWrite = await waitForQueuedCommandAfter(
+        harness,
+        existingCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "blank-demo") &&
+          command.path === "manifest.json",
+      );
+      const manifestWriteCommand =
+        requireWriteFileRelativeCommand(manifestWrite);
+      await reportQueuedCommandSuccess(harness, manifestWrite, {
+        path: "manifest.json",
+        hash: sha256Text(manifestWriteCommand.command.content),
+        modifiedAtMs: 1000,
+        sizeBytes: Buffer.byteLength(manifestWriteCommand.command.content),
+      });
+
+      const htmlWrite = await waitForQueuedCommandAfter(
+        harness,
+        manifestWrite.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "blank-demo") &&
+          command.path === "assets/index.html",
+      );
+      const htmlWriteCommand = requireWriteFileRelativeCommand(htmlWrite);
+      const html = htmlWriteCommand.command.content;
+      // bb design tokens come through verbatim from `bb guide styling`.
+      expect(html).toContain('--font-sans: "Inter"');
+      expect(html).toContain("oklch(0.9551 0 0)");
+      expect(html).toContain("@media (prefers-color-scheme: dark)");
+      // Placeholder copy invites the user to extend the scaffold via their agent.
+      expect(html).toContain(
+        "Ask your agent to customize the status app how you please.",
+      );
+      // Task-list row vocabulary is present so the scaffold looks bb-native.
+      expect(html).toContain('class="row"');
+      expect(html).toContain('class="pill"');
+      // App name is interpolated into the visible title.
+      expect(html).toContain("<title>Blank Demo</title>");
+      await reportQueuedCommandSuccess(harness, htmlWrite, {
+        path: "assets/index.html",
+        hash: sha256Text(html),
+        modifiedAtMs: 1001,
+        sizeBytes: Buffer.byteLength(html),
+      });
+
+      const stateWrite = await waitForQueuedCommandAfter(
+        harness,
+        htmlWrite.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "blank-demo") &&
+          command.path === "data/state.json",
+      );
+      const stateWriteCommand = requireWriteFileRelativeCommand(stateWrite);
+      await reportQueuedCommandSuccess(harness, stateWrite, {
+        path: "data/state.json",
+        hash: sha256Text(stateWriteCommand.command.content),
+        modifiedAtMs: 1002,
+        sizeBytes: Buffer.byteLength(stateWriteCommand.command.content),
+      });
+
+      const manifestRead = await reportManifestRead({
+        harness,
+        fixture,
+        appId: "blank-demo",
+        afterCursor: stateWrite.row.cursor,
+        manifest: {
+          manifestVersion: 1,
+          id: "blank-demo",
+          name: "Blank Demo",
+          entry: "index.html",
+          contributions: ["thread.app"],
+          capabilities: ["data", "message"],
+        },
+      });
+
+      // No icon in manifest -> server probes the app root for a logo file.
+      const logoListCommand = await waitForQueuedCommandAfter(
+        harness,
+        manifestRead.row.cursor,
+        ({ command }) =>
+          command.type === "host.list_paths" &&
+          command.path === appRoot(fixture, "blank-demo"),
+      );
+      await reportQueuedCommandSuccess(harness, logoListCommand, {
+        paths: [],
+        truncated: false,
+      });
+
+      const response = await request;
+      expect(response.status).toBe(201);
+      expect(appDetailSchema.parse(await readJson(response))).toMatchObject({
+        id: "blank-demo",
+        name: "Blank Demo",
+        entry: { kind: "html", path: "index.html" },
+        icon: { kind: "builtin", name: "GridView" },
+        capabilities: ["data", "message"],
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("HTML-escapes the app name in the blank scaffold to block XSS", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const maliciousName = `<script>alert(1)</script> & "q" 'a'`;
+      const request = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/apps`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: "xss-demo",
+            name: maliciousName,
+            template: "blank",
+          }),
+        },
+      );
+      const existingCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === appRoot(fixture, "xss-demo") &&
+          command.path === "manifest.json",
+      );
+      await reportQueuedCommandError(harness, existingCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: manifest.json",
+      });
+
+      const manifestWrite = await waitForQueuedCommandAfter(
+        harness,
+        existingCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "xss-demo") &&
+          command.path === "manifest.json",
+      );
+      const manifestWriteCommand =
+        requireWriteFileRelativeCommand(manifestWrite);
+      await reportQueuedCommandSuccess(harness, manifestWrite, {
+        path: "manifest.json",
+        hash: sha256Text(manifestWriteCommand.command.content),
+        modifiedAtMs: 2000,
+        sizeBytes: Buffer.byteLength(manifestWriteCommand.command.content),
+      });
+
+      const htmlWrite = await waitForQueuedCommandAfter(
+        harness,
+        manifestWrite.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "xss-demo") &&
+          command.path === "assets/index.html",
+      );
+      const htmlWriteCommand = requireWriteFileRelativeCommand(htmlWrite);
+      const html = htmlWriteCommand.command.content;
+
+      // Raw special characters from the name must never reach the rendered
+      // HTML where they would be interpreted as markup.
+      expect(html).not.toContain("<script>alert(1)</script>");
+      expect(html).not.toContain('name & "q"');
+      expect(html).not.toContain("'a'");
+      // Each special char in the name is replaced with its entity form.
+      expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+      expect(html).toContain("&amp;");
+      expect(html).toContain("&quot;q&quot;");
+      expect(html).toContain("&#39;a&#39;");
+      // The escaped name shows up in both the <title> and the visible header.
+      const escapedName =
+        "&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot; &#39;a&#39;";
+      expect(html).toContain(`<title>${escapedName}</title>`);
+      expect(html).toContain(
+        `<span class="title">${escapedName}</span>`,
+      );
+
+      await reportQueuedCommandSuccess(harness, htmlWrite, {
+        path: "assets/index.html",
+        hash: sha256Text(html),
+        modifiedAtMs: 2001,
+        sizeBytes: Buffer.byteLength(html),
+      });
+
+      const stateWrite = await waitForQueuedCommandAfter(
+        harness,
+        htmlWrite.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === appRoot(fixture, "xss-demo") &&
+          command.path === "data/state.json",
+      );
+      const stateWriteCommand = requireWriteFileRelativeCommand(stateWrite);
+      await reportQueuedCommandSuccess(harness, stateWrite, {
+        path: "data/state.json",
+        hash: sha256Text(stateWriteCommand.command.content),
+        modifiedAtMs: 2002,
+        sizeBytes: Buffer.byteLength(stateWriteCommand.command.content),
+      });
+
+      const manifestRead = await reportManifestRead({
+        harness,
+        fixture,
+        appId: "xss-demo",
+        afterCursor: stateWrite.row.cursor,
+        manifest: {
+          manifestVersion: 1,
+          id: "xss-demo",
+          name: maliciousName,
+          entry: "index.html",
+          contributions: ["thread.app"],
+          capabilities: ["data", "message"],
+        },
+      });
+
+      const logoListCommand = await waitForQueuedCommandAfter(
+        harness,
+        manifestRead.row.cursor,
+        ({ command }) =>
+          command.type === "host.list_paths" &&
+          command.path === appRoot(fixture, "xss-demo"),
+      );
+      await reportQueuedCommandSuccess(harness, logoListCommand, {
+        paths: [],
+        truncated: false,
+      });
+
+      const response = await request;
+      expect(response.status).toBe(201);
+    } finally {
+      await harness.cleanup();
+    }
+  });
 });

@@ -534,6 +534,8 @@ export type {
 
 export { toPositiveNumber } from "./number-utils.js";
 
+export { escapeHtmlText } from "./html-escape.js";
+
 export { activeThinkingSchema } from "./active-thinking.js";
 export type { ActiveThinking } from "./active-thinking.js";
 
