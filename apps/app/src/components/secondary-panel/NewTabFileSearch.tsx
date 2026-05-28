@@ -493,12 +493,7 @@ export function NewTabFileSearch({
 
     promptDraft.setDraft(CREATE_APP_PROMPT_DRAFT);
     onCreateAppPromptPrefill?.();
-  }, [
-    canPrefillCreateAppPrompt,
-    onCreateAppPromptPrefill,
-    promptDraft.getCurrent,
-    promptDraft.setDraft,
-  ]);
+  }, [canPrefillCreateAppPrompt, onCreateAppPromptPrefill, promptDraft]);
 
   const handleInputKeyDown = useCallback<SearchInputKeyDownHandler>(
     (event) => {
