@@ -151,15 +151,8 @@ function focusThreadDetailComposer(): void {
     }
 
     composer.focus();
-    const namePlaceholderStart = composer.value.indexOf("[NAME]");
-    if (namePlaceholderStart >= 0) {
-      const nameSelectionStart = namePlaceholderStart + 1;
-      const nameSelectionEnd = nameSelectionStart + "NAME".length;
-      composer.setSelectionRange(nameSelectionStart, nameSelectionEnd);
-      return;
-    }
-
-    composer.setSelectionRange(0, 0);
+    const cursor = composer.value.length;
+    composer.setSelectionRange(cursor, cursor);
   });
 }
 

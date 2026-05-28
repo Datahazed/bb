@@ -188,12 +188,22 @@ describe("NewTabPage", () => {
     vi.mocked(api.listThreadApps).mockResolvedValue([]);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
 
     expect(getStoredThreadDraft()).toEqual({
       text: CREATE_APP_PROMPT_TEMPLATE,
       attachments: [],
     });
+  });
+
+  it("structures the create-app prompt with no placeholders and ends ready for the user", () => {
+    expect(CREATE_APP_PROMPT_TEMPLATE).not.toMatch(/\[NAME\]/u);
+    expect(CREATE_APP_PROMPT_TEMPLATE).not.toMatch(
+      /\[DESCRIBE WHAT IT SHOULD DO\]/u,
+    );
+    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("bb guide app");
+    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("window.bb.data");
+    expect(CREATE_APP_PROMPT_TEMPLATE.endsWith("What I want:\n\n")).toBe(true);
   });
 
   it("leaves a non-empty composer draft unchanged when replacement is canceled", () => {
@@ -202,7 +212,7 @@ describe("NewTabPage", () => {
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
 
     expect(getStoredThreadDraft()).toEqual(DRAFT_WITH_ATTACHMENT);
   });
@@ -213,7 +223,7 @@ describe("NewTabPage", () => {
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create App…" }));
+    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
 
     expect(getStoredThreadDraft()).toEqual({
       text: CREATE_APP_PROMPT_TEMPLATE,
