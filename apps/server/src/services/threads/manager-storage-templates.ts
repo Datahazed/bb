@@ -88,8 +88,11 @@ interface ManagerTemplateSetPathArgs extends ManagerTemplateRootPathArgs {
 
 type CopyTemplateFilesResult = "copied" | "missing";
 
-// Built-in defaults stay in the server bundle. They are copied only as a
-// seed-time fallback when the user has not authored manager-templates/default.
+// Built-in defaults stay in the server bundle. They are always overlaid on top
+// of any user-authored template copy so newly-provisioned threads have a
+// working status surface even if the user's template omits these files.
+// User-authored files win because they are copied first and the overlay uses
+// the `wx` flag, which refuses to overwrite existing destinations.
 const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
   name: DEFAULT_MANAGER_TEMPLATE_NAME,
   files: [
@@ -289,7 +292,7 @@ async function copyBuiltInTemplateFiles(
       threadId: args.threadId,
       threadStoragePath: args.threadStoragePath,
     },
-    "Seeded manager storage from built-in template fallback",
+    "Overlaid bundled apps/status seed onto manager storage",
   );
 }
 
@@ -316,27 +319,26 @@ export async function seedManagerThreadStorage(
     threadId: args.threadId,
     threadStoragePath: args.threadStoragePath,
   });
-  if (copyResult === "copied") {
-    return;
+
+  if (
+    copyResult === "missing" &&
+    templateName !== DEFAULT_MANAGER_TEMPLATE_NAME
+  ) {
+    deps.logger.warn(
+      {
+        templateName,
+        templateDirPath,
+        threadId: args.threadId,
+      },
+      "Manager template directory is missing; overlaying bundled seed only",
+    );
   }
 
-  if (templateName === BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET.name) {
-    await copyBuiltInTemplateFiles({
-      files: BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET.files,
-      logger: deps.logger,
-      templateName,
-      threadId: args.threadId,
-      threadStoragePath: args.threadStoragePath,
-    });
-    return;
-  }
-
-  deps.logger.warn(
-    {
-      templateName,
-      templateDirPath,
-      threadId: args.threadId,
-    },
-    "Manager template directory is missing; skipping storage seed",
-  );
+  await copyBuiltInTemplateFiles({
+    files: BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET.files,
+    logger: deps.logger,
+    templateName,
+    threadId: args.threadId,
+    threadStoragePath: args.threadStoragePath,
+  });
 }
