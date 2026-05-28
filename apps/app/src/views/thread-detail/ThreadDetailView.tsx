@@ -297,11 +297,11 @@ export function ThreadDetailView() {
     closeWorkspaceFileTab,
     isNewTabActive,
     openNewTab,
+    openApp,
     openHostFile,
     openStorageFile,
     openWorkspaceFile,
     orderedSecondaryFileTabs,
-    pinnedStorageFilePath,
     selectFileSearchResult,
   } = useThreadFileTabs({
     apps: threadAppsQuery.data,
@@ -321,7 +321,7 @@ export function ThreadDetailView() {
       return;
     }
     if (isManagerThread && activeFixedSecondaryTab === null) {
-      openStorageFile(pinnedStorageFilePath);
+      openApp(STATUS_APP_ID);
       return;
     }
     toggleDefaultPersistedSecondaryPanel();
@@ -329,8 +329,7 @@ export function ThreadDetailView() {
     activeFixedSecondaryTab,
     fixedPanelTabsState.secondary.isOpen,
     isManagerThread,
-    openStorageFile,
-    pinnedStorageFilePath,
+    openApp,
     setThreadSecondaryPanel,
     toggleDefaultPersistedSecondaryPanel,
   ]);
@@ -1149,9 +1148,7 @@ export function ThreadDetailView() {
     <ThreadStorageFilePreviewTabContent
       activePath={activeStorageFilePath}
       copyPath={storageFileCopyPath}
-      isManagerThread={isManagerThread}
       onOpenInEditor={handleOpenStorageFileInEditor}
-      pinnedPath={pinnedStorageFilePath}
       threadId={thread.id}
     />
   ) : undefined;

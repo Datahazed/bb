@@ -14,7 +14,6 @@ import {
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
-  readHostStatusVersion,
   writeHostRelativeFile,
   deleteHostRelativeFile,
   deleteHostRelativePath,
@@ -22,24 +21,6 @@ import {
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
-const EXPECTED_UNREADABLE_DIRECTORY_HASH_SENTINEL = "unreadable-directory";
-
-type ExpectedStatusVersionSource = "folder" | "html" | "md" | "empty";
-type ExpectedStatusVersionHashEntry =
-  | ExpectedStatusVersionFileHashEntry
-  | ExpectedStatusVersionUnreadableHashEntry;
-
-interface ExpectedStatusVersionFileHashEntry {
-  kind: "file";
-  modifiedAtNs: bigint;
-  path: string;
-  sizeBytes: bigint;
-}
-
-interface ExpectedStatusVersionUnreadableHashEntry {
-  kind: "unreadable";
-  path: string;
-}
 
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -85,56 +66,6 @@ async function captureReadHostRelativeFileError(
   }
 
   throw new Error("Expected readHostRelativeFile to fail");
-}
-
-function makeStatusVersionCommand(
-  storageRootPath: string,
-): CommandOf<"host.status_version"> {
-  return {
-    type: "host.status_version",
-    sources: [
-      {
-        source: "folder",
-        rootPath: path.join(storageRootPath, "STATUS"),
-        indexPath: "index.html",
-        dotfiles: "deny",
-      },
-      {
-        source: "html",
-        rootPath: storageRootPath,
-        path: "STATUS.html",
-        dotfiles: "allow",
-      },
-      {
-        source: "md",
-        rootPath: storageRootPath,
-        path: "STATUS.md",
-        dotfiles: "allow",
-      },
-    ],
-  };
-}
-
-function hashExpectedStatusVersion(
-  source: ExpectedStatusVersionSource,
-  entries: readonly ExpectedStatusVersionHashEntry[],
-): string {
-  const hash = createHash("sha256");
-  hash.update(`source:${source}\n`);
-  for (const entry of [...entries].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  )) {
-    if (entry.kind === "unreadable") {
-      hash.update(
-        `${entry.path}\0${EXPECTED_UNREADABLE_DIRECTORY_HASH_SENTINEL}\n`,
-      );
-      continue;
-    }
-    hash.update(
-      `${entry.path}\0${entry.sizeBytes.toString()}\0${entry.modifiedAtNs.toString()}\n`,
-    );
-  }
-  return hash.digest("hex");
 }
 
 afterEach(async () => {
@@ -191,7 +122,7 @@ describe("readHostFile (no ref — disk read)", () => {
 
   it("marks missing targets under an existing root as expected", async () => {
     const repoPath = await initRepo();
-    const missingPath = path.join(repoPath, "STATUS.md");
+    const missingPath = path.join(repoPath, "notes.md");
     const thrown = await captureReadHostFileError({
       type: "host.read_file",
       path: missingPath,
@@ -226,7 +157,7 @@ describe("readHostFile (no ref — disk read)", () => {
   it("marks missing roots as expected", async () => {
     const parentPath = await makeTempDir("bb-host-files-missing-root-");
     const rootPath = path.join(parentPath, "missing-root");
-    const missingPath = path.join(rootPath, "STATUS.md");
+    const missingPath = path.join(rootPath, "notes.md");
     const thrown = await captureReadHostFileError({
       type: "host.read_file",
       path: missingPath,
@@ -314,23 +245,23 @@ describe("readHostFileMetadata", () => {
 describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
   it("writes JSON bytes beneath the root and returns a content hash", async () => {
     const rootPath = await makeTempDir("bb-host-relative-write-");
-    const content = "{\"ok\":true}\n";
+    const content = '{"ok":true}\n';
     const result = await writeHostRelativeFile({
       type: "host.write_file_relative",
       rootPath,
-      path: "STATUS-data/tasks.json",
+      path: "apps/status/data/state.json",
       dotfiles: "deny",
       content,
       contentEncoding: "utf8",
     });
 
     expect(result).toMatchObject({
-      path: "STATUS-data/tasks.json",
+      path: "apps/status/data/state.json",
       hash: createHash("sha256").update(content).digest("hex"),
       sizeBytes: Buffer.byteLength(content),
     });
     await expect(
-      fs.readFile(path.join(rootPath, "STATUS-data/tasks.json"), "utf8"),
+      fs.readFile(path.join(rootPath, "apps/status/data/state.json"), "utf8"),
     ).resolves.toBe(content);
   });
 
@@ -410,9 +341,9 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       deleted: true,
       previousHash: written.hash,
     });
-    await expect(fs.stat(path.join(rootPath, "tasks.json"))).rejects.toMatchObject(
-      { code: "ENOENT" },
-    );
+    await expect(
+      fs.stat(path.join(rootPath, "tasks.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
 
     await expect(
       deleteHostRelativeFile({
@@ -470,174 +401,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       path: "demo",
       deleted: false,
     });
-  });
-});
-
-describe("readHostStatusVersion", () => {
-  it("hashes folder mode from stat metadata and changes on file mutations", async () => {
-    const storageRootPath = await makeTempDir("bb-status-version-test-");
-    const statusRootPath = path.join(storageRootPath, "STATUS");
-    await fs.mkdir(statusRootPath);
-    const indexPath = path.join(statusRootPath, "index.html");
-    await fs.writeFile(indexPath, "<h1>Ready</h1>", "utf8");
-
-    const command = makeStatusVersionCommand(storageRootPath);
-    const initial = await readHostStatusVersion(command);
-    const unchanged = await readHostStatusVersion(command);
-
-    expect(initial.source).toBe("folder");
-    expect(unchanged.hash).toBe(initial.hash);
-
-    const assetPath = path.join(statusRootPath, "logo.png");
-    await fs.writeFile(assetPath, "asset", "utf8");
-    const afterAdd = await readHostStatusVersion(command);
-    expect(afterAdd.hash).not.toBe(initial.hash);
-
-    await fs.rm(assetPath);
-    const afterRemove = await readHostStatusVersion(command);
-    expect(afterRemove.hash).not.toBe(afterAdd.hash);
-
-    const bumpedTime = new Date(Date.now() + 10_000);
-    await fs.utimes(indexPath, bumpedTime, bumpedTime);
-    const afterMtime = await readHostStatusVersion(command);
-    expect(afterMtime.hash).not.toBe(afterRemove.hash);
-
-    await fs.writeFile(indexPath, "<h1>Ready now</h1>", "utf8");
-    const afterSize = await readHostStatusVersion(command);
-    expect(afterSize.hash).not.toBe(afterMtime.hash);
-  });
-
-  it("tracks source precedence across folder, html, md, and empty modes", async () => {
-    const storageRootPath = await makeTempDir("bb-status-version-precedence-");
-    const command = makeStatusVersionCommand(storageRootPath);
-
-    const empty = await readHostStatusVersion(command);
-    expect(empty.source).toBe("empty");
-
-    await fs.writeFile(
-      path.join(storageRootPath, "STATUS.md"),
-      "# Status",
-      "utf8",
-    );
-    const markdown = await readHostStatusVersion(command);
-    expect(markdown.source).toBe("md");
-    expect(markdown.hash).not.toBe(empty.hash);
-
-    await fs.writeFile(
-      path.join(storageRootPath, "STATUS.html"),
-      "<h1>Status</h1>",
-      "utf8",
-    );
-    const html = await readHostStatusVersion(command);
-    expect(html.source).toBe("html");
-    expect(html.hash).not.toBe(markdown.hash);
-
-    const statusRootPath = path.join(storageRootPath, "STATUS");
-    await fs.mkdir(statusRootPath);
-    await fs.writeFile(
-      path.join(statusRootPath, "index.html"),
-      "<h1>Folder</h1>",
-      "utf8",
-    );
-    const folder = await readHostStatusVersion(command);
-    expect(folder.source).toBe("folder");
-    expect(folder.hash).not.toBe(html.hash);
-  });
-
-  it("hashes single-file modes from stat metadata", async () => {
-    const storageRootPath = await makeTempDir("bb-status-version-single-file-");
-    const command = makeStatusVersionCommand(storageRootPath);
-    const statusHtmlPath = path.join(storageRootPath, "STATUS.html");
-
-    await fs.writeFile(statusHtmlPath, "<h1>Status</h1>", "utf8");
-    const initial = await readHostStatusVersion(command);
-    const unchanged = await readHostStatusVersion(command);
-
-    expect(initial.source).toBe("html");
-    expect(unchanged.hash).toBe(initial.hash);
-
-    const bumpedTime = new Date(Date.now() + 10_000);
-    await fs.utimes(statusHtmlPath, bumpedTime, bumpedTime);
-    const afterMtime = await readHostStatusVersion(command);
-    expect(afterMtime.hash).not.toBe(initial.hash);
-
-    await fs.writeFile(statusHtmlPath, "<h1>Status changed</h1>", "utf8");
-    const afterSize = await readHostStatusVersion(command);
-    expect(afterSize.hash).not.toBe(afterMtime.hash);
-  });
-
-  it("does not hash dotfiles or symlink escapes under STATUS", async () => {
-    const storageRootPath = await makeTempDir("bb-status-version-hidden-");
-    const statusRootPath = path.join(storageRootPath, "STATUS");
-    await fs.mkdir(statusRootPath);
-    await fs.writeFile(
-      path.join(statusRootPath, "index.html"),
-      "ready",
-      "utf8",
-    );
-    const command = makeStatusVersionCommand(storageRootPath);
-    const initial = await readHostStatusVersion(command);
-
-    await fs.writeFile(path.join(statusRootPath, ".env"), "secret", "utf8");
-    const afterDotfile = await readHostStatusVersion(command);
-    expect(afterDotfile.hash).toBe(initial.hash);
-
-    const outsidePath = path.join(storageRootPath, "outside.txt");
-    const symlinkPath = path.join(statusRootPath, "outside-link.txt");
-    await fs.writeFile(outsidePath, "outside", "utf8");
-    await fs.symlink(outsidePath, symlinkPath);
-    const afterSymlinkEscape = await readHostStatusVersion(command);
-    expect(afterSymlinkEscape.hash).toBe(initial.hash);
-  });
-
-  it("keeps folder mode and marks unreadable child directories in the hash", async () => {
-    const storageRootPath = await makeTempDir(
-      "bb-status-version-unreadable-child-",
-    );
-    const statusRootPath = path.join(storageRootPath, "STATUS");
-    const unreadableDirPath = path.join(statusRootPath, "private");
-    await fs.mkdir(unreadableDirPath, { recursive: true });
-    const indexPath = path.join(statusRootPath, "index.html");
-    await fs.writeFile(indexPath, "<h1>Ready</h1>", "utf8");
-    await fs.writeFile(
-      path.join(unreadableDirPath, "nested.txt"),
-      "secret",
-      "utf8",
-    );
-
-    const command = makeStatusVersionCommand(storageRootPath);
-    const indexStat = await fs.stat(indexPath, { bigint: true });
-    let unreadableHash = "";
-
-    await fs.chmod(unreadableDirPath, 0);
-    try {
-      const unreadable = await readHostStatusVersion(command);
-      const unreadableAgain = await readHostStatusVersion(command);
-
-      expect(unreadable.source).toBe("folder");
-      expect(unreadableAgain.hash).toBe(unreadable.hash);
-      expect(unreadable.hash).toBe(
-        hashExpectedStatusVersion("folder", [
-          {
-            kind: "file",
-            modifiedAtNs: indexStat.mtimeNs,
-            path: "index.html",
-            sizeBytes: indexStat.size,
-          },
-          {
-            kind: "unreadable",
-            path: "private",
-          },
-        ]),
-      );
-      unreadableHash = unreadable.hash;
-    } finally {
-      await fs.chmod(unreadableDirPath, 0o700);
-    }
-
-    const restored = await readHostStatusVersion(command);
-    expect(restored.source).toBe("folder");
-    expect(restored.hash).not.toBe(unreadableHash);
   });
 });
 

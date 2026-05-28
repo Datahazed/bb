@@ -9,11 +9,11 @@ const guideChapters: Record<string, TemplateId> = {
   environments: "bbGuideEnvironments",
   managers: "bbGuideManagers",
   "manager-templates": "bbGuideManagerTemplates",
-  "status-state": "bbGuideStatusState",
+  app: "bbGuideApp",
   providers: "bbGuideProviders",
   projects: "bbGuideProjects",
   hosts: "bbGuideHosts",
-  styling: "bbGuideStyling",
+  styling: "bbGuideApp",
   async: "bbGuideAsync",
 };
 

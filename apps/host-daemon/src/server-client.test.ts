@@ -1,7 +1,6 @@
 import { AbortError } from "p-retry";
 import { describe, expect, it, vi } from "vitest";
 import type { PendingInteractionCreate } from "@bb/domain";
-import { hostDaemonStatusDataChangeRequestSchema } from "@bb/host-daemon-contract";
 import { createServerClient, ServerResponseError } from "./server-client.js";
 
 function createLogger() {
@@ -225,51 +224,6 @@ describe("createServerClient", () => {
       kind: "accepted",
       rejectedEvents: [],
     });
-  });
-
-  it("posts STATUS-data changes with the current session id", async () => {
-    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
-      const url = new URL(String(input));
-      expect(url.pathname).toBe("/internal/session/status-data-change");
-      const body = init?.body;
-      if (typeof body !== "string") {
-        throw new Error("Expected string request body");
-      }
-      expect(
-        hostDaemonStatusDataChangeRequestSchema.parse(JSON.parse(body)),
-      ).toEqual({
-        sessionId: "session-1",
-        threadId: "thr_123",
-        key: "state",
-        deleted: false,
-        value: { status: "running" },
-        version: "version-next",
-        previousValue: { status: "queued" },
-        previousValuePresent: true,
-        previousVersion: "version-prev",
-      });
-      return new Response(null, { status: 204 });
-    });
-    const client = createServerClient({
-      fetchFn,
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "https://bb.example.test",
-    });
-
-    await client.postStatusDataChange({
-      threadId: "thr_123",
-      key: "state",
-      deleted: false,
-      value: { status: "running" },
-      version: "version-next",
-      previousValue: { status: "queued" },
-      previousValuePresent: true,
-      previousVersion: "version-prev",
-    });
-
-    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it("retries retryable interactive request registration responses after the attempt hook", async () => {

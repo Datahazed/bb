@@ -20,7 +20,6 @@ import type {
   ManagerTimelineView,
   ThreadPendingInteractionsResponse,
   ThreadResponse,
-  ThreadStatusVersionResponse,
   ThreadWithIncludesResponse,
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
@@ -57,8 +56,6 @@ import {
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
-  threadStatusMarkdownPreviewQueryKey,
-  threadStatusVersionQueryKey,
   threadAppMarkdownPreviewQueryKey,
   threadAppQueryKey,
   threadAppsQueryKey,
@@ -67,7 +64,6 @@ import {
   type ArchivedThreadsKindFilter,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
-import { MANAGER_STATUS_MARKDOWN_FILE_PATH } from "@/lib/manager-status-storage";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -76,7 +72,6 @@ interface QueryOptions {
 }
 
 const THREAD_LIST_STALE_TIME_MS = 10_000;
-const THREAD_STATUS_VERSION_REFETCH_INTERVAL_MS = 2_000;
 
 interface ThreadComposerBootstrapQueryOptions extends QueryOptions {
   environmentId?: string;
@@ -644,41 +639,6 @@ export function useThreadStorageFilePreview(
   });
 }
 
-export function useThreadStatusVersion(id: string, options?: QueryOptions) {
-  return useQuery<ThreadStatusVersionResponse>({
-    queryKey: threadStatusVersionQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.getThreadStatusVersion(
-        requireThreadId(id, "useThreadStatusVersion"),
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchInterval: THREAD_STATUS_VERSION_REFETCH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    staleTime: options?.staleTime,
-  });
-}
-
-export function useThreadStatusMarkdownPreview(
-  id: string,
-  versionHash: string | null | undefined,
-  options?: QueryOptions,
-) {
-  return useQuery<FilePreview>({
-    queryKey: threadStatusMarkdownPreviewQueryKey(id, versionHash),
-    queryFn: ({ signal }) =>
-      api.getThreadStorageFilePreview(
-        requireThreadId(id, "useThreadStatusMarkdownPreview"),
-        MANAGER_STATUS_MARKDOWN_FILE_PATH,
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(versionHash),
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
-  });
-}
-
 export function useThreadApps(id: string, options?: QueryOptions) {
   return useQuery<AppSummary[]>({
     queryKey: threadAppsQueryKey(id),
@@ -699,7 +659,11 @@ export function useThreadApp(
   return useQuery<AppDetail>({
     queryKey: threadAppQueryKey(id, appId ?? ""),
     queryFn: ({ signal }) =>
-      api.getThreadApp(requireThreadId(id, "useThreadApp"), appId ?? "", signal),
+      api.getThreadApp(
+        requireThreadId(id, "useThreadApp"),
+        appId ?? "",
+        signal,
+      ),
     enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(appId),
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,

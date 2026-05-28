@@ -11,7 +11,6 @@ import type {
   AppId,
   PendingInteractionCreate,
   PendingInteractionResolution,
-  StatusDataKey,
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
@@ -154,13 +153,6 @@ export interface RuntimeEntry {
   threads: Map<string, RuntimeThreadState>;
 }
 
-export interface ThreadStatusDataChangedNotification {
-  environmentId: string;
-  key: StatusDataKey;
-  threadId: string;
-  threadStoragePath: string;
-}
-
 export interface ThreadAppDataChangedNotification {
   appId: AppId;
   environmentId: string;
@@ -197,9 +189,6 @@ export interface RuntimeManagerOptions {
     environmentId: string;
     threadId: string;
   }) => void;
-  onThreadStatusDataChanged?: (
-    args: ThreadStatusDataChangedNotification,
-  ) => void;
   onThreadAppDataChanged?: (args: ThreadAppDataChangedNotification) => void;
   onThreadStorageWatchError?: (args: {
     error: ThreadStorageWatchError;
@@ -924,17 +913,6 @@ export class RuntimeManager {
             this.options.onThreadStorageChanged?.({
               environmentId: event.environmentId,
               threadId: event.threadId,
-            });
-          }
-          if (event.kind === "thread-status-data-changed") {
-            this.options.onThreadStatusDataChanged?.({
-              environmentId: event.environmentId,
-              key: event.key,
-              threadId: event.threadId,
-              threadStoragePath: path.join(
-                threadStorageRootPath,
-                event.threadId,
-              ),
             });
           }
           if (event.kind === "thread-app-data-changed") {

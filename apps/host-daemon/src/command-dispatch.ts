@@ -25,7 +25,6 @@ import {
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
-  readHostStatusVersion,
   writeHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
@@ -40,12 +39,6 @@ import {
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
 import { listManagerTemplatesCommand } from "./command-handlers/manager-templates.js";
-import {
-  deleteHostStatusData,
-  listHostStatusData,
-  readHostStatusData,
-  writeHostStatusData,
-} from "./command-handlers/status-data.js";
 import {
   ensureThreadRuntime,
   handleThreadDeleted,
@@ -294,38 +287,6 @@ const commandHandlers: CommandHandlerMap = {
     command: Extract<HostDaemonCommand, { type: "host.file_metadata" }>,
     _options: CommandDispatchOptions,
   ) => readHostFileMetadata(command),
-  "host.status_version": async (
-    command: Extract<HostDaemonCommand, { type: "host.status_version" }>,
-    _options: CommandDispatchOptions,
-  ) => readHostStatusVersion(command),
-  "host.status_data.list": async (
-    command: Extract<HostDaemonCommand, { type: "host.status_data.list" }>,
-    options: CommandDispatchOptions,
-  ) =>
-    listHostStatusData(command, {
-      threadStorageRootPath: options.threadStorageRootPath,
-    }),
-  "host.status_data.get": async (
-    command: Extract<HostDaemonCommand, { type: "host.status_data.get" }>,
-    options: CommandDispatchOptions,
-  ) =>
-    readHostStatusData(command, {
-      threadStorageRootPath: options.threadStorageRootPath,
-    }),
-  "host.status_data.set": async (
-    command: Extract<HostDaemonCommand, { type: "host.status_data.set" }>,
-    options: CommandDispatchOptions,
-  ) =>
-    writeHostStatusData(command, {
-      threadStorageRootPath: options.threadStorageRootPath,
-    }),
-  "host.status_data.delete": async (
-    command: Extract<HostDaemonCommand, { type: "host.status_data.delete" }>,
-    options: CommandDispatchOptions,
-  ) =>
-    deleteHostStatusData(command, {
-      threadStorageRootPath: options.threadStorageRootPath,
-    }),
   "host.read_file": async (
     command: Extract<HostDaemonCommand, { type: "host.read_file" }>,
     _options: CommandDispatchOptions,

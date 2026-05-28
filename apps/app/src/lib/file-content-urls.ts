@@ -35,16 +35,6 @@ export function buildThreadStorageRawContentUrl(
   return `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodePathSegments(path)}`;
 }
 
-export function buildThreadStatusContentUrl(
-  threadId: string,
-  hash?: string,
-): string {
-  const baseUrl = `/api/v1/threads/${encodeURIComponent(threadId)}/status/`;
-  return hash === undefined
-    ? baseUrl
-    : `${baseUrl}?v=${encodeURIComponent(hash)}`;
-}
-
 export function buildThreadAppEntryUrl(
   threadId: string,
   appId: string,

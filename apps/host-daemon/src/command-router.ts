@@ -46,35 +46,6 @@ type FileWriteLaneCommand = Extract<
       | "host.delete_path_relative";
   }
 >;
-type StatusDataSetCommand = Extract<
-  HostDaemonCommand,
-  { type: "host.status_data.set" }
->;
-type StatusDataDeleteCommand = Extract<
-  HostDaemonCommand,
-  { type: "host.status_data.delete" }
->;
-
-export interface StatusDataSetCommandResultNotification {
-  command: StatusDataSetCommand;
-  result: HostDaemonCommandResult<"host.status_data.set">;
-}
-
-export interface StatusDataDeleteCommandResultNotification {
-  command: StatusDataDeleteCommand;
-  result: HostDaemonCommandResult<"host.status_data.delete">;
-}
-
-export type StatusDataCommandResultNotification =
-  | StatusDataSetCommandResultNotification
-  | StatusDataDeleteCommandResultNotification;
-
-export function isStatusDataSetCommandResultNotification(
-  notification: StatusDataCommandResultNotification,
-): notification is StatusDataSetCommandResultNotification {
-  return notification.command.type === "host.status_data.set";
-}
-
 interface EnvironmentLaneWorkMetrics {
   startedAtMs: number | null;
 }
@@ -131,9 +102,6 @@ export interface CommandRouterOptions {
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
   readFetchedAt?: ReadCommandFetchedAt;
-  onStatusDataCommandResult?: (
-    notification: StatusDataCommandResultNotification,
-  ) => void;
   now?: () => number;
 }
 
@@ -348,24 +316,6 @@ export class CommandRouter {
     };
 
     try {
-      if (command.type === "host.status_data.set") {
-        const result = await dispatchCommand(command, dispatchOptions);
-        this.options.onStatusDataCommandResult?.({ command, result });
-        return this.createSuccessfulCommandResult({
-          baseReport,
-          handlerStartedAtMs,
-          result,
-        });
-      }
-      if (command.type === "host.status_data.delete") {
-        const result = await dispatchCommand(command, dispatchOptions);
-        this.options.onStatusDataCommandResult?.({ command, result });
-        return this.createSuccessfulCommandResult({
-          baseReport,
-          handlerStartedAtMs,
-          result,
-        });
-      }
       const result = await dispatchCommand(command, dispatchOptions);
       return this.createSuccessfulCommandResult({
         baseReport,

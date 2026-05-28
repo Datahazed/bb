@@ -748,11 +748,6 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "host.write_file_relative": null,
   "host.delete_file_relative": null,
   "host.delete_path_relative": null,
-  "host.status_version": null,
-  "host.status_data.list": null,
-  "host.status_data.get": null,
-  "host.status_data.set": null,
-  "host.status_data.delete": null,
   "codex.inference.complete": null,
   "interactive.resolve": defineCommandResultOwner({
     applySideEffects: handleInteractiveResolveResult,

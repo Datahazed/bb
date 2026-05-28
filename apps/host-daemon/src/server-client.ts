@@ -12,7 +12,6 @@ import {
   hostDaemonEventBatchRequestSchema,
   hostDaemonEventBatchResponseSchema,
   hostDaemonProjectAttachmentContentQuerySchema,
-  hostDaemonStatusDataChangeRequestSchema,
   hostDaemonInteractiveInterruptRequestSchema,
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
@@ -33,7 +32,6 @@ import {
   type HostDaemonEnvironmentChangePayload,
   type HostDaemonSessionOpenRequest,
   type HostDaemonSessionOpenResponse,
-  type HostDaemonStatusDataChangePayload,
   type HostDaemonToolCallResponse,
 } from "@bb/host-daemon-contract";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
@@ -229,9 +227,6 @@ export interface ServerClient {
   ): Promise<HostDaemonCommandResultResponse>;
   postEnvironmentChange(
     args: HostDaemonEnvironmentChangePayload,
-  ): Promise<void>;
-  postStatusDataChange(
-    args: HostDaemonStatusDataChangePayload,
   ): Promise<void>;
   postAppDataChange(args: HostDaemonAppDataChangePayload): Promise<void>;
   postAppDataResync(args: HostDaemonAppDataResyncPayload): Promise<void>;
@@ -659,25 +654,6 @@ export function createServerClient(
 
       if (!response.ok) {
         throw await createResponseError("post environment change", response);
-      }
-    },
-
-    async postStatusDataChange(args): Promise<void> {
-      const payload = hostDaemonStatusDataChangeRequestSchema.parse({
-        sessionId: requireSessionId(),
-        ...args,
-      });
-      const response = await fetchFn(
-        buildInternalUrl("/session/status-data-change"),
-        {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (!response.ok) {
-        throw await createResponseError("post STATUS-data change", response);
       }
     },
 

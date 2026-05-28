@@ -4,12 +4,7 @@ import {
   appIdSchema,
   type AppDataPath,
   type AppId,
-  type StatusDataKey,
 } from "@bb/domain";
-import {
-  parseStatusDataFileName,
-  STATUS_DATA_DIRECTORY_NAME,
-} from "./status-data-paths.js";
 import { watchPathChanges } from "./watch-path.js";
 import { watchWorkspaceStatus } from "./watch-status.js";
 import type {
@@ -27,11 +22,6 @@ interface ThreadStoragePathArgs {
 
 interface ThreadStoragePath {
   parts: string[];
-  threadId: string;
-}
-
-interface ThreadStatusDataPath {
-  key: StatusDataKey;
   threadId: string;
 }
 
@@ -72,31 +62,13 @@ function toThreadStoragePath(
   };
 }
 
-function isStatusDataSubtreePath(path: ThreadStoragePath): boolean {
-  return path.parts[1] === STATUS_DATA_DIRECTORY_NAME;
-}
-
 function isAppDataSubtreePath(path: ThreadStoragePath): boolean {
   return path.parts[1] === "apps" && path.parts[3] === "data";
 }
 
-function toThreadStatusDataPath(
+function toThreadAppDataPath(
   path: ThreadStoragePath,
-): ThreadStatusDataPath | null {
-  if (!isStatusDataSubtreePath(path) || path.parts.length !== 3) {
-    return null;
-  }
-  const parsedKey = parseStatusDataFileName(path.parts[2] ?? "");
-  if (!parsedKey) {
-    return null;
-  }
-  return {
-    threadId: path.threadId,
-    key: parsedKey,
-  };
-}
-
-function toThreadAppDataPath(path: ThreadStoragePath): ThreadAppDataPath | null {
+): ThreadAppDataPath | null {
   if (!isAppDataSubtreePath(path) || path.parts.length < 5) {
     return null;
   }
@@ -119,7 +91,6 @@ export function collectThreadStorageObservedChanges(
   args: CollectThreadStorageObservedChangesArgs,
 ): ThreadStorageObservedChange[] {
   const storageChanges = new Map<string, ThreadStorageWatchTarget>();
-  const statusDataChanges = new Map<string, ThreadStorageObservedChange>();
   const appDataChanges = new Map<string, ThreadStorageObservedChange>();
   for (const changedPath of args.changedPaths) {
     const storagePath = toThreadStoragePath({
@@ -131,21 +102,6 @@ export function collectThreadStorageObservedChanges(
     }
     const target = args.resolveThreadTarget(storagePath.threadId);
     if (!target) {
-      continue;
-    }
-    if (isStatusDataSubtreePath(storagePath)) {
-      const statusDataPath = toThreadStatusDataPath(storagePath);
-      if (statusDataPath) {
-        statusDataChanges.set(
-          `${target.environmentId}:${target.threadId}:${statusDataPath.key}`,
-          {
-            kind: "thread-status-data-changed",
-            environmentId: target.environmentId,
-            threadId: target.threadId,
-            key: statusDataPath.key,
-          },
-        );
-      }
       continue;
     }
     if (isAppDataSubtreePath(storagePath)) {
@@ -175,7 +131,6 @@ export function collectThreadStorageObservedChanges(
       threadId: target.threadId,
     });
   }
-  observedChanges.push(...statusDataChanges.values());
   observedChanges.push(...appDataChanges.values());
   return observedChanges;
 }

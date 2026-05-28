@@ -13,7 +13,6 @@ import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { MANAGER_STATUS_FILE_PATH } from "@/components/secondary-panel/managerStorage";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
@@ -123,8 +122,6 @@ function MarkdownHtmlPreviewHarness({
       {openedFile?.kind === "thread-storage" ? (
         <ThreadStorageFilePreviewTabContent
           activePath={openedFile.path}
-          isManagerThread
-          pinnedPath={MANAGER_STATUS_FILE_PATH}
           threadId={THREAD_ID}
         />
       ) : null}
@@ -225,8 +222,6 @@ function PanelClosedThreadStorageMarkdownLinkHarness({
       {openedFile?.kind === "thread-storage" ? (
         <ThreadStorageFilePreviewTabContent
           activePath={openedFile.path}
-          isManagerThread
-          pinnedPath={MANAGER_STATUS_FILE_PATH}
           threadId={THREAD_ID}
         />
       ) : null}

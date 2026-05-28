@@ -162,13 +162,13 @@ afterEach(() => {
 describe("ThreadSecondaryPanel", () => {
   it.each<SecondaryPanelChromeDragScenario>([
     {
-      name: "STATUS iframe",
+      name: "status app iframe",
       activeTab: buildActiveFileTab({
-        id: "storage:STATUS",
-        filename: "STATUS",
+        id: "app:status",
+        filename: "Status",
         isPinned: true,
       }),
-      iframeTitle: "Manager status",
+      iframeTitle: "Status app",
       closeButtonLabel: null,
     },
     {
@@ -249,8 +249,8 @@ describe("ThreadSecondaryPanel", () => {
     "keeps iframe previews interactable after secondary panel resize ends via $name",
     async ({ finishDrag }) => {
       const activeStatusTab: SecondaryPanelFileTab = {
-        id: "storage:STATUS",
-        filename: "STATUS",
+        id: "app:status",
+        filename: "Status",
         isActive: true,
         isPinned: true,
         statusLabel: null,
@@ -260,7 +260,7 @@ describe("ThreadSecondaryPanel", () => {
 
       renderPanel({
         fileTabs: [activeStatusTab],
-        fileTabContent: <iframe title="Manager status" />,
+        fileTabContent: <iframe title="Status app" />,
         renderAsDrawer: false,
       });
 
@@ -268,7 +268,7 @@ describe("ThreadSecondaryPanel", () => {
         "#thread-detail-secondary-panel",
       );
       const aside = panel?.querySelector("aside");
-      const iframe = screen.getByTitle("Manager status");
+      const iframe = screen.getByTitle("Status app");
       const resizeHandle = screen.getByLabelText(
         "Resize thread and secondary panels",
       );

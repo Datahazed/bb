@@ -34,7 +34,6 @@ import {
   workspaceStatusSchema,
   managerTemplateNameSchema,
   jsonValueSchema,
-  statusDataKeySchema,
   appDataPathSchema,
   appIdSchema,
 } from "@bb/domain";
@@ -43,7 +42,6 @@ import type {
   AppId,
   GitBranchName,
   JsonValue,
-  StatusDataKey,
 } from "@bb/domain";
 import { apiErrorSchema } from "./errors.js";
 import { timelineRowSchema } from "./thread-timeline.js";
@@ -383,37 +381,6 @@ export const sendMessageRequestSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
-
-export const statusIframeThreadTellInputSchema = z.object({
-  type: z.literal("text"),
-  text: z.string(),
-});
-export type StatusIframeThreadTellInput = z.infer<
-  typeof statusIframeThreadTellInputSchema
->;
-
-export const statusIframeThreadTellRequestSchema = z.object({
-  input: z.tuple([statusIframeThreadTellInputSchema]),
-  mode: z.literal("auto"),
-});
-export type StatusIframeThreadTellRequest = z.infer<
-  typeof statusIframeThreadTellRequestSchema
->;
-
-export interface BbThreadTell {
-  (text: string): Promise<void>;
-}
-
-export interface BbStatusIframeWindow extends Window {
-  bbStatusState: BbStatusState;
-  bbThreadTell: BbThreadTell;
-}
-
-declare global {
-  interface Window {
-    bbThreadTell?: BbThreadTell;
-  }
-}
 
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
@@ -1044,117 +1011,6 @@ export type ThreadHostFileContentQuery = z.infer<
   typeof threadHostFileContentQuerySchema
 >;
 
-export const threadStatusVersionSourceSchema = z.enum([
-  "folder",
-  "html",
-  "md",
-  "empty",
-]);
-export type ThreadStatusVersionSource = z.infer<
-  typeof threadStatusVersionSourceSchema
->;
-
-export const threadStatusVersionResponseSchema = z.object({
-  source: threadStatusVersionSourceSchema,
-  hash: z.string().min(1),
-});
-export type ThreadStatusVersionResponse = z.infer<
-  typeof threadStatusVersionResponseSchema
->;
-
-export const statusStateChangeEventSourceSchema = z.enum(["local", "remote"]);
-export type StatusStateChangeEventSource = z.infer<
-  typeof statusStateChangeEventSourceSchema
->;
-
-export const statusStateChangeOperationSchema = z.enum([
-  "set",
-  "delete",
-  "hydrate",
-  "resync",
-  "revert",
-]);
-export type StatusStateChangeOperation = z.infer<
-  typeof statusStateChangeOperationSchema
->;
-
-export const statusStateChangeEventSchema = z.object({
-  source: statusStateChangeEventSourceSchema,
-  operation: statusStateChangeOperationSchema,
-  optimistic: z.boolean(),
-  version: z.string().nullable(),
-  error: z.string().nullable(),
-});
-export type StatusStateChangeEvent = z.infer<
-  typeof statusStateChangeEventSchema
->;
-
-export type StatusStateSelector = StatusDataKey | "*";
-
-export type StatusStateChangeCallback = (
-  newValue: JsonValue | undefined,
-  prevValue: JsonValue | undefined,
-  key: StatusDataKey,
-  event: StatusStateChangeEvent,
-) => void;
-
-export interface BbStatusState {
-  list(): Promise<Record<StatusDataKey, JsonValue>>;
-  get(key: StatusDataKey): Promise<JsonValue | undefined>;
-  set(key: StatusDataKey, value: JsonValue): Promise<void>;
-  delete(key: StatusDataKey): Promise<void>;
-  on(
-    selector: StatusStateSelector,
-    callback: StatusStateChangeCallback,
-  ): () => void;
-}
-
-export const threadStatusDataValueRecordSchema = z.record(
-  statusDataKeySchema,
-  jsonValueSchema,
-);
-
-export const threadStatusDataVersionRecordSchema = z.record(
-  statusDataKeySchema,
-  z.string().min(1),
-);
-
-export const threadStatusDataListResponseSchema = z.object({
-  values: threadStatusDataValueRecordSchema,
-  versions: threadStatusDataVersionRecordSchema,
-  hash: z.string().min(1),
-});
-export type ThreadStatusDataListResponse = z.infer<
-  typeof threadStatusDataListResponseSchema
->;
-
-export const threadStatusDataGetResponseSchema = z.object({
-  key: statusDataKeySchema,
-  value: jsonValueSchema,
-  version: z.string().min(1),
-  sizeBytes: z.number().int().nonnegative(),
-  modifiedAtMs: z.number().nonnegative(),
-});
-export type ThreadStatusDataGetResponse = z.infer<
-  typeof threadStatusDataGetResponseSchema
->;
-
-export const statusStateBroadcastMessageSchema = z.object({
-  type: z.literal("status-data.changed"),
-  threadId: z.string().min(1),
-  key: statusDataKeySchema,
-  value: jsonValueSchema.nullable(),
-  deleted: z.boolean(),
-  previousValue: jsonValueSchema.nullable(),
-  previousValuePresent: z.boolean(),
-  version: z.string().min(1).nullable(),
-  writerClientId: z.string().nullable(),
-  operationId: z.string().nullable(),
-});
-export type StatusStateBroadcastMessage = z.infer<
-  typeof statusStateBroadcastMessageSchema
->;
-
 // Keep app path limits in sync with packages/domain/src/apps.ts and the
 // injected app client validator in app-client-script.ts.
 const appEntryPathSegmentPattern = /^[A-Za-z0-9._-]{1,120}$/u;
@@ -1435,13 +1291,22 @@ export interface BbData {
   write(path: AppDataPath, value: JsonValue): Promise<void>;
   delete(path: AppDataPath): Promise<void>;
   list(prefix?: AppDataPath | ""): Promise<BbDataEntry[]>;
-  onChange(prefix: AppDataPath | "", callback: BbDataChangeCallback): () => void;
+  onChange(
+    prefix: AppDataPath | "",
+    callback: BbDataChangeCallback,
+  ): () => void;
 }
 
 export interface Bb {
   appId: AppId;
   data?: BbData;
   message?(text: string): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    bb?: Bb;
+  }
 }
 
 export const systemExecutionOptionsQuerySchema = z

@@ -1,22 +1,8 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FilePreview } from "@/lib/file-preview";
-import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
-import {
-  MANAGER_STATUS_FILE_PATH,
-  MANAGER_STATUS_HTML_FILE_PATH,
-  MANAGER_STATUS_INDEX_FILE_PATH,
-  MANAGER_STATUS_MARKDOWN_FILE_PATH,
-} from "./managerStorage";
 import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
@@ -134,236 +120,26 @@ describe("ThreadStorageFilePreview", () => {
     expect(screen.queryByText("Empty file.")).toBeNull();
   });
 
-  it("renders raw STATUS html and folder sources in an unsandboxed iframe", async () => {
-    let resolveVersion = (response: Response) => response;
-    const versionResponse = new Promise<Response>((resolve) => {
-      resolveVersion = (response: Response) => {
-        resolve(response);
-        return response;
-      };
-    });
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thr_manager/status-version",
-        handler: () => versionResponse,
-      },
-    ]);
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <ThreadStorageFilePreview
-        activePath={MANAGER_STATUS_FILE_PATH}
-        copyPath="/Users/me/.bb/thread-storage/thr_manager/STATUS"
-        filePreview={undefined}
-        isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
-        threadId="thr_manager"
-      />,
-      { wrapper },
-    );
-
-    expect(container.querySelector("iframe")).toBeNull();
-    expect(screen.queryByText(MANAGER_STATUS_FILE_PATH)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Copy file path" }),
-    ).toBeNull();
-
-    resolveVersion(jsonResponse({ source: "html", hash: "status-hash-1" }));
-
-    await vi.waitFor(() => {
-      const iframe = container.querySelector("iframe");
-      expect(iframe).not.toBeNull();
-      expect(iframe?.getAttribute("src")).toBe(
-        "/api/v1/threads/thr_manager/status/?v=status-hash-1",
-      );
-      expect(iframe?.hasAttribute("sandbox")).toBe(false);
-      expect(iframe?.style.width).toBe("100%");
-      expect(iframe?.style.height).toBe("100%");
-      expect(iframe?.style.border).toBe("0px");
-    });
-    expect(screen.queryByText(MANAGER_STATUS_FILE_PATH)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Copy file path" }),
-    ).toBeNull();
-  });
-
-  it("updates the STATUS iframe src when the polled hash changes", async () => {
-    let requestCount = 0;
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thr_manager/status-version",
-        handler: () => {
-          requestCount += 1;
-          return jsonResponse({
-            source: "folder",
-            hash: requestCount === 1 ? "status-hash-1" : "status-hash-2",
-          });
-        },
-      },
-    ]);
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <ThreadStorageFilePreview
-        activePath={MANAGER_STATUS_FILE_PATH}
-        filePreview={undefined}
-        isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
-        threadId="thr_manager"
-      />,
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
-        "/api/v1/threads/thr_manager/status/?v=status-hash-1",
-      );
-    });
-
-    await waitFor(
-      () => {
-        expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
-          "/api/v1/threads/thr_manager/status/?v=status-hash-2",
-        );
-      },
-      { timeout: 2_500 },
-    );
-  }, 8_000);
-
   it("renders generic storage HTML files through a sandboxed raw iframe", () => {
-    const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
       <ThreadStorageFilePreview
-        activePath="reports/status.html"
+        activePath="reports/preview.html"
         filePreview={makeTextPreview({
           content: "<script>window.preview = true</script>",
-          path: "reports/status.html",
+          path: "reports/preview.html",
         })}
         isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
         threadId="thr_manager"
       />,
-      { wrapper },
     );
 
     const iframe = container.querySelector("iframe");
     expect(iframe).not.toBeNull();
     expect(iframe?.getAttribute("src")).toBe(
-      "/api/v1/threads/thr_manager/thread-storage/files/reports/status.html",
+      "/api/v1/threads/thr_manager/thread-storage/files/reports/preview.html",
     );
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe?.getAttribute("srcdoc")).toBeNull();
-    expect(container.textContent).not.toContain("bbStatusState");
-    expect(container.textContent).not.toContain("bbThreadTell");
-  });
-
-  it.each([
-    MANAGER_STATUS_HTML_FILE_PATH,
-    MANAGER_STATUS_INDEX_FILE_PATH,
-    MANAGER_STATUS_MARKDOWN_FILE_PATH,
-  ])("renders %s through the unified STATUS route", async (activePath) => {
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thr_manager/status-version",
-        handler: () => jsonResponse({ source: "html", hash: "status-hash" }),
-      },
-    ]);
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <ThreadStorageFilePreview
-        activePath={activePath}
-        filePreview={makeTextPreview({
-          content: "# Status",
-          path: activePath,
-        })}
-        isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
-        threadId="thr_manager"
-      />,
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
-        "/api/v1/threads/thr_manager/status/?v=status-hash",
-      );
-    });
-  });
-
-  it("renders STATUS.md directly with relative status assets resolved", async () => {
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thr_manager/status-version",
-        handler: () => jsonResponse({ source: "md", hash: "status-hash" }),
-      },
-      {
-        pathname: "/api/v1/threads/thr_manager/thread-storage/content",
-        handler: (request) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("path")).toBe(
-            MANAGER_STATUS_MARKDOWN_FILE_PATH,
-          );
-          return new Response(
-            "![chart](./chart.png)\n\n[details](details.html)",
-            {
-              headers: { "content-type": "text/markdown" },
-            },
-          );
-        },
-      },
-    ]);
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <ThreadStorageFilePreview
-        activePath={MANAGER_STATUS_MARKDOWN_FILE_PATH}
-        copyPath="/Users/me/.bb/thread-storage/thr_manager/STATUS.md"
-        filePreview={makeTextPreview({
-          content: "# Status",
-          path: MANAGER_STATUS_MARKDOWN_FILE_PATH,
-        })}
-        isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
-        threadId="thr_manager"
-      />,
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: "chart" }).getAttribute("src"),
-      ).toBe("/api/v1/threads/thr_manager/status/chart.png");
-    });
-    expect(
-      screen.getByRole("link", { name: "details" }).getAttribute("href"),
-    ).toBe("/api/v1/threads/thr_manager/status/details.html");
-    expect(
-      screen.queryByRole("tablist", { name: "Markdown view mode" }),
-    ).toBeNull();
-    expect(screen.queryByText(MANAGER_STATUS_MARKDOWN_FILE_PATH)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Copy file path" }),
-    ).toBeNull();
-    expect(container.querySelector("iframe")).toBeNull();
-  });
-
-  it("renders empty STATUS directly", async () => {
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thr_manager/status-version",
-        handler: () => jsonResponse({ source: "empty", hash: "status-hash" }),
-      },
-    ]);
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <ThreadStorageFilePreview
-        activePath={MANAGER_STATUS_FILE_PATH}
-        filePreview={undefined}
-        isLoading={false}
-        pinnedPath={MANAGER_STATUS_FILE_PATH}
-        threadId="thr_manager"
-      />,
-      { wrapper },
-    );
-
-    await screen.findByText("Manager hasn't written a status yet.");
-    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).not.toContain("window.bb");
   });
 });

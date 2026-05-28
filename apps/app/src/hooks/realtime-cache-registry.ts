@@ -50,7 +50,6 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
-  threadStatusVersionQueryKey,
   threadTimelineQueryKeyPrefix,
 } from "./queries/query-keys";
 
@@ -565,7 +564,6 @@ function dirtyThreadStorageQueriesForEnvironment({
     queryKeys.push(threadStorageFilesForThreadQueryKeyPrefix(threadId));
     queryKeys.push(threadStoragePathsForThreadQueryKeyPrefix(threadId));
     queryKeys.push(threadStorageFilePreviewQueryKeyPrefix(threadId));
-    queryKeys.push(threadStatusVersionQueryKey(threadId));
   }
   return queryKeys;
 }

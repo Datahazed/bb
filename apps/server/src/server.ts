@@ -27,7 +27,6 @@ import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
-import { registerInternalStatusDataChangeRoutes } from "./internal/status-data-changes.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
 import {
   setAuthenticatedDaemon,
@@ -117,9 +116,7 @@ function shouldLogSlowApiRequest(args: ShouldLogSlowApiRequestArgs): boolean {
   return !THREAD_EVENT_WAIT_PATH_PATTERN.test(args.path);
 }
 
-function createStaticResponseHeaders(
-  args: StaticResponseHeadersArgs,
-): Headers {
+function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   const headers = new Headers();
   headers.set("content-type", args.contentType);
   headers.set(
@@ -265,7 +262,6 @@ export function createApp(
   registerInternalCommandRoutes(internalApi, deps);
   registerInternalCommandResultRoutes(internalApi, deps);
   registerInternalEnvironmentChangeRoutes(internalApi, deps);
-  registerInternalStatusDataChangeRoutes(internalApi, deps);
   registerInternalAppDataChangeRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);

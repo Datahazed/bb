@@ -1,3 +1,3 @@
 # Changelog
 
-- Removed `bb status-state`; write reactive STATUS JSON directly under `$BB_THREAD_STORAGE/STATUS-data/`.
+- Removed the legacy STATUS system; use the built-in `status` app and `apps/status/data/state.json` for manager status.

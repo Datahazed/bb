@@ -14,9 +14,7 @@ export default {
 function PanelStage({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-[360px] w-full max-w-[460px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background px-4 py-3">
-      <DetailCard
-        className="h-full min-h-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0"
-      >
+      <DetailCard className="h-full min-h-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0">
         {children}
       </DetailCard>
     </div>
@@ -30,7 +28,8 @@ function makeFile(path: string): WorkspaceFile {
 
 const FILES: WorkspaceFile[] = [
   makeFile("ASYNC.md"),
-  makeFile("STATUS.md"),
+  makeFile("apps/status/manifest.json"),
+  makeFile("apps/status/data/state.json"),
   makeFile("PREFERENCES.md"),
 ];
 

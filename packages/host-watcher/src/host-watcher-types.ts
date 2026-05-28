@@ -1,5 +1,5 @@
 import type { HostType } from "@bb/domain";
-import type { AppDataPath, AppId, StatusDataKey } from "@bb/domain";
+import type { AppDataPath, AppId } from "@bb/domain";
 import type { WorkspaceStatusWatchChangeKind } from "./watch-status-types.js";
 
 export type HostObservedChange =
@@ -12,12 +12,6 @@ export type HostObservedChange =
   | {
       kind: "thread-storage-changed";
       environmentId: string;
-      threadId: string;
-    }
-  | {
-      kind: "thread-status-data-changed";
-      environmentId: string;
-      key: StatusDataKey;
       threadId: string;
     }
   | {
@@ -36,10 +30,7 @@ export type WorkspaceObservedChange = Extract<
 export type ThreadStorageObservedChange = Extract<
   HostObservedChange,
   {
-    kind:
-      | "thread-storage-changed"
-      | "thread-status-data-changed"
-      | "thread-app-data-changed";
+    kind: "thread-storage-changed" | "thread-app-data-changed";
   }
 >;
 

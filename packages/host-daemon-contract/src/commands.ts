@@ -17,8 +17,6 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
-  jsonValueSchema,
-  statusDataKeySchema,
 } from "@bb/domain";
 import {
   replayCaptureDaemonListResponseSchema,
@@ -27,7 +25,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 25 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 26 as const;
 
 export const FILE_LIST_QUERY_MAX_LENGTH = 256;
 export const FILE_LIST_LIMIT_MAX = 10_000;
@@ -50,11 +48,6 @@ export const HOST_DAEMON_COMMAND_TYPES = [
   "host.list_branches",
   "host.list_manager_templates",
   "host.file_metadata",
-  "host.status_version",
-  "host.status_data.list",
-  "host.status_data.get",
-  "host.status_data.set",
-  "host.status_data.delete",
   "host.read_file",
   "host.read_file_relative",
   "host.write_file_relative",
@@ -351,103 +344,6 @@ export const hostFileMetadataCommandSchema = z
   })
   .strict();
 
-export const hostStatusVersionSourceSchema = z.enum([
-  "folder",
-  "html",
-  "md",
-  "empty",
-]);
-export type HostStatusVersionSource = z.infer<
-  typeof hostStatusVersionSourceSchema
->;
-
-export const hostStatusVersionFolderSourceSchema = z
-  .object({
-    source: z.literal("folder"),
-    rootPath: z.string().min(1),
-    indexPath: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-export type HostStatusVersionFolderSource = z.infer<
-  typeof hostStatusVersionFolderSourceSchema
->;
-
-export const hostStatusVersionHtmlSourceSchema = z
-  .object({
-    source: z.literal("html"),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-export type HostStatusVersionHtmlSource = z.infer<
-  typeof hostStatusVersionHtmlSourceSchema
->;
-
-export const hostStatusVersionMarkdownSourceSchema = z
-  .object({
-    source: z.literal("md"),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-export type HostStatusVersionMarkdownSource = z.infer<
-  typeof hostStatusVersionMarkdownSourceSchema
->;
-
-export const hostStatusVersionFileSourceSchema = z.union([
-  hostStatusVersionHtmlSourceSchema,
-  hostStatusVersionMarkdownSourceSchema,
-]);
-export type HostStatusVersionFileSource = z.infer<
-  typeof hostStatusVersionFileSourceSchema
->;
-
-export const hostStatusVersionCommandSchema = z
-  .object({
-    type: z.literal("host.status_version"),
-    sources: z.tuple([
-      hostStatusVersionFolderSourceSchema,
-      hostStatusVersionHtmlSourceSchema,
-      hostStatusVersionMarkdownSourceSchema,
-    ]),
-  })
-  .strict();
-
-const hostStatusDataTargetSchema = z.object({
-  threadId: z.string().min(1),
-});
-
-export const hostStatusDataListCommandSchema = hostStatusDataTargetSchema
-  .extend({
-    type: z.literal("host.status_data.list"),
-  })
-  .strict();
-
-export const hostStatusDataGetCommandSchema = hostStatusDataTargetSchema
-  .extend({
-    type: z.literal("host.status_data.get"),
-    key: statusDataKeySchema,
-  })
-  .strict();
-
-export const hostStatusDataSetCommandSchema = hostStatusDataTargetSchema
-  .extend({
-    type: z.literal("host.status_data.set"),
-    key: statusDataKeySchema,
-    value: jsonValueSchema,
-  })
-  .strict();
-
-export const hostStatusDataDeleteCommandSchema = hostStatusDataTargetSchema
-  .extend({
-    type: z.literal("host.status_data.delete"),
-    key: statusDataKeySchema,
-  })
-  .strict();
-
 export const hostListFilesCommandSchema = z.object({
   type: z.literal("host.list_files"),
   path: z.string().min(1),
@@ -677,11 +573,6 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   hostListBranchesCommandSchema,
   hostListManagerTemplatesCommandSchema,
   hostFileMetadataCommandSchema,
-  hostStatusVersionCommandSchema,
-  hostStatusDataListCommandSchema,
-  hostStatusDataGetCommandSchema,
-  hostStatusDataSetCommandSchema,
-  hostStatusDataDeleteCommandSchema,
   hostReadFileCommandSchema,
   hostReadFileRelativeCommandSchema,
   hostWriteFileRelativeCommandSchema,
@@ -715,11 +606,6 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "environment.destroy":
     case "host.list_branches":
     case "host.file_metadata":
-    case "host.status_version":
-    case "host.status_data.list":
-    case "host.status_data.get":
-    case "host.status_data.set":
-    case "host.status_data.delete":
     case "host.list_files":
     case "host.list_paths":
     case "host.list_manager_templates":
@@ -781,96 +667,6 @@ const pathDeleteResultSchema = z.object({
   deleted: z.boolean(),
 });
 
-const statusVersionResultSchema = z.object({
-  source: hostStatusVersionSourceSchema,
-  hash: z.string().min(1),
-});
-
-const statusDataValueRecordSchema = z.record(
-  statusDataKeySchema,
-  jsonValueSchema,
-);
-
-const statusDataVersionRecordSchema = z.record(
-  statusDataKeySchema,
-  z.string().min(1),
-);
-
-const statusDataListResultSchema = z
-  .object({
-    values: statusDataValueRecordSchema,
-    versions: statusDataVersionRecordSchema,
-    hash: z.string().min(1),
-  })
-  .strict();
-
-const statusDataEntryResultSchema = z
-  .object({
-    key: statusDataKeySchema,
-    value: jsonValueSchema,
-    version: z.string().min(1),
-    sizeBytes: z.number().int().nonnegative(),
-    modifiedAtMs: z.number().nonnegative(),
-  })
-  .strict();
-
-const statusDataPreviousValueSchema = z
-  .object({
-    previousValue: jsonValueSchema.nullable(),
-    previousValuePresent: z.boolean(),
-    previousVersion: z.string().min(1).nullable(),
-  })
-  .strict();
-
-interface StatusDataPreviousValueInvariantInput {
-  previousValuePresent: boolean;
-  previousVersion: string | null;
-}
-
-function refineStatusDataPreviousValue(
-  value: StatusDataPreviousValueInvariantInput,
-  context: z.RefinementCtx,
-): void {
-  if (!value.previousValuePresent && value.previousVersion !== null) {
-    context.addIssue({
-      code: "custom",
-      path: ["previousVersion"],
-      message:
-        "previousVersion must be null when previousValuePresent is false",
-    });
-  }
-  if (value.previousValuePresent && value.previousVersion === null) {
-    context.addIssue({
-      code: "custom",
-      path: ["previousVersion"],
-      message: "previousVersion is required when previousValuePresent is true",
-    });
-  }
-}
-
-const statusDataSetResultSchema = statusDataEntryResultSchema
-  .merge(statusDataPreviousValueSchema)
-  .strict()
-  .superRefine(refineStatusDataPreviousValue);
-
-const statusDataDeleteResultSchema = z
-  .object({
-    key: statusDataKeySchema,
-    deleted: z.boolean(),
-  })
-  .merge(statusDataPreviousValueSchema)
-  .strict()
-  .superRefine((value, context) => {
-    refineStatusDataPreviousValue(value, context);
-    if (value.deleted !== value.previousValuePresent) {
-      context.addIssue({
-        code: "custom",
-        path: ["deleted"],
-        message: "deleted must match previousValuePresent",
-      });
-    }
-  });
-
 const fileListResultSchema = z.object({
   files: z.array(z.object({ path: z.string(), name: z.string() })),
   truncated: z.boolean(),
@@ -909,11 +705,6 @@ export const hostDaemonCommandResultSchemaByType = {
   "host.list_files": fileListResultSchema,
   "host.list_paths": pathListResultSchema,
   "host.file_metadata": fileMetadataResultSchema,
-  "host.status_version": statusVersionResultSchema,
-  "host.status_data.list": statusDataListResultSchema,
-  "host.status_data.get": statusDataEntryResultSchema,
-  "host.status_data.set": statusDataSetResultSchema,
-  "host.status_data.delete": statusDataDeleteResultSchema,
   "host.list_branches": projectSourceCheckoutSchema,
   "host.list_manager_templates": z.object({
     /** Sorted alphabetically. Includes only template names that contain at least one regular file. */

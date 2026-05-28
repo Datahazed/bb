@@ -6,7 +6,6 @@ import {
   PROJECT_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
 } from "@bb/domain";
-import type { ThreadStatusVersionResponse } from "@bb/server-contract";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   archivedThreadsListQueryKey,
@@ -22,7 +21,7 @@ import {
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadTerminalsQueryKey,
-  threadStatusVersionQueryKey,
+  threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
@@ -462,32 +461,43 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active status version queries for thread storage changes", async () => {
+  it("refetches active thread storage preview queries for thread storage changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const statusVersionKey = threadStatusVersionQueryKey("thr_1");
-    const initialStatusVersion: ThreadStatusVersionResponse = {
-      source: "folder",
-      hash: "status-old",
+    const storagePreviewKey = threadStorageFilePreviewQueryKey(
+      "thr_1",
+      "notes.md",
+    );
+    const initialStoragePreview = {
+      kind: "text",
+      content: "old",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/old",
     };
-    const nextStatusVersion: ThreadStatusVersionResponse = {
-      source: "folder",
-      hash: "status-new",
+    const nextStoragePreview = {
+      kind: "text",
+      content: "new",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/new",
     };
     queryClient.setQueryData(threadKey, {
       id: "thr_1",
       environmentId: "env-1",
     });
-    queryClient.setQueryData(statusVersionKey, initialStatusVersion);
-    const statusVersionQueryFn = vi.fn(async () => nextStatusVersion);
-    const statusVersionObserver = new QueryObserver(queryClient, {
-      queryKey: statusVersionKey,
-      queryFn: statusVersionQueryFn,
+    queryClient.setQueryData(storagePreviewKey, initialStoragePreview);
+    const storagePreviewQueryFn = vi.fn(async () => nextStoragePreview);
+    const storagePreviewObserver = new QueryObserver(queryClient, {
+      queryKey: storagePreviewKey,
+      queryFn: storagePreviewQueryFn,
       staleTime: Infinity,
     });
-    const unsubscribeStatusVersion = statusVersionObserver.subscribe(() => {});
-    statusVersionQueryFn.mockClear();
+    const unsubscribeStoragePreview = storagePreviewObserver.subscribe(
+      () => {},
+    );
+    storagePreviewQueryFn.mockClear();
 
     effects.handleChanged({
       type: "changed",
@@ -497,12 +507,12 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(statusVersionQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(statusVersionKey)).toEqual(
-      nextStatusVersion,
+    expect(storagePreviewQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(storagePreviewKey)).toEqual(
+      nextStoragePreview,
     );
 
-    unsubscribeStatusVersion();
+    unsubscribeStoragePreview();
     effects.dispose();
   });
 

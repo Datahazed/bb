@@ -401,14 +401,14 @@ describe("CLI command output contracts", () => {
     vi.unstubAllEnvs();
   });
 
-  it("bb guide styling prints the styling chapter", async () => {
+  it("bb guide styling redirects to the app chapter", async () => {
     await runCommand(["guide", "styling"], registerGuideCommand);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output.trim().length).toBeGreaterThan(0);
-    expect(output).toContain("Status styling");
+    expect(output).toContain("Apps");
+    expect(output).toContain("Styling:");
     expect(output).toContain("https://cdn.tailwindcss.com");
-    expect(output).toContain("--background: oklch(0.9551 0 0);");
     expect(output).toContain("@media (prefers-color-scheme: dark)");
   });
 
@@ -434,19 +434,18 @@ describe("CLI command output contracts", () => {
     expect(output).not.toContain("~/.bb/manager-templates");
     expect(output).not.toContain("~/.bb-dev/manager-templates");
     expect(output).toContain("bb manager hire --template sawyer-next");
-    expect(output).toContain("Only top-level regular files are copied");
+    expect(output).toContain("recursively copies every regular file");
   });
 
-  it("bb guide status-state prints the STATUS state chapter", async () => {
-    await runCommand(["guide", "status-state"], registerGuideCommand);
+  it("bb guide app prints the app chapter", async () => {
+    await runCommand(["guide", "app"], registerGuideCommand);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output.trim().length).toBeGreaterThan(0);
-    expect(output).toContain("STATUS state");
-    expect(output).toContain("window.bbStatusState");
-    expect(output).toContain("Sending a message to the manager");
-    expect(output).toContain("window.bbThreadTell(text)");
-    expect(output).toContain("$BB_THREAD_STORAGE/STATUS-data");
+    expect(output).toContain("Apps");
+    expect(output).toContain("apps/status/data/state.json");
+    expect(output).toContain("window.bb.data");
+    expect(output).toContain("bb app list --self");
   });
 
   it("bb guide unknown chapter lists styling in available chapters", async () => {
@@ -457,7 +456,7 @@ describe("CLI command output contracts", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, managers, manager-templates, status-state, providers, projects, hosts, styling, async.",
+      "Available: threads, environments, managers, manager-templates, app, providers, projects, hosts, styling, async.",
     );
   });
 

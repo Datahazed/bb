@@ -1,11 +1,6 @@
-import { Buffer } from "node:buffer";
 import path from "node:path";
 import { listQueuedThreadMessages } from "@bb/db";
-import {
-  FILE_LIST_LIMIT_MAX,
-  type HostDaemonCommand,
-  type HostReadFileRelativeDotfilePolicy,
-} from "@bb/host-daemon-contract";
+import { FILE_LIST_LIMIT_MAX } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
@@ -21,7 +16,6 @@ import {
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
-  type ThreadStatusVersionResponse,
   type ThreadTimelineQuery,
 } from "@bb/server-contract";
 import type {
@@ -43,7 +37,6 @@ import {
 import { queueCommandAndWait } from "../../services/hosts/command-wait.js";
 import {
   createDaemonFileContentResponse,
-  decodeDaemonFileContent,
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../../services/hosts/daemon-file-response.js";
@@ -66,10 +59,6 @@ import {
 import { getLastExecutionOptions } from "../../services/threads/thread-events.js";
 import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
-import {
-  injectStatusStateClientScript,
-  type StatusStateBootstrap,
-} from "../../services/threads/status-state-client-script.js";
 import {
   parseInteger,
   parseOptionalInteger,
@@ -152,41 +141,15 @@ interface RequireThreadStorageTargetArgs {
   threadId: string;
 }
 
-interface ReadThreadStorageStatusFileArgs {
-  target: ThreadStorageTarget;
-  rootPath: string;
-  relativePath: string;
-  dotfiles: HostReadFileRelativeDotfilePolicy;
-}
-
-type HostStatusVersionCommand = Extract<
-  HostDaemonCommand,
-  { type: "host.status_version" }
->;
-
-type StatusAssetPath = SafeRelativeRoutePath;
 type RawFileRoutePath = SafeRelativeRoutePath;
 
-const STATUS_DIRECTORY_NAME = "STATUS";
-const STATUS_INDEX_FILE_PATH = "index.html";
-const STATUS_HTML_FILE_PATH = "STATUS.html";
-const STATUS_MARKDOWN_FILE_PATH = "STATUS.md";
-const STATUS_ROUTE_SEGMENT = "/status/";
 const THREAD_STORAGE_FILE_ROUTE_SEGMENT = "/thread-storage/files/";
 const THREAD_WORKTREE_FILE_ROUTE_SEGMENT = "/worktree/files/";
-const STATUS_NO_STORE_CACHE_CONTROL = "no-store";
-const STATUS_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
-const STATUS_CONTENT_TYPE_OPTIONS = "nosniff";
+const RAW_FILE_NO_STORE_CACHE_CONTROL = "no-store";
+const RAW_FILE_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
+const RAW_FILE_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 const GENERIC_HTML_PREVIEW_CSP = "sandbox allow-scripts";
-const UNUSABLE_STATUS_SOURCE_ERROR_CODES = new Set([
-  "EACCES",
-  "ELOOP",
-  "ENOENT",
-  "ENOTDIR",
-  "EPERM",
-  "invalid_path",
-]);
 
 function parseThreadStorageFileListLimit(rawLimit: string | undefined): number {
   const limit = Math.min(
@@ -283,27 +246,11 @@ export async function requireThreadStorageTarget(
   };
 }
 
-function parseStatusAssetPath(rawPath: string): StatusAssetPath {
-  return parseSafeRelativeRoutePath({
-    rawPath,
-    directoryIndexPath: STATUS_INDEX_FILE_PATH,
-    dotfileSegmentPolicy: "not-found",
-    invalidPathMessage: "Invalid status asset path",
-  });
-}
-
 function parseRawFileRoutePath(rawPath: string): RawFileRoutePath {
   return parseSafeRelativeRoutePath({
     rawPath,
     dotfileSegmentPolicy: "allow",
     invalidPathMessage: "Invalid file path",
-  });
-}
-
-function extractThreadStatusPath(requestUrl: string): string {
-  return extractRoutePath({
-    requestUrl,
-    routeSegment: STATUS_ROUTE_SEGMENT,
   });
 }
 
@@ -314,180 +261,6 @@ function extractRawFileRoutePath(
   return extractRoutePath({
     requestUrl,
     routeSegment,
-  });
-}
-
-function shouldFallbackStatusRead(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    UNUSABLE_STATUS_SOURCE_ERROR_CODES.has(error.body.code)
-  );
-}
-
-function remapStatusAssetReadError(error: unknown): never {
-  if (!(error instanceof ApiError)) {
-    throw error;
-  }
-
-  if (error.body.code === "ENOENT") {
-    throw new ApiError(
-      404,
-      error.body.code,
-      error.body.message,
-      error.body.retryable,
-    );
-  }
-  if (error.body.code === "invalid_path") {
-    throw new ApiError(
-      400,
-      error.body.code,
-      error.body.message,
-      error.body.retryable,
-    );
-  }
-  throw error;
-}
-
-async function readThreadStorageStatusFile(
-  deps: LoggedWorkSessionDeps,
-  args: ReadThreadStorageStatusFileArgs,
-): Promise<DaemonFileReadResult> {
-  return queueCommandAndWait(deps, {
-    hostId: args.target.hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "host.read_file_relative",
-      rootPath: args.rootPath,
-      path: args.relativePath,
-      dotfiles: args.dotfiles,
-    },
-  });
-}
-
-async function tryReadThreadStorageStatusFile(
-  deps: LoggedWorkSessionDeps,
-  args: ReadThreadStorageStatusFileArgs,
-): Promise<DaemonFileReadResult | null> {
-  try {
-    return await readThreadStorageStatusFile(deps, args);
-  } catch (error) {
-    if (shouldFallbackStatusRead(error)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function buildStatusVersionCommand(
-  target: ThreadStorageTarget,
-): HostStatusVersionCommand {
-  return {
-    type: "host.status_version",
-    sources: [
-      {
-        source: "folder",
-        rootPath: path.join(target.storagePath, STATUS_DIRECTORY_NAME),
-        indexPath: STATUS_INDEX_FILE_PATH,
-        dotfiles: "deny",
-      },
-      {
-        source: "html",
-        rootPath: target.storagePath,
-        path: STATUS_HTML_FILE_PATH,
-        dotfiles: "allow",
-      },
-      {
-        source: "md",
-        rootPath: target.storagePath,
-        path: STATUS_MARKDOWN_FILE_PATH,
-        dotfiles: "allow",
-      },
-    ],
-  };
-}
-
-async function readThreadStatusVersion(
-  deps: LoggedWorkSessionDeps,
-  threadId: string,
-): Promise<ThreadStatusVersionResponse> {
-  const target = await requireThreadStorageTarget(deps, { threadId });
-  return queueCommandAndWait(deps, {
-    hostId: target.hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: buildStatusVersionCommand(target),
-  });
-}
-
-function createStatusHtmlResponse(html: string): Response {
-  return new Response(html, {
-    status: 200,
-    headers: {
-      "cache-control": STATUS_NO_STORE_CACHE_CONTROL,
-      "content-type": STATUS_HTML_CONTENT_TYPE,
-      "x-content-type-options": STATUS_CONTENT_TYPE_OPTIONS,
-    },
-  });
-}
-
-function buildStatusStateWebSocketUrl(
-  deps: LoggedWorkSessionDeps,
-  requestUrl: string,
-): string {
-  if (deps.config.isDevelopment) {
-    return `ws://localhost:${deps.config.serverPort}/ws`;
-  }
-  const url = new URL(requestUrl);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/ws";
-  url.search = "";
-  url.hash = "";
-  return url.toString();
-}
-
-function buildStatusStateBootstrap(
-  deps: LoggedWorkSessionDeps,
-  args: {
-    requestUrl: string;
-    threadId: string;
-  },
-): StatusStateBootstrap {
-  return {
-    threadId: args.threadId,
-    listUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-data`,
-    mutationUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-state`,
-    sendMessageUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/send`,
-    wsUrl: buildStatusStateWebSocketUrl(deps, args.requestUrl),
-  };
-}
-
-function createInjectedStatusHtmlResponse(
-  deps: LoggedWorkSessionDeps,
-  args: {
-    html: string;
-    requestUrl: string;
-    threadId: string;
-  },
-): Response {
-  return createStatusHtmlResponse(
-    injectStatusStateClientScript(
-      args.html,
-      buildStatusStateBootstrap(deps, {
-        requestUrl: args.requestUrl,
-        threadId: args.threadId,
-      }),
-    ),
-  );
-}
-
-function createStatusFileResponse(
-  result: DaemonFileReadResult,
-  cacheControl: string,
-): Response {
-  return createDaemonFileContentResponse(result, {
-    headers: {
-      "cache-control": cacheControl,
-      "x-content-type-options": STATUS_CONTENT_TYPE_OPTIONS,
-    },
   });
 }
 
@@ -512,85 +285,14 @@ function createRawFilePreviewResponse(
 ): Response {
   assertHtmlPreviewSize(relativePath, result.sizeBytes);
   const headers = new Headers({
-    "cache-control": STATUS_NO_STORE_CACHE_CONTROL,
-    "x-content-type-options": STATUS_CONTENT_TYPE_OPTIONS,
+    "cache-control": RAW_FILE_NO_STORE_CACHE_CONTROL,
+    "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
   });
   if (isHtmlPreviewPath(relativePath)) {
     headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
-    headers.set("content-type", STATUS_HTML_CONTENT_TYPE);
+    headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
   }
   return createDaemonFileContentResponse(result, { headers });
-}
-
-function decodeDaemonTextFile(result: DaemonFileReadResult): string {
-  return Buffer.from(decodeDaemonFileContent(result)).toString("utf8");
-}
-
-function createStatusNoRawHtmlError(): ApiError {
-  return new ApiError(
-    404,
-    "ENOENT",
-    "No raw manager status HTML source exists",
-  );
-}
-
-async function serveThreadStatusRoot(
-  deps: LoggedWorkSessionDeps,
-  threadId: string,
-  requestUrl: string,
-): Promise<Response> {
-  const target = await requireThreadStorageTarget(deps, { threadId });
-  const statusRootPath = path.join(target.storagePath, STATUS_DIRECTORY_NAME);
-  const statusIndex = await tryReadThreadStorageStatusFile(deps, {
-    target,
-    rootPath: statusRootPath,
-    relativePath: STATUS_INDEX_FILE_PATH,
-    dotfiles: "deny",
-  });
-  if (statusIndex) {
-    return createInjectedStatusHtmlResponse(deps, {
-      requestUrl,
-      threadId,
-      html: decodeDaemonTextFile(statusIndex),
-    });
-  }
-
-  const statusHtml = await tryReadThreadStorageStatusFile(deps, {
-    target,
-    rootPath: target.storagePath,
-    relativePath: STATUS_HTML_FILE_PATH,
-    dotfiles: "allow",
-  });
-  if (statusHtml) {
-    return createInjectedStatusHtmlResponse(deps, {
-      requestUrl,
-      threadId,
-      html: decodeDaemonTextFile(statusHtml),
-    });
-  }
-
-  throw createStatusNoRawHtmlError();
-}
-
-async function serveThreadStatusAsset(
-  deps: LoggedWorkSessionDeps,
-  threadId: string,
-  rawPath: string,
-): Promise<Response> {
-  const assetPath = parseStatusAssetPath(rawPath);
-  const target = await requireThreadStorageTarget(deps, { threadId });
-
-  try {
-    const result = await readThreadStorageStatusFile(deps, {
-      target,
-      rootPath: path.join(target.storagePath, STATUS_DIRECTORY_NAME),
-      relativePath: assetPath.relativePath,
-      dotfiles: "deny",
-    });
-    return createStatusFileResponse(result, STATUS_NO_STORE_CACHE_CONTROL);
-  } catch (error) {
-    return remapStatusAssetReadError(error);
-  }
 }
 
 async function serveThreadStorageRawFile(
@@ -795,39 +497,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     return context.json(getLastExecutionOptions(deps, context.req.param("id")));
   });
 
-  get("/threads/:id/status-version", async (context) => {
-    context.header("cache-control", STATUS_NO_STORE_CACHE_CONTROL);
-    return context.json(
-      await readThreadStatusVersion(deps, context.req.param("id")),
-    );
-  });
-
-  app.get("/threads/:id/status", (context) => {
-    const requestPath = new URL(context.req.url).pathname;
-    return context.redirect(`${requestPath}/`, 308);
-  });
-
-  // This route intentionally sits outside @bb/server-contract: it returns
-  // arbitrary manager-authored HTML/static bytes, including wildcard asset
-  // paths, rather than a typed JSON API response.
-  app.get("/threads/:id/status/", async (context) =>
-    serveThreadStatusRoot(deps, context.req.param("id"), context.req.url),
-  );
-
-  app.get("/threads/:id/status/*", async (context) => {
-    const rawStatusPath = extractThreadStatusPath(context.req.url);
-    if (rawStatusPath.length === 0) {
-      return serveThreadStatusRoot(
-        deps,
-        context.req.param("id"),
-        context.req.url,
-      );
-    }
-    return serveThreadStatusAsset(deps, context.req.param("id"), rawStatusPath);
-  });
-
   // Generic iframe previews use path-shaped raw URLs so relative links resolve
-  // beside the HTML file. Unlike STATUS, these routes never inject bb globals.
+  // beside the HTML file. These routes never inject app bridge globals.
   app.get("/threads/:id/worktree/files/*", async (context) =>
     serveThreadWorktreeRawFile(
       deps,

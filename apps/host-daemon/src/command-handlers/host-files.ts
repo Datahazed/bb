@@ -21,7 +21,6 @@ import {
   writeRootRelativeFile,
 } from "./file-write.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
-import { readHostStatusVersion } from "./status-version.js";
 
 /**
  * Conservative subset of git's ref name grammar. We only need to refuse
@@ -156,8 +155,6 @@ export async function readHostFileMetadata(
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
   });
 }
-
-export { readHostStatusVersion };
 
 export async function readHostRelativeFile(
   command: CommandOf<"host.read_file_relative">,

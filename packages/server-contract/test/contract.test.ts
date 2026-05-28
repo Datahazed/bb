@@ -551,42 +551,6 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("rejects empty STATUS-data broadcast versions", () => {
-    const message = {
-      type: "status-data.changed",
-      threadId: "thr_123",
-      key: "tasks",
-      value: ["one"],
-      deleted: false,
-      previousValue: null,
-      previousValuePresent: false,
-      version: "next-hash",
-      writerClientId: null,
-      operationId: null,
-    };
-
-    expect(contract.statusStateBroadcastMessageSchema.parse(message)).toEqual(
-      message,
-    );
-    expect(
-      contract.statusStateBroadcastMessageSchema.safeParse({
-        ...message,
-        version: "",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.statusStateBroadcastMessageSchema.parse({
-        ...message,
-        deleted: true,
-        value: null,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-  });
-
   it("validates app manifests, icon names, entries, and data broadcasts", () => {
     const manifest = {
       manifestVersion: 1,

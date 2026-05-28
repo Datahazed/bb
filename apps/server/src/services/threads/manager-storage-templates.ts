@@ -94,10 +94,6 @@ const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
   name: DEFAULT_MANAGER_TEMPLATE_NAME,
   files: [
     {
-      fileName: "STATUS.html",
-      content: loadDefaultTemplateAsset("STATUS.html"),
-    },
-    {
       fileName: "apps/status/manifest.json",
       content: loadDefaultTemplateAsset("apps/status/manifest.json"),
     },
@@ -197,7 +193,10 @@ async function copyTemplateFiles(
   await mkdir(args.threadStoragePath, { recursive: true });
 
   for (const file of files) {
-    const destinationPath = path.join(args.threadStoragePath, file.relativePath);
+    const destinationPath = path.join(
+      args.threadStoragePath,
+      file.relativePath,
+    );
     try {
       await mkdir(path.dirname(destinationPath), { recursive: true });
       await copyFile(

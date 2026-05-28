@@ -444,9 +444,6 @@ export type {
 export { jsonObjectSchema, jsonValueSchema } from "./json-value.js";
 export type { JsonObject, JsonValue } from "./json-value.js";
 
-export { statusDataKeySchema } from "./status-data.js";
-export type { StatusDataKey } from "./status-data.js";
-
 export {
   assertThreadEventScope,
   getThreadEventScopeTurnId,

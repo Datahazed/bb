@@ -26,8 +26,6 @@ import {
   useThreadQueuedMessages,
   useThreadPendingInteractions,
   useThreadPromptHistory,
-  useThreadStatusMarkdownPreview,
-  useThreadStatusVersion,
 } from "./thread-queries";
 import {
   hostsQueryKey,
@@ -40,8 +38,6 @@ import {
   threadPromptHistoryQueryKey,
   threadListQueryKey,
   threadQueryKey,
-  threadStatusMarkdownPreviewQueryKey,
-  threadStatusVersionQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
 
@@ -332,10 +328,9 @@ describe("thread query bootstraps", () => {
       queryClient.getQueryData(threadTimelineQueryKey("thread-1", "standard")),
     ).toBeUndefined();
 
-    const timelineResult = renderHook(
-      () => useThreadTimeline("thread-1"),
-      { wrapper },
-    );
+    const timelineResult = renderHook(() => useThreadTimeline("thread-1"), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(timelineResult.result.current.data).toEqual(timeline);
@@ -447,11 +442,7 @@ describe("thread query bootstraps", () => {
               supportsRename: true,
               supportsServiceTier: true,
               supportsUserQuestion: true,
-              supportedPermissionModes: [
-                "full",
-                "workspace-write",
-                "readonly",
-              ],
+              supportedPermissionModes: ["full", "workspace-write", "readonly"],
             },
           },
         ],
@@ -862,88 +853,6 @@ describe("thread prompt history query", () => {
 
     await waitFor(() => {
       expect(route.getSignal()?.aborted).toBe(true);
-    });
-  });
-});
-
-describe("thread status version query", () => {
-  it("polls every two seconds and stops when unmounted", async () => {
-    vi.useFakeTimers();
-    let requestCount = 0;
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thread-1/status-version",
-        handler: () => {
-          requestCount += 1;
-          return jsonResponse({
-            source: "folder",
-            hash: `status-hash-${requestCount}`,
-          });
-        },
-      },
-    ]);
-    const { queryClient, wrapper } = createWrapper();
-
-    const { result, unmount } = renderHook(
-      () => useThreadStatusVersion("thread-1"),
-      { wrapper },
-    );
-
-    await vi.waitFor(() => {
-      expect(result.current.status).toBe("success");
-    });
-    expect(requestCount).toBe(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_000);
-    });
-    expect(requestCount).toBe(2);
-    expect(
-      queryClient.getQueryData(threadStatusVersionQueryKey("thread-1")),
-    ).toEqual({ source: "folder", hash: "status-hash-2" });
-
-    unmount();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_100);
-    });
-    expect(requestCount).toBe(2);
-  });
-});
-
-describe("thread status markdown preview query", () => {
-  it("loads STATUS.md through the existing storage preview route under the status hash", async () => {
-    installFetchRoutes([
-      {
-        pathname: "/api/v1/threads/thread-1/thread-storage/content",
-        handler: (request) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("path")).toBe("STATUS.md");
-          return new Response("# Status\n", {
-            headers: { "content-type": "text/markdown" },
-          });
-        },
-      },
-    ]);
-    const { queryClient, wrapper } = createWrapper();
-
-    const { result } = renderHook(
-      () => useThreadStatusMarkdownPreview("thread-1", "status-hash-1"),
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(result.current.status).toBe("success");
-    });
-    expect(
-      queryClient.getQueryData(
-        threadStatusMarkdownPreviewQueryKey("thread-1", "status-hash-1"),
-      ),
-    ).toMatchObject({
-      kind: "text",
-      content: "# Status\n",
-      mimeType: "text/markdown",
-      path: "STATUS.md",
     });
   });
 });

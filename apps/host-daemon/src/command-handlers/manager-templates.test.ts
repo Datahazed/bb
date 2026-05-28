@@ -32,9 +32,9 @@ async function writeActiveFile(dataDir: string, name: string): Promise<void> {
 
 afterEach(async () => {
   await Promise.all(
-    tempDirs.splice(0).map((dir) =>
-      fs.rm(dir, { recursive: true, force: true }),
-    ),
+    tempDirs
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -52,7 +52,7 @@ describe("listManagerTemplates", () => {
     await writeTemplate({
       dataDir,
       name: "default",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     await fs.mkdir(path.join(dataDir, "manager-templates", "empty-set"), {
       recursive: true,
@@ -68,7 +68,7 @@ describe("listManagerTemplates", () => {
     await writeTemplate({
       dataDir,
       name: "default",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     const root = path.join(dataDir, "manager-templates");
     await fs.writeFile(path.join(root, "stray-file"), "ignored", "utf8");
@@ -85,12 +85,12 @@ describe("listManagerTemplates", () => {
     await writeTemplate({
       dataDir,
       name: "default",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     await writeTemplate({
       dataDir,
       name: "sawyer-next",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     await writeActiveFile(dataDir, "sawyer-next");
     expect(await listManagerTemplates({ dataDir })).toEqual({
@@ -104,7 +104,7 @@ describe("listManagerTemplates", () => {
     await writeTemplate({
       dataDir,
       name: "default",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     await fs.writeFile(
       path.join(dataDir, "manager-templates", "active"),
@@ -122,7 +122,7 @@ describe("listManagerTemplates", () => {
     await writeTemplate({
       dataDir,
       name: "default",
-      files: { "STATUS.html": "ok" },
+      files: { "PREFERENCES.md": "ok" },
     });
     await writeActiveFile(dataDir, "ghost-template");
     expect(await listManagerTemplates({ dataDir })).toEqual({

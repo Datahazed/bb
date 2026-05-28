@@ -76,16 +76,6 @@ async function createSeedHarness(): Promise<SeedHarness> {
   };
 }
 
-async function readBundledStatusTemplate(): Promise<string> {
-  return readFile(
-    new URL(
-      "../../src/services/threads/default-template/STATUS.html",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-}
-
 async function readBundledStatusAppFile(relativePath: string): Promise<string> {
   return readFile(
     new URL(
@@ -156,7 +146,7 @@ describe("manager storage templates", () => {
     }
   });
 
-  it("seeds bundled status when default resolves and no user template directory exists", async () => {
+  it("seeds the bundled status app when default resolves and no user template directory exists", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       const threadStoragePath = await seedStorage({
@@ -167,9 +157,6 @@ describe("manager storage templates", () => {
         threadId: "thr-default-fallback",
       });
 
-      await expect(
-        readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
-      ).resolves.toBe(await readBundledStatusTemplate());
       await expect(
         readFile(
           path.join(threadStoragePath, "apps/status/manifest.json"),
@@ -204,7 +191,7 @@ describe("manager storage templates", () => {
         dataDir,
         name: DEFAULT_MANAGER_TEMPLATE_NAME,
         files: {
-          "STATUS.html": "user status\n",
+          "apps/custom/data/state.json": "{}\n",
           "apps/custom/manifest.json": "{}\n",
           "apps/custom/assets/index.html": "<h1>Custom</h1>\n",
         },
@@ -219,8 +206,11 @@ describe("manager storage templates", () => {
       });
 
       await expect(
-        readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
-      ).resolves.toBe("user status\n");
+        readFile(
+          path.join(threadStoragePath, "apps/custom/data/state.json"),
+          "utf8",
+        ),
+      ).resolves.toBe("{}\n");
       await expect(
         readFile(
           path.join(threadStoragePath, "apps/custom/assets/index.html"),
@@ -335,7 +325,7 @@ describe("manager storage templates", () => {
         dataDir,
         name: MINE_MANAGER_TEMPLATE_NAME,
         files: {
-          "STATUS.html": "mine status\n",
+          "apps/mine/manifest.json": "{}\n",
           "apps/mine/data/state.json": "{}\n",
         },
       });
@@ -349,8 +339,11 @@ describe("manager storage templates", () => {
       });
 
       await expect(
-        readFile(path.join(threadStoragePath, "STATUS.html"), "utf8"),
-      ).resolves.toBe("mine status\n");
+        readFile(
+          path.join(threadStoragePath, "apps/mine/manifest.json"),
+          "utf8",
+        ),
+      ).resolves.toBe("{}\n");
       await expect(
         readFile(
           path.join(threadStoragePath, "apps/mine/data/state.json"),

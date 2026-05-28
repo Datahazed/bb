@@ -14,10 +14,8 @@ import type {
 } from "@bb/host-daemon-contract";
 import {
   appDataBroadcastMessageSchema,
-  statusStateBroadcastMessageSchema,
   terminalServerMessageSchema,
   type AppDataBroadcastMessage,
-  type StatusStateBroadcastMessage,
   type TerminalServerMessage,
 } from "@bb/server-contract";
 import { COMMAND_RESULT_CACHE_TTL_MS } from "../constants.js";
@@ -408,13 +406,6 @@ export class NotificationHub implements DbNotifier {
       }
       this.threadEventWaiters.delete(threadId);
     }
-  }
-
-  notifyThreadStatusData(message: StatusStateBroadcastMessage): void {
-    this.notifyClientsByKey(
-      subKey("thread", `${message.threadId}:status-data`),
-      JSON.stringify(statusStateBroadcastMessageSchema.parse(message)),
-    );
   }
 
   notifyThreadAppData(message: AppDataBroadcastMessage): void {

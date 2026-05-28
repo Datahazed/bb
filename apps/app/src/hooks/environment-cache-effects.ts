@@ -12,7 +12,6 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
-  threadStatusVersionQueryKey,
 } from "./queries/query-keys";
 import type {
   EnvironmentArg,
@@ -105,8 +104,5 @@ export function invalidateThreadStorageQueries({
   });
   queryClient.invalidateQueries({
     queryKey: threadStorageFilePreviewQueryKeyPrefix(threadId),
-  });
-  queryClient.invalidateQueries({
-    queryKey: threadStatusVersionQueryKey(threadId),
   });
 }

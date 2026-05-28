@@ -100,14 +100,9 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("mcp__bb-bridge__message_user");
     expect(rendered).toContain("bb thread spawn");
     expect(rendered).toContain("Simple delegation");
-    expect(rendered).toContain(
-      "Use `STATUS/index.html` when you want a rich multi-asset dashboard",
-    );
-    expect(rendered).toContain("The UI renders HTML status surfaces");
-    expect(rendered).toContain(
-      "Unless otherwise specified, make `STATUS/index.html` or `STATUS.html` styled like bb and use Tailwind.",
-    );
-    expect(rendered).toContain("bb guide styling");
+    expect(rendered).toContain("`apps/status/`");
+    expect(rendered).toContain("apps/status/data/state.json");
+    expect(rendered).toContain("bb guide app");
     expect(rendered).toContain("bb guide async");
     expect(rendered).toContain("bb guide manager-templates");
     expect(rendered).toContain("/tmp/bb-data/manager-templates/");
@@ -140,9 +135,7 @@ describe("@bb/templates", () => {
       fence: "```",
       preferencesContent: "- concise updates\n",
     });
-    expect(updated).toContain(
-      "PREFERENCES.md has been updated. New contents:",
-    );
+    expect(updated).toContain("PREFERENCES.md has been updated. New contents:");
     expect(updated).toContain("- concise updates");
 
     expect(
@@ -174,9 +167,7 @@ describe("@bb/templates", () => {
       "Your first user-facing message must anchor two things up front",
     );
     expect(rendered).toContain("- Manage an individual feature or workstream.");
-    expect(rendered).toContain(
-      "- Manage all coding agents across this repo.",
-    );
+    expect(rendered).toContain("- Manage all coding agents across this repo.");
     expect(rendered).toContain(
       "- Manage a specific process (code review, async triage, releases, ...).",
     );
@@ -186,21 +177,18 @@ describe("@bb/templates", () => {
     );
   });
 
-  it("renders bbGuideStyling", () => {
+  it("renders bbGuideApp", () => {
     const templates = listTemplates();
-    expect(templates.some((template) => template.id === "bbGuideStyling")).toBe(
+    expect(templates.some((template) => template.id === "bbGuideApp")).toBe(
       true,
     );
 
-    const rendered = renderTemplate("bbGuideStyling", {});
+    const rendered = renderTemplate("bbGuideApp", {});
 
-    expect(rendered).toContain("Status styling");
-    expect(rendered).toContain(
-      "For local assets, use the folder form",
-    );
-    expect(rendered).toContain(
-      "Unless the user asks for a different visual direction, make the HTML status",
-    );
+    expect(rendered).toContain("Apps");
+    expect(rendered).toContain("apps/status/data/state.json");
+    expect(rendered).toContain("window.bb.data");
+    expect(rendered).toContain("bb app list --self");
     expect(rendered).toContain(
       '<script src="https://cdn.tailwindcss.com"></script>',
     );
@@ -211,8 +199,7 @@ describe("@bb/templates", () => {
     expect(rendered).toContain(
       "@media (prefers-color-scheme: dark) {\n  :root {",
     );
-    expect(rendered).toContain("--background: oklch(0.195 0 0);");
-    expect(rendered).toContain("--text-base: 0.9375rem;");
+    expect(rendered).toContain("--background: oklch(0.2178 0 0);");
   });
 
   it("renders bbGuideAsync", () => {
@@ -247,7 +234,7 @@ describe("@bb/templates", () => {
     expect(rendered).not.toContain("$HOME/.bb-dev");
     expect(rendered).toContain("bb manager hire --template sawyer-next");
     expect(rendered).toContain("There is no filename\nallowlist");
-    expect(rendered).toContain("Only top-level regular files are copied");
+    expect(rendered).toContain("recursively copies every regular file");
   });
 
   it("renders standardAgentInstructions without user-question guidance", () => {

@@ -18,12 +18,6 @@ export type {
   WorkspaceStatusChangeEvent,
   WorkspaceStatusWatchChangeKind,
 } from "./watch-status-types.js";
-export {
-  parseStatusDataFileName,
-  statusDataFileName,
-  STATUS_DATA_DIRECTORY_NAME,
-  STATUS_DATA_FILE_EXTENSION,
-} from "./status-data-paths.js";
 
 export async function createHostWatcher(
   _args: CreateHostWatcherArgs,

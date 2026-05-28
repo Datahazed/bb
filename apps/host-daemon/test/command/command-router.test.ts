@@ -333,7 +333,7 @@ describe("CommandRouter", () => {
 
   it("reports missing host file reads without warning", async () => {
     const rootPath = await makeTempDir("bb-command-router-read-file-");
-    const missingPath = path.join(rootPath, "STATUS.md");
+    const missingPath = path.join(rootPath, "notes.md");
     const reportResult = vi.fn(async () => undefined);
     const logger = createLogger();
     const router = new CommandRouter({
@@ -350,7 +350,7 @@ describe("CommandRouter", () => {
 
     await router.handleCommands([
       {
-        id: "read-missing-status",
+        id: "read-missing-file",
         cursor: 1,
         command: {
           type: "host.read_file",
@@ -362,7 +362,7 @@ describe("CommandRouter", () => {
 
     expect(reportResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        commandId: "read-missing-status",
+        commandId: "read-missing-file",
         errorCode: "ENOENT",
         errorMessage: `Path does not exist: ${missingPath}`,
         ok: false,
@@ -375,7 +375,7 @@ describe("CommandRouter", () => {
   it("reports missing host file roots without warning", async () => {
     const parentPath = await makeTempDir("bb-command-router-read-file-root-");
     const rootPath = path.join(parentPath, "missing-root");
-    const missingPath = path.join(rootPath, "STATUS.md");
+    const missingPath = path.join(rootPath, "notes.md");
     const reportResult = vi.fn(async () => undefined);
     const logger = createLogger();
     const router = new CommandRouter({
@@ -392,7 +392,7 @@ describe("CommandRouter", () => {
 
     await router.handleCommands([
       {
-        id: "read-missing-root-status",
+        id: "read-missing-root-file",
         cursor: 1,
         command: {
           type: "host.read_file",
@@ -404,7 +404,7 @@ describe("CommandRouter", () => {
 
     expect(reportResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        commandId: "read-missing-root-status",
+        commandId: "read-missing-root-file",
         errorCode: "ENOENT",
         errorMessage: `Path does not exist: ${missingPath}`,
         ok: false,
@@ -416,7 +416,7 @@ describe("CommandRouter", () => {
 
   it("reports missing host relative file reads without warning", async () => {
     const parentPath = await makeTempDir("bb-command-router-relative-file-");
-    const rootPath = path.join(parentPath, "STATUS");
+    const rootPath = path.join(parentPath, "assets");
     const reportResult = vi.fn(async () => undefined);
     const logger = createLogger();
     const router = new CommandRouter({
@@ -703,8 +703,8 @@ describe("CommandRouter", () => {
   });
 
   it("serializes relative host file writes with last-write-wins behavior", async () => {
-    const rootPath = await makeTempDir("bb-command-router-status-data-");
-    const initialContent = "[\"seed\"]\n";
+    const rootPath = await makeTempDir("bb-command-router-app-data-");
+    const initialContent = '["seed"]\n';
     await fs.writeFile(path.join(rootPath, "todos.json"), initialContent);
     const reports: HostDaemonCommandResultReportWithoutSession[] = [];
     const router = new CommandRouter({
@@ -730,7 +730,7 @@ describe("CommandRouter", () => {
           rootPath,
           path: "todos.json",
           dotfiles: "deny",
-          content: "[\"a\"]\n",
+          content: '["a"]\n',
           contentEncoding: "utf8",
         },
       },
@@ -742,7 +742,7 @@ describe("CommandRouter", () => {
           rootPath,
           path: "todos.json",
           dotfiles: "deny",
-          content: "[\"b\"]\n",
+          content: '["b"]\n',
           contentEncoding: "utf8",
         },
       },
@@ -753,7 +753,7 @@ describe("CommandRouter", () => {
     const finalContent = await fs.readFile(path.join(rootPath, "todos.json"), {
       encoding: "utf8",
     });
-    expect(finalContent).toBe("[\"b\"]\n");
+    expect(finalContent).toBe('["b"]\n');
   });
 
   it("flushes buffered provider events before reporting thread command results", async () => {

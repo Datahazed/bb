@@ -57,9 +57,6 @@ import type {
   ThreadStorageContentQuery,
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
-  ThreadStatusVersionResponse,
-  ThreadStatusDataGetResponse,
-  ThreadStatusDataListResponse,
   ProjectAttachmentContentQuery,
   ProjectBranchesQuery,
   ProjectBranchesResponse,
@@ -127,7 +124,6 @@ import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathProjectManagerThreadId = { param: { id: string; threadId: string } };
-type PathThreadStatusDataKey = { param: { id: string; key: string } };
 type PathThreadApp = { param: { id: string; appId: string } };
 
 export type PublicApiSchema = {
@@ -578,18 +574,6 @@ export type PublicApiSchema = {
     /** Returns the last used options for the thread for use as defaults in the UI. */
     $get: Endpoint<PathId, ResolvedThreadExecutionOptions | null>;
   };
-  "/threads/:id/status-version": {
-    /** Get the resolved STATUS source and stat-based content hash for iframe cache busting. */
-    $get: Endpoint<PathId, ThreadStatusVersionResponse>;
-  };
-  "/threads/:id/status-data": {
-    /** List persistent reactive JSON state values for a STATUS dashboard. */
-    $get: Endpoint<PathId, ThreadStatusDataListResponse>;
-  };
-  "/threads/:id/status-data/:key": {
-    /** Read one persistent reactive JSON state value for a STATUS dashboard. */
-    $get: Endpoint<PathThreadStatusDataKey, ThreadStatusDataGetResponse>;
-  };
   "/threads/:id/apps": {
     /** List thread apps by reading validated manifests from thread storage. */
     $get: Endpoint<PathId, AppSummary[]>;
@@ -604,7 +588,10 @@ export type PublicApiSchema = {
   };
   "/threads/:id/apps/:appId/data": {
     /** List JSON value files at or below an app data prefix. */
-    $get: Endpoint<PathThreadApp & { query?: AppDataListQuery }, AppDataListResponse>;
+    $get: Endpoint<
+      PathThreadApp & { query?: AppDataListQuery },
+      AppDataListResponse
+    >;
   };
   "/threads/:id/apps/:appId/data/*": {
     /**

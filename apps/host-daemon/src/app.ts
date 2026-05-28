@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  CommandRouter,
-  isStatusDataSetCommandResultNotification,
-} from "./command-router.js";
+import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
   createEventBuffer,
@@ -35,7 +32,6 @@ import {
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
 import { AppDataChangeReporter } from "./app-data-change-reporter.js";
-import { StatusDataChangeReporter } from "./status-data-change-reporter.js";
 import {
   ServerConnection,
   type CreateReconnectingWebSocket,
@@ -373,11 +369,6 @@ export async function createHostDaemonApp(
     reportEnvironmentChange: (change) =>
       serverClient.postEnvironmentChange(change),
   });
-  const statusDataChangeReporter = new StatusDataChangeReporter({
-    logger: options.logger,
-    postStatusDataChange: (payload) =>
-      serverClient.postStatusDataChange(payload),
-  });
   const appDataChangeReporter = new AppDataChangeReporter({
     logger: options.logger,
     postAppDataChange: (payload) => serverClient.postAppDataChange(payload),
@@ -511,13 +502,6 @@ export async function createHostDaemonApp(
       replayCapture?.recordRuntimeCaptureEntry(entry);
     },
     onEvent: ({ environmentId, event }) => {
-      const threadStatusDataTarget = {
-        threadId: event.threadId,
-        threadStoragePath: path.join(threadStorageRootPath, event.threadId),
-      };
-      statusDataChangeReporter.trackThread({
-        threadId: event.threadId,
-      });
       try {
         eventBuffer.push({
           threadId: event.threadId,
@@ -542,18 +526,12 @@ export async function createHostDaemonApp(
         threadId: event.threadId,
         event,
       });
-      if (event.type === "turn/completed") {
-        void statusDataChangeReporter.reconcileThread(threadStatusDataTarget);
-      }
     },
     onThreadStorageChanged: ({ environmentId }) => {
       environmentChangeReporter.queue({
         environmentId,
         change: "thread-storage-changed",
       });
-    },
-    onThreadStatusDataChanged: (change) => {
-      void statusDataChangeReporter.observe(change);
     },
     onThreadAppDataChanged: (change) => {
       void appDataChangeReporter.observe(change);
@@ -705,21 +683,6 @@ export async function createHostDaemonApp(
       emit: (event) => eventBuffer.push(event),
       flush: () => eventBuffer.flush(),
     },
-    onStatusDataCommandResult: (notification) => {
-      if (isStatusDataSetCommandResultNotification(notification)) {
-        statusDataChangeReporter.recordCommandSet({
-          threadId: notification.command.threadId,
-          key: notification.result.key,
-          value: notification.result.value,
-          version: notification.result.version,
-        });
-        return;
-      }
-      statusDataChangeReporter.recordCommandDelete({
-        threadId: notification.command.threadId,
-        key: notification.result.key,
-      });
-    },
     reportResult: async (report) => {
       await serverClient.reportCommandResult(report);
     },
@@ -757,12 +720,6 @@ export async function createHostDaemonApp(
       runtimeManager.replaceTrackedThreadStorageTargets(
         session.trackedThreadTargets,
       );
-      void statusDataChangeReporter.replaceTrackedThreads({
-        targets: session.trackedThreadTargets.map((target) => ({
-          threadId: target.threadId,
-          threadStoragePath: path.join(threadStorageRootPath, target.threadId),
-        })),
-      });
       void appDataChangeReporter.replaceTrackedThreads({
         targets: session.trackedThreadTargets.map((target) => ({
           threadId: target.threadId,

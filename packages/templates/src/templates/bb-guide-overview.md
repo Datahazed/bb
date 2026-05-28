@@ -39,9 +39,9 @@ Run `bb guide <chapter>` for command details:
   managers       Hiring and managing project managers
   manager-templates
                  Seeding new manager storage from template bundles
-  status-state   Persistent reactive JSON state for STATUS dashboards
+  app            Thread apps, the status app, app data, browser APIs, and styling
   providers      Discovering providers and models
   projects       Project CRUD and sources
   hosts          Listing and understanding hosts
-  styling        How to style STATUS/ and STATUS.html surfaces to match the bb UI
+  styling        Alias for app
   async          Defining scheduled nudges with ASYNC.md

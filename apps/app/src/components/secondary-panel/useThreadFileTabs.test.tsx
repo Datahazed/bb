@@ -17,6 +17,7 @@ import {
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
   serializeFixedPanelTabsState,
+  type AppFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type HostFilePreviewFixedPanelTab,
@@ -25,13 +26,7 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
-import {
-  MANAGER_STATUS_FILE_PATH,
-  MANAGER_STATUS_HTML_FILE_PATH,
-  MANAGER_STATUS_INDEX_FILE_PATH,
-  MANAGER_STATUS_MARKDOWN_FILE_PATH,
-} from "./managerStorage";
-import { useThreadFileTabs } from "./useThreadFileTabs";
+import { STATUS_APP_ID, useThreadFileTabs } from "./useThreadFileTabs";
 
 const NOW = 1_700_000_000_000;
 const WORKING_TREE_SOURCE: EnvironmentFilePreviewSource = {
@@ -119,6 +114,10 @@ function isHostFilePreviewTab(
   return tab.kind === "host-file-preview";
 }
 
+function isAppTab(tab: FixedPanelTab): tab is AppFixedPanelTab {
+  return tab.kind === "app";
+}
+
 function workspaceFileStates(
   tabs: readonly SecondaryFileFixedPanelTab[],
 ): WorkspaceFileTabState[] {
@@ -146,7 +145,11 @@ function storageFilePaths(
 }
 
 function appTabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
-  return tabs.filter((tab) => tab.kind === "app").map((tab) => tab.appId);
+  return tabs.filter(isAppTab).map((tab) => tab.appId);
+}
+
+function tabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
+  return tabs.map((tab) => tab.id);
 }
 
 function workspaceFileTabId(path: string): string {
@@ -159,6 +162,10 @@ function storageFileTabId(path: string): string {
 
 function hostFileTabId(path: string): string {
   return `host-file-preview:${encodeURIComponent(path)}`;
+}
+
+function appTabId(appId: string): string {
+  return `app:${encodeURIComponent(appId)}`;
 }
 
 function newTabId(): string {
@@ -185,7 +192,7 @@ function createStoredStorageTab(
 ): ThreadStorageFilePreviewFixedPanelTab {
   return {
     id: storageFileTabId(path),
-    isPinned: path === MANAGER_STATUS_FILE_PATH,
+    isPinned: false,
     kind: "thread-storage-file-preview",
     path,
   };
@@ -226,9 +233,7 @@ function getStoredStoragePaths(state: FixedPanelTabsState): string[] {
 }
 
 function getStoredAppIds(state: FixedPanelTabsState): string[] {
-  return state.secondary.tabs
-    .filter((tab) => tab.kind === "app")
-    .map((tab) => tab.appId);
+  return state.secondary.tabs.filter(isAppTab).map((tab) => tab.appId);
 }
 
 afterEach(() => {
@@ -309,16 +314,12 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/one.ts");
   });
 
-  it("keeps workspace and storage active tabs mutually exclusive", async () => {
+  it("keeps workspace and storage active tabs mutually exclusive", () => {
     const { result } = renderThreadFileTabsHook({
       environmentId: "env-one",
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
+      storageFiles: [{ path: "notes.md" }],
       threadId: "thr-manager",
-    });
-
-    await waitFor(() => {
-      expect(result.current.activeStorageFilePath).toBe("STATUS");
     });
 
     act(() => {
@@ -383,39 +384,31 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeHostFilePath).toBeNull();
   });
 
-  it("orders file tabs by open order with the pinned status tab first", async () => {
+  it("orders file tabs by open order with the pinned status app first", async () => {
     const { result } = renderThreadFileTabsHook({
+      apps: [{ id: STATUS_APP_ID }],
       environmentId: "env-one",
       threadType: "manager",
-      storageFiles: [{ path: "STATUS.md" }, { path: "notes.md" }],
+      storageFiles: [{ path: "notes.md" }],
       threadId: "thr-manager-open-order",
     });
 
     await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS"],
-      );
+      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+        STATUS_APP_ID,
+      ]);
     });
 
     act(() => {
       result.current.openWorkspaceFile(
         buildWorkspaceFileTab({ lineNumber: null, path: "src/app.ts" }),
       );
-    });
-    act(() => {
       result.current.openStorageFile("notes.md");
-    });
-    act(() => {
       result.current.openHostFile({ lineNumber: null, path: "/tmp/host.md" });
     });
 
-    // notes.md is opened after the workspace file, so it stays after it —
-    // tabs interleave by open order rather than grouping by type, while the
-    // pinned STATUS tab remains first.
-    expect(
-      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
-    ).toEqual([
-      storageFileTabId("STATUS"),
+    expect(tabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+      appTabId(STATUS_APP_ID),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
       hostFileTabId("/tmp/host.md"),
@@ -555,112 +548,37 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeWorkspaceFilePath).toBeNull();
   });
 
-  it("seeds and prunes manager storage tabs", async () => {
+  it("prunes manager storage tabs against the current storage file list", async () => {
     const { result, rerender } = renderThreadFileTabsHook({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
+      storageFiles: [{ path: "notes.md" }, { path: "plan.md" }],
       threadId: "thr-manager",
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS"],
-      );
     });
 
     act(() => {
       result.current.openStorageFile("notes.md");
+      result.current.openStorageFile("plan.md");
     });
     expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual([
-      "STATUS",
       "notes.md",
+      "plan.md",
     ]);
+    expect(result.current.activeStorageFilePath).toBe("plan.md");
 
     rerender({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }],
+      storageFiles: [{ path: "notes.md" }],
       threadId: "thr-manager",
     });
 
     await waitFor(() => {
       expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS"],
+        ["notes.md"],
       );
     });
-    expect(result.current.activeStorageFilePath).toBe("STATUS");
-  });
-
-  it("uses the unified STATUS tab even when STATUS.html is present", async () => {
-    const { result } = renderThreadFileTabsHook({
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [
-        { path: MANAGER_STATUS_MARKDOWN_FILE_PATH },
-        { path: MANAGER_STATUS_HTML_FILE_PATH },
-        { path: "notes.md" },
-      ],
-      threadId: "thr-manager-html-status",
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        [MANAGER_STATUS_FILE_PATH],
-      );
-    });
-    expect(result.current.activeStorageFilePath).toBe(
-      MANAGER_STATUS_FILE_PATH,
-    );
-    expect(result.current.pinnedStorageFilePath).toBe(
-      MANAGER_STATUS_FILE_PATH,
-    );
-
-    act(() => {
-      result.current.openStorageFile(MANAGER_STATUS_HTML_FILE_PATH);
-      result.current.openStorageFile(MANAGER_STATUS_MARKDOWN_FILE_PATH);
-      result.current.openStorageFile(MANAGER_STATUS_INDEX_FILE_PATH);
-    });
-
-    expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual([
-      MANAGER_STATUS_FILE_PATH,
-    ]);
-    expect(result.current.activeStorageFilePath).toBe(
-      MANAGER_STATUS_FILE_PATH,
-    );
-  });
-
-  it("uses STATUS for the pinned manager storage tab without STATUS.html", async () => {
-    const { result } = renderThreadFileTabsHook({
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [{ path: MANAGER_STATUS_MARKDOWN_FILE_PATH }],
-      threadId: "thr-manager-md-status",
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        [MANAGER_STATUS_FILE_PATH],
-      );
-    });
-    expect(result.current.pinnedStorageFilePath).toBe(MANAGER_STATUS_FILE_PATH);
-  });
-
-  it("keeps the STATUS pending tab when no status file exists", async () => {
-    const { result } = renderThreadFileTabsHook({
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [{ path: "notes.md" }],
-      threadId: "thr-manager-no-status",
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        [MANAGER_STATUS_FILE_PATH],
-      );
-    });
-    expect(result.current.activeStorageFilePath).toBe(MANAGER_STATUS_FILE_PATH);
-    expect(result.current.pinnedStorageFilePath).toBe(MANAGER_STATUS_FILE_PATH);
+    expect(result.current.activeStorageFilePath).toBeNull();
   });
 
   it("keeps seeded manager storage tabs while thread type is unresolved", async () => {
@@ -671,7 +589,7 @@ describe("useThreadFileTabs", () => {
       createEmptyFixedPanelTabsState({
         secondary: {
           tabs: [
-            createStoredStorageTab("STATUS"),
+            createStoredStorageTab("overview.md"),
             createStoredStorageTab("notes.md"),
           ],
           activeTabId: storageFileTabId("notes.md"),
@@ -691,7 +609,7 @@ describe("useThreadFileTabs", () => {
       [],
     );
     expect(getStoredStoragePaths(readStoredState(threadId))).toEqual([
-      "STATUS",
+      "overview.md",
       "notes.md",
     ]);
     expect(readStoredState(threadId).secondary.activeTabId).toBe(
@@ -701,13 +619,13 @@ describe("useThreadFileTabs", () => {
     rerender({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
+      storageFiles: [{ path: "overview.md" }, { path: "notes.md" }],
       threadId,
     });
 
     await waitFor(() => {
       expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS", "notes.md"],
+        ["overview.md", "notes.md"],
       );
     });
     expect(result.current.activeStorageFilePath).toBe("notes.md");
@@ -763,7 +681,7 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/app.ts");
   });
 
-  it("seeds the pinned manager tab without stealing active seeded storage", async () => {
+  it("keeps active seeded storage when it remains in the file list", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const threadId = "thr-manager-seeded-active";
     seedStoredState(
@@ -780,52 +698,24 @@ describe("useThreadFileTabs", () => {
     const { result } = renderThreadFileTabsHook({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
+      storageFiles: [{ path: "notes.md" }],
       threadId,
     });
 
     await waitFor(() => {
       expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS", "notes.md"],
+        ["notes.md"],
       );
     });
     expect(result.current.activeStorageFilePath).toBe("notes.md");
   });
 
-  it("keeps the pinned manager storage tab open when close is requested", async () => {
+  it("closes manager storage tabs", () => {
     const { result } = renderThreadFileTabsHook({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }],
-      threadId: "thr-manager-pinned",
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS"],
-      );
-    });
-
-    act(() => {
-      result.current.closeStorageFileTab("STATUS");
-    });
-
-    expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual([
-      "STATUS",
-    ]);
-    expect(result.current.activeStorageFilePath).toBe("STATUS");
-  });
-
-  it("returns to the pinned manager storage tab when the active storage tab closes", async () => {
-    const { result } = renderThreadFileTabsHook({
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
-      threadId: "thr-manager-close-active",
-    });
-
-    await waitFor(() => {
-      expect(result.current.activeStorageFilePath).toBe("STATUS");
+      storageFiles: [{ path: "notes.md" }],
+      threadId: "thr-manager-storage-close",
     });
 
     act(() => {
@@ -837,66 +727,36 @@ describe("useThreadFileTabs", () => {
       result.current.closeStorageFileTab("notes.md");
     });
 
-    await waitFor(() => {
-      expect(result.current.activeStorageFilePath).toBe("STATUS");
-    });
-  });
-
-  it("keeps the pinned manager storage tab when the file list omits it", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(NOW);
-    const threadId = "thr-manager-pinned-omitted";
-    seedStoredState(
-      threadId,
-      createEmptyFixedPanelTabsState({
-        secondary: {
-          tabs: [
-            createStoredStorageTab("STATUS"),
-            createStoredStorageTab("notes.md"),
-          ],
-          activeTabId: storageFileTabId("STATUS"),
-          isOpen: true,
-        },
-        lastUsedAt: NOW,
-      }),
+    expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
+      [],
     );
-    const { result } = renderThreadFileTabsHook({
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [{ path: "notes.md" }],
-      threadId,
-    });
-
-    await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS", "notes.md"],
-      );
-    });
-    expect(result.current.activeStorageFilePath).toBe("STATUS");
-    expect(getStoredStoragePaths(readStoredState(threadId))).toEqual([
-      "STATUS",
-      "notes.md",
-    ]);
+    expect(result.current.activeStorageFilePath).toBeNull();
   });
 
-  it("adds a pinned status app tab alongside the existing manager STATUS tab", async () => {
+  it("opens the status app tab for managers and keeps it pinned", async () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ id: "status" }],
+      apps: [{ id: STATUS_APP_ID }],
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }],
+      storageFiles: undefined,
       threadId: "thr-manager-status-app",
     });
 
     await waitFor(() => {
-      expect(storageFilePaths(result.current.orderedSecondaryFileTabs)).toEqual(
-        ["STATUS"],
-      );
       expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-        "status",
+        STATUS_APP_ID,
       ]);
     });
-    expect(result.current.activeStorageFilePath).toBe("STATUS");
-    expect(result.current.activeAppId).toBeNull();
+    expect(result.current.activeAppId).toBe(STATUS_APP_ID);
+
+    act(() => {
+      result.current.closeAppTab(STATUS_APP_ID);
+    });
+
+    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
+      STATUS_APP_ID,
+    ]);
+    expect(result.current.activeAppId).toBe(STATUS_APP_ID);
   });
 
   it("opens an app tab from launcher search selection", () => {
@@ -923,32 +783,6 @@ describe("useThreadFileTabs", () => {
     expect(getStoredAppIds(readStoredState("thr-app-selection"))).toEqual([
       "demo",
     ]);
-  });
-
-  it("keeps the pinned status app tab open when close is requested", async () => {
-    const { result } = renderThreadFileTabsHook({
-      apps: [{ id: "status" }],
-      environmentId: null,
-      threadType: "manager",
-      storageFiles: [{ path: "STATUS" }],
-      threadId: "thr-manager-status-app-pinned",
-    });
-
-    await waitFor(() => {
-      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-        "status",
-      ]);
-    });
-
-    act(() => {
-      result.current.activateAppTab("status");
-      result.current.closeAppTab("status");
-    });
-
-    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "status",
-    ]);
-    expect(result.current.activeAppId).toBe("status");
   });
 
   it("does not rewrite workspace tabs for no-op callbacks", () => {
@@ -999,7 +833,7 @@ describe("useThreadFileTabs", () => {
       createEmptyFixedPanelTabsState({
         secondary: {
           tabs: [
-            createStoredStorageTab("STATUS"),
+            createStoredStorageTab("overview.md"),
             createStoredStorageTab("notes.md"),
           ],
           activeTabId: storageFileTabId("notes.md"),
@@ -1011,7 +845,7 @@ describe("useThreadFileTabs", () => {
     const { result } = renderThreadFileTabsHook({
       environmentId: null,
       threadType: "manager",
-      storageFiles: [{ path: "STATUS" }, { path: "notes.md" }],
+      storageFiles: [{ path: "overview.md" }, { path: "notes.md" }],
       threadId,
     });
 
@@ -1023,12 +857,12 @@ describe("useThreadFileTabs", () => {
     act(() => {
       result.current.openStorageFile("notes.md");
       result.current.activateStorageFileTab("notes.md");
-      result.current.closeStorageFileTab("STATUS");
+      result.current.closeStorageFileTab("missing.md");
     });
 
     expect(readStoredState(threadId).lastUsedAt).toBe(NOW);
     expect(getStoredStoragePaths(readStoredState(threadId))).toEqual([
-      "STATUS",
+      "overview.md",
       "notes.md",
     ]);
   });
@@ -1039,8 +873,8 @@ describe("useThreadFileTabs", () => {
       threadId,
       createEmptyFixedPanelTabsState({
         secondary: {
-          tabs: [createStoredStorageTab("STATUS")],
-          activeTabId: storageFileTabId("STATUS"),
+          tabs: [createStoredStorageTab("notes.md")],
+          activeTabId: storageFileTabId("notes.md"),
           isOpen: true,
         },
         lastUsedAt: Date.now(),

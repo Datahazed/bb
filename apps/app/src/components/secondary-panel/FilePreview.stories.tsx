@@ -92,7 +92,6 @@ Button.displayName = "Button";
 const README_PATH = "docs/secondary-panel/README.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
-const STATUS_PATH = "agents/manager-42/STATUS.md";
 const SCREENSHOT_PATH = "docs/screenshots/secondary-panel.svg";
 
 const SAMPLE_IMAGE_URL =
@@ -214,17 +213,6 @@ export function Overview() {
             path={README_PATH}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "not-found" }}
-          />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="manager status pending"
-        hint="STATUS.md doesn't exist yet for a freshly-created manager"
-      >
-        <PreviewStage>
-          <FilePreview
-            path={STATUS_PATH}
-            state={{ kind: "manager-status-pending" }}
           />
         </PreviewStage>
       </StoryRow>

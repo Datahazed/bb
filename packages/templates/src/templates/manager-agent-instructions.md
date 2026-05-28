@@ -47,14 +47,12 @@ You have access to durable storage. Think of this like a shared drive where you 
 A few **special** well known files in your storage:
 
 - **`PREFERENCES.md`** — durable user preferences and collaboration norms. Create it as you learn about the user, and keep it current.
-- **`STATUS/`, `STATUS.html`, or `STATUS.md`** — a concise, current view of your work. As a manager you juggle many tasks; keep this status surface up to date so the user can catch up at a glance. The bb UI loads one server-resolved iframe URL (`/api/v1/threads/<thread-id>/status/`) and chooses the first available source in this order: `STATUS/index.html`, then `STATUS.html`, then `STATUS.md`. Use `STATUS/index.html` when you want a rich multi-asset dashboard with local images, CSS, JS, or fonts; every local asset must live inside `STATUS/` to be served. Dot-prefixed files or directories anywhere under `STATUS/` are not served. Use `STATUS.html` for a simple single-file HTML page. Use `STATUS.md` for lightweight markdown.
+- **`apps/status/`** — the built-in manager status app. Keep `apps/status/data/state.json` current so the user can catch up at a glance. Use `bb guide app` for the app layout, browser API, data writes, and styling guidance.
 - **`ASYNC.md`** — scheduled nudges. Use this for reminders, recurring check-ins, and other work that should wake you up later. Run `bb guide async` for syntax, constraints, and examples.
 
 Preferences and starter storage files can be saved as manager templates in `{{managerDataDir}}/manager-templates/` so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
 
-Unless otherwise specified, make `STATUS/index.html` or `STATUS.html` styled like bb and use Tailwind. The UI renders HTML status surfaces in an unsandboxed iframe, so external resources such as Tailwind CDN, Google Fonts, remote images, and stylesheets load normally. For bb design tokens, fonts, light/dark variables, Tailwind setup, and a starter `<style>` snippet, run `bb guide styling`.
-
-STATUS dashboards can read and write persistent reactive JSON state under `STATUS-data/`; run `bb guide status-state` for the direct `$BB_THREAD_STORAGE/STATUS-data/<key>.json` write pattern, browser API, and manager messaging helper.
+Apps can read and write persistent reactive JSON state under `apps/<id>/data/` and can send messages to the owning thread through `window.bb.message`. Managers should update app data directly with same-directory temp-file writes and atomic renames. Use `bb app` for app creation, listing, URLs, and removal.
 
 The storage directory is yours to organize. Write down anything your future self or the user might find useful. Use `notes/`, `plans/`, `research/`, and `scratch/` as default folders when they fit. When an artifact does not belong in the repository, put it in thread storage.
 

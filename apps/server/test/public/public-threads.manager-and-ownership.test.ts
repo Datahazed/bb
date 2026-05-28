@@ -88,7 +88,9 @@ async function writeManagerTemplateSet(
   const templateDir = path.join(args.dataDir, "manager-templates", args.name);
   await mkdir(templateDir, { recursive: true });
   for (const [fileName, content] of Object.entries(args.files)) {
-    await writeFile(path.join(templateDir, fileName), content, "utf8");
+    const filePath = path.join(templateDir, fileName);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, "utf8");
   }
 }
 
@@ -104,8 +106,7 @@ async function respondToNextManagerTemplatesList(
   const queued = await waitForQueuedCommand(
     args.harness,
     ({ command, row }) =>
-      row.state === "pending" &&
-      command.type === "host.list_manager_templates",
+      row.state === "pending" && command.type === "host.list_manager_templates",
   );
   const response = await reportQueuedCommandSuccess(args.harness, queued, {
     templates: args.templates.map((name) => ({ name })),
@@ -484,7 +485,7 @@ describe("public thread manager and ownership routes", () => {
         name: "default",
         files: {
           "PREFERENCES.md": "default prefs\n",
-          "STATUS.html": "default status\n",
+          "apps/status/data/state.json": '{"prs":[]}\n',
         },
       });
 
@@ -518,7 +519,9 @@ describe("public thread manager and ownership routes", () => {
           command.type === "thread.start" && command.threadId === thread.id,
       );
       if (startCommand.command.type !== "thread.start") {
-        throw new Error(`Expected thread.start, got ${startCommand.command.type}`);
+        throw new Error(
+          `Expected thread.start, got ${startCommand.command.type}`,
+        );
       }
       expect(startCommand.command.input[0]).toEqual({
         type: "text",
@@ -540,8 +543,8 @@ describe("public thread manager and ownership routes", () => {
         readFile(path.join(storagePath, "PREFERENCES.md"), "utf8"),
       ).resolves.toBe("default prefs\n");
       await expect(
-        readFile(path.join(storagePath, "STATUS.html"), "utf8"),
-      ).resolves.toBe("default status\n");
+        readFile(path.join(storagePath, "apps/status/data/state.json"), "utf8"),
+      ).resolves.toBe('{"prs":[]}\n');
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
@@ -665,7 +668,9 @@ describe("public thread manager and ownership routes", () => {
         text: "ack prefs test",
       });
       expect(turnSubmit.command.input[1]).not.toHaveProperty("visibility");
-      expect(turnSubmit.command.input.at(-1)).toEqual(managerToolReminderInput());
+      expect(turnSubmit.command.input.at(-1)).toEqual(
+        managerToolReminderInput(),
+      );
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

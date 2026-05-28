@@ -7,7 +7,6 @@ import {
   jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
-  statusDataKeySchema,
   appDataPathSchema,
   appIdSchema,
   terminalColsSchema,
@@ -205,75 +204,6 @@ export const hostDaemonEnvironmentChangeRequestSchema = z.object({
 });
 export type HostDaemonEnvironmentChangeRequest = z.infer<
   typeof hostDaemonEnvironmentChangeRequestSchema
->;
-
-const hostDaemonStatusDataChangePayloadBaseSchema = z
-  .object({
-    threadId: z.string().min(1),
-    key: statusDataKeySchema,
-    value: jsonValueSchema.nullable(),
-    deleted: z.boolean(),
-    previousValue: jsonValueSchema.nullable(),
-    previousValuePresent: z.boolean(),
-    version: z.string().min(1).nullable(),
-    previousVersion: z.string().min(1).nullable(),
-  })
-  .strict();
-type HostDaemonStatusDataChangePayloadBase = z.infer<
-  typeof hostDaemonStatusDataChangePayloadBaseSchema
->;
-
-function validateHostDaemonStatusDataChangePayload(
-  payload: HostDaemonStatusDataChangePayloadBase,
-  context: z.RefinementCtx,
-): void {
-  if (payload.deleted && payload.version !== null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version must be null for deleted STATUS-data changes",
-    });
-  }
-  if (!payload.deleted && payload.version === null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version is required for non-deleted STATUS-data changes",
-    });
-  }
-  if (!payload.previousValuePresent && payload.previousVersion !== null) {
-    context.addIssue({
-      code: "custom",
-      path: ["previousVersion"],
-      message: "previousVersion must be null when previousValuePresent is false",
-    });
-  }
-  if (payload.previousValuePresent && payload.previousVersion === null) {
-    context.addIssue({
-      code: "custom",
-      path: ["previousVersion"],
-      message: "previousVersion is required when previousValuePresent is true",
-    });
-  }
-}
-
-export const hostDaemonStatusDataChangePayloadSchema =
-  hostDaemonStatusDataChangePayloadBaseSchema.superRefine(
-    validateHostDaemonStatusDataChangePayload,
-  );
-export type HostDaemonStatusDataChangePayload = z.infer<
-  typeof hostDaemonStatusDataChangePayloadSchema
->;
-
-export const hostDaemonStatusDataChangeRequestSchema = z
-  .object({
-    sessionId: z.string().min(1),
-    ...hostDaemonStatusDataChangePayloadBaseSchema.shape,
-  })
-  .strict()
-  .superRefine(validateHostDaemonStatusDataChangePayload);
-export type HostDaemonStatusDataChangeRequest = z.infer<
-  typeof hostDaemonStatusDataChangeRequestSchema
 >;
 
 const hostDaemonAppDataChangePayloadBaseSchema = z
@@ -649,10 +579,6 @@ export type HostDaemonInternalSchema = {
   "/session/environment-change": {
     /** Used by the daemon to report raw environment workspace change hints for server-side validation and fan-out. */
     $post: Endpoint<{ json: HostDaemonEnvironmentChangeRequest }, { ok: true }>;
-  };
-  "/session/status-data-change": {
-    /** Used by the daemon to report host-local STATUS-data file changes for server websocket fan-out. */
-    $post: Endpoint<{ json: HostDaemonStatusDataChangeRequest }, { ok: true }>;
   };
   "/session/app-data-change": {
     /** Used by the daemon to report host-local app data file changes for server websocket fan-out. */

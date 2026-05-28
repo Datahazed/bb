@@ -26,7 +26,6 @@ import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
 } from "./ThreadStorageFilePreview";
-import { isManagerStatusStorageFilePath } from "./managerStorage";
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
@@ -100,9 +99,7 @@ export interface HostFilePreviewTabContentProps {
 export interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
-  isManagerThread: boolean;
   onOpenInEditor?: (path: string) => void;
-  pinnedPath: string;
   threadId: string;
 }
 
@@ -362,19 +359,14 @@ export function HostFilePreviewTabContent({
 export function ThreadStorageFilePreviewTabContent({
   activePath,
   copyPath = null,
-  isManagerThread,
   onOpenInEditor,
-  pinnedPath,
   threadId,
 }: ThreadStorageFilePreviewTabContentProps) {
-  const isManagerStatusTab = isManagerStatusStorageFilePath(activePath);
   const {
     data: threadStorageFilePreview,
     error: threadStorageFilePreviewError,
     isLoading: isThreadStorageFilePreviewLoading,
-  } = useThreadStorageFilePreview(threadId, activePath, {
-    enabled: isManagerThread && !isManagerStatusTab,
-  });
+  } = useThreadStorageFilePreview(threadId, activePath);
 
   return (
     <ThreadStorageFilePreview
@@ -384,7 +376,6 @@ export function ThreadStorageFilePreviewTabContent({
       filePreview={threadStorageFilePreview}
       isLoading={isThreadStorageFilePreviewLoading}
       onOpenInEditor={onOpenInEditor}
-      pinnedPath={pinnedPath}
       threadId={threadId}
     />
   );

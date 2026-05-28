@@ -35,7 +35,6 @@ export type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "not-found" }
-  | { kind: "manager-status-pending" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
@@ -221,11 +220,6 @@ function FilePreviewBody({ state, path, viewMode }: FilePreviewBodyProps) {
   }
   if (state.kind === "not-found") {
     return <FilePreviewMessage message="File not found." role="alert" />;
-  }
-  if (state.kind === "manager-status-pending") {
-    return (
-      <FilePreviewMessage message="Manager hasn't written a status yet." />
-    );
   }
   if (state.kind === "error") {
     return (
@@ -460,10 +454,7 @@ function FilePreviewLoading() {
   );
 }
 
-function FilePreviewMessage({
-  message,
-  role,
-}: FilePreviewMessageProps) {
+function FilePreviewMessage({ message, role }: FilePreviewMessageProps) {
   return (
     <p
       role={role}
@@ -474,10 +465,7 @@ function FilePreviewMessage({
   );
 }
 
-function FilePreviewCode({
-  file,
-  lineNumber,
-}: FilePreviewCodeProps) {
+function FilePreviewCode({ file, lineNumber }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const options = useMemo(

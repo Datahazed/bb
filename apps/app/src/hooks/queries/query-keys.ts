@@ -37,13 +37,9 @@ export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
-export const THREAD_STATUS_VERSION_QUERY_KEY = "threadStatusVersion";
-export const THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY =
-  "threadStatusMarkdownPreview";
 export const THREAD_APPS_QUERY_KEY = "threadApps";
 export const THREAD_APP_QUERY_KEY = "threadApp";
-export const THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY =
-  "threadAppMarkdownPreview";
+export const THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY = "threadAppMarkdownPreview";
 export const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
 export const ENVIRONMENT_QUERY_KEY = "environment";
 export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
@@ -257,15 +253,6 @@ export type ThreadStorageFilePreviewQueryKey = readonly [
 export type ThreadStorageFilePreviewQueryKeyPrefix = readonly [
   typeof THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY,
   string,
-];
-export type ThreadStatusVersionQueryKey = readonly [
-  typeof THREAD_STATUS_VERSION_QUERY_KEY,
-  string,
-];
-export type ThreadStatusMarkdownPreviewQueryKey = readonly [
-  typeof THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY,
-  string,
-  string | null | undefined,
 ];
 export type ThreadAppsQueryKey = readonly [
   typeof THREAD_APPS_QUERY_KEY,
@@ -706,19 +693,6 @@ export function threadStorageFilePreviewQueryKeyPrefix(
   threadId: string,
 ): ThreadStorageFilePreviewQueryKeyPrefix {
   return [THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY, threadId];
-}
-
-export function threadStatusVersionQueryKey(
-  threadId: string,
-): ThreadStatusVersionQueryKey {
-  return [THREAD_STATUS_VERSION_QUERY_KEY, threadId];
-}
-
-export function threadStatusMarkdownPreviewQueryKey(
-  threadId: string,
-  versionHash: string | null | undefined,
-): ThreadStatusMarkdownPreviewQueryKey {
-  return [THREAD_STATUS_MARKDOWN_PREVIEW_QUERY_KEY, threadId, versionHash];
 }
 
 export function threadAppsQueryKey(threadId: string): ThreadAppsQueryKey {

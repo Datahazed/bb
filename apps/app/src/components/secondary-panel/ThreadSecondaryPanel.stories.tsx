@@ -208,9 +208,9 @@ export function Overview() {
         hint="leftmost tab is pinned (no close X); other tabs render the close affordance as usual"
       >
         <FileTabsShellRow
-          filenames={["STATUS.md", "useGitDiffPanelState.ts"]}
-          pinnedFilename="STATUS.md"
-          initialActiveFilename="STATUS.md"
+          filenames={["Status", "useGitDiffPanelState.ts"]}
+          pinnedFilename="Status"
+          initialActiveFilename="Status"
         />
       </StoryRow>
       <StoryRow
