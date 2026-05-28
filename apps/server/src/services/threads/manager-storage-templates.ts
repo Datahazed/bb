@@ -15,10 +15,17 @@ import {
 } from "@bb/domain";
 import type { LoggedWorkSessionDeps, ServerLogger } from "../../types.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { buildBlankAppIndexHtml } from "./blank-app-scaffold.js";
 
 export const MANAGER_TEMPLATE_DIR_NAME = "manager-templates";
 export const ACTIVE_MANAGER_TEMPLATE_FILE_NAME = "active";
 export const DEFAULT_MANAGER_TEMPLATE_NAME: ManagerTemplateName = "default";
+
+const BUNDLED_STATUS_APP_NAME = "Status";
+const BUNDLED_STATUS_APP_INDEX_HTML = buildBlankAppIndexHtml({
+  name: BUNDLED_STATUS_APP_NAME,
+});
+const BUNDLED_STATUS_APP_STATE_JSON = "{}\n";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTemplateAssetDir = path.join(moduleDir, "default-template");
@@ -93,6 +100,11 @@ type CopyTemplateFilesResult = "copied" | "missing";
 // working status surface even if the user's template omits these files.
 // User-authored files win because they are copied first and the overlay uses
 // the `wx` flag, which refuses to overwrite existing destinations.
+//
+// The bundled status app shares its index.html with the `bb app new` blank
+// scaffold (via buildBlankAppIndexHtml) so new users open a bb-styled
+// starting-point dashboard they can ask their agent to customize, rather than
+// inheriting any one workflow-specific UI.
 const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
   name: DEFAULT_MANAGER_TEMPLATE_NAME,
   files: [
@@ -102,11 +114,11 @@ const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
     },
     {
       fileName: "apps/status/assets/index.html",
-      content: loadDefaultTemplateAsset("apps/status/assets/index.html"),
+      content: BUNDLED_STATUS_APP_INDEX_HTML,
     },
     {
       fileName: "apps/status/data/state.json",
-      content: loadDefaultTemplateAsset("apps/status/data/state.json"),
+      content: BUNDLED_STATUS_APP_STATE_JSON,
     },
   ],
 };

@@ -18,6 +18,7 @@ import {
   managerTemplateRootPath,
   seedManagerThreadStorage,
 } from "../../src/services/threads/manager-storage-templates.js";
+import { buildBlankAppIndexHtml } from "../../src/services/threads/blank-app-scaffold.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { seedHost } from "../helpers/seed.js";
 import { createTestAppHarness, testLogger } from "../helpers/test-app.js";
@@ -75,15 +76,18 @@ async function createSeedHarness(): Promise<SeedHarness> {
   };
 }
 
-async function readBundledStatusAppFile(relativePath: string): Promise<string> {
+async function readBundledManifestJson(): Promise<string> {
   return readFile(
     new URL(
-      `../../src/services/threads/default-template/apps/status/${relativePath}`,
+      "../../src/services/threads/default-template/apps/status/manifest.json",
       import.meta.url,
     ),
     "utf8",
   );
 }
+
+const BUNDLED_STATUS_INDEX_HTML = buildBlankAppIndexHtml({ name: "Status" });
+const BUNDLED_STATUS_STATE_JSON = "{}\n";
 
 async function expectBundledStatusAppSeeded(
   threadStoragePath: string,
@@ -93,19 +97,19 @@ async function expectBundledStatusAppSeeded(
       path.join(threadStoragePath, "apps/status/manifest.json"),
       "utf8",
     ),
-  ).resolves.toBe(await readBundledStatusAppFile("manifest.json"));
+  ).resolves.toBe(await readBundledManifestJson());
   await expect(
     readFile(
       path.join(threadStoragePath, "apps/status/assets/index.html"),
       "utf8",
     ),
-  ).resolves.toBe(await readBundledStatusAppFile("assets/index.html"));
+  ).resolves.toBe(BUNDLED_STATUS_INDEX_HTML);
   await expect(
     readFile(
       path.join(threadStoragePath, "apps/status/data/state.json"),
       "utf8",
     ),
-  ).resolves.toBe(await readBundledStatusAppFile("data/state.json"));
+  ).resolves.toBe(BUNDLED_STATUS_STATE_JSON);
 }
 
 async function writeManagerTemplateSet(
@@ -248,13 +252,13 @@ describe("manager storage templates", () => {
           path.join(threadStoragePath, "apps/status/assets/index.html"),
           "utf8",
         ),
-      ).resolves.toBe(await readBundledStatusAppFile("assets/index.html"));
+      ).resolves.toBe(BUNDLED_STATUS_INDEX_HTML);
       await expect(
         readFile(
           path.join(threadStoragePath, "apps/status/data/state.json"),
           "utf8",
         ),
-      ).resolves.toBe(await readBundledStatusAppFile("data/state.json"));
+      ).resolves.toBe(BUNDLED_STATUS_STATE_JSON);
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

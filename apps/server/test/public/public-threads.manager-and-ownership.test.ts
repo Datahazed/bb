@@ -1131,7 +1131,7 @@ describe("public thread manager and ownership routes", () => {
       ).resolves.toContain("<title>Status</title>");
       await expect(
         readFile(path.join(storagePath, "apps/status/data/state.json"), "utf8"),
-      ).resolves.toContain('"landingMode": "pr"');
+      ).resolves.toBe("{}\n");
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
