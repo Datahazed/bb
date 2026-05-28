@@ -110,7 +110,6 @@ interface GroupFileSearchSectionsArgs {
 }
 
 interface CreateAppTileProps {
-  disabled: boolean;
   onClick: () => void;
 }
 
@@ -135,6 +134,18 @@ const SECTION_HEADER_CLASS =
   "sticky top-0 z-10 bg-background px-1 pb-2 text-xs font-medium uppercase tracking-wider text-subtle-foreground";
 const LAUNCHER_TILE_BASE_CLASS =
   "group flex w-full min-w-0 items-center gap-3 rounded-md px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const LAUNCHER_TILE_ICON_CLASS =
+  "flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-hairline bg-surface-raised";
+const LAUNCHER_TILE_ICON_CLASS_DASHED =
+  "flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-surface-raised text-muted-foreground group-hover:text-foreground";
+
+function slugifyAppName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 function getAvailableFileSearchSources({
   projectId,
@@ -259,7 +270,7 @@ function AppResultRow({
   const handleSelect = useCallback(() => {
     onSelect(suggestion);
   }, [onSelect, suggestion]);
-  const showAppId = suggestion.appId !== suggestion.name;
+  const showAppId = suggestion.appId !== slugifyAppName(suggestion.name);
 
   return (
     <button
@@ -276,7 +287,7 @@ function AppResultRow({
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-hairline bg-surface-raised">
+      <span className={LAUNCHER_TILE_ICON_CLASS}>
         <ResolvedAppIcon
           icon={suggestion.app.icon}
           className="size-5 text-foreground"
@@ -287,7 +298,7 @@ function AppResultRow({
           {suggestion.name}
         </span>
         {showAppId ? (
-          <span className="truncate text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {suggestion.appId}
           </span>
         ) : null}
@@ -296,26 +307,15 @@ function AppResultRow({
   );
 }
 
-function CreateAppTile({ disabled, onClick }: CreateAppTileProps) {
+function CreateAppTile({ onClick }: CreateAppTileProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      title={
-        disabled
-          ? "Composer is unavailable"
-          : "Prefill the composer with a new-app prompt"
-      }
-      className={cn(
-        LAUNCHER_TILE_BASE_CLASS,
-        "border border-dashed border-border text-muted-foreground",
-        "hover:border-border-hairline hover:bg-state-hover hover:text-foreground",
-        "disabled:pointer-events-none disabled:opacity-50",
-      )}
+      className={cn(LAUNCHER_TILE_BASE_CLASS, "hover:bg-state-hover")}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-surface-raised text-muted-foreground group-hover:text-foreground">
-        <Icon name="Plus" className="size-4" aria-hidden />
+      <span className={LAUNCHER_TILE_ICON_CLASS_DASHED}>
+        <Icon name="Plus" className="size-5" aria-hidden />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-foreground">
@@ -666,7 +666,7 @@ function NewTabResults({
                 appsSection && appsSection.items.length > 0 && "mt-px",
               )}
             >
-              <CreateAppTile disabled={false} onClick={onCreateApp} />
+              <CreateAppTile onClick={onCreateApp} />
             </div>
           ) : null}
         </section>
