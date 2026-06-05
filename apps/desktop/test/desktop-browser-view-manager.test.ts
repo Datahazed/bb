@@ -25,7 +25,21 @@ type FakeWindowOpenHandler = (
 ) => FakeWindowOpenDecision;
 
 const electronMock = vi.hoisted(() => {
+  interface FakeNativeImage {
+    isEmpty(): boolean;
+    toJPEG(quality: number): Buffer;
+  }
+
+  const fakeCapturedImage: FakeNativeImage = {
+    isEmpty: () => false,
+    toJPEG: () => Buffer.from("jpeg-bytes"),
+  };
+
   class FakeWebContents {
+    public readonly pendingCaptureResolvers: Array<
+      (image: FakeNativeImage) => void
+    > = [];
+
     public readonly navigationHistory = {
       canGoBack() {
         return false;
@@ -36,6 +50,12 @@ const electronMock = vi.hoisted(() => {
       goBack() {},
       goForward() {},
     };
+
+    capturePage(): Promise<FakeNativeImage> {
+      return new Promise((resolve) => {
+        this.pendingCaptureResolvers.push(resolve);
+      });
+    }
 
     close(): void {}
 
@@ -85,6 +105,7 @@ const electronMock = vi.hoisted(() => {
   const fakeViews: FakeWebContentsView[] = [];
 
   return {
+    fakeCapturedImage,
     fakeViews,
     FakeWebContentsView: class extends FakeWebContentsView {
       constructor() {
@@ -172,8 +193,33 @@ beforeEach(() => {
   electronMock.fakeViews.length = 0;
 });
 
+/**
+ * Resolve every pending capturePage() on the view and let the snapshot
+ * pipeline (push the bitmap, then hide the view) drain.
+ */
+async function settlePendingCaptures(
+  view: (typeof electronMock.fakeViews)[number],
+): Promise<void> {
+  for (const resolve of view.webContents.pendingCaptureResolvers.splice(0)) {
+    resolve(electronMock.fakeCapturedImage);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function snapshotPushesOf(
+  hostWindow: FakeHostWindow,
+): Array<{ tabId: string; dataUrl: string | null }> {
+  const pushes: Array<{ tabId: string; dataUrl: string | null }> = [];
+  for (const payload of hostWindow.webContents.sentPayloads) {
+    if ("dataUrl" in payload) {
+      pushes.push(payload);
+    }
+  }
+  return pushes;
+}
+
 describe("DesktopBrowserViewManager", () => {
-  it("hides visible views during a window resize and reveals them clamped to the shrunken window", () => {
+  it("snapshots then hides visible views on resize, revealing them clamped to the shrunken window", async () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
     const hostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -204,12 +250,21 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.visible).toBe(true);
 
     // Mid-drag the chrome and the native view cannot stay glued; the view is
-    // hidden for the burst instead of tracking anything.
+    // captured (so the renderer can paint a stand-in) and then hidden for the
+    // burst instead of tracking anything.
     manager.beginWindowResize(hostWindow);
+    await settlePendingCaptures(view);
     expect(view.visible).toBe(false);
+    expect(snapshotPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        dataUrl: `data:image/jpeg;base64,${Buffer.from("jpeg-bytes").toString("base64")}`,
+      },
+    ]);
 
     // The reveal applies bounds before visibility, intersected with the live
-    // window so a shrunken window never shows a spilling view.
+    // window so a shrunken window never shows a spilling view; the null push
+    // then clears the renderer's stand-in.
     hostWindow.contentBounds = { width: 400, height: 300 };
     manager.endWindowResize(hostWindow);
 
@@ -220,10 +275,15 @@ describe("DesktopBrowserViewManager", () => {
       height: 250,
     });
     expect(view.visible).toBe(true);
+    expect(snapshotPushesOf(hostWindow).at(-1)).toEqual({
+      tabId: "browser:a",
+      dataUrl: null,
+    });
 
     // The clamp is non-destructive: growing back re-applies the full
     // renderer-desired rect, not the clamped remnant.
     manager.beginWindowResize(hostWindow);
+    await settlePendingCaptures(view);
     hostWindow.contentBounds = { width: 700, height: 450 };
     manager.endWindowResize(hostWindow);
 
@@ -236,7 +296,44 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.visible).toBe(true);
   });
 
-  it("never grows a view past its renderer-desired rect on a native window grow", () => {
+  it("drops a capture that resolves after the resize burst already ended", async () => {
+    const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 46,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+
+    const view = electronMock.fakeViews[0];
+    expect(view).toBeDefined();
+    if (view === undefined) {
+      throw new Error("Expected the browser view to be created.");
+    }
+
+    // A tap-resize can end the burst before the capture resolves. The live
+    // view is visible again by then; a late bitmap push would linger under it
+    // into the next burst.
+    manager.beginWindowResize(hostWindow);
+    manager.endWindowResize(hostWindow);
+    await settlePendingCaptures(view);
+
+    const bitmapPushes = snapshotPushesOf(hostWindow).filter(
+      (push) => push.dataUrl !== null,
+    );
+    expect(bitmapPushes).toHaveLength(0);
+    expect(view.visible).toBe(true);
+  });
+
+  it("never grows a view past its renderer-desired rect on a native window grow", async () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
     const hostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -263,6 +360,7 @@ describe("DesktopBrowserViewManager", () => {
     // out of its panel; it must hold the renderer-measured rect until the
     // renderer pushes a fresh one.
     manager.beginWindowResize(hostWindow);
+    await settlePendingCaptures(view);
     hostWindow.contentBounds = { width: 900, height: 640 };
     manager.endWindowResize(hostWindow);
 
@@ -274,7 +372,7 @@ describe("DesktopBrowserViewManager", () => {
     });
   });
 
-  it("applies renderer pushes that land mid-resize on the reveal", () => {
+  it("applies renderer pushes that land mid-resize on the reveal", async () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
     const hostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -291,7 +389,14 @@ describe("DesktopBrowserViewManager", () => {
       },
     });
 
+    const view = electronMock.fakeViews[0];
+    expect(view).toBeDefined();
+    if (view === undefined) {
+      throw new Error("Expected the browser view to be created.");
+    }
+
     manager.beginWindowResize(hostWindow);
+    await settlePendingCaptures(view);
     hostWindow.contentBounds = { width: 500, height: 300 };
     manager.setBounds({
       hostWindow,
@@ -302,11 +407,6 @@ describe("DesktopBrowserViewManager", () => {
     });
     manager.endWindowResize(hostWindow);
 
-    const view = electronMock.fakeViews[0];
-    expect(view).toBeDefined();
-    if (view === undefined) {
-      throw new Error("Expected the browser view to be created.");
-    }
     // The reveal intersects the latest renderer rect (not the attach-time one)
     // with the live window.
     expect(view.boundsCalls.at(-1)).toEqual({

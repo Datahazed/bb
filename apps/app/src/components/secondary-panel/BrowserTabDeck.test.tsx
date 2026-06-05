@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
+  BbDesktopBrowserSnapshot,
+  BbDesktopBrowserSnapshotHandler,
   BbDesktopBrowserViewBounds,
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
@@ -27,6 +29,7 @@ interface RecordedBrowserCall {
 interface RecordingBrowserApi {
   api: BbDesktopBrowserApi;
   calls: RecordedBrowserCall[];
+  emitSnapshot: (snapshot: BbDesktopBrowserSnapshot) => void;
 }
 
 const DESKTOP_INFO: BbDesktopInfo = {
@@ -41,6 +44,7 @@ const DESKTOP_INFO: BbDesktopInfo = {
 
 function createRecordingBrowserApi(): RecordingBrowserApi {
   const calls: RecordedBrowserCall[] = [];
+  const snapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
   const api: BbDesktopBrowserApi = {
     attach(request) {
       calls.push({
@@ -92,8 +96,22 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     onOpenTab() {
       return () => {};
     },
+    onSnapshot(listener) {
+      snapshotListeners.add(listener);
+      return () => {
+        snapshotListeners.delete(listener);
+      };
+    },
   };
-  return { api, calls };
+  return {
+    api,
+    calls,
+    emitSnapshot(snapshot) {
+      for (const listener of snapshotListeners) {
+        listener(snapshot);
+      }
+    },
+  };
 }
 
 function installDesktopBrowserApi(browser: BbDesktopBrowserApi): void {
@@ -917,5 +935,37 @@ describe("BrowserTabDeck", () => {
       restoreViewport();
       vi.unstubAllGlobals();
     }
+  });
+
+  it("paints the pushed resize snapshot over the panel and clears it on the null push", () => {
+    const { api, emitSnapshot } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+
+    render(
+      <BrowserTabDeck
+        browserTabs={[TAB_A]}
+        activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
+        isPanelOpen
+        threadId="thr_test"
+        onUpdate={() => {}}
+      />,
+    );
+
+    // While the native view is hidden for a window resize, the pushed bitmap
+    // is the panel's stand-in.
+    const dataUrl = "data:image/jpeg;base64,c25hcA==";
+    act(() => {
+      emitSnapshot({ tabId: TAB_A.id, dataUrl });
+    });
+    const placeholder = document.querySelector("img");
+    expect(placeholder?.getAttribute("src")).toBe(dataUrl);
+
+    // The resize settled and the live view is back: the null push removes the
+    // stand-in underneath it.
+    act(() => {
+      emitSnapshot({ tabId: TAB_A.id, dataUrl: null });
+    });
+    expect(document.querySelector("img")).toBeNull();
   });
 });

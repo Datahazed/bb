@@ -276,6 +276,11 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  // Bitmap stand-in pushed by the desktop main process while the native view
+  // is hidden during a native window resize; null outside resize bursts.
+  const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
+    null,
+  );
 
   // Keep the latest persistence/visit callbacks in refs so the attach effect can
   // run once per tab without re-subscribing when these identities change.
@@ -395,8 +400,18 @@ export function BrowserTabContent({
       }
     });
 
+    // Optional for version skew: an older shell's preload has no snapshot
+    // channel, and the panel falls back to its bare background during resizes.
+    const unsubscribeSnapshot = desktopBrowser.onSnapshot?.((snapshot) => {
+      if (snapshot.tabId !== tabId) {
+        return;
+      }
+      setResizeSnapshotUrl(snapshot.dataUrl);
+    });
+
     return () => {
       unsubscribe();
+      unsubscribeSnapshot?.();
       // The native view survives this unmount. Only explicit tab close/thread
       // deletion owns detach; unmount just disconnects this component's state
       // listener and forgets any stale visibility ownership.
@@ -545,6 +560,18 @@ export function BrowserTabContent({
             onClearRecent={clearRecent}
           />
         )}
+        {hasPage && resizeSnapshotUrl !== null ? (
+          // Stand-in for the hidden native view during a window resize. It
+          // stretches with the panel — part of the chrome's surface, so it
+          // stays glued to the panel however far the chrome paint lags the
+          // drag. The live view overlays it again before it is cleared.
+          <img
+            src={resizeSnapshotUrl}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 size-full"
+          />
+        ) : null}
       </div>
     </div>
   );

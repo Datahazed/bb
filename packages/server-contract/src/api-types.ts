@@ -332,11 +332,42 @@ export type BbDesktopBrowserOpenTabRequest = z.infer<
   typeof bbDesktopBrowserOpenTabRequestSchema
 >;
 
+/**
+ * Upper bound for a snapshot data URL. A JPEG of a full-window view on a 5K
+ * display lands well under this; the cap exists so a misbehaving push can
+ * never balloon renderer memory.
+ */
+export const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
+
+/**
+ * A transient bitmap of a browser view, pushed main → renderer at the start
+ * of a native window resize burst while the native view is hidden (the
+ * independently composited overlay cannot stay visually glued to the chrome
+ * mid-resize). The renderer paints it inside the panel so it scales with the
+ * chrome. `dataUrl: null` clears the placeholder once the resize settles and
+ * the live view is shown again.
+ */
+export const bbDesktopBrowserSnapshotSchema = z
+  .object({
+    tabId: z.string().min(1),
+    dataUrl: z
+      .string()
+      .max(BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH)
+      .nullable(),
+  })
+  .strict();
+export type BbDesktopBrowserSnapshot = z.infer<
+  typeof bbDesktopBrowserSnapshotSchema
+>;
+
 export type BbDesktopBrowserStateHandler = (
   state: BbDesktopBrowserState,
 ) => void;
 export type BbDesktopBrowserOpenTabHandler = (
   request: BbDesktopBrowserOpenTabRequest,
+) => void;
+export type BbDesktopBrowserSnapshotHandler = (
+  snapshot: BbDesktopBrowserSnapshot,
 ) => void;
 export type BbDesktopBrowserUnsubscribe = () => void;
 
@@ -357,6 +388,16 @@ export interface BbDesktopBrowserApi {
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */
   onOpenTab(
     listener: BbDesktopBrowserOpenTabHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  /**
+   * Subscribe to resize-burst snapshot pushes. Optional purely for version
+   * skew: the SPA routinely attaches to an older desktop shell whose preload
+   * predates snapshots (see the wire-freeze note on
+   * {@link bbDesktopBrowserAttachRequestSchema}); callers feature-detect and
+   * fall back to the bare panel background during resizes.
+   */
+  onSnapshot?(
+    listener: BbDesktopBrowserSnapshotHandler,
   ): BbDesktopBrowserUnsubscribe;
 }
 

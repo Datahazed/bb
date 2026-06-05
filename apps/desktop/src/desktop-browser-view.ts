@@ -12,12 +12,14 @@ import {
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
+  type BbDesktopBrowserSnapshot,
   type BbDesktopBrowserState,
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
@@ -31,6 +33,15 @@ import {
 // window, so a hostile page cannot flood the panel with tabs.
 const POPUP_RATE_WINDOW_MS = 10_000;
 const POPUP_RATE_MAX_IN_WINDOW = 3;
+
+/**
+ * At the start of a resize burst the view stays visible until its snapshot
+ * capture resolves (capturing a hidden view is unreliable). This cap bounds
+ * how long a stalled capture may leave the stale view on screen.
+ */
+const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
+/** Placeholder quality: transient, stretched during the drag — favor size. */
+const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
 
 function truncate(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
@@ -66,7 +77,8 @@ interface BrowserViewEntry {
 
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
-  | BbDesktopBrowserOpenTabRequest;
+  | BbDesktopBrowserOpenTabRequest
+  | BbDesktopBrowserSnapshot;
 
 export interface DesktopBrowserHostContentBounds {
   height: number;
@@ -141,18 +153,22 @@ export interface DesktopBrowserViewManager {
    * repaints at its own (much slower) cadence while the native views
    * composite independently — no bounds protocol keeps the two visually
    * glued, so a tracked view bleeds over neighboring UI in one direction or
-   * the other. Hiding the overlay leaves the chrome's own panel background,
-   * which is always painted exactly where the chrome thinks the panel is.
-   * Idempotent per window; renderer visibility changes made while hidden are
-   * recorded and take effect on {@link endWindowResize}.
+   * the other. Each visible view is first captured and the bitmap pushed to
+   * the renderer, which paints it inside the panel as a stand-in that scales
+   * with the chrome; the view hides once its capture resolves (or after
+   * {@link RESIZE_SNAPSHOT_HIDE_CAP_MS}, whichever is first). Idempotent per
+   * window; renderer visibility changes made while hidden are recorded and
+   * take effect on {@link endWindowResize}.
    */
   beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   /**
    * End a resize burst: re-apply each view's renderer-desired bounds clamped
-   * to the live content bounds (bounds land before the view is shown), then
-   * restore renderer-declared visibility. The renderer's own post-resize
-   * re-measure typically lands within the caller's settle delay; if it
-   * arrives later the view nudges once, which is the acceptable residue.
+   * to the live content bounds (bounds land before the view is shown),
+   * restore renderer-declared visibility, then push a null snapshot so the
+   * renderer drops its placeholder (after the reveal, so the swap never
+   * flashes an empty panel). The renderer's own post-resize re-measure
+   * typically lands within the caller's settle delay; if it arrives later the
+   * view nudges once, which is the acceptable residue.
    */
   endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   /**
@@ -258,7 +274,47 @@ export function createDesktopBrowserViewManager(
     entry: BrowserViewEntry,
     hostWindow: DesktopBrowserHostWindow,
   ): void {
+    if (entry.view.webContents.isDestroyed()) {
+      return;
+    }
     entry.view.setVisible(entry.visible && !isHostResizing(hostWindow));
+  }
+
+  /**
+   * Capture the (still visible) view, push the bitmap to the renderer as its
+   * resize placeholder, and only then hide the view. The capture result is
+   * dropped if the burst already ended — the live view is back by then and a
+   * late placeholder would linger under it into the next burst.
+   */
+  function startResizeSnapshot(
+    hostWindow: DesktopBrowserHostWindow,
+    tabId: string,
+    entry: BrowserViewEntry,
+  ): void {
+    const hideCap = setTimeout(() => {
+      applyEntryVisibility(entry, hostWindow);
+    }, RESIZE_SNAPSHOT_HIDE_CAP_MS);
+    entry.view.webContents
+      .capturePage()
+      .then((image) => {
+        if (!isHostResizing(hostWindow) || image.isEmpty()) {
+          return;
+        }
+        const dataUrl = `data:image/jpeg;base64,${image
+          .toJPEG(RESIZE_SNAPSHOT_JPEG_QUALITY)
+          .toString("base64")}`;
+        send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+          tabId,
+          dataUrl,
+        });
+      })
+      .catch(() => {
+        // No placeholder; the renderer's bare panel background shows instead.
+      })
+      .finally(() => {
+        clearTimeout(hideCap);
+        applyEntryVisibility(entry, hostWindow);
+      });
   }
 
   function ensureHardenedSession(): Session {
@@ -505,7 +561,9 @@ export function createDesktopBrowserViewManager(
         if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
           continue;
         }
-        applyEntryVisibility(entry, hostWindow);
+        if (entry.visible) {
+          startResizeSnapshot(hostWindow, key.slice(prefix.length), entry);
+        }
       }
     },
     endWindowResize(hostWindow) {
@@ -522,6 +580,10 @@ export function createDesktopBrowserViewManager(
           applyEntryDesiredBounds(entry, hostWindow);
         }
         applyEntryVisibility(entry, hostWindow);
+        send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+          tabId: key.slice(prefix.length),
+          dataUrl: null,
+        });
       }
     },
     releaseWindow(hostWebContentsId) {

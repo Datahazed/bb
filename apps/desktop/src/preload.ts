@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserOpenTabHandler,
+  type BbDesktopBrowserSnapshotHandler,
   type BbDesktopBrowserStateHandler,
   type BbDesktopBrowserUnsubscribe,
   type BbDesktopInfo,
@@ -30,6 +32,7 @@ import {
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
@@ -91,6 +94,7 @@ async function invokeInstallUpdate(): Promise<void> {
 
 const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
 const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
+const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
 
 const bbBrowserApi: BbDesktopBrowserApi = {
   attach(request): void {
@@ -130,6 +134,12 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     browserOpenTabListeners.add(listener);
     return () => {
       browserOpenTabListeners.delete(listener);
+    };
+  },
+  onSnapshot(listener): BbDesktopBrowserUnsubscribe {
+    browserSnapshotListeners.add(listener);
+    return () => {
+      browserSnapshotListeners.delete(listener);
     };
   },
 };
@@ -195,6 +205,19 @@ ipcRenderer.on(
       return;
     }
     for (const listener of browserOpenTabListeners) {
+      listener(parsed.data);
+    }
+  },
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopBrowserSnapshotSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserSnapshotListeners) {
       listener(parsed.data);
     }
   },
