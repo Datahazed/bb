@@ -112,11 +112,12 @@ function browserViewportBounds(): BbDesktopBrowserViewportBounds {
  * layout coordinate space. This rect is the single placement authority: it is
  * pushed over IPC whenever it changes, at the renderer's own layout cadence
  * (ResizeObserver ticks, window resizes, explicit layout-sync events), so the
- * native overlay always lands where the chrome around it is painted — even
- * when that paint lags a native window edge-drag. The desktop main process
- * never extrapolates placement on its own; it only clamps the last measured
- * rect to the live window so a shrinking window cannot leave the view
- * spilling past the window edge.
+ * native overlay always lands where the chrome around it is painted. The
+ * desktop main process never extrapolates placement on its own: during native
+ * window resize bursts — where no bounds protocol can keep the independently
+ * composited overlay glued to the lagging chrome — it hides the view outright
+ * and reveals it at the latest pushed rect (clamped to the live window) once
+ * the resize settles.
  */
 function browserViewBoundsFromElement(
   args: BrowserViewBoundsFromElementArgs,

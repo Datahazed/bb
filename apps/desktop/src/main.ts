@@ -736,24 +736,52 @@ interface DesktopBrowserWindowLifecycleArgs {
   manager: DesktopBrowserViewManager;
 }
 
+/**
+ * After the last `resize` tick of a burst, wait this long before revealing the
+ * browser views again. Long enough for the renderer's post-resize relayout and
+ * bounds push (~100-150ms on a large window) to land first, short enough that
+ * the overlay does not feel missing once the window is at rest. Manual drags
+ * usually end through the `resized` event instead and never wait this out.
+ */
+const WINDOW_RESIZE_SETTLE_MS = 200;
+
 function registerDesktopBrowserWindowLifecycle({
   browserWindow,
   manager,
 }: DesktopBrowserWindowLifecycleArgs): void {
   const hostWebContentsId = browserWindow.webContents.id;
-  const clampVisibleBounds = () => {
-    manager.clampVisibleBoundsForWindow(browserWindow);
+  let resizeSettleTimer: NodeJS.Timeout | null = null;
+  const endWindowResize = () => {
+    if (resizeSettleTimer !== null) {
+      clearTimeout(resizeSettleTimer);
+      resizeSettleTimer = null;
+    }
+    if (!browserWindow.isDestroyed()) {
+      manager.endWindowResize(browserWindow);
+    }
   };
-  // `resize` fires per tick during an interactive resize, after the bounds
-  // change, so clamping here keeps a shrinking window from leaving views
-  // spilling past its edge. This path never extrapolates placement — the
-  // renderer re-measures and pushes bounds at its own layout cadence, which is
-  // what the chrome around the view actually paints. `will-resize` is
-  // intentionally NOT registered: it fires before the bounds change, so
-  // `getContentBounds()` still reports the old size and clamping would be an
-  // inert duplicate of the work this listener does one event later.
-  browserWindow.on("resize", clampVisibleBounds);
+  // During a native window resize the host chrome repaints at its own (much
+  // slower) cadence while the native browser views composite independently, so
+  // no bounds protocol keeps a view visually inside its panel mid-drag. Hide
+  // the views for the duration of the resize burst — the chrome's own panel
+  // background shows in their place, always exactly where the chrome painted
+  // it — and reveal them at the settled bounds afterwards. `resized` ends a
+  // manual drag immediately on mouse release; the settle timer covers
+  // programmatic resize streams (maximize animations, setBounds), which never
+  // emit `resized`.
+  browserWindow.on("resize", () => {
+    manager.beginWindowResize(browserWindow);
+    if (resizeSettleTimer !== null) {
+      clearTimeout(resizeSettleTimer);
+    }
+    resizeSettleTimer = setTimeout(endWindowResize, WINDOW_RESIZE_SETTLE_MS);
+  });
+  browserWindow.on("resized", endWindowResize);
   browserWindow.once("closed", () => {
+    if (resizeSettleTimer !== null) {
+      clearTimeout(resizeSettleTimer);
+      resizeSettleTimer = null;
+    }
     manager.releaseWindow(hostWebContentsId);
   });
 }

@@ -136,16 +136,25 @@ export interface DesktopBrowserViewManager {
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
   /**
-   * Re-clamp each visible view's renderer-desired bounds against the live
-   * BrowserWindow content size. Called from native resize events so a
-   * shrinking window never leaves a view spilling past the window edge. This
-   * path only ever intersects with the window — it never extrapolates new
-   * placement, because the renderer's chrome paints at its own (possibly
-   * lagging) layout cadence and a view stretched ahead of that chrome visibly
-   * breaks out of its panel. The renderer re-measures and pushes fresh bounds
-   * as its layout catches up.
+   * Hide every visible view owned by the window for the duration of a native
+   * resize burst. During an interactive window resize the host chrome
+   * repaints at its own (much slower) cadence while the native views
+   * composite independently — no bounds protocol keeps the two visually
+   * glued, so a tracked view bleeds over neighboring UI in one direction or
+   * the other. Hiding the overlay leaves the chrome's own panel background,
+   * which is always painted exactly where the chrome thinks the panel is.
+   * Idempotent per window; renderer visibility changes made while hidden are
+   * recorded and take effect on {@link endWindowResize}.
    */
-  clampVisibleBoundsForWindow(hostWindow: DesktopBrowserHostWindow): void;
+  beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
+  /**
+   * End a resize burst: re-apply each view's renderer-desired bounds clamped
+   * to the live content bounds (bounds land before the view is shown), then
+   * restore renderer-declared visibility. The renderer's own post-resize
+   * re-measure typically lands within the caller's settle delay; if it
+   * arrives later the view nudges once, which is the acceptable residue.
+   */
+  endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   /**
    * Drop every view owned by a closed host window. Keyed by the host
    * `webContents.id` because the host `BrowserWindow` (and its child views) are
@@ -236,7 +245,21 @@ export function createDesktopBrowserViewManager(
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
+  // Host webContents ids with a native resize burst in flight: views of these
+  // windows stay hidden regardless of renderer-declared visibility.
+  const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
+
+  function isHostResizing(hostWindow: DesktopBrowserHostWindow): boolean {
+    return resizingHostIds.has(hostWindow.webContents.id);
+  }
+
+  function applyEntryVisibility(
+    entry: BrowserViewEntry,
+    hostWindow: DesktopBrowserHostWindow,
+  ): void {
+    entry.view.setVisible(entry.visible && !isHostResizing(hostWindow));
+  }
 
   function ensureHardenedSession(): Session {
     if (hardenedSession !== null) {
@@ -425,7 +448,7 @@ export function createDesktopBrowserViewManager(
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
-      entry.view.setVisible(entry.visible);
+      applyEntryVisibility(entry, hostWindow);
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },
@@ -469,23 +492,40 @@ export function createDesktopBrowserViewManager(
     setVisible({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         entry.visible = request.visible;
-        entry.view.setVisible(entry.visible);
+        applyEntryVisibility(entry, hostWindow);
       });
     },
-    clampVisibleBoundsForWindow(hostWindow) {
+    beginWindowResize(hostWindow) {
+      if (isHostResizing(hostWindow)) {
+        return;
+      }
+      resizingHostIds.add(hostWindow.webContents.id);
       const prefix = `${hostWindow.webContents.id}:`;
       for (const [key, entry] of entries.entries()) {
-        if (
-          !key.startsWith(prefix) ||
-          !entry.visible ||
-          entry.view.webContents.isDestroyed()
-        ) {
+        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
           continue;
         }
-        applyEntryDesiredBounds(entry, hostWindow);
+        applyEntryVisibility(entry, hostWindow);
+      }
+    },
+    endWindowResize(hostWindow) {
+      if (!isHostResizing(hostWindow)) {
+        return;
+      }
+      resizingHostIds.delete(hostWindow.webContents.id);
+      const prefix = `${hostWindow.webContents.id}:`;
+      for (const [key, entry] of entries.entries()) {
+        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
+          continue;
+        }
+        if (entry.visible) {
+          applyEntryDesiredBounds(entry, hostWindow);
+        }
+        applyEntryVisibility(entry, hostWindow);
       }
     },
     releaseWindow(hostWebContentsId) {
+      resizingHostIds.delete(hostWebContentsId);
       const prefix = `${hostWebContentsId}:`;
       for (const [key, entry] of [...entries.entries()]) {
         if (!key.startsWith(prefix)) {
@@ -498,6 +538,7 @@ export function createDesktopBrowserViewManager(
       }
     },
     destroyAll() {
+      resizingHostIds.clear();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         if (!entry.view.webContents.isDestroyed()) {
