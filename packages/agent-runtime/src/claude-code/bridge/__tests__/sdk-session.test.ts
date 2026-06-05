@@ -170,14 +170,13 @@ describe("SdkSession", () => {
     );
   });
 
-  it("forwards local plugins and enabled skills to the SDK when configured", () => {
+  it("forwards local plugins to the SDK without a skills allowlist", () => {
     const onMessage = vi.fn();
     const onDone = vi.fn();
     const session = new SdkSession(
       {
         ...defaultOptions,
         plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-        skills: ["bb-cli"],
       },
       onMessage,
       onDone,
@@ -189,10 +188,12 @@ describe("SdkSession", () => {
       expect.objectContaining({
         options: expect.objectContaining({
           plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-          skills: ["bb-cli"],
         }),
       }),
     );
+    // The SDK `skills` option is an allowlist: setting it would hide every
+    // skill the user installed outside bb (~/.claude, plugins, built-ins).
+    expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty("skills");
   });
 
   it("mirrors the Claude CLI settings cascade so user, project, and local settings all load", () => {

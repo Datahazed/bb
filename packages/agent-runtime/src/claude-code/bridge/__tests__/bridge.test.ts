@@ -603,7 +603,7 @@ describe("bridge", () => {
     });
   });
 
-  it("passes Claude local plugins and skills through to the session", () => {
+  it("passes Claude local plugins through to the session", () => {
     const options = buildSessionOptions(
       {
         workflowsEnabled: false,
@@ -613,7 +613,6 @@ describe("bridge", () => {
         permissionEscalation: "ask",
         permissionMode: "default",
         plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-        skills: ["bb-cli"],
       },
       {},
     );
@@ -621,7 +620,7 @@ describe("bridge", () => {
     expect(options.plugins).toEqual([
       { type: "local", path: "/tmp/bb-skills" },
     ]);
-    expect(options.skills).toEqual(["bb-cli"]);
+    expect(options).not.toHaveProperty("skills");
   });
 
   it("passes the resolved Claude permission mode through to the session", () => {

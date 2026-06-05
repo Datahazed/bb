@@ -27,7 +27,6 @@ export interface AgentRuntimeClaudeCodeSkillRoot {
   id: string;
   providerId: "claude-code";
   localPluginPath: string;
-  skillNames?: readonly string[];
 }
 
 export interface AgentRuntimePiSkillRoot {

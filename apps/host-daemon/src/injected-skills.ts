@@ -85,7 +85,6 @@ interface WriteStageRootArgs {
 
 interface BuildSkillRootsArgs {
   catalogHash: string;
-  skillNames: readonly string[];
   stageRootPath: string;
 }
 
@@ -432,9 +431,6 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
 }
 
 function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
-  if (args.skillNames.length === 0) {
-    return [];
-  }
   return [
     {
       id: `global-skills:${args.catalogHash}:codex`,
@@ -445,7 +441,6 @@ function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
       id: `global-skills:${args.catalogHash}:claude-code`,
       providerId: "claude-code",
       localPluginPath: args.stageRootPath,
-      skillNames: [...args.skillNames],
     },
   ];
 }
@@ -499,12 +494,10 @@ export async function stageInjectedSkillSources(
     dataDir: args.dataDir,
     trees: sortedTrees,
   });
-  const skillNames = sortedTrees.map((tree) => tree.source.name);
   return {
     catalogHash,
     skillRoots: buildSkillRoots({
       catalogHash,
-      skillNames,
       stageRootPath,
     }),
   };

@@ -131,7 +131,6 @@ describe("injected skill staging", () => {
         "global-skills",
         staged.catalogHash,
       ),
-      skillNames: ["release-notes"],
     });
 
     if (!claudeRoot) {
@@ -192,7 +191,14 @@ describe("injected skill staging", () => {
     if (!claudeRoot) {
       throw new Error("Expected Claude Code skill root");
     }
-    expect(claudeRoot.skillNames).toEqual(["building-bb-apps"]);
+    await expect(
+      readFile(
+        path.join(claudeRoot.localPluginPath, ".claude-plugin", "plugin.json"),
+        "utf8",
+      ).then((content) => JSON.parse(content)),
+    ).resolves.toMatchObject({
+      skills: ["./skills/building-bb-apps"],
+    });
     await expect(
       readFile(
         path.join(claudeRoot.localPluginPath, "catalog.json"),

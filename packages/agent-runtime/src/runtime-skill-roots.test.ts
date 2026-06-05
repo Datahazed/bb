@@ -18,7 +18,6 @@ describe("runtime skill roots", () => {
           id: "claude-root",
           providerId: "claude-code",
           localPluginPath: "/tmp/claude-plugin",
-          skillNames: ["bb-cli"],
         },
         {
           id: "pi-root",
@@ -38,7 +37,6 @@ describe("runtime skill roots", () => {
         id: "claude-root",
         providerId: "claude-code",
         localPluginPath: "/tmp/claude-plugin",
-        skillNames: ["bb-cli"],
       },
       {
         id: "pi-root",

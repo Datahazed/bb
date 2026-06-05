@@ -371,7 +371,6 @@ describe("RuntimeManager", () => {
           "global-skills",
           entry.skillCatalogHash ?? "",
         ),
-        skillNames: ["release-notes"],
       },
     ]);
   });

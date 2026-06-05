@@ -96,7 +96,6 @@ function createClaudeSkillPlugin(
     id: skillName,
     providerId: "claude-code",
     localPluginPath: pluginDir,
-    skillNames: [skillName],
   };
 }
 

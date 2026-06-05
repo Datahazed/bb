@@ -69,9 +69,6 @@ function normalizeClaudeCodeSkillRoot(
     id: skillRoot.id,
     providerId: skillRoot.providerId,
     localPluginPath: skillRoot.localPluginPath,
-    ...(skillRoot.skillNames && skillRoot.skillNames.length > 0
-      ? { skillNames: [...skillRoot.skillNames] }
-      : {}),
   };
 }
 

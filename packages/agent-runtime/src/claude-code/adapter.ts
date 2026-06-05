@@ -152,7 +152,6 @@ interface ClaudeLocalPluginConfig {
 
 interface ClaudeSkillConfigParams {
   plugins: ClaudeLocalPluginConfig[];
-  skills?: string[];
 }
 
 interface ClaudeSkillConfigEntryArgs {
@@ -181,6 +180,12 @@ function buildClaudeSkillConfigEntry(
   };
 }
 
+/**
+ * Injected skill roots load as local plugins only. Never pass the SDK `skills`
+ * option here: it is a session-wide allowlist, so listing the injected skills
+ * would hide and reject every other skill the user has installed (~/.claude,
+ * plugins, built-ins). Plugin skills are enabled by CLI defaults.
+ */
 function buildClaudeSkillConfigParams(
   skillRoots: ProviderExecutionContext["skillRoots"],
 ): ClaudeSkillConfigParams | undefined {
@@ -188,19 +193,10 @@ function buildClaudeSkillConfigParams(
     return undefined;
   }
 
-  const plugins: ClaudeLocalPluginConfig[] = [];
-  const skillNames: string[] = [];
-  for (const skillRoot of skillRoots) {
-    plugins.push(buildClaudeSkillConfigEntry({ skillRoot }));
-    if (skillRoot.providerId === "claude-code" && skillRoot.skillNames) {
-      skillNames.push(...skillRoot.skillNames);
-    }
-  }
-  const distinctSkillNames = [...new Set(skillNames)];
-
   return {
-    plugins,
-    ...(distinctSkillNames.length > 0 ? { skills: distinctSkillNames } : {}),
+    plugins: skillRoots.map((skillRoot) =>
+      buildClaudeSkillConfigEntry({ skillRoot }),
+    ),
   };
 }
 

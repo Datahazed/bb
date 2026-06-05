@@ -326,7 +326,7 @@ describe("claude-code provider adapter", () => {
     expect(resume?.params).toMatchObject({ workflowsEnabled: false });
   });
 
-  it("buildCommand thread/start maps skill roots to Claude local plugins and skills", () => {
+  it("buildCommand thread/start maps skill roots to Claude local plugins without a skills allowlist", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({
       type: "thread/start",
@@ -341,7 +341,6 @@ describe("claude-code provider adapter", () => {
             id: "bb-cli",
             providerId: "claude-code",
             localPluginPath: "/tmp/bb-skills",
-            skillNames: ["bb-cli"],
           },
           {
             id: "repo-tools",
@@ -357,8 +356,9 @@ describe("claude-code provider adapter", () => {
         { type: "local", path: "/tmp/bb-skills" },
         { type: "local", path: "/tmp/repo-skills" },
       ],
-      skills: ["bb-cli"],
     });
+    // A skills allowlist would hide every skill the user installed themselves.
+    expect(cmd?.params).not.toHaveProperty("skills");
   });
 
   it("buildCommand thread/start includes construction-level workspace-write roots", () => {

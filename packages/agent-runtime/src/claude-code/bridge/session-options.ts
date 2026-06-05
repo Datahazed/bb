@@ -21,7 +21,6 @@ export interface BuildSessionOptionsArgs {
   permissionMode: ClaudePermissionMode;
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
-  skills?: Options["skills"];
   workflowsEnabled: boolean;
 }
 
@@ -246,7 +245,6 @@ export function buildSessionOptions(
     ...(flagSettings ? { settings: flagSettings } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
-    ...(params.skills ? { skills: params.skills } : {}),
     ...(sandbox ? { sandbox } : {}),
     ...(hooks ? { hooks } : {}),
     ...(additionalDirectories.length > 0
