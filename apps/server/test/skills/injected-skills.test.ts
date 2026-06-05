@@ -4,17 +4,19 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveApplicationPath } from "@bb/config/app-storage-paths";
 import { applicationIdSchema, type ApplicationId } from "@bb/domain";
+import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import { resolveInjectedSkillSources } from "../../src/services/skills/injected-skills.js";
 import type { ServerLogger } from "../../src/types.js";
 
-interface CapturedWarning {
+interface CapturedLog {
   context: object;
   message: string;
 }
 
 interface CapturingLogger {
+  infos: CapturedLog[];
   logger: ServerLogger;
-  warnings: CapturedWarning[];
+  warnings: CapturedLog[];
 }
 
 interface WriteSkillArgs {
@@ -43,28 +45,32 @@ afterEach(async () => {
 });
 
 function createCapturingLogger(): CapturingLogger {
-  const warnings: CapturedWarning[] = [];
-  function captureWarning(...args: Parameters<ServerLogger["warn"]>): void {
-    const firstArg = args[0];
-    const secondArg = args[1];
-    warnings.push({
-      context:
-        typeof firstArg === "object" && firstArg !== null ? firstArg : {},
-      message:
-        typeof secondArg === "string"
-          ? secondArg
-          : typeof firstArg === "string"
-            ? firstArg
-            : "",
-    });
+  const infos: CapturedLog[] = [];
+  const warnings: CapturedLog[] = [];
+  function captureTo(target: CapturedLog[]) {
+    return (...args: Parameters<ServerLogger["warn"]>): void => {
+      const firstArg = args[0];
+      const secondArg = args[1];
+      target.push({
+        context:
+          typeof firstArg === "object" && firstArg !== null ? firstArg : {},
+        message:
+          typeof secondArg === "string"
+            ? secondArg
+            : typeof firstArg === "string"
+              ? firstArg
+              : "",
+      });
+    };
   }
   return {
+    infos,
     warnings,
     logger: {
       debug: () => undefined,
       error: () => undefined,
-      info: () => undefined,
-      warn: captureWarning,
+      info: captureTo(infos),
+      warn: captureTo(warnings),
     },
   };
 }
@@ -123,7 +129,10 @@ describe("injected skill source discovery", () => {
     });
     const { logger } = createCapturingLogger();
 
-    const sources = await resolveInjectedSkillSources(logger, { dataDir });
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
+      dataDir,
+    });
 
     expect(sources).toEqual([
       {
@@ -162,7 +171,12 @@ describe("injected skill source discovery", () => {
     );
     const { logger, warnings } = createCapturingLogger();
 
-    expect(resolveInjectedSkillSources(logger, { dataDir })).toEqual([]);
+    expect(
+      resolveInjectedSkillSources(logger, {
+        builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
+        dataDir,
+      }),
+    ).toEqual([]);
     expect(warnings).toEqual([
       expect.objectContaining({
         message: "Skipping invalid injected skill",
@@ -190,7 +204,12 @@ describe("injected skill source discovery", () => {
     );
     const { logger, warnings } = createCapturingLogger();
 
-    expect(resolveInjectedSkillSources(logger, { dataDir })).toEqual([]);
+    expect(
+      resolveInjectedSkillSources(logger, {
+        builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
+        dataDir,
+      }),
+    ).toEqual([]);
     expect(warnings[0]?.context).toMatchObject({
       reason: "Skill directory is a symlink",
       sourceType: "data-dir",
@@ -211,11 +230,180 @@ describe("injected skill source discovery", () => {
     });
     const { logger, warnings } = createCapturingLogger();
 
-    expect(resolveInjectedSkillSources(logger, { dataDir })).toEqual([]);
+    expect(
+      resolveInjectedSkillSources(logger, {
+        builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
+        dataDir,
+      }),
+    ).toEqual([]);
     expect(
       warnings.filter(
         (warning) => warning.message === "Skipping colliding injected skill",
       ),
     ).toHaveLength(2);
+  });
+
+  it("aggregates built-in skills alongside user skills", async () => {
+    const dataDir = await makeTempDir();
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    const builtinSkillRoot = await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "building-bb-apps",
+    });
+    const dataDirSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "release-notes",
+    });
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "builtin",
+        applicationId: null,
+        name: "building-bb-apps",
+        description: "Use building-bb-apps when tests need it.",
+        sourceRootPath: builtinSkillRoot,
+        skillFilePath: path.join(builtinSkillRoot, "SKILL.md"),
+      },
+      {
+        sourceType: "data-dir",
+        applicationId: null,
+        name: "release-notes",
+        description: "Use release-notes when tests need it.",
+        sourceRootPath: dataDirSkillRoot,
+        skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("lets a data-dir skill override a built-in skill with the same name", async () => {
+    const dataDir = await makeTempDir();
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "building-bb-apps",
+      description: "Built-in copy.",
+    });
+    const overrideSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "building-bb-apps",
+      description: "User override copy.",
+    });
+    const { logger, infos, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "data-dir",
+        applicationId: null,
+        name: "building-bb-apps",
+        description: "User override copy.",
+        sourceRootPath: overrideSkillRoot,
+        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+    expect(infos).toEqual([
+      expect.objectContaining({
+        message: "Built-in injected skill overridden by user skill",
+      }),
+    ]);
+  });
+
+  it("lets a global app skill override a built-in skill with the same name", async () => {
+    const dataDir = await makeTempDir();
+    const applicationId = applicationIdSchema.parse("skillstest");
+    const appRootPath = await writeApplication({ dataDir, applicationId });
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "building-bb-apps",
+      description: "Built-in copy.",
+    });
+    const overrideSkillRoot = await writeSkill({
+      rootPath: path.join(appRootPath, "skills"),
+      name: "building-bb-apps",
+      description: "App override copy.",
+    });
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    expect(sources).toEqual([
+      {
+        sourceType: "global-app",
+        applicationId,
+        name: "building-bb-apps",
+        description: "App override copy.",
+        sourceRootPath: overrideSkillRoot,
+        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps the built-in silenced when user sources collide over its name", async () => {
+    const dataDir = await makeTempDir();
+    const applicationId = applicationIdSchema.parse("collision");
+    const appRootPath = await writeApplication({ dataDir, applicationId });
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "shared-skill",
+    });
+    await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "shared-skill",
+    });
+    await writeSkill({
+      rootPath: path.join(appRootPath, "skills"),
+      name: "shared-skill",
+    });
+    const { logger, warnings } = createCapturingLogger();
+
+    expect(
+      resolveInjectedSkillSources(logger, {
+        builtinSkillsRootPath,
+        dataDir,
+      }),
+    ).toEqual([]);
+    expect(
+      warnings.filter(
+        (warning) => warning.message === "Skipping colliding injected skill",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("resolves the bundled built-in skills root with a valid building-bb-apps skill", async () => {
+    const dataDir = await makeTempDir();
+    const builtinSkillsRootPath = resolveBuiltinSkillsRootPath();
+    const { logger, warnings } = createCapturingLogger();
+
+    const sources = await resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+    });
+
+    const builtinNames = sources.map((source) => source.name);
+    expect(builtinNames).toContain("building-bb-apps");
+    for (const source of sources) {
+      expect(source.sourceType).toBe("builtin");
+      expect(source.applicationId).toBeNull();
+      expect(source.description.trim().length).toBeGreaterThan(0);
+    }
+    expect(warnings).toEqual([]);
   });
 });

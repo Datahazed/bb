@@ -14,6 +14,7 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
+  builtinSkillsRootPath: string;
   customModels: CustomProviderModel[];
   dataDir: string;
   featureFlags: FeatureFlags;

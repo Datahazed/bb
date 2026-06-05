@@ -38,6 +38,7 @@ const skillFrontmatterSchema = z
   .passthrough();
 
 export interface ResolveInjectedSkillSourcesArgs {
+  builtinSkillsRootPath: string;
   dataDir: string;
 }
 
@@ -204,6 +205,17 @@ function readSkillCandidate(
       reason: "Frontmatter name must match the skill directory name",
     });
     return null;
+  }
+
+  if (args.sourceType === "builtin") {
+    return {
+      sourceType: "builtin",
+      applicationId: null,
+      name: frontmatter.data.name,
+      description: frontmatter.data.description,
+      sourceRootPath: args.candidatePath,
+      skillFilePath,
+    };
   }
 
   if (args.sourceType === "data-dir") {
@@ -401,6 +413,38 @@ function readValidApplicationIds(
   return applicationIds;
 }
 
+interface ExcludeOverriddenBuiltinsArgs {
+  builtinSources: readonly HostDaemonInjectedSkillSource[];
+  userSources: readonly HostDaemonInjectedSkillSource[];
+}
+
+/**
+ * A data-dir or global-app skill that reuses a built-in skill's name
+ * overrides the built-in copy, even when the user sources later collide
+ * each other out: a user touching a name always silences the built-in.
+ */
+function excludeOverriddenBuiltins(
+  logger: ServerLogger,
+  args: ExcludeOverriddenBuiltinsArgs,
+): HostDaemonInjectedSkillSource[] {
+  const userClaimedNames = new Set(
+    args.userSources.map((source) => source.name),
+  );
+  return args.builtinSources.filter((source) => {
+    if (!userClaimedNames.has(source.name)) {
+      return true;
+    }
+    logger.info(
+      {
+        name: source.name,
+        sourceRootPath: source.sourceRootPath,
+      },
+      "Built-in injected skill overridden by user skill",
+    );
+    return false;
+  });
+}
+
 function excludeCollisions(
   logger: ServerLogger,
   sources: readonly HostDaemonInjectedSkillSource[],
@@ -431,10 +475,29 @@ function excludeCollisions(
   return resolved.sort((left, right) => left.name.localeCompare(right.name));
 }
 
+/**
+ * Discovers the injected skills for a thread command from three roots:
+ * built-in skills bundled with the server, data-dir skills under
+ * `<dataDir>/skills`, and app-local skills under each valid global app.
+ * User (data-dir/global-app) skills override same-named built-ins; name
+ * collisions among user sources drop all colliding user sources.
+ *
+ * All source paths are server-machine paths that the host daemon reads from
+ * its local filesystem. On additional hosts on other machines the paths do
+ * not resolve and the daemon skips the skill with a staging warning — a
+ * pre-existing limitation shared with data-dir and app skills.
+ */
 export function resolveInjectedSkillSources(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
 ): HostDaemonInjectedSkillSource[] {
+  const builtinSources = readSkillsRoot({
+    applicationId: null,
+    logger,
+    skillsRootPath: args.builtinSkillsRootPath,
+    sourceType: "builtin",
+  });
+
   const dataDirSources = readSkillsRoot({
     applicationId: null,
     logger,
@@ -463,5 +526,11 @@ export function resolveInjectedSkillSources(
     );
   }
 
-  return excludeCollisions(logger, [...dataDirSources, ...appSources]);
+  const userSources = [...dataDirSources, ...appSources];
+  const activeBuiltinSources = excludeOverriddenBuiltins(logger, {
+    builtinSources,
+    userSources,
+  });
+
+  return excludeCollisions(logger, [...activeBuiltinSources, ...userSources]);
 }

@@ -9,6 +9,7 @@ import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
+import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
@@ -50,6 +51,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     isProduction && existsSync(appDistDir) ? appDistDir : undefined;
   const runtimeConfig: ServerRuntimeConfig = {
     appVersion: serverConfig.BB_APP_VERSION,
+    builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,
     featureFlags: serverConfig.featureFlags,

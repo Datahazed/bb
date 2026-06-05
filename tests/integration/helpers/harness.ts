@@ -219,6 +219,7 @@ async function startIntegrationServer(
   pendingInteractions.start();
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
+    builtinSkillsRootPath: path.join(serverDataDir, "builtin-skills"),
     customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,

@@ -22,12 +22,12 @@ function resolveLocalTimezone(): string {
 }
 
 interface WriteRuntimeSkillArgs {
-  dataDir: string;
   name: string;
+  rootPath: string;
 }
 
 async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
-  const sourceRootPath = path.join(args.dataDir, "skills", args.name);
+  const sourceRootPath = path.join(args.rootPath, args.name);
   await mkdir(sourceRootPath, { recursive: true });
   await writeFile(
     path.join(sourceRootPath, "SKILL.md"),
@@ -294,8 +294,12 @@ describe("thread runtime config", () => {
   it("serializes injected skill sources into new thread start commands", async () => {
     await withTestHarness(async (harness) => {
       const sourceRootPath = await writeRuntimeSkill({
-        dataDir: harness.config.dataDir,
         name: "release-notes",
+        rootPath: path.join(harness.config.dataDir, "skills"),
+      });
+      const builtinSourceRootPath = await writeRuntimeSkill({
+        name: "building-bb-apps",
+        rootPath: harness.config.builtinSkillsRootPath,
       });
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-injected-skills",
@@ -332,6 +336,14 @@ describe("thread runtime config", () => {
       });
 
       expect(command.injectedSkillSources).toEqual([
+        {
+          sourceType: "builtin",
+          applicationId: null,
+          name: "building-bb-apps",
+          description: "Use building-bb-apps when server runtime tests run.",
+          sourceRootPath: builtinSourceRootPath,
+          skillFilePath: path.join(builtinSourceRootPath, "SKILL.md"),
+        },
         {
           sourceType: "data-dir",
           applicationId: null,

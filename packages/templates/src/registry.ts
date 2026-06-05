@@ -1,7 +1,9 @@
 import { templateDefinitions } from "./generated/templates.generated.js";
 import type { TemplateId } from "./generated/templates.generated.js";
 
-export type TemplateKind = "instruction" | "prompt" | "skill_seed";
+const TEMPLATE_KINDS = ["instruction", "prompt", "system-message"] as const;
+
+export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
 
 export interface TemplateDefinition {
   body: string;
@@ -21,17 +23,24 @@ function isTemplateId(value: string): value is TemplateId {
   return templateDefinitions.some((definition) => definition.id === value);
 }
 
+function isTemplateKind(value: string): value is TemplateKind {
+  return (TEMPLATE_KINDS as readonly string[]).includes(value);
+}
+
 function decodeTemplateDefinitions(): Record<TemplateId, TemplateDefinition> {
   const entries = templateDefinitions.map((definition) => {
     if (!isTemplateId(definition.id)) {
       throw new Error(`Unknown generated template id: ${definition.id}`);
+    }
+    if (!isTemplateKind(definition.kind)) {
+      throw new Error(`Unknown generated template kind: ${definition.kind}`);
     }
     return [
       definition.id,
       {
         ...definition,
         id: definition.id,
-        kind: definition.kind as TemplateKind,
+        kind: definition.kind,
       },
     ] as const;
   });

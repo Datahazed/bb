@@ -166,6 +166,51 @@ describe("injected skill staging", () => {
     });
   });
 
+  it("stages built-in skill sources into the shared catalog", async () => {
+    const dataDir = await makeTempDir();
+    const bundledRoot = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      rootPath: bundledRoot,
+      name: "building-bb-apps",
+    });
+
+    const staged = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [
+        {
+          sourceType: "builtin",
+          applicationId: null,
+          name: "building-bb-apps",
+          description: "Use building-bb-apps when host staging tests run.",
+          sourceRootPath: skillRootPath,
+          skillFilePath: path.join(skillRootPath, "SKILL.md"),
+        },
+      ],
+    });
+
+    const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
+    if (!claudeRoot) {
+      throw new Error("Expected Claude Code skill root");
+    }
+    expect(claudeRoot.skillNames).toEqual(["building-bb-apps"]);
+    await expect(
+      readFile(
+        path.join(claudeRoot.localPluginPath, "catalog.json"),
+        "utf8",
+      ).then((content) => JSON.parse(content)),
+    ).resolves.toMatchObject({
+      catalogHash: staged.catalogHash,
+      skills: [
+        {
+          applicationId: null,
+          name: "building-bb-apps",
+          sourceRootPath: skillRootPath,
+          sourceType: "builtin",
+        },
+      ],
+    });
+  });
+
   it("changes the catalog hash when skill content changes", async () => {
     const dataDir = await makeTempDir();
     const sourceRootPath = path.join(dataDir, "source-skills");

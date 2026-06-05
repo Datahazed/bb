@@ -28,7 +28,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 31 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 32 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -122,6 +122,12 @@ const hostDaemonInjectedSkillSourceBaseSchema = z
 export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
   "sourceType",
   [
+    hostDaemonInjectedSkillSourceBaseSchema
+      .extend({
+        sourceType: z.literal("builtin"),
+        applicationId: z.null(),
+      })
+      .strict(),
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
         sourceType: z.literal("data-dir"),

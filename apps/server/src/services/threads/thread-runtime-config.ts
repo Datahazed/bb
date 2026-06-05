@@ -156,6 +156,7 @@ export async function resolveThreadRuntimeCommandConfig(
     defaultSource?.type === "local_path" ? defaultSource.path : workspacePath;
   const { workspaceProvisionType } = args.environment;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
+    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
   });
 

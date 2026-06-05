@@ -22,6 +22,7 @@ import {
   hostDaemonEventBatchResponseSchema,
   hostDaemonInteractiveInterruptRequestSchema,
   hostDaemonInteractiveInterruptResponseSchema,
+  hostDaemonInjectedSkillSourceSchema,
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonInteractiveRequestSchema,
   hostDaemonOnlineRpcCommandSchema,
@@ -1188,6 +1189,59 @@ describe("host-daemon command schemas", () => {
         workspaceProvisionType: "unmanaged",
       },
     });
+  });
+
+  it("parses every injected skill source variant and pins applicationId rules", () => {
+    const base = {
+      name: "building-bb-apps",
+      description: "Use when building bb apps.",
+      sourceRootPath: "/srv/builtin-skills/building-bb-apps",
+      skillFilePath: "/srv/builtin-skills/building-bb-apps/SKILL.md",
+    };
+
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "builtin",
+        applicationId: null,
+      }),
+    ).toMatchObject({ sourceType: "builtin", applicationId: null });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "data-dir",
+        applicationId: null,
+      }),
+    ).toMatchObject({ sourceType: "data-dir", applicationId: null });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "global-app",
+        applicationId: "tasks",
+      }),
+    ).toMatchObject({ sourceType: "global-app", applicationId: "tasks" });
+
+    expect(() =>
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "builtin",
+        applicationId: "tasks",
+      }),
+    ).toThrow();
+    expect(() =>
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "global-app",
+        applicationId: null,
+      }),
+    ).toThrow();
+    expect(() =>
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        sourceType: "bundled",
+        applicationId: null,
+      }),
+    ).toThrow();
   });
 
   it("keeps contract optional fields on an explicit allowlist", () => {
