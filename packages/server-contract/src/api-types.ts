@@ -165,13 +165,13 @@ export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
 
 /**
  * Pixel rect (CSS px, which equal device-independent points on macOS) of the
- * panel region the native browser view must overlay, measured by the renderer.
- * This absolute rect is the only placement data that crosses the renderer →
- * main IPC boundary: the desktop main process derives its resize-invariant
- * layout descriptor from it against its own `getContentBounds()`, so
- * derivation and native-resize reprojection share one coordinate space (the
- * renderer's `window.inner*` viewport diverges from the window content area
- * when DevTools is docked).
+ * panel region the native browser view must overlay, measured by the renderer
+ * against its own layout viewport. This rect is the single placement
+ * authority: the renderer re-measures and pushes it whenever its layout moves
+ * the panel, and the desktop main process only intersects it with the live
+ * window content bounds — it never extrapolates placement from native window
+ * resizes, whose size the renderer's (possibly lagging) chrome paint does not
+ * yet reflect.
  */
 export const bbDesktopBrowserViewBoundsSchema = z
   .object({
@@ -184,21 +184,6 @@ export const bbDesktopBrowserViewBoundsSchema = z
 export type BbDesktopBrowserViewBounds = z.infer<
   typeof bbDesktopBrowserViewBoundsSchema
 >;
-
-/**
- * Resize-invariant description of a browser view's layout relative to a
- * viewport (edge offsets/insets). It never crosses the renderer ↔ main IPC
- * boundary: the desktop main process derives it from the renderer-measured
- * absolute rect at receive time and reprojects it synchronously on native
- * window resize; the renderer derives its own copy purely as a local dedupe
- * key so window-resize ResizeObserver ticks produce no IPC.
- */
-export interface BbDesktopBrowserViewLayoutDescriptor {
-  left: number;
-  top: number;
-  rightInset: number;
-  bottomInset: number;
-}
 
 export interface BbDesktopBrowserViewportBounds {
   width: number;
@@ -213,16 +198,6 @@ interface ClampIntegerToRangeArgs {
 
 export interface ClampBbDesktopBrowserViewBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
-  viewport: BbDesktopBrowserViewportBounds;
-}
-
-export interface BbDesktopBrowserViewLayoutDescriptorFromBoundsArgs {
-  bounds: BbDesktopBrowserViewBounds;
-  viewport: BbDesktopBrowserViewportBounds;
-}
-
-export interface BbDesktopBrowserViewBoundsFromLayoutDescriptorArgs {
-  layout: BbDesktopBrowserViewLayoutDescriptor;
   viewport: BbDesktopBrowserViewportBounds;
 }
 
@@ -252,54 +227,6 @@ export function clampBbDesktopBrowserViewBounds(
   });
   const bottom = clampIntegerToRange({
     value: args.bounds.y + args.bounds.height,
-    min: y,
-    max: viewportBottom,
-  });
-
-  return {
-    x,
-    y,
-    width: right - x,
-    height: bottom - y,
-  };
-}
-
-export function bbDesktopBrowserViewLayoutDescriptorFromBounds(
-  args: BbDesktopBrowserViewLayoutDescriptorFromBoundsArgs,
-): BbDesktopBrowserViewLayoutDescriptor {
-  const viewportRight = Math.max(0, Math.round(args.viewport.width));
-  const viewportBottom = Math.max(0, Math.round(args.viewport.height));
-  const bounds = clampBbDesktopBrowserViewBounds(args);
-  return {
-    left: bounds.x,
-    top: bounds.y,
-    rightInset: viewportRight - (bounds.x + bounds.width),
-    bottomInset: viewportBottom - (bounds.y + bounds.height),
-  };
-}
-
-export function bbDesktopBrowserViewBoundsFromLayoutDescriptor(
-  args: BbDesktopBrowserViewBoundsFromLayoutDescriptorArgs,
-): BbDesktopBrowserViewBounds {
-  const viewportRight = Math.max(0, Math.round(args.viewport.width));
-  const viewportBottom = Math.max(0, Math.round(args.viewport.height));
-  const x = clampIntegerToRange({
-    value: args.layout.left,
-    min: 0,
-    max: viewportRight,
-  });
-  const y = clampIntegerToRange({
-    value: args.layout.top,
-    min: 0,
-    max: viewportBottom,
-  });
-  const right = clampIntegerToRange({
-    value: viewportRight - args.layout.rightInset,
-    min: x,
-    max: viewportRight,
-  });
-  const bottom = clampIntegerToRange({
-    value: viewportBottom - args.layout.bottomInset,
     min: y,
     max: viewportBottom,
   });

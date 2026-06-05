@@ -12,12 +12,8 @@ import type {
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
-  BbDesktopBrowserViewLayoutDescriptor,
 } from "@bb/server-contract";
-import {
-  bbDesktopBrowserViewLayoutDescriptorFromBounds,
-  clampBbDesktopBrowserViewBounds,
-} from "@bb/server-contract";
+import { clampBbDesktopBrowserViewBounds } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
@@ -75,27 +71,13 @@ interface NavButtonProps {
   onClick: () => void;
 }
 
-interface BrowserViewPlacementFromElementArgs {
+interface BrowserViewBoundsFromElementArgs {
   element: HTMLElement;
 }
 
-/**
- * A renderer-side placement measurement. Only `bounds` crosses the IPC
- * boundary — the desktop main process derives its own resize-invariant layout
- * descriptor from the rect against the window content bounds, the coordinate
- * space it also reprojects in on native resize. `layout` here is computed
- * against the renderer's layout viewport purely as a local dedupe key: it is
- * invariant under native window resizes, so the ResizeObserver burst from a
- * window edge-drag produces no renderer IPC (the main process owns that path).
- */
-interface BrowserViewPlacement {
-  bounds: BbDesktopBrowserViewBounds;
-  layout: BbDesktopBrowserViewLayoutDescriptor;
-}
-
-interface BrowserViewLayoutsEqualArgs {
-  a: BbDesktopBrowserViewLayoutDescriptor;
-  b: BbDesktopBrowserViewLayoutDescriptor;
+interface BrowserViewBoundsEqualArgs {
+  a: BbDesktopBrowserViewBounds;
+  b: BbDesktopBrowserViewBounds;
 }
 
 interface SyncBrowserViewPlacementArgs {
@@ -125,29 +107,32 @@ function browserViewportBounds(): BbDesktopBrowserViewportBounds {
   };
 }
 
-function browserViewPlacementFromElement(
-  args: BrowserViewPlacementFromElementArgs,
-): BrowserViewPlacement {
-  const viewport = browserViewportBounds();
-  const bounds = clampBbDesktopBrowserViewBounds({
+/**
+ * Measure the panel rect the native view must overlay, in the renderer's
+ * layout coordinate space. This rect is the single placement authority: it is
+ * pushed over IPC whenever it changes, at the renderer's own layout cadence
+ * (ResizeObserver ticks, window resizes, explicit layout-sync events), so the
+ * native overlay always lands where the chrome around it is painted — even
+ * when that paint lags a native window edge-drag. The desktop main process
+ * never extrapolates placement on its own; it only clamps the last measured
+ * rect to the live window so a shrinking window cannot leave the view
+ * spilling past the window edge.
+ */
+function browserViewBoundsFromElement(
+  args: BrowserViewBoundsFromElementArgs,
+): BbDesktopBrowserViewBounds {
+  return clampBbDesktopBrowserViewBounds({
     bounds: roundedBoundsFromRect(args.element.getBoundingClientRect()),
-    viewport,
+    viewport: browserViewportBounds(),
   });
-  return {
-    bounds,
-    layout: bbDesktopBrowserViewLayoutDescriptorFromBounds({
-      bounds,
-      viewport,
-    }),
-  };
 }
 
-function browserViewLayoutsEqual(args: BrowserViewLayoutsEqualArgs): boolean {
+function browserViewBoundsEqual(args: BrowserViewBoundsEqualArgs): boolean {
   return (
-    args.a.left === args.b.left &&
-    args.a.top === args.b.top &&
-    args.a.rightInset === args.b.rightInset &&
-    args.a.bottomInset === args.b.bottomInset
+    args.a.x === args.b.x &&
+    args.a.y === args.b.y &&
+    args.a.width === args.b.width &&
+    args.a.height === args.b.height
   );
 }
 
@@ -307,82 +292,68 @@ export function BrowserTabContent({
   isActiveRef.current = isActive;
 
   const hasPage = currentUrl.length > 0;
-  // Pending rAF handle for layout-shape observation, so a burst of panel resize
-  // ticks collapses before the descriptor equality check.
-  const boundsSyncFrameRef = useRef<number | null>(null);
-  const lastSentLayoutRef = useRef<BbDesktopBrowserViewLayoutDescriptor | null>(
-    null,
-  );
+  const lastSentBoundsRef = useRef<BbDesktopBrowserViewBounds | null>(null);
 
-  const readPlacement = useCallback(() => {
+  const readBounds = useCallback(() => {
     const element = contentRef.current;
     if (element === null) {
       return null;
     }
-    return browserViewPlacementFromElement({ element });
+    return browserViewBoundsFromElement({ element });
   }, []);
 
-  const sendPlacement = useCallback(
-    (placement: BrowserViewPlacement) => {
+  const sendBounds = useCallback(
+    (bounds: BbDesktopBrowserViewBounds) => {
       if (desktopBrowser === null) {
         return;
       }
-      lastSentLayoutRef.current = placement.layout;
-      desktopBrowser.setBounds({
-        tabId,
-        bounds: placement.bounds,
-      });
+      lastSentBoundsRef.current = bounds;
+      desktopBrowser.setBounds({ tabId, bounds });
     },
     [desktopBrowser, tabId],
   );
 
-  // Push the current layout descriptor to the native overlay immediately. The
-  // coordinator's show() calls this synchronously so bounds always land before
-  // the view is made visible (never a stale/zero-bounds flash on activation).
+  // Measure and push the current placement synchronously — measurements happen
+  // inside ResizeObserver callbacks (post-layout) or force layout themselves,
+  // so the rect is always fresh for the frame about to paint.
   const syncPlacement = useCallback(
     ({ force }: SyncBrowserViewPlacementArgs) => {
-      const placement = readPlacement();
-      if (placement === null) {
+      const bounds = readBounds();
+      if (bounds === null) {
         return;
       }
-      const lastSentLayout = lastSentLayoutRef.current;
+      const lastSentBounds = lastSentBoundsRef.current;
       if (
         !force &&
-        lastSentLayout !== null &&
-        browserViewLayoutsEqual({
-          a: lastSentLayout,
-          b: placement.layout,
-        })
+        lastSentBounds !== null &&
+        browserViewBoundsEqual({ a: lastSentBounds, b: bounds })
       ) {
         return;
       }
-      sendPlacement(placement);
+      sendBounds(bounds);
     },
-    [readPlacement, sendPlacement],
+    [readBounds, sendBounds],
   );
 
+  // Unconditional push for the coordinator's show() path, so bounds always
+  // land before the view is made visible (never a stale/zero-bounds flash on
+  // activation).
   const syncBounds = useCallback(() => {
     syncPlacement({ force: true });
   }, [syncPlacement]);
 
-  // Initial bounds for attach. When the content element is not measurable yet
-  // the dedupe key stays null, so the first layout-shape observation always
-  // sends a real placement.
-  const syncInitialBounds = useCallback(() => {
-    const placement = readPlacement();
-    lastSentLayoutRef.current = placement?.layout ?? null;
-    return placement?.bounds ?? EMPTY_BROWSER_VIEW_BOUNDS;
-  }, [readPlacement]);
-
-  const scheduleBoundsSync = useCallback(() => {
-    if (boundsSyncFrameRef.current !== null) {
-      return;
-    }
-    boundsSyncFrameRef.current = window.requestAnimationFrame(() => {
-      boundsSyncFrameRef.current = null;
-      syncPlacement({ force: false });
-    });
+  const syncBoundsIfChanged = useCallback(() => {
+    syncPlacement({ force: false });
   }, [syncPlacement]);
+
+  // Initial bounds for attach. When the content element is not measurable yet
+  // the dedupe key stays null, so the first layout observation always sends a
+  // real placement.
+  const syncInitialBounds = useCallback(() => {
+    const bounds = readBounds();
+    lastSentBoundsRef.current = bounds;
+    return bounds ?? EMPTY_BROWSER_VIEW_BOUNDS;
+  }, [readBounds]);
 
   // Create (or re-attach to) the native view on mount and stream navigation
   // state back. Unmount is not ownership teardown: switching threads unmounts
@@ -439,42 +410,47 @@ export function BrowserTabContent({
     threadId,
   ]);
 
-  // Track true layout-shape changes. Native OS window resize is reprojected in
-  // the desktop main process from the cached descriptor; identical descriptors
-  // are ignored here so renderer IPC is not part of the window-edge drag path.
+  // Track panel-shape changes. The callback runs post-layout in the frame that
+  // will paint the new shape, so measuring and pushing here keeps the native
+  // view in lockstep with the chrome as it is actually painted — including
+  // during native window drags, where the renderer's relayout (not the OS
+  // window size) is what the surrounding chrome reflects.
   useEffect(() => {
     const element = contentRef.current;
     if (element === null || desktopBrowser === null) {
       return;
     }
     const observer = new ResizeObserver(() => {
-      scheduleBoundsSync();
+      syncBoundsIfChanged();
     });
     observer.observe(element);
     return () => {
       observer.disconnect();
-      if (boundsSyncFrameRef.current !== null) {
-        window.cancelAnimationFrame(boundsSyncFrameRef.current);
-        boundsSyncFrameRef.current = null;
-      }
     };
-  }, [desktopBrowser, scheduleBoundsSync]);
+  }, [desktopBrowser, syncBoundsIfChanged]);
 
-  // ResizeObserver only reports size changes; dragging the left sidebar can
-  // move this content rect without changing its width. AppLayout emits this
-  // event from the same rAF that applies the live sidebar width, so the native
-  // view is re-pinned to the content edge even on position-only layout shifts.
+  // ResizeObserver only reports size changes, but the content rect can move
+  // without resizing: dragging the left sidebar shifts it (AppLayout emits the
+  // sync event from the same rAF that applies the live sidebar width), and a
+  // native window resize can translate a fixed-size panel. The window resize
+  // listener re-measures on the renderer's own layout cadence; the bounds
+  // dedupe in syncPlacement drops the no-op ticks.
   useEffect(() => {
     if (desktopBrowser === null) {
       return;
     }
 
-    window.addEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBounds);
+    window.addEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBoundsIfChanged);
+    window.addEventListener("resize", syncBoundsIfChanged);
 
     return () => {
-      window.removeEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBounds);
+      window.removeEventListener(
+        BROWSER_VIEW_BOUNDS_SYNC_EVENT,
+        syncBoundsIfChanged,
+      );
+      window.removeEventListener("resize", syncBoundsIfChanged);
     };
-  }, [desktopBrowser, syncBounds]);
+  }, [desktopBrowser, syncBoundsIfChanged]);
 
   // The native view is shown whenever this tab is the active panel tab and has a
   // page. It is NOT hidden during a drag-resize — the overlay tracks the live

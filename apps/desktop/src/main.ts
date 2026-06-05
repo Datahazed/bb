@@ -741,15 +741,18 @@ function registerDesktopBrowserWindowLifecycle({
   manager,
 }: DesktopBrowserWindowLifecycleArgs): void {
   const hostWebContentsId = browserWindow.webContents.id;
-  const syncVisibleBounds = () => {
-    manager.syncVisibleBoundsForWindow(browserWindow);
+  const clampVisibleBounds = () => {
+    manager.clampVisibleBoundsForWindow(browserWindow);
   };
   // `resize` fires per tick during an interactive resize, after the bounds
-  // change, so reprojecting here is the synchronous lockstep path. `will-resize`
-  // is intentionally NOT registered: it fires before the bounds change, so
-  // `getContentBounds()` still reports the old size and reprojection would be
-  // an inert duplicate of the work this listener does one event later.
-  browserWindow.on("resize", syncVisibleBounds);
+  // change, so clamping here keeps a shrinking window from leaving views
+  // spilling past its edge. This path never extrapolates placement — the
+  // renderer re-measures and pushes bounds at its own layout cadence, which is
+  // what the chrome around the view actually paints. `will-resize` is
+  // intentionally NOT registered: it fires before the bounds change, so
+  // `getContentBounds()` still reports the old size and clamping would be an
+  // inert duplicate of the work this listener does one event later.
+  browserWindow.on("resize", clampVisibleBounds);
   browserWindow.once("closed", () => {
     manager.releaseWindow(hostWebContentsId);
   });

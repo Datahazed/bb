@@ -173,7 +173,7 @@ beforeEach(() => {
 });
 
 describe("DesktopBrowserViewManager", () => {
-  it("reprojects visible view bounds from the cached layout descriptor on host resize", () => {
+  it("clamps visible views to a shrinking window and restores them when it grows back", () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
     const hostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -202,34 +202,34 @@ describe("DesktopBrowserViewManager", () => {
       height: 350,
     });
 
-    hostWindow.contentBounds = { width: 80, height: 40 };
-    manager.syncVisibleBoundsForWindow(hostWindow);
+    // A shrinking window must never leave the view spilling past its edge.
+    hostWindow.contentBounds = { width: 400, height: 300 };
+    manager.clampVisibleBoundsForWindow(hostWindow);
 
     expect(view.boundsCalls[1]).toEqual({
-      x: 80,
-      y: 40,
-      width: 0,
-      height: 0,
+      x: 100,
+      y: 50,
+      width: 300,
+      height: 250,
     });
 
-    hostWindow.contentBounds = { width: 900, height: 640 };
-    manager.syncVisibleBoundsForWindow(hostWindow);
+    // The clamp is non-destructive: growing back re-applies the full
+    // renderer-desired rect, not the clamped remnant.
+    hostWindow.contentBounds = { width: 700, height: 450 };
+    manager.clampVisibleBoundsForWindow(hostWindow);
 
     expect(view.boundsCalls[2]).toEqual({
       x: 100,
       y: 50,
-      width: 700,
-      height: 540,
+      width: 500,
+      height: 350,
     });
   });
 
-  it("derives insets from the window content bounds, not the renderer viewport (docked DevTools)", () => {
+  it("never grows a view past its renderer-desired rect on a native window grow", () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
-    // Host window content is 1000x900 but the renderer's page viewport is only
-    // 1000x500 (DevTools docked bottom): the renderer-measured rect ends at
-    // y=500 even though the window content area is 900 tall.
     const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 1000, height: 900 },
+      contentBounds: { width: 700, height: 450 },
       webContentsId: 43,
     });
 
@@ -238,7 +238,7 @@ describe("DesktopBrowserViewManager", () => {
       request: {
         tabId: "browser:a",
         url: "",
-        bounds: { x: 600, y: 100, width: 400, height: 400 },
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
         visible: true,
       },
     });
@@ -248,31 +248,23 @@ describe("DesktopBrowserViewManager", () => {
     if (view === undefined) {
       throw new Error("Expected the browser view to be created.");
     }
-    // Steady state: the absolute renderer rect is authoritative. A descriptor
-    // measured against the renderer's 500px-tall page viewport (bottomInset 0)
-    // would project to the full 900px content height, stretching the view over
-    // the DevTools pane.
-    expect(view.boundsCalls[0]).toEqual({
-      x: 600,
-      y: 100,
-      width: 400,
-      height: 400,
-    });
 
-    // Native window resize: the insets were derived against the content edge,
-    // so the view tracks the growing page region (the DevTools pane keeps its
-    // size during a window resize) instead of jumping coordinate spaces.
-    hostWindow.contentBounds = { width: 1000, height: 1000 };
-    manager.syncVisibleBoundsForWindow(hostWindow);
+    // The renderer's chrome paints at its own (possibly lagging) layout
+    // cadence during a native drag; extrapolating the view to the new window
+    // size would visibly break it out of its panel. The view must hold the
+    // renderer-measured rect until the renderer pushes a fresh one.
+    hostWindow.contentBounds = { width: 900, height: 640 };
+    manager.clampVisibleBoundsForWindow(hostWindow);
+
     expect(view.boundsCalls[1]).toEqual({
-      x: 600,
-      y: 100,
-      width: 400,
-      height: 500,
+      x: 100,
+      y: 50,
+      width: 500,
+      height: 350,
     });
   });
 
-  it("rederives the cached layout from renderer bounds on setBounds", () => {
+  it("tracks the latest renderer rect from setBounds, clamped to the live window", () => {
     const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
     const hostWindow = new FakeHostWindow({
       contentBounds: { width: 700, height: 450 },
@@ -308,15 +300,15 @@ describe("DesktopBrowserViewManager", () => {
       height: 300,
     });
 
-    // The reprojection cache must follow the latest renderer rect: insets are
-    // now 100/60, so a host resize projects from those, not the attach-time ones.
-    hostWindow.contentBounds = { width: 900, height: 640 };
-    manager.syncVisibleBoundsForWindow(hostWindow);
+    // The clamp cache must follow the latest renderer rect: a window shrink
+    // intersects with the setBounds rect, not the attach-time one.
+    hostWindow.contentBounds = { width: 500, height: 300 };
+    manager.clampVisibleBoundsForWindow(hostWindow);
     expect(view.boundsCalls[2]).toEqual({
       x: 200,
       y: 90,
-      width: 600,
-      height: 490,
+      width: 300,
+      height: 210,
     });
   });
 
@@ -343,8 +335,8 @@ describe("DesktopBrowserViewManager", () => {
       throw new Error("Expected the browser view to be created.");
     }
 
-    hostWindow.contentBounds = { width: 900, height: 640 };
-    manager.syncVisibleBoundsForWindow(hostWindow);
+    hostWindow.contentBounds = { width: 400, height: 300 };
+    manager.clampVisibleBoundsForWindow(hostWindow);
 
     expect(view.boundsCalls).toHaveLength(1);
   });

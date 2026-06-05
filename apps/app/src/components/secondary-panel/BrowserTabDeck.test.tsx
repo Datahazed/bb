@@ -140,17 +140,6 @@ interface BrowserViewportSize {
   width: number;
 }
 
-interface QueuedAnimationFrame {
-  callback: FrameRequestCallback;
-  canceled: boolean;
-  id: number;
-}
-
-interface QueuedAnimationFrameController {
-  flushNext(): void;
-  restore(): void;
-}
-
 interface ThreadDeckHostProps {
   activeBrowserTabId: string | null;
   browserTabs: readonly BrowserFixedPanelTab[];
@@ -242,45 +231,6 @@ function installViewportSize(size: BrowserViewportSize): RestoreHandler {
       configurable: true,
       value: previousHeight,
     });
-  };
-}
-
-function installQueuedAnimationFrame(): QueuedAnimationFrameController {
-  const frames: QueuedAnimationFrame[] = [];
-  let nextId = 1;
-  const requestFrame = vi
-    .spyOn(window, "requestAnimationFrame")
-    .mockImplementation((callback) => {
-      const frame: QueuedAnimationFrame = {
-        callback,
-        canceled: false,
-        id: nextId,
-      };
-      nextId += 1;
-      frames.push(frame);
-      return frame.id;
-    });
-  const cancelFrame = vi
-    .spyOn(window, "cancelAnimationFrame")
-    .mockImplementation((id) => {
-      const frame = frames.find((candidate) => candidate.id === id);
-      if (frame !== undefined) {
-        frame.canceled = true;
-      }
-    });
-
-  return {
-    flushNext() {
-      const frame = frames.shift();
-      if (frame === undefined || frame.canceled) {
-        return;
-      }
-      frame.callback(0);
-    },
-    restore() {
-      requestFrame.mockRestore();
-      cancelFrame.mockRestore();
-    },
   };
 }
 
@@ -627,22 +577,17 @@ describe("BrowserTabDeck", () => {
     }
   });
 
-  it("does not stream bounds IPC from the renderer on window resize alone", () => {
+  it("streams fresh bounds from the window resize listener when the panel rect moves", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
     const restoreViewport = installViewportSize({ width: 1000, height: 700 });
-    const restoreRect = installBrowserContentRect({
+    const rect: BrowserContentRect = {
       left: 520,
       top: 96,
       width: 480,
       height: 604,
-    });
-    // Bounds syncs are deferred to rAF, so a re-added `window.resize` listener
-    // would only send IPC after a frame flush. Queue frames manually and flush
-    // them after the resize: with no listener nothing is scheduled and the
-    // flush is a no-op; a regressed listener gets its frame run and fails the
-    // assertion below.
-    const animationFrame = installQueuedAnimationFrame();
+    };
+    const restoreRect = installBrowserContentRect(rect);
 
     try {
       render(
@@ -658,9 +603,65 @@ describe("BrowserTabDeck", () => {
 
       calls.length = 0;
 
-      // Grow the viewport while the content rect stays put, so the rect's
-      // layout shape genuinely changes relative to the viewport — a resync
-      // triggered by this resize cannot be swallowed by the send dedupe.
+      // A native window resize translates a proportionally-laid-out panel:
+      // ResizeObserver alone misses position-only moves, so the window resize
+      // listener must re-measure and push the moved rect. The desktop main
+      // process never extrapolates this itself — without this push the native
+      // view would stay where the pre-resize layout put it.
+      const restoreResizedViewport = installViewportSize({
+        width: 1200,
+        height: 700,
+      });
+      try {
+        rect.left = 720;
+
+        act(() => {
+          window.dispatchEvent(new Event("resize"));
+        });
+
+        expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual({
+          x: 720,
+          y: 96,
+          width: 480,
+          height: 604,
+        });
+      } finally {
+        restoreResizedViewport();
+      }
+    } finally {
+      restoreRect();
+      restoreViewport();
+    }
+  });
+
+  it("does not stream bounds IPC when a window resize leaves the panel rect unchanged", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+    const restoreViewport = installViewportSize({ width: 1000, height: 700 });
+    const restoreRect = installBrowserContentRect({
+      left: 520,
+      top: 96,
+      width: 480,
+      height: 604,
+    });
+
+    try {
+      render(
+        <BrowserTabDeck
+          browserTabs={[TAB_A]}
+          activeBrowserTabId={TAB_A.id}
+          environmentId="env_test"
+          isPanelOpen
+          threadId="thr_test"
+          onUpdate={() => {}}
+        />,
+      );
+
+      calls.length = 0;
+
+      // The viewport grows but the measured rect is identical, so the view has
+      // nowhere to move: the bounds dedupe must drop the no-op tick instead of
+      // streaming redundant IPC for every resize event.
       const restoreResizedViewport = installViewportSize({
         width: 1200,
         height: 700,
@@ -668,13 +669,8 @@ describe("BrowserTabDeck", () => {
       try {
         act(() => {
           window.dispatchEvent(new Event("resize"));
-          animationFrame.flushNext();
-          animationFrame.flushNext();
         });
 
-        // Native window resizes are reprojected synchronously by the desktop
-        // main process from its cached descriptor; the renderer must stay
-        // silent on this path.
         expect(
           calls.some(
             (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
@@ -684,7 +680,6 @@ describe("BrowserTabDeck", () => {
         restoreResizedViewport();
       }
     } finally {
-      animationFrame.restore();
       restoreRect();
       restoreViewport();
     }
@@ -872,7 +867,6 @@ describe("BrowserTabDeck", () => {
       disconnect() {}
     }
     vi.stubGlobal("ResizeObserver", CapturingResizeObserver);
-    const animationFrame = installQueuedAnimationFrame();
 
     try {
       render(
@@ -896,8 +890,6 @@ describe("BrowserTabDeck", () => {
         for (const fireResizeTick of resizeCallbacks) {
           fireResizeTick();
         }
-        animationFrame.flushNext();
-        animationFrame.flushNext();
       });
       const duringResize = calls.slice(resizeStart);
 
@@ -911,8 +903,8 @@ describe("BrowserTabDeck", () => {
             call.visible === false,
         ),
       ).toBe(false);
-      // Instead, the ResizeObserver tick syncs its layout descriptor to the live
-      // panel size.
+      // Instead, the ResizeObserver tick pushes the freshly measured rect in
+      // the same frame, keeping the native view in lockstep with the chrome.
       expect(
         duringResize.some(
           (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
@@ -921,7 +913,6 @@ describe("BrowserTabDeck", () => {
       // Net effect: the active view stays visible throughout the resize.
       expect(visibilityFor(calls, TAB_A.id)).toBe(true);
     } finally {
-      animationFrame.restore();
       restoreRect();
       restoreViewport();
       vi.unstubAllGlobals();
