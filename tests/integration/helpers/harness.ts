@@ -79,6 +79,14 @@ export interface IntegrationHarness {
   hostId: string;
   hub: NotificationHub;
   internal: InternalHostDaemonClient;
+  /**
+   * Base URL of the daemon's local API (the :38887 surface in production).
+   * Reads the live daemon's bound port on every call — `restartDaemon`
+   * re-binds port 0 to a new port, so the URL must never be snapshotted.
+   * This is the one place Phase 1 of the single-host rebuild repoints to
+   * `serverUrl` when the local API merges into the server.
+   */
+  localApiBaseUrl(): string;
   repoDir: string;
   restartDaemon(reason?: string): Promise<void>;
   server: RunningTestServer;
@@ -341,7 +349,18 @@ async function startHarnessDaemon(
       hostType: "persistent",
       hostWatcher,
       instanceId: randomUUID(),
-      localApiConfig: null,
+      // Bind the daemon local API (the :38887 surface in production) on an
+      // ephemeral loopback port so contract tests can exercise it. Tests must
+      // resolve its base URL through `harness.localApiBaseUrl()` — the single
+      // retarget point when the local API merges into the server (single-host
+      // rebuild plan §6 Phase 1).
+      localApiConfig: {
+        bindHost: "127.0.0.1",
+        healthPath: "/health",
+        healthValue: "ok",
+        mode: "full",
+        port: 0,
+      },
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,
@@ -475,6 +494,14 @@ export async function createIntegrationHarness(
     await currentResources.releaseLock().catch(() => undefined);
   }
 
+  function localApiBaseUrl(): string {
+    const localApi = daemonResources?.daemonApp.localApi;
+    if (!localApi) {
+      throw new Error("Daemon local API is not running");
+    }
+    return `http://${localApi.bindHost}:${localApi.port}`;
+  }
+
   async function cleanup(): Promise<void> {
     if (cleanedUp) {
       return;
@@ -512,6 +539,7 @@ export async function createIntegrationHarness(
       hostId: daemonResources.hostId,
       hub: server.hub,
       internal: createHostDaemonClient(server.baseUrl, daemonResources.hostKey),
+      localApiBaseUrl,
       repoDir,
       restartDaemon,
       server,
