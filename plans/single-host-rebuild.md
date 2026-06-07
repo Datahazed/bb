@@ -194,7 +194,22 @@ Target: 25 → ~18 workspace packages, every survivor having ≥2 real consumers
 - **R8 — Headless/launchd future.** Server inherits the daemon's interactive-user assumptions (`~/.codex/auth.json`, `~/.claude`, osascript). Documented constraint, not solved here.
 - **R9 — Re-dispatch storms if guards are dropped.** The 10s sweeps live until Phase 2; without the in-flight registry they re-dispatch minute-long provisions every tick (verification finding). The registry is not optional Phase 1 scope.
 
-## 10. Open items to resolve during execution (tracked, non-blocking)
+## 10. P1a → P1b/P1c handoff notes (from the scaffold review)
+
+P1b wiring requirements recorded by the porters:
+1. Build `runtimeShellEnv` via `prepareRuntimeShellEnv({appsRootPath, bbExecutableDirectory, hostDaemonPort: <server port>, serverUrl})` — `serverPort` is now required; the injected env var keeps the `BB_HOST_DAEMON_PORT` name pointed at the server port (§5.9).
+2. Register local-API routes **before** the SPA `app.get("*")` catch-all; verify any global `app.onError` passes HTTPException statuses through (FE depends on 400/409 from `/provider-clis/install`).
+3. Bind `createThreadEventAppender` into the engine's ports at boot; the router's ordering barriers rely on append durability only (flush covers append transactions + event effects, not the detached follow-up batch — matches daemon ingress semantics).
+4. `ports.interactiveRequests.interrupt` must be effectively infallible in-process; boot reconciliation owns interrupt recovery (the daemon's durable pending-interrupt queue + retry timer were deliberately not ported).
+5. Live-check `runtime-shell-env`'s default CLI path resolution (`createRequire('@bb/cli/package.json')`) at the P1b boundary — only the override is unit-tested.
+6. `Engine.shutdown` currently passes the frozen wire value `'daemon-disconnect'` as the terminal close reason — P1b/P2 may add an honest reason as a domain enum addition (dead-value rule per §4.2 still applies).
+
+Tracked deferrals:
+7. **P1c-blocking:** the four daemon dispatch-handler test suites (environment/thread/workspace/host-branches dispatch, ~3.5k lines) were not ported — port or consciously drop them before `apps/host-daemon` is deleted.
+8. `evictIdleEnvironments` was restored against Decision 12 (only callers are ported tests) — delete deliberately in Phase 2 with the test rework, do not let it survive silently.
+9. Preserved daemon quirks (deliberate): `/paths/exist` oversized batch → 500 not 400; `/status.connected` constant `true`; codex client User-Agent literal `bb-host-daemon` (rename free in P1c).
+
+## 11. Open items to resolve during execution (tracked, non-blocking)
 
 1. Whether the frontend validates host id shape anywhere (affects `'local'` literal) — Phase 1.
 2. `bb-server` bin: confirm nothing spawns it → delete — Phase 3.

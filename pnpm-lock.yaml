@@ -462,6 +462,12 @@ importers:
       '@bb/agent-providers':
         specifier: workspace:*
         version: link:../../packages/agent-providers
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
+      '@bb/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -474,9 +480,18 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/fuzzy-match':
+        specifier: workspace:*
+        version: link:../../packages/fuzzy-match
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/host-watcher':
+        specifier: workspace:*
+        version: link:../../packages/host-watcher
+      '@bb/host-workspace':
+        specifier: workspace:*
+        version: link:../../packages/host-workspace
       '@bb/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -537,6 +552,9 @@ importers:
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
+      node-pty:
+        specifier: 1.1.0
+        version: 1.1.0
       pino:
         specifier: ^9.6.0
         version: 9.14.0
