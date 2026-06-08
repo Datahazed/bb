@@ -4,7 +4,7 @@ import {
   getProject,
   getThread,
 } from "@bb/db";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../../engine/contract/commands.js";
 import type { LocalPathProjectSource } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";

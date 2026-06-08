@@ -9,12 +9,12 @@ import type {
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   WorkspaceContext,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import type {
   ReplayCaptureThreadMetadata,
   ReplayTurnRequestInput,
 } from "@bb/replay-capture/writer";
-import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
+import { getPersonalWorkspaceRoot } from "../workspace/provision.js";
 import type { FetchProjectAttachment, ThreadEventSink } from "../ports.js";
 import type { TerminalManager } from "../terminals/terminal-manager.js";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";

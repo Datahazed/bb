@@ -25,16 +25,18 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import type {
-  HostDaemonAppDataChangePayload,
-  HostDaemonAppDataResyncPayload,
   HostDaemonCommand,
   HostDaemonCommandResult,
-  HostDaemonDaemonWsMessage,
   HostDaemonDurableCommandType,
+} from "./contract/commands.js";
+import type {
+  HostDaemonAppDataChangePayload,
+  HostDaemonAppDataResyncPayload,
+  HostDaemonDaemonWsMessage,
   HostDaemonEnvironmentChangePayload,
   HostDaemonInteractiveRequestResponse,
   HostDaemonServerWsMessage,
-} from "@bb/host-daemon-contract";
+} from "./contract/session-types.js";
 import type { Logger } from "@bb/logger";
 
 /**

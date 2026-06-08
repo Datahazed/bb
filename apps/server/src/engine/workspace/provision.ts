@@ -259,19 +259,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 // provisionWorkspace
 // ---------------------------------------------------------------------------
 
-export interface OpenWorkspaceArgs {
-  path: string;
-}
-
-export async function openWorkspace(
-  args: OpenWorkspaceArgs,
-): Promise<HostWorkspace> {
-  return provisionWorkspace({
-    workspaceProvisionType: "unmanaged",
-    path: args.path,
-  });
-}
-
 export async function provisionWorkspace(
   opts: ProvisionWorkspaceArgs,
 ): Promise<HostWorkspace> {

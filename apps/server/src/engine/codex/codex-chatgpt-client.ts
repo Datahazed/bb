@@ -14,7 +14,7 @@ import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import { ExpectedCommandDispatchError } from "../core/command-dispatch-support.js";
 import {
   getChatGptCloudflareCookieHeader,

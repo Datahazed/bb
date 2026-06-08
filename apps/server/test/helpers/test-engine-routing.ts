@@ -1,7 +1,7 @@
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
+} from "../../src/engine/contract/commands.js";
 import type {
   EngineCommandEnvelope,
   EngineCommandResultReport,

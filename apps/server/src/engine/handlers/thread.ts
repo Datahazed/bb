@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
+import type { HostDaemonCommandResult } from "../contract/commands.js";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../core/runtime-manager.js";
 import {

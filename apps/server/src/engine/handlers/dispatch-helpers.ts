@@ -18,7 +18,7 @@ import type {
   PromptInput,
 } from "@bb/domain";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
-import type { HostWorkspace, ProvisionWorkspaceArgs } from "@bb/host-workspace";
+import type { HostWorkspace, ProvisionWorkspaceArgs } from "../workspace/provision.js";
 import { RuntimeManager } from "../core/runtime-manager.js";
 import { listFilesRecursively } from "./file-list.js";
 import { noopEventSink } from "../core/command-dispatch-support.js";

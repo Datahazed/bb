@@ -4,12 +4,12 @@ import type {
   HostDaemonDurableCommandType,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import {
   hostDaemonCommandResultSchemaByType,
   parseHostDaemonOnlineRpcResultForCommand,
   shouldFlushEventsBeforeReportingCommandResult,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import { z } from "zod";
 import type {
   DeliverCommandResult,
@@ -224,8 +224,8 @@ const engineCommandSuccessReportSchemaByType = {
 /**
  * Validates handler output against the per-type result schema from the
  * contract before the report leaves the router — the in-process replacement
- * for the daemon's `hostDaemonCommandResultReportSchema` parse, whose
- * `sessionId`/`attemptId` envelope fields died with the durable queue. The
+ * for the daemon's result-report envelope parse, whose `sessionId`/`attemptId`
+ * envelope fields died with the durable queue. The
  * discriminated union also enforces the command-type/result correlation that
  * the dispatch handler map cannot express statically across the full union.
  * (Exhaustiveness against `HostDaemonDurableCommandType` growth is pinned by

@@ -4,7 +4,7 @@ import type { AgentProviderId } from "@bb/agent-providers";
 import { getLatestThreadSequence } from "@bb/db";
 import type { PromptInput, ResolvedThreadExecutionOptions } from "@bb/domain";
 import type { ThreadType } from "@bb/domain";
-import type { TurnSubmitTarget } from "@bb/host-daemon-contract";
+import type { TurnSubmitTarget } from "../../src/engine/contract/commands.js";
 import type { PreparedTurnSubmitCommandPayload } from "../../src/services/threads/thread-commands.js";
 import {
   appendManagerToolReminder,

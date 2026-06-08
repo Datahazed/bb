@@ -15,7 +15,7 @@ import type {
   ResolvedThreadExecutionOptions,
   TurnRequestTarget,
 } from "@bb/domain";
-import type { TurnSubmitTarget } from "@bb/host-daemon-contract";
+import type { TurnSubmitTarget } from "../../engine/contract/commands.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 
 type NudgeSweepDeps = LoggedWorkSessionDeps & Pick<AppDeps, "threadLifecycle">;

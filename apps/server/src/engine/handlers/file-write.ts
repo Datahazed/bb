@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
+import type { HostReadFileRelativeDotfilePolicy } from "../contract/commands.js";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,

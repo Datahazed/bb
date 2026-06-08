@@ -32,10 +32,10 @@ import {
   pathsExistRequestSchema,
   providerCliInstallRequestSchema,
   providerCliStatusResponseSchema,
-  typedRoutes,
   type HostDaemonLocalSchema,
   type HostPlatform,
 } from "@bb/host-daemon-contract";
+import { typedRoutes } from "@bb/hono-typed-routes";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import type { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";

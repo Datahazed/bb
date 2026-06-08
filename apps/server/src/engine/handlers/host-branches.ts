@@ -8,8 +8,8 @@ import {
   listBranches,
   listRemoteBranches,
   readDefaultBranch,
-} from "@bb/host-workspace";
-import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+} from "../workspace/git.js";
+import type { HostDaemonOnlineRpcResult } from "../contract/commands.js";
 import { CommandDispatchError } from "../core/command-dispatch-support.js";
 import type { CommandOf } from "../core/command-dispatch-support.js";
 

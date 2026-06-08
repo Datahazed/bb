@@ -7,9 +7,9 @@ import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   type ProvisioningTranscriptEntry,
 } from "@bb/domain";
-import { provisionWorkspace } from "../src/index.js";
-import { runGit } from "../src/git.js";
-import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
+import { provisionWorkspace } from "./provision.js";
+import { runGit } from "./git.js";
+import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
 
 const tempDirs: string[] = [];
 

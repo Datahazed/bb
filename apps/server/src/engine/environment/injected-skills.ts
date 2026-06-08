@@ -13,7 +13,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/app-storage-paths";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type { HostDaemonInjectedSkillSource } from "../contract/commands.js";
 import { isFsErrorWithCode } from "../core/fs-errors.js";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;

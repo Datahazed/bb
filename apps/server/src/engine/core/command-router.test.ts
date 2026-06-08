@@ -27,16 +27,18 @@ import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
 } from "@bb/domain";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
-import {
-  WorkspaceError,
-  type CommitOptions,
-  type CommitResult,
-  type HostWorkspace,
-  type ProvisionWorkspaceArgs,
-  type SquashMergeOptions,
-  type SquashMergeResult,
-} from "@bb/host-workspace";
+import type { HostDaemonCommand } from "../contract/commands.js";
+import { WorkspaceError } from "../workspace/git.js";
+import type {
+  HostWorkspace,
+  ProvisionWorkspaceArgs,
+} from "../workspace/provision.js";
+import type {
+  CommitOptions,
+  CommitResult,
+  SquashMergeOptions,
+  SquashMergeResult,
+} from "../workspace/workspace.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   EngineCommandResultReport,

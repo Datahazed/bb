@@ -9,7 +9,7 @@
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import { getErrorCode } from "../../engine/core/command-dispatch.js";
 import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";

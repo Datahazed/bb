@@ -1,15 +1,13 @@
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import { z } from "zod";
-import type { EmptyInput, Endpoint } from "./common.js";
+import type { EmptyInput, Endpoint } from "@bb/hono-typed-routes";
 
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH = "/health";
 export const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
-export const DEFAULT_HOST_DAEMON_LOCAL_HEALTH_VALUE = "ok";
 
 export const workspaceOpenTargetIdValues = [
   "default-app",
@@ -96,9 +94,6 @@ export const statusResponseSchema = z.object({
   platform: hostPlatformSchema,
 });
 export type StatusResponse = z.infer<typeof statusResponseSchema>;
-
-export const healthResponseSchema = z.string().min(1);
-export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 export const providerCliKeyValues = ["codex", "claudeCode"] as const;
 export const providerCliKeySchema = z.enum(providerCliKeyValues);
@@ -226,9 +221,6 @@ export type ProviderCliInstallEvent = z.infer<
 // ---------------------------------------------------------------------------
 
 export type HostDaemonLocalSchema = {
-  [DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH]: {
-    $get: Endpoint<EmptyInput, HealthResponse>;
-  };
   "/workspace-open-targets": {
     $get: Endpoint<EmptyInput, WorkspaceOpenTargetsResponse>;
   };

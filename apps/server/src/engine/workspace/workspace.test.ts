@@ -2,17 +2,17 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Workspace } from "../src/workspace.js";
-import { WorkspaceError } from "../src/git.js";
-import { runGit } from "../src/git.js";
+import { Workspace } from "./workspace.js";
+import { WorkspaceError } from "./git.js";
+import { runGit } from "./git.js";
 import {
   withCheckoutMutationLock,
   withCheckoutMutationLocks,
-} from "../src/checkout-mutation-lock.js";
+} from "./checkout-mutation-lock.js";
 import {
   ProcessLocalQueuedLockTimeoutError,
   withProcessLocalQueuedLocks,
-} from "../src/process-local-queued-lock.js";
+} from "./process-local-queued-lock.js";
 
 const tempDirs: string[] = [];
 

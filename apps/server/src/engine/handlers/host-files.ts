@@ -2,7 +2,7 @@ import path from "node:path";
 import type {
   HostDaemonCommandResult,
   HostDaemonOnlineRpcResult,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import { CommandDispatchError } from "../core/command-dispatch-support.js";
 import type { CommandOf } from "../core/command-dispatch-support.js";
 import { isFsErrorWithCode } from "../core/fs-errors.js";

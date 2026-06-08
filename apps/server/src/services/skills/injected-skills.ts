@@ -9,7 +9,7 @@ import {
   resolveDataDirSkillsRootPath,
 } from "@bb/config/app-storage-paths";
 import { applicationIdSchema, type ApplicationId } from "@bb/domain";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type { HostDaemonInjectedSkillSource } from "../../engine/contract/commands.js";
 import { appManifestSchema } from "@bb/server-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";

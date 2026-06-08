@@ -10,8 +10,8 @@ import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResult,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
-import { hostDaemonOnlineRpcResultSchemaByType } from "@bb/host-daemon-contract";
+} from "../../src/engine/contract/commands.js";
+import { hostDaemonOnlineRpcResultSchemaByType } from "../../src/engine/contract/commands.js";
 import type { TestAppHarness } from "./test-app.js";
 
 interface ProviderModelResponse {

@@ -2,12 +2,12 @@ import { threadScope, type ProvisioningTranscriptEntry } from "@bb/domain";
 import type {
   EnvironmentProvisionCommand,
   HostDaemonCommandResult,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import {
   getPersonalWorkspaceRoot,
   validatePersonalWorkspaceTargetPath,
   type ProvisionWorkspaceArgs,
-} from "@bb/host-workspace";
+} from "../workspace/provision.js";
 import {
   type CommandDispatchOptions,
   type CommandOf,

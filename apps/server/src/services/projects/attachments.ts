@@ -1,6 +1,5 @@
 // For now, we store attachments on the server's local file system.
 // We might move this to something like R2 or S3 in the future.
-// eslint-disable-next-line no-restricted-imports
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize, resolve } from "node:path";
 import { resolveContainedPath } from "@bb/process-utils";

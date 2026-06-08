@@ -4,8 +4,8 @@ import path from "node:path";
 import parcelWatcher from "@parcel/watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Import the ESM namespace so Vitest can spy on the exported pathExists binding.
-import * as pathExistsModule from "../src/path-exists.js";
-import { watchPathChanges as watchPathChangesImpl } from "../src/watch-path.js";
+import * as pathExistsModule from "./path-exists.js";
+import { watchPathChanges as watchPathChangesImpl } from "./watch-path.js";
 
 type WatchPathChanges = typeof watchPathChangesImpl;
 type ParcelWatcherSubscribe = (typeof import("@parcel/watcher"))["subscribe"];

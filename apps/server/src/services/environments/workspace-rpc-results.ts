@@ -1,8 +1,6 @@
 import type { ThreadGitDiffResponse, WorkspaceStatus } from "@bb/domain";
-import type {
-  HostDaemonOnlineRpcResult,
-  WorkspaceResolutionFailure,
-} from "@bb/host-daemon-contract";
+import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcResult } from "../../engine/contract/commands.js";
 import { ApiError } from "../../errors.js";
 
 type WorkspaceStatusCommandResult =

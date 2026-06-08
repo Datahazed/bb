@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { events, threads } from "@bb/db";
 import { turnRequestEventDataSchema } from "@bb/domain";
-import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcCommand } from "../../src/engine/contract/commands.js";
 import {
   createReplayCaptureId,
   type ReplayCaptureManifest,

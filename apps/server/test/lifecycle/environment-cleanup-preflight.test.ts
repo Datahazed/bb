@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import { recordEnvironmentCleanupRequest } from "@bb/db/internal-environment-lifecycle";
-import type { HostDaemonCommandResultByType } from "@bb/host-daemon-contract";
+import type { HostDaemonCommandResultByType } from "../../src/engine/contract/commands.js";
 import {
   listQueuedEnvironmentCommands,
   reportQueuedCommandError,

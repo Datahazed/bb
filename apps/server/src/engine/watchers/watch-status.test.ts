@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "@bb/test-helpers";
-import { watchWorkspaceStatus as watchWorkspaceStatusImpl } from "../src/watch-status.js";
+import { watchWorkspaceStatus as watchWorkspaceStatusImpl } from "./watch-status.js";
 
 type WatchWorkspaceStatus = typeof watchWorkspaceStatusImpl;
 type WatchWorkspaceStatusArgs = Parameters<WatchWorkspaceStatus>[1];

@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import type {
   ApplicationDataWatchTarget,
   ThreadStorageWatchTarget,
-} from "../src/host-watcher-types.js";
+} from "./host-watcher-types.js";
 import {
   collectApplicationDataObservedChanges,
   collectApplicationStorageObservedChanges,
   collectDataDirSkillsObservedChanges,
   collectThreadStorageObservedChanges,
-} from "../src/parcel-host-watcher.js";
+} from "./parcel-host-watcher.js";
 
 function createResolver(
   targets: Record<string, ThreadStorageWatchTarget>,

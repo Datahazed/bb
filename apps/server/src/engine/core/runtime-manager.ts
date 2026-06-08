@@ -20,14 +20,14 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
+import type { HostDaemonInjectedSkillSource } from "../contract/commands.js";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
   HostDaemonTrackedApplicationDataTarget,
   HostDaemonTrackedThreadTarget,
-  HostDaemonInjectedSkillSource,
-} from "@bb/host-daemon-contract";
+} from "../contract/session-types.js";
 import type {
   ApplicationDataWatchTarget,
   ApplicationStorageWatchError,
@@ -36,14 +36,14 @@ import type {
   InjectedSkillsObservedChange,
   ThreadStorageWatchError,
   WorkspaceWatchError,
-  WorkspaceStatusWatchChangeKind,
-} from "@bb/host-watcher";
+} from "../watchers/host-watcher-types.js";
+import type { WorkspaceStatusWatchChangeKind } from "../watchers/watch-status-types.js";
+import { WorkspaceError } from "../workspace/git.js";
 import {
   provisionWorkspace,
-  WorkspaceError,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
-} from "@bb/host-workspace";
+} from "../workspace/provision.js";
 import {
   cleanupInjectedSkillStagingDirs,
   EMPTY_SKILL_CATALOG_HASH,

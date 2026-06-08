@@ -1,3 +1,4 @@
+import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
@@ -5,8 +6,7 @@ import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcCommandType,
   HostDaemonOnlineRpcResult,
-  WorkspaceResolutionFailure,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 import type {
   ResolvedThreadExecutionOptions,
   RuntimeThreadExecutionOptions,
@@ -51,7 +51,7 @@ import {
   startThread,
   submitTurn,
 } from "../handlers/thread.js";
-import { WorkspaceError } from "@bb/host-workspace";
+import { WorkspaceError } from "../workspace/git.js";
 import { squashMerge } from "../handlers/workspace.js";
 import {
   requireResolvedWorkspaceForCommand,

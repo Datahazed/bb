@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
-import type { HostWorkspace } from "@bb/host-workspace";
+import type { HostWorkspace } from "../workspace/provision.js";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeManager } from "../core/runtime-manager.js";

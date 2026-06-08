@@ -1,4 +1,4 @@
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../../src/engine/contract/commands.js";
 import { describe, expect, it } from "vitest";
 import { dispatchEngineCommandAndWait } from "../../src/services/engine/command-wait.js";
 import { ApiError } from "../../src/errors.js";

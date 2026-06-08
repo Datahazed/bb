@@ -9,8 +9,8 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import { turnScope } from "@bb/domain";
-import type { HostDaemonInteractiveRequestResponse } from "@bb/host-daemon-contract";
-import type { HostWatcher } from "@bb/host-watcher";
+import type { HostDaemonInteractiveRequestResponse } from "../contract/session-types.js";
+import type { HostWatcher } from "../watchers/host-watcher-types.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   EngineLogger,

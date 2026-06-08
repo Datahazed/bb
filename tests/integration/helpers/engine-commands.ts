@@ -1,4 +1,4 @@
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../../../apps/server/src/engine/contract/commands.js";
 import {
   EngineCommandDispatcher,
   type DispatchEngineCommandArgs,

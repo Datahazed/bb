@@ -1,6 +1,7 @@
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { resolveDataDirSkillsRootPath } from "@bb/config/app-storage-paths";
-import { createHostWatcher, type HostWatcher } from "@bb/host-watcher";
+import type { HostWatcher } from "../watchers/host-watcher-types.js";
+import { createParcelHostWatcher } from "../watchers/parcel-host-watcher.js";
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { AppDataChangeReporter } from "../environment/app-data-change-reporter.js";
 import {
@@ -114,9 +115,7 @@ export async function createEngine(
     keepCatalogHashes: [],
     logger,
   });
-  const hostWatcher =
-    options.hostWatcher ??
-    (await createHostWatcher({ hostType: "persistent" }));
+  const hostWatcher = options.hostWatcher ?? createParcelHostWatcher();
 
   const replayTasks: ReplayTaskRegistry = new Map();
   async function abortReplayTasks(): Promise<void> {

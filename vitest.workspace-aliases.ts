@@ -8,10 +8,6 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/agent-providers/src/index.ts",
   ),
-  "@bb/secret-storage": path.resolve(
-    repoRoot,
-    "packages/secret-storage/src/index.ts",
-  ),
   "@bb/agent-runtime/test": path.resolve(
     repoRoot,
     "packages/agent-runtime/src/test/index.ts",
@@ -64,24 +60,12 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/host-daemon-contract/src/index.ts",
   ),
-  "@bb/host-workspace": path.resolve(
-    repoRoot,
-    "packages/host-workspace/src/index.ts",
-  ),
-  "@bb/host-watcher": path.resolve(
-    repoRoot,
-    "packages/host-watcher/src/index.ts",
-  ),
   "@bb/server": path.resolve(repoRoot, "apps/server/src/index.ts"),
   "@bb/cli": path.resolve(repoRoot, "apps/cli/src/index.ts"),
   "@bb/logger": path.resolve(repoRoot, "packages/logger/src/index.ts"),
   "@bb/agent-fixtures": path.resolve(
     repoRoot,
     "packages/agent-fixtures/src/index.ts",
-  ),
-  "@bb/agent-fixtures/load-browser": path.resolve(
-    repoRoot,
-    "packages/agent-fixtures/src/load-browser.ts",
   ),
   "@bb/config/server": path.resolve(repoRoot, "packages/config/src/server.ts"),
   "@bb/server-contract": path.resolve(

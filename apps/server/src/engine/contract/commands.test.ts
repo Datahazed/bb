@@ -1,24 +1,19 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { type JsonObject } from "@bb/domain";
+import {
+  FILE_LIST_LIMIT_MAX,
+  FILE_LIST_QUERY_MAX_LENGTH,
+  type JsonObject,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import * as contract from "../src/index.js";
 import {
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
-  TERMINAL_COLS_MAX,
-  TERMINAL_DATA_MAX_BASE64_LENGTH,
-  TERMINAL_DATA_MAX_BYTES,
-  TERMINAL_ROWS_MAX,
   hostDaemonCommandResultSchemaByType,
   hostDaemonCommandSchema,
-  hostDaemonDaemonWsMessageSchema,
   hostDaemonInjectedSkillSourceSchema,
-  hostDaemonInteractiveRequestResponseSchema,
   hostDaemonOnlineRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
   hostDaemonOnlineRpcResultSchemaByType,
-  hostDaemonServerWsMessageSchema,
-  hostDaemonTerminalOutputChunkSchema,
-} from "../src/index.js";
+} from "./commands.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
@@ -340,10 +335,6 @@ function expectHostRpcResultRoundTrip(
   ).toEqual(result);
 }
 
-function terminalDataBase64(byteLength: number): string {
-  return Buffer.alloc(byteLength, "a").toString("base64");
-}
-
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
@@ -364,152 +355,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
-
-describe("host-daemon local schemas", () => {
-  it("parses workspace open target routes", () => {
-    expect(
-      contract.workspaceOpenTargetSchema.parse({
-        id: "vscode",
-        label: "VS Code",
-        capabilities: {
-          openDirectory: true,
-          openFile: true,
-          openFileAtLine: true,
-        },
-      }),
-    ).toEqual({
-      id: "vscode",
-      label: "VS Code",
-      capabilities: {
-        openDirectory: true,
-        openFile: true,
-        openFileAtLine: true,
-      },
-    });
-
-    expect(
-      contract.workspaceOpenTargetsResponseSchema.parse({
-        targets: [
-          {
-            id: "default-app",
-            label: "Default App",
-            capabilities: {
-              openDirectory: true,
-              openFile: true,
-              openFileAtLine: false,
-            },
-          },
-          {
-            id: "finder",
-            label: "Finder",
-            capabilities: {
-              openDirectory: true,
-              openFile: false,
-              openFileAtLine: false,
-            },
-          },
-          {
-            id: "terminal",
-            label: "Terminal",
-            capabilities: {
-              openDirectory: true,
-              openFile: false,
-              openFileAtLine: false,
-            },
-          },
-        ],
-      }),
-    ).toEqual({
-      targets: [
-        {
-          id: "default-app",
-          label: "Default App",
-          capabilities: {
-            openDirectory: true,
-            openFile: true,
-            openFileAtLine: false,
-          },
-        },
-        {
-          id: "finder",
-          label: "Finder",
-          capabilities: {
-            openDirectory: true,
-            openFile: false,
-            openFileAtLine: false,
-          },
-        },
-        {
-          id: "terminal",
-          label: "Terminal",
-          capabilities: {
-            openDirectory: true,
-            openFile: false,
-            openFileAtLine: false,
-          },
-        },
-      ],
-    });
-
-    expect(
-      contract.openInTargetRequestSchema.parse({
-        lineNumber: 12,
-        path: "/tmp/workspace",
-        targetId: "zed",
-      }),
-    ).toEqual({
-      lineNumber: 12,
-      path: "/tmp/workspace",
-      targetId: "zed",
-    });
-  });
-
-  it("rejects malformed workspace open payloads", () => {
-    expect(() =>
-      contract.workspaceOpenTargetSchema.parse({
-        id: "unknown-editor",
-        label: "Unknown",
-        capabilities: {
-          openDirectory: true,
-          openFile: true,
-          openFileAtLine: true,
-        },
-      }),
-    ).toThrow();
-
-    expect(() =>
-      contract.workspaceOpenTargetSchema.parse({
-        id: "vscode",
-        label: "VS Code",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      contract.workspaceOpenTargetsResponseSchema.parse({
-        targets: [
-          {
-            id: "vscode",
-            label: "",
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(() =>
-      contract.openInTargetRequestSchema.parse({
-        path: "/tmp/workspace",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      contract.openInTargetRequestSchema.parse({
-        lineNumber: 0,
-        path: "/tmp/workspace",
-        targetId: "zed",
-      }),
-    ).toThrow();
-  });
-});
 
 describe("host-daemon command schemas", () => {
   it("parses valid workspace and provisioning commands", () => {
@@ -1171,16 +1016,12 @@ describe("host-daemon command schemas", () => {
 
   it("keeps contract optional fields on an explicit allowlist", () => {
     const optionalFieldPaths = collectOptionalFieldPaths({
-      hostDaemonActiveThreadSchema: contract.hostDaemonActiveThreadSchema,
-      hostDaemonCommandSchema: contract.hostDaemonCommandSchema,
-      hostDaemonInteractiveRequestResponseSchema:
-        contract.hostDaemonInteractiveRequestResponseSchema,
-      hostDaemonOnlineRpcCommandSchema:
-        contract.hostDaemonOnlineRpcCommandSchema,
+      hostDaemonCommandSchema,
+      hostDaemonOnlineRpcCommandSchema,
       workspaceCommitResultSchema:
-        contract.hostDaemonCommandResultSchemaByType["workspace.commit"],
+        hostDaemonCommandResultSchemaByType["workspace.commit"],
       workspaceSquashMergeResultSchema:
-        contract.hostDaemonCommandResultSchemaByType["workspace.squash_merge"],
+        hostDaemonCommandResultSchemaByType["workspace.squash_merge"],
     });
 
     expect(optionalFieldPaths).toEqual(
@@ -1501,7 +1342,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("bounds file list command queries and limits", () => {
-    const longQuery = "a".repeat(contract.FILE_LIST_QUERY_MAX_LENGTH + 1);
+    const longQuery = "a".repeat(FILE_LIST_QUERY_MAX_LENGTH + 1);
 
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
@@ -1516,7 +1357,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
-        limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        limit: FILE_LIST_LIMIT_MAX + 1,
       }),
     ).toThrow();
 
@@ -1533,7 +1374,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/workspace",
-        limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        limit: FILE_LIST_LIMIT_MAX + 1,
       }),
     ).toThrow();
 
@@ -1552,7 +1393,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
         path: "/tmp/workspace",
-        limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        limit: FILE_LIST_LIMIT_MAX + 1,
         includeFiles: true,
         includeDirectories: true,
       }),
@@ -1788,156 +1629,7 @@ describe("host-daemon command schemas", () => {
   });
 });
 
-describe("host-daemon session schemas", () => {
-  it("parses surviving engine runtime payloads", () => {
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "environment-change",
-        environmentId: "env_123",
-        change: "work-status-changed",
-      }),
-    ).toEqual({
-      type: "environment-change",
-      environmentId: "env_123",
-      change: "work-status-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "environment-change",
-        environmentId: "env_123",
-        change: "git-refs-changed",
-      }),
-    ).toEqual({
-      type: "environment-change",
-      environmentId: "env_123",
-      change: "git-refs-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "environment-change",
-        environmentId: "env_123",
-        change: "thread-storage-changed",
-      }),
-    ).toEqual({
-      type: "environment-change",
-      environmentId: "env_123",
-      change: "thread-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-storage-changed",
-      }),
-    ).toEqual({
-      type: "application-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangePayloadSchema.parse({
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: "next-hash",
-      }),
-    ).toEqual({
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "next-hash",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangePayloadSchema.parse({
-        applicationId: "status",
-        path: "state.json",
-        value: null,
-        deleted: true,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-
-    expect(() =>
-      contract.hostDaemonAppDataChangePayloadSchema.parse({
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: null,
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonAppDataResyncPayloadSchema.parse({
-        applicationId: "status",
-      }),
-    ).toEqual({
-      applicationId: "status",
-    });
-
-    expect(
-      hostDaemonInteractiveRequestResponseSchema.parse({
-        outcome: "created",
-        interactionId: "pint_123",
-        status: "pending",
-      }),
-    ).toMatchObject({
-      outcome: "created",
-      interactionId: "pint_123",
-    });
-
-    expect(
-      hostDaemonInteractiveRequestResponseSchema.parse({
-        outcome: "existing",
-        interactionId: "pint_123",
-        status: "resolving",
-      }),
-    ).toMatchObject({
-      outcome: "existing",
-      interactionId: "pint_123",
-      status: "resolving",
-    });
-  });
-
-  it("keeps engine runtime websocket payloads strict", () => {
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-        path: "public/index.html",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "Not A Slug",
-      }),
-    ).toThrow();
-  });
-
+describe("online RPC result schemas", () => {
   it("round-trips every online RPC result variant through the per-type schemas", () => {
     // Keep this table-driven instead of inspecting Zod internals: the exported
     // schema behavior is stable API, while union internals are not.
@@ -1974,95 +1666,4 @@ describe("host-daemon session schemas", () => {
       ).toBe(false);
     }
   });
-
-  it("bounds terminal dimensions in daemon websocket messages", () => {
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "terminal.open",
-        requestId: "request-1",
-        terminalId: "term_123",
-        threadId: "thr_123",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        cols: TERMINAL_COLS_MAX,
-        rows: TERMINAL_ROWS_MAX,
-      }).success,
-    ).toBe(true);
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "terminal.resize",
-        terminalId: "term_123",
-        cols: TERMINAL_COLS_MAX + 1,
-        rows: TERMINAL_ROWS_MAX,
-      }).success,
-    ).toBe(false);
-    expect(
-      hostDaemonDaemonWsMessageSchema.safeParse({
-        type: "terminal.opened",
-        requestId: "request-1",
-        terminalId: "term_123",
-        shell: "/bin/zsh",
-        title: "zsh",
-        initialCwd: "/tmp/workspace",
-        currentCwd: null,
-        cols: TERMINAL_COLS_MAX,
-        rows: TERMINAL_ROWS_MAX + 1,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("bounds and validates terminal data in daemon websocket messages", () => {
-    const maxPayload = terminalDataBase64(TERMINAL_DATA_MAX_BYTES);
-    const oversizedDecodedPayload = terminalDataBase64(
-      TERMINAL_DATA_MAX_BYTES + 1,
-    );
-    const oversizedEncodedPayload = "A".repeat(
-      TERMINAL_DATA_MAX_BASE64_LENGTH + 4,
-    );
-
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "terminal.input",
-        terminalId: "term_123",
-        dataBase64: maxPayload,
-      }).success,
-    ).toBe(true);
-    expect(
-      hostDaemonTerminalOutputChunkSchema.safeParse({
-        seq: 0,
-        dataBase64: maxPayload,
-      }).success,
-    ).toBe(true);
-    expect(
-      hostDaemonDaemonWsMessageSchema.safeParse({
-        type: "terminal.replay",
-        requestId: "request-1",
-        terminalId: "term_123",
-        chunks: [
-          {
-            seq: 0,
-            dataBase64: oversizedDecodedPayload,
-          },
-        ],
-        nextSeq: 1,
-      }).success,
-    ).toBe(false);
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "terminal.input",
-        terminalId: "term_123",
-        dataBase64: "not base64!",
-      }).success,
-    ).toBe(false);
-    expect(
-      hostDaemonTerminalOutputChunkSchema.safeParse({
-        seq: 0,
-        dataBase64: oversizedEncodedPayload,
-      }).success,
-    ).toBe(false);
-  });
-
 });

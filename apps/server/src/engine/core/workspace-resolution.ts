@@ -1,11 +1,13 @@
 import type {
-  HostDaemonInjectedSkillSource,
-  WorkspaceContext,
   WorkspaceResolutionFailure,
   WorkspaceResolutionFailureCode,
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
-import { WorkspaceError } from "@bb/host-workspace";
+import type {
+  HostDaemonInjectedSkillSource,
+  WorkspaceContext,
+} from "../contract/commands.js";
+import { WorkspaceError } from "../workspace/git.js";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,

@@ -9,7 +9,6 @@ export {
   readFixtureBundle,
   readFixtureManifest,
 } from "./load.js";
-export { parseFixtureBundleFromJson } from "./load-browser.js";
 export {
   parsePromoteCaptureArgs,
   promoteCaptureFromCliArgs,

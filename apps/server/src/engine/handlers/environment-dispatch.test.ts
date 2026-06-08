@@ -5,12 +5,12 @@
  * (`BufferedEventInput` → `EngineThreadEventInput`) changed in the port.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkspaceError } from "../workspace/git.js";
 import {
   getPersonalWorkspaceRoot,
-  WorkspaceError,
   type HostWorkspace,
-} from "@bb/host-workspace";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+} from "../workspace/provision.js";
+import type { HostDaemonCommand } from "../contract/commands.js";
 import { dispatchCommand } from "../core/command-dispatch.js";
 import type { EngineThreadEventInput } from "../ports.js";
 import {

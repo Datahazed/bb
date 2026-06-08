@@ -23,8 +23,6 @@ stream and is copied verbatim when promoting a live capture.
 ## Package API
 
 - `listFixtureBundles()` and `readFixtureBundle()` load checked-in fixtures.
-- `parseFixtureBundleFromJson()` is browser-safe and parses Vite-globbed
-  `manifest.json` plus raw NDJSON without `node:fs` or `node:path`.
 - `replayFixtures()` translates raw provider events through
   `@bb/agent-runtime` and builds timeline rows with `@bb/thread-view`.
 - `runFixtureCapture()` records a built-in scenario.

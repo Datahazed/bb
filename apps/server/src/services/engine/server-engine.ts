@@ -10,7 +10,7 @@
  */
 import { resolveAppsRootPath } from "@bb/config/app-storage-paths";
 import { listTrackedThreadStorageTargets } from "@bb/db";
-import type { HostWatcher } from "@bb/host-watcher";
+import type { HostWatcher } from "../../engine/watchers/host-watcher-types.js";
 import {
   createEngine,
   type CreateEngineOptions,

@@ -20,7 +20,7 @@ import {
   type Thread,
   type WorkspaceProvisionType,
 } from "@bb/domain";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../../src/engine/contract/commands.js";
 import {
   environmentArchiveThreadsResponseSchema,
   managerArchiveThreadsResponseSchema,

@@ -7,7 +7,7 @@ import type {
   AgentRuntimeCodexSkillRoot,
   AgentRuntimeSkillRoot,
 } from "@bb/agent-runtime";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type { HostDaemonInjectedSkillSource } from "../contract/commands.js";
 import { stageInjectedSkillSources } from "./injected-skills.js";
 
 interface WriteSkillArgs {

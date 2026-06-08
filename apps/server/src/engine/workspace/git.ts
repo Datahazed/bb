@@ -853,7 +853,7 @@ export interface ReadGitBlobResult {
  * `undefined` only when git reports the ref/path/object target is absent.
  * Non-blob objects and other git failures surface as `git_command_failed`.
  */
-export async function gitBlobSize(
+async function gitBlobSize(
   cwd: string,
   ref: string,
   relativePath: string,

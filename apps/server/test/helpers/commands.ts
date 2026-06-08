@@ -15,14 +15,14 @@ import {
   hostDaemonCommandResultSchemaByType,
   hostDaemonCommandSchema,
   hostDaemonOnlineRpcResultSchemaByType,
-} from "@bb/host-daemon-contract";
+} from "../../src/engine/contract/commands.js";
 import type {
   HostDaemonCommand,
   HostDaemonCommandResultByType,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultByType,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
+} from "../../src/engine/contract/commands.js";
 import type {
   EngineCommandResultReport,
   EngineCommandSuccessReport,

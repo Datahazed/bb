@@ -32,39 +32,6 @@ const noBlockingChildProcessRules = {
   ],
 };
 
-// The server must not access workspace filesystems directly — all workspace
-// interaction goes through daemon commands. This rule enforces the boundary so
-// it holds when the daemon runs on a remote host.
-const serverNoWorkspaceAccessRules = {
-  "no-restricted-imports": [
-    "error",
-    {
-      paths: [
-        {
-          name: "@bb/host-workspace",
-          message:
-            "Server must not access workspaces directly. Use daemon commands instead.",
-        },
-        {
-          name: "@bb/host-watcher",
-          message:
-            "Server must not access host watchers directly. Use daemon commands instead.",
-        },
-        {
-          name: "node:fs",
-          message:
-            "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)",
-        },
-        {
-          name: "node:fs/promises",
-          message:
-            "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)",
-        },
-      ],
-    },
-  ],
-};
-
 export default [
   {
     ignores: [
@@ -104,10 +71,5 @@ export default [
       "packages/core/src/generated/**",
     ],
     rules: noBlockingChildProcessRules,
-  },
-  {
-    files: ["apps/server/src/**/*.ts"],
-    ignores: ["**/*.test.ts", "**/__tests__/**"],
-    rules: serverNoWorkspaceAccessRules,
   },
 ];

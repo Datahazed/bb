@@ -4,15 +4,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ENV_SETUP_SCRIPT_NAME } from "@bb/domain";
 import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
-import { Workspace } from "../src/workspace.js";
+import { Workspace } from "./workspace.js";
 import {
   buildSetupScriptCommand,
   createWorktree,
   removeDirectory,
   removeWorktree,
   runSetupScript,
-} from "../src/provisioning.js";
-import { runGit } from "../src/git.js";
+} from "./provisioning.js";
+import { runGit } from "./git.js";
 
 const tempDirs: string[] = [];
 

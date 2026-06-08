@@ -25,7 +25,7 @@ import {
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { productionErrorLogFields } from "../lib/error-log-fields.js";

@@ -55,7 +55,7 @@ import {
 import type {
   EnvironmentProvisionCommand,
   HostDaemonCommandResult,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import { ApiError } from "../../errors.js";
 import { dispatchEngineCommandAndWait } from "../engine/command-wait.js";
 import { EngineDispatchBuffer } from "../engine/engine-dispatch.js";

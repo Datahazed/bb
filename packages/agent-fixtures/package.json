@@ -7,11 +7,6 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./load-browser": {
-      "source": "./src/load-browser.ts",
-      "types": "./src/load-browser.ts",
-      "default": "./src/load-browser.ts"
     }
   },
   "scripts": {

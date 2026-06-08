@@ -2,8 +2,8 @@ import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
-import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
-import { readGitBlob, WorkspaceError } from "@bb/host-workspace";
+import type { HostReadFileRelativeDotfilePolicy } from "../contract/commands.js";
+import { readGitBlob, WorkspaceError } from "../workspace/git.js";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,

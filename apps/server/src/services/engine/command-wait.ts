@@ -4,7 +4,7 @@ import {
   type HostDaemonCommand,
   type HostDaemonCommandResult,
   type HostDaemonDurableCommandType,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import type { CommandResultWaiterResponse } from "./command-result-side-effects.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";

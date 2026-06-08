@@ -3,12 +3,15 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   PATHS_EXIST_MAX_PATHS,
   hostPlatformSchema,
+  openInTargetRequestSchema,
   pathsExistRequestSchema,
   pathsExistResponseSchema,
   providerCliInstallEventSchema,
   providerCliInstallRequestSchema,
   providerCliStatusResponseSchema,
   statusResponseSchema,
+  workspaceOpenTargetSchema,
+  workspaceOpenTargetsResponseSchema,
 } from "../src/index.js";
 
 describe("hostPlatformSchema", () => {
@@ -88,6 +91,152 @@ describe("pathsExistResponseSchema", () => {
   it("rejects non-boolean values", () => {
     expect(() =>
       pathsExistResponseSchema.parse({ existence: { "/a": "yes" } }),
+    ).toThrow();
+  });
+});
+
+describe("workspace open target schemas", () => {
+  it("parses workspace open target routes", () => {
+    expect(
+      workspaceOpenTargetSchema.parse({
+        id: "vscode",
+        label: "VS Code",
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtLine: true,
+        },
+      }),
+    ).toEqual({
+      id: "vscode",
+      label: "VS Code",
+      capabilities: {
+        openDirectory: true,
+        openFile: true,
+        openFileAtLine: true,
+      },
+    });
+
+    expect(
+      workspaceOpenTargetsResponseSchema.parse({
+        targets: [
+          {
+            id: "default-app",
+            label: "Default App",
+            capabilities: {
+              openDirectory: true,
+              openFile: true,
+              openFileAtLine: false,
+            },
+          },
+          {
+            id: "finder",
+            label: "Finder",
+            capabilities: {
+              openDirectory: true,
+              openFile: false,
+              openFileAtLine: false,
+            },
+          },
+          {
+            id: "terminal",
+            label: "Terminal",
+            capabilities: {
+              openDirectory: true,
+              openFile: false,
+              openFileAtLine: false,
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      targets: [
+        {
+          id: "default-app",
+          label: "Default App",
+          capabilities: {
+            openDirectory: true,
+            openFile: true,
+            openFileAtLine: false,
+          },
+        },
+        {
+          id: "finder",
+          label: "Finder",
+          capabilities: {
+            openDirectory: true,
+            openFile: false,
+            openFileAtLine: false,
+          },
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          capabilities: {
+            openDirectory: true,
+            openFile: false,
+            openFileAtLine: false,
+          },
+        },
+      ],
+    });
+
+    expect(
+      openInTargetRequestSchema.parse({
+        lineNumber: 12,
+        path: "/tmp/workspace",
+        targetId: "zed",
+      }),
+    ).toEqual({
+      lineNumber: 12,
+      path: "/tmp/workspace",
+      targetId: "zed",
+    });
+  });
+
+  it("rejects malformed workspace open payloads", () => {
+    expect(() =>
+      workspaceOpenTargetSchema.parse({
+        id: "unknown-editor",
+        label: "Unknown",
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtLine: true,
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      workspaceOpenTargetSchema.parse({
+        id: "vscode",
+        label: "VS Code",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      workspaceOpenTargetsResponseSchema.parse({
+        targets: [
+          {
+            id: "vscode",
+            label: "",
+          },
+        ],
+      }),
+    ).toThrow();
+
+    expect(() =>
+      openInTargetRequestSchema.parse({
+        path: "/tmp/workspace",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      openInTargetRequestSchema.parse({
+        lineNumber: 0,
+        path: "/tmp/workspace",
+        targetId: "zed",
+      }),
     ).toThrow();
   });
 });

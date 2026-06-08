@@ -15,7 +15,7 @@ import {
   type AppDataPath,
   type ApplicationId,
 } from "@bb/domain";
-import type { HostDaemonAppDataResyncPayload } from "@bb/host-daemon-contract";
+import type { HostDaemonAppDataResyncPayload } from "../contract/session-types.js";
 import { CommandDispatchError } from "../core/command-dispatch-support.js";
 import { runtimeErrorLogFields } from "../core/error-utils.js";
 import type { AppDataChangeSink, EngineLogger } from "../ports.js";

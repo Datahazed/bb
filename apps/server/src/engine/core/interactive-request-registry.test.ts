@@ -3,7 +3,7 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
 } from "@bb/domain";
-import type { HostDaemonInteractiveRequestResponse } from "@bb/host-daemon-contract";
+import type { HostDaemonInteractiveRequestResponse } from "../contract/session-types.js";
 import {
   InteractiveRequestRegistry,
   InteractiveRequestRegistryError,

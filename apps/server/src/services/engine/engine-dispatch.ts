@@ -20,7 +20,7 @@ import type {
   HostDaemonCommand,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultForCommand,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import { COMMAND_RESULT_CACHE_TTL_MS } from "../../constants.js";
 import type { CommandRouter } from "../../engine/core/command-router.js";
 import type {

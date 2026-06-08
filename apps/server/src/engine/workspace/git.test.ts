@@ -13,7 +13,7 @@ import {
   runGit,
   runShellPipeline,
   summarizeNumstat,
-} from "../src/git.js";
+} from "./git.js";
 
 const tempDirs: string[] = [];
 

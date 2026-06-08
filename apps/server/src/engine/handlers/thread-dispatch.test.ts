@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../contract/commands.js";
 import {
   encodeClientTurnRequestIdNumber,
   turnScope,

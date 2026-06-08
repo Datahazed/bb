@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { HostDaemonAppDataChangePayload } from "@bb/host-daemon-contract";
+import type { HostDaemonAppDataChangePayload } from "../contract/session-types.js";
 import type { EngineLogger } from "../ports.js";
 import { AppDataChangeReporter } from "./app-data-change-reporter.js";
 

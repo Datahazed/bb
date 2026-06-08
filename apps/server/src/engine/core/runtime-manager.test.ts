@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type { HostDaemonInjectedSkillSource } from "../contract/commands.js";
 import type {
   HostWatcher,
   WatchApplicationStorageRootArgs,
@@ -14,12 +14,12 @@ import type {
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
   WorkspaceWatchError,
-} from "@bb/host-watcher";
+} from "../watchers/host-watcher-types.js";
 import {
   provisionWorkspace,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
-} from "@bb/host-workspace";
+} from "../workspace/provision.js";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

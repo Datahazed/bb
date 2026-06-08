@@ -4,7 +4,7 @@ import { fuzzyMatchPaths } from "@bb/fuzzy-match";
 import type {
   HostPathEntry,
   HostPathEntryKind,
-} from "@bb/host-daemon-contract";
+} from "../contract/commands.js";
 
 export interface FinalizeListedFilesArgs {
   filePaths: string[];

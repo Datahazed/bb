@@ -24,7 +24,7 @@ import type {
 import type {
   HostDaemonCommand,
   TurnSubmitTarget,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";

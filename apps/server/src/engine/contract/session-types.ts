@@ -1,10 +1,9 @@
 /**
- * Surviving engine-facing types from the dead daemon session transport (P1c).
- * The durable-queue/session/enrollment halves (session open/close, command
- * batch fetch, event spool envelopes, online host-RPC WS messages, internal
- * route schemas, the daemon HTTP client) died with `apps/host-daemon`; what
- * remains are the runtime shapes the in-process engine still speaks
- * (`apps/server/src/engine/ports.ts`) until Phase 4 rehomes them.
+ * Surviving engine-facing types from the dead daemon session transport.
+ * Only the types are part of the engine's surface — the zod schemas below are
+ * internal type sources (the WS validation layer died with the transport).
+ * `apps/server/src/engine/ports.ts` derives its terminal event/command unions
+ * from `HostDaemonDaemonWsMessage`/`HostDaemonServerWsMessage` via `Extract`.
  */
 import {
   ENVIRONMENT_CHANGE_KINDS,
@@ -19,21 +18,21 @@ import {
 import { z } from "zod";
 import { workspaceContextSchema } from "./commands.js";
 
-export const hostDaemonActiveThreadSchema = z.object({
+const hostDaemonActiveThreadSchema = z.object({
   threadId: z.string().min(1),
 });
 export type HostDaemonActiveThread = z.infer<
   typeof hostDaemonActiveThreadSchema
 >;
 
-export const hostDaemonLoadedEnvironmentSchema = z.object({
+const hostDaemonLoadedEnvironmentSchema = z.object({
   environmentId: z.string().min(1),
 });
 export type HostDaemonLoadedEnvironment = z.infer<
   typeof hostDaemonLoadedEnvironmentSchema
 >;
 
-export const hostDaemonTrackedThreadTargetSchema = z.object({
+const hostDaemonTrackedThreadTargetSchema = z.object({
   environmentId: z.string().min(1),
   threadId: z.string().min(1),
 });
@@ -41,7 +40,7 @@ export type HostDaemonTrackedThreadTarget = z.infer<
   typeof hostDaemonTrackedThreadTargetSchema
 >;
 
-export const hostDaemonTrackedApplicationDataTargetSchema = z.object({
+const hostDaemonTrackedApplicationDataTargetSchema = z.object({
   applicationId: applicationIdSchema,
   appDataPath: z.string().min(1),
 });
@@ -49,7 +48,7 @@ export type HostDaemonTrackedApplicationDataTarget = z.infer<
   typeof hostDaemonTrackedApplicationDataTargetSchema
 >;
 
-export const hostDaemonEnvironmentChangeSchema = z
+const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
   .extract([
     "work-status-changed",
@@ -60,7 +59,7 @@ export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
 
-export const hostDaemonEnvironmentChangePayloadSchema = z.object({
+const hostDaemonEnvironmentChangePayloadSchema = z.object({
   environmentId: z.string().min(1),
   change: hostDaemonEnvironmentChangeSchema,
 });
@@ -101,7 +100,7 @@ function validateHostDaemonAppDataChangePayload(
   }
 }
 
-export const hostDaemonAppDataChangePayloadSchema =
+const hostDaemonAppDataChangePayloadSchema =
   hostDaemonAppDataChangePayloadBaseSchema.superRefine(
     validateHostDaemonAppDataChangePayload,
   );
@@ -109,7 +108,7 @@ export type HostDaemonAppDataChangePayload = z.infer<
   typeof hostDaemonAppDataChangePayloadSchema
 >;
 
-export const hostDaemonAppDataResyncPayloadSchema = z
+const hostDaemonAppDataResyncPayloadSchema = z
   .object({
     applicationId: applicationIdSchema,
   })
@@ -130,7 +129,7 @@ const terminalCloseReasonSchema = z.enum([
   "open-timeout",
 ]);
 
-export const hostDaemonTerminalOutputChunkSchema = z
+const hostDaemonTerminalOutputChunkSchema = z
   .object({
     seq: z.number().int().nonnegative(),
     dataBase64: terminalDataBase64Schema,
@@ -189,7 +188,7 @@ const hostDaemonTerminalCloseMessageSchema = z
  * server→daemon WS message union; the session-control and online host-RPC
  * members died with the transport).
  */
-export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
+const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   hostDaemonTerminalOpenMessageSchema,
   hostDaemonTerminalAttachMessageSchema,
   hostDaemonTerminalInputMessageSchema,
@@ -282,7 +281,7 @@ const hostDaemonTerminalErrorMessageSchema = z
  * daemon→server WS message union; heartbeat and host-RPC responses died with
  * the transport).
  */
-export const hostDaemonDaemonWsMessageSchema = z.union([
+const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonApplicationStorageChangedMessageSchema,
   hostDaemonApplicationContentChangedMessageSchema,
@@ -296,7 +295,7 @@ export type HostDaemonDaemonWsMessage = z.infer<
   typeof hostDaemonDaemonWsMessageSchema
 >;
 
-export const hostDaemonInteractiveRequestResponseSchema = z.discriminatedUnion(
+const hostDaemonInteractiveRequestResponseSchema = z.discriminatedUnion(
   "outcome",
   [
     z.object({

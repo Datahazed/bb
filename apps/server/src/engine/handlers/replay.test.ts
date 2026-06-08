@@ -7,7 +7,7 @@ import {
   encodeClientTurnRequestIdNumber,
   requireThreadEventScopeTurnId,
 } from "@bb/domain";
-import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcCommand } from "../contract/commands.js";
 import {
   createReplayCaptureId,
   createReplayCapturePlaceholderTurnId,

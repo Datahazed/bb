@@ -10,7 +10,7 @@ import type {
   HostDaemonCommandResultReport,
   HostDaemonCommandResultReportWithoutSession,
   HostDaemonDurableCommandType,
-} from "@bb/host-daemon-contract";
+} from "../../engine/contract/commands.js";
 import type { InteractiveLifecycleCoordinationDeps } from "../../lifecycle-coordination-deps.js";
 import type { EngineDispatchBuffer } from "./engine-dispatch.js";
 import type { AppDeps } from "../../types.js";

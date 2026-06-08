@@ -74,7 +74,7 @@ import {
   type TurnRequestTarget,
 } from "@bb/domain";
 import { setEnvironmentStatus } from "@bb/db/internal-environment-lifecycle";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "../../engine/contract/commands.js";
 import type { UnmanagedBranchSpec } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import { LOCAL_HOST_ID } from "../hosts/local-host.js";

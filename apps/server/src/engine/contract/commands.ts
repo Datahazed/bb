@@ -1,3 +1,10 @@
+/**
+ * The in-process engine command vocabulary (rehomed from
+ * `@bb/host-daemon-contract` in Phase 4 of the single-host rebuild — the
+ * daemon transport is gone, so these shapes are server-internal). The
+ * `HostDaemon*` names survive so the engine and its consumers read the same
+ * as their daemon-era history; renaming is an optional later cleanup.
+ */
 import {
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
@@ -22,24 +29,17 @@ import {
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
+import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
 import {
   replayCaptureDaemonListResponseSchema,
   replayCaptureManifestSchema,
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 32 as const;
-
-export {
-  BRANCH_LIST_LIMIT_MAX,
-  BRANCH_LIST_QUERY_MAX_LENGTH,
-  FILE_LIST_LIMIT_MAX,
-  FILE_LIST_QUERY_MAX_LENGTH,
-} from "@bb/domain";
 const INJECTED_SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
-export const HOST_DAEMON_DURABLE_COMMAND_TYPES = [
+const HOST_DAEMON_DURABLE_COMMAND_TYPES = [
   "thread.start",
   "turn.submit",
   "thread.stop",
@@ -60,51 +60,18 @@ export const HOST_DAEMON_DURABLE_COMMAND_TYPES = [
   "workspace.commit",
   "workspace.squash_merge",
 ] as const;
-export const hostDaemonDurableCommandTypeSchema = z.enum(
+const hostDaemonDurableCommandTypeSchema = z.enum(
   HOST_DAEMON_DURABLE_COMMAND_TYPES,
 );
 export type HostDaemonDurableCommandType = z.infer<
   typeof hostDaemonDurableCommandTypeSchema
 >;
 
-const hostDaemonCommandTypes = new Set<string>(
-  HOST_DAEMON_DURABLE_COMMAND_TYPES,
-);
-
-export function isHostDaemonDurableCommandType(
-  type: string,
-): type is HostDaemonDurableCommandType {
-  return hostDaemonCommandTypes.has(type);
-}
-
 export const workspaceContextSchema = z.object({
   workspacePath: z.string().min(1),
   workspaceProvisionType: workspaceProvisionTypeSchema,
 });
 export type WorkspaceContext = z.infer<typeof workspaceContextSchema>;
-
-export const workspaceResolutionFailureCodeSchema = z.enum([
-  "path_not_found",
-  "not_git_repo",
-  "not_worktree",
-  "workspace_type_mismatch",
-  "permission_denied",
-  "unknown_environment",
-  "unknown",
-]);
-export const workspaceResolutionFailureSchema = z
-  .object({
-    code: workspaceResolutionFailureCodeSchema,
-    workspacePath: z.string().min(1),
-    message: z.string().min(1),
-  })
-  .strict();
-export type WorkspaceResolutionFailureCode = z.infer<
-  typeof workspaceResolutionFailureCodeSchema
->;
-export type WorkspaceResolutionFailure = z.infer<
-  typeof workspaceResolutionFailureSchema
->;
 
 const hostDaemonThreadTargetSchema = z.object({
   environmentId: z.string().min(1),
@@ -183,7 +150,7 @@ const hostDaemonThreadWorkspaceTargetSchema =
     workspaceContext: workspaceContextSchema,
   });
 
-export const threadStartCommandSchema = hostDaemonThreadTargetSchema
+const threadStartCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
     type: z.literal("thread.start"),
@@ -193,7 +160,7 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-export const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
+const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("start"),
   }),
@@ -223,7 +190,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-export const threadStopCommandSchema = hostDaemonThreadTargetSchema.extend({
+const threadStopCommandSchema = hostDaemonThreadTargetSchema.extend({
   type: z.literal("thread.stop"),
 });
 
@@ -315,10 +282,7 @@ const hostReadFileCommandSchema = z
     }
   });
 
-export const hostReadFileRelativeDotfilePolicySchema = z.enum([
-  "allow",
-  "deny",
-]);
+const hostReadFileRelativeDotfilePolicySchema = z.enum(["allow", "deny"]);
 export type HostReadFileRelativeDotfilePolicy = z.infer<
   typeof hostReadFileRelativeDotfilePolicySchema
 >;
@@ -381,10 +345,10 @@ const hostListFilesCommandSchema = z.object({
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
 });
 
-export const hostPathEntryKindSchema = z.enum(["file", "directory"]);
+const hostPathEntryKindSchema = z.enum(["file", "directory"]);
 export type HostPathEntryKind = z.infer<typeof hostPathEntryKindSchema>;
 
-export const hostPathEntrySchema = z.object({
+const hostPathEntrySchema = z.object({
   kind: hostPathEntryKindSchema,
   path: z.string(),
   name: z.string(),
@@ -520,7 +484,7 @@ const personalEnvironmentProvisionCommandSchema =
  * Lane-serialized per environmentId. Git worktree metadata mutations are
  * protected by the workspace implementation.
  */
-export const environmentProvisionCommandSchema = z.discriminatedUnion(
+const environmentProvisionCommandSchema = z.discriminatedUnion(
   "workspaceProvisionType",
   [
     unmanagedEnvironmentProvisionCommandSchema,
@@ -532,13 +496,10 @@ export type EnvironmentProvisionCommand = z.infer<
   typeof environmentProvisionCommandSchema
 >;
 
-export const environmentProvisionCancelCommandSchema =
+const environmentProvisionCancelCommandSchema =
   hostDaemonEnvironmentTargetSchema.extend({
     type: z.literal("environment.provision.cancel"),
   });
-export type EnvironmentProvisionCancelCommand = z.infer<
-  typeof environmentProvisionCancelCommandSchema
->;
 
 const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("environment.destroy"),
@@ -575,7 +536,7 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "workspace.status",
   "workspace.diff",
 ] as const;
-export const hostDaemonOnlineRpcCommandTypeSchema = z.enum(
+const hostDaemonOnlineRpcCommandTypeSchema = z.enum(
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
 );
 
@@ -636,23 +597,6 @@ export type HostDaemonOnlineRpcCommand = z.infer<
 >;
 export type HostDaemonOnlineRpcCommandType = z.infer<
   typeof hostDaemonOnlineRpcCommandTypeSchema
->;
-
-// Retry-on-unavailable is limited to idempotent host reads.
-export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
-  hostListFilesCommandSchema,
-  hostListPathsCommandSchema,
-  hostListBranchesCommandSchema,
-  hostFileMetadataCommandSchema,
-  hostReadFileCommandSchema,
-  hostReadFileRelativeCommandSchema,
-  providerListCommandSchema,
-  providerListModelsCommandSchema,
-  workspaceStatusCommandSchema,
-  workspaceDiffCommandSchema,
-]);
-export type HostDaemonRetryableOnlineRpcCommand = z.infer<
-  typeof hostDaemonRetryableOnlineRpcCommandSchema
 >;
 
 const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
@@ -1036,82 +980,3 @@ export type HostDaemonCommandResultReport =
 export type HostDaemonCommandResultReportWithoutSession =
   | HostDaemonCommandSuccessResultReportWithoutSession
   | HostDaemonCommandErrorResultReportWithoutSession;
-
-function createHostDaemonCommandResultReportSchemasForType<
-  TType extends HostDaemonDurableCommandType,
->(
-  type: TType,
-  resultSchema: (typeof hostDaemonCommandResultSchemaByType)[TType],
-) {
-  return [
-    hostDaemonCommandResultReportBaseSchema.extend({
-      type: z.literal(type),
-      ok: z.literal(true),
-      result: resultSchema,
-    }),
-    hostDaemonCommandResultReportBaseSchema.extend({
-      type: z.literal(type),
-      ok: z.literal(false),
-      errorCode: z.string().min(1),
-      errorMessage: z.string().min(1),
-    }),
-  ] as const;
-}
-
-function createKnownHostDaemonCommandResultReportSchemaForType<
-  TType extends HostDaemonDurableCommandType,
->(type: TType) {
-  return z.discriminatedUnion(
-    "ok",
-    createHostDaemonCommandResultReportSchemasForType(
-      type,
-      hostDaemonCommandResultSchemaByType[type],
-    ),
-  );
-}
-
-/** Catch-all schema for reporting errors on command types the daemon doesn't recognize. */
-const unknownCommandErrorSchema =
-  hostDaemonCommandResultReportBaseSchema.extend({
-    type: z.string().min(1),
-    ok: z.literal(false),
-    errorCode: z.literal("unknown_command"),
-    errorMessage: z.string().min(1),
-  });
-const hostDaemonCommandResultReportEnvelopeSchema =
-  hostDaemonCommandResultReportBaseSchema.extend({
-    type: z.string().min(1),
-    ok: z.boolean(),
-  });
-const knownHostDaemonCommandResultReportSchemasByType = new Map(
-  HOST_DAEMON_DURABLE_COMMAND_TYPES.map((type) => [
-    type,
-    createKnownHostDaemonCommandResultReportSchemaForType(type),
-  ]),
-);
-
-/**
- * Result report union sent from the daemon back to the server.
- *
- * Success reports (`ok: true`) include the typed result for the command type.
- * Error reports (`ok: false`) include `errorCode` and `errorMessage`.
- * Unknown command types use errorCode `"unknown_command"`.
- */
-export const hostDaemonCommandResultReportSchema =
-  z.custom<HostDaemonCommandResultReport>((value) => {
-    const envelope =
-      hostDaemonCommandResultReportEnvelopeSchema.safeParse(value);
-    if (!envelope.success) {
-      return false;
-    }
-    if (!isHostDaemonDurableCommandType(envelope.data.type)) {
-      return unknownCommandErrorSchema.safeParse(value).success;
-    }
-    const schema = knownHostDaemonCommandResultReportSchemasByType.get(
-      envelope.data.type,
-    );
-    if (!schema) {
-      return false;
-    }
-    return schema.safeParse(value).success;
-  });
