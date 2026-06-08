@@ -4,6 +4,9 @@ import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { EngineCommandDispatcher } from "./services/engine/engine-dispatch.js";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
+import type { EnvironmentLifecycle } from "./services/lifecycle/environment-lifecycle.js";
+import type { ProjectLifecycle } from "./services/lifecycle/project-lifecycle.js";
+import type { ThreadRuntimeLifecycle } from "./services/lifecycle/thread-runtime-lifecycle.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
@@ -31,13 +34,16 @@ export interface ServerRuntimeConfig {
 export interface AppDeps {
   config: ServerRuntimeConfig;
   db: DbConnection;
-  /** The Phase 1 dispatch shim — the only runtime path for engine commands. */
+  /** The in-process dispatcher — the only runtime path for engine commands. */
   engineDispatch: EngineCommandDispatcher;
+  environmentLifecycle: EnvironmentLifecycle;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;
   pendingInteractions: PendingInteractionLifecycle;
+  projectLifecycle: ProjectLifecycle;
   terminalSessions: TerminalSessionLifecycle;
+  threadLifecycle: ThreadRuntimeLifecycle;
 }
 
 export interface ServerAppDeps extends AppDeps {
@@ -55,7 +61,10 @@ export type WorkSessionDeps = LifecycleDeps;
 export type LoggedWorkSessionDeps = WorkSessionDeps & Pick<AppDeps, "logger">;
 
 export type PendingInteractionWorkSessionDeps = WorkSessionDeps &
-  Pick<AppDeps, "pendingInteractions">;
+  Pick<
+    AppDeps,
+    "environmentLifecycle" | "pendingInteractions" | "threadLifecycle"
+  >;
 
 export type LoggedPendingInteractionWorkSessionDeps =
   PendingInteractionWorkSessionDeps & Pick<AppDeps, "logger">;

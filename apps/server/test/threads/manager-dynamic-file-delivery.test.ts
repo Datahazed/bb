@@ -699,17 +699,22 @@ describe("manager dynamic file delivery", () => {
         ),
       ).toBe(false);
 
-      const turnSubmitRows = setup.harness.engineRouting.dispatched.filter(
-        (envelope) =>
-          envelope.command.type === "turn.submit" &&
-          envelope.command.threadId === setup.thread.id,
-      );
-      expect(turnSubmitRows).toHaveLength(1);
+      const turnSubmitCommands = setup.harness.engineRouting.dispatched
+        .map((envelope) => envelope.command)
+        .filter(
+          (command) =>
+            command.type === "turn.submit" &&
+            command.threadId === setup.thread.id,
+        );
+      expect(turnSubmitCommands).toHaveLength(1);
+      const turnSubmitCommand = turnSubmitCommands[0];
+      if (turnSubmitCommand?.type !== "turn.submit") {
+        throw new Error("Expected turn.submit command");
+      }
 
       const lifecycleRows = setup.harness.db
         .select({
-          commandId: clientTurnRequests.commandId,
-          commandType: clientTurnRequests.commandType,
+          requestId: clientTurnRequests.requestId,
           status: clientTurnRequests.status,
           threadId: clientTurnRequests.threadId,
         })
@@ -718,8 +723,7 @@ describe("manager dynamic file delivery", () => {
         .all();
       expect(lifecycleRows).toEqual([
         {
-          commandId: turnSubmitRows[0]?.commandId,
-          commandType: "turn.submit",
+          requestId: turnSubmitCommand.requestId,
           status: "pending",
           threadId: setup.thread.id,
         },

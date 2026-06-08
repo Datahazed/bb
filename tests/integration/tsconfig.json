@@ -14,9 +14,5 @@
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": ["./**/*.ts", "../../vitest.workspace-aliases.ts"],
-  // Quarantined with the vitest exclude: the recovery suite drives the dead
-  // daemon crash/restart machinery and is rewritten as boot-reconciliation
-  // tests in Phase 2 (plans/single-host-rebuild.md §6 Phase 2).
-  "exclude": ["fake/recovery"]
+  "include": ["./**/*.ts", "../../vitest.workspace-aliases.ts"]
 }

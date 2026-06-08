@@ -23,10 +23,6 @@ import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
-import {
-  requestEnvironmentCleanup,
-  wouldCleanupEnvironment,
-} from "../environments/environment-cleanup-internal.js";
 import { syncManagerThreadSchedules } from "../scheduling/manager-schedule-sync.js";
 import {
   isCommandTimeoutError,
@@ -34,7 +30,6 @@ import {
 } from "../lib/error-log-fields.js";
 import { queueManagedThreadTurnNotificationBestEffort } from "./managed-thread-notifications.js";
 import { runQueuedMessageAutoSendForThread } from "./queued-messages.js";
-import { queueSettledArchivedThreadProviderArchiveCommand } from "./thread-lifecycle.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { tryTransition } from "./thread-transitions.js";
 
@@ -287,7 +282,10 @@ export function resolveEventsToApply(
 }
 
 async function archiveCompletedAutomationThreadIfNeeded(
-  deps: Pick<AppDeps, "db" | "engineDispatch" | "hub">,
+  deps: Pick<
+    AppDeps,
+    "db" | "engineDispatch" | "environmentLifecycle" | "hub" | "threadLifecycle"
+  >,
   args: ArchiveCompletedAutomationThreadIfNeededArgs,
 ): Promise<void> {
   if (args.turnStatus !== "completed" || !args.latestThread.automationId) {
@@ -296,9 +294,9 @@ async function archiveCompletedAutomationThreadIfNeeded(
 
   const automation = getAutomation(deps.db, args.latestThread.automationId);
   if (automation?.autoArchive) {
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
+    const shouldRequestCleanup = deps.environmentLifecycle.wouldCleanup({
       environmentId: args.latestThread.environmentId,
-      excludeThreadId: args.latestThread.id,
+      ...(args.latestThread.id ? { excludeThreadId: args.latestThread.id } : {}),
     });
     const archivedThread = archiveThread(
       deps.db,
@@ -308,11 +306,11 @@ async function archiveCompletedAutomationThreadIfNeeded(
     if (!archivedThread) {
       return;
     }
-    queueSettledArchivedThreadProviderArchiveCommand(deps, {
+    deps.threadLifecycle.queueSettledArchivedThreadProviderArchiveCommand({
       threadId: archivedThread.id,
     });
     if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
+      deps.environmentLifecycle.requestCleanup({
         environmentId: args.latestThread.environmentId,
       });
     }

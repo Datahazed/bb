@@ -10,6 +10,16 @@ import {
 import { waitForEnvironmentStatus, waitForThreadStatus } from "./assertions.js";
 import type { IntegrationHarness } from "./harness.js";
 
+/**
+ * The slice of the harness fixtures actually need — satisfied by both the
+ * in-process `IntegrationHarness` and the crash suite's out-of-process
+ * `CrashServerHarness`.
+ */
+export type FixtureHarness = Pick<
+  IntegrationHarness,
+  "api" | "hostId" | "repoDir"
+>;
+
 export interface CreateProjectFixtureOptions {
   name: string;
   path?: string;
@@ -49,7 +59,7 @@ export interface ReadyThreadFixture {
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export async function createProjectFixture(
-  harness: IntegrationHarness,
+  harness: FixtureHarness,
   options: CreateProjectFixtureOptions,
 ): Promise<ProjectFixture> {
   const project = await createProject(harness.api, {
@@ -64,7 +74,7 @@ export async function createProjectFixture(
 }
 
 export async function createReadyHostThread(
-  harness: IntegrationHarness,
+  harness: FixtureHarness,
   options: ReadyHostThreadOptions,
 ): Promise<ReadyThreadFixture> {
   const thread = await createHostThread(harness.api, {
@@ -95,7 +105,7 @@ export async function createReadyHostThread(
 }
 
 export async function createReadyReuseThread(
-  harness: IntegrationHarness,
+  harness: FixtureHarness,
   options: ReadyReuseThreadOptions,
 ): Promise<ReadyThreadFixture> {
   const thread = await createReuseThread(harness.api, {

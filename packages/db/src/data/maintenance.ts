@@ -1,13 +1,6 @@
 import { and, count, inArray, isNull } from "drizzle-orm";
-import { activeLifecycleOperationStates } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
-import {
-  environmentOperations,
-  pendingInteractions,
-  projectOperations,
-  threadOperations,
-  threads,
-} from "../schema.js";
+import { pendingInteractions, threads } from "../schema.js";
 
 export const DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES = 128 * 1024 * 1024;
 export const DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO = 0.15;
@@ -54,11 +47,8 @@ interface DbstatUnusedRow {
 }
 
 export interface DatabaseMaintenanceActivity {
-  activeEnvironmentOperationCount: number;
   activePendingInteractionCount: number;
-  activeProjectOperationCount: number;
   activeThreadCount: number;
-  activeThreadOperationCount: number;
 }
 
 export interface DatabaseCompactionStats {
@@ -180,36 +170,6 @@ export function getDatabaseMaintenanceActivity(
       )
       .get(),
   );
-  const activeProjectOperationCount = countValue(
-    db
-      .select({ value: count() })
-      .from(projectOperations)
-      .where(
-        inArray(projectOperations.state, [...activeLifecycleOperationStates]),
-      )
-      .get(),
-  );
-  const activeEnvironmentOperationCount = countValue(
-    db
-      .select({ value: count() })
-      .from(environmentOperations)
-      .where(
-        inArray(
-          environmentOperations.state,
-          [...activeLifecycleOperationStates],
-        ),
-      )
-      .get(),
-  );
-  const activeThreadOperationCount = countValue(
-    db
-      .select({ value: count() })
-      .from(threadOperations)
-      .where(
-        inArray(threadOperations.state, [...activeLifecycleOperationStates]),
-      )
-      .get(),
-  );
   const activePendingInteractionCount = countValue(
     db
       .select({ value: count() })
@@ -223,11 +183,8 @@ export function getDatabaseMaintenanceActivity(
   );
 
   return {
-    activeEnvironmentOperationCount,
     activePendingInteractionCount,
-    activeProjectOperationCount,
     activeThreadCount,
-    activeThreadOperationCount,
   };
 }
 
@@ -235,11 +192,8 @@ export function isDatabaseMaintenanceIdle(
   activity: DatabaseMaintenanceActivity,
 ): boolean {
   return (
-    activity.activeEnvironmentOperationCount === 0 &&
     activity.activePendingInteractionCount === 0 &&
-    activity.activeProjectOperationCount === 0 &&
-    activity.activeThreadCount === 0 &&
-    activity.activeThreadOperationCount === 0
+    activity.activeThreadCount === 0
   );
 }
 

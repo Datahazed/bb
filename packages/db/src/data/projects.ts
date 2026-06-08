@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { projects, projectOperations, projectSources } from "../schema.js";
+import { projects, projectSources } from "../schema.js";
 import { createProjectId, createProjectSourceId } from "../ids.js";
 import { toProjectSource } from "./project-sources.js";
 import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
@@ -67,11 +67,7 @@ export type ReorderProjectResult =
 function publicProjectFilter() {
   return and(
     eq(projects.kind, "standard"),
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${projectOperations}
-      WHERE ${projectOperations.projectId} = ${projects.id}
-      AND ${projectOperations.kind} = 'delete'
-    )`,
+    isNull(projects.deleteRequestedAt),
   );
 }
 
@@ -172,6 +168,38 @@ export function createProject(
 
 export function getProject(db: DbConnection, id: string) {
   return db.select().from(projects).where(eq(projects.id, id)).get() ?? null;
+}
+
+export interface MarkProjectDeleteRequestedArgs {
+  projectId: string;
+  requestedAt?: number;
+}
+
+/** Stamps durable deletion intent (idempotent; the first stamp wins). */
+export function markProjectDeleteRequested(
+  db: DbConnection | DbTransaction,
+  args: MarkProjectDeleteRequestedArgs,
+): void {
+  db.update(projects)
+    .set({
+      deleteRequestedAt: args.requestedAt ?? Date.now(),
+      updatedAt: Date.now(),
+    })
+    .where(
+      and(eq(projects.id, args.projectId), isNull(projects.deleteRequestedAt)),
+    )
+    .run();
+}
+
+export function listProjectIdsWithDeleteRequested(
+  db: DbConnection,
+): string[] {
+  return db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(isNotNull(projects.deleteRequestedAt))
+    .all()
+    .map((row) => row.id);
 }
 
 export function getPersonalProject(db: DbConnection) {

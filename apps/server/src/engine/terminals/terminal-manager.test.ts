@@ -329,9 +329,6 @@ describe("TerminalManager", () => {
         title: "zsh",
       }),
     );
-    await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
-      [],
-    );
   });
 
   it("rejects terminal opens when the loaded runtime path differs from workspaceContext", async () => {
@@ -592,10 +589,6 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
-      ["env-1"],
-    );
-    expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it("kills all terminals on shutdown with the caller-supplied reason", async () => {

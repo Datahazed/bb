@@ -99,8 +99,6 @@ export type {
 } from "./terminal.js";
 
 export {
-  clientTurnRequestCommandTypeSchema,
-  clientTurnRequestCommandTypeValues,
   clientTurnRequestStatusSchema,
   clientTurnRequestStatusValues,
   clientTurnRequestTerminalReasonSchema,
@@ -109,7 +107,6 @@ export {
   terminalClientTurnRequestStatusValues,
 } from "./client-turn-request-lifecycle.js";
 export type {
-  ClientTurnRequestCommandType,
   ClientTurnRequestStatus,
   ClientTurnRequestTerminalReason,
   TerminalClientTurnRequestStatus,
@@ -286,24 +283,10 @@ export type {
 } from "./producer-event-payload.js";
 
 export {
-  activeLifecycleOperationStates,
-  environmentOperationKindSchema,
-  environmentOperationKindValues,
-  isActiveLifecycleOperationState,
-  lifecycleOperationStateSchema,
-  lifecycleOperationStateValues,
-  projectOperationKindSchema,
-  projectOperationKindValues,
-  threadOperationKindSchema,
-  threadOperationKindValues,
   threadProvisioningStageSchema,
   threadProvisioningStageValues,
 } from "./lifecycle-operations.js";
 export type {
-  EnvironmentOperationKind,
-  LifecycleOperationState,
-  ProjectOperationKind,
-  ThreadOperationKind,
   ThreadProvisioningState,
   ThreadProvisioningStage,
 } from "./lifecycle-operations.js";

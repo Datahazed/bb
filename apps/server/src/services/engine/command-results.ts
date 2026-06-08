@@ -16,16 +16,6 @@ import {
   type CommandResultSideEffectsResult,
   type SettledEngineCommand,
 } from "./command-result-side-effects.js";
-import { settleEnvironmentDestroyCommandResult } from "../environments/environment-cleanup-internal.js";
-import {
-  settleEnvironmentProvisionCancelCommandResult,
-  settleEnvironmentProvisionCommandResult,
-} from "../environments/environment-provisioning-internal.js";
-import {
-  settleThreadStartCommandResult,
-  settleThreadStopCommandResult,
-  settleTurnSubmitCommandResult,
-} from "../threads/thread-lifecycle.js";
 import { scheduleDetachedWork } from "../lib/detached-work.js";
 
 type SettledCommandType = SettledEngineCommand["command"]["type"];
@@ -76,17 +66,15 @@ function reportMatchesCommandType<TType extends SettledCommandType>(
   return report.type === command.type;
 }
 
+// Lifecycle command types (thread.start/stop, turn.submit,
+// environment.provision/provision.cancel/destroy) have no owners here: the
+// lifecycle modules dispatch them via `engineDispatch.execute` and settle the
+// typed result as a straight-line continuation (plan §6 Phase 2).
 const commandResultOwners: CommandResultOwnerRegistry = {
   "environment.cleanup_preflight": null,
-  "environment.destroy": {
-    applySideEffects: settleEnvironmentDestroyCommandResult,
-  },
-  "environment.provision": {
-    applySideEffects: settleEnvironmentProvisionCommandResult,
-  },
-  "environment.provision.cancel": {
-    applySideEffects: settleEnvironmentProvisionCancelCommandResult,
-  },
+  "environment.destroy": null,
+  "environment.provision": null,
+  "environment.provision.cancel": null,
   "host.write_file_relative": null,
   "host.delete_file_relative": null,
   "host.delete_path_relative": null,
@@ -106,15 +94,9 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "thread.deleted": null,
   "thread.rename": null,
   "thread.unarchive": null,
-  "thread.start": {
-    applySideEffects: settleThreadStartCommandResult,
-  },
-  "thread.stop": {
-    applySideEffects: settleThreadStopCommandResult,
-  },
-  "turn.submit": {
-    applySideEffects: settleTurnSubmitCommandResult,
-  },
+  "thread.start": null,
+  "thread.stop": null,
+  "turn.submit": null,
   "codex.voice.transcribe": null,
   "workspace.commit": {
     applySideEffects: ({ deps, command, report }) => {

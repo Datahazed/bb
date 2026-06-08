@@ -4,14 +4,11 @@ import {
   createEnvironment,
   createProject,
   createThread,
+  markProjectDeleteRequested,
   migrate,
   noopNotifier,
   type DbConnection,
 } from "@bb/db";
-import {
-  markProjectOperationRecordFailed,
-  upsertProjectOperationRecord,
-} from "@bb/db/internal-lifecycle";
 import type { Project } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -137,11 +134,7 @@ describe("entity lookup lifecycle errors", () => {
   it("returns project_unavailable for pending project deletion", () => {
     const { db, project } = setup();
     try {
-      upsertProjectOperationRecord(db, {
-        kind: "delete",
-        payload: "{}",
-        projectId: project.id,
-      });
+      markProjectDeleteRequested(db, { projectId: project.id });
 
       const error = captureApiError(() => {
         requirePublicProject(db, project.id);
@@ -161,37 +154,4 @@ describe("entity lookup lifecycle errors", () => {
     }
   });
 
-  it("returns project_unavailable for terminal project delete operations", () => {
-    const { db, project } = setup();
-    try {
-      upsertProjectOperationRecord(db, {
-        kind: "delete",
-        payload: "{}",
-        projectId: project.id,
-      });
-      const failedOperation = markProjectOperationRecordFailed(db, {
-        kind: "delete",
-        projectId: project.id,
-        failureReason: "environment cleanup failed",
-        completedAt: 123,
-      });
-      expect(failedOperation?.state).toBe("failed");
-
-      const error = captureApiError(() => {
-        requirePublicProject(db, project.id);
-      });
-
-      expect(error.status).toBe(404);
-      expect(error.body).toEqual({
-        code: "project_unavailable",
-        message: "Project is unavailable",
-        details: {
-          reason: "pending_deletion",
-          deletedAt: null,
-        },
-      });
-    } finally {
-      db.$client.close();
-    }
-  });
 });

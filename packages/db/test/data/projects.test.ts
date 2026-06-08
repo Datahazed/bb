@@ -8,9 +8,9 @@ import {
   ensurePersonalProject,
   listProjects,
   listPublicProjects,
+  markProjectDeleteRequested,
   reorderProject,
 } from "../../src/data/projects.js";
-import { upsertProjectOperationRecord } from "../../src/data/project-operations.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -52,11 +52,7 @@ describe("projects", () => {
       },
     });
 
-    upsertProjectOperationRecord(db, {
-      projectId: deletingProject.id,
-      kind: "delete",
-      payload: JSON.stringify({}),
-    });
+    markProjectDeleteRequested(db, { projectId: deletingProject.id });
 
     const allProjectIds = listProjects(db).map((project) => project.id);
     expect(allProjectIds).toHaveLength(3);
@@ -279,11 +275,7 @@ describe("projects", () => {
         path: "/tmp/deleting-project",
       },
     });
-    upsertProjectOperationRecord(db, {
-      projectId: deletingProject.id,
-      kind: "delete",
-      payload: JSON.stringify({}),
-    });
+    markProjectDeleteRequested(db, { projectId: deletingProject.id });
 
     expect(
       reorderProject({

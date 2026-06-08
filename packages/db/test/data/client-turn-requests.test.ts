@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { encodeClientTurnRequestIdNumber, turnScope } from "@bb/domain";
-import { createHostDaemonCommandId } from "../../src/ids.js";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -9,8 +8,7 @@ import {
   getClientTurnRequest,
   listClientTurnRequestsByThreadAndRequestIds,
   markClientTurnRequestAcceptedInTransaction,
-  recordClientTurnRequestCommandCompletedInTransaction,
-  settleClientTurnRequestsForCommandInTransaction,
+  settleClientTurnRequestInTransaction,
   settlePendingClientTurnRequestsForThreadsInTransaction,
 } from "../../src/data/client-turn-requests.js";
 import { appendDaemonEventsInTransaction } from "../../src/data/events.js";
@@ -32,18 +30,15 @@ function setup() {
     projectId: project.id,
     providerId: "codex",
   });
-  const command = { id: createHostDaemonCommandId() };
-  return { command, db, host, project, thread };
+  return { db, host, project, thread };
 }
 
 describe("client turn requests", () => {
   it("creates and lists pending request lifecycle rows", () => {
-    const { command, db, thread } = setup();
+    const { db, thread } = setup();
 
     const row = db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
@@ -52,8 +47,6 @@ describe("client turn requests", () => {
     );
 
     expect(row).toMatchObject({
-      commandId: command.id,
-      commandType: "turn.submit",
       requestEventSequence: 7,
       requestId: requestId1,
       status: "pending",
@@ -68,12 +61,10 @@ describe("client turn requests", () => {
   });
 
   it("returns an existing pending lifecycle row for duplicate request ids", () => {
-    const { command, db, thread } = setup();
+    const { db, thread } = setup();
 
     const first = db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
@@ -82,8 +73,6 @@ describe("client turn requests", () => {
     );
     const second = db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: "hcmd_duplicate_ignored",
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 8,
         requestId: requestId1,
@@ -101,11 +90,9 @@ describe("client turn requests", () => {
   });
 
   it("marks pending requests accepted once", () => {
-    const { command, db, thread } = setup();
+    const { db, thread } = setup();
     db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
@@ -137,12 +124,10 @@ describe("client turn requests", () => {
     expect(repeated).toBeNull();
   });
 
-  it("records command completion without terminalizing successful requests", () => {
-    const { command, db, thread } = setup();
+  it("settles a pending request by thread and request id", () => {
+    const { db, thread } = setup();
     db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
@@ -150,47 +135,18 @@ describe("client turn requests", () => {
       }),
     );
 
-    const [updated] = db.transaction((tx) =>
-      recordClientTurnRequestCommandCompletedInTransaction(tx, {
-        commandCompletedAt: 500,
-        commandId: command.id,
-      }),
-    );
-
-    expect(updated).toMatchObject({
-      commandCompletedAt: 500,
-      requestId: requestId1,
-      settledAt: null,
-      status: "pending",
-    });
-  });
-
-  it("settles pending requests for a failed command", () => {
-    const { command, db, thread } = setup();
-    db.transaction((tx) =>
-      createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
-        environmentId: null,
-        requestEventSequence: 7,
-        requestId: requestId1,
-        threadId: thread.id,
-      }),
-    );
-
-    const [settled] = db.transaction((tx) =>
-      settleClientTurnRequestsForCommandInTransaction(tx, {
-        commandCompletedAt: 500,
-        commandId: command.id,
+    const settled = db.transaction((tx) =>
+      settleClientTurnRequestInTransaction(tx, {
         message: "Provider rejected input",
         reasonCode: "command_failed",
+        requestId: requestId1,
         settledAt: 501,
         status: "failed",
+        threadId: thread.id,
       }),
     );
 
     expect(settled).toMatchObject({
-      commandCompletedAt: 500,
       message: "Provider rejected input",
       reasonCode: "command_failed",
       requestId: requestId1,
@@ -199,24 +155,56 @@ describe("client turn requests", () => {
     });
   });
 
+  it("keeps native acceptance when a command settlement arrives later", () => {
+    const { db, thread } = setup();
+    db.transaction((tx) =>
+      createPendingClientTurnRequestInTransaction(tx, {
+        environmentId: null,
+        requestEventSequence: 7,
+        requestId: requestId1,
+        threadId: thread.id,
+      }),
+    );
+    db.transaction((tx) =>
+      markClientTurnRequestAcceptedInTransaction(tx, {
+        requestId: requestId1,
+        settledAt: 100,
+        threadId: thread.id,
+      }),
+    );
+
+    const settled = db.transaction((tx) =>
+      settleClientTurnRequestInTransaction(tx, {
+        reasonCode: "command_succeeded",
+        requestId: requestId1,
+        settledAt: 200,
+        status: "accepted",
+        threadId: thread.id,
+      }),
+    );
+
+    expect(settled).toBeNull();
+    expect(getClientTurnRequest(db, { requestId: requestId1 })).toMatchObject({
+      reasonCode: "accepted",
+      settledAt: 100,
+      status: "accepted",
+    });
+  });
+
   it("settles only pending lifecycle rows for selected threads", () => {
-    const { command, db, project, thread } = setup();
+    const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
     });
     db.transaction((tx) => {
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
         threadId: thread.id,
       });
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 8,
         requestId: requestId2,
@@ -256,11 +244,9 @@ describe("client turn requests", () => {
   });
 
   it("marks lifecycle rows accepted when accepted input events are appended", () => {
-    const { command, db, thread } = setup();
+    const { db, thread } = setup();
     db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId: requestId1,
@@ -302,6 +288,4 @@ describe("client turn requests", () => {
       status: "accepted",
     });
   });
-
-
 });

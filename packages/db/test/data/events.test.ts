@@ -728,8 +728,6 @@ describe("events", () => {
 
     db.transaction((tx) =>
       createPendingClientTurnRequestInTransaction(tx, {
-        commandId: "hcmd_cross_thread_request",
-        commandType: "turn.submit",
         environmentId: null,
         requestEventSequence: 7,
         requestId,
@@ -1611,7 +1609,7 @@ describe("events", () => {
             scope: threadScope(),
             type: "system/thread/interrupted",
             data: {
-              reason: "host-daemon-restarted",
+              reason: "server-restarted",
             },
           },
         ]),

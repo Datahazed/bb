@@ -3,6 +3,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lte,
   notInArray,
@@ -11,7 +12,7 @@ import {
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { createAutomationId } from "../ids.js";
-import { automations, projectOperations, threads } from "../schema.js";
+import { automations, projects, threads } from "../schema.js";
 import { buildOrderedNumberCursorFilter } from "./cursor-pagination.js";
 
 export interface CreateAutomationInput {
@@ -160,9 +161,9 @@ export function listDueAutomations(
         notInArray(
           automations.projectId,
           db
-            .select({ projectId: projectOperations.projectId })
-            .from(projectOperations)
-            .where(eq(projectOperations.kind, "delete")),
+            .select({ projectId: projects.id })
+            .from(projects)
+            .where(isNotNull(projects.deleteRequestedAt)),
         ),
         afterFilter,
       ),
@@ -334,17 +335,17 @@ export function claimAutomationScheduledRun(
         } satisfies ClaimAutomationScheduledRunResult;
       }
 
-      const projectDeleteOperation = tx
-        .select({ id: projectOperations.id })
-        .from(projectOperations)
+      const deletingProject = tx
+        .select({ id: projects.id })
+        .from(projects)
         .where(
           and(
-            eq(projectOperations.projectId, current.projectId),
-            eq(projectOperations.kind, "delete"),
+            eq(projects.id, current.projectId),
+            isNotNull(projects.deleteRequestedAt),
           ),
         )
         .get();
-      if (projectDeleteOperation) {
+      if (deletingProject) {
         return {
           advanced: false,
           reason: "project-deleting",

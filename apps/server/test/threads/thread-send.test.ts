@@ -160,10 +160,12 @@ describe("sendThreadMessage", () => {
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
+      if (startCommand.command.type !== "thread.start") {
+        throw new Error("Expected thread.start command");
+      }
       expect(harness.db.select().from(clientTurnRequests).all()).toMatchObject([
         {
-          commandId: startCommand.row.id,
-          commandType: "thread.start",
+          requestId: startCommand.command.requestId,
           status: "pending",
           threadId: thread.id,
         },
@@ -275,12 +277,14 @@ describe("sendThreadMessage", () => {
           ({ command }) =>
             command.type === "turn.submit" && command.threadId === thread.id,
         );
+        if (turnSubmitCommand.command.type !== "turn.submit") {
+          throw new Error("Expected turn.submit command");
+        }
         expect(
           harness.db.select().from(clientTurnRequests).all(),
         ).toMatchObject([
           {
-            commandId: turnSubmitCommand.row.id,
-            commandType: "turn.submit",
+            requestId: turnSubmitCommand.command.requestId,
             status: "pending",
             threadId: thread.id,
           },
@@ -401,10 +405,9 @@ describe("sendThreadMessage", () => {
       const lifecycleRow = harness.db
         .select()
         .from(clientTurnRequests)
-        .where(eq(clientTurnRequests.commandId, queued.row.id))
+        .where(eq(clientTurnRequests.threadId, thread.id))
         .get();
       expect(lifecycleRow).toMatchObject({
-        commandCompletedAt: expect.any(Number),
         reasonCode: "command_succeeded",
         settledAt: expect.any(Number),
         status: "accepted",
@@ -453,7 +456,7 @@ describe("sendThreadMessage", () => {
       const pendingLifecycleRow = harness.db
         .select()
         .from(clientTurnRequests)
-        .where(eq(clientTurnRequests.commandId, queued.row.id))
+        .where(eq(clientTurnRequests.threadId, thread.id))
         .get();
       if (!pendingLifecycleRow) {
         throw new Error("Expected pending lifecycle row");
@@ -475,10 +478,9 @@ describe("sendThreadMessage", () => {
         harness.db
           .select()
           .from(clientTurnRequests)
-          .where(eq(clientTurnRequests.commandId, queued.row.id))
+          .where(eq(clientTurnRequests.threadId, thread.id))
           .get(),
       ).toMatchObject({
-        commandCompletedAt: expect.any(Number),
         reasonCode: "accepted",
         status: "accepted",
         threadId: thread.id,
@@ -543,10 +545,9 @@ describe("sendThreadMessage", () => {
       const lifecycleRow = harness.db
         .select()
         .from(clientTurnRequests)
-        .where(eq(clientTurnRequests.commandId, queued.row.id))
+        .where(eq(clientTurnRequests.threadId, thread.id))
         .get();
       expect(lifecycleRow).toMatchObject({
-        commandCompletedAt: expect.any(Number),
         reasonCode: "command_succeeded",
         settledAt: expect.any(Number),
         status: "accepted",
@@ -618,10 +619,9 @@ describe("sendThreadMessage", () => {
       const lifecycleRow = harness.db
         .select()
         .from(clientTurnRequests)
-        .where(eq(clientTurnRequests.commandId, queued.row.id))
+        .where(eq(clientTurnRequests.threadId, thread.id))
         .get();
       expect(lifecycleRow).toMatchObject({
-        commandCompletedAt: expect.any(Number),
         message: "Provider rejected the turn",
         reasonCode: "command_failed",
         settledAt: expect.any(Number),

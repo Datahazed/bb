@@ -14,16 +14,7 @@ export default defineConfig({
     silent: "passed-only",
     name: "@bb/server",
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
-    exclude: [
-      "dist/**",
-      "node_modules/**",
-      // Quarantined (single-host rebuild, plan §6): asserts durable
-      // queue-row lifecycle states that died with the transport. Phase 2's
-      // boot-reconciliation rewrite owes its replacement — core lifecycle
-      // coverage must not be deleted before then. Also excluded from
-      // typecheck in tsconfig.json.
-      "test/threads/thread-lifecycle.test.ts",
-    ],
+    exclude: ["dist/**", "node_modules/**"],
     env: {
       BB_DATA_DIR: "/tmp/bb-server-test",
       BB_SERVER_PORT: "49161",

@@ -1,9 +1,7 @@
 import {
-  createHostDaemonCommandId,
   createPendingClientTurnRequestInTransaction,
   environments,
   events,
-  transitionThreadStatusInTransaction,
   threads,
 } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -29,7 +27,6 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 import { getLastProviderThreadId } from "./thread-events.js";
 import {
@@ -140,13 +137,15 @@ interface QueueTurnSubmitCommandInTransactionArgs {
   requestEventSequence: number | null;
 }
 
-interface QueueTurnSubmitCommandArgs extends PrepareTurnSubmitCommandPayloadArgs {
-  requestId: ClientTurnRequestId;
-  /**
-   * Null only for legacy/untracked submissions where no durable
-   * client/turn/requested event exists to relate to this command.
-   */
-  requestEventSequence: number | null;
+/**
+ * Bookkeeping written; the caller hands this to
+ * `threadLifecycle.dispatchTurnSubmit` AFTER its transaction commits — the
+ * lifecycle settles the engine result inline (client_turn_requests +
+ * thread_command_failed effects).
+ */
+export interface QueuedTurnSubmitCommandDispatch {
+  command: Extract<HostDaemonCommand, { type: "turn.submit" }>;
+  mode: "turn.submit";
 }
 
 interface QueueThreadRenameCommandArgs {
@@ -348,57 +347,16 @@ export async function prepareTurnSubmitCommandPayload(
 export function queueTurnSubmitCommandInTransaction(
   db: DbTransaction,
   args: QueueTurnSubmitCommandInTransactionArgs,
-): EngineCommandEnvelope {
-  const commandId = createHostDaemonCommandId();
+): QueuedTurnSubmitCommandDispatch {
   if (args.requestEventSequence !== null) {
     createPendingClientTurnRequestInTransaction(db, {
-      commandId,
-      commandType: "turn.submit",
       environmentId: args.command.environmentId,
       requestEventSequence: args.requestEventSequence,
       requestId: args.command.requestId,
       threadId: args.command.threadId,
     });
   }
-  return { command: args.command, commandId };
-}
-
-export async function queueTurnSubmitCommand(
-  deps: LoggedWorkSessionDeps,
-  args: QueueTurnSubmitCommandArgs,
-): Promise<void> {
-  ensureThreadNativeArchiveSettled(deps, {
-    thread: args.thread,
-  });
-  const preparedCommand = await prepareTurnSubmitCommandPayload(deps, args);
-  const command = addRequestIdToTurnSubmitCommandPayload({
-    requestId: args.requestId,
-    preparedCommand,
-  });
-  let transitioned = false;
-  const envelope = deps.db.transaction(
-    (tx) => {
-      const queued = queueTurnSubmitCommandInTransaction(tx, {
-        command,
-        requestEventSequence: args.requestEventSequence,
-      });
-      if (args.thread.status === "idle") {
-        transitionThreadStatusInTransaction(tx, {
-          id: args.thread.id,
-          newStatus: "active",
-        });
-        transitioned = true;
-      }
-      return queued;
-    },
-    { behavior: "immediate" },
-  );
-  deps.engineDispatch.dispatch(envelope);
-  if (transitioned) {
-    deps.hub.notifyThread(args.thread.id, ["status-changed"], {
-      projectId: args.thread.projectId,
-    });
-  }
+  return { command: args.command, mode: "turn.submit" };
 }
 
 function requireProviderThreadId(

@@ -4,14 +4,13 @@ import type { SystemProviderTurnWatchdogEventData } from "@bb/domain";
 import { threadScope } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { appendThreadEvent } from "./thread-events.js";
-import { requestThreadStop } from "./thread-lifecycle.js";
 
 export const PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS = 15 * 60_000;
 export const PROVIDER_TURN_IDLE_WATCHDOG_BATCH_SIZE = 25;
 
 export type ProviderTurnWatchdogSweepDeps = Pick<
   AppDeps,
-  "db" | "engineDispatch" | "hub" | "logger"
+  "db" | "engineDispatch" | "hub" | "logger" | "threadLifecycle"
 >;
 
 export interface RunProviderTurnWatchdogSweepOptions {
@@ -76,9 +75,9 @@ export function runProviderTurnWatchdogSweep(
         scope: threadScope(),
         data,
       });
-      requestThreadStop(deps, {
+      deps.threadLifecycle.requestStop({
         environmentId: candidate.environmentId,
-        interruptionReason: "provider-turn-idle",
+        reason: "provider-turn-idle",
         stopRequestedAt: null,
         threadId: candidate.threadId,
       });

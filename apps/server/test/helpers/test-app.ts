@@ -9,6 +9,7 @@ import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { EngineCommandDispatcher } from "../../src/services/engine/engine-dispatch.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
+import { createLifecycles } from "../../src/services/lifecycle/create-lifecycles.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -103,12 +104,23 @@ export async function createTestAppHarness(
       config,
       logger: testLogger,
     });
+  const lifecycles = createLifecycles({
+    config,
+    db,
+    engineDispatch,
+    hub,
+    lifecycleDedupers,
+    logger: testLogger,
+    pendingInteractions,
+    terminalSessions,
+  });
   const deps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
     config,
     db,
     engineDispatch,
+    ...lifecycles,
     hub,
     lifecycleDedupers,
     logger: testLogger,

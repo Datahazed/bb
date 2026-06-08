@@ -1121,45 +1121,6 @@ export class RuntimeManager {
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
-  async evictIdleEnvironments(): Promise<string[]> {
-    // A pending environment creation is still active work. If we evict around
-    // it, the creation can resolve immediately after this sweep and resurrect
-    // an idle runtime entry that missed the eviction pass.
-    if (this.pendingEntries.size > 0) {
-      return [];
-    }
-
-    const idleEntries = [...this.entries.values()].filter((entry) => {
-      const hasActiveThread = [...entry.threads.values()].some(
-        (thread) => thread.status === "active",
-      );
-      return !hasActiveThread && entry.terminals.size === 0;
-    });
-
-    for (const entry of idleEntries) {
-      await this.stopWatchingStatus(entry);
-      this.entries.delete(entry.environmentId);
-    }
-
-    const shutdownResults = await Promise.allSettled(
-      idleEntries.map(async (entry) => {
-        await entry.runtime.shutdown();
-        return entry.environmentId;
-      }),
-    );
-    const firstRejected = shutdownResults.find(
-      (result) => result.status === "rejected",
-    );
-    if (firstRejected && firstRejected.status === "rejected") {
-      throw firstRejected.reason;
-    }
-
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
-    return shutdownResults.flatMap((result) =>
-      result.status === "fulfilled" ? [result.value] : [],
-    );
-  }
-
   async shutdownAll(): Promise<void> {
     const entries = [...this.entries.values()];
     for (const pending of this.pendingEntries.values()) {

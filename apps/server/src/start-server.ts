@@ -12,12 +12,14 @@ import { migrateAppDataLayout } from "./services/apps/app-data-layout-migration.
 import { EngineCommandDispatcher } from "./services/engine/engine-dispatch.js";
 import { startServerEngine } from "./services/engine/server-engine.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
+import { runBootReconciliation } from "./services/lifecycle/boot-reconciliation.js";
+import { createLifecycles } from "./services/lifecycle/create-lifecycles.js";
+import { runProductSweeps } from "./services/lifecycle/product-sweeps.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { acquireDataDirLock } from "./services/system/data-dir-lock.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
-import { runPeriodicSweeps } from "./services/system/periodic-sweeps.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
@@ -102,10 +104,21 @@ async function runLockedServer(
     logger,
   });
 
+  const lifecycles = createLifecycles({
+    config: runtimeConfig,
+    db,
+    engineDispatch,
+    hub,
+    lifecycleDedupers,
+    logger,
+    pendingInteractions,
+    terminalSessions,
+  });
   const appDeps: AppDeps = {
     config: runtimeConfig,
     db,
     engineDispatch,
+    ...lifecycles,
     hub,
     lifecycleDedupers,
     logger,
@@ -128,6 +141,16 @@ async function runLockedServer(
       ? { bridgeBundleDir: engineEntrypointConfig.BB_BRIDGE_DIR }
       : {}),
     devReplayCapture: serverConfig.BB_DEV_REPLAY_CAPTURE,
+  });
+
+  // Crash recovery (plan §3): settle everything the previous process left
+  // in flight BEFORE the server starts accepting requests, so no client ever
+  // observes pre-reconciliation state.
+  runBootReconciliation({
+    deps: appDeps,
+    environmentLifecycle: lifecycles.environmentLifecycle,
+    projectLifecycle: lifecycles.projectLifecycle,
+    threadLifecycle: lifecycles.threadLifecycle,
   });
 
   const { app, closeWebSockets, injectWebSocket } = createApp(
@@ -155,7 +178,7 @@ async function runLockedServer(
   );
 
   const sweepInterval = setInterval(() => {
-    void runPeriodicSweeps(appDeps);
+    void runProductSweeps(appDeps);
   }, 10_000);
   sweepInterval.unref();
 
@@ -178,6 +201,10 @@ async function runLockedServer(
       });
       await closeWebSockets();
       await closeServer;
+      // Abort lifecycle pipelines without running cancel flows: the process
+      // is exiting and the next boot's reconciliation pass owns recovery.
+      lifecycles.threadLifecycle.shutdown();
+      lifecycles.environmentLifecycle.shutdown();
       // With request intake closed, drain in-flight engine work, then shut
       // the engine down (terminals → runtimes, managed workspaces preserved).
       await serverEngine.shutdown();

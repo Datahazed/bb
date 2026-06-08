@@ -9,7 +9,7 @@ import type {
 import {
   createPendingClientTurnRequest,
   markClientTurnRequestAcceptedInTransaction,
-  settleClientTurnRequestsForCommandInTransaction,
+  settleClientTurnRequestInTransaction,
   type DbConnection,
 } from "@bb/db";
 import type { TimelineRow } from "@bb/server-contract";
@@ -4222,7 +4222,6 @@ describe("buildThreadTimeline", () => {
         type: "manager",
       });
       const requestId = "creq_23456789ab";
-      const commandId = "hcmd_settled_system_steer";
 
       seedEvent(harness.deps, {
         threadId: managerThread.id,
@@ -4258,8 +4257,6 @@ describe("buildThreadTimeline", () => {
         },
       });
       createPendingClientTurnRequest(harness.db, {
-        commandId,
-        commandType: "turn.submit",
         environmentId: environment.id,
         requestEventSequence: 2,
         requestId,
@@ -4274,11 +4271,12 @@ describe("buildThreadTimeline", () => {
           });
           return;
         }
-        settleClientTurnRequestsForCommandInTransaction(tx, {
-          commandId,
+        settleClientTurnRequestInTransaction(tx, {
           reasonCode,
+          requestId,
           settledAt: 500,
           status,
+          threadId: managerThread.id,
         });
       });
 

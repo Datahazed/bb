@@ -207,7 +207,7 @@ export type SystemUserQuestionLifecycleEventData = z.infer<
 
 export const systemThreadInterruptedReasonValues = [
   "manual-stop",
-  "host-daemon-restarted",
+  "server-restarted",
   "provider-turn-idle",
 ] as const;
 export const systemThreadInterruptedReasonSchema = z.enum(

@@ -59,9 +59,11 @@ async function runAutomation(
     | "config"
     | "db"
     | "engineDispatch"
+    | "environmentLifecycle"
     | "hub"
     | "lifecycleDedupers"
     | "logger"
+    | "threadLifecycle"
   >,
   automation: AutomationRow,
   now: number,
@@ -137,9 +139,11 @@ export async function sweepDueAutomations(
     | "config"
     | "db"
     | "engineDispatch"
+    | "environmentLifecycle"
     | "hub"
     | "lifecycleDedupers"
     | "logger"
+    | "threadLifecycle"
   >,
   args: SweepDueAutomationsArgs = {},
 ): Promise<void> {

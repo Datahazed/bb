@@ -106,8 +106,8 @@ function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
   switch (reason) {
     case "manual-stop":
       return "Stopped manually";
-    case "host-daemon-restarted":
-      return "Host daemon restarted";
+    case "server-restarted":
+      return "Server restarted";
     case "provider-turn-idle":
       return "Provider turn stopped responding";
     default:

@@ -26,20 +26,12 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-} from "../../services/environments/environment-cleanup-internal.js";
-import {
   requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
 import { getLocalHost } from "../../services/hosts/local-host.js";
 import { queueThreadRenameCommand } from "../../services/threads/thread-commands.js";
-import {
-  finalizeStoppedThread,
-  requestActiveRuntimeThreadStopIfNeeded,
-} from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { requireManagerChildThreadsConfirmation } from "../../services/threads/manager-child-confirmation.js";
 import {
@@ -259,7 +251,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
-      finalizeStoppedThread(deps, {
+      deps.threadLifecycle.finalizeStoppedThread({
         threadId: thread.id,
       });
       return context.json({ ok: true });
@@ -267,15 +259,18 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
     const environment = requireEnvironment(deps.db, thread.environmentId);
     // Deletion finalization owns non-runtime cleanup; only active runtime work
-    // needs a daemon stop request here.
-    requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
-    finalizeStoppedThread(deps, {
+    // needs an engine stop request here.
+    deps.threadLifecycle.requestActiveRuntimeThreadStopIfNeeded(
+      thread,
+      environment,
+    );
+    deps.threadLifecycle.finalizeStoppedThread({
       threadId: thread.id,
     });
-    requestEnvironmentCleanup(deps, {
+    deps.environmentLifecycle.requestCleanup({
       environmentId: environment.id,
     });
-    requestEnvironmentCleanupAdvance(deps, {
+    deps.environmentLifecycle.requestCleanupAdvance({
       environmentId: environment.id,
     });
     return context.json({ ok: true });

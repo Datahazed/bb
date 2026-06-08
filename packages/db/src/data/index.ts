@@ -3,14 +3,17 @@ export {
   ensurePersonalProject,
   getPersonalProject,
   getProject,
+  listProjectIdsWithDeleteRequested,
   listProjects,
   listPublicProjects,
+  markProjectDeleteRequested,
   reorderProject,
   updateProject,
   deleteProject,
 } from "./projects.js";
 export type {
   CreateProjectInput,
+  MarkProjectDeleteRequestedArgs,
   ProjectRow,
   ReorderProjectArgs,
   ReorderProjectResult,
@@ -39,23 +42,12 @@ export type {
 } from "./project-execution-defaults.js";
 
 export {
-  getProjectOperation,
-  listProjectOperations,
-} from "./project-operations.js";
-export type {
-  GetProjectOperationArgs,
-  ListProjectOperationsArgs,
-  ProjectOperationRow,
-} from "./project-operations.js";
-
-export {
   createPendingClientTurnRequest,
   createPendingClientTurnRequestInTransaction,
   getClientTurnRequest,
   listClientTurnRequestsByThreadAndRequestIds,
   markClientTurnRequestAcceptedInTransaction,
-  recordClientTurnRequestCommandCompletedInTransaction,
-  settleClientTurnRequestsForCommandInTransaction,
+  settleClientTurnRequestInTransaction,
   settlePendingClientTurnRequestsForThreadsInTransaction,
 } from "./client-turn-requests.js";
 export type {
@@ -64,8 +56,7 @@ export type {
   GetClientTurnRequestArgs,
   ListClientTurnRequestsByThreadAndRequestIdsArgs,
   MarkClientTurnRequestAcceptedArgs,
-  RecordClientTurnRequestCommandCompletedArgs,
-  SettleClientTurnRequestsForCommandArgs,
+  SettleClientTurnRequestArgs,
   SettlePendingClientTurnRequestsForThreadsArgs,
 } from "./client-turn-requests.js";
 
@@ -175,17 +166,6 @@ export type {
 } from "./threads.js";
 
 export {
-  getThreadOperation,
-  getThreadOperationByCommandId,
-  listThreadOperations,
-} from "./thread-operations.js";
-export type {
-  GetThreadOperationArgs,
-  ListThreadOperationsArgs,
-  ThreadOperationRow,
-} from "./thread-operations.js";
-
-export {
   advanceManagerThreadNudgeAfterFire,
   advanceManagerThreadNudgeAfterFireInTransaction,
   createManagerThreadNudge,
@@ -214,17 +194,6 @@ export type {
   ThreadDynamicContextFileStateKey,
   UpsertThreadDynamicContextFileStateInput,
 } from "./thread-dynamic-context-file-states.js";
-
-export {
-  getEnvironmentOperation,
-  getEnvironmentOperationByCommandId,
-  listEnvironmentOperations,
-} from "./environment-operations.js";
-export type {
-  EnvironmentOperationRow,
-  GetEnvironmentOperationArgs,
-  ListEnvironmentOperationsArgs,
-} from "./environment-operations.js";
 
 export {
   createEnvironment,
@@ -279,7 +248,6 @@ export {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listLatestBackgroundTaskStateRowsByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
-  listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   MissingStoredTurnStartedError,
   pruneBackgroundTaskProgressEvents,
@@ -309,7 +277,6 @@ export type {
   ListStoredThreadProvisioningRowsByProvisioningIdArgs,
   ListStoredTimelineWindowEventRowsArgs,
   ListStoredTurnStartedKeysArgs,
-  ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs,
   ListThreadTurnInterruptionEventStatesArgs,
   ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs,
   MissingStoredTurnStartedDetails,

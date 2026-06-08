@@ -1,50 +1,11 @@
 import { z } from "zod";
 
-export const lifecycleOperationStateValues = [
-  "requested",
-  "queued",
-  "completed",
-  "failed",
-  "cancelled",
-] as const;
-export const lifecycleOperationStateSchema = z.enum(
-  lifecycleOperationStateValues,
-);
-export type LifecycleOperationState = z.infer<
-  typeof lifecycleOperationStateSchema
->;
-
-export const activeLifecycleOperationStates = [
-  "requested",
-  "queued",
-] as const satisfies readonly LifecycleOperationState[];
-
-export function isActiveLifecycleOperationState(
-  state: LifecycleOperationState,
-): boolean {
-  return state === "requested" || state === "queued";
-}
-
-export const environmentOperationKindValues = [
-  "provision",
-  "reprovision",
-  "destroy",
-] as const;
-export const environmentOperationKindSchema = z.enum(
-  environmentOperationKindValues,
-);
-export type EnvironmentOperationKind = z.infer<
-  typeof environmentOperationKindSchema
->;
-
-export const threadOperationKindValues = [
-  "provision",
-  "start",
-  "stop",
-] as const;
-export const threadOperationKindSchema = z.enum(threadOperationKindValues);
-export type ThreadOperationKind = z.infer<typeof threadOperationKindSchema>;
-
+/**
+ * Stage progression of an in-memory thread provision task. The queue-era
+ * operation tables (and their requested/queued state ladder) are gone; these
+ * stage values survive because the provision pipeline still tracks where a
+ * thread is between metadata inference and workspace readiness.
+ */
 export const threadProvisioningStageValues = [
   "metadata-pending",
   "environment-pending",
@@ -66,7 +27,3 @@ export interface ThreadProvisioningState {
   stage: ThreadProvisioningStage;
   workspaceReadyEventSequence: number | null;
 }
-
-export const projectOperationKindValues = ["delete"] as const;
-export const projectOperationKindSchema = z.enum(projectOperationKindValues);
-export type ProjectOperationKind = z.infer<typeof projectOperationKindSchema>;

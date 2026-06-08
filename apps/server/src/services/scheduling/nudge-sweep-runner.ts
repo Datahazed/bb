@@ -17,6 +17,8 @@ import type {
 } from "@bb/domain";
 import type { TurnSubmitTarget } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
+
+type NudgeSweepDeps = LoggedWorkSessionDeps & Pick<AppDeps, "threadLifecycle">;
 import {
   appendClientTurnEventInTransaction,
   getActiveTurnId,
@@ -28,10 +30,10 @@ import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
   type PreparedTurnSubmitCommandPayload,
+  type QueuedTurnSubmitCommandDispatch,
   queueTurnSubmitCommandInTransaction,
 } from "../threads/thread-commands.js";
 import { resolvePermissionEscalation } from "../threads/thread-runtime-config.js";
-import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import {
   computeNextScheduledTimeForExpressionSet,
   ScheduleValidationError,
@@ -115,7 +117,7 @@ interface PendingTurnSubmitNudgeResult {
 }
 
 interface QueuedNudgeResult {
-  envelope: EngineCommandEnvelope;
+  envelope: QueuedTurnSubmitCommandDispatch;
   kind: "queued";
 }
 
@@ -571,7 +573,7 @@ function queueDueNudgeInTransaction(
 }
 
 async function runDueNudgeWithPreferencesLockHeld(
-  deps: LoggedWorkSessionDeps,
+  deps: NudgeSweepDeps,
   cache: NudgeSweepCache,
   nudge: DueManagerThreadNudgeRow,
   now: number,
@@ -645,12 +647,12 @@ async function runDueNudgeWithPreferencesLockHeld(
   deps.hub.notifyThread(preparation.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.engineDispatch.dispatch(transactionResult.envelope);
+  deps.threadLifecycle.dispatchTurnSubmit(transactionResult.envelope);
   tryTransition(deps.db, deps.hub, preparation.thread.id, "active");
 }
 
 async function runDueNudge(
-  deps: LoggedWorkSessionDeps,
+  deps: NudgeSweepDeps,
   cache: NudgeSweepCache,
   nudge: DueManagerThreadNudgeRow,
   now: number,
@@ -666,7 +668,7 @@ interface SweepDueNudgesArgs {
 }
 
 export async function sweepDueNudges(
-  deps: LoggedWorkSessionDeps,
+  deps: NudgeSweepDeps,
   args: SweepDueNudgesArgs = {},
 ): Promise<void> {
   const now = args.now ?? Date.now();

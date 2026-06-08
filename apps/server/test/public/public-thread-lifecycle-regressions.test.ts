@@ -4,13 +4,10 @@ import {
   environments,
   events,
   getThread,
-  getThreadOperation,
   transitionThreadStatus,
 } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { completeThreadStart } from "../../src/services/threads/thread-lifecycle.js";
-import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   requireManagedWorktreeEnvironmentProvisionQueuedCommand,
   reportQueuedCommandSuccess,
@@ -232,10 +229,13 @@ describe("public thread lifecycle regressions", () => {
 
       expect(response.status).toBe(201);
       const createdThread = threadSchema.parse(await readJson(response));
-      await Promise.all([
-        advanceThreadProvisioning(harness.deps, { threadId: createdThread.id }),
-        advanceThreadProvisioning(harness.deps, { threadId: createdThread.id }),
-      ]);
+      // The provision pipeline is an owned in-memory task: there is exactly
+      // one per thread, so repeated advances cannot exist anymore — assert
+      // the single dispatch the pipeline performs.
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
 
       const provisionCommands = harness.engineRouting.dispatched.filter(
         (envelope) => envelope.command.type === "environment.provision",
@@ -318,8 +318,8 @@ describe("public thread lifecycle regressions", () => {
       expect(secondStart.command).toMatchObject({
         threadId: secondThreadBody.id,
       });
-      completeThreadStart(harness.deps, {
-        threadId: firstThreadBody.id,
+      await reportQueuedCommandSuccess(harness, firstStart, {
+        providerThreadId: "provider-first",
       });
       transitionThreadStatus(
         harness.db,
@@ -327,8 +327,8 @@ describe("public thread lifecycle regressions", () => {
         firstThreadBody.id,
         "idle",
       );
-      completeThreadStart(harness.deps, {
-        threadId: secondThreadBody.id,
+      await reportQueuedCommandSuccess(harness, secondStart, {
+        providerThreadId: "provider-second",
       });
       transitionThreadStatus(
         harness.db,
@@ -421,19 +421,10 @@ describe("public thread lifecycle regressions", () => {
       expect(response.status).toBe(201);
       const createdThread = threadSchema.parse(await readJson(response));
 
-      await advanceThreadProvisioning(harness.deps, {
-        threadId: createdThread.id,
-      });
       await waitForThreadStatus(harness, {
         threadId: createdThread.id,
         status: "error",
       });
-      expect(
-        getThreadOperation(harness.db, {
-          threadId: createdThread.id,
-          kind: "provision",
-        })?.state,
-      ).toBe("failed");
       const errorEvent = harness.db
         .select()
         .from(events)

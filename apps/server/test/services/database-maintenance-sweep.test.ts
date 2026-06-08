@@ -20,7 +20,7 @@ import {
   noopNotifier,
 } from "@bb/db";
 import type { ServerLogger } from "../../src/types.js";
-import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-sweeps.js";
+import { runDatabaseMaintenanceSweep } from "../../src/services/lifecycle/product-sweeps.js";
 import { testLogger } from "../helpers/test-app.js";
 
 const ONE_HOUR_MS = 60 * 60_000;

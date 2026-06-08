@@ -19,6 +19,8 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
+
+type QueuedMessageDeps = LoggedPendingInteractionWorkSessionDeps;
 import { scheduleDetachedWork } from "../lib/detached-work.js";
 import {
   isCommandTimeoutError,
@@ -34,7 +36,6 @@ import {
 } from "./thread-commands.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import { getLastProviderThreadId } from "./thread-events.js";
-import { ensureThreadCanQueueStartRequest } from "./thread-lifecycle.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { sendThreadMessage } from "./thread-send.js";
@@ -152,7 +153,7 @@ function isQueuedMessageClaimLostError(error: unknown): boolean {
 }
 
 async function sendClaimedQueuedMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: SendClaimedQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const thread = getThread(deps.db, args.threadId);
@@ -167,7 +168,7 @@ async function sendClaimedQueuedMessage(
 }
 
 async function sendClaimedQueuedMessageForIdleProviderThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage | null> {
   if (args.mode !== "auto") {
@@ -188,7 +189,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   ensureThreadNativeArchiveSettled(deps, { thread });
   const queuedMessage = toThreadQueuedMessage(args.queuedMessage);
-  ensureThreadCanQueueStartRequest(deps, thread);
+  deps.threadLifecycle.ensureThreadCanQueueStartRequest(thread);
 
   const payload = sendQueuedMessagePayload(queuedMessage, args.mode);
   const execution = await buildExecutionOptions(
@@ -279,13 +280,13 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         eventTypes: ["client/turn/requested"],
       },
     );
-    deps.engineDispatch.dispatch(sent);
+    deps.threadLifecycle.dispatchTurnSubmit(sent);
     return queuedMessage;
   });
 }
 
 async function sendClaimedQueuedMessageForThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
   const sent = await sendClaimedQueuedMessageForIdleProviderThread(deps, args);
@@ -314,7 +315,7 @@ async function sendClaimedQueuedMessageForThread(
 }
 
 export async function sendQueuedMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessage = claimQueuedThreadMessageForSend(deps, args);
@@ -334,7 +335,7 @@ export async function sendQueuedMessage(
 }
 
 export async function sendNextQueuedMessageIfPresent(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: { threadId: string },
 ): Promise<boolean> {
   const thread = getThread(deps.db, args.threadId);
@@ -395,7 +396,7 @@ export async function sendNextQueuedMessageIfPresent(
 }
 
 export async function runQueuedMessageAutoSendForThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: QueuedMessageAutoSendArgs,
 ): Promise<void> {
   await deps.lifecycleDedupers.queuedMessageAutoSend.run(
@@ -409,7 +410,7 @@ export async function runQueuedMessageAutoSendForThread(
 }
 
 export function requestQueuedMessageAutoSendForThread(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
   args: QueuedMessageAutoSendRequestArgs,
 ): void {
   scheduleDetachedWork({
@@ -428,7 +429,7 @@ export function requestQueuedMessageAutoSendForThread(
 }
 
 export async function runQueuedMessageAutoSendSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: QueuedMessageDeps,
 ): Promise<void> {
   releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
     claimedBefore: Date.now() - STALE_QUEUED_MESSAGE_CLAIM_MS,

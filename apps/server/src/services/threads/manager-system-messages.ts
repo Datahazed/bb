@@ -8,11 +8,12 @@ import type {
   ResolvedThreadExecutionOptions,
   Thread,
 } from "@bb/domain";
-import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
+
+type ManagerSystemMessageDeps = LoggedPendingInteractionWorkSessionDeps;
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
@@ -21,12 +22,8 @@ import {
   prepareTurnSubmitCommandPayload,
   queueTurnSubmitCommandInTransaction,
   type PreparedTurnSubmitCommandPayload,
+  type QueuedTurnSubmitCommandDispatch,
 } from "./thread-commands.js";
-import {
-  ensureThreadCanQueueStartRequest,
-  prepareReadyThreadTurnCommand,
-  queuePreparedReadyThreadTurnCommandInTransaction,
-} from "./thread-lifecycle.js";
 import {
   appendClientTurnEventInTransaction,
   appendPreparedClientTurnRequestedEventInTransaction,
@@ -95,7 +92,7 @@ function hasPendingActiveManagerCommand(
 function queueActiveManagerSystemMessageInTransaction(
   tx: DbTransaction,
   args: QueueActiveManagerSystemMessageInTransactionArgs,
-): EngineCommandEnvelope | null {
+): QueuedTurnSubmitCommandDispatch | null {
   const currentThread = getThread(tx, args.thread.id);
   if (
     !currentThread ||
@@ -143,7 +140,7 @@ function queueActiveManagerSystemMessageInTransaction(
 }
 
 async function queueActiveManagerSystemMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: ManagerSystemMessageDeps,
   args: QueueReadyManagerSystemMessageArgs,
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
@@ -186,12 +183,12 @@ async function queueActiveManagerSystemMessage(
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.engineDispatch.dispatch(envelope);
+  deps.threadLifecycle.dispatchTurnSubmit(envelope);
   return true;
 }
 
 async function queueReadyManagerSystemMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: ManagerSystemMessageDeps,
   args: QueueReadyManagerSystemMessageArgs,
 ): Promise<boolean> {
   if (args.thread.status === "active") {
@@ -204,7 +201,7 @@ async function queueReadyManagerSystemMessage(
   });
   const requestId = createClientTurnRequestId();
 
-  const command = await prepareReadyThreadTurnCommand(deps, {
+  const command = await deps.threadLifecycle.prepareReadyThreadTurnCommand({
     thread: args.thread,
     input: args.input,
     requestId,
@@ -224,7 +221,7 @@ async function queueReadyManagerSystemMessage(
   let transitioned = false;
   const queued = deps.db.transaction(
     (tx) => {
-      ensureThreadCanQueueStartRequest({ db: tx }, args.thread);
+      deps.threadLifecycle.ensureThreadCanQueueStartRequest(args.thread);
       const request = appendPreparedClientTurnRequestedEventInTransaction(tx, {
         threadId: args.thread.id,
         environmentId: args.environment.id,
@@ -238,11 +235,15 @@ async function queueReadyManagerSystemMessage(
         target: { kind: "new-turn" },
         requestId,
       });
-      const queuedTurn = queuePreparedReadyThreadTurnCommandInTransaction(tx, {
-        command,
-        requestEventSequence: request.sequence,
-        thread: args.thread,
-      });
+      const queuedTurn =
+        deps.threadLifecycle.queuePreparedReadyThreadTurnCommandInTransaction(
+          tx,
+          {
+            command,
+            requestEventSequence: request.sequence,
+            thread: args.thread,
+          },
+        );
       if (queuedTurn.mode === "turn.submit") {
         transitionThreadStatusInTransaction(tx, {
           id: args.thread.id,
@@ -258,7 +259,7 @@ async function queueReadyManagerSystemMessage(
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.engineDispatch.dispatch(queued.envelope);
+  deps.threadLifecycle.dispatchQueuedReadyThreadTurn(queued);
   if (transitioned) {
     deps.hub.notifyThread(args.thread.id, ["status-changed"], {
       projectId: args.thread.projectId,
@@ -268,7 +269,7 @@ async function queueReadyManagerSystemMessage(
 }
 
 export async function queueManagerSystemMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: ManagerSystemMessageDeps,
   args: QueueManagerSystemMessageArgs,
 ): Promise<boolean> {
   const managerThread = getThread(deps.db, args.managerThreadId);

@@ -7,8 +7,8 @@
  * the transport and have no tests here.
  */
 import {
+  archiveThread,
   createTerminalSession,
-  getThread,
   getTerminalSessionForThread,
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
@@ -17,12 +17,7 @@ import {
   markTerminalSessionUserInput,
   markThreadTerminalSessionsExited,
 } from "@bb/db";
-import {
-  markEnvironmentOperationRecordQueued,
-  upsertEnvironmentOperationRecord,
-} from "@bb/db/internal-environment-lifecycle";
 import type { EnvironmentStatus } from "@bb/domain";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   apiErrorSchema,
   terminalServerMessageSchema,
@@ -34,6 +29,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EngineTerminalCommand } from "../../src/engine/ports.js";
 import { LOCAL_HOST_ID } from "../../src/services/hosts/local-host.js";
 import { readJson } from "../helpers/json.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedProjectWithSource,
@@ -68,6 +67,8 @@ interface PendingTerminalOpen {
 }
 
 interface CreateTerminalRouteFixtureArgs {
+  environmentIsGitRepo?: boolean;
+  environmentManaged?: boolean;
   environmentStatus?: EnvironmentStatus;
 }
 
@@ -119,6 +120,12 @@ async function createTerminalRouteFixture(
     path: "/tmp/terminal-workspace",
     projectId: project.id,
     status: args.environmentStatus ?? "ready",
+    ...(args.environmentManaged !== undefined
+      ? { managed: args.environmentManaged }
+      : {}),
+    ...(args.environmentIsGitRepo !== undefined
+      ? { isGitRepo: args.environmentIsGitRepo }
+      : {}),
   });
   const thread = seedThread(harness.deps, {
     environmentId: environment.id,
@@ -514,7 +521,8 @@ describe("public thread terminal routes", () => {
 
   it("closes terminal sessions after an environment destroy result", async () => {
     const fixture = await createTerminalRouteFixture({
-      environmentStatus: "destroying",
+      environmentIsGitRepo: false,
+      environmentManaged: true,
     });
     harnesses.push(fixture.harness);
     const stored = createTerminalSession(fixture.harness.db, {
@@ -531,47 +539,24 @@ describe("public thread terminal routes", () => {
     const browserSocket = createFakeBrowserSocket();
     fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
 
-    // Mirror queueDestroyAndMarkDestroying: dispatch through the engine shim,
-    // then thread the synthesized commandId into the op row's 'queued' write.
-    const destroyCommand: Extract<
-      HostDaemonCommand,
-      { type: "environment.destroy" }
-    > = {
-      type: "environment.destroy",
+    // Drive the real cleanup lifecycle: recorded intent + zero live threads
+    // destroys the workspace; the destroy settlement closes its terminals.
+    archiveThread(fixture.harness.db, fixture.harness.hub, fixture.thread.id);
+    fixture.harness.deps.environmentLifecycle.requestCleanup({
       environmentId: fixture.environment.id,
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "managed-worktree",
-      },
-    };
-    upsertEnvironmentOperationRecord(fixture.harness.db, {
+    });
+    const advance = fixture.harness.deps.environmentLifecycle.advanceCleanup({
       environmentId: fixture.environment.id,
-      kind: "destroy",
-      payload: JSON.stringify(destroyCommand),
     });
-    const { commandId } = fixture.harness.deps.engineDispatch.dispatch({
-      command: destroyCommand,
-    });
-    markEnvironmentOperationRecordQueued(fixture.harness.db, {
-      environmentId: fixture.environment.id,
-      kind: "destroy",
-      commandId,
-    });
-
-    await fixture.harness.engineRouting.settle(
-      fixture.harness.deps.engineDispatch,
-      {
-        commandId,
-        completedAt: Date.now(),
-        type: "environment.destroy",
-        ok: true,
-        result: {},
-      },
+    const destroy = await waitForQueuedCommand(
+      fixture.harness,
+      ({ command }) =>
+        command.type === "environment.destroy" &&
+        command.environmentId === fixture.environment.id,
     );
+    await reportQueuedCommandSuccess(fixture.harness, destroy, {});
+    await advance;
 
-    expect(getThread(fixture.harness.db, fixture.thread.id)).toMatchObject({
-      status: "error",
-    });
     await vi.waitFor(() => {
       expect(
         listTerminalSessionsByEnvironment(

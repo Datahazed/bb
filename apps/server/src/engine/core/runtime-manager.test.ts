@@ -155,16 +155,6 @@ function createDeferred<T>() {
   };
 }
 
-function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
-  switch (args.workspaceProvisionType) {
-    case "managed-worktree":
-    case "personal":
-      return args.targetPath;
-    case "reconnect-managed-worktree":
-    case "unmanaged":
-      return args.path;
-  }
-}
 
 function createFakeWorkspace(path: string) {
   const status: GetStatusResult = makeWorkspaceStatus({
@@ -993,78 +983,6 @@ describe("RuntimeManager", () => {
     expect(second).toBe(first);
     expect(provisionWorkspace).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
-  });
-
-  it("evicts only idle environments and keeps their workspaces intact", async () => {
-    const runtimes: AgentRuntime[] = [];
-    const workspaces: HostWorkspace[] = [];
-    const createRuntime = vi.fn(() => {
-      const runtime = createFakeRuntime();
-      runtimes.push(runtime);
-      return runtime;
-    });
-    const provisionWorkspace = vi.fn(
-      async (...args: ProvisionWorkspaceMockArgs) => {
-        const workspace = createFakeWorkspace(
-          getProvisionWorkspacePath(args[0]),
-        );
-        workspaces.push(workspace);
-        return workspace;
-      },
-    );
-    const manager = new RuntimeManager({
-      createRuntime,
-      provisionWorkspace,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-idle",
-      workspacePath: "/tmp/env-idle",
-    });
-    await manager.ensureEnvironment({
-      environmentId: "env-active",
-      workspacePath: "/tmp/env-active",
-    });
-    manager.markThreadActive(
-      "env-active",
-      "thr-active",
-      "provider-thread-active",
-      null,
-    );
-
-    await expect(manager.evictIdleEnvironments()).resolves.toEqual([
-      "env-idle",
-    ]);
-
-    expect(manager.get("env-idle")).toBeUndefined();
-    expect(manager.get("env-active")).toBeDefined();
-    expect(runtimes[0]?.shutdown).toHaveBeenCalledTimes(1);
-    expect(runtimes[1]?.shutdown).not.toHaveBeenCalled();
-    // Idle eviction only tears down engine-owned runtime processes. Workspace
-    // destruction remains a server-owned explicit lifecycle action.
-    expect(workspaces[0]?.destroy).not.toHaveBeenCalled();
-    expect(workspaces[1]?.destroy).not.toHaveBeenCalled();
-  });
-
-  it("skips idle eviction while environment creation is still pending", async () => {
-    const deferredWorkspace = createDeferred<HostWorkspace>();
-    const manager = new RuntimeManager({
-      provisionWorkspace: vi.fn(async () => deferredWorkspace.promise),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    const pendingEnvironment = manager.ensureEnvironment({
-      environmentId: "env-pending",
-      workspacePath: "/tmp/env-pending",
-    });
-
-    await expect(manager.evictIdleEnvironments()).resolves.toEqual([]);
-
-    deferredWorkspace.resolve(createFakeWorkspace("/tmp/env-pending"));
-    await expect(pendingEnvironment).resolves.toMatchObject({
-      environmentId: "env-pending",
-    });
-    expect(manager.get("env-pending")).toBeDefined();
   });
 
   it("shuts down the runtime and destroys the workspace", async () => {

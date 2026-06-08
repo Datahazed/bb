@@ -1,6 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type {
-  ClientTurnRequestCommandType,
   ClientTurnRequestTerminalReason,
   TerminalClientTurnRequestStatus,
 } from "@bb/domain";
@@ -12,8 +11,6 @@ type ClientTurnRequestReadConnection = DbConnection | DbTransaction;
 export type ClientTurnRequestRow = typeof clientTurnRequests.$inferSelect;
 
 export interface CreatePendingClientTurnRequestArgs {
-  commandId: string;
-  commandType: ClientTurnRequestCommandType;
   createdAt?: number;
   environmentId: string | null;
   requestEventSequence: number;
@@ -36,22 +33,16 @@ export interface MarkClientTurnRequestAcceptedArgs {
   threadId: string;
 }
 
-export interface RecordClientTurnRequestCommandCompletedArgs {
-  commandCompletedAt: number;
-  commandId: string;
-}
-
-export interface SettleClientTurnRequestsForCommandArgs {
-  commandCompletedAt?: number | null;
-  commandId: string;
+export interface SettleClientTurnRequestArgs {
   message?: string | null;
   reasonCode: ClientTurnRequestTerminalReason;
+  requestId: string;
   settledAt?: number;
   status: TerminalClientTurnRequestStatus;
+  threadId: string;
 }
 
 export interface SettlePendingClientTurnRequestsForThreadsArgs {
-  commandCompletedAt?: number | null;
   message?: string | null;
   reasonCode: ClientTurnRequestTerminalReason;
   settledAt?: number;
@@ -72,8 +63,6 @@ export function createPendingClientTurnRequestInTransaction(
   return db
     .insert(clientTurnRequests)
     .values({
-      commandId: args.commandId,
-      commandType: args.commandType,
       createdAt: now,
       environmentId: args.environmentId,
       requestEventSequence: args.requestEventSequence,
@@ -143,42 +132,35 @@ export function markClientTurnRequestAcceptedInTransaction(
   );
 }
 
-export function recordClientTurnRequestCommandCompletedInTransaction(
+/**
+ * Pending-only settlement keyed on (threadId, requestId): provider-native
+ * acceptance wins when it lands first — a later command-outcome settlement
+ * for the same request no-ops.
+ */
+export function settleClientTurnRequestInTransaction(
   db: DbTransaction,
-  args: RecordClientTurnRequestCommandCompletedArgs,
-): ClientTurnRequestRow[] {
-  return db
-    .update(clientTurnRequests)
-    .set({
-      commandCompletedAt: args.commandCompletedAt,
-    })
-    .where(eq(clientTurnRequests.commandId, args.commandId))
-    .returning()
-    .all();
-}
-
-export function settleClientTurnRequestsForCommandInTransaction(
-  db: DbTransaction,
-  args: SettleClientTurnRequestsForCommandArgs,
-): ClientTurnRequestRow[] {
+  args: SettleClientTurnRequestArgs,
+): ClientTurnRequestRow | null {
   const settledAt = args.settledAt ?? Date.now();
-  return db
-    .update(clientTurnRequests)
-    .set({
-      commandCompletedAt: args.commandCompletedAt ?? undefined,
-      message: args.message ?? null,
-      reasonCode: args.reasonCode,
-      settledAt,
-      status: args.status,
-    })
-    .where(
-      and(
-        eq(clientTurnRequests.commandId, args.commandId),
-        eq(clientTurnRequests.status, "pending"),
-      ),
-    )
-    .returning()
-    .all();
+  return (
+    db
+      .update(clientTurnRequests)
+      .set({
+        message: args.message ?? null,
+        reasonCode: args.reasonCode,
+        settledAt,
+        status: args.status,
+      })
+      .where(
+        and(
+          eq(clientTurnRequests.requestId, args.requestId),
+          eq(clientTurnRequests.threadId, args.threadId),
+          eq(clientTurnRequests.status, "pending"),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
 }
 
 export function settlePendingClientTurnRequestsForThreadsInTransaction(
@@ -193,7 +175,6 @@ export function settlePendingClientTurnRequestsForThreadsInTransaction(
   return db
     .update(clientTurnRequests)
     .set({
-      commandCompletedAt: args.commandCompletedAt ?? undefined,
       message: args.message ?? null,
       reasonCode: args.reasonCode,
       settledAt,

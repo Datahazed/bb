@@ -9,7 +9,6 @@ import {
   createThread,
   events,
   getEnvironment,
-  getEnvironmentOperation,
   getThread,
   listThreads,
 } from "@bb/db";
@@ -33,8 +32,6 @@ import {
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
-import { queueEnvironmentDestroyLifecycleCommand } from "../helpers/lifecycle-commands.js";
-import { requestEnvironmentCleanup } from "../../src/services/environments/environment-cleanup-internal.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -294,23 +291,9 @@ describe("public thread archive delete cleanup routes", () => {
       expect(getEnvironment(harness.db, managerEnvironment.id)).toMatchObject({
         cleanupRequestedAt: expect.any(Number),
       });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: managerEnvironment.id,
-          kind: "destroy",
-        }),
-      ).toMatchObject({
-        kind: "destroy",
-      });
       expect(getEnvironment(harness.db, childEnvironment.id)).toMatchObject({
         cleanupRequestedAt: null,
       });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: childEnvironment.id,
-          kind: "destroy",
-        }),
-      ).toBeNull();
     });
   });
 
@@ -983,7 +966,7 @@ describe("public thread archive delete cleanup routes", () => {
         status: "idle",
       });
       archiveThread(harness.db, harness.hub, thread.id);
-      requestEnvironmentCleanup(harness.deps, {
+      harness.deps.environmentLifecycle.requestCleanup({
         environmentId: environment.id,
       });
 
@@ -998,12 +981,6 @@ describe("public thread archive delete cleanup routes", () => {
         cleanupMode: null,
         cleanupRequestedAt: null,
       });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: environment.id,
-          kind: "destroy",
-        }),
-      ).toMatchObject({ state: "cancelled" });
     });
   });
 
@@ -1082,47 +1059,41 @@ describe("public thread archive delete cleanup routes", () => {
         hostId: host.id,
         projectId: project.id,
         managed: true,
+        isGitRepo: false,
         path: "/tmp/stale-destroy-live-thread",
-        status: "destroying",
+        status: "ready",
         workspaceProvisionType: "managed-worktree",
       });
+      harness.deps.environmentLifecycle.requestCleanup({
+        environmentId: environment.id,
+      });
+      const advance = harness.deps.environmentLifecycle.advanceCleanup({
+        environmentId: environment.id,
+      });
+      const destroyCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.destroy" &&
+          command.environmentId === environment.id,
+      );
+      // A thread reappears while the destroy is already in the engine's hands.
       const liveThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
         status: "idle",
       });
-      const queuedRow = queueEnvironmentDestroyLifecycleCommand(harness, {
-        environmentId: environment.id,
-        command: {
-          type: "environment.destroy",
-          environmentId: environment.id,
-          workspaceContext: {
-            workspacePath: "/tmp/stale-destroy-live-thread",
-            workspaceProvisionType: "managed-worktree",
-          },
-        },
-      });
-      const destroyCommand = await waitForQueuedCommand(
-        harness,
-        ({ row }) => row.id === queuedRow.id,
-      );
 
       const response = await reportQueuedCommandSuccess(
         harness,
         destroyCommand,
         {},
       );
+      await advance;
 
       expect(response.status).toBe(200);
       expect(getEnvironment(harness.db, environment.id)?.status).toBe(
         "destroyed",
       );
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: environment.id,
-          kind: "destroy",
-        }),
-      ).toMatchObject({ state: "completed" });
       expect(getThread(harness.db, liveThread.id)).toMatchObject({
         status: "error",
       });
@@ -1619,14 +1590,6 @@ describe("public thread archive delete cleanup routes", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         cleanupRequestedAt: expect.any(Number),
       });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: environment.id,
-          kind: "destroy",
-        }),
-      ).toMatchObject({
-        kind: "destroy",
-      });
     });
   });
 
@@ -1683,12 +1646,6 @@ describe("public thread archive delete cleanup routes", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         cleanupRequestedAt: null,
       });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: environment.id,
-          kind: "destroy",
-        }),
-      ).toBeNull();
       expect(
         listQueuedEnvironmentCommands(
           harness,

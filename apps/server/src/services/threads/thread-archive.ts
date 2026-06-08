@@ -5,18 +5,9 @@ import {
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../environments/environment-cleanup-internal.js";
-import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
-import {
-  queueSettledArchivedThreadProviderArchiveCommand,
-  requestActiveRuntimeThreadStopIfNeeded,
-} from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
@@ -52,8 +43,11 @@ export function archiveThreadWithLifecycleEffects(
   });
   // Archive only stops active runtime work; manual stop is the pre-start
   // provisioning cancellation entrypoint.
-  requestActiveRuntimeThreadStopIfNeeded(deps, archivedThread, args.environment);
-  queueSettledArchivedThreadProviderArchiveCommand(deps, {
+  deps.threadLifecycle.requestActiveRuntimeThreadStopIfNeeded(
+    archivedThread,
+    args.environment,
+  );
+  deps.threadLifecycle.queueSettledArchivedThreadProviderArchiveCommand({
     threadId: archivedThread.id,
   });
   resetActiveThreadEventPruningState(archivedThread.id);
@@ -87,14 +81,14 @@ export function archiveEnvironmentThreads(
 
   if (
     archivedThreadIds.length > 0 &&
-    wouldCleanupEnvironment(deps, {
+    deps.environmentLifecycle.wouldCleanup({
       environmentId: args.environment.id,
     })
   ) {
-    requestEnvironmentCleanup(deps, {
+    deps.environmentLifecycle.requestCleanup({
       environmentId: args.environment.id,
     });
-    requestEnvironmentCleanupAdvance(deps, {
+    deps.environmentLifecycle.requestCleanupAdvance({
       environmentId: args.environment.id,
     });
   }
@@ -135,12 +129,12 @@ export function archiveManagerThreads(
 
   for (const environmentId of affectedEnvironmentIds) {
     if (
-      wouldCleanupEnvironment(deps, {
+      deps.environmentLifecycle.wouldCleanup({
         environmentId,
       })
     ) {
-      requestEnvironmentCleanup(deps, { environmentId });
-      requestEnvironmentCleanupAdvance(deps, { environmentId });
+      deps.environmentLifecycle.requestCleanup({ environmentId });
+      deps.environmentLifecycle.requestCleanupAdvance({ environmentId });
     }
   }
 

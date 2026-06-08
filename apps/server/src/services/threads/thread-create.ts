@@ -8,7 +8,6 @@ import type { UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requireLocalHost } from "../hosts/local-host.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import {
@@ -27,20 +26,18 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
-import {
-  advanceThreadProvisioning,
-  requestThreadProvision,
-} from "./thread-provisioning.js";
-import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
+import type { ThreadProvisionEnvironmentIntent } from "../lifecycle/provision-intent.js";
 
 type ThreadCreateDeps = Pick<
   AppDeps,
   | "config"
   | "db"
   | "engineDispatch"
+  | "environmentLifecycle"
   | "hub"
   | "lifecycleDedupers"
   | "logger"
+  | "threadLifecycle"
 >;
 
 interface ExistingUnmanagedEnvironmentIntentByHostPathArgs {
@@ -69,24 +66,7 @@ interface CreateProvisioningThreadArgs {
   request: ThreadCreateServiceRequest;
 }
 
-function scheduleThreadProvisioningAdvance(
-  deps: ThreadCreateDeps,
-  threadId: string,
-): void {
-  void advanceThreadProvisioning(deps, {
-    threadId,
-  }).catch((error) => {
-    deps.logger.warn(
-      {
-        threadId,
-        ...runtimeErrorLogFields(deps.config, error),
-      },
-      "Failed to advance thread provisioning after thread creation",
-    );
-  });
-}
-
-function shouldAdvanceProvisioningBeforeResponse(
+function shouldAwaitEnvironmentAttachBeforeResponse(
   environmentIntent: ThreadProvisionEnvironmentIntent,
 ): boolean {
   return environmentIntent.type === "direct-personal";
@@ -134,12 +114,7 @@ function assertProvisioningEnvironmentNotCancelling(
     return;
   }
 
-  if (
-    deps.engineDispatch.getInFlightEnvironmentCommandId({
-      environmentId: args.environment.id,
-      type: "environment.provision.cancel",
-    }) !== null
-  ) {
+  if (deps.environmentLifecycle.isCancellingProvision(args.environment.id)) {
     throwEnvironmentNotReady(args.environment);
   }
 }
@@ -226,6 +201,9 @@ async function createProvisioningThread(
     status: "provisioning",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
+  let provision: ReturnType<
+    typeof deps.threadLifecycle.requestProvision
+  > | null = null;
   try {
     execution = await buildExecutionOptions(
       deps,
@@ -238,7 +216,7 @@ async function createProvisioningThread(
       },
       "client/turn/requested",
     );
-    requestThreadProvision(deps, {
+    provision = deps.threadLifecycle.requestProvision({
       thread,
       environmentIntent: args.environmentIntent,
       execution,
@@ -253,12 +231,10 @@ async function createProvisioningThread(
     execution,
     request: args.request,
   });
-  if (shouldAdvanceProvisioningBeforeResponse(args.environmentIntent)) {
-    await advanceThreadProvisioning(deps, {
-      threadId: thread.id,
-    });
-  } else {
-    scheduleThreadProvisioningAdvance(deps, thread.id);
+  if (shouldAwaitEnvironmentAttachBeforeResponse(args.environmentIntent)) {
+    // Personal-workspace responses carry environmentId; wait for the pipeline
+    // to attach (or create) the environment row before answering.
+    await provision.environmentAttached;
   }
   return getThreadSafe(deps, thread.id);
 }

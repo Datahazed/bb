@@ -22,12 +22,10 @@ import {
   runProviderTurnWatchdogSweep,
   PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS,
 } from "../../../src/services/threads/provider-turn-watchdog.js";
-import { runThreadLifecycleSweep } from "../../../src/services/system/periodic-sweeps.js";
 import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
-  waitForQueuedCommandAfter,
 } from "../../helpers/commands.js";
 import {
   seedEnvironment,
@@ -187,8 +185,6 @@ describe("provider turn watchdog", () => {
       const requestId = encodeClientTurnRequestIdNumber({ value: 50 });
       context.harness.db.transaction((tx) => {
         createPendingClientTurnRequestInTransaction(tx, {
-          commandId: "hcmd_provider_turn_idle_pending",
-          commandType: "turn.submit",
           environmentId: context.environmentId,
           requestEventSequence: 50,
           requestId,
@@ -640,7 +636,7 @@ describe("provider turn watchdog", () => {
     }
   });
 
-  it("preserves the watchdog interruption reason when a failed stop is retried", async () => {
+  it("finalizes with the watchdog interruption reason when the stop command fails", async () => {
     const context = await createWatchdogTestContext();
     try {
       seedActiveTurn({
@@ -666,21 +662,16 @@ describe("provider turn watchdog", () => {
       );
       expect(failureResponse.status).toBe(200);
 
-      await runThreadLifecycleSweep(context.harness.deps);
-      const retryStop = await waitForQueuedCommandAfter(
-        context.harness,
-        firstStop.row.cursor,
-        ({ command }) =>
-          command.type === "thread.stop" &&
-          command.threadId === context.threadId,
-      );
-      const successResponse = await reportQueuedCommandSuccess(
-        context.harness,
-        retryStop,
-        {},
-      );
-
-      expect(successResponse.status).toBe(200);
+      // No sweep re-drive in-process: a failed stop means the runtime is gone
+      // or wedged, so the lifecycle interrupts + finalizes anyway with the
+      // watchdog's interruption reason.
+      const deadline = Date.now() + 1_000;
+      while (
+        getThread(context.harness.db, context.threadId)?.status !== "error" &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
       expect(getThread(context.harness.db, context.threadId)?.status).toBe(
         "error",
       );

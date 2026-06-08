@@ -8,12 +8,5 @@
     "types": ["node"]
   },
   "include": ["scripts", "src", "test", "tests", "fixtures", "stories"],
-  // thread-lifecycle is a quarantined durable-queue suite (see
-  // vitest.config.ts) — excluded from typecheck so dead queue machinery
-  // doesn't have to keep compiling; Phase 2's boot-reconciliation rewrite
-  // owes its replacement.
-  "exclude": [
-    "src/services/threads/app-scaffold-template/source",
-    "test/threads/thread-lifecycle.test.ts"
-  ]
+  "exclude": ["src/services/threads/app-scaffold-template/source"]
 }

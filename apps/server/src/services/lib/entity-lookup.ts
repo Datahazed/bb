@@ -1,7 +1,6 @@
 import {
   getEnvironment,
   getProject,
-  getProjectOperation,
   getThread,
 } from "@bb/db";
 import type { Environment, Project } from "@bb/domain";
@@ -39,12 +38,11 @@ export function requirePublicProject(
   db: DbConnection,
   projectId: string,
 ): Project {
-  const project = requireProject(db, projectId);
-  const deleteOperation = getProjectOperation(db, {
-    projectId,
-    kind: "delete",
-  });
-  if (deleteOperation) {
+  const project = getProject(db, projectId);
+  if (!project) {
+    throw new ApiError(404, "project_not_found", "Project not found");
+  }
+  if (project.deleteRequestedAt !== null) {
     throwProjectUnavailable({
       reason: "pending_deletion",
       deletedAt: null,
@@ -79,10 +77,7 @@ export function requirePublicThread(
   const thread = requireThread(db, threadId);
   if (
     thread.deletedAt !== null ||
-    getProjectOperation(db, {
-      projectId: thread.projectId,
-      kind: "delete",
-    }) !== null
+    getProject(db, thread.projectId)?.deleteRequestedAt != null
   ) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }

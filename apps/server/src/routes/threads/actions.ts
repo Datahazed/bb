@@ -28,12 +28,6 @@ import type { ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
-import {
-  cancelPendingEnvironmentCleanup,
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../../services/environments/environment-cleanup-internal.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import {
   requestQueuedMessageAutoSendForThread,
@@ -49,7 +43,6 @@ import {
   queueThreadUnarchiveCommand,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
-import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
@@ -248,7 +241,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    deps.threadLifecycle.requestStopForCurrentState(thread, environment);
     return context.json({ ok: true });
   });
 
@@ -300,7 +293,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       });
       return context.json({ ok: true });
     }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
+    const shouldRequestCleanup = deps.environmentLifecycle.wouldCleanup({
       environmentId: thread.environmentId,
       excludeThreadId: thread.id,
     });
@@ -316,10 +309,10 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
     if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
+      deps.environmentLifecycle.requestCleanup({
         environmentId: thread.environmentId,
       });
-      requestEnvironmentCleanupAdvance(deps, {
+      deps.environmentLifecycle.requestCleanupAdvance({
         environmentId: thread.environmentId,
       });
     }
@@ -348,7 +341,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post("/threads/:id/unarchive", (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    const cleanupCancellation = cancelPendingEnvironmentCleanup(deps, {
+    const cleanupCancellation = deps.environmentLifecycle.cancelPendingCleanup({
       environmentId: thread.environmentId,
     });
     if (cleanupCancellation === "in_progress") {

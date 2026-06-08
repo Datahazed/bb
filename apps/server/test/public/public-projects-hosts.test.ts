@@ -33,7 +33,7 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
-import { runProjectDeletionSweep } from "../../src/services/system/periodic-sweeps.js";
+import { runProjectDeletionSweep } from "../../src/services/lifecycle/product-sweeps.js";
 import { resolveThreadStoragePathFromRoot } from "../../src/services/threads/thread-storage.js";
 import { resolvePersonalTargetPath } from "../../src/services/threads/worktree-paths.js";
 

@@ -6,17 +6,14 @@ import type {
   ThreadTurnInitiator,
 } from "@bb/domain";
 import { createThreadProvisioningId } from "@bb/db";
-import type { WorkSessionDeps } from "../../types.js";
+import type { AppDeps, WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import {
-  hasActiveManagedEnvironmentProvision,
   MANAGED_REPROVISION_IN_PROGRESS,
   MANAGED_REPROVISION_QUEUED,
-  queueManagedEnvironmentReprovision,
-} from "../environments/environment-provisioning-internal.js";
+} from "../lifecycle/environment-lifecycle.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
-import { requestThreadReprovision } from "./thread-provisioning.js";
 import { tryTransition } from "./thread-transitions.js";
 
 export interface ReadyThreadEnvironment extends Environment {
@@ -25,7 +22,8 @@ export interface ReadyThreadEnvironment extends Environment {
 }
 
 export interface QueueTurnDuringReprovisionArgs {
-  deps: WorkSessionDeps;
+  deps: WorkSessionDeps &
+    Pick<AppDeps, "environmentLifecycle" | "threadLifecycle">;
   environment: Environment;
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
@@ -73,9 +71,7 @@ export async function queueTurnDuringReprovision(
     throwEnvironmentNotReady(args.environment);
   }
   if (
-    hasActiveManagedEnvironmentProvision(args.deps, {
-      environmentId: args.environment.id,
-    })
+    args.deps.environmentLifecycle.hasActiveProvision(args.environment.id)
   ) {
     throw new ApiError(
       409,
@@ -102,16 +98,13 @@ export async function queueTurnDuringReprovision(
     ],
   });
 
-  const reprovisionResult = await queueManagedEnvironmentReprovision(
-    args.deps,
-    {
-      environment: args.environment,
-      projectId: args.thread.projectId,
-      provisionEventSequence,
-      provisioningId,
-      threadId: args.thread.id,
-    },
-  );
+  const reprovisionResult = args.deps.environmentLifecycle.reprovisionManaged({
+    environment: args.environment,
+    projectId: args.thread.projectId,
+    provisionEventSequence,
+    provisioningId,
+    threadId: args.thread.id,
+  });
   if (reprovisionResult === MANAGED_REPROVISION_IN_PROGRESS) {
     throw new ApiError(
       409,
@@ -123,7 +116,7 @@ export async function queueTurnDuringReprovision(
     throw new ApiError(500, "internal_error", "Unexpected reprovision result");
   }
 
-  requestThreadReprovision(args.deps, {
+  args.deps.threadLifecycle.requestReprovision({
     thread: args.thread,
     environment: args.environment,
     provisionEventSequence: reprovisionResult.provisionEventSequence,

@@ -22,6 +22,7 @@ import {
   ensureThreadNativeArchiveSettled,
   prepareTurnSubmitCommandPayload,
   queueTurnSubmitCommandInTransaction,
+  type QueuedTurnSubmitCommandDispatch,
 } from "./thread-commands.js";
 import {
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -29,11 +30,7 @@ import {
   createClientTurnRequestId,
   getActiveTurnId,
 } from "./thread-events.js";
-import {
-  ensureThreadCanQueueStartRequest,
-  prepareReadyThreadTurnCommand,
-  queuePreparedReadyThreadTurnCommandInTransaction,
-} from "./thread-lifecycle.js";
+import type { QueuedReadyThreadTurnDispatch } from "../lifecycle/thread-runtime-lifecycle.js";
 import {
   queueTurnDuringReprovision,
   requireReadyThreadEnvironment,
@@ -47,7 +44,6 @@ import {
 } from "./manager-dynamic-file-delivery.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
-import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import {
   threadNotWritableReasonForStatus,
   throwSenderThreadInvalid,
@@ -299,8 +295,10 @@ function appendAndQueueSendThreadMessageInTransaction({
   };
 }
 
+export type SendThreadMessageDeps = LoggedPendingInteractionWorkSessionDeps;
+
 export async function sendThreadMessage(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+  deps: SendThreadMessageDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
   const { environment, payload, thread } = args;
@@ -311,7 +309,7 @@ export async function sendThreadMessage(
   }
   const mode = resolveSendMode(thread, payload.mode);
   if (mode === "start") {
-    ensureThreadCanQueueStartRequest(deps, thread);
+    deps.threadLifecycle.ensureThreadCanQueueStartRequest(thread);
   }
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     senderThreadId: payload.senderThreadId,
@@ -381,7 +379,7 @@ export async function sendThreadMessage(
     const requestId = createClientTurnRequestId();
 
     if (mode === "start") {
-      const command = await prepareReadyThreadTurnCommand(deps, {
+      const command = await deps.threadLifecycle.prepareReadyThreadTurnCommand({
         thread,
         input: preparedInput.input,
         requestId,
@@ -398,10 +396,10 @@ export async function sendThreadMessage(
         projectId: thread.projectId,
         providerId: thread.providerId,
       });
-      let queuedEnvelope: EngineCommandEnvelope | null = null;
+      let queuedDispatch: QueuedReadyThreadTurnDispatch | null = null;
       const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-        beforeAppendInTransaction: ({ tx }) => {
-          ensureThreadCanQueueStartRequest({ db: tx }, thread);
+        beforeAppendInTransaction: () => {
+          deps.threadLifecycle.ensureThreadCanQueueStartRequest(thread);
         },
         db: deps.db,
         environmentId: thread.environmentId,
@@ -409,15 +407,16 @@ export async function sendThreadMessage(
         initiator,
         input: preparedInput.input,
         queueInTransaction: ({ requestEventSequence, tx }) => {
-          const queuedTurn = queuePreparedReadyThreadTurnCommandInTransaction(
-            tx,
-            {
-              command,
-              requestEventSequence,
-              thread,
-            },
-          );
-          queuedEnvelope = queuedTurn.envelope;
+          const queuedTurn =
+            deps.threadLifecycle.queuePreparedReadyThreadTurnCommandInTransaction(
+              tx,
+              {
+                command,
+                requestEventSequence,
+                thread,
+              },
+            );
+          queuedDispatch = queuedTurn;
           if (queuedTurn.mode === "turn.submit") {
             transitionThreadStatusInTransaction(tx, {
               id: thread.id,
@@ -438,8 +437,8 @@ export async function sendThreadMessage(
         queuedRequest.request.notificationChanges,
         queuedRequest.request.notificationMetadata,
       );
-      if (queuedEnvelope) {
-        deps.engineDispatch.dispatch(queuedEnvelope);
+      if (queuedDispatch) {
+        deps.threadLifecycle.dispatchQueuedReadyThreadTurn(queuedDispatch);
       }
       if (queuedRequest.threadBecameActive) {
         deps.hub.notifyThread(thread.id, ["status-changed"], {
@@ -471,7 +470,7 @@ export async function sendThreadMessage(
       preparedCommand,
       requestId,
     });
-    let queuedEnvelope: EngineCommandEnvelope | null = null;
+    let queuedDispatch: QueuedTurnSubmitCommandDispatch | null = null;
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       db: deps.db,
       environmentId: thread.environmentId,
@@ -479,7 +478,7 @@ export async function sendThreadMessage(
       initiator,
       input: preparedInput.input,
       queueInTransaction: ({ requestEventSequence, tx }) => {
-        queuedEnvelope = queueTurnSubmitCommandInTransaction(tx, {
+        queuedDispatch = queueTurnSubmitCommandInTransaction(tx, {
           command,
           requestEventSequence,
         });
@@ -496,8 +495,8 @@ export async function sendThreadMessage(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
-    if (queuedEnvelope) {
-      deps.engineDispatch.dispatch(queuedEnvelope);
+    if (queuedDispatch) {
+      deps.threadLifecycle.dispatchTurnSubmit(queuedDispatch);
     }
   });
 }

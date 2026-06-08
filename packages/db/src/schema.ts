@@ -10,13 +10,10 @@ import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import type {
-  EnvironmentOperationKind,
   EnvironmentCleanupMode,
   EnvironmentStatus,
   PendingInteractionStatus,
-  LifecycleOperationState,
   PermissionMode,
-  ProjectOperationKind,
   PromptHistoryScope,
   ProjectSourceType,
   ReasoningLevel,
@@ -24,13 +21,10 @@ import type {
   TerminalSessionCloseReason,
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
-  ThreadOperationKind,
-  ThreadProvisioningStage,
   ThreadType,
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
-  ClientTurnRequestCommandType,
   ClientTurnRequestStatus,
   ClientTurnRequestTerminalReason,
   WorkspaceProvisionType,
@@ -44,6 +38,12 @@ export const projects = sqliteTable(
     kind: text("kind").$type<ProjectKind>().notNull().default("standard"),
     name: text("name").notNull(),
     sortKey: text("sort_key").notNull().default("V"),
+    /**
+     * Durable project-deletion intent (internal, never on the wire): set by
+     * the project lifecycle's beginDeletion; the deletion drain re-derives
+     * pending work from it across restarts.
+     */
+    deleteRequestedAt: integer("delete_requested_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -484,15 +484,10 @@ export const clientTurnRequests = sqliteTable(
       onDelete: "set null",
     }),
     requestEventSequence: integer("request_event_sequence").notNull(),
-    commandId: text("command_id").notNull(),
-    commandType: text("command_type")
-      .$type<ClientTurnRequestCommandType>()
-      .notNull(),
     status: text("status").$type<ClientTurnRequestStatus>().notNull(),
     reasonCode: text("reason_code").$type<ClientTurnRequestTerminalReason>(),
     message: text("message"),
     createdAt: integer("created_at").notNull(),
-    commandCompletedAt: integer("command_completed_at"),
     settledAt: integer("settled_at"),
   },
   (table) => [
@@ -500,7 +495,6 @@ export const clientTurnRequests = sqliteTable(
       table.threadId,
       table.requestEventSequence,
     ),
-    index("client_turn_requests_command_idx").on(table.commandId),
     index("client_turn_requests_thread_status_idx").on(
       table.threadId,
       table.status,
@@ -594,104 +588,3 @@ export const pendingInteractions = sqliteTable(
   ],
 );
 
-export const projectOperations = sqliteTable(
-  "project_operations",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<ProjectOperationKind>().notNull(),
-    state: text("state").$type<LifecycleOperationState>().notNull(),
-    payload: text("payload").notNull(),
-    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
-    // dispatch shim's synthesized command id until Phase 2.
-    commandId: text("command_id"),
-    requestedAt: integer("requested_at").notNull(),
-    queuedAt: integer("queued_at"),
-    completedAt: integer("completed_at"),
-    failureReason: text("failure_reason"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("project_operations_project_kind_idx").on(
-      table.projectId,
-      table.kind,
-    ),
-    uniqueIndex("project_operations_command_idx").on(table.commandId),
-    index("project_operations_state_idx").on(table.state),
-    index("project_operations_project_idx").on(table.projectId),
-  ],
-);
-
-export const environmentOperations = sqliteTable(
-  "environment_operations",
-  {
-    id: text("id").primaryKey(),
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<EnvironmentOperationKind>().notNull(),
-    state: text("state").$type<LifecycleOperationState>().notNull(),
-    payload: text("payload").notNull(),
-    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
-    // dispatch shim's synthesized command id until Phase 2.
-    commandId: text("command_id"),
-    requestedAt: integer("requested_at").notNull(),
-    queuedAt: integer("queued_at"),
-    completedAt: integer("completed_at"),
-    failureReason: text("failure_reason"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("environment_operations_environment_kind_idx").on(
-      table.environmentId,
-      table.kind,
-    ),
-    uniqueIndex("environment_operations_command_idx").on(table.commandId),
-    index("environment_operations_state_idx").on(table.state),
-    index("environment_operations_environment_idx").on(table.environmentId),
-  ],
-);
-
-export const threadOperations = sqliteTable(
-  "thread_operations",
-  {
-    id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<ThreadOperationKind>().notNull(),
-    state: text("state").$type<LifecycleOperationState>().notNull(),
-    payload: text("payload").notNull(),
-    provisioningId: text("provisioning_id"),
-    provisioningStage:
-      text("provisioning_stage").$type<ThreadProvisioningStage>(),
-    provisioningEnvironmentId: text("provisioning_environment_id").references(
-      () => environments.id,
-      { onDelete: "set null" },
-    ),
-    provisionEventSequence: integer("provision_event_sequence"),
-    workspaceReadyEventSequence: integer("workspace_ready_event_sequence"),
-    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
-    // dispatch shim's synthesized command id until Phase 2.
-    commandId: text("command_id"),
-    requestedAt: integer("requested_at").notNull(),
-    queuedAt: integer("queued_at"),
-    completedAt: integer("completed_at"),
-    failureReason: text("failure_reason"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("thread_operations_thread_kind_idx").on(
-      table.threadId,
-      table.kind,
-    ),
-    uniqueIndex("thread_operations_command_idx").on(table.commandId),
-    index("thread_operations_state_idx").on(table.state),
-    index("thread_operations_thread_idx").on(table.threadId),
-  ],
-);

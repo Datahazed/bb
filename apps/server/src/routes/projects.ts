@@ -69,10 +69,6 @@ import {
 } from "../services/threads/thread-runtime-display.js";
 import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
-import {
-  beginProjectDeletion,
-  requestProjectDeletionAdvance,
-} from "../services/projects/project-deletion.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
@@ -475,8 +471,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         "The personal project cannot be deleted",
       );
     }
-    beginProjectDeletion(deps, { projectId: id });
-    requestProjectDeletionAdvance(deps, { projectId: id });
+    deps.projectLifecycle.beginDeletion({ projectId: id });
+    deps.projectLifecycle.requestDeletionAdvance({ projectId: id });
     return context.json({ ok: true });
   });
 

@@ -6,14 +6,11 @@ import {
 import {
   archiveThread,
   createPendingInteraction,
-  environmentOperations,
   events,
   getEnvironment,
   getThread,
-  getThreadOperation,
   listThreads,
 } from "@bb/db";
-import { setEnvironmentStatus } from "@bb/db/internal-environment-lifecycle";
 import { PERSONAL_PROJECT_ID, threadSchema } from "@bb/domain";
 import { threadListResponseSchema } from "@bb/server-contract";
 import {
@@ -33,7 +30,6 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import { resolvePersonalTargetPath } from "../../src/services/threads/worktree-paths.js";
 
 const CHECKOUT_BLOCKING_THREAD_STATUSES = [
@@ -869,22 +865,6 @@ describe("public thread environment routes", () => {
         "provisioning",
       );
       expect(
-        harness.db
-          .select()
-          .from(environmentOperations)
-          .where(eq(environmentOperations.environmentId, environment.id))
-          .all(),
-      ).toMatchObject([{ kind: "reprovision", state: "queued" }]);
-      expect(
-        getThreadOperation(harness.db, {
-          threadId: createdThread.id,
-          kind: "provision",
-        }),
-      ).toMatchObject({
-        provisioningEnvironmentId: environment.id,
-        provisioningStage: "environment-provisioning",
-      });
-      expect(
         harness.engineRouting.dispatched.filter(
           (envelope) => envelope.command.type === "thread.start",
         ),
@@ -922,88 +902,6 @@ describe("public thread environment routes", () => {
         branchName: "feature/reconcile",
         status: "ready",
       });
-    });
-  });
-
-  it("requeues stranded unmanaged checkout provisioning before starting the thread", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project, source } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/stranded-unmanaged-checkout",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: source.path,
-        status: "ready",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [{ type: "text", text: "Recover checkout" }],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "unmanaged",
-              path: null,
-              branch: { kind: "existing", name: "feature/recovered" },
-            },
-          },
-        }),
-      });
-      expect(response.status).toBe(201);
-      const createdThread = threadSchema.parse(await readJson(response));
-      const originalProvision = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "environment.provision" &&
-          command.environmentId === environment.id,
-      );
-
-      // Engine-seam analogue of deleting the stranded queue row: release the
-      // in-flight dispatch without settling it, so re-advance can requeue.
-      harness.engineRouting.release(originalProvision.row.id);
-      harness.db
-        .delete(environmentOperations)
-        .where(eq(environmentOperations.environmentId, environment.id))
-        .run();
-      setEnvironmentStatus(harness.db, harness.hub, environment.id, {
-        status: "ready",
-      });
-
-      await advanceThreadProvisioning(harness.deps, {
-        threadId: createdThread.id,
-      });
-
-      const requeuedProvision = await waitForQueuedCommandAfter(
-        harness,
-        originalProvision.row.cursor,
-        ({ command }) =>
-          command.type === "environment.provision" &&
-          command.environmentId === environment.id,
-      );
-      expect(requeuedProvision.command).toMatchObject({
-        checkout: { kind: "existing", name: "feature/recovered" },
-        environmentId: environment.id,
-        path: source.path,
-        workspaceProvisionType: "unmanaged",
-      });
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
-        "provisioning",
-      );
-      expect(
-        harness.engineRouting.dispatched.filter(
-          (envelope) => envelope.command.type === "thread.start",
-        ),
-      ).toHaveLength(0);
     });
   });
 

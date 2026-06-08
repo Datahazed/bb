@@ -1,16 +1,5 @@
 import { z } from "zod";
 
-export const clientTurnRequestCommandTypeValues = [
-  "thread.start",
-  "turn.submit",
-] as const;
-export const clientTurnRequestCommandTypeSchema = z.enum(
-  clientTurnRequestCommandTypeValues,
-);
-export type ClientTurnRequestCommandType = z.infer<
-  typeof clientTurnRequestCommandTypeSchema
->;
-
 export const clientTurnRequestStatusValues = [
   "pending",
   "accepted",
@@ -42,6 +31,9 @@ export const clientTurnRequestTerminalReasonValues = [
   "accepted",
   "command_succeeded",
   "command_failed",
+  // Dead value: in-process settlement never expires a request (the queue-era
+  // expiry sweep is gone), but the frozen frontend renders the reason, so the
+  // value stays in the union (plan §4.2 dead-value rule).
   "command_expired",
   "runtime_canceled",
   "provider_detached",

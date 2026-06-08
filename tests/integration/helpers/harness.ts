@@ -12,6 +12,7 @@ import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
+import { createLifecycles } from "../../../apps/server/src/services/lifecycle/create-lifecycles.js";
 import { createApp } from "../../../apps/server/src/server.js";
 import type { Engine } from "../../../apps/server/src/engine/core/engine.js";
 import {
@@ -229,10 +230,21 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const lifecycles = createLifecycles({
+    config,
+    db,
+    engineDispatch,
+    hub,
+    lifecycleDedupers,
+    logger: testLogger,
+    pendingInteractions,
+    terminalSessions,
+  });
   const appDeps: AppDeps = {
     config,
     db,
     engineDispatch,
+    ...lifecycles,
     hub,
     lifecycleDedupers,
     logger: testLogger,

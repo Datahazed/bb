@@ -15,8 +15,7 @@ import {
   restoreAutomationAfterFailedRun,
   updateAutomation,
 } from "../../src/data/automations.js";
-import { upsertProjectOperationRecord } from "../../src/data/project-operations.js";
-import { createProject } from "../../src/data/projects.js";
+import { createProject, markProjectDeleteRequested } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { threads } from "../../src/schema.js";
 
@@ -128,11 +127,7 @@ describe("automations", () => {
       now: now - 120_000,
     });
 
-    upsertProjectOperationRecord(db, {
-      projectId: project.id,
-      kind: "delete",
-      payload: JSON.stringify({}),
-    });
+    markProjectDeleteRequested(db, { projectId: project.id });
 
     expect(listDueAutomations(db, { now })).toEqual([]);
 

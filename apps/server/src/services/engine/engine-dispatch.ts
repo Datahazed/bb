@@ -1,25 +1,19 @@
 /**
- * The Phase 1 dispatch shim (plan §6 Phase 1): replaces the durable command
- * queue with direct in-process dispatch into the engine's lane-scheduling
- * `CommandRouter`, and replaces `handleCommandResult`'s stored-row +
- * active-attempt settlement with a transaction that fabricates the
- * `commandRow` argument for the command-result owners registry
- * (verification finding [phase1-feasibility]/settlement).
+ * The in-process engine command dispatcher: direct dispatch into the engine's
+ * lane-scheduling `CommandRouter`, plus the in-memory in-flight registry the
+ * cross-cutting product guards read (`hasInFlightThreadCommand` for manager
+ * system messages and nudge/queued-message double-submit gates,
+ * `hasInFlightThreadArchiveCommand` for archive forwarding dedupe,
+ * `getInFlightEnvironmentCommandId` for cleanup-preflight dedupe).
  *
- * Each dispatch's synthesized commandId is threaded through the surviving
- * op-row `'queued'` writes and `client_turn_requests`, and the in-memory
- * in-flight registry replaces the `getCommand`-state guards
- * (`hasQueuedThreadOperationCommand`, `hasQueuedProvisionCommand`,
- * `getThreadOperationCommandState`, the provision-cancel in-flight branch)
- * plus the cross-cutting product guards (`hasPendingHostCommandForThread`,
- * `hasExistingThreadArchiveCommand`, `getPendingEnvironmentCommand`) —
- * lookups by commandId, threadId+type, and environmentId+type (risk R9: the
- * registry is not optional scope; without it the 10s sweeps re-dispatch
- * in-flight provisions every tick).
+ * Lifecycle modules (plan §6 Phase 2) call `execute()` and settle the typed
+ * result as a straight-line continuation; the command-result owners registry
+ * keeps only the non-lifecycle entries (interactive.resolve,
+ * workspace.commit/squash_merge).
  *
  * Registered entries are removed only after the router's report chain has
  * settled the result (`handleCommands` awaits result reporting), so a guard
- * can never observe an op row that is neither settled nor in flight.
+ * can never observe work that is neither settled nor in flight.
  */
 import { createHostDaemonCommandId } from "@bb/db";
 import type {
@@ -55,14 +49,6 @@ interface InFlightEngineCommand {
 
 export interface DispatchEngineCommandArgs {
   command: HostDaemonCommand;
-  /**
-   * Pre-synthesized command id (`createHostDaemonCommandId()`), for callers
-   * that must durably thread the id (op-row `'queued'` writes,
-   * `client_turn_requests`) *before* engine work can settle against it.
-   * Omitted by callers with no durable bookkeeping; the dispatcher
-   * synthesizes one.
-   */
-  commandId?: string;
 }
 
 export interface EngineCommandDispatch {
@@ -130,18 +116,15 @@ export interface GetInFlightEnvironmentCommandIdArgs {
  * registry registers the dispatch.
  */
 export class EngineDispatchBuffer {
-  private readonly staged: EngineCommandEnvelope[] = [];
+  private readonly staged: HostDaemonCommand[] = [];
 
-  stage(args: Pick<DispatchEngineCommandArgs, "command">): void {
-    this.staged.push({
-      command: args.command,
-      commandId: createHostDaemonCommandId(),
-    });
+  stage(args: DispatchEngineCommandArgs): void {
+    this.staged.push(args.command);
   }
 
   flushInto(dispatcher: EngineCommandDispatcher): void {
-    for (const envelope of this.staged) {
-      dispatcher.dispatch(envelope);
+    for (const command of this.staged) {
+      dispatcher.dispatch({ command });
     }
     this.staged.length = 0;
   }
@@ -209,11 +192,29 @@ interface CommandResultWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+/**
+ * The settled outcome of an `execute()` call: the engine's raw result report
+ * plus the dispatch timestamp (provisioning settlement derives transcript
+ * duration metadata from it). Unlike `waitForResult`, execution never times
+ * out — lifecycle work (e.g. a worktree clone + setup script) is bounded by
+ * the engine's own timeouts, not the caller's.
+ */
+export interface ExecutedEngineCommand {
+  dispatchedAt: number;
+  report: EngineCommandResultReport;
+}
+
+interface ExecutionWaiter {
+  reject: (reason: Error) => void;
+  resolve: (outcome: ExecutedEngineCommand) => void;
+}
+
 export class EngineCommandDispatcher {
   private readonly inFlight = new Map<string, InFlightEngineCommand>();
   private readonly inFlightTasks = new Set<Promise<void>>();
   private readonly resultCache = new Map<string, CommandResultWaiterResponse>();
   private readonly resultWaiters = new Map<string, Set<CommandResultWaiter>>();
+  private readonly executionWaiters = new Map<string, ExecutionWaiter>();
   private bound: BindEngineCommandDispatcherArgs | null = null;
 
   /**
@@ -243,14 +244,15 @@ export class EngineCommandDispatcher {
    */
   dispatch(args: DispatchEngineCommandArgs): EngineCommandDispatch {
     const { deps, router } = this.requireBound();
-    const commandId = args.commandId ?? createHostDaemonCommandId();
+    const { command } = args;
+    const commandId = createHostDaemonCommandId();
     this.inFlight.set(commandId, {
-      command: args.command,
+      command,
       commandId,
       dispatchedAt: Date.now(),
     });
     const envelope: EngineCommandEnvelope = {
-      command: args.command,
+      command,
       commandId,
     };
     const task: Promise<void> = router
@@ -262,7 +264,7 @@ export class EngineCommandDispatcher {
         deps.logger.error(
           {
             commandId,
-            commandType: args.command.type,
+            commandType: command.type,
             err: error,
           },
           "Engine command dispatch failed",
@@ -271,9 +273,41 @@ export class EngineCommandDispatcher {
       .finally(() => {
         this.inFlight.delete(commandId);
         this.inFlightTasks.delete(task);
+        // A settled command always resolved its execution waiter inside
+        // `settleCommandResult`; a waiter still registered here means result
+        // delivery failed and the report will never arrive — reject so the
+        // awaiting lifecycle task does not hang forever.
+        const executionWaiter = this.executionWaiters.get(commandId);
+        if (executionWaiter) {
+          this.executionWaiters.delete(commandId);
+          executionWaiter.reject(
+            new Error(
+              `Engine command ${command.type} (${commandId}) settled without delivering a result`,
+            ),
+          );
+        }
       });
     this.inFlightTasks.add(task);
     return { commandId };
+  }
+
+  /**
+   * Dispatches one durable-type command and awaits its settled engine report
+   * inline — the lifecycle modules' replacement for the command-result owners
+   * registry (plan §6 Phase 2): the in-flight registry stays truthful for the
+   * cross-cutting product guards while the caller settles the typed result as
+   * a straight-line continuation.
+   */
+  execute(args: DispatchEngineCommandArgs): Promise<ExecutedEngineCommand> {
+    return new Promise<ExecutedEngineCommand>((resolve, reject) => {
+      // Waiter registration happens after dispatch but in the same
+      // synchronous frame — settlement runs on a later microtask at the
+      // earliest, so the waiter can never miss its result. Going through
+      // `dispatch()` keeps it the single dispatch choke point (the
+      // integration harness's recording dispatcher overrides it).
+      const { commandId } = this.dispatch(args);
+      this.executionWaiters.set(commandId, { reject, resolve });
+    });
   }
 
   /**
@@ -494,6 +528,14 @@ export class EngineCommandDispatcher {
     // inline; only result *waits* must stay out of the router's report chain.
     engineDispatches.flushInto(this);
     this.recordResult(report.commandId, toWaiterResponse(report));
+    const executionWaiter = this.executionWaiters.get(report.commandId);
+    if (executionWaiter) {
+      this.executionWaiters.delete(report.commandId);
+      executionWaiter.resolve({
+        dispatchedAt: entry.dispatchedAt,
+        report,
+      });
+    }
     await dispatchCommandResultPostCommitActions({
       actions: sideEffects.postCommitActions,
       deps,

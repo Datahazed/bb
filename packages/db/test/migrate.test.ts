@@ -307,6 +307,81 @@ describe("migrate", () => {
       db.$client
         .prepare("ALTER TABLE threads DROP COLUMN reasoning_level_override")
         .run();
+      // 0016 drops the lifecycle operation tables, slims client_turn_requests
+      // (command_id/command_type/command_completed_at), and adds
+      // projects.delete_requested_at; the main-0001 schema this block
+      // reconstructs still had the op tables (the replayed 0013 rebuilds
+      // them before 0016 drops them) and lacked the new column. The replayed
+      // migration that creates client_turn_requests still creates the command
+      // columns; 0016 drops them again.
+      db.$client
+        .prepare("ALTER TABLE projects DROP COLUMN delete_requested_at")
+        .run();
+      db.$client.exec(`
+        CREATE TABLE \`environment_operations\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`environment_id\` text NOT NULL,
+          \`kind\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`payload\` text NOT NULL,
+          \`command_id\` text,
+          \`requested_at\` integer NOT NULL,
+          \`queued_at\` integer,
+          \`completed_at\` integer,
+          \`failure_reason\` text,
+          \`created_at\` integer NOT NULL,
+          \`updated_at\` integer NOT NULL,
+          FOREIGN KEY (\`environment_id\`) REFERENCES \`environments\`(\`id\`) ON UPDATE no action ON DELETE cascade
+        );
+        CREATE UNIQUE INDEX \`environment_operations_environment_kind_idx\` ON \`environment_operations\` (\`environment_id\`,\`kind\`);
+        CREATE UNIQUE INDEX \`environment_operations_command_idx\` ON \`environment_operations\` (\`command_id\`);
+        CREATE INDEX \`environment_operations_state_idx\` ON \`environment_operations\` (\`state\`);
+        CREATE INDEX \`environment_operations_environment_idx\` ON \`environment_operations\` (\`environment_id\`);
+        CREATE TABLE \`project_operations\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`project_id\` text NOT NULL,
+          \`kind\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`payload\` text NOT NULL,
+          \`command_id\` text,
+          \`requested_at\` integer NOT NULL,
+          \`queued_at\` integer,
+          \`completed_at\` integer,
+          \`failure_reason\` text,
+          \`created_at\` integer NOT NULL,
+          \`updated_at\` integer NOT NULL,
+          FOREIGN KEY (\`project_id\`) REFERENCES \`projects\`(\`id\`) ON UPDATE no action ON DELETE cascade
+        );
+        CREATE UNIQUE INDEX \`project_operations_project_kind_idx\` ON \`project_operations\` (\`project_id\`,\`kind\`);
+        CREATE UNIQUE INDEX \`project_operations_command_idx\` ON \`project_operations\` (\`command_id\`);
+        CREATE INDEX \`project_operations_state_idx\` ON \`project_operations\` (\`state\`);
+        CREATE INDEX \`project_operations_project_idx\` ON \`project_operations\` (\`project_id\`);
+        CREATE TABLE \`thread_operations\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`thread_id\` text NOT NULL,
+          \`kind\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`payload\` text NOT NULL,
+          \`provisioning_id\` text,
+          \`provisioning_stage\` text,
+          \`provisioning_environment_id\` text,
+          \`provision_event_sequence\` integer,
+          \`workspace_ready_event_sequence\` integer,
+          \`command_id\` text,
+          \`requested_at\` integer NOT NULL,
+          \`queued_at\` integer,
+          \`completed_at\` integer,
+          \`failure_reason\` text,
+          \`created_at\` integer NOT NULL,
+          \`updated_at\` integer NOT NULL,
+          FOREIGN KEY (\`thread_id\`) REFERENCES \`threads\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+          FOREIGN KEY (\`provisioning_environment_id\`) REFERENCES \`environments\`(\`id\`) ON UPDATE no action ON DELETE set null
+        );
+        CREATE UNIQUE INDEX \`thread_operations_thread_kind_idx\` ON \`thread_operations\` (\`thread_id\`,\`kind\`);
+        CREATE UNIQUE INDEX \`thread_operations_command_idx\` ON \`thread_operations\` (\`command_id\`);
+        CREATE INDEX \`thread_operations_state_idx\` ON \`thread_operations\` (\`state\`);
+        CREATE INDEX \`thread_operations_thread_idx\` ON \`thread_operations\` (\`thread_id\`);
+      `);
       // 0015 drops the hosts/auth/daemon-session/command tables; the
       // main-0001 schema this block reconstructs still had them, and the
       // replayed 0002/0007/0010 migrations create indexes/rows on them

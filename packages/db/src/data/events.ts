@@ -153,10 +153,6 @@ export interface CompletedStoredTurnRow {
   turnId: string;
 }
 
-export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
-  threadIds: readonly string[];
-}
-
 export interface ListThreadTurnInterruptionEventStatesArgs {
   threadIds: readonly string[];
 }
@@ -1600,33 +1596,6 @@ export function listThreadTurnInterruptionEventStates(
     const state = statesByThreadId.get(threadId);
     return state ? [state] : [];
   });
-}
-
-export function listThreadIdsWithLatestHostDaemonRestartInterruption(
-  db: DbConnection,
-  args: ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs,
-): string[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select({ threadId: events.threadId })
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, [...args.threadIds]),
-        eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'host-daemon-restarted'`,
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-        )`,
-      ),
-    )
-    .all()
-    .map((row) => row.threadId);
 }
 
 export function getLastStoredTurnRequestEvent(

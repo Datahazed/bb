@@ -8,11 +8,6 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./internal-lifecycle": {
-      "source": "./src/internal-lifecycle.ts",
-      "types": "./src/internal-lifecycle.ts",
-      "default": "./src/internal-lifecycle.ts"
-    },
     "./internal-environment-lifecycle": {
       "source": "./src/internal-environment-lifecycle.ts",
       "types": "./src/internal-environment-lifecycle.ts",
