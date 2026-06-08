@@ -1,7 +1,16 @@
 # Single-host rebuild — spec & execution plan
 
 Branch: `sawyer/single-host`, cut from `sawyer-next` @ fd02f9b99 (the tree the research and compat surface were mapped against — not origin/main). Long-lived; phase commits; merges back when the daily-driver switch has stuck.
-Status: adversarially verified against the codebase (61-finding pass applied); execution starting.
+Status: **Phases 0–5 executed and committed** (`ebe6ae01` → `32690341` + live-gate pass). All §8 live-gate items pass on claude-code + codex; kill-9 reconciliation verified; packaged tarball smoke green; 22 workspace packages. Remaining: the owner-only switch-over checklist below.
+
+## 0. Switch-over checklist (owner-only — everything else is done)
+
+1. **Desktop verification** (blocked on GUI + signing): build and sign the desktop app from this branch (unsigned bundles trigger the syspolicyd exec storm), then verify attach mode against a dev instance and owned mode against the packaged build.
+2. Optional: run the pi-bridge live gate if you want pi covered before the switch (claude-code + codex are verified).
+3. **The switch** (Decision 16): quit prod bb → `cp ~/.bb/bb.db ~/.bb/bb.db.pre-single-host` → delete `~/.bb/bb.db` (keep `~/.bb/apps` + app-data dirs) → point the desktop at the branch build → recreate projects by hand.
+4. Live on it; fix punch-list items on the branch; merge to `main` after ~1 week without falling back.
+5. Dev-data note: the live gate ran against a fresh dev DB; your prior dev DB is preserved at `~/.bb-dev/bb-8679c91318ed/backup-pre-livegate/` — restore or delete at your preference.
+6. Post-switch polish (non-blocking, recorded §11): local-API `POST /open-in-target` returns 500 instead of 400 on invalid body (typed-routes validation escape; not FE-visible); `.ts` raw-preview served as `video/mp2t` (mime-lookup quirk, pre-existing); `HostDaemon*`-prefixed names in `apps/server/src/engine/contract/` await their rename commit.
 
 ## 1. Goal
 
