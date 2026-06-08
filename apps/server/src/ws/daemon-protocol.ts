@@ -69,10 +69,9 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
-  deps.terminalSessions.expireDisconnectedHostTerminals({
-    daemonSessionId: args.sessionId,
-    hostId: args.hostId,
-  });
+  // The disconnected-terminal expiry that ran here died with the daemon
+  // transport (terminals are engine-owned in-process; rows can no longer
+  // reach the "disconnected" status). This module is unmounted — P1c deletes it.
 }
 
 export function onDaemonSocketMessage(
@@ -156,13 +155,9 @@ export function onDaemonSocketMessage(
       }
       return;
     }
-    if (result.data.type !== "heartbeat") {
-      deps.terminalSessions.handleDaemonTerminalMessage({
-        hostId: args.hostId,
-        message: result.data,
-        sessionId: args.sessionId,
-      });
-    }
+    // Terminal daemon-WS messages have no consumer anymore: terminal events
+    // are engine-emitted in-process (`handleEngineTerminalEvent`). This
+    // module is unmounted — P1c deletes it.
   } catch (error) {
     if (error instanceof ApiError && error.body.code === "inactive_session") {
       deps.logger.info(

@@ -1,7 +1,5 @@
-import { eq } from "drizzle-orm";
-import { getEnvironment, hostDaemonCommands } from "@bb/db";
+import { getEnvironment } from "@bb/db";
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../../src/errors.js";
 import {
   MANAGED_REPROVISION_IN_PROGRESS,
   MANAGED_REPROVISION_QUEUED,
@@ -9,7 +7,6 @@ import {
 } from "../../src/services/environments/environment-provisioning-internal.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -81,11 +78,9 @@ describe("environment reprovisioning", () => {
         requireManagedWorktreeEnvironmentProvisionQueuedCommand(queued);
       expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "environment.provision"))
-          .all(),
+        harness.engineRouting.dispatched.filter(
+          (envelope) => envelope.command.type === "environment.provision",
+        ),
       ).toHaveLength(1);
     });
   });
@@ -217,66 +212,4 @@ describe("environment reprovisioning", () => {
     });
   });
 
-  it("fails reprovision before mutating state when the host is disconnected", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-reprovision-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reprovision-offline-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reprovision-offline-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      let thrownError: ApiError | null = null;
-      try {
-        await queueManagedEnvironmentReprovision(harness.deps, {
-          environment,
-          projectId: thread.projectId,
-          provisionEventSequence: 1,
-          provisioningId: "tpv-reprovision-offline",
-          threadId: thread.id,
-        });
-      } catch (error) {
-        if (error instanceof ApiError) {
-          thrownError = error;
-        } else {
-          throw error;
-        }
-      }
-
-      expect(thrownError).toMatchObject({
-        body: {
-          code: "host_unavailable",
-          message: "Host is not connected",
-          details: {
-            reason: "disconnected",
-            hostStatus: "disconnected",
-            suspendedAt: null,
-            destroyedAt: null,
-          },
-        },
-        status: 502,
-      });
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "environment.provision"))
-          .all(),
-      ).toHaveLength(0);
-    });
-  });
 });

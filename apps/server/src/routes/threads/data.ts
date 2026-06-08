@@ -33,7 +33,7 @@ import {
   threadEnvironmentUnavailableDetails,
   throwThreadEnvironmentUnavailable,
 } from "../../services/lib/lifecycle-api-errors.js";
-import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
@@ -232,8 +232,7 @@ export async function requireThreadStorageTarget(
   const environment = requireEnvironment(deps.db, thread.environmentId);
   return {
     hostId: environment.hostId,
-    storagePath: await requireThreadStoragePath(deps, {
-      hostId: environment.hostId,
+    storagePath: requireThreadStoragePath(deps, {
       threadId: thread.id,
     }),
   };
@@ -297,8 +296,7 @@ async function serveThreadStorageRawFile(
   const target = await requireThreadStorageTarget(deps, { threadId });
 
   try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: target.hostId,
+    const result = await callEngineOnlineRpc(deps, {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
@@ -325,8 +323,7 @@ async function serveThreadWorktreeRawFile(
   const environment = requireReadyEnvironment(deps.db, thread.environmentId);
 
   try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: environment.hostId,
+    const result = await callEngineOnlineRpc(deps, {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
@@ -516,8 +513,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       const limit = parseFileListLimit(query.limit);
 
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
+        const result = await callEngineOnlineRpc(deps, {
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "host.list_files",
@@ -569,8 +565,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       });
 
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
+        const result = await callEngineOnlineRpc(deps, {
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "host.list_paths",
@@ -609,8 +604,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       });
 
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
+        const result = await callEngineOnlineRpc(deps, {
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "host.read_file",
@@ -635,11 +629,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           threadEnvironmentUnavailableDetails("never_attached", null),
         );
       }
-      const environment = requireEnvironment(deps.db, thread.environmentId);
+      requireEnvironment(deps.db, thread.environmentId);
 
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: environment.hostId,
+        const result = await callEngineOnlineRpc(deps, {
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "host.read_file",

@@ -207,16 +207,6 @@ describe("commit message generation", () => {
     }
   });
 
-  it("returns null for Codex inference setup failures", async () => {
-    await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
-    }, async (harness) => {
-      await expect(
-        generateCommitMessage(harness.deps, commitMessageArgs),
-      ).resolves.toBeNull();
-    });
-  });
-
   it("returns null for transient Codex inference command failures", async () => {
     await withTestHarness({
       inferenceModel: "codex/gpt-5.4-mini",

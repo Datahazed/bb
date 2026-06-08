@@ -8,7 +8,7 @@ import type { Hono } from "hono";
 import type { ServerAppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
@@ -24,7 +24,10 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   get("/system/config", (context) =>
     context.json({
       featureFlags: deps.config.featureFlags,
-      hostDaemonPort: deps.config.hostDaemonPort,
+      // Decision 5: the server serves the former :38887 local API itself, so
+      // the port it advertises for it is its own. The field keeps its frozen
+      // wire name — the FE/desktop probe reads `hostDaemonPort`.
+      hostDaemonPort: deps.config.serverPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
     }),
   );
@@ -43,9 +46,10 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     "/system/providers",
     systemProvidersQuerySchema,
     async (context, query) => {
-      const hostId = resolveSystemLookupHostId(deps, query);
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId,
+      // Query host scoping is accepted-but-single-host now; environment
+      // references are still validated.
+      resolveSystemLookupHostId(deps, query);
+      const result = await callEngineOnlineRpc(deps, {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: { type: "provider.list" },
       });

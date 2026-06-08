@@ -564,6 +564,9 @@ importers:
       pino-roll:
         specifier: ^4.0.0
         version: 4.0.0
+      proper-lockfile:
+        specifier: ^4.1.2
+        version: 4.1.2
       semver:
         specifier: ^7.7.0
         version: 7.7.4
@@ -1284,15 +1287,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/host-daemon':
-        specifier: workspace:*
-        version: link:../../apps/host-daemon
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
-      '@bb/host-watcher':
-        specifier: workspace:*
-        version: link:../../packages/host-watcher
       '@bb/server':
         specifier: workspace:*
         version: link:../../apps/server
@@ -1308,9 +1305,6 @@ importers:
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.28.15)(react@19.2.4)
-      ws:
-        specifier: ^8.19.0
-        version: 8.19.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -1321,9 +1315,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

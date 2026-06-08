@@ -4,7 +4,6 @@ import {
   getEnvironment,
   getProject,
   getThread,
-  listConnectedHostIds,
 } from "@bb/db";
 import {
   replayRunRequestSchema,
@@ -22,12 +21,12 @@ import type { Hono } from "hono";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
-import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
+import { LOCAL_HOST_ID } from "../services/hosts/local-host.js";
+import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
 import { appendClientTurnEvent } from "../services/threads/thread-events.js";
 
 interface ResolvedReplayCapture {
   environmentId: string;
-  hostId: string;
   projectId: string;
   providerId: string;
   title: string | null;
@@ -85,7 +84,6 @@ function resolveManifestReplayTarget(
 ): ResolvedReplayCapture {
   return {
     environmentId: manifest.environmentId,
-    hostId: manifest.hostId,
     projectId: manifest.projectId,
     providerId: manifest.providerId,
     title: manifest.title,
@@ -98,74 +96,41 @@ function isReplayCaptureNotFound(error: unknown): boolean {
   );
 }
 
-async function listHostCaptures(
+async function listCaptures(
   deps: AppDeps,
-  hostId: string,
 ): Promise<ReplayCaptureHostSummary[]> {
-  const result = await callHostOnlineRpc(deps, {
-    hostId,
+  const result = await callEngineOnlineRpc(deps, {
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "development.replay",
       operation: "capture-list",
     },
   });
-  return result.captures.map((capture): ReplayCaptureHostSummary => {
-    const enrichment = loadCaptureEnrichment(deps, {
-      projectId: capture.projectId,
-      threadId: capture.threadId,
-    });
-    return {
-      ...capture,
-      hostId,
-      title: enrichment.title,
-      projectName: enrichment.projectName,
-    };
-  });
-}
-
-async function listCaptures(
-  deps: AppDeps,
-): Promise<ReplayCaptureHostSummary[]> {
-  const hostIds = [...new Set(listConnectedHostIds(deps.db))];
-  const perHostCaptures = await Promise.all(
-    hostIds.map(async (hostId) => {
-      try {
-        return await listHostCaptures(deps, hostId);
-      } catch (error) {
-        deps.logger.warn(
-          { err: error, hostId },
-          "Skipping replay captures from host after capture list command failed",
-        );
-        return [];
-      }
-    }),
-  );
-
-  return perHostCaptures
-    .flat()
+  return result.captures
+    .map((capture): ReplayCaptureHostSummary => {
+      const enrichment = loadCaptureEnrichment(deps, {
+        projectId: capture.projectId,
+        threadId: capture.threadId,
+      });
+      return {
+        ...capture,
+        hostId: LOCAL_HOST_ID,
+        title: enrichment.title,
+        projectName: enrichment.projectName,
+      };
+    })
     .sort((left, right) => right.capturedAt - left.capturedAt);
 }
 
-async function getHostCapture(
-  deps: AppDeps,
-  hostId: string,
-  captureId: string,
-): Promise<ReplayCaptureDetail> {
-  const manifest = await callHostOnlineRpc(deps, {
-    hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "development.replay",
-      operation: "capture-get",
-      captureId,
-    },
-  });
-  const enrichment = loadCaptureEnrichment(deps, {
-    projectId: manifest.projectId,
-    threadId: manifest.threadId,
-  });
-  return toDetail(hostId, manifest, enrichment);
+function rethrowReplayCaptureNotFoundAs404(error: unknown): never {
+  if (isReplayCaptureNotFound(error)) {
+    throw new ApiError(
+      404,
+      "replay_capture_not_found",
+      "Replay capture not found",
+    );
+  }
+  throw error;
 }
 
 async function findCapture(
@@ -174,82 +139,32 @@ async function findCapture(
 ): Promise<ReplayCaptureDetail> {
   requireReplayCaptureId(captureId);
 
-  let firstUnexpectedError: Error | null = null;
-  for (const hostId of new Set(listConnectedHostIds(deps.db))) {
-    try {
-      return await getHostCapture(deps, hostId, captureId);
-    } catch (error) {
-      if (isReplayCaptureNotFound(error)) {
-        continue;
-      }
-      deps.logger.warn(
-        { err: error, captureId, hostId },
-        "Failed to resolve replay capture from host",
-      );
-      if (!firstUnexpectedError) {
-        firstUnexpectedError =
-          error instanceof Error
-            ? error
-            : new Error("Unexpected replay capture resolution failure");
-      }
-    }
-  }
-
-  if (firstUnexpectedError) {
-    throw firstUnexpectedError;
-  }
-  throw new ApiError(
-    404,
-    "replay_capture_not_found",
-    "Replay capture not found",
-  );
+  const manifest = await callEngineOnlineRpc(deps, {
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "development.replay",
+      operation: "capture-get",
+      captureId,
+    },
+  }).catch(rethrowReplayCaptureNotFoundAs404);
+  const enrichment = loadCaptureEnrichment(deps, {
+    projectId: manifest.projectId,
+    threadId: manifest.threadId,
+  });
+  return toDetail(LOCAL_HOST_ID, manifest, enrichment);
 }
 
 async function deleteCapture(deps: AppDeps, captureId: string): Promise<void> {
   requireReplayCaptureId(captureId);
 
-  let firstUnexpectedError: Error | null = null;
-  let deleted = false;
-  for (const hostId of new Set(listConnectedHostIds(deps.db))) {
-    try {
-      await callHostOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "development.replay",
-          operation: "capture-delete",
-          captureId,
-        },
-      });
-      deleted = true;
-    } catch (error) {
-      if (isReplayCaptureNotFound(error)) {
-        continue;
-      }
-      deps.logger.warn(
-        { err: error, captureId, hostId },
-        "Failed to delete replay capture on host",
-      );
-      if (!firstUnexpectedError) {
-        firstUnexpectedError =
-          error instanceof Error
-            ? error
-            : new Error("Unexpected replay capture delete failure");
-      }
-    }
-  }
-
-  if (deleted) {
-    return;
-  }
-  if (firstUnexpectedError) {
-    throw firstUnexpectedError;
-  }
-  throw new ApiError(
-    404,
-    "replay_capture_not_found",
-    "Replay capture not found",
-  );
+  await callEngineOnlineRpc(deps, {
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "development.replay",
+      operation: "capture-delete",
+      captureId,
+    },
+  }).catch(rethrowReplayCaptureNotFoundAs404);
 }
 
 export function registerDevelopmentOnlyReplayRoutes(
@@ -284,13 +199,6 @@ export function registerDevelopmentOnlyReplayRoutes(
           "Replay environment not found",
         );
       }
-      if (environment.hostId !== resolved.hostId) {
-        throw new ApiError(
-          409,
-          "replay_capture_host_mismatch",
-          "Replay capture belongs to a different host than its environment",
-        );
-      }
       if (environment.projectId !== resolved.projectId) {
         throw new ApiError(
           409,
@@ -321,8 +229,7 @@ export function registerDevelopmentOnlyReplayRoutes(
           source: "tell",
           target: { kind: "new-turn" },
         });
-        await callHostOnlineRpc(deps, {
-          hostId: resolved.hostId,
+        await callEngineOnlineRpc(deps, {
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "development.replay",

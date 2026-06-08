@@ -22,6 +22,7 @@ import {
   type CommandResultSideEffectsResult,
   type CommandResultWaiterResponse,
 } from "./command-result-side-effects.js";
+import { EngineDispatchBuffer } from "../services/engine/engine-dispatch.js";
 import { settleEnvironmentDestroyCommandResult } from "../services/environments/environment-cleanup-internal.js";
 import {
   settleEnvironmentProvisionCancelCommandResult,
@@ -313,6 +314,7 @@ export async function handleCommandResult(
 ): Promise<HostDaemonCommandRow | null> {
   let settlement: CommandResultSettlement;
   const notificationBuffer = new NotificationBuffer();
+  const engineDispatches = new EngineDispatchBuffer();
   try {
     settlement = deps.db.transaction(
       (tx) => {
@@ -350,6 +352,7 @@ export async function handleCommandResult(
         const settlementDeps = buildCommandResultSettlementDeps({
           db: tx,
           deps,
+          engineDispatches,
           hub: notificationBuffer,
         });
         const sideEffects = handleCommandResultSideEffects(
@@ -407,6 +410,7 @@ export async function handleCommandResult(
 
   if (settlement.outcome === "updated") {
     notificationBuffer.flushInto(deps.hub);
+    engineDispatches.flushInto(deps.engineDispatch);
   }
   if (settlement.outcome === "stale") {
     return settlement.command;

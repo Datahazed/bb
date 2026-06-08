@@ -5,10 +5,8 @@ import {
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
   listVisibleTerminalSessionsByThread,
-  markDaemonTerminalSessionExited,
-  markDaemonTerminalSessionsDisconnected,
+  markActiveTerminalSessionExited,
   markEnvironmentTerminalSessionsExited,
-  markHostDisconnectedTerminalSessionsExited,
   markTerminalSessionExited,
   markTerminalSessionRunning,
   markTerminalSessionUserInput,
@@ -19,10 +17,6 @@ import {
 } from "@bb/db";
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type {
-  HostDaemonDaemonWsMessage,
-  HostDaemonServerWsMessage,
-} from "@bb/host-daemon-contract";
-import type {
   CloseThreadTerminalRequest,
   CreateThreadTerminalRequest,
   TerminalClientMessage,
@@ -30,10 +24,13 @@ import type {
   TerminalSession,
   UpdateThreadTerminalRequest,
 } from "@bb/server-contract";
+import type {
+  EngineTerminalCommand,
+  EngineTerminalEvent,
+} from "../../engine/ports.js";
 import { ApiError } from "../../errors.js";
-import type { AppDeps, ServerLogger } from "../../types.js";
+import type { AppDeps } from "../../types.js";
 import {
-  requireConnectedHostSession,
   requirePublicThread,
   requireReadyEnvironment,
 } from "../lib/entity-lookup.js";
@@ -46,26 +43,35 @@ import { requireWorkspaceCommandTarget } from "../environments/workspace-command
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 
 type TerminalOpenedMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  EngineTerminalEvent,
   { type: "terminal.opened" }
 >;
 type TerminalErrorMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  EngineTerminalEvent,
   { type: "terminal.error" }
 >;
 type TerminalReplayMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  EngineTerminalEvent,
   { type: "terminal.replay" }
 >;
 type TerminalOutputMessage = Extract<
-  HostDaemonDaemonWsMessage,
+  EngineTerminalEvent,
   { type: "terminal.output" }
 >;
 type TerminalApiErrorStatus = ConstructorParameters<typeof ApiError>[0];
 type RunningBrowserTerminalSession = TerminalSessionRow & {
-  daemonSessionId: string;
   status: "running";
 };
+
+/**
+ * The server→engine half of the terminal protocol: delivers one terminal
+ * command to the in-process engine's `TerminalManager` (replacing
+ * `hub.sendDaemonSessionMessage`'s WS send). Fire-and-forget — results come
+ * back through `handleEngineTerminalEvent`.
+ */
+export type SendEngineTerminalCommand = (
+  message: EngineTerminalCommand,
+) => void;
 
 interface TerminalClientSocket {
   close(code?: number, reason?: string): void;
@@ -73,7 +79,6 @@ interface TerminalClientSocket {
 }
 
 interface PendingTerminalOpen {
-  daemonSessionId: string;
   reject: (error: Error) => void;
   resolve: (message: TerminalOpenedMessage) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -81,7 +86,6 @@ interface PendingTerminalOpen {
 }
 
 interface PendingTerminalAttach {
-  daemonSessionId: string;
   socket: TerminalClientSocket;
   terminalId: string;
   threadId: string;
@@ -89,42 +93,19 @@ interface PendingTerminalAttach {
 }
 
 interface WaitForTerminalOpenArgs {
-  daemonSessionId: string;
   requestId: string;
   terminalId: string;
 }
 
 interface WaitForTerminalAttachArgs {
-  daemonSessionId: string;
   requestId: string;
   socket: TerminalClientSocket;
   terminalId: string;
   threadId: string;
 }
 
-interface ResolvePendingOpenArgs {
-  daemonSessionId: string;
-  message: TerminalOpenedMessage;
-}
-
-interface ResolvePendingAttachArgs {
-  daemonSessionId: string;
-  message: TerminalReplayMessage;
-}
-
-interface RejectPendingOpenArgs {
-  daemonSessionId: string;
-  message: TerminalErrorMessage;
-}
-
-interface RejectPendingAttachArgs {
-  daemonSessionId: string;
-  message: TerminalErrorMessage;
-}
-
 interface RejectPendingOpenForTerminalArgs {
   code: string;
-  daemonSessionId: string;
   message: string;
   status: TerminalApiErrorStatus;
   terminalId: string;
@@ -138,7 +119,6 @@ interface RequestTerminalClosesArgs {
 interface PublishLifecycleTerminalExitsArgs {
   code: string;
   message: string;
-  previousSessionsById: ReadonlyMap<string, TerminalSessionRow>;
   sessions: readonly TerminalSessionRow[];
 }
 
@@ -146,11 +126,6 @@ interface NotifyExitedTerminalSessionArgs {
   code: string;
   message: string;
   session: TerminalSessionRow;
-}
-
-interface TerminalDaemonCloseTarget {
-  daemonSessionId: string;
-  terminalId: string;
 }
 
 interface AttachBrowserTerminalArgs {
@@ -183,10 +158,6 @@ interface SendTerminalSocketErrorArgs {
   socket: TerminalClientSocket;
 }
 
-interface DisconnectDaemonSessionTerminalsArgs {
-  daemonSessionId: string;
-}
-
 interface RejectPendingAttachesForTerminalArgs {
   code: string;
   message: string;
@@ -194,13 +165,11 @@ interface RejectPendingAttachesForTerminalArgs {
 }
 
 interface CloseStaleOpenedTerminalArgs {
-  daemonSessionId: string;
   terminalId: string;
   threadId: string;
 }
 
 interface PublishLifecycleTerminalExitsForSessionsArgs {
-  currentSessions: TerminalSessionRow[];
   exitedSessions: TerminalSessionRow[];
   message: string;
 }
@@ -215,7 +184,6 @@ interface TerminalSessionLifecycleOptions {
   attachTimeoutMs?: number;
   db: AppDeps["db"];
   hub: AppDeps["hub"];
-  logger: ServerLogger;
   openTimeoutMs?: number;
 }
 
@@ -248,21 +216,6 @@ interface CloseDestroyedEnvironmentTerminalsArgs {
   environmentId: string;
 }
 
-interface ExpireDisconnectedHostTerminalsArgs {
-  daemonSessionId: string;
-  hostId: string;
-}
-
-interface HandleDaemonTerminalMessageArgs {
-  hostId: string;
-  message: HostDaemonDaemonWsMessage;
-  sessionId: string;
-}
-
-interface HandleDaemonSessionClosedArgs {
-  sessionId: string;
-}
-
 function toTerminalOutputChunk(
   chunk: TerminalOutputMessage["chunk"],
 ): TerminalOutputChunk {
@@ -272,25 +225,15 @@ function toTerminalOutputChunk(
   };
 }
 
+/** True while the in-process engine still owns a live PTY for the row. */
+function isEngineOwnedTerminalSession(row: TerminalSessionRow): boolean {
+  return row.status === "starting" || row.status === "running";
+}
+
 function isRunningBrowserTerminalSession(
   row: TerminalSessionRow,
 ): row is RunningBrowserTerminalSession {
-  return row.status === "running" && row.daemonSessionId !== null;
-}
-
-function getTerminalDaemonCloseTarget(
-  row: TerminalSessionRow,
-): TerminalDaemonCloseTarget | null {
-  if (row.daemonSessionId === null) {
-    return null;
-  }
-  if (row.status !== "starting" && row.status !== "running") {
-    return null;
-  }
-  return {
-    daemonSessionId: row.daemonSessionId,
-    terminalId: row.id,
-  };
+  return row.status === "running";
 }
 
 export function toTerminalSession(row: TerminalSessionRow): TerminalSession {
@@ -318,12 +261,32 @@ export class TerminalSessionLifecycle {
   private readonly pendingAttaches = new Map<string, PendingTerminalAttach>();
   private readonly pendingOpens = new Map<string, PendingTerminalOpen>();
   private readonly openTimeoutMs: number;
+  private sendEngineCommand: SendEngineTerminalCommand | null = null;
 
   constructor(private readonly options: TerminalSessionLifecycleOptions) {
     this.attachTimeoutMs =
       options.attachTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
     this.openTimeoutMs =
       options.openTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
+  }
+
+  /**
+   * Late-bound like the engine command dispatcher: the lifecycle sits on
+   * `AppDeps` while the engine's `TerminalManager` exists only after boot
+   * composition (`startServerEngine`). Sending before `bindEngine` is a
+   * boot-order bug and throws.
+   */
+  bindEngine(sendCommand: SendEngineTerminalCommand): void {
+    this.sendEngineCommand = sendCommand;
+  }
+
+  private requireEngineSender(): SendEngineTerminalCommand {
+    if (!this.sendEngineCommand) {
+      throw new Error(
+        "Terminal session lifecycle is not bound to an engine terminal manager",
+      );
+    }
+    return this.sendEngineCommand;
   }
 
   listThreadTerminals(threadId: string): TerminalSession[] {
@@ -336,6 +299,7 @@ export class TerminalSessionLifecycle {
   async createThreadTerminal(
     args: CreateThreadTerminalArgs,
   ): Promise<TerminalSession> {
+    const sendEngineCommand = this.requireEngineSender();
     const thread = requirePublicThread(this.options.db, args.threadId);
     if (!thread.environmentId) {
       throwThreadEnvironmentUnavailable(
@@ -346,10 +310,6 @@ export class TerminalSessionLifecycle {
       this.options.db,
       thread.environmentId,
     );
-    const daemonSession = requireConnectedHostSession(
-      this.options,
-      environment.hostId,
-    );
     const target = requireWorkspaceCommandTarget(environment);
     const existingSessions = listTerminalSessionsByThread(
       this.options.db,
@@ -359,7 +319,6 @@ export class TerminalSessionLifecycle {
     const startingSession = createTerminalSession(this.options.db, {
       cols: args.payload.cols,
       currentCwd: null,
-      daemonSessionId: daemonSession.id,
       environmentId: environment.id,
       hostId: environment.hostId,
       initialCwd: environment.path,
@@ -369,7 +328,12 @@ export class TerminalSessionLifecycle {
       title,
     });
     const requestId = randomUUID();
-    const openMessage: HostDaemonServerWsMessage = {
+
+    const pendingOpen = this.waitForTerminalOpen({
+      requestId,
+      terminalId: startingSession.id,
+    });
+    sendEngineCommand({
       type: "terminal.open",
       requestId,
       terminalId: startingSession.id,
@@ -378,33 +342,7 @@ export class TerminalSessionLifecycle {
       workspaceContext: target.workspaceContext,
       cols: args.payload.cols,
       rows: args.payload.rows,
-    };
-
-    const pendingOpen = this.waitForTerminalOpen({
-      daemonSessionId: daemonSession.id,
-      requestId,
-      terminalId: startingSession.id,
     });
-    const sent = this.options.hub.sendDaemonSessionMessage(
-      daemonSession.id,
-      openMessage,
-    );
-    if (!sent) {
-      this.cancelPendingOpen(requestId);
-      const exited = markTerminalSessionExited(this.options.db, {
-        terminalId: startingSession.id,
-        exitCode: null,
-        closeReason: "daemon-disconnect",
-      });
-      if (exited) {
-        this.notifyThreadTerminalsChanged(exited.threadId);
-      }
-      throw new ApiError(
-        502,
-        "host_disconnected",
-        `Host is not connected for terminal ${exited?.id ?? startingSession.id}`,
-      );
-    }
 
     let opened: TerminalOpenedMessage;
     try {
@@ -422,15 +360,12 @@ export class TerminalSessionLifecycle {
         if (exited) {
           this.notifyThreadTerminalsChanged(exited.threadId);
         }
-        this.options.hub.sendDaemonSessionMessage(daemonSession.id, {
+        sendEngineCommand({
           type: "terminal.close",
           terminalId: startingSession.id,
           reason: "open-timeout",
         });
-      } else if (
-        !(error instanceof ApiError) ||
-        error.body.code !== "host_disconnected"
-      ) {
+      } else {
         const exited = markTerminalSessionExited(this.options.db, {
           terminalId: startingSession.id,
           exitCode: null,
@@ -446,7 +381,6 @@ export class TerminalSessionLifecycle {
     const runningSession = markTerminalSessionRunning(this.options.db, {
       cols: opened.cols,
       currentCwd: opened.currentCwd,
-      daemonSessionId: daemonSession.id,
       initialCwd: opened.initialCwd,
       rows: opened.rows,
       terminalId: startingSession.id,
@@ -454,7 +388,6 @@ export class TerminalSessionLifecycle {
     });
     if (!runningSession) {
       this.closeStaleOpenedTerminal({
-        daemonSessionId: daemonSession.id,
         terminalId: startingSession.id,
         threadId: thread.id,
       });
@@ -510,11 +443,8 @@ export class TerminalSessionLifecycle {
     if (args.payload.mode === "if-clean" && current.lastUserInputAt !== null) {
       return toTerminalSession(current);
     }
-    if (
-      current.daemonSessionId !== null &&
-      (current.status === "starting" || current.status === "running")
-    ) {
-      this.options.hub.sendDaemonSessionMessage(current.daemonSessionId, {
+    if (isEngineOwnedTerminalSession(current)) {
+      this.requireEngineSender()({
         type: "terminal.close",
         terminalId: current.id,
         reason: args.payload.reason,
@@ -570,37 +500,9 @@ export class TerminalSessionLifecycle {
       },
     );
     this.publishLifecycleTerminalExitsForSessions({
-      currentSessions,
       exitedSessions,
       message: "Terminal session closed because the environment was destroyed",
     });
-  }
-
-  expireDisconnectedHostTerminals(
-    args: ExpireDisconnectedHostTerminalsArgs,
-  ): void {
-    // Terminal v1 does not preserve PTYs across daemon websocket replacement.
-    // Any terminal owned by the disconnected session is expired and the new
-    // daemon is asked to close a stale PTY if it still exists locally.
-    const exitedSessions = markHostDisconnectedTerminalSessionsExited(
-      this.options.db,
-      {
-        hostId: args.hostId,
-        closeReason: "daemon-disconnect",
-      },
-    );
-    for (const session of exitedSessions) {
-      this.options.hub.sendDaemonSessionMessage(args.daemonSessionId, {
-        type: "terminal.close",
-        terminalId: session.id,
-        reason: "daemon-disconnect",
-      });
-      this.notifyExitedTerminalSession({
-        session,
-        code: "host_disconnected",
-        message: "Host disconnected from terminal session",
-      });
-    }
   }
 
   attachBrowserTerminal(args: AttachBrowserTerminalArgs): void {
@@ -619,7 +521,7 @@ export class TerminalSessionLifecycle {
 
     this.options.hub.registerTerminalClient(current.id, args.socket);
     const session = toTerminalSession(current);
-    if (current.status !== "running" || current.daemonSessionId === null) {
+    if (!isRunningBrowserTerminalSession(current)) {
       this.options.hub.sendTerminalSocketMessage(args.socket, {
         type: "attached",
         session,
@@ -642,32 +544,17 @@ export class TerminalSessionLifecycle {
 
     const requestId = randomUUID();
     this.waitForTerminalAttach({
-      daemonSessionId: current.daemonSessionId,
       requestId,
       socket: args.socket,
       terminalId: current.id,
       threadId: args.threadId,
     });
-    const sent = this.options.hub.sendDaemonSessionMessage(
-      current.daemonSessionId,
-      {
-        type: "terminal.attach",
-        requestId,
-        terminalId: current.id,
-        sinceSeq: 0,
-      },
-    );
-    if (!sent) {
-      this.cancelPendingAttach(requestId);
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "host_disconnected",
-        message: "Host is not connected",
-      });
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
-    }
+    this.requireEngineSender()({
+      type: "terminal.attach",
+      requestId,
+      terminalId: current.id,
+      sinceSeq: 0,
+    });
   }
 
   detachBrowserTerminal(args: DetachBrowserTerminalArgs): void {
@@ -706,32 +593,25 @@ export class TerminalSessionLifecycle {
     }
   }
 
-  handleDaemonTerminalMessage(args: HandleDaemonTerminalMessageArgs): void {
-    switch (args.message.type) {
-      case "heartbeat":
-        return;
+  /**
+   * The engine→server half of the terminal protocol (the daemon→server WS
+   * messages, now delivered in-process through the engine's
+   * `sendTerminalEvent` port).
+   */
+  handleEngineTerminalEvent(message: EngineTerminalEvent): void {
+    switch (message.type) {
       case "terminal.opened":
-        this.resolvePendingOpen({
-          daemonSessionId: args.sessionId,
-          message: args.message,
-        });
+        this.resolvePendingOpen(message);
         return;
       case "terminal.error":
-        this.rejectPendingOpen({
-          daemonSessionId: args.sessionId,
-          message: args.message,
-        });
-        this.rejectPendingAttach({
-          daemonSessionId: args.sessionId,
-          message: args.message,
-        });
+        this.rejectPendingOpen(message);
+        this.rejectPendingAttach(message);
         return;
-      case "terminal.exited":
-        const exited = markDaemonTerminalSessionExited(this.options.db, {
-          terminalId: args.message.terminalId,
-          daemonSessionId: args.sessionId,
-          exitCode: args.message.exitCode,
-          closeReason: args.message.closeReason,
+      case "terminal.exited": {
+        const exited = markActiveTerminalSessionExited(this.options.db, {
+          terminalId: message.terminalId,
+          exitCode: message.exitCode,
+          closeReason: message.closeReason,
         });
         if (exited) {
           this.notifyThreadTerminalsChanged(exited.threadId);
@@ -747,23 +627,17 @@ export class TerminalSessionLifecycle {
           });
         }
         return;
+      }
       case "terminal.output":
-        this.options.hub.sendTerminalClientMessage(args.message.terminalId, {
+        this.options.hub.sendTerminalClientMessage(message.terminalId, {
           type: "output",
-          chunk: toTerminalOutputChunk(args.message.chunk),
+          chunk: toTerminalOutputChunk(message.chunk),
         });
         return;
       case "terminal.replay":
-        this.resolvePendingAttach({
-          daemonSessionId: args.sessionId,
-          message: args.message,
-        });
+        this.resolvePendingAttach(message);
         return;
     }
-  }
-
-  handleDaemonSessionClosed(args: HandleDaemonSessionClosedArgs): void {
-    this.disconnectDaemonSessionTerminals({ daemonSessionId: args.sessionId });
   }
 
   private closeThreadTerminalsForLifecycle(
@@ -782,7 +656,6 @@ export class TerminalSessionLifecycle {
       closeReason: args.closeReason,
     });
     this.publishLifecycleTerminalExitsForSessions({
-      currentSessions,
       exitedSessions,
       message: args.message,
     });
@@ -794,22 +667,18 @@ export class TerminalSessionLifecycle {
     this.publishLifecycleTerminalExits({
       code: "terminal_closed",
       message: args.message,
-      previousSessionsById: new Map(
-        args.currentSessions.map((session) => [session.id, session]),
-      ),
       sessions: args.exitedSessions,
     });
   }
 
   private requestTerminalCloses(args: RequestTerminalClosesArgs): void {
     for (const session of args.sessions) {
-      const target = getTerminalDaemonCloseTarget(session);
-      if (!target) {
+      if (!isEngineOwnedTerminalSession(session)) {
         continue;
       }
-      this.options.hub.sendDaemonSessionMessage(target.daemonSessionId, {
+      this.requireEngineSender()({
         type: "terminal.close",
-        terminalId: target.terminalId,
+        terminalId: session.id,
         reason: args.closeReason,
       });
     }
@@ -820,7 +689,7 @@ export class TerminalSessionLifecycle {
       terminalId: args.terminalId,
       threadId: args.threadId,
     });
-    this.options.hub.sendDaemonSessionMessage(args.daemonSessionId, {
+    this.requireEngineSender()({
       type: "terminal.close",
       terminalId: args.terminalId,
       reason: current?.closeReason ?? "daemon-disconnect",
@@ -831,16 +700,12 @@ export class TerminalSessionLifecycle {
     args: PublishLifecycleTerminalExitsArgs,
   ): void {
     for (const session of args.sessions) {
-      const previousSession = args.previousSessionsById.get(session.id);
-      if (previousSession?.daemonSessionId) {
-        this.rejectPendingOpenForTerminal({
-          daemonSessionId: previousSession.daemonSessionId,
-          terminalId: session.id,
-          status: 409,
-          code: args.code,
-          message: args.message,
-        });
-      }
+      this.rejectPendingOpenForTerminal({
+        terminalId: session.id,
+        status: 409,
+        code: args.code,
+        message: args.message,
+      });
       this.notifyExitedTerminalSession({
         session,
         code: args.code,
@@ -886,24 +751,11 @@ export class TerminalSessionLifecycle {
         session,
       });
     }
-    const sent = this.options.hub.sendDaemonSessionMessage(
-      current.daemonSessionId,
-      {
-        type: "terminal.input",
-        terminalId: current.id,
-        dataBase64: args.message.dataBase64,
-      },
-    );
-    if (!sent) {
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "host_disconnected",
-        message: "Host is not connected",
-      });
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
-    }
+    this.requireEngineSender()({
+      type: "terminal.input",
+      terminalId: current.id,
+      dataBase64: args.message.dataBase64,
+    });
   }
 
   private resizeBrowserTerminal(args: HandleBrowserTerminalMessageArgs): void {
@@ -933,25 +785,12 @@ export class TerminalSessionLifecycle {
         });
       }
     }
-    const sent = this.options.hub.sendDaemonSessionMessage(
-      current.daemonSessionId,
-      {
-        type: "terminal.resize",
-        terminalId: current.id,
-        cols: args.message.cols,
-        rows: args.message.rows,
-      },
-    );
-    if (!sent) {
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "host_disconnected",
-        message: "Host is not connected",
-      });
-      this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
-      });
-    }
+    this.requireEngineSender()({
+      type: "terminal.resize",
+      terminalId: current.id,
+      cols: args.message.cols,
+      rows: args.message.rows,
+    });
   }
 
   private getRunningBrowserTerminal(
@@ -981,40 +820,6 @@ export class TerminalSessionLifecycle {
     return current;
   }
 
-  private disconnectDaemonSessionTerminals(
-    args: DisconnectDaemonSessionTerminalsArgs,
-  ): void {
-    const disconnected = markDaemonTerminalSessionsDisconnected(
-      this.options.db,
-      {
-        daemonSessionId: args.daemonSessionId,
-      },
-    );
-    for (const session of disconnected) {
-      this.rejectPendingOpenForTerminal({
-        daemonSessionId: args.daemonSessionId,
-        terminalId: session.id,
-        status: 502,
-        code: "host_disconnected",
-        message: "Host disconnected while opening terminal session",
-      });
-      this.rejectPendingAttachesForTerminal({
-        terminalId: session.id,
-        code: "host_disconnected",
-        message: "Host disconnected from terminal session",
-      });
-      this.options.logger.info(
-        { terminalId: session.id, sessionId: args.daemonSessionId },
-        "Terminal session disconnected with daemon session",
-      );
-      this.notifyThreadTerminalsChanged(session.threadId);
-      this.options.hub.sendTerminalClientMessage(session.id, {
-        type: "session-updated",
-        session: toTerminalSession(session),
-      });
-    }
-  }
-
   private waitForTerminalOpen(
     args: WaitForTerminalOpenArgs,
   ): Promise<TerminalOpenedMessage> {
@@ -1030,7 +835,6 @@ export class TerminalSessionLifecycle {
         );
       }, this.openTimeoutMs);
       this.pendingOpens.set(args.requestId, {
-        daemonSessionId: args.daemonSessionId,
         reject,
         resolve,
         timeout,
@@ -1049,7 +853,6 @@ export class TerminalSessionLifecycle {
       });
     }, this.attachTimeoutMs);
     this.pendingAttaches.set(args.requestId, {
-      daemonSessionId: args.daemonSessionId,
       socket: args.socket,
       terminalId: args.terminalId,
       threadId: args.threadId,
@@ -1057,49 +860,23 @@ export class TerminalSessionLifecycle {
     });
   }
 
-  private cancelPendingOpen(requestId: string): void {
-    const pending = this.pendingOpens.get(requestId);
-    if (!pending) {
+  private resolvePendingOpen(message: TerminalOpenedMessage): void {
+    const pending = this.pendingOpens.get(message.requestId);
+    if (!pending || pending.terminalId !== message.terminalId) {
       return;
     }
     clearTimeout(pending.timeout);
-    this.pendingOpens.delete(requestId);
+    this.pendingOpens.delete(message.requestId);
+    pending.resolve(message);
   }
 
-  private cancelPendingAttach(requestId: string): void {
-    const pending = this.pendingAttaches.get(requestId);
-    if (!pending) {
+  private resolvePendingAttach(message: TerminalReplayMessage): void {
+    const pending = this.pendingAttaches.get(message.requestId);
+    if (!pending || pending.terminalId !== message.terminalId) {
       return;
     }
     clearTimeout(pending.timeout);
-    this.pendingAttaches.delete(requestId);
-  }
-
-  private resolvePendingOpen(args: ResolvePendingOpenArgs): void {
-    const pending = this.pendingOpens.get(args.message.requestId);
-    if (
-      !pending ||
-      pending.terminalId !== args.message.terminalId ||
-      pending.daemonSessionId !== args.daemonSessionId
-    ) {
-      return;
-    }
-    clearTimeout(pending.timeout);
-    this.pendingOpens.delete(args.message.requestId);
-    pending.resolve(args.message);
-  }
-
-  private resolvePendingAttach(args: ResolvePendingAttachArgs): void {
-    const pending = this.pendingAttaches.get(args.message.requestId);
-    if (
-      !pending ||
-      pending.terminalId !== args.message.terminalId ||
-      pending.daemonSessionId !== args.daemonSessionId
-    ) {
-      return;
-    }
-    clearTimeout(pending.timeout);
-    this.pendingAttaches.delete(args.message.requestId);
+    this.pendingAttaches.delete(message.requestId);
 
     const current = getTerminalSessionForThread(this.options.db, {
       terminalId: pending.terminalId,
@@ -1117,9 +894,9 @@ export class TerminalSessionLifecycle {
     this.options.hub.sendTerminalSocketMessage(pending.socket, {
       type: "attached",
       session: toTerminalSession(current),
-      nextSeq: args.message.nextSeq,
+      nextSeq: message.nextSeq,
     });
-    for (const chunk of args.message.chunks) {
+    for (const chunk of message.chunks) {
       this.options.hub.sendTerminalSocketMessage(pending.socket, {
         type: "output",
         chunk: toTerminalOutputChunk(chunk),
@@ -1127,41 +904,33 @@ export class TerminalSessionLifecycle {
     }
   }
 
-  private rejectPendingOpen(args: RejectPendingOpenArgs): void {
-    const pending = this.pendingOpens.get(args.message.requestId);
-    if (
-      !pending ||
-      pending.terminalId !== args.message.terminalId ||
-      pending.daemonSessionId !== args.daemonSessionId
-    ) {
+  private rejectPendingOpen(message: TerminalErrorMessage): void {
+    const pending = this.pendingOpens.get(message.requestId);
+    if (!pending || pending.terminalId !== message.terminalId) {
       return;
     }
     clearTimeout(pending.timeout);
-    this.pendingOpens.delete(args.message.requestId);
+    this.pendingOpens.delete(message.requestId);
     pending.reject(
       new ApiError(
         502,
-        args.message.code,
-        `Terminal failed to open: ${args.message.message}`,
+        message.code,
+        `Terminal failed to open: ${message.message}`,
       ),
     );
   }
 
-  private rejectPendingAttach(args: RejectPendingAttachArgs): void {
-    const pending = this.pendingAttaches.get(args.message.requestId);
-    if (
-      !pending ||
-      pending.terminalId !== args.message.terminalId ||
-      pending.daemonSessionId !== args.daemonSessionId
-    ) {
+  private rejectPendingAttach(message: TerminalErrorMessage): void {
+    const pending = this.pendingAttaches.get(message.requestId);
+    if (!pending || pending.terminalId !== message.terminalId) {
       return;
     }
     clearTimeout(pending.timeout);
-    this.pendingAttaches.delete(args.message.requestId);
+    this.pendingAttaches.delete(message.requestId);
     this.sendTerminalSocketError({
       socket: pending.socket,
-      code: args.message.code,
-      message: args.message.message,
+      code: message.code,
+      message: message.message,
     });
   }
 
@@ -1169,10 +938,7 @@ export class TerminalSessionLifecycle {
     args: RejectPendingOpenForTerminalArgs,
   ): void {
     for (const [requestId, pending] of this.pendingOpens) {
-      if (
-        pending.daemonSessionId !== args.daemonSessionId ||
-        pending.terminalId !== args.terminalId
-      ) {
+      if (pending.terminalId !== args.terminalId) {
         continue;
       }
       clearTimeout(pending.timeout);

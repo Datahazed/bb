@@ -17,25 +17,6 @@ const titleSchema = Type.Object({
 });
 
 describe("inferenceComplete", () => {
-  it("surfaces missing host for codex inference", async () => {
-    await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
-    }, async (harness) => {
-      await expect(
-        inferenceComplete(harness.deps, {
-          prompt: "Generate a title",
-          schema: titleSchema,
-          timeoutMs: 5000,
-        }),
-      ).rejects.toMatchObject({
-        body: {
-          code: "host_disconnected",
-        },
-        status: 502,
-      });
-    });
-  });
-
   it("routes codex inference through the host daemon and validates structured output", async () => {
     await withTestHarness({
       inferenceModel: "codex/gpt-5.4-mini",

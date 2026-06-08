@@ -546,7 +546,6 @@ describe("expired commands", () => {
         }),
       });
       setPendingInteractionResolving(harness.db, {
-        commandId: command.id,
         id: interaction.id,
         resolution: JSON.stringify(resolution),
       });
@@ -783,7 +782,6 @@ describe("expired commands", () => {
         }),
       });
       setPendingInteractionResolving(harness.db, {
-        commandId: interactionCommand.id,
         id: interaction.id,
         resolution: JSON.stringify(resolution),
       });

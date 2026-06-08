@@ -7,8 +7,7 @@ import type { Environment, Project } from "@bb/domain";
 import type { UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { hasActiveEnvironmentProvisionCancelCommand } from "../environments/environment-provisioning-cancellation.js";
-import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
+import { requireLocalHost } from "../hosts/local-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
@@ -36,7 +35,13 @@ import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-con
 
 type ThreadCreateDeps = Pick<
   AppDeps,
-  "config" | "db" | "hub" | "lifecycleDedupers" | "logger" | "machineAuth"
+  | "config"
+  | "db"
+  | "engineDispatch"
+  | "hub"
+  | "lifecycleDedupers"
+  | "logger"
+  | "machineAuth"
 >;
 
 interface ExistingUnmanagedEnvironmentIntentByHostPathArgs {
@@ -130,7 +135,12 @@ function assertProvisioningEnvironmentNotCancelling(
     return;
   }
 
-  if (hasActiveEnvironmentProvisionCancelCommand(deps, args.environment.id)) {
+  if (
+    deps.engineDispatch.getInFlightEnvironmentCommandId({
+      environmentId: args.environment.id,
+      type: "environment.provision.cancel",
+    }) !== null
+  ) {
     throwEnvironmentNotReady(args.environment);
   }
 }
@@ -311,7 +321,7 @@ export async function createThreadFromRequest(
         assertProvisioningEnvironmentNotCancelling(deps, {
           environment,
         });
-        requireNonDestroyedHostWithStatus(deps.db, environment.hostId);
+        requireLocalHost(environment.hostId);
       }
       environmentId = environment.id;
       environmentIntent = {

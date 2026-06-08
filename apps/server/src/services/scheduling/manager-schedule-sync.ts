@@ -14,7 +14,7 @@ import {
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
@@ -227,16 +227,14 @@ export async function syncManagerThreadSchedules(
     return;
   }
 
-  const threadStoragePath = await requireThreadStoragePath(deps, {
-    hostId: environment.hostId,
+  const threadStoragePath = requireThreadStoragePath(deps, {
     threadId: thread.id,
   });
 
   let content: string;
   let sizeBytes: number;
   try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: environment.hostId,
+    const result = await callEngineOnlineRpc(deps, {
       timeoutMs: 10_000,
       command: {
         type: "host.read_file",

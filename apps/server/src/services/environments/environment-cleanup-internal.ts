@@ -8,17 +8,12 @@ import {
   threadScope,
 } from "@bb/domain";
 import {
-  cancelCommandInTransaction,
   countLiveThreadsInEnvironment,
-  getCommand,
   getEnvironment,
   getEnvironmentOperation,
   getEnvironmentOperationByCommandId,
-  getActiveSession,
-  getPendingEnvironmentCommand,
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
-  queueCommand,
   type HostDaemonCommandRow,
   type DbNotifier,
   type DbConnection,
@@ -44,7 +39,7 @@ import {
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { queueCommandAndWait } from "../hosts/command-wait.js";
+import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
 import { scheduleAfterDaemonIngressResponse } from "../hosts/daemon-ingress-scheduler.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { appendSystemErrorEventInTransaction } from "../threads/thread-events.js";
@@ -109,6 +104,7 @@ interface EnvironmentCleanupCancellationDeps extends Omit<
   "db"
 > {
   db: DbConnection;
+  engineDispatch: AppDeps["engineDispatch"];
 }
 
 interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
@@ -118,14 +114,6 @@ interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
 type EnvironmentCleanupPreflightResult =
   HostDaemonCommandResult<"environment.cleanup_preflight">;
-
-function hasConnectedHostSession(
-  deps: Pick<AppDeps, "db">,
-  hostId: string,
-): boolean {
-  const session = getActiveSession(deps.db, hostId);
-  return session !== null && session.leaseExpiresAt > Date.now();
-}
 
 function cleanupPreflightAllowsDestroy(
   result: EnvironmentCleanupPreflightResult,
@@ -155,19 +143,15 @@ async function workspaceCanBeSafelyCleaned(
     return false;
   }
 
-  if (!hasConnectedHostSession(deps, environment.hostId)) {
-    return false;
-  }
-
   if (!environment.isGitRepo) {
     return true;
   }
 
   if (
-    getPendingEnvironmentCommand(deps.db, {
+    deps.engineDispatch.getInFlightEnvironmentCommandId({
       environmentId: environment.id,
       type: "environment.cleanup_preflight",
-    })
+    }) !== null
   ) {
     return false;
   }
@@ -177,8 +161,7 @@ async function workspaceCanBeSafelyCleaned(
     return false;
   }
 
-  const result = await queueCommandAndWait(deps, {
-    hostId: environment.hostId,
+  const result = await dispatchEngineCommandAndWait(deps, {
     timeoutMs: 30_000,
     command: {
       type: "environment.cleanup_preflight",
@@ -380,20 +363,14 @@ export function cancelPendingEnvironmentCleanup(
         environmentId: environment.id,
         kind: "destroy",
       });
-      if (operation?.commandId) {
-        const command = getCommand(tx, operation.commandId);
-        if (command?.state === "fetched") {
-          return "in_progress";
-        }
-        if (command?.state === "pending") {
-          cancelCommandInTransaction(tx, {
-            commandId: command.id,
-            resultPayload: JSON.stringify({
-              errorCode: "environment_cleanup_cancelled",
-              errorMessage: "Environment cleanup was cancelled",
-            }),
-          });
-        }
+      // An in-flight destroy is in the engine's hands and cannot be
+      // cancelled; the daemon-era "pending" (queued-but-cancellable) branch
+      // died with the durable queue.
+      if (
+        operation?.commandId &&
+        deps.engineDispatch.isCommandInFlight(operation.commandId)
+      ) {
+        return "in_progress";
       }
 
       if (operation) {
@@ -418,34 +395,31 @@ export function cancelPendingEnvironmentCleanup(
 }
 
 function queueEnvironmentDestroyCommand(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch">,
   environment: EnvironmentDestroyTarget,
-) {
-  const pendingCommand = getPendingEnvironmentCommand(deps.db, {
-    environmentId: environment.id,
-    type: "environment.destroy",
-  });
-  if (pendingCommand) {
-    return pendingCommand.id;
+): string {
+  const inFlightCommandId = deps.engineDispatch.getInFlightEnvironmentCommandId(
+    {
+      environmentId: environment.id,
+      type: "environment.destroy",
+    },
+  );
+  if (inFlightCommandId !== null) {
+    return inFlightCommandId;
   }
 
-  const session = getActiveSession(deps.db, environment.hostId);
-  const queuedCommand = queueCommand(deps.db, deps.hub, {
-    hostId: environment.hostId,
-    sessionId: session?.id ?? null,
-    type: "environment.destroy",
-    payload: JSON.stringify({
+  const dispatched = deps.engineDispatch.dispatch({
+    command: {
       type: "environment.destroy",
       environmentId: environment.id,
       workspaceContext: workspaceContextFromPath(environment),
-    }),
+    },
   });
-
-  return queuedCommand.id;
+  return dispatched.commandId;
 }
 
 function queueDestroyAndMarkDestroying(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch" | "hub">,
   environment: EnvironmentDestroyTarget & {
     operationKind: Extract<EnvironmentOperationKind, "destroy">;
     status: NonNullable<ReturnType<typeof getEnvironment>>["status"];
@@ -546,10 +520,10 @@ export async function advanceEnvironmentCleanup(
     destroyOperation &&
     isActiveLifecycleOperationState(destroyOperation.state) &&
     destroyOperation.commandId &&
-    getPendingEnvironmentCommand(deps.db, {
+    deps.engineDispatch.getInFlightEnvironmentCommandId({
       environmentId: environment.id,
       type: "environment.destroy",
-    })
+    }) !== null
   ) {
     return;
   }

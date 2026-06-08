@@ -62,9 +62,7 @@ describe("generated managed branch names", () => {
       title: "Improve Branch Names",
     });
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/generated-branch-project",
@@ -125,9 +123,7 @@ describe("generated managed branch names", () => {
         }),
       );
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-managed-metadata-retry",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/managed-metadata-retry-project",
@@ -179,9 +175,7 @@ describe("generated managed branch names", () => {
       title: "Generated Rename Title",
     });
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-title-rename",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/generated-title-rename-project",
@@ -235,7 +229,6 @@ describe("generated managed branch names", () => {
           isWorktree: true,
           transcript: [],
         },
-        { hostId: host.id },
       );
       const start = await waitForQueuedCommandAfter(
         harness,
@@ -247,7 +240,6 @@ describe("generated managed branch names", () => {
         harness,
         start,
         { providerThreadId: "provider-generated-title-rename" },
-        { hostId: host.id },
       );
 
       const rename = await waitForQueuedCommandAfter(
@@ -266,9 +258,7 @@ describe("generated managed branch names", () => {
 
   it("does not queue a daemon rename for user-supplied titles", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-user-title-no-rename",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/user-title-no-rename-project",
@@ -322,7 +312,6 @@ describe("generated managed branch names", () => {
           isWorktree: true,
           transcript: [],
         },
-        { hostId: host.id },
       );
       const start = await waitForQueuedCommandAfter(
         harness,
@@ -334,7 +323,6 @@ describe("generated managed branch names", () => {
         harness,
         start,
         { providerThreadId: "provider-user-title-no-rename" },
-        { hostId: host.id },
       );
 
       await expect(
@@ -354,9 +342,7 @@ describe("generated managed branch names", () => {
       branchSlug: "Slug Only Branch",
     });
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch-slug-only",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/generated-branch-slug-only-project",
@@ -407,9 +393,7 @@ describe("generated managed branch names", () => {
       inferenceModel: "openai/gpt-4o-mini",
       openAiApiKey: "",
     }, async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch-fallback",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/generated-branch-fallback-project",
@@ -460,9 +444,7 @@ describe("generated managed branch names", () => {
       title: "Canonical Generated Title",
     });
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-generated-branch-invalid",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/generated-branch-invalid-project",

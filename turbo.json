@@ -246,12 +246,6 @@
       "persistent": true,
       "passThroughEnv": ["*"]
     },
-    "@bb/host-daemon#dev": {
-      "dependsOn": [],
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["*"]
-    },
     "@bb/server#dev": {
       "dependsOn": [],
       "cache": false,

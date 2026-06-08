@@ -1,10 +1,10 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   clientTurnRequests,
   events,
   getThreadDynamicContextFileState,
-  hostDaemonCommands,
 } from "@bb/db";
 import type { PromptInput, ThreadStatus } from "@bb/domain";
 import { turnRequestEventDataSchema } from "@bb/domain";
@@ -85,7 +85,12 @@ async function setupManager(
     status: threadStatus,
     type: "manager",
   });
-  const threadStoragePath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
+  // Thread storage lives in the server's own data dir now (plan §3): the
+  // dispatched read commands carry paths under the harness config root.
+  const threadStoragePath = path.join(
+    harness.config.threadStorageRootPath,
+    thread.id,
+  );
   return {
     environment,
     harness,
@@ -694,16 +699,11 @@ describe("manager dynamic file delivery", () => {
         ),
       ).toBe(false);
 
-      const turnSubmitRows = setup.harness.db
-        .select({ id: hostDaemonCommands.id })
-        .from(hostDaemonCommands)
-        .where(
-          and(
-            eq(hostDaemonCommands.type, "turn.submit"),
-            sql`json_extract(${hostDaemonCommands.payload}, '$.threadId') = ${setup.thread.id}`,
-          ),
-        )
-        .all();
+      const turnSubmitRows = setup.harness.engineRouting.dispatched.filter(
+        (envelope) =>
+          envelope.command.type === "turn.submit" &&
+          envelope.command.threadId === setup.thread.id,
+      );
       expect(turnSubmitRows).toHaveLength(1);
 
       const lifecycleRows = setup.harness.db
@@ -718,7 +718,7 @@ describe("manager dynamic file delivery", () => {
         .all();
       expect(lifecycleRows).toEqual([
         {
-          commandId: turnSubmitRows[0]?.id,
+          commandId: turnSubmitRows[0]?.commandId,
           commandType: "turn.submit",
           status: "pending",
           threadId: setup.thread.id,

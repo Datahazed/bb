@@ -6,7 +6,6 @@ import {
   createThread,
   migrate,
   noopNotifier,
-  updateHost,
   upsertHost,
   type DbConnection,
 } from "@bb/db";
@@ -17,8 +16,6 @@ import {
 import type { Host, Project } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
-  requireConnectedHostSession,
-  requireNonDestroyedHostWithStatus,
   requirePublicProject,
   requireReadyEnvironment,
   requireThreadEnvironment,
@@ -144,44 +141,6 @@ describe("entity lookup lifecycle errors", () => {
         details: {
           reason: "destroyed",
           environmentStatus: "destroyed",
-        },
-      });
-    } finally {
-      db.$client.close();
-    }
-  });
-
-  it("returns structured host_unavailable details", () => {
-    const { db, host } = setup();
-    try {
-      const disconnectedError = captureApiError(() => {
-        requireConnectedHostSession({ db }, host.id);
-      });
-      expect(disconnectedError.status).toBe(502);
-      expect(disconnectedError.body).toEqual({
-        code: "host_unavailable",
-        message: "Host is not connected",
-        details: {
-          reason: "disconnected",
-          hostStatus: "disconnected",
-          suspendedAt: null,
-          destroyedAt: null,
-        },
-      });
-
-      updateHost(db, noopNotifier, host.id, { destroyedAt: 456 });
-      const destroyedError = captureApiError(() => {
-        requireNonDestroyedHostWithStatus(db, host.id);
-      });
-      expect(destroyedError.status).toBe(404);
-      expect(destroyedError.body).toEqual({
-        code: "host_unavailable",
-        message: "Host is unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-          destroyedAt: 456,
         },
       });
     } finally {

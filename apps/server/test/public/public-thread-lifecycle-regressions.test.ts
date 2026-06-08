@@ -5,8 +5,6 @@ import {
   events,
   getThread,
   getThreadOperation,
-  hostDaemonCommands,
-  listThreads,
   transitionThreadStatus,
 } from "@bb/db";
 import { threadSchema } from "@bb/domain";
@@ -22,7 +20,6 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -54,9 +51,7 @@ async function waitForThreadStatus(
 describe("public thread lifecycle regressions", () => {
   it("uses unique branch names for same-title managed worktree threads", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-branch-unique",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/branch-unique",
@@ -152,9 +147,7 @@ describe("public thread lifecycle regressions", () => {
 
   it("queues a managed worktree follow-up without provisioning the primary checkout", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-managed-send",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/managed-send",
@@ -196,11 +189,9 @@ describe("public thread lifecycle regressions", () => {
         environmentId: environment.id,
       });
 
-      const queuedCommandTypes = harness.db
-        .select({ type: hostDaemonCommands.type })
-        .from(hostDaemonCommands)
-        .all()
-        .map((row) => row.type);
+      const queuedCommandTypes = harness.engineRouting.dispatched.map(
+        (envelope) => envelope.command.type,
+      );
       expect(queuedCommandTypes).not.toContain("environment.provision");
       expect(queuedCommandTypes).not.toContain("workspace.status");
 
@@ -210,112 +201,9 @@ describe("public thread lifecycle regressions", () => {
     });
   });
 
-  it("leaves reused thread creation provisioning when the host is disconnected", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-reuse-disconnected" });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/reuse-disconnected",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/reuse-disconnected",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [{ type: "text", text: "Start immediately" }],
-          environment: {
-            type: "reuse",
-            environmentId: environment.id,
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      await expect(readJson(response)).resolves.toMatchObject({
-        environmentId: environment.id,
-        status: "provisioning",
-      });
-      expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
-        1,
-      );
-
-      const queuedCommand = harness.db
-        .select()
-        .from(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.type, "thread.start"))
-        .get();
-      expect(queuedCommand).toBeUndefined();
-    });
-  });
-
-  it("fails direct-host provisioning durably when the host is disconnected", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-direct-disconnected" });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/direct-disconnected",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          title: "Disconnected host thread",
-          input: [{ type: "text", text: "Start on disconnected host" }],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: { type: "unmanaged", path: "/tmp/direct-disconnected" },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const createdThread = threadSchema.parse(await readJson(response));
-      await advanceThreadProvisioning(harness.deps, {
-        threadId: createdThread.id,
-      });
-      await waitForThreadStatus(harness, {
-        threadId: createdThread.id,
-        status: "error",
-      });
-
-      expect(
-        getThreadOperation(harness.db, {
-          threadId: createdThread.id,
-          kind: "provision",
-        })?.state,
-      ).toBe("failed");
-      const errorEvent = harness.db
-        .select()
-        .from(events)
-        .where(eq(events.threadId, createdThread.id))
-        .all()
-        .find((event) => event.type === "system/error");
-      expect(errorEvent ? JSON.parse(errorEvent.data) : null).toMatchObject({
-        code: "thread_provisioning_failed",
-      });
-    });
-  });
-
   it("dedupes concurrent direct-host provisioning advances", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-direct-dedupe",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/direct-dedupe",
@@ -349,11 +237,9 @@ describe("public thread lifecycle regressions", () => {
         advanceThreadProvisioning(harness.deps, { threadId: createdThread.id }),
       ]);
 
-      const provisionCommands = harness.db
-        .select()
-        .from(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.type, "environment.provision"))
-        .all();
+      const provisionCommands = harness.engineRouting.dispatched.filter(
+        (envelope) => envelope.command.type === "environment.provision",
+      );
       const createdEnvironments = harness.db
         .select()
         .from(environments)
@@ -369,9 +255,7 @@ describe("public thread lifecycle regressions", () => {
 
   it("only queues environment.destroy after the last thread in a managed environment is deleted", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-thread-cleanup",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -465,11 +349,9 @@ describe("public thread lifecycle regressions", () => {
       );
       expect(firstDelete.status).toBe(200);
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "environment.destroy"))
-          .all(),
+        harness.engineRouting.dispatched.filter(
+          (envelope) => envelope.command.type === "environment.destroy",
+        ),
       ).toHaveLength(0);
 
       const secondDelete = await harness.app.request(
@@ -508,9 +390,7 @@ describe("public thread lifecycle regressions", () => {
 
   it("fails reused threads when a provisioning environment has no active lifecycle operation", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-reuse-provisioning",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/reuse-provisioning",

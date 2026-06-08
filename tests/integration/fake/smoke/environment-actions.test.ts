@@ -13,8 +13,8 @@ import {
   unarchiveThread,
 } from "../../helpers/api.js";
 import {
-  waitForCommand,
-  waitForCommandsDrained,
+  waitForDispatchedCommand,
+  waitForDispatchedCommandsSettled,
   waitForPathRemoval,
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
@@ -188,17 +188,15 @@ describe.sequential("fake provider smoke environment integration", () => {
       }
 
       await archiveThread(harness.api, thread.id);
-      await waitForCommand(
-        harness.db,
-        (command) =>
-          command.type === "environment.destroy" &&
-          command.command.type === "environment.destroy" &&
-          command.command.environmentId === environment.id,
+      await waitForDispatchedCommand(
+        harness.engineDispatch,
+        (entry) =>
+          entry.command.type === "environment.destroy" &&
+          entry.command.environmentId === environment.id,
         DEFAULT_TIMEOUT_MS,
       );
-      await waitForCommandsDrained(
-        harness.db,
-        harness.hostId,
+      await waitForDispatchedCommandsSettled(
+        harness.engineDispatch,
         DEFAULT_TIMEOUT_MS,
       );
       await waitForPathRemoval(workspacePath, DEFAULT_TIMEOUT_MS);

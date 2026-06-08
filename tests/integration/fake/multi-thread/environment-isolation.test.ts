@@ -11,8 +11,8 @@ import {
   unarchiveThread,
 } from "../../helpers/api.js";
 import {
-  waitForCommand,
-  waitForCommandsDrained,
+  waitForDispatchedCommand,
+  waitForDispatchedCommandsSettled,
   waitForPathRemoval,
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
@@ -63,17 +63,15 @@ describe.sequential(
 
         await archiveThread(harness.api, threadA.thread.id);
         await archiveThread(harness.api, threadB.thread.id);
-        await waitForCommand(
-          harness.db,
-          (command) =>
-            command.type === "environment.destroy" &&
-            command.command.type === "environment.destroy" &&
-            command.command.environmentId === threadA.environment.id,
+        await waitForDispatchedCommand(
+          harness.engineDispatch,
+          (entry) =>
+            entry.command.type === "environment.destroy" &&
+            entry.command.environmentId === threadA.environment.id,
           DEFAULT_TIMEOUT_MS,
         );
-        await waitForCommandsDrained(
-          harness.db,
-          harness.hostId,
+        await waitForDispatchedCommandsSettled(
+          harness.engineDispatch,
           DEFAULT_TIMEOUT_MS,
         );
         await waitForPathRemoval(originalWorkspacePath, DEFAULT_TIMEOUT_MS);
@@ -272,9 +270,12 @@ describe.sequential(
         expect(countStoredThreads(harnessA.db)).toBe(1);
         expect(countStoredThreads(harnessB.db)).toBe(1);
 
+        // Host ids are no longer distinct across instances: every server
+        // answers the universal synthetic 'local' id (single-host rebuild
+        // plan §4.3, accepted limitation). Isolation is asserted through the
+        // per-instance data below instead.
         expect((await getHosts(harnessA.api)).length).toBe(1);
         expect((await getHosts(harnessB.api)).length).toBe(1);
-        expect(harnessA.hostId).not.toBe(harnessB.hostId);
 
         expect(
           (

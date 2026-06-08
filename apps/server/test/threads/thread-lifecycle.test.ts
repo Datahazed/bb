@@ -367,7 +367,6 @@ describe("thread lifecycle interruption", () => {
       });
       requestThreadStop(harness.deps, {
         environmentId: environment.id,
-        hostId: host.id,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: thread.id,
@@ -398,7 +397,6 @@ describe("thread lifecycle interruption", () => {
       const fixture = seedActiveThreadWithTurn(harness);
       requestThreadStop(harness.deps, {
         environmentId: fixture.environmentId,
-        hostId: fixture.hostId,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: fixture.threadId,
@@ -493,8 +491,7 @@ describe("thread lifecycle interruption", () => {
         harness.deps,
         requireThreadRow(harness, fixture.threadId),
         {
-          hostId: fixture.hostId,
-          id: fixture.environmentId,
+                    id: fixture.environmentId,
         },
       );
 
@@ -563,7 +560,6 @@ describe("thread lifecycle interruption", () => {
       const staleThread = requireThreadRow(harness, fixture.threadId);
 
       requestThreadStopForCurrentState(harness.deps, staleThread, {
-        hostId: fixture.hostId,
         id: fixture.environmentId,
       });
 
@@ -623,8 +619,7 @@ describe("thread lifecycle interruption", () => {
         harness.deps,
         requireThreadRow(harness, fixture.threadId),
         {
-          hostId: fixture.hostId,
-          id: fixture.environmentId,
+                    id: fixture.environmentId,
         },
       );
 
@@ -748,7 +743,6 @@ describe("thread lifecycle interruption", () => {
       });
 
       requestThreadStopForCurrentState(harness.deps, stoppedThread, {
-        hostId: fixture.hostId,
         id: fixture.environmentId,
       });
 
@@ -801,7 +795,6 @@ describe("thread lifecycle interruption", () => {
       const stoppedThread = requireThreadRow(harness, fixture.threadId);
 
       requestThreadStopForCurrentState(harness.deps, stoppedThread, {
-        hostId: fixture.hostId,
         id: fixture.environmentId,
       });
 
@@ -989,8 +982,7 @@ describe("thread lifecycle interruption", () => {
         harness.deps,
         requireThreadRow(harness, fixture.threadId),
         {
-          hostId: fixture.hostId,
-          id: fixture.environmentId,
+                    id: fixture.environmentId,
         },
       );
 
@@ -1074,8 +1066,7 @@ describe("thread lifecycle interruption", () => {
         harness.deps,
         requireThreadRow(harness, fixture.threadId),
         {
-          hostId: fixture.hostId,
-          id: fixture.environmentId,
+                    id: fixture.environmentId,
         },
       );
 

@@ -7,13 +7,9 @@ import {
   getProjectExecutionDefaults,
   getProject,
   getThread,
-  hostDaemonCommands,
-  hostDaemonSessions,
   threads,
   upsertProjectExecutionDefaults,
-  updateHost,
 } from "@bb/db";
-import { hostDaemonCommandSchema } from "@bb/host-daemon-contract";
 import { projectBranchesResponseSchema } from "@bb/server-contract";
 import {
   PERSONAL_PROJECT_ID,
@@ -31,7 +27,6 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -39,15 +34,8 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { runProjectDeletionSweep } from "../../src/services/system/periodic-sweeps.js";
-import {
-  resolveThreadStoragePathFromRoot,
-  resolveThreadStorageRootPath,
-} from "../../src/services/threads/thread-storage.js";
+import { resolveThreadStoragePathFromRoot } from "../../src/services/threads/thread-storage.js";
 import { resolvePersonalTargetPath } from "../../src/services/threads/worktree-paths.js";
-
-const idOnlyResponseSchema = z.object({
-  id: z.string(),
-});
 
 const projectResponseSchema = z.object({
   id: z.string(),
@@ -80,13 +68,6 @@ const attachmentResponseSchema = z.object({
 });
 
 const promptHistoryResponseSchema = z.array(promptHistoryEntrySchema);
-
-const hostStatusListResponseSchema = z.array(
-  z.object({
-    id: z.string(),
-    status: z.string(),
-  }),
-);
 
 interface ReportCleanCleanupPreflightForEnvironmentArgs {
   afterCursor?: number;
@@ -121,7 +102,7 @@ async function reportCleanCleanupPreflightForEnvironment(
 describe("public project and host routes", () => {
   it("supports project CRUD", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, { id: "host-projects" });
+      const { host } = seedHostSession(harness.deps);
 
       const createResponse = await harness.app.request("/api/v1/projects", {
         method: "POST",
@@ -773,9 +754,7 @@ describe("public project and host routes", () => {
 
   it("stores server-owned manager defaults separately from standard thread defaults when hiring a manager from the app", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-manager-defaults",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/manager-defaults",
@@ -835,9 +814,7 @@ describe("public project and host routes", () => {
 
   it("creates personal project managers with a personal environment", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-personal-manager",
-      });
+      const { host } = seedHostSession(harness.deps);
 
       const response = await harness.app.request(
         `/api/v1/projects/${PERSONAL_PROJECT_ID}/managers`,
@@ -862,8 +839,9 @@ describe("public project and host routes", () => {
       if (environmentId === null) {
         throw new Error("Expected a personal environment");
       }
+      // Personal workspaces live in the server's own data dir now (plan §3).
       const personalWorkspacePath = resolvePersonalTargetPath({
-        dataDir: session.dataDir,
+        dataDir: harness.config.dataDir,
         environmentId,
       });
       expect(getThread(harness.db, managerThread.id)?.environmentId).toBe(
@@ -907,10 +885,7 @@ describe("public project and host routes", () => {
       }
       const expectedThreadStoragePath = resolveThreadStoragePathFromRoot({
         threadId: managerThread.id,
-        threadStorageRootPath: resolveThreadStorageRootPath({
-          dataDir: session.dataDir,
-          env: {},
-        }),
+        threadStorageRootPath: harness.config.threadStorageRootPath,
       });
       expect(startCommand.command.environmentId).toBe(environmentId);
       expect(startCommand.command.workspaceContext).toEqual({
@@ -925,9 +900,7 @@ describe("public project and host routes", () => {
 
   it("inherits remembered manager defaults for CLI-origin manager creation without overwriting them", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-manager-defaults-cli",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/manager-defaults-cli",
@@ -975,9 +948,7 @@ describe("public project and host routes", () => {
 
   it("uses the server-owned manager defaults when the CLI omits provider and model with no stored manager defaults", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-manager-defaults-cli-fallback",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/manager-defaults-cli-fallback",
@@ -1184,10 +1155,9 @@ describe("public project and host routes", () => {
     });
   });
 
-  it("supports project source CRUD and reassigns the default source on delete", async () => {
+  it("supports single-host project source CRUD and guards the last source", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
-      const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      const { host } = seedHostSession(harness.deps);
 
       const projectResponse = await harness.app.request("/api/v1/projects", {
         method: "POST",
@@ -1209,7 +1179,9 @@ describe("public project and host routes", () => {
       const defaultSourceId = project.sources[0]?.id;
       expect(defaultSourceId).toBeTruthy();
 
-      const createSourceResponse = await harness.app.request(
+      // One source per (project, host) — single-host, a second create can
+      // only ever duplicate the local source and is rejected cleanly.
+      const duplicateSourceResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/sources`,
         {
           method: "POST",
@@ -1217,16 +1189,17 @@ describe("public project and host routes", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            hostId: secondaryHost.id,
+            hostId: host.id,
             path: "/tmp/project-sources-2",
             type: "local_path",
           }),
         },
       );
-      expect(createSourceResponse.status).toBe(201);
-      const secondSource = idOnlyResponseSchema.parse(
-        await readJson(createSourceResponse),
-      );
+      expect(duplicateSourceResponse.status).toBe(409);
+      await expect(readJson(duplicateSourceResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Project already has a source for this host",
+      });
 
       const missingTypeResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/sources`,
@@ -1236,7 +1209,7 @@ describe("public project and host routes", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            hostId: secondaryHost.id,
+            hostId: host.id,
             path: "/tmp/project-sources-missing-type",
           }),
         },
@@ -1244,7 +1217,7 @@ describe("public project and host routes", () => {
       expect(missingTypeResponse.status).toBe(400);
 
       const updateSourceResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/sources/${secondSource.id}`,
+        `/api/v1/projects/${project.id}/sources/${defaultSourceId}`,
         {
           method: "PATCH",
           headers: {
@@ -1258,108 +1231,28 @@ describe("public project and host routes", () => {
       );
       expect(updateSourceResponse.status).toBe(200);
       await expect(readJson(updateSourceResponse)).resolves.toMatchObject({
-        id: secondSource.id,
+        id: defaultSourceId,
         path: "/tmp/project-sources-renamed",
       });
 
+      // The only source can never be deleted.
       const deleteSourceResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/sources/${defaultSourceId}`,
         {
           method: "DELETE",
         },
       );
-      expect(deleteSourceResponse.status).toBe(200);
-
-      const projectAfterDeleteResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}`,
-      );
-      const projectAfterDelete = projectResponseSchema.parse(
-        await readJson(projectAfterDeleteResponse),
-      );
-      expect(projectAfterDelete.sources).toEqual([
-        expect.objectContaining({
-          id: secondSource.id,
-          isDefault: true,
-        }),
-      ]);
-    });
-  });
-
-  it("derives host connection status from active sessions with valid leases", async () => {
-    await withTestHarness(async (harness) => {
-      const connected = seedHostSession(harness.deps, { id: "host-connected" });
-      const disconnected = seedHost(harness.deps, { id: "host-disconnected" });
-      const expired = seedHostSession(harness.deps, { id: "host-expired" });
-      const destroyed = seedHostSession(harness.deps, { id: "host-destroyed" });
-
-      harness.db
-        .update(hostDaemonSessions)
-        .set({
-          leaseExpiresAt: Date.now() - 1,
-        })
-        .where(eq(hostDaemonSessions.id, expired.session.id))
-        .run();
-      updateHost(harness.db, harness.hub, destroyed.host.id, {
-        destroyedAt: Date.now(),
-      });
-
-      const listResponse = await harness.app.request("/api/v1/hosts");
-      expect(listResponse.status).toBe(200);
-      const hosts = hostStatusListResponseSchema.parse(
-        await readJson(listResponse),
-      );
-      expect(hosts).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: connected.host.id,
-            status: "connected",
-          }),
-          expect.objectContaining({
-            id: disconnected.id,
-            status: "disconnected",
-          }),
-          expect.objectContaining({
-            id: expired.host.id,
-            status: "disconnected",
-          }),
-        ]),
-      );
-      expect(hosts).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: destroyed.host.id }),
-        ]),
-      );
-
-      const getResponse = await harness.app.request(
-        `/api/v1/hosts/${connected.host.id}`,
-      );
-      expect(getResponse.status).toBe(200);
-      await expect(readJson(getResponse)).resolves.toMatchObject({
-        id: connected.host.id,
-        status: "connected",
-      });
-
-      const destroyedResponse = await harness.app.request(
-        `/api/v1/hosts/${destroyed.host.id}`,
-      );
-      expect(destroyedResponse.status).toBe(404);
-      await expect(readJson(destroyedResponse)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
+      expect(deleteSourceResponse.status).toBe(409);
+      await expect(readJson(deleteSourceResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Cannot delete the last source of a project",
       });
     });
   });
 
-  it("rejects destroyed hosts for project sources", async () => {
+  it("rejects non-local host ids for project sources", async () => {
     await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-destroyed-source" });
-      updateHost(harness.db, harness.hub, host.id, {
-        destroyedAt: Date.now(),
-      });
+      seedHostSession(harness.deps);
 
       const response = await harness.app.request("/api/v1/projects", {
         method: "POST",
@@ -1367,23 +1260,18 @@ describe("public project and host routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          name: "Destroyed Host Project",
+          name: "Unknown Host Project",
           source: {
             type: "local_path",
-            hostId: host.id,
-            path: "/tmp/destroyed-host-project",
+            hostId: "host-unknown-source",
+            path: "/tmp/unknown-host-project",
           },
         }),
       });
 
       expect(response.status).toBe(404);
       await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
+        code: "host_not_found",
       });
     });
   });
@@ -1821,15 +1709,9 @@ describe("public project and host routes", () => {
           command.environmentId === managed.id,
       );
 
-      const commands = harness.db
-        .select()
-        .from(hostDaemonCommands)
-        .all()
-        .map((row) => hostDaemonCommandSchema.parse(JSON.parse(row.payload)));
-
-      const destroyCommands = commands.filter(
-        (c) => c.type === "environment.destroy",
-      );
+      const destroyCommands = harness.engineRouting.dispatched
+        .map((envelope) => envelope.command)
+        .filter((command) => command.type === "environment.destroy");
       expect(destroyCommands).toHaveLength(1);
       expect(destroyCommands[0]).toMatchObject({
         type: "environment.destroy",
@@ -1846,162 +1728,6 @@ describe("public project and host routes", () => {
       expect(listResponse.status).toBe(200);
       await expect(readJson(listResponse)).resolves.toEqual([]);
       expect(getProject(harness.db, project.id)).not.toBeNull();
-    });
-  });
-
-  it("renames a host via PATCH", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, { id: "host-rename" });
-
-      const patchResponse = await harness.app.request(
-        `/api/v1/hosts/${host.id}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: "Renamed Host" }),
-        },
-      );
-      expect(patchResponse.status).toBe(200);
-      await expect(readJson(patchResponse)).resolves.toMatchObject({
-        id: host.id,
-        name: "Renamed Host",
-      });
-
-      const getResponse = await harness.app.request(`/api/v1/hosts/${host.id}`);
-      expect(getResponse.status).toBe(200);
-      await expect(readJson(getResponse)).resolves.toMatchObject({
-        id: host.id,
-        name: "Renamed Host",
-      });
-    });
-  });
-
-  it("returns 404 when renaming a destroyed host via PATCH", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-rename-destroyed" });
-      updateHost(harness.db, harness.hub, host.id, {
-        destroyedAt: Date.now(),
-      });
-
-      const patchResponse = await harness.app.request(
-        `/api/v1/hosts/${host.id}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: "Renamed Host" }),
-        },
-      );
-
-      expect(patchResponse.status).toBe(404);
-      await expect(readJson(patchResponse)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
-      });
-    });
-  });
-
-  it("deletes a host via DELETE", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-delete" });
-
-      const deleteResponse = await harness.app.request(
-        `/api/v1/hosts/${host.id}`,
-        { method: "DELETE" },
-      );
-      expect(deleteResponse.status).toBe(200);
-      await expect(readJson(deleteResponse)).resolves.toEqual({ ok: true });
-
-      const getResponse = await harness.app.request(`/api/v1/hosts/${host.id}`);
-      expect(getResponse.status).toBe(404);
-    });
-  });
-
-  it("returns 404 when deleting a destroyed host via DELETE", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, { id: "host-delete-destroyed" });
-      updateHost(harness.db, harness.hub, host.id, {
-        destroyedAt: Date.now(),
-      });
-
-      const deleteResponse = await harness.app.request(
-        `/api/v1/hosts/${host.id}`,
-        { method: "DELETE" },
-      );
-
-      expect(deleteResponse.status).toBe(404);
-      await expect(readJson(deleteResponse)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
-      });
-    });
-  });
-
-  it("deletes a host that has pending commands", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-delete-cmds",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/host-delete-cmds",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/host-delete-cmds",
-      });
-
-      // Create a thread to generate queued commands for this host
-      const createThreadResponse = await harness.app.request(
-        "/api/v1/threads",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            origin: "app",
-            projectId: project.id,
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "test" }],
-            environment: { type: "reuse", environmentId: environment.id },
-          }),
-        },
-      );
-      expect(createThreadResponse.status).toBe(201);
-
-      // Wait for the command to be queued
-      await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "thread.start",
-      );
-
-      const deleteResponse = await harness.app.request(
-        `/api/v1/hosts/${host.id}`,
-        { method: "DELETE" },
-      );
-      expect(deleteResponse.status).toBe(200);
-      await expect(readJson(deleteResponse)).resolves.toEqual({ ok: true });
-
-      const getResponse = await harness.app.request(`/api/v1/hosts/${host.id}`);
-      expect(getResponse.status).toBe(404);
-    });
-  });
-
-  it("returns 404 when deleting a nonexistent host", async () => {
-    await withTestHarness(async (harness) => {
-      const deleteResponse = await harness.app.request(
-        `/api/v1/hosts/host-nonexistent`,
-        { method: "DELETE" },
-      );
-      expect(deleteResponse.status).toBe(404);
     });
   });
 

@@ -318,6 +318,28 @@ describe("migrate", () => {
         .prepare("ALTER TABLE threads DROP COLUMN reasoning_level_override")
         .run();
       db.$client.prepare("DROP TABLE host_daemon_command_attempts").run();
+      // 0014 drops these two baseline columns; the main-0001 schema this
+      // block reconstructs still had them (0013's table rebuilds copy them).
+      db.$client
+        .prepare(
+          "ALTER TABLE pending_interactions ADD COLUMN resolving_command_id text REFERENCES host_daemon_commands(id) ON DELETE SET NULL",
+        )
+        .run();
+      db.$client
+        .prepare(
+          "CREATE INDEX pending_interactions_resolving_command_idx ON pending_interactions (resolving_command_id)",
+        )
+        .run();
+      db.$client
+        .prepare(
+          "ALTER TABLE terminal_sessions ADD COLUMN daemon_session_id text REFERENCES host_daemon_sessions(id) ON DELETE SET NULL",
+        )
+        .run();
+      db.$client
+        .prepare(
+          "CREATE INDEX terminal_sessions_daemon_session_idx ON terminal_sessions (daemon_session_id)",
+        )
+        .run();
       db.$client.prepare("DELETE FROM __drizzle_migrations").run();
       db.$client
         .prepare<InsertMigrationParameters>(

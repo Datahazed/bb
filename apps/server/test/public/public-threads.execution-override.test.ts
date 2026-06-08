@@ -17,8 +17,6 @@ function stubClaudeCodeCatalog(
   sessionId: string,
 ): void {
   registerProviderHostRpcResponder(harness, {
-    hostId,
-    sessionId,
     providers: [
       {
         id: "claude-code",

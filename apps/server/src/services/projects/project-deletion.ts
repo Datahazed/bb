@@ -118,7 +118,7 @@ function hasRemainingManagedEnvironments(environments: Environment[]): boolean {
 }
 
 export function beginProjectDeletion(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch" | "hub">,
   args: ProjectDeletionArgs,
 ): void {
   if (!getProject(deps.db, args.projectId)) {
@@ -193,7 +193,6 @@ export async function advanceProjectDeletion(
       requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
     }
     finalizeStoppedThread(deps, {
-      cancelPendingCommand: false,
       threadId: thread.id,
     });
   }

@@ -39,10 +39,6 @@ export function resolveDevDataDir(): string {
   return resolveCurrentDevInstanceConfig(repoRoot).dataDir;
 }
 
-export function resolveDevHostDaemonPort(): number {
-  return resolveCurrentDevInstanceConfig(repoRoot).ports.hostDaemonPort;
-}
-
 export function resolveSupervisorPidPath(serviceName: string): string {
   return join(resolveDevDataDir(), "dev-supervisors", `${serviceName}.pid`);
 }

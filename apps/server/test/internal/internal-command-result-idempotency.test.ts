@@ -696,7 +696,6 @@ describe("internal command result idempotency", () => {
       archiveThread(harness.db, harness.hub, thread.id);
       requestThreadStop(harness.deps, {
         environmentId: environment.id,
-        hostId: host.id,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: thread.id,
@@ -1086,7 +1085,6 @@ describe("internal command result idempotency", () => {
 
       requestThreadStop(harness.deps, {
         environmentId: environment.id,
-        hostId: host.id,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: thread.id,
@@ -1148,7 +1146,6 @@ describe("internal command result idempotency", () => {
 
       requestThreadStop(harness.deps, {
         environmentId: environment.id,
-        hostId: host.id,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: thread.id,
@@ -1277,7 +1274,6 @@ describe("internal command result idempotency", () => {
 
       requestThreadStop(harness.deps, {
         environmentId: environment.id,
-        hostId: host.id,
         interruptionReason: "manual-stop",
         stopRequestedAt: null,
         threadId: thread.id,

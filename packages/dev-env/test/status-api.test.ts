@@ -19,7 +19,6 @@ interface TestState {
 function createRuntime(): DevEnvRuntime {
   return {
     baselineFingerprints: new Map<DevServiceName, string>([
-      ["host-daemon", "host-baseline"],
       ["server", "server-baseline"],
     ]),
   };
@@ -28,7 +27,6 @@ function createRuntime(): DevEnvRuntime {
 function createState(): TestState {
   return {
     currentFingerprints: {
-      "host-daemon": "host-baseline",
       server: "server-changed",
     },
     restartTargets: [],
@@ -49,15 +47,10 @@ function computeExpectedFingerprint(
   fingerprints: Record<DevServiceName, string>,
 ): string {
   const hash = createHash("sha256");
-  for (const serviceName of [
-    "server",
-    "host-daemon",
-  ] satisfies DevServiceName[]) {
-    hash.update(serviceName);
-    hash.update("\0");
-    hash.update(fingerprints[serviceName]);
-    hash.update("\0");
-  }
+  hash.update("server");
+  hash.update("\0");
+  hash.update(fingerprints.server);
+  hash.update("\0");
   return hash.digest("hex");
 }
 
@@ -80,18 +73,12 @@ describe("dev-env status API", () => {
           fingerprint: "server-changed",
           serviceName: "server",
         },
-        {
-          baselineFingerprint: "host-baseline",
-          changed: false,
-          fingerprint: "host-baseline",
-          serviceName: "host-daemon",
-        },
       ],
       version: 1,
     });
   });
 
-  it("runs the existing restart script and refreshes that target baseline", async () => {
+  it("runs the restart script and refreshes the server baseline", async () => {
     const state = createState();
     const runtime = createRuntime();
     const app = createDevEnvStatusApp(runtime, createDependencies(state));
@@ -118,49 +105,6 @@ describe("dev-env status API", () => {
     });
   });
 
-  it("upgrades a server restart to both services when the host-daemon build changed", async () => {
-    const state = createState();
-    state.currentFingerprints["host-daemon"] = "host-changed";
-    const runtime = createRuntime();
-    const app = createDevEnvStatusApp(runtime, createDependencies(state));
-
-    const response = await app.request("/restart", {
-      body: JSON.stringify({ target: "server" }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    expect(state.restartTargets).toEqual(["both"]);
-    expect(runtime.baselineFingerprints.get("server")).toBe("server-changed");
-    expect(runtime.baselineFingerprints.get("host-daemon")).toBe(
-      "host-changed",
-    );
-  });
-
-  it("refreshes both baselines after a combined restart", async () => {
-    const state = createState();
-    const runtime = createRuntime();
-    const app = createDevEnvStatusApp(runtime, createDependencies(state));
-
-    const response = await app.request("/restart", {
-      body: JSON.stringify({ target: "both" }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    expect(state.restartTargets).toEqual(["both"]);
-    expect(runtime.baselineFingerprints.get("server")).toBe("server-changed");
-    expect(runtime.baselineFingerprints.get("host-daemon")).toBe(
-      "host-baseline",
-    );
-  });
-
   it("returns a conflict when the restart script fails", async () => {
     const state = createState();
     const runtime = createRuntime();
@@ -173,7 +117,7 @@ describe("dev-env status API", () => {
     });
 
     const response = await app.request("/restart", {
-      body: JSON.stringify({ target: "host-daemon" }),
+      body: JSON.stringify({ target: "server" }),
       headers: {
         "Content-Type": "application/json",
       },
@@ -182,9 +126,7 @@ describe("dev-env status API", () => {
 
     expect(response.status).toBe(409);
     expect(await response.text()).toContain("restart failed");
-    expect(runtime.baselineFingerprints.get("host-daemon")).toBe(
-      "host-baseline",
-    );
+    expect(runtime.baselineFingerprints.get("server")).toBe("server-baseline");
   });
 
   it("returns bad request for invalid restart bodies", async () => {
@@ -193,7 +135,7 @@ describe("dev-env status API", () => {
     const app = createDevEnvStatusApp(runtime, createDependencies(state));
 
     const invalidTargetResponse = await app.request("/restart", {
-      body: JSON.stringify({ target: "nope" }),
+      body: JSON.stringify({ target: "host-daemon" }),
       headers: {
         "Content-Type": "application/json",
       },
@@ -212,12 +154,10 @@ describe("dev-env status API", () => {
     expect(state.restartTargets).toEqual([]);
   });
 
-  it("fails loudly when a service baseline is missing", async () => {
+  it("fails loudly when the server baseline is missing", async () => {
     const state = createState();
     const runtime: DevEnvRuntime = {
-      baselineFingerprints: new Map<DevServiceName, string>([
-        ["server", "server-baseline"],
-      ]),
+      baselineFingerprints: new Map<DevServiceName, string>(),
     };
     const app = createDevEnvStatusApp(runtime, createDependencies(state));
 
@@ -225,7 +165,6 @@ describe("dev-env status API", () => {
 
     expect(response.status).toBe(500);
     expect(await response.text()).toBe("Internal Server Error");
-    expect(runtime.baselineFingerprints.has("host-daemon")).toBe(false);
   });
 });
 

@@ -85,20 +85,16 @@ export interface Engine {
  * server WS connection, durable event spool, and pending-interrupt retry
  * timer are all gone; their roles are direct port calls.
  *
- * Phase 1a: nothing in the server constructs this yet. P1b's dispatch shim
- * becomes the only caller.
+ * The server's boot composition (`services/engine/server-engine.ts`) is the
+ * only production caller; engine unit tests construct fakes.
  *
- * P1b boot requirement — watcher seeding: the daemon seeded its watchers
- * from the session-open payload (`app.ts:818-826`):
- * `replaceTrackedThreadStorageTargets(session.trackedThreadTargets)` plus
- * `replaceTrackedApplicationDataTargets` / the change reporter's
- * `replaceTrackedApplications`. The engine refreshes app-data targets only
- * reactively (`onApplicationStorageTargetsChanged`) and tracks thread
- * storage only as threads are touched, so P1b boot wiring must seed
+ * Boot requirement — watcher seeding: the daemon seeded its watchers from
+ * the session-open payload (`app.ts:818-826`). App-data targets are seeded
+ * here (the engine scans its own apps root before returning); thread-storage
+ * targets must be seeded by the boot wiring via
  * `runtimeManager.replaceTrackedThreadStorageTargets` with the live threads
- * from the DB and run an initial app-data target refresh — otherwise
- * pre-existing threads/apps lose watching until they are next touched.
- * (This sits alongside the `runtimeShellEnv` wiring caveat below.)
+ * from the DB (`services/engine/server-engine.ts`) — otherwise pre-existing
+ * threads lose watching until they are next touched.
  */
 export async function createEngine(
   options: CreateEngineOptions,
@@ -388,6 +384,12 @@ export async function createEngine(
     },
     threadStorageRootPath,
   });
+
+  // Seed app-data watching at construction — the daemon seeded it from the
+  // session-open payload's tracked targets; in-process the engine scans the
+  // apps root directly. Thread-storage seeding stays with the boot wiring
+  // (the live-thread list lives in the server DB).
+  await refreshTrackedApplicationDataTargets();
 
   const terminalManager = new TerminalManager({
     dataDir: options.dataDir,

@@ -30,11 +30,11 @@ import {
   requestEnvironmentCleanupAdvance,
 } from "../../services/environments/environment-cleanup-internal.js";
 import {
-  getNonDestroyedHostWithStatus,
   requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
+import { getLocalHost } from "../../services/hosts/local-host.js";
 import { queueThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -96,9 +96,9 @@ function buildThreadResponse(
     response.environment = environment;
   }
   if (args.includes.has("host")) {
-    response.host = environment
-      ? getNonDestroyedHostWithStatus(deps.db, environment.hostId)
-      : null;
+    // Single-host: every environment's hostId is 'local' (pinned at creation),
+    // so the expansion embeds the synthetic host whenever an environment exists.
+    response.host = environment ? getLocalHost() : null;
   }
   return response;
 }
@@ -260,7 +260,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
       finalizeStoppedThread(deps, {
-        cancelPendingCommand: false,
         threadId: thread.id,
       });
       return context.json({ ok: true });
@@ -271,7 +270,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     // needs a daemon stop request here.
     requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
     finalizeStoppedThread(deps, {
-      cancelPendingCommand: false,
       threadId: thread.id,
     });
     requestEnvironmentCleanup(deps, {

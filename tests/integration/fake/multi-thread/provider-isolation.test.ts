@@ -76,7 +76,7 @@ describe.sequential(
             ),
           ]);
 
-          const runtimeEntry = harness.daemonApp.runtimeManager.get(
+          const runtimeEntry = harness.engine.runtimeManager.get(
             threadA.environment.id,
           );
           const runningProviders =

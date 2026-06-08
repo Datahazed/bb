@@ -1,50 +1,23 @@
-import { asc, eq } from "drizzle-orm";
-import { performance } from "node:perf_hooks";
-import { hostDaemonCommands } from "@bb/db";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
-import { describe, expect, it, vi } from "vitest";
-import { queueCommandAndWait } from "../../src/services/hosts/command-wait.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { describe, expect, it } from "vitest";
+import { dispatchEngineCommandAndWait } from "../../src/services/hosts/command-wait.js";
+import { ApiError } from "../../src/errors.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 type ThreadStopCommand = Extract<HostDaemonCommand, { type: "thread.stop" }>;
-type TestAppHarness = Awaited<ReturnType<typeof createTestAppHarness>>;
 
 interface BuildThreadStopCommandArgs {
   threadId: string;
 }
 
-interface CountQueuedHostCommandsArgs {
-  harness: TestAppHarness;
-  hostId: string;
-}
-
-interface ListQueuedHostCommandIdsArgs {
-  harness: TestAppHarness;
-  hostId: string;
-}
-
-interface GetCommandIdAtIndexArgs {
-  commandIds: readonly string[];
-  index: number;
-}
-
-interface RecordThreadStopFailureArgs {
+interface SettleThreadStopSuccessArgs {
   commandId: string;
+  harness: TestAppHarness;
+}
+
+interface SettleThreadStopFailureArgs extends SettleThreadStopSuccessArgs {
   errorCode: string;
   errorMessage: string;
-  harness: TestAppHarness;
-}
-
-interface RecordThreadStopSuccessArgs {
-  commandId: string;
-  harness: TestAppHarness;
-}
-
-interface WaitForQueuedHostCommandCountArgs {
-  count: number;
-  harness: TestAppHarness;
-  hostId: string;
 }
 
 function buildThreadStopCommand(
@@ -57,249 +30,126 @@ function buildThreadStopCommand(
   };
 }
 
-function countQueuedHostCommands({
-  harness,
-  hostId,
-}: CountQueuedHostCommandsArgs): number {
-  return harness.db
-    .select({ id: hostDaemonCommands.id })
-    .from(hostDaemonCommands)
-    .where(eq(hostDaemonCommands.hostId, hostId))
-    .all().length;
-}
-
-function listQueuedHostCommandIds({
-  harness,
-  hostId,
-}: ListQueuedHostCommandIdsArgs): string[] {
-  return harness.db
-    .select({
-      cursor: hostDaemonCommands.cursor,
-      id: hostDaemonCommands.id,
-    })
-    .from(hostDaemonCommands)
-    .where(eq(hostDaemonCommands.hostId, hostId))
-    .orderBy(asc(hostDaemonCommands.cursor))
-    .all()
-    .map((command) => command.id);
-}
-
-function getCommandIdAtIndex({
-  commandIds,
-  index,
-}: GetCommandIdAtIndexArgs): string {
-  const commandId = commandIds[index];
-  if (!commandId) {
-    throw new Error(`Expected queued command at index ${index}`);
+async function waitForDispatchCount(
+  harness: TestAppHarness,
+  count: number,
+): Promise<void> {
+  while (harness.engineRouting.dispatched.length < count) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
   }
-  return commandId;
 }
 
-function recordThreadStopFailure({
-  commandId,
-  errorCode,
-  errorMessage,
-  harness,
-}: RecordThreadStopFailureArgs): void {
-  harness.hub.recordCommandResult(commandId, {
-    commandId,
-    errorCode,
-    errorMessage,
-    ok: false,
-    type: "thread.stop",
-  });
-}
-
-function recordThreadStopSuccess({
-  commandId,
-  harness,
-}: RecordThreadStopSuccessArgs): void {
-  harness.hub.recordCommandResult(commandId, {
-    commandId,
+async function settleThreadStopSuccess(
+  args: SettleThreadStopSuccessArgs,
+): Promise<void> {
+  await args.harness.engineRouting.settle(args.harness.deps.engineDispatch, {
+    commandId: args.commandId,
+    completedAt: Date.now(),
     ok: true,
     result: {},
     type: "thread.stop",
   });
 }
 
-async function waitForQueuedHostCommandCount({
-  count,
-  harness,
-  hostId,
-}: WaitForQueuedHostCommandCountArgs): Promise<void> {
-  await vi.waitFor(() => {
-    expect(countQueuedHostCommands({ harness, hostId })).toBe(count);
+async function settleThreadStopFailure(
+  args: SettleThreadStopFailureArgs,
+): Promise<void> {
+  await args.harness.engineRouting.settle(args.harness.deps.engineDispatch, {
+    commandId: args.commandId,
+    completedAt: Date.now(),
+    errorCode: args.errorCode,
+    errorMessage: args.errorMessage,
+    ok: false,
+    type: "thread.stop",
   });
 }
 
-describe("daemon command waits", () => {
-  it("allows parallel command waits", async () => {
+describe("engine command waits", () => {
+  it("resolves once the engine settles the dispatched command", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-command-wait-parallel",
+      const wait = dispatchEngineCommandAndWait(harness.deps, {
+        command: buildThreadStopCommand({ threadId: "thr-wait-1" }),
+        timeoutMs: 5_000,
       });
+      await waitForDispatchCount(harness, 1);
+      const dispatched = harness.engineRouting.dispatched[0];
+      expect(dispatched.command.type).toBe("thread.stop");
 
-      const waitForResults = Promise.all([
-        queueCommandAndWait(harness.deps, {
-          command: buildThreadStopCommand({ threadId: "thread-1" }),
-          hostId: host.id,
-          timeoutMs: 5_000,
-        }),
-        queueCommandAndWait(harness.deps, {
-          command: buildThreadStopCommand({ threadId: "thread-2" }),
-          hostId: host.id,
-          timeoutMs: 5_000,
-        }),
-        queueCommandAndWait(harness.deps, {
-          command: buildThreadStopCommand({ threadId: "thread-3" }),
-          hostId: host.id,
-          timeoutMs: 5_000,
-        }),
-      ]);
-
-      await waitForQueuedHostCommandCount({
-        count: 3,
+      await settleThreadStopSuccess({
+        commandId: dispatched.commandId,
         harness,
-        hostId: host.id,
       });
-
-      const queuedCommands = harness.db
-        .select({
-          cursor: hostDaemonCommands.cursor,
-          id: hostDaemonCommands.id,
-        })
-        .from(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.hostId, host.id))
-        .orderBy(asc(hostDaemonCommands.cursor))
-        .all();
-      for (const command of queuedCommands) {
-        recordThreadStopSuccess({ commandId: command.id, harness });
-      }
-
-      await expect(waitForResults).resolves.toEqual([{}, {}, {}]);
+      await expect(wait).resolves.toEqual({});
     });
   });
 
-  it("logs slow command waits that complete successfully", async () => {
-    const harness = await createTestAppHarness();
-    const logger = {
-      debug: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    };
-    const deps = {
-      ...harness.deps,
-      logger,
-    };
-    const now = { value: 0 };
-    const performanceNow = vi
-      .spyOn(performance, "now")
-      .mockImplementation(() => now.value);
-    try {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-command-wait-slow-success",
-      });
-      const waitForResult = queueCommandAndWait(deps, {
-        command: buildThreadStopCommand({ threadId: "thread-slow-success" }),
-        hostId: host.id,
+  it("allows parallel waits to settle independently and out of order", async () => {
+    await withTestHarness(async (harness) => {
+      const firstWait = dispatchEngineCommandAndWait(harness.deps, {
+        command: buildThreadStopCommand({ threadId: "thr-parallel-1" }),
         timeoutMs: 5_000,
       });
-
-      await waitForQueuedHostCommandCount({
-        count: 1,
-        harness,
-        hostId: host.id,
+      const secondWait = dispatchEngineCommandAndWait(harness.deps, {
+        command: buildThreadStopCommand({ threadId: "thr-parallel-2" }),
+        timeoutMs: 5_000,
       });
-      const commandId = getCommandIdAtIndex({
-        commandIds: listQueuedHostCommandIds({ harness, hostId: host.id }),
-        index: 0,
-      });
-      now.value = 1_001;
-      recordThreadStopSuccess({ commandId, harness });
+      await waitForDispatchCount(harness, 2);
+      const [first, second] = harness.engineRouting.dispatched;
 
-      await expect(waitForResult).resolves.toEqual({});
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({
-          commandId,
-          commandType: "thread.stop",
-          completed: true,
-          durationMs: 1_001,
-          hostId: host.id,
-          outcome: "success",
-          sessionId: session.id,
-        }),
-        "Slow host command wait",
-      );
-    } finally {
-      performanceNow.mockRestore();
-      await harness.cleanup();
-    }
+      // Settle in reverse dispatch order: each waiter is keyed by commandId.
+      await settleThreadStopSuccess({ commandId: second.commandId, harness });
+      await expect(secondWait).resolves.toEqual({});
+
+      await settleThreadStopSuccess({ commandId: first.commandId, harness });
+      await expect(firstWait).resolves.toEqual({});
+    });
   });
 
-  it("logs slow command waits with provider failure details", async () => {
-    const harness = await createTestAppHarness();
-    const logger = {
-      debug: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    };
-    const deps = {
-      ...harness.deps,
-      logger,
-    };
-    const now = { value: 0 };
-    const performanceNow = vi
-      .spyOn(performance, "now")
-      .mockImplementation(() => now.value);
-    try {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-command-wait-slow-provider-failure",
-      });
-      const waitForResult = queueCommandAndWait(deps, {
-        command: buildThreadStopCommand({
-          threadId: "thread-slow-provider-failure",
-        }),
-        hostId: host.id,
+  it("maps engine command failures to 502 with the reported error code", async () => {
+    await withTestHarness(async (harness) => {
+      const wait = dispatchEngineCommandAndWait(harness.deps, {
+        command: buildThreadStopCommand({ threadId: "thr-fail-1" }),
         timeoutMs: 5_000,
       });
+      await waitForDispatchCount(harness, 1);
 
-      await waitForQueuedHostCommandCount({
-        count: 1,
-        harness,
-        hostId: host.id,
-      });
-      const commandId = getCommandIdAtIndex({
-        commandIds: listQueuedHostCommandIds({ harness, hostId: host.id }),
-        index: 0,
-      });
-      now.value = 1_001;
-      recordThreadStopFailure({
-        commandId,
-        errorCode: "provider_unavailable",
-        errorMessage: "Provider unavailable",
+      await settleThreadStopFailure({
+        commandId: harness.engineRouting.dispatched[0].commandId,
+        errorCode: "provider_session_error",
+        errorMessage: "provider exploded",
         harness,
       });
 
-      await expect(waitForResult).rejects.toThrow("Provider unavailable");
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({
-          commandId,
-          commandType: "thread.stop",
-          completed: false,
-          durationMs: 1_001,
-          errorCode: "provider_unavailable",
-          hostId: host.id,
-          outcome: "provider_error",
-          sessionId: session.id,
-          status: 502,
-        }),
-        "Slow host command wait",
+      const error = await wait.then(
+        () => null,
+        (caught: unknown) => caught,
       );
-    } finally {
-      performanceNow.mockRestore();
-      await harness.cleanup();
-    }
+      if (!(error instanceof ApiError)) {
+        throw new Error("Expected an ApiError from the failed wait");
+      }
+      expect(error.status).toBe(502);
+      expect(error.body.code).toBe("provider_session_error");
+    });
+  });
+
+  it("times out with 504 command_timeout when the engine never settles", async () => {
+    await withTestHarness(async (harness) => {
+      const wait = dispatchEngineCommandAndWait(harness.deps, {
+        command: buildThreadStopCommand({ threadId: "thr-timeout-1" }),
+        timeoutMs: 10,
+      });
+
+      const error = await wait.then(
+        () => null,
+        (caught: unknown) => caught,
+      );
+      if (!(error instanceof ApiError)) {
+        throw new Error("Expected an ApiError from the timed-out wait");
+      }
+      expect(error.status).toBe(504);
+      expect(error.body.code).toBe("command_timeout");
+
+      harness.engineRouting.releaseAll();
+    });
   });
 });

@@ -3,19 +3,11 @@ import {
   resumeHostMock,
 } from "./public-thread-test-harness.js";
 
-import {
-  createProjectSource,
-  getEnvironmentOperation,
-  hostDaemonCommands,
-  listEnvironments,
-  listThreads,
-  updateHost,
-} from "@bb/db";
+import { createProject, listEnvironments, listThreads } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
@@ -23,7 +15,6 @@ import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 import { waitForThreadEnvironment } from "./public-thread-assertions.js";
 import { createTestGitRepo } from "./public-thread-git-fixtures.js";
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 
 describe("public thread creation routes", () => {
   beforeEach(() => {
@@ -146,84 +137,12 @@ describe("public thread creation routes", () => {
     });
   });
 
-  it("creates host threads while the host is offline and leaves provisioning requested", async () => {
+  it("fails host thread creation for non-local host ids without inserting rows", async () => {
     await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-thread-offline",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
-        path: "/tmp/offline-thread-project",
-      });
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          input: [{ type: "text", text: "Create this thread offline" }],
-          environment: {
-            type: "host",
-            hostId: host.id,
-            workspace: {
-              type: "unmanaged",
-              path: null,
-            },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const createdThread = threadSchema.parse(await readJson(response));
-      expect(createdThread.status).toBe("provisioning");
-
-      const environments = listEnvironments(harness.db, project.id);
-      expect(environments).toHaveLength(1);
-      expect(environments[0]).toMatchObject({
-        hostId: host.id,
-        status: "provisioning",
-        workspaceProvisionType: "unmanaged",
-      });
-      expect(
-        getEnvironmentOperation(harness.db, {
-          environmentId: environments[0]!.id,
-          kind: "provision",
-        }),
-      ).toMatchObject({
-        state: "requested",
-      });
-      expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
-        1,
-      );
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "environment.provision"))
-          .all(),
-      ).toHaveLength(0);
-    });
-  });
-
-  it("fails host thread creation when the host is destroyed", async () => {
-    await withTestHarness(async (harness) => {
-      const { host: projectHost } = seedHostSession(harness.deps, {
-        id: "host-thread-project",
-      });
-      const { host: destroyedHost } = seedHostSession(harness.deps, {
-        id: "host-thread-destroyed",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: projectHost.id,
-        path: "/tmp/destroyed-thread-project",
-      });
-      updateHost(harness.db, harness.hub, destroyedHost.id, {
-        destroyedAt: Date.now(),
+        path: "/tmp/unknown-host-thread-project",
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -237,14 +156,14 @@ describe("public thread creation routes", () => {
           providerId: "codex",
           model: "gpt-5",
           input: [
-            { type: "text", text: "Create this thread on a destroyed host" },
+            { type: "text", text: "Create this thread on an unknown host" },
           ],
           environment: {
             type: "host",
-            hostId: destroyedHost.id,
+            hostId: "host-thread-unknown",
             workspace: {
               type: "unmanaged",
-              path: "/tmp/destroyed-thread-project",
+              path: "/tmp/unknown-host-thread-project",
             },
           },
         }),
@@ -252,12 +171,7 @@ describe("public thread creation routes", () => {
 
       expect(response.status).toBe(404);
       await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
+        code: "host_not_found",
       });
       expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
         0,
@@ -362,99 +276,23 @@ describe("public thread creation routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "invalid_request",
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
-    });
-  });
-
-  it("creates managed-worktree threads on a non-default host using that host's source", async () => {
-    await withTestHarness(async (harness) => {
-      const { host: defaultHost } = seedHostSession(harness.deps, {
-        id: "host-managed-default",
-      });
-      const { host: secondaryHost } = seedHostSession(harness.deps, {
-        id: "host-managed-secondary",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: defaultHost.id,
-        path: "/tmp/default-managed-source",
-      });
-      const secondarySource = createProjectSource(harness.db, harness.hub, {
-        projectId: project.id,
-        type: "local_path",
-        hostId: secondaryHost.id,
-        path: "/tmp/secondary-managed-source",
-      });
-      if (secondarySource.type !== "local_path") {
-        throw new Error("Expected local_path project source");
-      }
-
-      const response = await harness.app.request("/api/v1/threads", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          origin: "app",
-          projectId: project.id,
-          providerId: "codex",
-          model: "gpt-5",
-          title: "Secondary host thread",
-          input: [{ type: "text", text: "Build it on the secondary host" }],
-          environment: {
-            type: "host",
-            hostId: secondaryHost.id,
-            workspace: {
-              type: "managed-worktree",
-              baseBranch: { kind: "default" },
-            },
-          },
-        }),
-      });
-
-      expect(response.status).toBe(201);
-      const createdThread = threadSchema.parse(await readJson(response));
-      expect(createdThread.status).toBe("provisioning");
-      const environment = await waitForThreadEnvironment(
-        harness,
-        createdThread.id,
-      );
-
-      const queued = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "environment.provision" &&
-          command.environmentId === environment.id,
-      );
-      if (
-        queued.command.type !== "environment.provision" ||
-        queued.command.workspaceProvisionType === "unmanaged"
-      ) {
-        throw new Error("Expected managed environment.provision command");
-      }
-      expect(queued.command).toMatchObject({
-        branchName: `bb/secondary-host-thread-${createdThread.id}`,
-        sourcePath: secondarySource.path,
-        workspaceProvisionType: "managed-worktree",
-      });
-      expect(queued.command.targetPath).toBe(
-        `/tmp/bb-host-data/${secondaryHost.id}/worktrees/${environment.id}/secondary-managed-source`,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
   it("returns 409 when the requested host has no configured project source", async () => {
     await withTestHarness(async (harness) => {
-      const { host: defaultHost } = seedHostSession(harness.deps, {
-        id: "host-source-default",
-      });
-      const { host: missingSourceHost } = seedHostSession(harness.deps, {
-        id: "host-source-missing",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: defaultHost.id,
-        path: "/tmp/source-present",
+      const { host } = seedHostSession(harness.deps);
+      const { project } = createProject(harness.db, harness.hub, {
+        name: "Project Without Local Source",
+        source: {
+          type: "local_path",
+          // A source pinned to a foreign id leaves the local host without a
+          // configured project source — the single-host stand-in for the
+          // multi-host "no source on this host" fixture.
+          hostId: "host-source-missing",
+          path: "/tmp/source-present",
+        },
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -467,10 +305,10 @@ describe("public thread creation routes", () => {
           projectId: project.id,
           providerId: "codex",
           model: "gpt-5",
-          input: [{ type: "text", text: "Try the missing host" }],
+          input: [{ type: "text", text: "Try the missing source" }],
           environment: {
             type: "host",
-            hostId: missingSourceHost.id,
+            hostId: host.id,
             workspace: {
               type: "managed-worktree",
               baseBranch: { kind: "default" },
@@ -489,15 +327,16 @@ describe("public thread creation routes", () => {
 
   it("creates unmanaged threads with an explicit path even when the host has no project source", async () => {
     await withTestHarness(async (harness) => {
-      const { host: defaultHost } = seedHostSession(harness.deps, {
-        id: "host-unmanaged-default",
-      });
-      const { host: explicitPathHost } = seedHostSession(harness.deps, {
-        id: "host-unmanaged-explicit",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: defaultHost.id,
-        path: "/tmp/unmanaged-default-source",
+      const { host } = seedHostSession(harness.deps);
+      const { project } = createProject(harness.db, harness.hub, {
+        name: "Project Without Local Unmanaged Source",
+        source: {
+          type: "local_path",
+          // Foreign-pinned source: the local host has no configured project
+          // source, but an explicit unmanaged path must still work.
+          hostId: "host-unmanaged-missing",
+          path: "/tmp/unmanaged-default-source",
+        },
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -513,7 +352,7 @@ describe("public thread creation routes", () => {
           input: [{ type: "text", text: "Use the explicit workspace path" }],
           environment: {
             type: "host",
-            hostId: explicitPathHost.id,
+            hostId: host.id,
             workspace: {
               type: "unmanaged",
               path: "/tmp/explicit-unmanaged-workspace",

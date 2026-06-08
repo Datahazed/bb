@@ -8,5 +8,14 @@
     "types": ["node"]
   },
   "include": ["scripts", "src", "test", "tests", "fixtures", "stories"],
-  "exclude": ["src/services/threads/app-scaffold-template/source"]
+  // test/internal, expired-commands, and thread-lifecycle are quarantined
+  // wire-protocol/durable-queue suites (see vitest.config.ts) — excluded from
+  // typecheck so the engine-seam helper rework doesn't have to keep dead
+  // queue machinery compiling; deleted in P1c.
+  "exclude": [
+    "src/services/threads/app-scaffold-template/source",
+    "test/internal",
+    "test/hosts/expired-commands.test.ts",
+    "test/threads/thread-lifecycle.test.ts"
+  ]
 }

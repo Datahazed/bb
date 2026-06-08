@@ -16,6 +16,7 @@ import {
   handleCommandResultSideEffects,
 } from "../../internal/command-results.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
+import { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 
 const EXPIRED_COMMAND_ERROR_CODE = "command_expired";
 const EXPIRED_COMMAND_ERROR_MESSAGE = "Command expired after retry";
@@ -26,6 +27,7 @@ type ExpiredCommandDeps = Pick<
   AppDeps,
   | "config"
   | "db"
+  | "engineDispatch"
   | "hub"
   | "lifecycleDedupers"
   | "logger"
@@ -64,6 +66,7 @@ async function settleLegacyTerminalizedExpiredLifecycleCommand(
   commandRow: HostDaemonCommandRow,
 ): Promise<void> {
   const notificationBuffer = new NotificationBuffer();
+  const engineDispatches = new EngineDispatchBuffer();
   const failureReport = buildExpiredCommandFailureReport({
     attemptId: LEGACY_EXPIRED_COMMAND_ATTEMPT_ID,
     command: commandRow,
@@ -75,6 +78,7 @@ async function settleLegacyTerminalizedExpiredLifecycleCommand(
         buildCommandResultSettlementDeps({
           db: tx,
           deps,
+          engineDispatches,
           hub: notificationBuffer,
         }),
         failureReport,
@@ -83,6 +87,7 @@ async function settleLegacyTerminalizedExpiredLifecycleCommand(
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
+  engineDispatches.flushInto(deps.engineDispatch);
   deps.hub.recordCommandResult(commandRow.id, {
     commandId: commandRow.id,
     errorCode: EXPIRED_COMMAND_ERROR_CODE,
@@ -114,6 +119,7 @@ async function settleExpiredCommandAttempt(
   args: ExpiredCommandAttempt,
 ): Promise<void> {
   const notificationBuffer = new NotificationBuffer();
+  const engineDispatches = new EngineDispatchBuffer();
   const settlement = deps.db.transaction(
     (tx) => {
       const commandRow = getCommand(tx, args.commandId);
@@ -143,6 +149,7 @@ async function settleExpiredCommandAttempt(
         buildCommandResultSettlementDeps({
           db: tx,
           deps,
+          engineDispatches,
           hub: notificationBuffer,
         }),
         failureReport,
@@ -176,6 +183,7 @@ async function settleExpiredCommandAttempt(
   }
 
   notificationBuffer.flushInto(deps.hub);
+  engineDispatches.flushInto(deps.engineDispatch);
   deps.hub.recordCommandResult(settlement.command.id, {
     commandId: settlement.command.id,
     errorCode: EXPIRED_COMMAND_ERROR_CODE,

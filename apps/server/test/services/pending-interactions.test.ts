@@ -112,6 +112,7 @@ describe("pending interaction lifecycle", () => {
       };
       const lifecycle = new PendingInteractionLifecycle({
         db: harness.db,
+        engineDispatch: harness.deps.engineDispatch,
         hub: harness.hub,
         logger,
       });
@@ -659,12 +660,6 @@ describe("pending interaction lifecycle", () => {
         status: "resolving",
         resolution: firstResolution.resolution,
       });
-      const resolvingRow = harness.db
-        .select()
-        .from(pendingInteractionTable)
-        .where(eq(pendingInteractionTable.id, created.interaction.id))
-        .get();
-      expect(resolvingRow?.resolvingCommandId).not.toBeNull();
 
       const completed =
         harness.deps.pendingInteractions.completeResolvingInteraction({
@@ -678,12 +673,6 @@ describe("pending interaction lifecycle", () => {
           }),
         });
       expect(completed?.status).toBe("resolved");
-      const resolvedRow = harness.db
-        .select()
-        .from(pendingInteractionTable)
-        .where(eq(pendingInteractionTable.id, created.interaction.id))
-        .get();
-      expect(resolvedRow?.resolvingCommandId).toBeNull();
     });
   });
 
@@ -1169,6 +1158,7 @@ describe("pending interaction lifecycle", () => {
     await withTestHarness(async (harness) => {
       const pendingInteractions = new PendingInteractionLifecycle({
         db: harness.db,
+        engineDispatch: harness.deps.engineDispatch,
         hub: harness.hub,
         logger: harness.deps.logger,
       });

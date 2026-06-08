@@ -99,17 +99,15 @@ describe("public authorization regressions", () => {
 
   it("validates managed workspace requirements before inserting environment or thread rows", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-managed-check",
-      });
-      const { host: sourceHost } = seedHostSession(harness.deps, {
-        id: "host-managed-check-source",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = createProject(harness.db, harness.hub, {
         name: "Project Without Matching Host Source",
         source: {
           type: "local_path",
-          hostId: sourceHost.id,
+          // A source pinned to a foreign id leaves the local host without a
+          // configured project source — the single-host stand-in for the
+          // multi-host "no source on this host" fixture.
+          hostId: "host-managed-check-source",
           path: "/tmp/managed-check-source",
         },
       });

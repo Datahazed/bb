@@ -11,7 +11,7 @@ export const PROVIDER_TURN_IDLE_WATCHDOG_BATCH_SIZE = 25;
 
 export type ProviderTurnWatchdogSweepDeps = Pick<
   AppDeps,
-  "db" | "hub" | "logger"
+  "db" | "engineDispatch" | "hub" | "logger"
 >;
 
 export interface RunProviderTurnWatchdogSweepOptions {
@@ -78,7 +78,6 @@ export function runProviderTurnWatchdogSweep(
       });
       requestThreadStop(deps, {
         environmentId: candidate.environmentId,
-        hostId: candidate.hostId,
         interruptionReason: "provider-turn-idle",
         stopRequestedAt: null,
         threadId: candidate.threadId,

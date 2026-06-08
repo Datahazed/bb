@@ -202,12 +202,10 @@ describe("resolveSystemExecutionOptions", () => {
         ],
       },
       async (harness) => {
-        const { host, session } = seedHostSession(harness.deps, {
+        const { host } = seedHostSession(harness.deps, {
           id: "host-execution-options-model-load-error",
         });
         registerProviderHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
           providers: [CLAUDE_CODE_PROVIDER],
           modelErrorsByProviderId: {
             "claude-code": {

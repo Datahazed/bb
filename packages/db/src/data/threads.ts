@@ -897,6 +897,31 @@ export function listHostThreadIds(
 }
 
 /**
+ * Threads whose storage the in-process engine watches at boot (single-host
+ * world: every live thread, no host scoping). Archived and deleted thread
+ * storage can be reaped, so those rows must not trigger reprime work.
+ */
+export function listTrackedThreadStorageTargets(
+  db: DbConnection,
+): ThreadEnvironmentAssignmentRow[] {
+  return db
+    .select({
+      threadId: threads.id,
+      environmentId: environments.id,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        ne(environments.status, "destroyed"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+}
+
+/**
  * Threads whose app-data storage the daemon should track for a host. Archived
  * and deleted thread storage can be reaped, so those rows must not trigger
  * reprime work.

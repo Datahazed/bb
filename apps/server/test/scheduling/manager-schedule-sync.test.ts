@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   createManagerThreadNudge,
   listManagerThreadNudgesByThread,
@@ -22,13 +23,11 @@ type TestHarness = Awaited<ReturnType<typeof createTestAppHarness>>;
 interface SyncWithFileContentArgs {
   content: string;
   harness: TestHarness;
-  hostId: string;
   threadId: string;
 }
 
 interface StartSyncArgs {
   harness: TestHarness;
-  hostId: string;
   threadId: string;
 }
 
@@ -41,7 +40,12 @@ async function startSync(args: StartSyncArgs) {
   const syncPromise = syncManagerThreadSchedules(args.harness.deps, {
     threadId: args.threadId,
   });
-  const asyncPath = `/tmp/bb-host-data/${args.hostId}/thread-storage/${args.threadId}/ASYNC.md`;
+  // Thread storage lives in the server's own data dir now (plan §3).
+  const asyncPath = path.join(
+    args.harness.config.threadStorageRootPath,
+    args.threadId,
+    "ASYNC.md",
+  );
   const queued = await waitForQueuedCommand(
     args.harness,
     ({ command }) =>
@@ -134,7 +138,6 @@ describe("manager schedule sync", () => {
           "# Schedules",
         ].join("\n"),
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -187,7 +190,6 @@ describe("manager schedule sync", () => {
       await syncWithFileContent({
         content: "# No schedules here\n",
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -229,7 +231,6 @@ describe("manager schedule sync", () => {
       await syncWithFileContent({
         content: "---\nschedules: [\n---\n",
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -273,7 +274,6 @@ describe("manager schedule sync", () => {
       await syncWithFileContent({
         content: "---js\n({ schedules: [] })\n---\n",
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -318,7 +318,6 @@ describe("manager schedule sync", () => {
       await syncWithFileContent({
         content: oversizedContent,
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -361,7 +360,6 @@ describe("manager schedule sync", () => {
       const oversizedContent = `---\ntimezone: UTC\nschedules: []\n---\n${"é".repeat(150 * 1024)}`;
       const { asyncPath, queued, syncPromise } = await startSync({
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -414,7 +412,6 @@ describe("manager schedule sync", () => {
 
       await syncWithReadFileError({
         harness,
-        hostId: host.id,
         threadId: thread.id,
         errorCode: "ENOENT",
         errorMessage: "File not found",
@@ -458,7 +455,6 @@ describe("manager schedule sync", () => {
           "---",
         ].join("\n"),
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -501,7 +497,6 @@ describe("manager schedule sync", () => {
           "\n",
         ),
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 
@@ -543,7 +538,6 @@ describe("manager schedule sync", () => {
           "---",
         ].join("\n"),
         harness,
-        hostId: host.id,
         threadId: thread.id,
       });
 

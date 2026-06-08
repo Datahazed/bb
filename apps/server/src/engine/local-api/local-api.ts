@@ -18,20 +18,15 @@
  *   `hostId` + `connected` pair with no zod parse (plan R1/R6) — exact route
  *   paths and shapes per `@bb/host-daemon-contract` `local.ts` are pinned by
  *   the Phase 0 contract tests.
- * - The CORS allowlist behavior is preserved but scoped to exactly the
- *   local-API paths instead of the daemon's app-wide `app.use("*")` (the
- *   server app has its own CORS policy for everything else).
+ * - The daemon's own CORS allowlist (`local-app-origins`) is NOT re-applied
+ *   here: the server app already runs the identical `buildLocalAppOrigins`
+ *   policy app-wide (`createApp`), which covers these routes — one canonical
+ *   CORS path (plan §4.3 "CORS behavior preserved").
  */
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
 import {
-  buildLocalAppOrigins,
-  type BuildLocalAppOriginsArgs,
-} from "@bb/config/local-app-origins";
-import { assignIfDefined } from "@bb/config/objects";
-import {
-  DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH,
   HOST_DAEMON_PROTOCOL_VERSION,
   openInTargetRequestSchema,
   pathsExistRequestSchema,
@@ -43,7 +38,6 @@ import {
 } from "@bb/host-daemon-contract";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import type { Hono } from "hono";
-import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import {
   getProviderCliStatus,
@@ -65,16 +59,10 @@ export interface RegisterLocalApiRoutesOptions {
    * local-host identity is the `hostId` + `connected` pair (plan R1/R6) —
    * never hardcode the value here; the caller owns the constant. */
   hostId: string;
-  /** The server's own origin, echoed in `/status.serverUrl` (plan §4.3). */
-  serverUrl: string;
-  /** Port the server binds on; seeds the CORS allowlist (and is the same
-   * port these routes are served from in the merged world). */
-  serverPort: number;
-  /** Vite dev port for the BB app frontend; allowed origin for CORS when set. */
-  devAppPort?: number;
-  /** Optional public app origin (e.g. `https://app.example.com`); allowed
-   * origin for CORS when the frontend is served from a non-localhost domain. */
-  appUrl?: string;
+  /** The server's own origin, echoed in `/status.serverUrl` (plan §4.3).
+   * Resolved per request: the test harnesses bind port 0 and learn the real
+   * port only after the app is constructed. */
+  resolveServerUrl: () => string;
   pickFolder?: FolderPickerHandler;
 }
 
@@ -107,57 +95,10 @@ export function resolveHostPlatform(
   return "unknown";
 }
 
-/**
- * Every `HostDaemonLocalSchema` route except `/health` (not preserved — the
- * server's JSON `/health` wins). `Exclude` ties the list to the contract so
- * a typo'd path can't silently lose its CORS coverage.
- */
-type LocalApiRoutePath = Exclude<
-  keyof HostDaemonLocalSchema,
-  typeof DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH
->;
-
-const LOCAL_API_ROUTE_PATHS: readonly LocalApiRoutePath[] = [
-  "/status",
-  "/provider-clis/status",
-  "/provider-clis/install",
-  "/paths/exist",
-  "/workspace-open-targets",
-  "/open-in-target",
-  "/pick-folder",
-];
-
 export function registerLocalApiRoutes(
   app: Hono,
   options: RegisterLocalApiRoutesOptions,
 ): void {
-  const originArgs: BuildLocalAppOriginsArgs = {
-    serverPort: options.serverPort,
-  };
-  assignIfDefined({
-    key: "appUrl",
-    target: originArgs,
-    value: options.appUrl,
-  });
-  assignIfDefined({
-    key: "devAppPort",
-    target: originArgs,
-    value: options.devAppPort,
-  });
-  const allowedCorsOrigins = new Set<string>(buildLocalAppOrigins(originArgs));
-  const corsMiddleware = cors({
-    origin: (origin, context) => {
-      const requestOrigin = new URL(context.req.url).origin;
-      if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
-        return origin;
-      }
-      return null;
-    },
-  });
-  for (const routePath of LOCAL_API_ROUTE_PATHS) {
-    app.use(routePath, corsMiddleware);
-  }
-
   const { get, post } = typedRoutes<HostDaemonLocalSchema>(app);
   const nativeFolderPicker = resolveNativeFolderPicker({
     pickFolder: options.pickFolder,
@@ -171,7 +112,7 @@ export function registerLocalApiRoutes(
       // is constant (replaces the daemon's `getConnected` session probe).
       connected: true,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-      serverUrl: options.serverUrl,
+      serverUrl: options.resolveServerUrl(),
       supportsNativeFolderPicker: nativeFolderPicker !== null,
       platform,
     }),

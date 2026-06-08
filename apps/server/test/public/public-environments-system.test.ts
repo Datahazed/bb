@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createEnvironment, hostDaemonCommands, updateHost } from "@bb/db";
+import { createEnvironment } from "@bb/db";
 import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import type { SystemExecutionOptionsModelLoadErrorCode } from "@bb/server-contract";
@@ -23,7 +23,6 @@ import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
@@ -233,10 +232,7 @@ describe("public environment and system routes", () => {
         defaultBranch: null,
         mergeBaseBranch: null,
       });
-      const commandCountBefore = harness.db
-        .select({ id: hostDaemonCommands.id })
-        .from(hostDaemonCommands)
-        .all().length;
+      const commandCountBefore = harness.engineRouting.dispatched.length;
 
       const response = await harness.app.request(
         `/api/v1/environments/${environment.id}/status`,
@@ -249,10 +245,7 @@ describe("public environment and system routes", () => {
         message: "Workspace status is not available for non-git environments",
       });
 
-      const commandCountAfter = harness.db
-        .select({ id: hostDaemonCommands.id })
-        .from(hostDaemonCommands)
-        .all().length;
+      const commandCountAfter = harness.engineRouting.dispatched.length;
       expect(commandCountAfter).toBe(commandCountBefore);
     });
   });
@@ -1290,15 +1283,15 @@ describe("public environment and system routes", () => {
 
   it("returns runtime config from GET /system/config", async () => {
     await withTestHarness({
-      hostDaemonPort: 4010,
       openAiApiKey: "",
-      transcriptionModel: "codex/gpt-4o-mini-transcribe",
+      transcriptionModel: "openai/gpt-4o-transcribe",
     }, async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
+      // Decision 5: the advertised local-API port is the server's own port.
       await expect(readJson(response)).resolves.toEqual({
         featureFlags: { placeholder: false },
-        hostDaemonPort: 4010,
+        hostDaemonPort: harness.deps.config.serverPort,
         voiceTranscriptionEnabled: false,
       });
     });
@@ -1378,7 +1371,7 @@ describe("public environment and system routes", () => {
 
   it("uses host RPC, not durable commands, for system provider reads", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      const { host } = seedHostSession(harness.deps, {
         id: "host-system-routes",
       });
       const providers = [
@@ -1403,8 +1396,6 @@ describe("public environment and system routes", () => {
         }),
       ];
       const responder = registerProviderHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
         providers,
         modelsByProviderId: {
           codex: {
@@ -1528,7 +1519,7 @@ describe("public environment and system routes", () => {
         { type: "provider.list" },
         { type: "provider.list_models", providerId: "codex" },
       ]);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
+      expect(harness.engineRouting.dispatched).toEqual([]);
     });
   });
 
@@ -1536,12 +1527,10 @@ describe("public environment and system routes", () => {
     "returns provider choices with a provider-specific error when model lookup fails: $name",
     async ({ errorCode, providerId, errorMessage, expectedCode }) => {
       await withTestHarness(async (harness) => {
-        const { host, session } = seedHostSession(harness.deps, {
+        const { host } = seedHostSession(harness.deps, {
           id: `host-system-${providerId}-models-fail`,
         });
         registerProviderHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
           providers: [
             makeSystemProvider({
               id: "codex",
@@ -1599,75 +1588,17 @@ describe("public environment and system routes", () => {
             code: expectedCode,
           },
         });
-        expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
+        expect(harness.engineRouting.dispatched).toEqual([]);
       });
     },
   );
 
-  it("does not degrade non-502/504 model lookup failures into modelLoadError", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-system-models-type-mismatch",
-      });
-      const responder = registerProviderHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        providers: [
-          makeSystemProvider({
-            id: "codex",
-            displayName: "Codex",
-          }),
-        ],
-      });
-      const originalRecordResponse =
-        harness.hub.recordHostOnlineRpcResponse.bind(harness.hub);
-      let rewroteModelResponse = false;
-      harness.hub.recordHostOnlineRpcResponse = (args) => {
-        if (
-          !rewroteModelResponse &&
-          args.message.type === "host-rpc.response" &&
-          args.message.commandType === "provider.list_models"
-        ) {
-          rewroteModelResponse = true;
-          return originalRecordResponse({
-            message: {
-              type: "host-rpc.response",
-              requestId: args.message.requestId,
-              commandType: "provider.list",
-              ok: true,
-              result: {
-                providers: [],
-              },
-            },
-            sessionId: args.sessionId,
-          });
-        }
-        return originalRecordResponse(args);
-      };
-
-      const response = await harness.app.request(
-        `/api/v1/system/execution-options?hostId=${host.id}&providerId=codex`,
-      );
-
-      expect(response.status).toBe(500);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "command_result_type_mismatch",
-      });
-      expect(responder.requests.map((request) => request.command.type)).toEqual(
-        ["provider.list", "provider.list_models"],
-      );
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
-    });
-  });
-
   it("uses a persistent host for default system provider lookups", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      seedHostSession(harness.deps, {
         id: "host-system-default-persistent",
       });
       registerProviderHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
         providers: [
           {
             id: "codex",
@@ -1693,76 +1624,8 @@ describe("public environment and system routes", () => {
       );
 
       expect(providersResponse.status).toBe(200);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
-    });
-  });
-
-  it("returns 502 when no persistent host is connected for default system provider lookup", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/system/providers");
-
-      expect(response.status).toBe(502);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_disconnected",
-        message: "Persistent host is not connected",
-      });
-    });
-  });
-
-  it("rejects destroyed hosts for system host lookups", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-system-destroyed",
-      });
-      updateHost(harness.db, harness.hub, host.id, {
-        destroyedAt: Date.now(),
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/system/providers?hostId=${host.id}`,
-      );
-
-      expect(response.status).toBe(404);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
-      });
-    });
-  });
-
-  it("rejects destroyed environment hosts for system execution-option lookups", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-system-env-destroyed",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      updateHost(harness.db, harness.hub, host.id, {
-        destroyedAt: Date.now(),
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/system/execution-options?environmentId=${environment.id}&providerId=codex`,
-      );
-
-      expect(response.status).toBe(404);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "destroyed",
-          hostStatus: null,
-          suspendedAt: null,
-        },
-      });
+      // Provider reads stay RPC-only: nothing goes through dispatch.
+      expect(harness.engineRouting.dispatched).toEqual([]);
     });
   });
 
@@ -1846,9 +1709,7 @@ describe("public environment and system routes", () => {
       openAiApiKey: "",
       transcriptionModel: "codex/gpt-4o-mini-transcribe",
     }, async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-voice-transcription",
-      });
+      const { host } = seedHostSession(harness.deps);
       const formData = new FormData();
       formData.set(
         "file",
@@ -1888,7 +1749,6 @@ describe("public environment and system routes", () => {
           model: "gpt-4o-mini-transcribe",
           text: "transcribed through codex",
         },
-        { hostId: host.id },
       );
 
       const response = await responsePromise;
@@ -1904,9 +1764,7 @@ describe("public environment and system routes", () => {
       openAiApiKey: "",
       transcriptionModel: "codex/gpt-4o-mini-transcribe",
     }, async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-voice-transcription-timeout",
-      });
+      const { host } = seedHostSession(harness.deps);
       const formData = new FormData();
       formData.set(
         "file",
@@ -1936,7 +1794,6 @@ describe("public environment and system routes", () => {
           errorCode: "codex_request_timeout",
           errorMessage: "Codex request timed out",
         },
-        { hostId: host.id },
       );
 
       const response = await responsePromise;
@@ -1954,9 +1811,7 @@ describe("public environment and system routes", () => {
       openAiApiKey: "",
       transcriptionModel: "codex/gpt-4o-mini-transcribe",
     }, async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-voice-transcription-auth-failure",
-      });
+      const { host } = seedHostSession(harness.deps);
       const formData = new FormData();
       formData.set(
         "file",
@@ -1986,7 +1841,6 @@ describe("public environment and system routes", () => {
           errorCode: "codex_auth_missing",
           errorMessage: "Codex auth file not found",
         },
-        { hostId: host.id },
       );
 
       const response = await responsePromise;

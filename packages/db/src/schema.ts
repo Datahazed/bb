@@ -156,7 +156,9 @@ export const projectSources = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     type: text("type").$type<ProjectSourceType>().notNull(),
-    hostId: text("host_id").references(() => hosts.id, { onDelete: "cascade" }),
+    // Phase 1 single-host: FK to hosts detached; value pinned 'local'
+    // (plan §6 Phase 1 schema migration). Column survives per Decision 14.
+    hostId: text("host_id"),
     path: text("path"),
     isDefault: integer("is_default", { mode: "boolean" })
       .notNull()
@@ -190,9 +192,8 @@ export const environments = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    hostId: text("host_id")
-      .notNull()
-      .references(() => hosts.id, { onDelete: "cascade" }),
+    // Phase 1 single-host: FK to hosts detached; value pinned 'local'.
+    hostId: text("host_id").notNull(),
     path: text("path"),
     managed: integer("managed", { mode: "boolean" }).notNull().default(false),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
@@ -714,13 +715,8 @@ export const terminalSessions = sqliteTable(
     environmentId: text("environment_id")
       .notNull()
       .references(() => environments.id, { onDelete: "cascade" }),
-    hostId: text("host_id")
-      .notNull()
-      .references(() => hosts.id, { onDelete: "cascade" }),
-    daemonSessionId: text("daemon_session_id").references(
-      () => hostDaemonSessions.id,
-      { onDelete: "set null" },
-    ),
+    // Phase 1 single-host: FK to hosts detached; pinned 'local' at runtime.
+    hostId: text("host_id").notNull(),
     title: text("title").notNull(),
     initialCwd: text("initial_cwd").notNull(),
     currentCwd: text("current_cwd"),
@@ -746,7 +742,6 @@ export const terminalSessions = sqliteTable(
       table.status,
     ),
     index("terminal_sessions_host_status_idx").on(table.hostId, table.status),
-    index("terminal_sessions_daemon_session_idx").on(table.daemonSessionId),
   ],
 );
 
@@ -762,10 +757,6 @@ export const pendingInteractions = sqliteTable(
     providerThreadId: text("provider_thread_id").notNull(),
     providerRequestId: text("provider_request_id").notNull(),
     sessionId: text("session_id").notNull(),
-    resolvingCommandId: text("resolving_command_id").references(
-      () => hostDaemonCommands.id,
-      { onDelete: "set null" },
-    ),
     status: text("status").$type<PendingInteractionStatus>().notNull(),
     payload: text("payload").notNull(),
     resolution: text("resolution"),
@@ -793,9 +784,6 @@ export const pendingInteractions = sqliteTable(
       table.status,
       table.createdAt,
     ),
-    index("pending_interactions_resolving_command_idx").on(
-      table.resolvingCommandId,
-    ),
   ],
 );
 
@@ -809,9 +797,9 @@ export const projectOperations = sqliteTable(
     kind: text("kind").$type<ProjectOperationKind>().notNull(),
     state: text("state").$type<LifecycleOperationState>().notNull(),
     payload: text("payload").notNull(),
-    commandId: text("command_id").references(() => hostDaemonCommands.id, {
-      onDelete: "set null",
-    }),
+    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
+    // dispatch shim's synthesized command id until Phase 2.
+    commandId: text("command_id"),
     requestedAt: integer("requested_at").notNull(),
     queuedAt: integer("queued_at"),
     completedAt: integer("completed_at"),
@@ -840,9 +828,9 @@ export const environmentOperations = sqliteTable(
     kind: text("kind").$type<EnvironmentOperationKind>().notNull(),
     state: text("state").$type<LifecycleOperationState>().notNull(),
     payload: text("payload").notNull(),
-    commandId: text("command_id").references(() => hostDaemonCommands.id, {
-      onDelete: "set null",
-    }),
+    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
+    // dispatch shim's synthesized command id until Phase 2.
+    commandId: text("command_id"),
     requestedAt: integer("requested_at").notNull(),
     queuedAt: integer("queued_at"),
     completedAt: integer("completed_at"),
@@ -880,9 +868,9 @@ export const threadOperations = sqliteTable(
     ),
     provisionEventSequence: integer("provision_event_sequence"),
     workspaceReadyEventSequence: integer("workspace_ready_event_sequence"),
-    commandId: text("command_id").references(() => hostDaemonCommands.id, {
-      onDelete: "set null",
-    }),
+    // Phase 1 single-host: FK to host_daemon_commands detached; carries the
+    // dispatch shim's synthesized command id until Phase 2.
+    commandId: text("command_id"),
     requestedAt: integer("requested_at").notNull(),
     queuedAt: integer("queued_at"),
     completedAt: integer("completed_at"),

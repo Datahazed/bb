@@ -289,7 +289,7 @@ export function resolveEventsToApply(
 }
 
 async function archiveCompletedAutomationThreadIfNeeded(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch" | "hub">,
   args: ArchiveCompletedAutomationThreadIfNeededArgs,
 ): Promise<void> {
   if (args.turnStatus !== "completed" || !args.latestThread.automationId) {

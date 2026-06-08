@@ -1,7 +1,4 @@
-import {
-  getMostRecentlyUpdatedConnectedHostId,
-  getProjectSourceByHost,
-} from "@bb/db";
+import { getProjectSourceByHost } from "@bb/db";
 import {
   type Environment,
   type LocalPathProjectSource,
@@ -11,10 +8,8 @@ import {
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import {
-  requireEnvironment,
-  requireNonDestroyedHostWithStatus,
-} from "../lib/entity-lookup.js";
+import { LOCAL_HOST_ID, requireLocalHost } from "../hosts/local-host.js";
+import { requireEnvironment } from "../lib/entity-lookup.js";
 
 type ThreadRequestEnvironment = EnvironmentArgs;
 type HostThreadRequestEnvironment = Extract<
@@ -234,19 +229,8 @@ function resolveHostThreadRequestEnvironment(
   | ResolvedPersonalThreadRequestEnvironment {
   if (environment.workspace.type === "personal") {
     assertPersonalWorkspaceProjectCompatibility(projectId);
-    const hostId =
-      environment.hostId ??
-      getMostRecentlyUpdatedConnectedHostId(deps.db, {
-        hostType: "persistent",
-      });
-    if (!hostId) {
-      throw new ApiError(
-        502,
-        "host_unavailable",
-        "No connected host is available",
-      );
-    }
-    requireNonDestroyedHostWithStatus(deps.db, hostId);
+    const hostId = environment.hostId ?? LOCAL_HOST_ID;
+    requireLocalHost(hostId);
     return {
       hostId,
       type: "personal",
@@ -254,7 +238,7 @@ function resolveHostThreadRequestEnvironment(
   }
 
   const hostId = requireHostEnvironmentId(environment);
-  requireNonDestroyedHostWithStatus(deps.db, hostId);
+  requireLocalHost(hostId);
 
   if (
     environment.workspace.type === "unmanaged" &&

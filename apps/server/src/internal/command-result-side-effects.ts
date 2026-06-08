@@ -6,6 +6,7 @@ import type {
   HostDaemonDurableCommandType,
 } from "@bb/host-daemon-contract";
 import type { InteractiveLifecycleCoordinationDeps } from "../lifecycle-coordination-deps.js";
+import type { EngineDispatchBuffer } from "../services/engine/engine-dispatch.js";
 import type { AppDeps } from "../types.js";
 
 type SuccessfulCommandResultReport = Extract<
@@ -44,6 +45,12 @@ export type CommandResultSettlementDeps = Omit<
   "db" | "hub"
 > & {
   db: DbTransaction;
+  /**
+   * Follow-up engine command dispatches staged by settle* owners inside the
+   * settlement transaction; the settlement wrapper flushes the buffer into
+   * the dispatcher after commit (Phase 1 dispatch shim).
+   */
+  engineDispatches: EngineDispatchBuffer;
   hub: DbNotifier;
 };
 
@@ -81,6 +88,7 @@ export interface CommandResultSideEffectsResult {
 interface BuildCommandResultSettlementDepsArgs {
   db: DbTransaction;
   deps: CommandResultSideEffectsDeps;
+  engineDispatches: EngineDispatchBuffer;
   hub: DbNotifier;
 }
 
@@ -90,6 +98,7 @@ export function buildCommandResultSettlementDeps(
   return {
     ...args.deps,
     db: args.db,
+    engineDispatches: args.engineDispatches,
     hub: args.hub,
   };
 }

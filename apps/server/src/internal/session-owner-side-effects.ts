@@ -123,9 +123,9 @@ export function handleDaemonSocketClosed(
 ): void {
   deps.logger.info({ sessionId: args.sessionId }, "Daemon WebSocket closed");
   deps.hub.unregisterDaemon(args.sessionId);
-  deps.terminalSessions.handleDaemonSessionClosed({
-    sessionId: args.sessionId,
-  });
+  // The daemon-session terminal disconnect that ran here died with the daemon
+  // transport (terminals are engine-owned in-process). This module is
+  // unmounted — P1c deletes it.
 
   const session = deps.db
     .select()

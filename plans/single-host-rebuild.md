@@ -209,6 +209,15 @@ Tracked deferrals:
 8. `evictIdleEnvironments` was restored against Decision 12 (only callers are ported tests) — delete deliberately in Phase 2 with the test rework, do not let it survive silently.
 9. Preserved daemon quirks (deliberate): `/paths/exist` oversized batch → 500 not 400; `/status.connected` constant `true`; codex client User-Agent literal `bb-host-daemon` (rename free in P1c).
 
+### P1b → P1c/Phase 2 handoff notes (from the cutover review)
+
+1. **P1c must not slip**: orphaned-but-compiling transport modules remain (`src/internal/*`, `ws/daemon-protocol.ts`, `services/hosts/expired-commands.ts`, machine-auth enroll) — verified unreachable (zero importers of entry points, 404 live) but they are the P1c delete list.
+2. Quarantined suites are rotting by design: `apps/server/test/internal/**` (16 files) + `expired-commands` + **`thread-lifecycle.test.ts` (core lifecycle coverage — Phase 2's boot-reconciliation rewrite OWES its replacement)**, `tests/integration/fake/recovery/**` (9 files → Phase 2 kill-9 tests).
+3. Registry-entry removal happens a microtask after settlement — post-settlement assertions must `await engineDispatch.drain()`; Phase 2 lifecycle tests must remember this.
+4. `queueDestroyAndMarkDestroying` dispatches before writing the op-row `queued` state (inverted write-then-execute, safe in one sync frame) — normalize in the Phase 2 lifecycle rewrite.
+5. Disclosed behavior deltas (accepted): archive-forwarding dedupe narrowed from 24h window to in-flight-only; `POST /projects/:id/sources` duplicate now 409 instead of 500 (production fix); `voiceTranscriptionEnabled` no longer gated on a connected host; two-instance hostId distinctness assertion deleted (universal `'local'` per §4.3 accepted hazard).
+6. `thread-runtime-display.test.ts` retains dead daemon-session fixture seeding in two tests — dies with the hosts tables in P1c.
+
 ## 11. Open items to resolve during execution (tracked, non-blocking)
 
 1. Whether the frontend validates host id shape anywhere (affects `'local'` literal) — Phase 1.

@@ -27,8 +27,8 @@ import type {
   ThreadEventType,
   WorkspaceProvisionType,
 } from "@bb/domain";
+import { LOCAL_HOST_ID } from "../../src/services/hosts/local-host.js";
 import type { AppDeps } from "../../src/types.js";
-import { registerTestHostRpcCapture } from "./commands.js";
 
 export interface SeedEventArgs<TType extends ThreadEventType> {
   createdAt?: number;
@@ -66,8 +66,11 @@ export function seedHost(
   deps: Pick<AppDeps, "db" | "hub">,
   args: { id?: string; name?: string; type?: "persistent" } = {},
 ) {
+  // Defaults to the single synthetic host id: routes accept only 'local'
+  // (plan Decision 4), so seeded fixtures must align unless a test
+  // explicitly exercises an unknown-host id.
   return upsertHost(deps.db, deps.hub, {
-    id: args.id,
+    id: args.id ?? LOCAL_HOST_ID,
     name: args.name ?? "Test Host",
     type: args.type ?? "persistent",
   });
@@ -93,7 +96,6 @@ export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
     heartbeatIntervalMs: 5_000,
     leaseTimeoutMs: 30_000,
   });
-  registerTestHostRpcCapture(deps, { hostId, sessionId: session.id });
   return session;
 }
 

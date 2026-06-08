@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { hostDaemonCommands } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
@@ -19,7 +18,7 @@ describe("public file routes", () => {
   it("serves arbitrary absolute HTML files as sandboxed raw preview content", async () => {
     await withTestHarness(async (harness) => {
       seedHostSession(harness.deps, { id: "default-host" });
-      const { host: threadHost, session } = seedHostSession(harness.deps, {
+      const { host: threadHost } = seedHostSession(harness.deps, {
         id: "thread-host",
       });
       const { project } = seedProjectWithSource(harness.deps, {
@@ -36,8 +35,6 @@ describe("public file routes", () => {
       const filePath = "/Users/me/Downloads/report.html";
       const html = "<!doctype html><h1>Report</h1>";
       const rpc = registerHostRpcResponder(harness, {
-        hostId: threadHost.id,
-        sessionId: session.id,
         handle: (request) => {
           expect(request.command).toEqual({
             type: "host.read_file",
@@ -100,13 +97,13 @@ describe("public file routes", () => {
         message: "HTML preview only supports text/html files",
         retryable: false,
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
+      expect(harness.engineRouting.dispatched).toEqual([]);
     });
   });
 
   it("caps arbitrary raw HTML preview responses at 5 MB", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -120,8 +117,6 @@ describe("public file routes", () => {
       });
       const filePath = "/Users/me/Downloads/large.html";
       registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
         handle: (request) => {
           expect(request.command).toEqual({
             type: "host.read_file",

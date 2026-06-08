@@ -47,11 +47,15 @@ describe("server skeleton", () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/hosts");
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual([]);
+      // Single-host: the synthetic local host is always listed (full shape
+      // pinned by the Phase 0 contract tests).
+      await expect(readJson(response)).resolves.toMatchObject([
+        { id: "local", status: "connected" },
+      ]);
     });
   });
 
-  it("rejects internal routes without a bearer token", async () => {
+  it("does not mount the daemon /internal routes", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/internal/session/open", {
         method: "POST",
@@ -69,10 +73,9 @@ describe("server skeleton", () => {
         }),
       });
 
-      expect(response.status).toBe(401);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "unauthorized",
-      });
+      // Old-path inertness (plan §6 Phase 1): the daemon transport routes
+      // are gone, not auth-guarded.
+      expect(response.status).toBe(404);
     });
   });
 

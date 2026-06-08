@@ -1,4 +1,10 @@
-import { createEnvironmentProvisioningId, queueCommand } from "@bb/db";
+/**
+ * Seeds lifecycle op rows and dispatches the matching engine command through
+ * the harness's dispatch shim — the engine-seam replacement for writing
+ * durable-queue rows. The dispatch is held in flight by `TestEngineRouting`
+ * until the test settles it via `reportQueuedCommandSuccess`/`Error`.
+ */
+import { createEnvironmentProvisioningId } from "@bb/db";
 import {
   markEnvironmentOperationRecordQueued,
   upsertEnvironmentOperationRecord,
@@ -23,35 +29,32 @@ type EnvironmentProvisionCommand = Extract<
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type ThreadStopCommand = Extract<HostDaemonCommand, { type: "thread.stop" }>;
 
+export interface DispatchedLifecycleCommand {
+  id: string;
+}
+
 interface QueueEnvironmentLifecycleCommandArgs {
   command: EnvironmentDestroyCommand | EnvironmentProvisionCommand;
   environmentId: string;
-  hostId: string;
   kind: Extract<
     EnvironmentOperationKind,
     "destroy" | "provision" | "reprovision"
   >;
   operationPayload: string;
-  sessionId: string | null;
 }
 
 interface QueueThreadLifecycleCommandArgs {
   command: ThreadStartCommand | ThreadStopCommand;
-  hostId: string;
   kind: ThreadOperationKind;
-  sessionId: string | null;
   threadId: string;
 }
 
 function queueEnvironmentLifecycleCommand(
   harness: TestAppHarness,
   args: QueueEnvironmentLifecycleCommandArgs,
-) {
-  const queued = queueCommand(harness.db, harness.hub, {
-    hostId: args.hostId,
-    sessionId: args.sessionId,
-    type: args.command.type,
-    payload: JSON.stringify(args.command),
+): DispatchedLifecycleCommand {
+  const dispatch = harness.deps.engineDispatch.dispatch({
+    command: args.command,
   });
 
   upsertEnvironmentOperationRecord(harness.db, {
@@ -62,21 +65,18 @@ function queueEnvironmentLifecycleCommand(
   markEnvironmentOperationRecordQueued(harness.db, {
     environmentId: args.environmentId,
     kind: args.kind,
-    commandId: queued.id,
+    commandId: dispatch.commandId,
   });
 
-  return queued;
+  return { id: dispatch.commandId };
 }
 
 function queueThreadLifecycleCommand(
   harness: TestAppHarness,
   args: QueueThreadLifecycleCommandArgs,
-) {
-  const queued = queueCommand(harness.db, harness.hub, {
-    hostId: args.hostId,
-    sessionId: args.sessionId,
-    type: args.command.type,
-    payload: JSON.stringify(args.command),
+): DispatchedLifecycleCommand {
+  const dispatch = harness.deps.engineDispatch.dispatch({
+    command: args.command,
   });
 
   upsertThreadOperationRecord(harness.db, {
@@ -87,10 +87,10 @@ function queueThreadLifecycleCommand(
   markThreadOperationRecordQueued(harness.db, {
     threadId: args.threadId,
     kind: args.kind,
-    commandId: queued.id,
+    commandId: dispatch.commandId,
   });
 
-  return queued;
+  return { id: dispatch.commandId };
 }
 
 export function queueEnvironmentProvisionLifecycleCommand(
@@ -102,7 +102,7 @@ export function queueEnvironmentProvisionLifecycleCommand(
     command: EnvironmentProvisionCommand;
     kind?: Extract<EnvironmentOperationKind, "provision" | "reprovision">;
   },
-) {
+): DispatchedLifecycleCommand {
   return queueEnvironmentLifecycleCommand(harness, {
     ...args,
     kind: args.kind ?? "provision",
@@ -125,7 +125,7 @@ export function queueEnvironmentDestroyLifecycleCommand(
   > & {
     command: EnvironmentDestroyCommand;
   },
-) {
+): DispatchedLifecycleCommand {
   return queueEnvironmentLifecycleCommand(harness, {
     ...args,
     kind: "destroy",
@@ -138,7 +138,7 @@ export function queueThreadStartLifecycleCommand(
   args: Omit<QueueThreadLifecycleCommandArgs, "kind"> & {
     command: ThreadStartCommand;
   },
-) {
+): DispatchedLifecycleCommand {
   return queueThreadLifecycleCommand(harness, {
     ...args,
     kind: "start",
@@ -150,7 +150,7 @@ export function queueThreadStopLifecycleCommand(
   args: Omit<QueueThreadLifecycleCommandArgs, "kind"> & {
     command: ThreadStopCommand;
   },
-) {
+): DispatchedLifecycleCommand {
   return queueThreadLifecycleCommand(harness, {
     ...args,
     kind: "stop",

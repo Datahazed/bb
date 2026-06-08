@@ -2,6 +2,7 @@ import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import type { EngineCommandDispatcher } from "./services/engine/engine-dispatch.js";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
@@ -18,7 +19,6 @@ export interface ServerRuntimeConfig {
   customModels: CustomProviderModel[];
   dataDir: string;
   featureFlags: FeatureFlags;
-  hostDaemonPort: number;
   inferenceModel: string;
   isDevelopment: boolean;
   openAiApiKey: string;
@@ -32,6 +32,8 @@ export interface ServerRuntimeConfig {
 export interface AppDeps {
   config: ServerRuntimeConfig;
   db: DbConnection;
+  /** The Phase 1 dispatch shim — the only runtime path for engine commands. */
+  engineDispatch: EngineCommandDispatcher;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;
@@ -47,7 +49,7 @@ export interface ServerAppDeps extends AppDeps {
 
 export type LifecycleDeps = Pick<
   AppDeps,
-  "config" | "db" | "hub" | "lifecycleDedupers" | "machineAuth"
+  "config" | "db" | "engineDispatch" | "hub" | "lifecycleDedupers" | "machineAuth"
 >;
 
 export type WorkSessionDeps = LifecycleDeps;

@@ -114,6 +114,52 @@ export async function readAttachment(
   };
 }
 
+interface AttachmentReadLimits {
+  expectedSizeBytes?: number;
+  maxBytes: number;
+}
+
+/**
+ * Bounded variant of `readAttachment` for the engine's attachment staging
+ * (engine port `fetchProjectAttachment`): enforces the size budget against
+ * the file's stat *before* reading, so an oversized attachment is rejected
+ * without buffering it into memory — the in-process replacement for the
+ * daemon's mid-stream limit enforcement.
+ */
+export async function readAttachmentWithinLimit(
+  dataDir: string,
+  projectId: string,
+  relativePath: string,
+  limits: AttachmentReadLimits,
+): Promise<Buffer> {
+  const dir = projectAttachmentDir(dataDir, projectId);
+  const resolved = resolveAttachmentPath(dir, relativePath);
+
+  const fileStat = await stat(resolved).catch(() => null);
+  if (!fileStat || !fileStat.isFile()) {
+    throw new ApiError(404, "invalid_request", "Attachment not found");
+  }
+  if (
+    limits.expectedSizeBytes !== undefined &&
+    fileStat.size !== limits.expectedSizeBytes
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Attachment size mismatch: expected ${limits.expectedSizeBytes} bytes, found ${fileStat.size}`,
+    );
+  }
+  if (fileStat.size > limits.maxBytes) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Attachment exceeds ${limits.maxBytes} byte limit`,
+    );
+  }
+
+  return readFile(resolved);
+}
+
 export async function deleteProjectAttachments(
   dataDir: string,
   projectId: string,

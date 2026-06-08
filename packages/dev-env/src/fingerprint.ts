@@ -5,9 +5,12 @@ import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 
-export const devServiceNameValues = ["server", "host-daemon"] as const;
+// The merged single-host dev topology has one restartable service: the
+// server (plans/single-host-rebuild.md §5.7). The app dev server hot-reloads
+// itself and dev-env is the restart broker.
+export const devServiceNameValues = ["server"] as const;
 export type DevServiceName = (typeof devServiceNameValues)[number];
-export type RestartTarget = "both" | DevServiceName;
+export type RestartTarget = DevServiceName;
 
 interface ComputeServiceFingerprintArgs {
   repoRoot: string;
@@ -20,7 +23,6 @@ interface FindJsonObjectResult {
 }
 
 const servicePackageNames: Record<DevServiceName, string> = {
-  "host-daemon": "@bb/host-daemon",
   server: "@bb/server",
 };
 

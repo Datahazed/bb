@@ -8,16 +8,15 @@
     "outDir": "dist",
     "paths": {
       "@bb/domain": ["packages/domain/src/index.ts"],
-      "@bb/host-daemon/test": ["apps/host-daemon/src/test/index.ts"],
       "@bb/test-helpers": ["packages/test-helpers/src/index.ts"]
     },
     "rootDir": "../..",
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": [
-    "./**/*.ts",
-    "../../apps/host-daemon/src/**/*.d.ts",
-    "../../vitest.workspace-aliases.ts"
-  ]
+  "include": ["./**/*.ts", "../../vitest.workspace-aliases.ts"],
+  // Quarantined with the vitest exclude: the recovery suite drives the dead
+  // daemon crash/restart machinery and is rewritten as boot-reconciliation
+  // tests in Phase 2 (plans/single-host-rebuild.md §6 Phase 2).
+  "exclude": ["fake/recovery"]
 }

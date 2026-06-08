@@ -493,11 +493,15 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "Project root: `/tmp/runtime-project-root`",
       );
+      // Thread storage lives in the server's own data dir now (plan §3).
       expect(runtimeConfig.instructions).toContain(
-        `BB data dir: \`/tmp/bb-host-data/${hostId}\``,
+        `BB data dir: \`${harness.config.dataDir}\``,
       );
       expect(runtimeConfig.instructions).toContain(
-        `Thread storage: \`/tmp/bb-host-data/${hostId}/thread-storage/${managerThread.id}\``,
+        `Thread storage: \`${path.join(
+          harness.config.threadStorageRootPath,
+          managerThread.id,
+        )}\``,
       );
       expect(runtimeConfig.instructions).toContain(
         `Local timezone: \`${resolveLocalTimezone()}\``,

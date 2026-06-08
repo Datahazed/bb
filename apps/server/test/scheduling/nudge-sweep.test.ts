@@ -1,9 +1,9 @@
+import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import {
   createManagerThreadNudge,
   events,
   getManagerThreadNudge,
-  hostDaemonCommands,
   threads,
   updateManagerThreadNudge,
   upsertThreadDynamicContextFileState,
@@ -14,6 +14,7 @@ import { sweepDueNudges } from "../../src/services/scheduling/nudge-sweep-runner
 import { buildManagerToolReminderText } from "../../src/services/threads/manager-tool-reminder.js";
 import { appendClientTurnEvent } from "../../src/services/threads/thread-events.js";
 import {
+  listQueuedThreadCommands,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -22,7 +23,6 @@ import {
 import {
   seedEnvironment,
   seedEvent,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -31,6 +31,15 @@ import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 import { MANAGER_PREFERENCES_FILE_KEY } from "../../src/services/threads/manager-dynamic-file-delivery.js";
 
 type TestHarness = Awaited<ReturnType<typeof createTestAppHarness>>;
+
+// Thread storage lives in the server's own data dir now (plan §3).
+function preferencesPathFor(harness: TestHarness, threadId: string): string {
+  return path.join(
+    harness.config.threadStorageRootPath,
+    threadId,
+    "PREFERENCES.md",
+  );
+}
 
 function managerToolReminderInput() {
   return {
@@ -111,7 +120,7 @@ describe("nudge sweep", () => {
       });
 
       const sweepPromise = sweepDueNudges(harness.deps, { now });
-      const preferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`;
+      const preferencesPath = preferencesPathFor(harness, thread.id);
       const readPreferences = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -193,7 +202,7 @@ describe("nudge sweep", () => {
       });
 
       const sweepPromise = sweepDueNudges(harness.deps, { now });
-      const preferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`;
+      const preferencesPath = preferencesPathFor(harness, thread.id);
       const readPreferences = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -263,7 +272,7 @@ describe("nudge sweep", () => {
 
   it("skips due nudges that already have a pending turn.submit command", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      const { host } = seedHostSession(harness.deps, {
         id: "host-nudge-pending",
       });
       const { project } = seedProjectWithSource(harness.deps, {
@@ -290,53 +299,45 @@ describe("nudge sweep", () => {
         nextFireAt: now - 1,
       });
 
-      harness.db
-        .insert(hostDaemonCommands)
-        .values({
-          id: "cmd_pending_turn_submit",
-          hostId: host.id,
-          sessionId: session.id,
-          cursor: 1,
+      // An in-flight dispatch is the engine-seam "pending" command the sweep
+      // dedupes on (TestEngineRouting holds it until settled or released).
+      harness.deps.engineDispatch.dispatch({
+        command: {
           type: "turn.submit",
-          payload: JSON.stringify({
-            type: "turn.submit",
-            environmentId: environment.id,
-            threadId: thread.id,
-            requestId: "creq_23456789ab",
-            input: [{ type: "text", text: "Existing pending nudge" }],
-            options: {
-              model: "gpt-5",
-              reasoningLevel: "medium",
-              permissionMode: "full",
-              serviceTier: "default",
-              source: "client/turn/requested",
+          environmentId: environment.id,
+          threadId: thread.id,
+          requestId: "creq_23456789ab",
+          input: [{ type: "text", text: "Existing pending nudge" }],
+          options: {
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            permissionEscalation: null,
+            serviceTier: "default",
+            workflowsEnabled: false,
+          },
+          resumeContext: {
+            workspaceContext: {
+              workspacePath: "/tmp/nudge-pending-environment",
+              workspaceProvisionType: environment.workspaceProvisionType,
             },
-            resumeContext: {
-              workspaceContext: {
-                workspacePath: environment.path,
-                workspaceProvisionType: environment.workspaceProvisionType,
-              },
-              projectId: project.id,
-              providerId: thread.providerId,
-              providerThreadId: "provider-manager-thread",
-              instructions: "manager instructions",
-              dynamicTools: [],
-              injectedSkillSources: [],
-              instructionMode: "append",
-            },
-            target: { mode: "start" },
-          }),
-          state: "pending",
-          retryCount: 0,
-          createdAt: now,
-        })
-        .run();
+            projectId: project.id,
+            providerId: thread.providerId,
+            providerThreadId: "provider-manager-thread",
+            instructions: "manager instructions",
+            dynamicTools: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "start" },
+        },
+      });
 
       await sweepDueNudges(harness.deps, { now });
 
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        1,
-      );
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(1);
       const updatedNudge = getManagerThreadNudge(harness.db, nudge.id);
       expect(updatedNudge?.lastFiredAt).toBe(now);
       expect(updatedNudge?.nextFireAt).toBeGreaterThan(now);
@@ -345,7 +346,7 @@ describe("nudge sweep", () => {
 
   it("skips due nudges that already have a pending native archive command", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      const { host } = seedHostSession(harness.deps, {
         id: "host-nudge-pending-native-archive",
       });
       const { project } = seedProjectWithSource(harness.deps, {
@@ -372,46 +373,29 @@ describe("nudge sweep", () => {
         nextFireAt: now - 1,
       });
 
-      harness.db
-        .insert(hostDaemonCommands)
-        .values({
-          id: "cmd_pending_native_archive",
-          hostId: host.id,
-          sessionId: session.id,
-          cursor: 1,
+      // An in-flight dispatch is the engine-seam "pending" command the sweep
+      // dedupes on (TestEngineRouting holds it until settled or released).
+      harness.deps.engineDispatch.dispatch({
+        command: {
           type: "thread.archive",
-          payload: JSON.stringify({
-            type: "thread.archive",
-            environmentId: environment.id,
-            threadId: thread.id,
-            workspaceContext: {
-              workspacePath: environment.path,
-              workspaceProvisionType: environment.workspaceProvisionType,
-            },
-            providerId: thread.providerId,
-            providerThreadId: "provider-manager-thread",
-          }),
-          state: "pending",
-          retryCount: 0,
-          createdAt: now,
-        })
-        .run();
+          environmentId: environment.id,
+          threadId: thread.id,
+          workspaceContext: {
+            workspacePath: "/tmp/nudge-pending-native-archive-environment",
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+          providerId: thread.providerId,
+          providerThreadId: "provider-manager-thread",
+        },
+      });
 
       await sweepDueNudges(harness.deps, { now });
 
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "turn.submit"))
-          .all(),
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "thread.archive"))
-          .all(),
+        listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toHaveLength(1);
       const updatedNudge = getManagerThreadNudge(harness.db, nudge.id);
       expect(updatedNudge?.lastFiredAt).toBe(now);
@@ -450,9 +434,7 @@ describe("nudge sweep", () => {
 
       await sweepDueNudges(harness.deps, { now });
 
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
       expect(getManagerThreadNudge(harness.db, nudge.id)).toMatchObject({
         enabled: false,
         lastFiredAt: null,
@@ -498,9 +480,7 @@ describe("nudge sweep", () => {
       await sweepDueNudges(harness.deps, { now });
 
       expect(getManagerThreadNudge(harness.db, nudge.id)).toBeNull();
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
@@ -548,7 +528,7 @@ describe("nudge sweep", () => {
         .run();
 
       const sweepPromise = sweepDueNudges(harness.deps, { now });
-      const preferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`;
+      const preferencesPath = preferencesPathFor(harness, thread.id);
       const readPreferences = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -646,7 +626,7 @@ describe("nudge sweep", () => {
       });
 
       const sweepPromise = sweepDueNudges(harness.deps, { now });
-      const preferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`;
+      const preferencesPath = preferencesPathFor(harness, thread.id);
       const readPreferences = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -681,11 +661,7 @@ describe("nudge sweep", () => {
       await sweepPromise;
 
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "turn.submit"))
-          .all(),
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
       expect(
         harness.db
@@ -804,7 +780,7 @@ describe("nudge sweep", () => {
         .run();
 
       const sweepPromise = sweepDueNudges(harness.deps, { now });
-      const preferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`;
+      const preferencesPath = preferencesPathFor(harness, thread.id);
       const readPreferences = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -834,11 +810,7 @@ describe("nudge sweep", () => {
       await sweepPromise;
 
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "turn.submit"))
-          .all(),
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
       expect(getManagerThreadNudge(harness.db, nudge.id)).toMatchObject({
         lastFiredAt: null,
@@ -901,46 +873,6 @@ describe("nudge sweep", () => {
     });
   });
 
-  it("advances due nudges without queueing work when the host is offline", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-nudge-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/nudge-offline-environment",
-      });
-      const thread = seedRunnableManagerThread({
-        harness,
-        environmentId: environment.id,
-        projectId: project.id,
-      });
-      const now = Date.now();
-      const nudge = createManagerThreadNudge(harness.db, harness.hub, {
-        projectId: project.id,
-        threadId: thread.id,
-        name: "offline-check",
-        cron: "0 8 * * *",
-        timezone: "UTC",
-        enabled: true,
-        nextFireAt: now - 1,
-      });
-
-      await sweepDueNudges(harness.deps, { now });
-
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
-      const updatedNudge = getManagerThreadNudge(harness.db, nudge.id);
-      expect(updatedNudge?.lastFiredAt).toBe(now);
-      expect(updatedNudge?.nextFireAt).toBeGreaterThan(now);
-    });
-  });
-
   it("does not queue work after losing the optimistic-lock race", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -975,8 +907,7 @@ describe("nudge sweep", () => {
         harness,
         ({ command }) =>
           command.type === "host.read_file" &&
-          command.path ===
-            `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}/PREFERENCES.md`,
+          command.path === preferencesPathFor(harness, thread.id),
       );
 
       const externallyAdvancedNextFireAt = now + 60_000;
@@ -997,11 +928,7 @@ describe("nudge sweep", () => {
       await sweepPromise;
 
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "turn.submit"))
-          .all(),
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
       expect(getManagerThreadNudge(harness.db, nudge.id)).toMatchObject({
         lastFiredAt: null,

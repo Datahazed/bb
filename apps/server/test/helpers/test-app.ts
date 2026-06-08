@@ -7,6 +7,7 @@ import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
+import { EngineCommandDispatcher } from "../../src/services/engine/engine-dispatch.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import {
@@ -20,6 +21,7 @@ import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
+import { TestEngineRouting } from "./test-engine-routing.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
@@ -29,6 +31,8 @@ export interface TestAppHarness {
   config: ServerRuntimeConfig;
   db: DbConnection;
   deps: ServerAppDeps;
+  /** Fake engine the dispatch shim is bound to; records dispatches. */
+  engineRouting: TestEngineRouting;
   hub: NotificationHub;
   cleanup(): Promise<void>;
 }
@@ -92,8 +96,11 @@ export async function createTestAppHarness(
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
+  const engineDispatch = new EngineCommandDispatcher();
+  const engineRouting = new TestEngineRouting();
   const pendingInteractions = new PendingInteractionLifecycle({
     db,
+    engineDispatch,
     hub,
     logger: testLogger,
   });
@@ -101,7 +108,6 @@ export async function createTestAppHarness(
     attachTimeoutMs: 50,
     db,
     hub,
-    logger: testLogger,
     openTimeoutMs: 50,
   });
   pendingInteractions.start();
@@ -131,7 +137,6 @@ export async function createTestAppHarness(
     customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,
-    hostDaemonPort: 3001,
     inferenceModel: "test/mock-model",
     isDevelopment: true,
     openAiApiKey: "test-openai-key",
@@ -160,6 +165,7 @@ export async function createTestAppHarness(
     bbAppManagedConfig,
     config,
     db,
+    engineDispatch,
     hub,
     lifecycleDedupers,
     logger: testLogger,
@@ -167,6 +173,7 @@ export async function createTestAppHarness(
     pendingInteractions,
     terminalSessions,
   };
+  engineDispatch.bind({ deps, router: engineRouting });
   const { app } = createApp(deps);
 
   return {
@@ -174,6 +181,7 @@ export async function createTestAppHarness(
     config,
     db,
     deps,
+    engineRouting,
     hub,
     async cleanup(): Promise<void> {
       await rm(dataDir, { recursive: true, force: true });

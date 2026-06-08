@@ -35,7 +35,6 @@ export function createDevTurboCommand(): DevTurboCommand {
       "dev",
       "--filter=@bb/app",
       "--filter=@bb/server",
-      "--filter=@bb/host-daemon",
       "--filter=@bb/dev-env",
       "--ui",
       "tui",
@@ -53,7 +52,6 @@ function formatConfig(config: DevInstanceConfig): string {
     `[dev] Data dir ${config.dataDir}`,
     `[dev] App http://localhost:${config.ports.appPort}`,
     `[dev] Server ${config.serverUrl}`,
-    `[dev] Host daemon http://127.0.0.1:${config.ports.hostDaemonPort}`,
     `[dev] Dev-env http://127.0.0.1:${config.ports.devEnvPort}`,
   ].join("\n");
 }
@@ -86,7 +84,6 @@ async function assertPortsAvailable(config: DevInstanceConfig): Promise<void> {
   const checks: PortAvailabilityCheck[] = [
     { label: "app", port: config.ports.appPort },
     { label: "server", port: config.ports.serverPort },
-    { label: "host-daemon", port: config.ports.hostDaemonPort },
     { label: "dev-env", port: config.ports.devEnvPort },
   ];
   await Promise.all(checks.map(checkPortAvailable));

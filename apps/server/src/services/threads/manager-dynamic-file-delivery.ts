@@ -15,7 +15,7 @@ import { renderTemplate } from "@bb/templates";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
 import { requireThreadStoragePath } from "./thread-storage.js";
 
 export const MANAGER_PREFERENCES_FILE_KEY = "manager-preferences";
@@ -127,8 +127,7 @@ async function readHostFileMetadata(
   deps: LoggedWorkSessionDeps,
   args: ReadManagerPreferencesFileArgs & { filePath: string },
 ): Promise<LocalFileMetadata> {
-  const result = await callHostRetryableOnlineRpc(deps, {
-    hostId: args.hostId,
+  const result = await callEngineOnlineRpc(deps, {
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.file_metadata",
@@ -151,8 +150,7 @@ async function readManagerPreferencesFile(
     MANAGER_PREFERENCES_FILE_NAME,
   );
   try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: args.hostId,
+    const result = await callEngineOnlineRpc(deps, {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
@@ -293,8 +291,7 @@ export async function prependManagerPreferencesSystemMessageIfChanged(
     fileKey: MANAGER_PREFERENCES_FILE_KEY,
     threadId: args.thread.id,
   });
-  const threadStoragePath = await requireThreadStoragePath(deps, {
-    hostId: args.hostId,
+  const threadStoragePath = requireThreadStoragePath(deps, {
     threadId: args.thread.id,
   });
   const snapshot = await readManagerPreferencesFile(deps, {

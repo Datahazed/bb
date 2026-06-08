@@ -5,60 +5,38 @@ import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
   listTerminalSessionsByThread,
-  markDaemonTerminalSessionsDisconnected,
+  markActiveTerminalSessionExited,
   markEnvironmentTerminalSessionsExited,
   markTerminalSessionUserInput,
   markTerminalSessionRunning,
   markThreadTerminalSessionsExited,
 } from "../../src/data/terminal-sessions.js";
 import { createEnvironment } from "../../src/data/environments.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
-import { openSession } from "../../src/data/sessions.js";
 import { createThread } from "../../src/data/threads.js";
 
 type TestDb = ReturnType<typeof createConnection>;
-type TestHost = ReturnType<typeof upsertHost>;
-type TestSession = ReturnType<typeof openSession>;
 type TestEnvironment = ReturnType<typeof createEnvironment>;
 type TestThread = ReturnType<typeof createThread>;
 
 interface TerminalSessionFixture {
   db: TestDb;
   environment: TestEnvironment;
-  host: TestHost;
-  session: TestSession;
   thread: TestThread;
 }
 
-function openTestSession(db: TestDb, hostId: string): TestSession {
-  return openSession(db, noopNotifier, {
-    hostId,
-    instanceId: "inst-1",
-    hostName: "test-host",
-    hostType: "persistent",
-    dataDir: "/tmp/test-host-data",
-    protocolVersion: 1,
-    heartbeatIntervalMs: 10_000,
-    leaseTimeoutMs: 30_000,
-  });
-}
+const LOCAL_HOST_ID = "local";
 
 function setup(): TerminalSessionFixture {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
-  const session = openTestSession(db, host.id);
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
-    source: { type: "local_path", hostId: host.id, path: "/tmp/project" },
+    source: { type: "local_path", hostId: LOCAL_HOST_ID, path: "/tmp/project" },
   });
   const environment = createEnvironment(db, noopNotifier, {
     projectId: project.id,
-    hostId: host.id,
+    hostId: LOCAL_HOST_ID,
     path: "/tmp/workspace",
     status: "ready",
     managed: false,
@@ -79,8 +57,6 @@ function setup(): TerminalSessionFixture {
   return {
     db,
     environment,
-    host,
-    session,
     thread,
   };
 }
@@ -89,9 +65,8 @@ function createStartingTerminal(fixture: TerminalSessionFixture) {
   return createTerminalSession(fixture.db, {
     cols: 80,
     currentCwd: null,
-    daemonSessionId: fixture.session.id,
     environmentId: fixture.environment.id,
-    hostId: fixture.host.id,
+    hostId: LOCAL_HOST_ID,
     initialCwd: "/tmp/workspace",
     rows: 24,
     status: "starting",
@@ -101,14 +76,13 @@ function createStartingTerminal(fixture: TerminalSessionFixture) {
 }
 
 describe("terminal sessions", () => {
-  it("marks only the expected starting daemon session running", () => {
+  it("marks a starting terminal running", () => {
     const fixture = setup();
     const terminal = createStartingTerminal(fixture);
 
     const running = markTerminalSessionRunning(fixture.db, {
       cols: 100,
       currentCwd: null,
-      daemonSessionId: fixture.session.id,
       initialCwd: "/tmp/workspace",
       rows: 30,
       terminalId: terminal.id,
@@ -118,7 +92,6 @@ describe("terminal sessions", () => {
     expect(running).toMatchObject({
       id: terminal.id,
       status: "running",
-      daemonSessionId: fixture.session.id,
       cols: 100,
       rows: 30,
       title: "zsh",
@@ -136,7 +109,6 @@ describe("terminal sessions", () => {
     const running = markTerminalSessionRunning(fixture.db, {
       cols: 100,
       currentCwd: null,
-      daemonSessionId: fixture.session.id,
       initialCwd: "/tmp/workspace",
       rows: 30,
       terminalId: terminal.id,
@@ -148,7 +120,6 @@ describe("terminal sessions", () => {
       expect.objectContaining({
         id: terminal.id,
         closeReason: "thread-deleted",
-        daemonSessionId: null,
         status: "exited",
       }),
     ]);
@@ -194,7 +165,6 @@ describe("terminal sessions", () => {
     const running = markTerminalSessionRunning(fixture.db, {
       cols: 100,
       currentCwd: null,
-      daemonSessionId: fixture.session.id,
       initialCwd: "/tmp/workspace",
       rows: 30,
       terminalId: terminal.id,
@@ -206,61 +176,61 @@ describe("terminal sessions", () => {
       expect.objectContaining({
         id: terminal.id,
         closeReason: "environment-destroyed",
-        daemonSessionId: null,
         status: "exited",
       }),
     ]);
   });
 
-  it("does not resurrect a terminal disconnected from its daemon session", () => {
+  it("does not let an engine-reported exit overwrite a lifecycle close", () => {
     const fixture = setup();
     const terminal = createStartingTerminal(fixture);
-    markDaemonTerminalSessionsDisconnected(fixture.db, {
-      daemonSessionId: fixture.session.id,
+    markThreadTerminalSessionsExited(fixture.db, {
+      threadId: fixture.thread.id,
+      closeReason: "thread-archived",
     });
 
-    const running = markTerminalSessionRunning(fixture.db, {
-      cols: 100,
-      currentCwd: null,
-      daemonSessionId: fixture.session.id,
-      initialCwd: "/tmp/workspace",
-      rows: 30,
+    // A PTY exit racing the lifecycle close must not rewrite the recorded
+    // close reason (the active-status guard replaces the daemon-session-id
+    // match that used to scope this update).
+    const exited = markActiveTerminalSessionExited(fixture.db, {
       terminalId: terminal.id,
-      title: "zsh",
+      exitCode: 0,
+      closeReason: "process-exit",
     });
 
-    expect(running).toBeNull();
+    expect(exited).toBeNull();
     expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
       expect.objectContaining({
         id: terminal.id,
-        daemonSessionId: null,
-        status: "disconnected",
+        closeReason: "thread-archived",
+        status: "exited",
       }),
     ]);
   });
 
-  it("does not mark a starting terminal running for another daemon session", () => {
+  it("marks an active terminal exited from an engine-reported PTY exit", () => {
     const fixture = setup();
     const terminal = createStartingTerminal(fixture);
-    const replacementSession = openTestSession(fixture.db, fixture.host.id);
-
-    const running = markTerminalSessionRunning(fixture.db, {
+    markTerminalSessionRunning(fixture.db, {
       cols: 100,
       currentCwd: null,
-      daemonSessionId: replacementSession.id,
       initialCwd: "/tmp/workspace",
       rows: 30,
       terminalId: terminal.id,
       title: "zsh",
     });
 
-    expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        daemonSessionId: fixture.session.id,
-        status: "starting",
-      }),
-    ]);
+    const exited = markActiveTerminalSessionExited(fixture.db, {
+      terminalId: terminal.id,
+      exitCode: 1,
+      closeReason: "process-exit",
+    });
+
+    expect(exited).toMatchObject({
+      id: terminal.id,
+      closeReason: "process-exit",
+      exitCode: 1,
+      status: "exited",
+    });
   });
 });

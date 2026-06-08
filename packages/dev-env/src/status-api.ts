@@ -44,48 +44,13 @@ interface RunCommandArgs {
 }
 
 const restartRequestBodySchema = z.object({
-  target: z.enum(["both", "host-daemon", "server"]),
+  target: z.enum(devServiceNameValues),
 });
 type RestartRequestBody = z.infer<typeof restartRequestBodySchema>;
 
 const restartScripts: Record<RestartTarget, string> = {
-  both: "dev:restart",
-  "host-daemon": "dev:restart-host-daemon",
-  server: "dev:restart-server",
+  server: "dev:restart",
 };
-
-function servicesForTarget(target: RestartTarget): DevServiceName[] {
-  return target === "both" ? [...devServiceNameValues] : [target];
-}
-
-async function hasServiceChanged(
-  dependencies: DevEnvStatusDependencies,
-  runtime: DevEnvRuntime,
-  serviceName: DevServiceName,
-): Promise<boolean> {
-  const baselineFingerprint = runtime.baselineFingerprints.get(serviceName);
-  if (!baselineFingerprint) {
-    throw new Error(`Missing ${serviceName} baseline fingerprint`);
-  }
-  return (
-    baselineFingerprint !==
-    (await dependencies.computeServiceFingerprint(serviceName))
-  );
-}
-
-async function resolveEffectiveRestartTarget(
-  dependencies: DevEnvStatusDependencies,
-  runtime: DevEnvRuntime,
-  requestedTarget: RestartTarget,
-): Promise<RestartTarget> {
-  if (requestedTarget !== "server") {
-    return requestedTarget;
-  }
-
-  return (await hasServiceChanged(dependencies, runtime, "host-daemon"))
-    ? "both"
-    : requestedTarget;
-}
 
 function runCommand(args: RunCommandArgs): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -145,13 +110,9 @@ async function updateBaselines(
   runtime: DevEnvRuntime,
   target: RestartTarget,
 ): Promise<void> {
-  await Promise.all(
-    servicesForTarget(target).map(async (serviceName) => {
-      runtime.baselineFingerprints.set(
-        serviceName,
-        await dependencies.computeServiceFingerprint(serviceName),
-      );
-    }),
+  runtime.baselineFingerprints.set(
+    target,
+    await dependencies.computeServiceFingerprint(target),
   );
 }
 
@@ -162,8 +123,7 @@ async function parseRestartRequestBody(
     return restartRequestBodySchema.parse(await context.req.json());
   } catch {
     throw new HTTPException(400, {
-      message:
-        'Expected JSON body with target "both", "server", or "host-daemon"',
+      message: 'Expected JSON body with target "server"',
     });
   }
 }
@@ -215,13 +175,8 @@ export function createDevEnvStatusApp(
   app.post("/restart", async (context) => {
     const body = await parseRestartRequestBody(context);
     try {
-      const target = await resolveEffectiveRestartTarget(
-        dependencies,
-        runtime,
-        body.target,
-      );
-      await dependencies.runRestartScript(target);
-      await updateBaselines(dependencies, runtime, target);
+      await dependencies.runRestartScript(body.target);
+      await updateBaselines(dependencies, runtime, body.target);
       return context.json(await computeStatus(dependencies, runtime));
     } catch (error) {
       throw new HTTPException(409, {

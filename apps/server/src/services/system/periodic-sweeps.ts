@@ -1,15 +1,10 @@
 import {
-  CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
-  COMPLETED_COMMAND_PAYLOAD_RETENTION_MS,
-  COMPLETED_COMMAND_ROW_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
   DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
-  DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_COMPLETED_COMMAND_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   getDatabaseAutoVacuumMode,
   getDatabaseCompactionStats,
@@ -21,16 +16,10 @@ import {
   listStopRequestedThreads,
   listEnvironmentOperations,
   listThreadOperations,
-  pruneClosedSessions,
-  pruneCompletedDurableCommandRows,
-  pruneCompletedReadOnlyCommandRows,
-  pruneCompletedCommandPayloads,
   runIncrementalVacuum,
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
   sweepDestroyingEnvironments,
-  sweepExpiredCommands,
-  sweepExpiredLeases,
   sweepManagedEnvironments,
   truncateCompletedEventItemOutputs,
 } from "@bb/db";
@@ -50,11 +39,6 @@ import {
   advanceEnvironmentProvisioning,
   completeEnvironmentProvisioning,
 } from "../environments/environment-provisioning-internal.js";
-import {
-  handleExpiredCommands,
-  settleLegacyTerminalizedExpiredLifecycleCommands,
-} from "../hosts/expired-commands.js";
-import { handleExpiredHostSessionLeases } from "../../internal/session-owner-side-effects.js";
 import { sweepDueNudges } from "../scheduling/nudge-sweep-runner.js";
 import {
   advanceProjectDeletion,
@@ -207,6 +191,7 @@ export async function runProjectDeletionSweep(
     AppDeps,
     | "config"
     | "db"
+    | "engineDispatch"
     | "hub"
     | "lifecycleDedupers"
     | "logger"
@@ -233,7 +218,13 @@ export async function runProjectDeletionSweep(
 export async function runEnvironmentProvisioningSweep(
   deps: Pick<
     AppDeps,
-    "config" | "db" | "hub" | "lifecycleDedupers" | "logger" | "machineAuth"
+    | "config"
+    | "db"
+    | "engineDispatch"
+    | "hub"
+    | "lifecycleDedupers"
+    | "logger"
+    | "machineAuth"
   >,
 ): Promise<void> {
   const seenEnvironmentIds = new Set<string>();
@@ -322,7 +313,6 @@ export async function runThreadLifecycleSweep(
       }
 
       await advanceThreadStart(deps, {
-        hostId: environment.hostId,
         threadId: thread.id,
       });
     } catch (error) {
@@ -357,7 +347,6 @@ export async function runThreadLifecycleSweep(
             stopRequestedAt: thread.stopRequestedAt,
           },
           {
-            hostId: thread.hostId,
             id: thread.environmentId,
           },
         );
@@ -384,6 +373,7 @@ export async function runPeriodicSweeps(
     AppDeps,
     | "config"
     | "db"
+    | "engineDispatch"
     | "hub"
     | "lifecycleDedupers"
     | "logger"
@@ -395,46 +385,15 @@ export async function runPeriodicSweeps(
   try {
     const now = Date.now();
 
-    await deps.machineAuth.pruneExpiredKeys();
-    const expired = sweepExpiredCommands(deps.db, deps.hub);
-    if (expired.expiredCommands.length > 0) {
-      await handleExpiredCommands(deps, {
-        commands: expired.expiredCommands,
-      });
-    }
-    const legacyExpired =
-      await settleLegacyTerminalizedExpiredLifecycleCommands(deps);
-    if (legacyExpired.hasMore) {
-      deps.logger.warn(
-        { legacyExpired },
-        "Legacy expired lifecycle command settlement has remaining rows; preserving durable command evidence for next sweep",
-      );
-    } else {
-      pruneCompletedCommandPayloads(deps.db, {
-        completedBefore: now - COMPLETED_COMMAND_PAYLOAD_RETENTION_MS,
-      });
-    }
+    // The queue/lease/expiry sweeps (expired commands, lease expiry, command
+    // row/payload pruning, closed-session pruning, machine-auth key pruning)
+    // died with the durable queue and the daemon transport (Phase 1 dispatch
+    // shim); their modules survive un-scheduled until P1c deletes them.
     truncateCompletedEventItemOutputs(deps.db, {
       createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
       limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
       truncatedAt: now,
     });
-    pruneCompletedReadOnlyCommandRows(deps.db, {
-      completedBefore: now - COMPLETED_COMMAND_ROW_RETENTION_MS,
-      limit: DEFAULT_COMPLETED_COMMAND_PRUNE_BATCH_SIZE,
-    });
-    if (!legacyExpired.hasMore) {
-      pruneCompletedDurableCommandRows(deps.db, {
-        completedBefore: now - COMPLETED_COMMAND_ROW_RETENTION_MS,
-        limit: DEFAULT_COMPLETED_COMMAND_PRUNE_BATCH_SIZE,
-      });
-    }
-    pruneClosedSessions(deps.db, {
-      closedBefore: now - CLOSED_SESSION_ROW_RETENTION_MS,
-      limit: DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-    });
-    const expiredLeases = sweepExpiredLeases(deps.db, deps.hub);
-    handleExpiredHostSessionLeases(deps, { expiredLeases });
     sweepDestroyingEnvironments(deps.db, deps.hub);
     await sweepDueAutomations(deps);
     await sweepDueNudges(deps);

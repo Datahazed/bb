@@ -1,116 +1,29 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { statusResponseSchema } from "@bb/host-daemon-contract/local";
 import {
   createTurboBuildCommand,
-  resolveDevHostDaemonPort,
   resolveSupervisorPidPath,
 } from "../lib/dev-restart-utils.js";
 import { readRunningPid } from "../lib/pid-file.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
 
-type RestartTarget = "both" | "host-daemon" | "server";
-type HostDaemonProtocolCompatibility = "compatible" | "mismatch" | "unknown";
-
-interface RestartTargetConfig {
-  filters: string[];
-  label: string;
-  services: string[];
-}
-
-interface RestartOutput {
-  write(text: string): void;
-}
-
-interface ResolveEffectiveRestartTargetOptions {
-  fetchFn?: typeof fetch;
-  hostDaemonLocalPort?: number;
-  output?: RestartOutput;
-}
-
-interface ResolveHostDaemonProtocolCompatibilityArgs {
-  fetchFn: typeof fetch;
-  hostDaemonLocalPort: number;
-}
+// The merged single-host dev topology runs one restartable service: the
+// server (the app dev server hot-reloads itself; dev-env is the restart
+// broker). The daemon target and its protocol-version escalation died with
+// the two-process split (plans/single-host-rebuild.md §5.7).
+type RestartTarget = "server";
 
 interface ReadRunningSupervisorPidArgs {
   pidPath?: string;
   serviceName: string;
 }
 
-const restartTargets: Record<RestartTarget, RestartTargetConfig> = {
-  both: {
-    filters: ["@bb/server", "@bb/host-daemon"],
-    label: "server and host-daemon",
-    services: ["server", "host-daemon"],
-  },
-  "host-daemon": {
-    filters: ["@bb/host-daemon"],
-    label: "host-daemon",
-    services: ["host-daemon"],
-  },
-  server: {
-    filters: ["@bb/server"],
-    label: "server",
-    services: ["server"],
-  },
-};
-
 export function parseTarget(value: string): RestartTarget {
-  if (value === "both" || value === "host-daemon" || value === "server") {
+  if (value === "server") {
     return value;
   }
 
-  throw new Error('Expected one of: "both", "server", "host-daemon"');
-}
-
-async function resolveHostDaemonProtocolCompatibility({
-  fetchFn,
-  hostDaemonLocalPort,
-}: ResolveHostDaemonProtocolCompatibilityArgs): Promise<HostDaemonProtocolCompatibility> {
-  try {
-    const response = await fetchFn(
-      `http://127.0.0.1:${hostDaemonLocalPort}/status`,
-    );
-    if (!response.ok) {
-      return "unknown";
-    }
-
-    const status = statusResponseSchema.safeParse(await response.json());
-    if (!status.success) {
-      return "mismatch";
-    }
-
-    return status.data.protocolVersion === HOST_DAEMON_PROTOCOL_VERSION
-      ? "compatible"
-      : "mismatch";
-  } catch {
-    return "unknown";
-  }
-}
-
-export async function resolveEffectiveRestartTarget(
-  target: RestartTarget,
-  options: ResolveEffectiveRestartTargetOptions = {},
-): Promise<RestartTarget> {
-  if (target !== "server") {
-    return target;
-  }
-
-  const compatibility = await resolveHostDaemonProtocolCompatibility({
-    fetchFn: options.fetchFn ?? fetch,
-    hostDaemonLocalPort:
-      options.hostDaemonLocalPort ?? resolveDevHostDaemonPort(),
-  });
-  if (compatibility !== "mismatch") {
-    return target;
-  }
-
-  (options.output ?? process.stdout).write(
-    `[dev] Host-daemon protocol differs from the rebuilt server; restarting host-daemon too.\n`,
-  );
-  return "both";
+  throw new Error('Expected "server"');
 }
 
 export async function readRunningSupervisorPid(
@@ -138,32 +51,20 @@ async function runBuild(filters: string[]): Promise<boolean> {
 export async function main(
   argv: string[] = process.argv.slice(2),
 ): Promise<void> {
-  const target = await resolveEffectiveRestartTarget(
-    parseTarget(argv[0] ?? "both"),
-  );
-  const targetConfig = restartTargets[target];
-  const supervisorPids = new Map<string, number>();
+  const target = parseTarget(argv[0] ?? "server");
+  const supervisorPid = await readRunningSupervisorPid({
+    serviceName: target,
+  });
 
-  for (const serviceName of targetConfig.services) {
-    supervisorPids.set(
-      serviceName,
-      await readRunningSupervisorPid({ serviceName }),
-    );
-  }
-
-  process.stdout.write(
-    `[dev] Building ${targetConfig.label} before restart.\n`,
-  );
-  const buildSucceeded = await runBuild(targetConfig.filters);
+  process.stdout.write(`[dev] Building ${target} before restart.\n`);
+  const buildSucceeded = await runBuild(["@bb/server"]);
   if (!buildSucceeded) {
     process.exitCode = 1;
     return;
   }
 
-  for (const [serviceName, pid] of supervisorPids) {
-    process.kill(pid, "SIGUSR1");
-    process.stdout.write(`[dev] Requested ${serviceName} restart.\n`);
-  }
+  process.kill(supervisorPid, "SIGUSR1");
+  process.stdout.write(`[dev] Requested ${target} restart.\n`);
 }
 
 if (

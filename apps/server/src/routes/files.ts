@@ -4,7 +4,7 @@ import mimeTypes from "mime-types";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
@@ -98,10 +98,9 @@ async function serveRawFilesystemHtmlFile(
 ): Promise<Response> {
   const filePath = parseRawFilesystemPath(rawPath);
   assertHtmlPreviewPath(filePath);
-  const { environment } = requirePublicThreadEnvironment(deps.db, threadId);
+  requirePublicThreadEnvironment(deps.db, threadId);
   try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: environment.hostId,
+    const result = await callEngineOnlineRpc(deps, {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",

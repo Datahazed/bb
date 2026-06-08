@@ -1,4 +1,4 @@
-import { createAutomation, getAutomation } from "@bb/db";
+import { createAutomation, createProject, getAutomation } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   automationSchema,
@@ -62,9 +62,7 @@ describe("public automation routes", () => {
   it("supports automation CRUD", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-automation-crud",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -202,9 +200,7 @@ describe("public automation routes", () => {
   it("resolves and stores host affinity for personal automations", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-personal-automation",
-      });
+      const { host } = seedHostSession(harness.deps);
 
       const createResponse = await harness.app.request(
         `/api/v1/projects/${PERSONAL_PROJECT_ID}/automations`,
@@ -331,9 +327,7 @@ describe("public automation routes", () => {
   it("rejects invalid schedule shapes, invalid timezones, and sub-5-minute schedules", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-automation-validation",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -509,9 +503,7 @@ describe("public automation routes", () => {
   it("validates disabled automation schedules on create and config update", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-automation-disabled-validation",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -598,20 +590,22 @@ describe("public automation routes", () => {
   it("rejects automation actions that reference foreign project environments or hosts", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host: primaryHost } = seedHostSession(harness.deps, {
-        id: "host-automation-project-scope-primary",
-      });
-      const { host: foreignHost } = seedHostSession(harness.deps, {
-        id: "host-automation-project-scope-foreign",
-      });
+      const { host: primaryHost } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: primaryHost.id,
       });
-      const { project: foreignProject } = seedProjectWithSource(harness.deps, {
-        hostId: foreignHost.id,
-      });
+      // A different project's environment on the same (single) host: the
+      // cross-project reuse rejection is independent of host topology.
+      const foreignProject = createProject(harness.db, harness.hub, {
+        name: "Foreign Automation Project",
+        source: {
+          type: "local_path",
+          hostId: primaryHost.id,
+          path: "/tmp/automation-foreign-project",
+        },
+      }).project;
       const foreignEnvironment = seedEnvironment(harness.deps, {
-        hostId: foreignHost.id,
+        hostId: primaryHost.id,
         projectId: foreignProject.id,
         path: "/tmp/automation-foreign-environment",
       });
@@ -661,7 +655,8 @@ describe("public automation routes", () => {
                 input: [{ type: "text", text: "Should also be rejected" }],
                 environment: {
                   type: "host",
-                  hostId: foreignHost.id,
+                  // Non-local host ids are unknown in single-host mode.
+                  hostId: "host-automation-project-scope-foreign",
                   workspace: {
                     type: "managed-worktree",
                     baseBranch: { kind: "default" },
@@ -672,7 +667,7 @@ describe("public automation routes", () => {
           }),
         },
       );
-      expect(hostResponse.status).toBe(409);
+      expect(hostResponse.status).toBe(404);
 
       const createResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/automations`,
@@ -745,14 +740,16 @@ describe("public automation routes", () => {
   it("allows unmanaged host automations with an explicit path on a host without a project source", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host: defaultHost } = seedHostSession(harness.deps, {
-        id: "host-automation-unmanaged-default",
-      });
-      const { host: explicitPathHost } = seedHostSession(harness.deps, {
-        id: "host-automation-unmanaged-explicit",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: defaultHost.id,
+      const { host: explicitPathHost } = seedHostSession(harness.deps);
+      // Foreign-pinned source: the local host has no configured project
+      // source, but an explicit unmanaged path must still work.
+      const { project } = createProject(harness.db, harness.hub, {
+        name: "Unmanaged Automation Project",
+        source: {
+          type: "local_path",
+          hostId: "host-automation-unmanaged-default",
+          path: "/tmp/automation-unmanaged-default-source",
+        },
       });
 
       const response = await harness.app.request(
@@ -812,9 +809,7 @@ describe("public automation routes", () => {
   it("enables invalid stored automations without failing and leaves them inert", async () => {
     const harness = await createTestAppHarness();
     try {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-automation-enable-invalid",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });

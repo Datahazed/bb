@@ -6,8 +6,7 @@ import {
 } from "@bb/config/inference-model";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { queueCommandAndWait } from "../hosts/command-wait.js";
-import { requireDefaultConnectedPersistentHostId } from "../lib/entity-lookup.js";
+import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 interface TranscribeVoiceInputArgs {
@@ -29,23 +28,15 @@ function parseTranscriptionModel(model: string): ProviderModelInfo {
   });
 }
 
-function isCodexVoiceTranscriptionAvailable(
-  deps: LoggedWorkSessionDeps,
-): boolean {
-  try {
-    requireDefaultConnectedPersistentHostId(deps.db);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function resolveVoiceTranscriptionEnabled(
   deps: LoggedWorkSessionDeps,
 ): boolean {
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
   if (modelInfo.provider === CODEX_TRANSCRIPTION_PROVIDER) {
-    return isCodexVoiceTranscriptionAvailable(deps);
+    // The codex proxy runs in-process now; the daemon-era "is a persistent
+    // host connected" gate died with the transport. Auth failures surface at
+    // transcription time, exactly as they did on the daemon.
+    return true;
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
     return deps.config.openAiApiKey.length > 0;
@@ -109,18 +100,16 @@ function buildTranscriptionTimeoutError(): ApiError {
   );
 }
 
-async function transcribeWithCodexHostDaemon(
+async function transcribeWithCodexEngine(
   deps: LoggedWorkSessionDeps,
   modelInfo: ProviderModelInfo,
   args: TranscribeVoiceInputArgs,
 ): Promise<string> {
-  const hostId = requireDefaultConnectedPersistentHostId(deps.db);
   const audioBase64 = Buffer.from(await args.file.arrayBuffer()).toString(
     "base64",
   );
   try {
-    const result = await queueCommandAndWait(deps, {
-      hostId,
+    const result = await dispatchEngineCommandAndWait(deps, {
       timeoutMs: VOICE_TRANSCRIPTION_TIMEOUT_MS,
       command: {
         type: "codex.voice.transcribe",
@@ -220,7 +209,7 @@ export async function transcribeVoiceInput(
 
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
   if (modelInfo.provider === CODEX_TRANSCRIPTION_PROVIDER) {
-    return transcribeWithCodexHostDaemon(deps, modelInfo, args);
+    return transcribeWithCodexEngine(deps, modelInfo, args);
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
     return transcribeWithOpenAi(deps, modelInfo, args);

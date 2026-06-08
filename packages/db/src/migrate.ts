@@ -135,12 +135,6 @@ const pendingInteractionColumns: ExpectedColumn[] = [
     primaryKey: false,
   },
   { name: "session_id", type: "text", notNull: true, primaryKey: false },
-  {
-    name: "resolving_command_id",
-    type: "text",
-    notNull: false,
-    primaryKey: false,
-  },
   { name: "status", type: "text", notNull: true, primaryKey: false },
   { name: "payload", type: "text", notNull: true, primaryKey: false },
   { name: "resolution", type: "text", notNull: false, primaryKey: false },
@@ -163,14 +157,9 @@ const pendingInteractionForeignKeys: ExpectedForeignKey[] = [
     onUpdate: "NO ACTION",
     onDelete: "CASCADE",
   },
-  {
-    name: "pending_interactions.resolving_command_id",
-    table: "host_daemon_commands",
-    from: "resolving_command_id",
-    to: "id",
-    onUpdate: "NO ACTION",
-    onDelete: "SET NULL",
-  },
+  // Phase 1 single-host: the resolving_command_id FK to host_daemon_commands
+  // was detached in 0013 and the column dropped in 0014 (interaction
+  // settlement keys off the command payload's interactionId).
 ];
 const pendingInteractionIndexes: ExpectedIndex[] = [
   {
@@ -195,11 +184,6 @@ const pendingInteractionIndexes: ExpectedIndex[] = [
   {
     name: "pending_interactions_status_created_idx",
     columns: ["status", "created_at"],
-    unique: false,
-  },
-  {
-    name: "pending_interactions_resolving_command_idx",
-    columns: ["resolving_command_id"],
     unique: false,
   },
 ];

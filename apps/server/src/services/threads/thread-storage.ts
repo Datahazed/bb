@@ -1,6 +1,5 @@
 import path from "node:path";
 import type { WorkSessionDeps } from "../../types.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 
 export interface ResolveThreadStorageRootPathArgs {
   dataDir: string;
@@ -8,7 +7,6 @@ export interface ResolveThreadStorageRootPathArgs {
 }
 
 export interface RequireThreadStoragePathArgs {
-  hostId: string;
   threadId: string;
 }
 
@@ -41,29 +39,28 @@ export function resolveThreadStoragePathFromRoot(
   return path.join(args.threadStorageRootPath, args.threadId);
 }
 
-export async function requireThreadStorageContext(
-  deps: WorkSessionDeps,
+/**
+ * Thread storage lives in the server's own data dir now (plan §3 — server and
+ * daemon data dirs merged): the daemon-session indirection (resolve the
+ * connected daemon, read ITS dataDir) died with the transport. The root here
+ * is the same `config.threadStorageRootPath` the engine watches and writes.
+ */
+export function requireThreadStorageContext(
+  deps: Pick<WorkSessionDeps, "config">,
   args: RequireThreadStoragePathArgs,
-): Promise<ThreadStorageContext> {
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.hostId,
-  });
+): ThreadStorageContext {
   return {
-    dataDir: session.dataDir,
+    dataDir: deps.config.dataDir,
     threadStoragePath: resolveThreadStoragePathFromRoot({
-      threadStorageRootPath: resolveThreadStorageRootPath({
-        dataDir: session.dataDir,
-        env: {},
-      }),
+      threadStorageRootPath: deps.config.threadStorageRootPath,
       threadId: args.threadId,
     }),
   };
 }
 
-export async function requireThreadStoragePath(
-  deps: WorkSessionDeps,
+export function requireThreadStoragePath(
+  deps: Pick<WorkSessionDeps, "config">,
   args: RequireThreadStoragePathArgs,
-): Promise<string> {
-  const context = await requireThreadStorageContext(deps, args);
-  return context.threadStoragePath;
+): string {
+  return requireThreadStorageContext(deps, args).threadStoragePath;
 }

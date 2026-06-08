@@ -7,8 +7,7 @@ import { complete, getModel, validateToolCall } from "@mariozechner/pi-ai";
 import type { Static, TSchema, Tool, ToolCall } from "@mariozechner/pi-ai";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { requireDefaultConnectedPersistentHostId } from "../lib/entity-lookup.js";
-import { queueCommandAndWait } from "../hosts/command-wait.js";
+import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
 
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
 type InferenceCompleteDeps = LoggedWorkSessionDeps;
@@ -101,16 +100,14 @@ function shouldTreatAsInferenceTimeout(error: Error): boolean {
   );
 }
 
-async function completeWithCodexHostDaemon<T extends TSchema>(
+async function completeWithCodexEngine<T extends TSchema>(
   deps: InferenceCompleteDeps,
   modelInfo: ProviderModelInfo,
   args: InferenceCompleteArgs<T>,
 ): Promise<Static<T> | null> {
-  const hostId = requireDefaultConnectedPersistentHostId(deps.db);
   const timeoutMs = args.timeoutMs ?? DEFAULT_INFERENCE_TIMEOUT_MS;
   try {
-    const result = await queueCommandAndWait(deps, {
-      hostId,
+    const result = await dispatchEngineCommandAndWait(deps, {
       timeoutMs,
       command: {
         type: "codex.inference.complete",
@@ -150,7 +147,7 @@ export async function inferenceComplete<T extends TSchema>(
     value: deps.config.inferenceModel,
   });
   if (modelInfo.provider === CODEX_INFERENCE_PROVIDER) {
-    return completeWithCodexHostDaemon(deps, modelInfo, args);
+    return completeWithCodexEngine(deps, modelInfo, args);
   }
 
   const model = getInferenceModel(deps);

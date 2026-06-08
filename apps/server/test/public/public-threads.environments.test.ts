@@ -11,7 +11,6 @@ import {
   getEnvironment,
   getThread,
   getThreadOperation,
-  hostDaemonCommands,
   listThreads,
 } from "@bb/db";
 import { setEnvironmentStatus } from "@bb/db/internal-environment-lifecycle";
@@ -26,7 +25,6 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -72,9 +70,7 @@ describe("public thread environment routes", () => {
 
   it("creates personal project threads with a personal environment", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-personal-thread-create",
-      });
+      const { host } = seedHostSession(harness.deps);
 
       const response = await harness.app.request("/api/v1/threads", {
         method: "POST",
@@ -98,8 +94,9 @@ describe("public thread environment routes", () => {
       if (environmentId === null) {
         throw new Error("Expected a personal environment");
       }
+      // Personal workspaces live in the server's own data dir now (plan §3).
       const targetPath = resolvePersonalTargetPath({
-        dataDir: session.dataDir,
+        dataDir: harness.config.dataDir,
         environmentId,
       });
       expect(getEnvironment(harness.db, environmentId)).toMatchObject({
@@ -805,11 +802,9 @@ describe("public thread environment routes", () => {
         parentThreadId: null,
       });
 
-      const provisionCommands = harness.db
-        .select()
-        .from(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.type, "environment.provision"))
-        .all();
+      const provisionCommands = harness.engineRouting.dispatched.filter(
+        (envelope) => envelope.command.type === "environment.provision",
+      );
       expect(provisionCommands).toHaveLength(0);
     });
   });
@@ -890,11 +885,9 @@ describe("public thread environment routes", () => {
         provisioningStage: "environment-provisioning",
       });
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "thread.start"))
-          .all(),
+        harness.engineRouting.dispatched.filter(
+          (envelope) => envelope.command.type === "thread.start",
+        ),
       ).toHaveLength(0);
 
       const result = await reportQueuedCommandSuccess(
@@ -975,10 +968,9 @@ describe("public thread environment routes", () => {
           command.environmentId === environment.id,
       );
 
-      harness.db
-        .delete(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.id, originalProvision.row.id))
-        .run();
+      // Engine-seam analogue of deleting the stranded queue row: release the
+      // in-flight dispatch without settling it, so re-advance can requeue.
+      harness.engineRouting.release(originalProvision.row.id);
       harness.db
         .delete(environmentOperations)
         .where(eq(environmentOperations.environmentId, environment.id))
@@ -1008,11 +1000,9 @@ describe("public thread environment routes", () => {
         "provisioning",
       );
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "thread.start"))
-          .all(),
+        harness.engineRouting.dispatched.filter(
+          (envelope) => envelope.command.type === "thread.start",
+        ),
       ).toHaveLength(0);
     });
   });
@@ -1073,11 +1063,9 @@ describe("public thread environment routes", () => {
         expect(result.status).toBe(200);
         expect(getThread(harness.db, createdThread.id)?.status).toBe("error");
         expect(
-          harness.db
-            .select()
-            .from(hostDaemonCommands)
-            .where(eq(hostDaemonCommands.type, "thread.start"))
-            .all(),
+          harness.engineRouting.dispatched.filter(
+            (envelope) => envelope.command.type === "thread.start",
+          ),
         ).toHaveLength(0);
       });
     },
@@ -1137,11 +1125,9 @@ describe("public thread environment routes", () => {
           1,
         );
         expect(
-          harness.db
-            .select()
-            .from(hostDaemonCommands)
-            .where(eq(hostDaemonCommands.type, "environment.provision"))
-            .all(),
+          harness.engineRouting.dispatched.filter(
+            (envelope) => envelope.command.type === "environment.provision",
+          ),
         ).toHaveLength(0);
       });
     },
@@ -1191,8 +1177,7 @@ describe("public thread environment routes", () => {
         status: "provisioning",
       });
 
-      const queuedCommands = harness.db.select().from(hostDaemonCommands).all();
-      expect(queuedCommands).toHaveLength(0);
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
@@ -1234,63 +1219,4 @@ describe("public thread environment routes", () => {
     });
   });
 
-  it("fails managed reprovision send when the host is disconnected", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-send-reprovision-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/send-reprovision-offline-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/send-reprovision-offline-target",
-        status: "error",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        status: "idle",
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/send`,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            mode: "auto",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Resume after reconnect" }],
-          }),
-        },
-      );
-
-      expect(response.status).toBe(502);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "host_unavailable",
-        details: {
-          reason: "disconnected",
-          hostStatus: "disconnected",
-          suspendedAt: null,
-          destroyedAt: null,
-        },
-      });
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
-      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "environment.provision"))
-          .all(),
-      ).toHaveLength(0);
-    });
-  });
 });

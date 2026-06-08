@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentProviderId } from "@bb/agent-providers";
 import { getLatestThreadSequence } from "@bb/db";
@@ -125,10 +126,14 @@ function buildTurnSubmitTarget(
 
 async function respondToManagerPreferencesRead(
   harness: TestAppHarness,
-  hostId: string,
   threadId: string,
 ): Promise<void> {
-  const preferencesPath = `/tmp/bb-host-data/${hostId}/thread-storage/${threadId}/PREFERENCES.md`;
+  // Thread storage lives in the server's own data dir now (plan §3).
+  const preferencesPath = path.join(
+    harness.config.threadStorageRootPath,
+    threadId,
+    "PREFERENCES.md",
+  );
   const readPreferences = await waitForQueuedCommand(
     harness,
     ({ command, row }) =>
@@ -317,7 +322,7 @@ describe("manager tool reminders", () => {
         trigger: "user",
       });
 
-      await respondToManagerPreferencesRead(harness, host.id, thread.id);
+      await respondToManagerPreferencesRead(harness, thread.id);
       await sendPromise;
 
       const commands = listQueuedThreadCommands(

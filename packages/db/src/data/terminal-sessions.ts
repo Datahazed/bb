@@ -15,7 +15,6 @@ export type TerminalSessionRow = typeof terminalSessions.$inferSelect;
 export interface CreateTerminalSessionInput {
   cols: number;
   currentCwd: string | null;
-  daemonSessionId: string | null;
   environmentId: string;
   hostId: string;
   initialCwd: string;
@@ -41,7 +40,6 @@ export interface UpdateTerminalSessionTitleArgs {
 export interface MarkTerminalSessionRunningArgs {
   cols: number;
   currentCwd: string | null;
-  daemonSessionId: string;
   initialCwd: string;
   now?: number;
   rows: number;
@@ -70,9 +68,8 @@ export interface MarkTerminalSessionUserInputArgs {
   threadId: string;
 }
 
-export interface MarkDaemonTerminalSessionExitedArgs {
+export interface MarkActiveTerminalSessionExitedArgs {
   closeReason: TerminalSessionCloseReason;
-  daemonSessionId: string;
   exitCode: number | null;
   now?: number;
   terminalId: string;
@@ -90,23 +87,13 @@ export interface MarkEnvironmentTerminalSessionsExitedArgs {
   now?: number;
 }
 
-export interface MarkHostDisconnectedTerminalSessionsExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  hostId: string;
-  now?: number;
-}
-
-export interface MarkDaemonTerminalSessionsDisconnectedArgs {
-  daemonSessionId: string;
-  now?: number;
-}
-
-const DAEMON_OWNED_TERMINAL_STATUSES: TerminalSessionStatus[] = [
+/** Statuses where the engine still owns a live PTY for the session. */
+const ACTIVE_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
   "starting",
   "running",
 ];
 const NON_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
-  ...DAEMON_OWNED_TERMINAL_STATUSES,
+  ...ACTIVE_TERMINAL_SESSION_STATUSES,
   "disconnected",
 ];
 
@@ -122,7 +109,6 @@ export function createTerminalSession(
       threadId: input.threadId,
       environmentId: input.environmentId,
       hostId: input.hostId,
-      daemonSessionId: input.daemonSessionId,
       title: input.title,
       initialCwd: input.initialCwd,
       currentCwd: input.currentCwd,
@@ -134,7 +120,9 @@ export function createTerminalSession(
       createdAt: now,
       updatedAt: now,
       lastUserInputAt: null,
-      lastConnectedAt: input.daemonSessionId === null ? null : now,
+      // The in-process engine owns the PTY from creation — there is no
+      // daemon-session handshake to wait for.
+      lastConnectedAt: now,
       exitedAt: null,
     })
     .returning()
@@ -234,7 +222,6 @@ export function markTerminalSessionRunning(
         cols: args.cols,
         rows: args.rows,
         currentCwd: args.currentCwd,
-        daemonSessionId: args.daemonSessionId,
         initialCwd: args.initialCwd,
         title: args.title,
         status: "running",
@@ -248,7 +235,6 @@ export function markTerminalSessionRunning(
         and(
           eq(terminalSessions.id, args.terminalId),
           eq(terminalSessions.status, "starting"),
-          eq(terminalSessions.daemonSessionId, args.daemonSessionId),
         ),
       )
       .returning()
@@ -315,7 +301,6 @@ export function markTerminalSessionExited(
         status: "exited",
         exitCode: args.exitCode,
         closeReason: args.closeReason,
-        daemonSessionId: null,
         updatedAt: now,
         exitedAt: now,
       })
@@ -325,9 +310,15 @@ export function markTerminalSessionExited(
   );
 }
 
-export function markDaemonTerminalSessionExited(
+/**
+ * Exit reported by the engine's PTY. Guarded to still-active rows so an exit
+ * event that races a lifecycle close (thread archive, explicit close) does
+ * not overwrite the recorded close reason — the in-process replacement for
+ * the daemon-session-id match that used to scope this update.
+ */
+export function markActiveTerminalSessionExited(
   db: TerminalSessionWriteConnection,
-  args: MarkDaemonTerminalSessionExitedArgs,
+  args: MarkActiveTerminalSessionExitedArgs,
 ): TerminalSessionRow | null {
   const now = args.now ?? Date.now();
   return (
@@ -337,14 +328,13 @@ export function markDaemonTerminalSessionExited(
         status: "exited",
         exitCode: args.exitCode,
         closeReason: args.closeReason,
-        daemonSessionId: null,
         updatedAt: now,
         exitedAt: now,
       })
       .where(
         and(
           eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.daemonSessionId, args.daemonSessionId),
+          inArray(terminalSessions.status, ACTIVE_TERMINAL_SESSION_STATUSES),
         ),
       )
       .returning()
@@ -362,7 +352,6 @@ export function markThreadTerminalSessionsExited(
     .set({
       status: "exited",
       closeReason: args.closeReason,
-      daemonSessionId: null,
       updatedAt: now,
       exitedAt: now,
     })
@@ -386,7 +375,6 @@ export function markEnvironmentTerminalSessionsExited(
     .set({
       status: "exited",
       closeReason: args.closeReason,
-      daemonSessionId: null,
       updatedAt: now,
       exitedAt: now,
     })
@@ -394,51 +382,6 @@ export function markEnvironmentTerminalSessionsExited(
       and(
         eq(terminalSessions.environmentId, args.environmentId),
         inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
-      ),
-    )
-    .returning()
-    .all();
-}
-
-export function markHostDisconnectedTerminalSessionsExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkHostDisconnectedTerminalSessionsExitedArgs,
-): TerminalSessionRow[] {
-  const now = args.now ?? Date.now();
-  return db
-    .update(terminalSessions)
-    .set({
-      status: "exited",
-      closeReason: args.closeReason,
-      daemonSessionId: null,
-      updatedAt: now,
-      exitedAt: now,
-    })
-    .where(
-      and(
-        eq(terminalSessions.hostId, args.hostId),
-        eq(terminalSessions.status, "disconnected"),
-      ),
-    )
-    .returning()
-    .all();
-}
-
-export function markDaemonTerminalSessionsDisconnected(
-  db: TerminalSessionWriteConnection,
-  args: MarkDaemonTerminalSessionsDisconnectedArgs,
-): TerminalSessionRow[] {
-  return db
-    .update(terminalSessions)
-    .set({
-      status: "disconnected",
-      daemonSessionId: null,
-      updatedAt: args.now ?? Date.now(),
-    })
-    .where(
-      and(
-        eq(terminalSessions.daemonSessionId, args.daemonSessionId),
-        inArray(terminalSessions.status, DAEMON_OWNED_TERMINAL_STATUSES),
       ),
     )
     .returning()

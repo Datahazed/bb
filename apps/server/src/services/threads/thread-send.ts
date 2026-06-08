@@ -46,13 +46,10 @@ import {
   withManagerPreferencesDeliveryLock,
 } from "./manager-dynamic-file-delivery.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import { resolveThreadRuntimeState } from "./thread-runtime-display.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import {
-  disconnectedHostUnavailableDetails,
   threadNotWritableReasonForStatus,
-  throwHostUnavailable,
   throwSenderThreadInvalid,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
@@ -184,29 +181,6 @@ function resolveSendMode(
   return "start";
 }
 
-function ensureRuntimeCanAcceptActiveSend(
-  deps: Pick<AppDeps, "db">,
-  args: Pick<SendThreadMessageArgs, "environment" | "thread">,
-): void {
-  if (args.thread.status !== "active") {
-    return;
-  }
-
-  const runtime = resolveThreadRuntimeState(deps, {
-    environmentHostId: args.environment.hostId,
-    status: args.thread.status,
-  });
-  if (runtime.displayStatus === "active") {
-    return;
-  }
-
-  throwHostUnavailable(
-    502,
-    "Host daemon is not connected",
-    disconnectedHostUnavailableDetails(),
-  );
-}
-
 function resolveMessageSenderThreadId(
   deps: Pick<AppDeps, "db">,
   args: ResolveMessageSenderArgs,
@@ -331,12 +305,11 @@ export async function sendThreadMessage(
 ): Promise<void> {
   const { environment, payload, thread } = args;
   ensureThreadIsWritable(thread);
-  ensureThreadNativeArchiveSettled(deps, { environment, thread });
+  ensureThreadNativeArchiveSettled(deps, { thread });
   if (args.trigger === "user") {
     ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
   }
   const mode = resolveSendMode(thread, payload.mode);
-  ensureRuntimeCanAcceptActiveSend(deps, args);
   if (mode === "start") {
     ensureThreadCanQueueStartRequest(deps, thread);
   }
@@ -425,6 +398,7 @@ export async function sendThreadMessage(
         projectId: thread.projectId,
         providerId: thread.providerId,
       });
+      let queuedEnvelope: EngineCommandEnvelope | null = null;
       const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
         beforeAppendInTransaction: ({ tx }) => {
           ensureThreadCanQueueStartRequest({ db: tx }, thread);
@@ -435,16 +409,16 @@ export async function sendThreadMessage(
         initiator,
         input: preparedInput.input,
         queueInTransaction: ({ requestEventSequence, tx }) => {
-          const queuedMode = queuePreparedReadyThreadTurnCommandInTransaction(
+          const queuedTurn = queuePreparedReadyThreadTurnCommandInTransaction(
             tx,
             {
               command,
-              hostId: readyEnvironment.hostId,
               requestEventSequence,
               thread,
             },
           );
-          if (queuedMode === "turn.submit") {
+          queuedEnvelope = queuedTurn.envelope;
+          if (queuedTurn.mode === "turn.submit") {
             transitionThreadStatusInTransaction(tx, {
               id: thread.id,
               newStatus: "active",
@@ -464,7 +438,9 @@ export async function sendThreadMessage(
         queuedRequest.request.notificationChanges,
         queuedRequest.request.notificationMetadata,
       );
-      deps.hub.notifyCommand(readyEnvironment.hostId);
+      if (queuedEnvelope) {
+        deps.engineDispatch.dispatch(queuedEnvelope);
+      }
       if (queuedRequest.threadBecameActive) {
         deps.hub.notifyThread(thread.id, ["status-changed"], {
           projectId: thread.projectId,
@@ -473,9 +449,6 @@ export async function sendThreadMessage(
       return;
     }
 
-    const session = await ensureHostSessionReadyForWork(deps, {
-      hostId: readyEnvironment.hostId,
-    });
     const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
       thread,
       input: preparedInput.input,
@@ -498,6 +471,7 @@ export async function sendThreadMessage(
       preparedCommand,
       requestId,
     });
+    let queuedEnvelope: EngineCommandEnvelope | null = null;
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       db: deps.db,
       environmentId: thread.environmentId,
@@ -505,11 +479,9 @@ export async function sendThreadMessage(
       initiator,
       input: preparedInput.input,
       queueInTransaction: ({ requestEventSequence, tx }) => {
-        queueTurnSubmitCommandInTransaction(tx, {
+        queuedEnvelope = queueTurnSubmitCommandInTransaction(tx, {
           command,
-          hostId: readyEnvironment.hostId,
           requestEventSequence,
-          sessionId: session.id,
         });
         return { threadBecameActive: false };
       },
@@ -524,6 +496,8 @@ export async function sendThreadMessage(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
-    deps.hub.notifyCommand(readyEnvironment.hostId);
+    if (queuedEnvelope) {
+      deps.engineDispatch.dispatch(queuedEnvelope);
+    }
   });
 }

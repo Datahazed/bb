@@ -7,10 +7,7 @@ import {
   pruneThreadEventHistoryBestEffort,
 } from "../../src/services/system/event-pruning.js";
 import { buildThreadTimeline } from "../../src/services/threads/timeline.js";
-import {
-  createTestDaemonEventEnvelope,
-  internalAuthHeaders,
-} from "../helpers/commands.js";
+import { createThreadEventAppender } from "../../src/services/threads/event-append.js";
 import {
   seedEnvironment,
   seedHost,
@@ -423,7 +420,7 @@ describe("thread event pruning", () => {
 
   it("prunes active-thread noise rows after ingest without dropping unresolved deltas", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -478,43 +475,36 @@ describe("thread event pruning", () => {
         });
       }
 
-      const response = await harness.app.request("/internal/session/events", {
-        method: "POST",
-        headers: internalAuthHeaders(harness),
-        body: JSON.stringify({
-          sessionId: session.id,
-          events: [
-            createTestDaemonEventEnvelope({
-              producerEventIdValue: 1,
-              event: {
-                type: "thread/tokenUsage/updated",
-                threadId: thread.id,
-                providerThreadId: "provider-thread-1",
-                scope: turnScope("turn-1"),
-                tokenUsage: {
-                  total: {
-                    totalTokens: 1,
-                    inputTokens: 1,
-                    cachedInputTokens: 0,
-                    outputTokens: 0,
-                    reasoningOutputTokens: 0,
-                  },
-                  last: {
-                    totalTokens: 1,
-                    inputTokens: 1,
-                    cachedInputTokens: 0,
-                    outputTokens: 0,
-                    reasoningOutputTokens: 0,
-                  },
-                  modelContextWindow: 200_000,
-                },
-              },
-            }),
-          ],
-        }),
+      // The event append module is the ingest path now (plan §3): emit the
+      // runtime event directly and flush, replacing the daemon ingress POST.
+      const appender = createThreadEventAppender(harness.deps);
+      appender.emit({
+        threadId: thread.id,
+        event: {
+          type: "thread/tokenUsage/updated",
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope("turn-1"),
+          tokenUsage: {
+            total: {
+              totalTokens: 1,
+              inputTokens: 1,
+              cachedInputTokens: 0,
+              outputTokens: 0,
+              reasoningOutputTokens: 0,
+            },
+            last: {
+              totalTokens: 1,
+              inputTokens: 1,
+              cachedInputTokens: 0,
+              outputTokens: 0,
+              reasoningOutputTokens: 0,
+            },
+            modelContextWindow: 200_000,
+          },
+        },
       });
-
-      expect(response.status).toBe(200);
+      await appender.flush();
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,

@@ -484,7 +484,6 @@ describe("listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement", () =
       }),
     });
     setPendingInteractionResolving(db, {
-      commandId: interactionCommand.id,
       id: interaction.id,
       resolution: JSON.stringify({ decision: "deny" }),
     });
@@ -533,15 +532,14 @@ describe("listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement", () =
     });
     markCommandLegacyExpired({ commandId: ownerlessCommand.id, db });
 
+    // The interaction leg of the legacy scan died with
+    // `pending_interactions.resolvingCommandId` (Phase 1 single-host) — the
+    // expired interactive.resolve command above must NOT be reported.
     expect(
       listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement(db, {
         limit: 10,
       }),
-    ).toEqual([
-      environmentCommand.id,
-      threadCommand.id,
-      interactionCommand.id,
-    ]);
+    ).toEqual([environmentCommand.id, threadCommand.id]);
     expect(
       listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement(db, {
         limit: 2,

@@ -1,132 +1,82 @@
-import { randomUUID } from "node:crypto";
-import {
-  parseHostDaemonOnlineRpcResultForCommand,
-  type HostDaemonOnlineRpcCommand,
-  type HostDaemonOnlineRpcResponseMessage,
-  type HostDaemonOnlineRpcResultForCommand,
-  type HostDaemonRetryableOnlineRpcCommand,
+/**
+ * Read-style engine command execution — the Phase 1 replacement for the
+ * daemon's online host-RPC WS round-trip (`hub.requestHostOnlineRpc`). The
+ * engine runs the handler inline through the router's lane scheduler; the
+ * 504 `command_timeout` taxonomy survives (plan §4.1), while the
+ * `host_unavailable` retry ladder died with the transport — the engine is
+ * always reachable in-process.
+ */
+import type {
+  HostDaemonOnlineRpcCommand,
+  HostDaemonOnlineRpcResultForCommand,
 } from "@bb/host-daemon-contract";
+import { getErrorCode } from "../../engine/core/command-dispatch.js";
 import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
-import {
-  HostOnlineRpcTimeoutError,
-  HostOnlineRpcUnavailableError,
-} from "../../ws/hub.js";
-import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
-export interface CallHostOnlineRpcArgs<
+export interface CallEngineOnlineRpcArgs<
   TCommand extends HostDaemonOnlineRpcCommand,
 > {
   command: TCommand;
-  hostId: string;
   timeoutMs: number;
 }
 
-export interface CallHostRetryableOnlineRpcArgs<
-  TCommand extends HostDaemonRetryableOnlineRpcCommand,
-> {
-  command: TCommand;
-  hostId: string;
-  timeoutMs: number;
+class EngineOnlineRpcTimeout {
+  readonly kind = "engine-online-rpc-timeout";
 }
 
-export function callHostOnlineRpc<TCommand extends HostDaemonOnlineRpcCommand>(
-  deps: WorkSessionDeps,
-  args: CallHostOnlineRpcArgs<TCommand>,
-): Promise<HostDaemonOnlineRpcResultForCommand<TCommand>>;
-export async function callHostOnlineRpc(
-  deps: WorkSessionDeps,
-  args: CallHostOnlineRpcArgs<HostDaemonOnlineRpcCommand>,
-): Promise<HostDaemonOnlineRpcResultForCommand> {
-  return callHostOnlineRpcWithRetry(deps, args, { retryOnUnavailable: false });
-}
-
-export function callHostRetryableOnlineRpc<
-  TCommand extends HostDaemonRetryableOnlineRpcCommand,
->(
-  deps: WorkSessionDeps,
-  args: CallHostRetryableOnlineRpcArgs<TCommand>,
-): Promise<HostDaemonOnlineRpcResultForCommand<TCommand>>;
-export async function callHostRetryableOnlineRpc(
-  deps: WorkSessionDeps,
-  args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
-): Promise<HostDaemonOnlineRpcResultForCommand> {
-  return callHostOnlineRpcWithRetry(deps, args, { retryOnUnavailable: true });
-}
-
-async function callHostOnlineRpcWithRetry(
-  deps: WorkSessionDeps,
-  args: CallHostOnlineRpcArgs<HostDaemonOnlineRpcCommand>,
-  options: { retryOnUnavailable: false },
-): Promise<HostDaemonOnlineRpcResultForCommand>;
-async function callHostOnlineRpcWithRetry(
-  deps: WorkSessionDeps,
-  args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
-  options: { retryOnUnavailable: true },
-): Promise<HostDaemonOnlineRpcResultForCommand>;
-async function callHostOnlineRpcWithRetry(
-  deps: WorkSessionDeps,
-  args: CallHostOnlineRpcArgs<HostDaemonOnlineRpcCommand>,
-  options: { retryOnUnavailable: boolean },
-): Promise<HostDaemonOnlineRpcResultForCommand> {
-  await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
-  const response = await requestHostOnlineRpcResponse(deps, args).catch(
-    async (error) => {
-      if (
-        !(error instanceof HostOnlineRpcUnavailableError) ||
-        !options.retryOnUnavailable
-      ) {
-        throwOnlineRpcError(error);
-      }
-      await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
-      return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
-        throwOnlineRpcError(retryError);
-      });
-    },
-  );
-
-  if (!response.ok) {
-    throw new ApiError(502, response.errorCode, response.errorMessage, false);
-  }
-
-  if (response.commandType !== args.command.type) {
-    throw new ApiError(
-      500,
-      "command_result_type_mismatch",
-      `Host RPC ${response.requestId} completed with unexpected type ${response.commandType}`,
-    );
-  }
-
-  return parseHostDaemonOnlineRpcResultForCommand(args.command, response.result);
-}
-
-function requestHostOnlineRpcResponse(
-  deps: Pick<WorkSessionDeps, "hub">,
-  args: CallHostOnlineRpcArgs<HostDaemonOnlineRpcCommand>,
-): Promise<HostDaemonOnlineRpcResponseMessage> {
-  return deps.hub.requestHostOnlineRpc({
-    hostId: args.hostId,
-    message: {
-      type: "host-rpc.request",
-      requestId: randomUUID(),
-      command: args.command,
-    },
-    timeoutMs: args.timeoutMs,
+function waitForTimeout(timeoutMs: number): {
+  cancel: () => void;
+  promise: Promise<EngineOnlineRpcTimeout>;
+} {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<EngineOnlineRpcTimeout>((resolve) => {
+    timer = setTimeout(() => resolve(new EngineOnlineRpcTimeout()), timeoutMs);
   });
+  return {
+    cancel: () => clearTimeout(timer),
+    promise,
+  };
 }
 
-function throwOnlineRpcError(error: unknown): never {
-  if (error instanceof HostOnlineRpcTimeoutError) {
+export function callEngineOnlineRpc<
+  TCommand extends HostDaemonOnlineRpcCommand,
+>(
+  deps: Pick<WorkSessionDeps, "engineDispatch">,
+  args: CallEngineOnlineRpcArgs<TCommand>,
+): Promise<HostDaemonOnlineRpcResultForCommand<TCommand>>;
+export async function callEngineOnlineRpc(
+  deps: Pick<WorkSessionDeps, "engineDispatch">,
+  args: CallEngineOnlineRpcArgs<HostDaemonOnlineRpcCommand>,
+): Promise<HostDaemonOnlineRpcResultForCommand> {
+  const timeout = waitForTimeout(args.timeoutMs);
+  try {
+    // The in-process handler cannot be cancelled; on timeout it keeps running
+    // detached, exactly as a daemon-side RPC kept running after the WS waiter
+    // timed out.
+    const outcome = await Promise.race([
+      deps.engineDispatch.executeOnlineRpc(args.command),
+      timeout.promise,
+    ]);
+    if (outcome instanceof EngineOnlineRpcTimeout) {
+      throw new ApiError(
+        504,
+        "command_timeout",
+        "Timed out waiting for command result",
+      );
+    }
+    return outcome;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new ApiError(
-      504,
-      "command_timeout",
-      "Timed out waiting for command result",
+      502,
+      getErrorCode(error),
+      error instanceof Error ? error.message : String(error),
+      false,
     );
+  } finally {
+    timeout.cancel();
   }
-
-  if (error instanceof HostOnlineRpcUnavailableError) {
-    throw new ApiError(502, "host_unavailable", "Host is not connected", false);
-  }
-
-  throw error;
 }

@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createConnection,
   createEnvironment,
+  createHostDaemonCommandId,
   createProject,
-  fetchCommands,
-  getActiveCommandAttemptForCommand,
-  getCommand,
   getEnvironment,
   getEnvironmentOperation,
   migrate,
@@ -24,6 +22,8 @@ import {
   settleEnvironmentDestroyCommandResult,
   type SettleEnvironmentDestroyCommandResultArgs,
 } from "../../src/services/environments/environment-cleanup-internal.js";
+import { withTestHarness } from "../helpers/test-app.js";
+import { seedEnvironment, seedProjectWithSource } from "../helpers/seed.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 
 type EnvironmentDestroyCommand =
@@ -92,138 +92,106 @@ function settleDestroyReport(args: SettleDestroyReportArgs) {
 }
 
 describe("environment cleanup command result settlement", () => {
-  it("atomically cancels pending environment cleanup lifecycle state", () => {
-    const testSetup = setup();
-    setEnvironmentStatus(testSetup.db, testSetup.hub, testSetup.environmentId, {
-      status: "destroying",
-    });
-    requestEnvironmentCleanup(testSetup, {
-      environmentId: testSetup.environmentId,
-    });
-    const commandPayload: EnvironmentDestroyCommand = {
-      type: "environment.destroy",
-      environmentId: testSetup.environmentId,
-      workspaceContext: {
-        workspacePath: "/tmp/environment-cleanup-command-results",
-        workspaceProvisionType: "managed-worktree",
-      },
-    };
-    const command = queueCommand(testSetup.db, testSetup.hub, {
-      hostId: testSetup.hostId,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify(commandPayload),
-    });
-    markEnvironmentOperationRecordQueued(testSetup.db, {
-      environmentId: testSetup.environmentId,
-      kind: "destroy",
-      commandId: command.id,
-    });
-
-    expect(
-      cancelPendingEnvironmentCleanup(testSetup, {
-        environmentId: testSetup.environmentId,
-      }),
-    ).toBe("cancelled");
-
-    expect(getCommand(testSetup.db, command.id)).toMatchObject({
-      state: "error",
-      resultPayload: JSON.stringify({
-        errorCode: "environment_cleanup_cancelled",
-        errorMessage: "Environment cleanup was cancelled",
-      }),
-    });
-    expect(
-      getActiveCommandAttemptForCommand(testSetup.db, command.id),
-    ).toBeNull();
-    expect(
-      getEnvironmentOperation(testSetup.db, {
-        environmentId: testSetup.environmentId,
+  it("cancels requested cleanup whose destroy dispatch is no longer in flight", async () => {
+    await withTestHarness(async (harness) => {
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: "host-cleanup-cancel",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: "host-cleanup-cancel",
+        projectId: project.id,
+        managed: true,
+        path: "/tmp/environment-cleanup-command-results",
+        status: "destroying",
+      });
+      requestEnvironmentCleanup(harness.deps, {
+        environmentId: environment.id,
+      });
+      // A queued op whose dispatch already settled (or never fired) — the
+      // in-flight registry has no entry for it.
+      markEnvironmentOperationRecordQueued(harness.db, {
+        environmentId: environment.id,
         kind: "destroy",
-      }),
-    ).toMatchObject({
-      state: "cancelled",
-      commandId: command.id,
-    });
-    expect(getEnvironment(testSetup.db, testSetup.environmentId)).toMatchObject(
-      {
+        commandId: createHostDaemonCommandId(),
+      });
+
+      expect(
+        cancelPendingEnvironmentCleanup(harness.deps, {
+          environmentId: environment.id,
+        }),
+      ).toBe("cancelled");
+
+      expect(
+        getEnvironmentOperation(harness.db, {
+          environmentId: environment.id,
+          kind: "destroy",
+        }),
+      ).toMatchObject({
+        state: "cancelled",
+      });
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         cleanupMode: null,
         cleanupRequestedAt: null,
         status: "ready",
-      },
-    );
+      });
+    });
   });
 
-  it("preserves fetched environment cleanup state as in progress", () => {
-    const testSetup = setup();
-    setEnvironmentStatus(testSetup.db, testSetup.hub, testSetup.environmentId, {
-      status: "destroying",
-    });
-    requestEnvironmentCleanup(testSetup, {
-      environmentId: testSetup.environmentId,
-    });
-    const commandPayload: EnvironmentDestroyCommand = {
-      type: "environment.destroy",
-      environmentId: testSetup.environmentId,
-      workspaceContext: {
-        workspacePath: "/tmp/environment-cleanup-command-results",
-        workspaceProvisionType: "managed-worktree",
-      },
-    };
-    const command = queueCommand(testSetup.db, testSetup.hub, {
-      hostId: testSetup.hostId,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify(commandPayload),
-    });
-    markEnvironmentOperationRecordQueued(testSetup.db, {
-      environmentId: testSetup.environmentId,
-      kind: "destroy",
-      commandId: command.id,
-    });
-
-    expect(
-      fetchCommands(testSetup.db, testSetup.hub, {
-        hostId: testSetup.hostId,
-        sessionId: null,
-      }),
-    ).toHaveLength(1);
-    const commandBefore = getCommand(testSetup.db, command.id);
-    const attemptBefore = getActiveCommandAttemptForCommand(
-      testSetup.db,
-      command.id,
-    );
-    const operationBefore = getEnvironmentOperation(testSetup.db, {
-      environmentId: testSetup.environmentId,
-      kind: "destroy",
-    });
-    const environmentBefore = getEnvironment(
-      testSetup.db,
-      testSetup.environmentId,
-    );
-
-    expect(commandBefore).toMatchObject({ state: "fetched" });
-    expect(attemptBefore).not.toBeNull();
-
-    expect(
-      cancelPendingEnvironmentCleanup(testSetup, {
-        environmentId: testSetup.environmentId,
-      }),
-    ).toBe("in_progress");
-
-    expect(getCommand(testSetup.db, command.id)).toEqual(commandBefore);
-    expect(getActiveCommandAttemptForCommand(testSetup.db, command.id)).toEqual(
-      attemptBefore,
-    );
-    expect(
-      getEnvironmentOperation(testSetup.db, {
-        environmentId: testSetup.environmentId,
+  it("reports in-flight destroy dispatches as in progress", async () => {
+    await withTestHarness(async (harness) => {
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: "host-cleanup-cancel",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: "host-cleanup-cancel",
+        projectId: project.id,
+        managed: true,
+        path: "/tmp/environment-cleanup-command-results",
+        status: "destroying",
+      });
+      requestEnvironmentCleanup(harness.deps, {
+        environmentId: environment.id,
+      });
+      const dispatched = harness.deps.engineDispatch.dispatch({
+        command: {
+          type: "environment.destroy",
+          environmentId: environment.id,
+          workspaceContext: {
+            workspacePath: "/tmp/environment-cleanup-command-results",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+      });
+      markEnvironmentOperationRecordQueued(harness.db, {
+        environmentId: environment.id,
         kind: "destroy",
-      }),
-    ).toEqual(operationBefore);
-    expect(getEnvironment(testSetup.db, testSetup.environmentId)).toEqual(
-      environmentBefore,
-    );
+        commandId: dispatched.commandId,
+      });
+
+      const operationBefore = getEnvironmentOperation(harness.db, {
+        environmentId: environment.id,
+        kind: "destroy",
+      });
+      const environmentBefore = getEnvironment(harness.db, environment.id);
+
+      expect(
+        cancelPendingEnvironmentCleanup(harness.deps, {
+          environmentId: environment.id,
+        }),
+      ).toBe("in_progress");
+
+      expect(
+        getEnvironmentOperation(harness.db, {
+          environmentId: environment.id,
+          kind: "destroy",
+        }),
+      ).toEqual(operationBefore);
+      expect(getEnvironment(harness.db, environment.id)).toEqual(
+        environmentBefore,
+      );
+
+      harness.engineRouting.releaseAll();
+    });
   });
 
   it("settles environment destroy once and ignores duplicate terminal results", () => {

@@ -1,6 +1,5 @@
 import {
   getThread,
-  hasPendingHostCommandForThread,
   transitionThreadStatusInTransaction,
   type DbTransaction,
 } from "@bb/db";
@@ -9,7 +8,11 @@ import type {
   ResolvedThreadExecutionOptions,
   Thread,
 } from "@bb/domain";
-import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import type { EngineCommandEnvelope } from "../../engine/ports.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../../types.js";
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
@@ -43,7 +46,6 @@ import {
   withManagerPreferencesDeliveryLock,
 } from "./manager-dynamic-file-delivery.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 
 const MANAGER_SYSTEM_MESSAGE_SOURCE = "tell";
 
@@ -62,7 +64,7 @@ interface QueueReadyManagerSystemMessageArgs {
 
 interface QueueActiveManagerSystemMessageInTransactionArgs
   extends QueueReadyManagerSystemMessageArgs {
-  sessionId: string;
+  engineDispatch: AppDeps["engineDispatch"];
   preparedCommand: PreparedTurnSubmitCommandPayload;
 }
 
@@ -71,22 +73,19 @@ function buildSystemInput(messageText: string): PromptInput[] {
 }
 
 function hasPendingActiveManagerCommand(
-  db: DbTransaction,
+  engineDispatch: AppDeps["engineDispatch"],
   args: QueueReadyManagerSystemMessageArgs,
 ): boolean {
   return (
-    hasPendingHostCommandForThread(db, {
-      hostId: args.environment.hostId,
+    engineDispatch.hasInFlightThreadCommand({
       threadId: args.thread.id,
       type: "turn.submit",
     }) ||
-    hasPendingHostCommandForThread(db, {
-      hostId: args.environment.hostId,
+    engineDispatch.hasInFlightThreadCommand({
       threadId: args.thread.id,
       type: "thread.archive",
     }) ||
-    hasPendingHostCommandForThread(db, {
-      hostId: args.environment.hostId,
+    engineDispatch.hasInFlightThreadCommand({
       threadId: args.thread.id,
       type: "thread.stop",
     })
@@ -96,7 +95,7 @@ function hasPendingActiveManagerCommand(
 function queueActiveManagerSystemMessageInTransaction(
   tx: DbTransaction,
   args: QueueActiveManagerSystemMessageInTransactionArgs,
-): boolean {
+): EngineCommandEnvelope | null {
   const currentThread = getThread(tx, args.thread.id);
   if (
     !currentThread ||
@@ -106,9 +105,9 @@ function queueActiveManagerSystemMessageInTransaction(
     currentThread.archivedAt !== null ||
     currentThread.deletedAt !== null ||
     currentThread.stopRequestedAt !== null ||
-    hasPendingActiveManagerCommand(tx, args)
+    hasPendingActiveManagerCommand(args.engineDispatch, args)
   ) {
-    return false;
+    return null;
   }
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
@@ -128,7 +127,7 @@ function queueActiveManagerSystemMessageInTransaction(
     },
   });
   recordManagerDynamicFileDeliveryInTransaction(tx, args.stateUpdate);
-  queueTurnSubmitCommandInTransaction(tx, {
+  return queueTurnSubmitCommandInTransaction(tx, {
     command: addRequestIdToTurnSubmitCommandPayload({
       requestId: request.requestId,
       preparedCommand: {
@@ -139,11 +138,8 @@ function queueActiveManagerSystemMessageInTransaction(
         },
       },
     }),
-    hostId: args.environment.hostId,
     requestEventSequence: request.sequence,
-    sessionId: args.sessionId,
   });
-  return true;
 }
 
 async function queueActiveManagerSystemMessage(
@@ -154,9 +150,6 @@ async function queueActiveManagerSystemMessage(
   const permissionEscalation = resolvePermissionEscalation({
     thread: args.thread,
     initiator: "system",
-  });
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.environment.hostId,
   });
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
     thread: args.thread,
@@ -177,23 +170,23 @@ async function queueActiveManagerSystemMessage(
     },
   });
 
-  const queued = deps.db.transaction(
+  const envelope = deps.db.transaction(
     (tx) =>
       queueActiveManagerSystemMessageInTransaction(tx, {
         ...args,
+        engineDispatch: deps.engineDispatch,
         preparedCommand,
-        sessionId: session.id,
       }),
     { behavior: "immediate" },
   );
-  if (!queued) {
+  if (!envelope) {
     return false;
   }
 
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.hub.notifyCommand(args.environment.hostId);
+  deps.engineDispatch.dispatch(envelope);
   return true;
 }
 
@@ -229,7 +222,7 @@ async function queueReadyManagerSystemMessage(
     providerId: args.thread.providerId,
   });
   let transitioned = false;
-  deps.db.transaction(
+  const queued = deps.db.transaction(
     (tx) => {
       ensureThreadCanQueueStartRequest({ db: tx }, args.thread);
       const request = appendPreparedClientTurnRequestedEventInTransaction(tx, {
@@ -245,13 +238,12 @@ async function queueReadyManagerSystemMessage(
         target: { kind: "new-turn" },
         requestId,
       });
-      const queuedMode = queuePreparedReadyThreadTurnCommandInTransaction(tx, {
+      const queuedTurn = queuePreparedReadyThreadTurnCommandInTransaction(tx, {
         command,
-        hostId: args.environment.hostId,
         requestEventSequence: request.sequence,
         thread: args.thread,
       });
-      if (queuedMode === "turn.submit") {
+      if (queuedTurn.mode === "turn.submit") {
         transitionThreadStatusInTransaction(tx, {
           id: args.thread.id,
           newStatus: "active",
@@ -259,13 +251,14 @@ async function queueReadyManagerSystemMessage(
         transitioned = true;
       }
       recordManagerDynamicFileDeliveryInTransaction(tx, args.stateUpdate);
+      return queuedTurn;
     },
     { behavior: "immediate" },
   );
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.hub.notifyCommand(args.environment.hostId);
+  deps.engineDispatch.dispatch(queued.envelope);
   if (transitioned) {
     deps.hub.notifyThread(args.thread.id, ["status-changed"], {
       projectId: args.thread.projectId,
@@ -296,7 +289,6 @@ export async function queueManagerSystemMessage(
     args.managerThreadId,
   );
   ensureThreadNativeArchiveSettled(deps, {
-    environment,
     thread: managerThread,
   });
   const input = buildSystemInput(args.messageText);

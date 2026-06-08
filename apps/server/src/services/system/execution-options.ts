@@ -12,7 +12,7 @@ import {
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 
@@ -119,8 +119,7 @@ export async function resolveSystemExecutionOptions(
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
   const hostId = resolveSystemLookupHostId(deps, query);
-  const { providers } = await callHostRetryableOnlineRpc(deps, {
-    hostId,
+  const { providers } = await callEngineOnlineRpc(deps, {
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: { type: "provider.list" },
   });
@@ -140,8 +139,7 @@ export async function resolveSystemExecutionOptions(
 
   let modelResult: ModelListResult;
   try {
-    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(deps, {
-      hostId,
+    const { models, selectedOnlyModels } = await callEngineOnlineRpc(deps, {
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "provider.list_models",

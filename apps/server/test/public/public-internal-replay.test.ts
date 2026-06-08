@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { events, hostDaemonCommands, threads } from "@bb/db";
+import { events, threads } from "@bb/db";
 import { turnRequestEventDataSchema } from "@bb/domain";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@bb/replay-capture";
 import { describe, expect, it } from "vitest";
 import {
+  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
   type QueuedCommand,
@@ -17,7 +18,6 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -215,15 +215,17 @@ async function waitForReplayRunCommand(
 describe("public development-only replay routes", () => {
   it("serves replay routes without requiring capture recording to be enabled", async () => {
     await withTestHarness(async (harness) => {
-      const response = await harness.app.request(REPLAY_CAPTURE_ROUTE);
+      const { host } = seedHostSession(harness.deps);
+      const responsePromise = harness.app.request(REPLAY_CAPTURE_ROUTE);
+      const queued = await waitForReplayCaptureListCommand(harness, host.id);
+      await reportQueuedCommandSuccess(harness, queued, { captures: [] });
 
+      const response = await responsePromise;
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toMatchObject({
         captures: [],
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
@@ -235,9 +237,7 @@ describe("public development-only replay routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "not_found",
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
@@ -252,9 +252,7 @@ describe("public development-only replay routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "invalid_request",
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
@@ -279,17 +277,13 @@ describe("public development-only replay routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "invalid_request",
       });
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
   it("lists captures from connected host daemons with host ids", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-replay-list",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/replay-list",
@@ -317,9 +311,6 @@ describe("public development-only replay routes", () => {
         queued,
         {
           captures: [captureSummary(manifest)],
-        },
-        {
-          hostId: host.id,
         },
       );
       expect(reportResponse.status).toBe(200);
@@ -350,9 +341,7 @@ describe("public development-only replay routes", () => {
 
   it("deletes a capture on the host that owns it", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-replay-delete",
-      });
+      const { host } = seedHostSession(harness.deps);
       const captureId = createReplayCaptureId(1_000, "abc123zz");
       const responsePromise = harness.app.request(
         `${REPLAY_CAPTURE_ROUTE}/${captureId}`,
@@ -368,9 +357,6 @@ describe("public development-only replay routes", () => {
         harness,
         queued,
         {},
-        {
-          hostId: host.id,
-        },
       );
       expect(reportResponse.status).toBe(200);
 
@@ -381,14 +367,21 @@ describe("public development-only replay routes", () => {
     });
   });
 
-  it("returns 404 when no connected host owns the capture", async () => {
+  it("returns 404 when the engine does not know the capture", async () => {
     await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
       const captureId = createReplayCaptureId(1_000, "abc123zz");
-      const response = await harness.app.request(
+      const responsePromise = harness.app.request(
         `${REPLAY_CAPTURE_ROUTE}/${captureId}`,
         { method: "DELETE" },
       );
+      const queued = await waitForReplayCaptureDeleteCommand(harness, host.id);
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "replay_capture_not_found",
+        errorMessage: "Replay capture not found",
+      });
 
+      const response = await responsePromise;
       expect(response.status).toBe(404);
       await expect(readJson(response)).resolves.toMatchObject({
         code: "replay_capture_not_found",
@@ -398,9 +391,7 @@ describe("public development-only replay routes", () => {
 
   it("rejects replay runs when capture project differs from the environment project", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-replay-project-mismatch",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project: environmentProject } = seedProjectWithSource(
         harness.deps,
         {
@@ -441,9 +432,6 @@ describe("public development-only replay routes", () => {
         harness,
         queued,
         manifest,
-        {
-          hostId: host.id,
-        },
       );
       expect(reportResponse.status).toBe(200);
 
@@ -453,21 +441,14 @@ describe("public development-only replay routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "replay_capture_project_mismatch",
       });
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .all()
-          .filter((row) => row.type === "development.replay"),
-      ).toHaveLength(0);
+      // Replay flows are RPC-only; nothing reaches the durable dispatch path.
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
   it("creates a replay thread and starts replay from capture metadata", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-replay-run",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/replay-run",
@@ -505,9 +486,6 @@ describe("public development-only replay routes", () => {
         harness,
         getCommand,
         manifest,
-        {
-          hostId: host.id,
-        },
       );
       expect(reportResponse.status).toBe(200);
 
@@ -557,9 +535,6 @@ describe("public development-only replay routes", () => {
         harness,
         replayCommand,
         {},
-        {
-          hostId: host.id,
-        },
       );
       expect(runReportResponse.status).toBe(200);
 
@@ -572,21 +547,14 @@ describe("public development-only replay routes", () => {
         replayThreadId: replayCommand.command.threadId,
         projectId: project.id,
       });
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .all()
-          .filter((row) => row.type === "development.replay"),
-      ).toHaveLength(0);
+      // Replay flows are RPC-only; nothing reaches the durable dispatch path.
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
   it("rejects replay runs when the capture environment does not exist", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-replay-missing-env",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/replay-missing-env",
@@ -620,9 +588,6 @@ describe("public development-only replay routes", () => {
         harness,
         getCommand,
         manifest,
-        {
-          hostId: host.id,
-        },
       );
       expect(reportResponse.status).toBe(200);
 
@@ -632,82 +597,9 @@ describe("public development-only replay routes", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "environment_not_found",
       });
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .all()
-          .filter((row) => row.type === "development.replay"),
-      ).toHaveLength(0);
+      // Replay flows are RPC-only; nothing reaches the durable dispatch path.
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 
-  it("rejects replay runs when the capture host differs from the environment host", async () => {
-    await withTestHarness(async (harness) => {
-      const environmentHost = seedHost(harness.deps, { id: "host-replay-env" });
-      const { host: captureHost } = seedHostSession(harness.deps, {
-        id: "host-replay-capture",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: environmentHost.id,
-        path: "/tmp/replay-host-mismatch",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: environmentHost.id,
-        projectId: project.id,
-        path: "/tmp/replay-host-mismatch",
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-      });
-      const captureId = createReplayCaptureId(1_000, "abc123zz");
-      const manifest = captureManifest({
-        captureId,
-        environmentId: environment.id,
-        projectId: project.id,
-        threadId: thread.id,
-      });
-
-      const responsePromise = harness.app.request(
-        `${REPLAY_CAPTURE_ROUTE}/${captureId}/runs`,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            speed: 1,
-          }),
-        },
-      );
-      const getCommand = await waitForReplayCaptureGetCommand(
-        harness,
-        captureHost.id,
-      );
-      const reportResponse = await reportQueuedCommandSuccess(
-        harness,
-        getCommand,
-        manifest,
-        {
-          hostId: captureHost.id,
-        },
-      );
-      expect(reportResponse.status).toBe(200);
-
-      const response = await responsePromise;
-
-      expect(response.status).toBe(409);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "replay_capture_host_mismatch",
-      });
-      expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .all()
-          .filter((row) => row.type === "development.replay"),
-      ).toHaveLength(0);
-    });
-  });
 });

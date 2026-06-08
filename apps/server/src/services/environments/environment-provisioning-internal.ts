@@ -1,18 +1,15 @@
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
-  cancelCommandInTransaction,
+  createHostDaemonCommandId,
   type HostDaemonCommandRow,
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
   type EnvironmentOperationRow,
-  getActiveSession,
-  getCommand,
   getEnvironment,
   getEnvironmentOperationByCommandId,
   getThreadOperation,
   listStoredThreadProvisioningRowsByProvisioningId,
-  queueCommand,
   threadOperations,
   threads,
 } from "@bb/db";
@@ -66,7 +63,6 @@ import {
   type EnvironmentProvisionRequest,
 } from "./environment-provision-request.js";
 import { parseJsonWithSchema } from "../lib/json-parsing.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
 import { readThreadProvisioningIdFromRecord } from "../threads/thread-provisioning-context.js";
 import {
@@ -90,6 +86,7 @@ import {
   type CommandResultSideEffectsResult,
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
+import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 
 type EnvironmentProvisionCommand =
   HostDaemonCommandForType<"environment.provision">;
@@ -110,6 +107,9 @@ interface EnvironmentProvisionWriteDeps extends EnvironmentProvisionReadDeps {
 
 interface EnvironmentProvisionTransactionDeps extends EnvironmentProvisionWriteDeps {
   db: DbTransaction;
+  engineDispatch: AppDeps["engineDispatch"];
+  /** Follow-up dispatches staged in-transaction; flushed by the tx owner. */
+  engineDispatches: EngineDispatchBuffer;
   logger: AppDeps["logger"];
   pendingInteractions: AppDeps["pendingInteractions"];
 }
@@ -277,28 +277,17 @@ function appendThreadProvisioningEventToEnvironmentThreadsInTransaction(
 }
 
 function queueEnvironmentProvisionCommand(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch">,
   args: QueueEnvironmentProvisionCommandArgs,
-): string | null {
-  const session = getActiveSession(deps.db, args.environment.hostId);
-  if (!session || session.leaseExpiresAt <= Date.now()) {
-    return null;
-  }
-
-  const queuedCommand = queueCommand(deps.db, deps.hub, {
-    hostId: args.environment.hostId,
-    sessionId: session.id,
-    type: args.command.type,
-    payload: JSON.stringify(args.command),
-  });
-
+): string {
+  const commandId = createHostDaemonCommandId();
   markEnvironmentOperationRecordQueued(deps.db, {
     environmentId: args.environment.id,
     kind: args.kind,
-    commandId: queuedCommand.id,
+    commandId,
   });
-
-  return queuedCommand.id;
+  deps.engineDispatch.dispatch({ command: args.command, commandId });
+  return commandId;
 }
 
 function getActiveProvisionOperationByCommandId(
@@ -432,21 +421,6 @@ function resolveProvisionedEnvironmentBranchMetadata(
     baseBranch: null,
     mergeBaseBranch: null,
   };
-}
-
-function hasQueuedProvisionCommand(
-  deps: EnvironmentProvisionReadDeps,
-  commandId: string | null,
-): boolean {
-  if (!commandId) {
-    return false;
-  }
-
-  const command = getCommand(deps.db, commandId);
-  return (
-    command !== null &&
-    (command.state === "pending" || command.state === "fetched")
-  );
 }
 
 export function completeEnvironmentProvisioning(
@@ -752,7 +726,6 @@ export function settleEnvironmentProvisionCancelCommandResult(
                   stopRequestedAt: thread.stopRequestedAt,
                 },
                 {
-                  hostId: environment.hostId,
                   id: environment.id,
                 },
               );
@@ -769,15 +742,9 @@ export function settleEnvironmentProvisionCancelCommandResult(
     args.command.environmentId,
   );
   if (operation) {
-    if (operation.commandId !== null) {
-      cancelCommandInTransaction(args.deps.db, {
-        commandId: operation.commandId,
-        resultPayload: JSON.stringify({
-          errorCode: "environment_provision_cancelled",
-          errorMessage: "Environment provisioning was cancelled",
-        }),
-      });
-    }
+    // Cancelling the op record is the whole settlement now: the durable
+    // command row the daemon flow also cancelled no longer exists, and a
+    // late provision result is ignored because the op is no longer active.
     cancelEnvironmentOperationRecord(args.deps.db, {
       environmentId: operation.environmentId,
       kind: operation.kind,
@@ -869,7 +836,10 @@ export async function advanceEnvironmentProvisioning(
     return null;
   }
 
-  if (hasQueuedProvisionCommand(deps, operation.commandId)) {
+  // The in-flight registry is the re-dispatch guard (plan R9): without it the
+  // 10s provisioning sweep would re-dispatch a minutes-long provision every
+  // tick.
+  if (deps.engineDispatch.isCommandInFlight(operation.commandId)) {
     return operation.commandId;
   }
 
@@ -878,9 +848,6 @@ export async function advanceEnvironmentProvisioning(
     environmentProvisionRequestSchema,
   );
 
-  await ensureHostSessionReadyForWork(deps, {
-    hostId: environment.hostId,
-  });
   return queueEnvironmentProvisionCommand(deps, {
     command: request.command,
     environment,
@@ -946,10 +913,6 @@ export async function queueManagedEnvironmentReprovision(
     return MANAGED_REPROVISION_IN_PROGRESS;
   }
 
-  const hostSession = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.environment.hostId,
-  });
-
   const initiator = {
     threadId: args.threadId,
     provisioningId: args.provisioningId,
@@ -963,7 +926,7 @@ export async function queueManagedEnvironmentReprovision(
           targetPath:
             args.environment.path ??
             resolvePersonalTargetPath({
-              dataDir: hostSession.dataDir,
+              dataDir: deps.config.dataDir,
               environmentId: args.environment.id,
             }),
           workspaceProvisionType: provisionType,
@@ -977,7 +940,7 @@ export async function queueManagedEnvironmentReprovision(
           const targetPath =
             args.environment.path ??
             resolveManagedTargetPath({
-              dataDir: hostSession.dataDir,
+              dataDir: deps.config.dataDir,
               environmentId: args.environment.id,
               sourcePath: source.path,
             });

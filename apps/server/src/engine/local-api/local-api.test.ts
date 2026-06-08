@@ -28,9 +28,7 @@ function createLocalApiApp(
   const app = new Hono();
   registerLocalApiRoutes(app, {
     hostId: "host-1",
-    serverUrl: "http://server.test",
-    serverPort: 3334,
-    devAppPort: 5173,
+    resolveServerUrl: () => "http://server.test",
     ...overrides,
   });
   return app;
@@ -276,44 +274,6 @@ describe("local API routes", () => {
     expect(response.status).toBe(400);
   });
 
-  it("scopes the local-app CORS allowlist to the local-API routes", async () => {
-    const app = createLocalApiApp();
-    app.get("/elsewhere", (c) => c.json({ ok: true }));
-
-    const allowed = await app.request("/status", {
-      headers: { origin: "http://localhost:5173" },
-    });
-    expect(allowed.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:5173",
-    );
-
-    const denied = await app.request("/status", {
-      headers: { origin: "http://evil.test" },
-    });
-    expect(denied.headers.get("access-control-allow-origin")).toBeNull();
-
-    // Unlike the daemon's app-wide `use("*")`, the middleware must not leak
-    // onto the rest of the merged server app.
-    const outside = await app.request("/elsewhere", {
-      headers: { origin: "http://localhost:5173" },
-    });
-    expect(outside.headers.get("access-control-allow-origin")).toBeNull();
-  });
-
-  it("answers CORS preflight on path-scoped local-API routes", async () => {
-    const app = createLocalApiApp();
-
-    const preflight = await app.request("/open-in-target", {
-      method: "OPTIONS",
-      headers: {
-        origin: "http://localhost:5173",
-        "access-control-request-method": "POST",
-      },
-    });
-
-    expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:5173",
-    );
-  });
+  // CORS for these routes is the server app's own app-wide
+  // `buildLocalAppOrigins` policy (`createApp`) — covered at that level.
 });

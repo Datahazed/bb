@@ -8,7 +8,6 @@ import {
   getActiveStoredTurnId,
   getEnvironment,
   getThread,
-  hasPendingHostCommandForThread,
   listDueManagerThreadNudges,
 } from "@bb/db";
 import type {
@@ -32,7 +31,7 @@ import {
   queueTurnSubmitCommandInTransaction,
 } from "../threads/thread-commands.js";
 import { resolvePermissionEscalation } from "../threads/thread-runtime-config.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import type { EngineCommandEnvelope } from "../../engine/ports.js";
 import {
   computeNextScheduledTimeForExpressionSet,
   ScheduleValidationError,
@@ -52,7 +51,6 @@ export type DueManagerThreadNudgeRow = ReturnType<
 >[number];
 
 interface PendingTurnSubmitCommandArgs {
-  hostId: string;
   threadId: string;
 }
 
@@ -80,7 +78,6 @@ interface QueueDueNudgePreparation {
   input: PromptInput[];
   kind: "queue";
   preparedCommand: PreparedTurnSubmitCommandPayload;
-  sessionId: string;
   stateUpdate: ManagerDynamicFileDeliveryStateUpdate | null;
   targetIntent: NudgeTurnTargetIntent;
   thread: NudgeThread;
@@ -118,6 +115,7 @@ interface PendingTurnSubmitNudgeResult {
 }
 
 interface QueuedNudgeResult {
+  envelope: EngineCommandEnvelope;
   kind: "queued";
 }
 
@@ -302,7 +300,7 @@ function resetNudgeSweepBatchCache(cache: NudgeSweepCache): void {
 }
 
 function hasPendingTurnSubmitCommand(
-  db: DbConnection | DbTransaction,
+  engineDispatch: AppDeps["engineDispatch"],
   args: PendingTurnSubmitCommandArgs,
   cache?: NudgeSweepCache,
 ): boolean {
@@ -311,8 +309,7 @@ function hasPendingTurnSubmitCommand(
     return cached;
   }
 
-  const hasPending = hasPendingHostCommandForThread(db, {
-    hostId: args.hostId,
+  const hasPending = engineDispatch.hasInFlightThreadCommand({
     threadId: args.threadId,
     type: "turn.submit",
   });
@@ -404,9 +401,8 @@ async function prepareDueNudge(
 
   if (
     hasPendingTurnSubmitCommand(
-      deps.db,
+      deps.engineDispatch,
       {
-        hostId: environment.hostId,
         threadId: thread.id,
       },
       cache,
@@ -419,8 +415,7 @@ async function prepareDueNudge(
   }
 
   if (
-    hasPendingHostCommandForThread(deps.db, {
-      hostId: environment.hostId,
+    deps.engineDispatch.hasInFlightThreadCommand({
       threadId: thread.id,
       type: "thread.archive",
     })
@@ -432,9 +427,6 @@ async function prepareDueNudge(
   }
 
   try {
-    const session = await ensureHostSessionReadyForWork(deps, {
-      hostId: environment.hostId,
-    });
     const execution = await buildExecutionOptions(
       deps,
       {},
@@ -481,7 +473,6 @@ async function prepareDueNudge(
       input: preparedInput.input,
       kind: "queue",
       preparedCommand,
-      sessionId: session.id,
       stateUpdate: preparedInput.stateUpdate,
       targetIntent,
       thread,
@@ -505,6 +496,7 @@ async function prepareDueNudge(
 function queueDueNudgeInTransaction(
   tx: DbTransaction,
   args: {
+    engineDispatch: AppDeps["engineDispatch"];
     nudge: DueManagerThreadNudgeRow;
     now: number;
     nextFireAt: number;
@@ -512,8 +504,7 @@ function queueDueNudgeInTransaction(
   },
 ): QueueDueNudgeResult {
   if (
-    hasPendingTurnSubmitCommand(tx, {
-      hostId: args.preparation.environment.hostId,
+    hasPendingTurnSubmitCommand(args.engineDispatch, {
       threadId: args.preparation.thread.id,
     })
   ) {
@@ -532,8 +523,7 @@ function queueDueNudgeInTransaction(
   }
 
   if (
-    hasPendingHostCommandForThread(tx, {
-      hostId: args.preparation.environment.hostId,
+    args.engineDispatch.hasInFlightThreadCommand({
       threadId: args.preparation.thread.id,
       type: "thread.archive",
     })
@@ -569,17 +559,15 @@ function queueDueNudgeInTransaction(
     args.preparation.stateUpdate,
   );
 
-  queueTurnSubmitCommandInTransaction(tx, {
+  const envelope = queueTurnSubmitCommandInTransaction(tx, {
     command: addRequestIdToTurnSubmitCommandPayload({
       requestId: request.requestId,
       preparedCommand: args.preparation.preparedCommand,
     }),
-    hostId: args.preparation.environment.hostId,
     requestEventSequence: request.sequence,
-    sessionId: args.preparation.sessionId,
   });
 
-  return { kind: "queued" };
+  return { envelope, kind: "queued" };
 }
 
 async function runDueNudgeWithPreferencesLockHeld(
@@ -625,6 +613,7 @@ async function runDueNudgeWithPreferencesLockHeld(
   const transactionResult = deps.db.transaction(
     (tx) =>
       queueDueNudgeInTransaction(tx, {
+        engineDispatch: deps.engineDispatch,
         nudge,
         now,
         nextFireAt,
@@ -656,7 +645,7 @@ async function runDueNudgeWithPreferencesLockHeld(
   deps.hub.notifyThread(preparation.thread.id, ["events-appended"], {
     eventTypes: ["client/turn/requested"],
   });
-  deps.hub.notifyCommand(preparation.environment.hostId);
+  deps.engineDispatch.dispatch(transactionResult.envelope);
   tryTransition(deps.db, deps.hub, preparation.thread.id, "active");
 }
 

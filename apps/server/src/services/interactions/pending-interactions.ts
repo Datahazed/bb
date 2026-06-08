@@ -1,6 +1,5 @@
 import {
   createPendingInteraction,
-  deleteQueuedCommandInTransaction,
   getActivePendingInteractionForThread,
   getEnvironment,
   getPendingInteraction,
@@ -9,7 +8,6 @@ import {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
-  queueCommandInTransaction,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
   setPendingInteractionResolving,
@@ -72,7 +70,6 @@ interface ResolvePendingInteractionArgs {
 interface QueueInteractionResolutionCommandArgs {
   interaction: PendingInteraction;
   resolution: PendingInteractionResolution;
-  sessionId: string;
 }
 
 interface CompleteResolvingInteractionArgs {
@@ -163,6 +160,7 @@ interface InterruptPendingInteractionsForThreadIdsLifecycleArgs {
 
 interface CreateLifecycleDeps {
   db: AppDeps["db"];
+  engineDispatch: AppDeps["engineDispatch"];
   hub: AppDeps["hub"];
   logger: AppDeps["logger"];
 }
@@ -247,6 +245,7 @@ export class PendingInteractionLifecycle {
   constructor(args: PendingInteractionLifecycleArgs) {
     this.deps = {
       db: args.db,
+      engineDispatch: args.engineDispatch,
       hub: args.hub,
       logger: args.logger,
     };
@@ -418,7 +417,6 @@ export class PendingInteractionLifecycle {
     const updated = this.queueInteractionResolutionCommand({
       interaction: current,
       resolution: args.resolution,
-      sessionId: currentRow.sessionId,
     });
     if (!updated) {
       const latest = this.getThreadInteraction({
@@ -615,30 +613,19 @@ export class PendingInteractionLifecycle {
       resolution: args.resolution,
     });
     const resolutionJson = JSON.stringify(args.resolution);
-    const commandPayload = JSON.stringify(command);
-    const updated = this.deps.db.transaction((tx) => {
-      const queuedCommand = queueCommandInTransaction(tx, {
-        hostId: environment.hostId,
-        sessionId: args.sessionId,
-        type: command.type,
-        payload: commandPayload,
-      });
-      const resolving = setPendingInteractionResolving(tx, {
-        commandId: queuedCommand.id,
+    // Mark the row resolving BEFORE the dispatch fires, so the engine's
+    // settlement always finds the resolving row (write-then-execute, Phase 1
+    // dispatch shim). A lost race (another resolution already in flight)
+    // dispatches nothing.
+    const updated = this.deps.db.transaction((tx) =>
+      setPendingInteractionResolving(tx, {
         id: args.interaction.id,
         resolution: resolutionJson,
-      });
-      if (resolving) {
-        return resolving;
-      }
-      deleteQueuedCommandInTransaction(tx, {
-        commandId: queuedCommand.id,
-      });
-      return null;
-    });
+      }),
+    );
 
     if (updated) {
-      this.deps.hub.notifyCommand(environment.hostId);
+      this.deps.engineDispatch.dispatch({ command });
     }
 
     return updated;

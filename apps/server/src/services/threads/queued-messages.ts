@@ -20,7 +20,6 @@ import type {
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { scheduleAfterDaemonIngressResponse } from "../hosts/daemon-ingress-scheduler.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
@@ -187,7 +186,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   const environment = requireReadyThreadEnvironment(
     await requireThreadCommandEnvironment(deps, { thread }),
   );
-  ensureThreadNativeArchiveSettled(deps, { environment, thread });
+  ensureThreadNativeArchiveSettled(deps, { thread });
   const queuedMessage = toThreadQueuedMessage(args.queuedMessage);
   ensureThreadCanQueueStartRequest(deps, thread);
 
@@ -201,9 +200,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   const permissionEscalation = resolvePermissionEscalation({
     initiator: "user",
     thread,
-  });
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: environment.hostId,
   });
   return await withManagerPreferencesDeliveryLock({ thread }, async () => {
     const preparedInput = await prependManagerPreferencesSystemMessageIfChanged(
@@ -231,7 +227,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
           claimToken: args.queuedMessage.claimToken,
         });
         if (!consumed) {
-          return false;
+          return null;
         }
         const request = appendClientTurnEventInTransaction(tx, {
           environmentId: thread.environmentId,
@@ -263,14 +259,12 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
           requestId: request.requestId,
           preparedCommand,
         });
-        queueTurnSubmitCommandInTransaction(tx, {
+        const envelope = queueTurnSubmitCommandInTransaction(tx, {
           command,
-          hostId: environment.hostId,
           requestEventSequence: request.sequence,
-          sessionId: session.id,
         });
         tryTransitionInTransaction(tx, deps.hub, thread.id, "active");
-        return true;
+        return envelope;
       },
       { behavior: "immediate" },
     );
@@ -285,7 +279,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         eventTypes: ["client/turn/requested"],
       },
     );
-    deps.hub.notifyCommand(environment.hostId);
+    deps.engineDispatch.dispatch(sent);
     return queuedMessage;
   });
 }

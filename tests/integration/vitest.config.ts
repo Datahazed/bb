@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { workspaceTestAliases } from "../../vitest.workspace-aliases.js";
 
 const parsedTimeoutScale = Number(process.env.BB_TEST_TIMEOUT_SCALE ?? 1);
@@ -19,6 +19,12 @@ export default defineConfig({
     globalSetup: ["./global-setup.ts"],
     hookTimeout: Math.ceil(60_000 * timeoutScale),
     include: ["fake/**/*.test.ts"],
+    // Quarantined: the recovery suite tests daemon crash/restart/offline-queue
+    // semantics that died with the two-process split. Phase 2 of the
+    // single-host rebuild rewrites it as boot-reconciliation tests
+    // (plans/single-host-rebuild.md §6 Phase 2). Also excluded from typecheck
+    // in tsconfig.json.
+    exclude: [...configDefaults.exclude, "fake/recovery/**"],
     name: "@bb/integration-tests",
     env: {
       BB_DATA_DIR: "/tmp/bb-integration-test",

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,31 +10,29 @@ import {
 } from "@bb/agent-runtime/test";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
-import {
-  acquireDaemonLock,
-  createHostDaemonApp,
-  loadHostIdentity,
-  persistHostId,
-  type HostDaemon,
-  type HostDaemonApp,
-} from "@bb/host-daemon/test";
-import { createHostDaemonClient } from "@bb/host-daemon-contract";
-import { createHostWatcher } from "@bb/host-watcher";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
+import type { Engine } from "../../../apps/server/src/engine/core/engine.js";
+import {
+  startServerEngine,
+  type ServerEngine,
+} from "../../../apps/server/src/services/engine/server-engine.js";
+import { LOCAL_HOST_ID } from "../../../apps/server/src/services/hosts/local-host.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
 import type {
+  AppDeps,
   ServerLogger,
   ServerRuntimeConfig,
 } from "../../../apps/server/src/types.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
+import { RecordingEngineCommandDispatcher } from "./engine-commands.js";
 import { removePathWithRetry } from "./remove-path.js";
 import { createTestGitRepo } from "./seed.js";
 
@@ -43,14 +40,11 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const HARNESS_DAEMON_START_RETRY_DELAY_MS = 50;
-const HARNESS_DAEMON_START_MAX_ATTEMPTS = 2;
 const TEST_SERVER_HOST = "127.0.0.1";
 
 let loadedProjectEnvPath: string | null | undefined;
 
 type PublicApiClient = ReturnType<typeof createPublicApiClient>;
-type InternalHostDaemonClient = ReturnType<typeof createHostDaemonClient>;
 
 const testLogger: ServerLogger = {
   debug(): void {},
@@ -65,34 +59,31 @@ export interface RunningTestServer {
   config: ServerRuntimeConfig;
   db: DbConnection;
   hub: NotificationHub;
-  machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
 }
 
 export interface IntegrationHarness {
   api: PublicApiClient;
   cleanup(): Promise<void>;
-  crashDaemon(): Promise<void>;
-  daemon: HostDaemon;
-  daemonApp: HostDaemonApp;
-  daemonDataDir: string;
   db: DbConnection;
+  /** The in-process engine (runtime manager, lane router, terminals). */
+  engine: Engine;
+  /**
+   * The server's dispatch shim, wrapped to record every dispatched engine
+   * command — the observation seam that replaced the durable-queue rows.
+   */
+  engineDispatch: RecordingEngineCommandDispatcher;
+  /** Always `'local'` — the single synthetic host (plan Decision 4). */
   hostId: string;
   hub: NotificationHub;
-  internal: InternalHostDaemonClient;
   /**
-   * Base URL of the daemon's local API (the :38887 surface in production).
-   * Reads the live daemon's bound port on every call — `restartDaemon`
-   * re-binds port 0 to a new port, so the URL must never be snapshotted.
-   * This is the one place Phase 1 of the single-host rebuild repoints to
-   * `serverUrl` when the local API merges into the server.
+   * Base URL of the local API (the :38887 surface in production). The merged
+   * server serves it from its own port at root paths (plan §4.3, Decision 5),
+   * so this is simply the server's base URL.
    */
   localApiBaseUrl(): string;
   repoDir: string;
-  restartDaemon(reason?: string): Promise<void>;
   server: RunningTestServer;
   serverUrl: string;
-  shutdownDaemon(reason?: string): Promise<void>;
-  startDaemon(): Promise<void>;
   threadStorageRootPath: string;
 }
 
@@ -105,16 +96,14 @@ export type WithHarnessCallback<T> = (
 ) => Promise<T>;
 type WithHarnessInvocation<T> = CreateHarnessOptions | WithHarnessCallback<T>;
 
-interface HarnessDaemonResources {
-  daemon: HostDaemon;
-  daemonApp: HostDaemonApp;
-  hostId: string;
-  hostKey: string;
-  releaseLock: () => Promise<void>;
-}
-
 interface ListeningAddress {
   port: number;
+}
+
+interface StartedIntegrationServer {
+  server: RunningTestServer;
+  deps: AppDeps;
+  engineDispatch: RecordingEngineCommandDispatcher;
 }
 
 function requireListeningAddress(
@@ -141,13 +130,6 @@ function resolveAdapterFactory(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error;
-}
-
-function isRetryableSessionOpenFailure(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.startsWith("Failed to open session: 401 Unauthorized")
-  );
 }
 
 async function resolveProjectEnvCandidates(): Promise<string[]> {
@@ -203,35 +185,33 @@ export async function loadProjectEnvFile(): Promise<string | null> {
 }
 
 async function startIntegrationServer(
-  tmpRoot: string,
+  dataDir: string,
   threadStorageRootPath: string,
-  options: CreateHarnessOptions,
-): Promise<RunningTestServer> {
-  const serverDataDir = path.join(tmpRoot, "server-data");
-  await fs.mkdir(serverDataDir, { recursive: true });
+): Promise<StartedIntegrationServer> {
+  await fs.mkdir(dataDir, { recursive: true });
 
   const db = initDb(":memory:");
   const hub = new NotificationHub();
+  // Created unbound (it sits on AppDeps); bound to the engine's router by
+  // startServerEngine below, once the port is known.
+  const engineDispatch = new RecordingEngineCommandDispatcher();
   const pendingInteractions = new PendingInteractionLifecycle({
     db,
+    engineDispatch,
     hub,
     logger: testLogger,
   });
   const terminalSessions = new TerminalSessionLifecycle({
-    attachTimeoutMs: 50,
     db,
     hub,
-    logger: testLogger,
-    openTimeoutMs: 50,
   });
   pendingInteractions.start();
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
-    builtinSkillsRootPath: path.join(serverDataDir, "builtin-skills"),
+    builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
     customModels: [],
-    dataDir: serverDataDir,
+    dataDir,
     featureFlags: defaultFeatureFlags,
-    hostDaemonPort: 3001,
     inferenceModel: "test/mock-model",
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
@@ -241,7 +221,7 @@ async function startIntegrationServer(
     isDevelopment: false,
   };
   const machineAuth = await createMachineAuthService({
-    dataDir: serverDataDir,
+    dataDir,
     db,
     logger: testLogger,
   });
@@ -256,17 +236,21 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
-  const { app, injectWebSocket } = createApp({
-    appVersion,
-    bbAppManagedConfig,
+  const appDeps: AppDeps = {
     config,
     db,
+    engineDispatch,
     hub,
     lifecycleDedupers,
     logger: testLogger,
     machineAuth,
     pendingInteractions,
     terminalSessions,
+  };
+  const { app, closeWebSockets, injectWebSocket } = createApp({
+    ...appDeps,
+    appVersion,
+    bbAppManagedConfig,
   });
 
   let addressInfo: ListeningAddress | null = null;
@@ -295,108 +279,49 @@ async function startIntegrationServer(
   const baseUrl = `http://${TEST_SERVER_HOST}:${port}`;
 
   return {
-    baseUrl,
-    config,
-    db,
-    hub,
-    machineAuth,
-    async close(): Promise<void> {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
+    deps: appDeps,
+    engineDispatch,
+    server: {
+      baseUrl,
+      config,
+      db,
+      hub,
+      async close(): Promise<void> {
+        const closeServer = new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
         });
-      });
+        await closeWebSockets();
+        await closeServer;
+      },
     },
   };
 }
 
-async function startHarnessDaemon(
-  dataDir: string,
-  server: RunningTestServer,
-  threadStorageRootPath: string,
+async function startHarnessEngine(
+  started: StartedIntegrationServer,
   options: CreateHarnessOptions,
-): Promise<HarnessDaemonResources> {
-  const releaseLock = await acquireDaemonLock(dataDir);
-
-  try {
-    const identity = await loadHostIdentity({ dataDir });
-    const hostKey = await server.machineAuth.issueDaemonHostKey({
-      hostId: identity.hostId,
-      hostType: "persistent",
-    });
-    // The harness issues an in-memory host key instead of running persistent
-    // enrollment. Once that succeeds, persist the generated host ID so daemon
-    // restarts stay attached to the same host.
-    await persistHostId({ dataDir, hostId: identity.hostId });
-    const adapterFactory = resolveAdapterFactory(options);
-    const hostWatcher = await createHostWatcher({ hostType: "persistent" });
-    const daemonApp = await createHostDaemonApp({
-      createRuntime: adapterFactory
-        ? (runtimeOptions) =>
+): Promise<ServerEngine> {
+  const adapterFactory = resolveAdapterFactory(options);
+  return startServerEngine({
+    deps: started.deps,
+    serverPort: started.server.config.serverPort,
+    serverUrl: started.server.baseUrl,
+    ...(adapterFactory
+      ? {
+          createRuntime: (runtimeOptions) =>
             createAgentRuntimeWithAdapters({
               ...runtimeOptions,
               adapterFactory,
-            })
-        : undefined,
-      dataDir,
-      hostKey,
-      hostId: identity.hostId,
-      hostName: identity.hostName,
-      hostType: "persistent",
-      hostWatcher,
-      instanceId: randomUUID(),
-      // Bind the daemon local API (the :38887 surface in production) on an
-      // ephemeral loopback port so contract tests can exercise it. Tests must
-      // resolve its base URL through `harness.localApiBaseUrl()` — the single
-      // retarget point when the local API merges into the server (single-host
-      // rebuild plan §6 Phase 1).
-      localApiConfig: {
-        bindHost: "127.0.0.1",
-        healthPath: "/health",
-        healthValue: "ok",
-        mode: "full",
-        port: 0,
-      },
-      logger: testLogger,
-      releaseLock,
-      serverUrl: server.baseUrl,
-      threadStorageRootPath,
-    });
-    for (
-      let attempt = 1;
-      attempt <= HARNESS_DAEMON_START_MAX_ATTEMPTS;
-      attempt += 1
-    ) {
-      try {
-        await daemonApp.daemon.start();
-        break;
-      } catch (error) {
-        if (
-          attempt === HARNESS_DAEMON_START_MAX_ATTEMPTS ||
-          !isRetryableSessionOpenFailure(error)
-        ) {
-          throw error;
+            }),
         }
-        await new Promise((resolve) =>
-          setTimeout(resolve, HARNESS_DAEMON_START_RETRY_DELAY_MS),
-        );
-      }
-    }
-    return {
-      daemon: daemonApp.daemon,
-      daemonApp,
-      hostId: identity.hostId,
-      hostKey,
-      releaseLock,
-    };
-  } catch (error) {
-    await releaseLock().catch(() => undefined);
-    throw error;
-  }
+      : {}),
+  });
 }
 
 export async function createIntegrationHarness(
@@ -410,97 +335,16 @@ export async function createIntegrationHarness(
     "utf8",
   );
   const reposRoot = path.join(tmpRoot, "repos");
-  const daemonDataDir = path.join(tmpRoot, "daemon-data");
-  const threadStorageRootPath = path.join(daemonDataDir, "thread-storage");
+  const dataDir = path.join(tmpRoot, "data");
+  const threadStorageRootPath = path.join(dataDir, "thread-storage");
   await fs.mkdir(threadStorageRootPath, { recursive: true });
   const repoDir = await createTestGitRepo({
     repoDir: path.join(reposRoot, "test-project"),
   });
 
-  let server: RunningTestServer | null = null;
-  let daemonResources: HarnessDaemonResources | null = null;
+  let started: StartedIntegrationServer | null = null;
+  let serverEngine: ServerEngine | null = null;
   let cleanedUp = false;
-  let harness: IntegrationHarness | null = null;
-
-  async function startDaemon(): Promise<void> {
-    if (!server) {
-      throw new Error("Server has not been started");
-    }
-    if (!harness) {
-      throw new Error("Harness has not been initialized");
-    }
-    if (daemonResources) {
-      return;
-    }
-
-    daemonResources = await startHarnessDaemon(
-      daemonDataDir,
-      server,
-      threadStorageRootPath,
-      options,
-    );
-    if (daemonResources.hostId !== harness.hostId) {
-      const mismatchedResources = daemonResources;
-      daemonResources = null;
-      await mismatchedResources.daemon
-        .shutdown("integration-host-id-mismatch")
-        .catch(() => undefined);
-      throw new Error(
-        `Restarted daemon host ID ${mismatchedResources.hostId} did not match existing harness host ID ${harness.hostId}`,
-      );
-    }
-    harness.daemon = daemonResources.daemon;
-    harness.daemonApp = daemonResources.daemonApp;
-    harness.hostId = daemonResources.hostId;
-    harness.internal = createHostDaemonClient(
-      server.baseUrl,
-      daemonResources.hostKey,
-    );
-    await waitForHostConnected(harness.api);
-  }
-
-  async function shutdownDaemon(
-    reason = "integration-shutdown",
-  ): Promise<void> {
-    if (!daemonResources) {
-      return;
-    }
-    const currentResources = daemonResources;
-    daemonResources = null;
-    await currentResources.daemon.shutdown(reason);
-  }
-
-  async function restartDaemon(reason = "integration-restart"): Promise<void> {
-    await shutdownDaemon(reason);
-    await startDaemon();
-  }
-
-  async function crashDaemon(): Promise<void> {
-    if (!daemonResources) {
-      return;
-    }
-    const currentResources = daemonResources;
-    daemonResources = null;
-    await currentResources.daemonApp.connection
-      .shutdown()
-      .catch(() => undefined);
-    await currentResources.daemonApp.localApi?.close().catch(() => undefined);
-    await currentResources.daemonApp.runtimeManager
-      .shutdownAll()
-      .catch(() => undefined);
-    await currentResources.daemonApp.eventBuffer
-      .dispose()
-      .catch(() => undefined);
-    await currentResources.releaseLock().catch(() => undefined);
-  }
-
-  function localApiBaseUrl(): string {
-    const localApi = daemonResources?.daemonApp.localApi;
-    if (!localApi) {
-      throw new Error("Daemon local API is not running");
-    }
-    return `http://${localApi.bindHost}:${localApi.port}`;
-  }
 
   async function cleanup(): Promise<void> {
     if (cleanedUp) {
@@ -508,48 +352,32 @@ export async function createIntegrationHarness(
     }
     cleanedUp = true;
 
-    await shutdownDaemon("integration-cleanup").catch(() => undefined);
-    await server?.close().catch(() => undefined);
+    await started?.server.close().catch(() => undefined);
+    await serverEngine?.shutdown().catch(() => undefined);
     await removePathWithRetry(tmpRoot);
   }
 
   try {
-    server = await startIntegrationServer(
-      tmpRoot,
-      threadStorageRootPath,
-      options,
-    );
-    const api = createPublicApiClient(server.baseUrl);
-    daemonResources = await startHarnessDaemon(
-      daemonDataDir,
-      server,
-      threadStorageRootPath,
-      options,
-    );
+    started = await startIntegrationServer(dataDir, threadStorageRootPath);
+    serverEngine = await startHarnessEngine(started, options);
+    const runningServer = started.server;
+    const api = createPublicApiClient(runningServer.baseUrl);
     await waitForHostConnected(api);
 
-    harness = {
+    return {
       api,
       cleanup,
-      crashDaemon,
-      daemon: daemonResources.daemon,
-      daemonApp: daemonResources.daemonApp,
-      daemonDataDir,
-      db: server.db,
-      hostId: daemonResources.hostId,
-      hub: server.hub,
-      internal: createHostDaemonClient(server.baseUrl, daemonResources.hostKey),
-      localApiBaseUrl,
+      db: runningServer.db,
+      engine: serverEngine.engine,
+      engineDispatch: started.engineDispatch,
+      hostId: LOCAL_HOST_ID,
+      hub: runningServer.hub,
+      localApiBaseUrl: () => runningServer.baseUrl,
       repoDir,
-      restartDaemon,
-      server,
-      serverUrl: server.baseUrl,
-      shutdownDaemon,
-      startDaemon,
+      server: runningServer,
+      serverUrl: runningServer.baseUrl,
       threadStorageRootPath,
     };
-
-    return harness;
   } catch (error) {
     await cleanup();
     throw error;

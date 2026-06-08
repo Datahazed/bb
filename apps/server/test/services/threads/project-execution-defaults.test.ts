@@ -71,9 +71,7 @@ describe("project execution defaults persistence", () => {
 
   it("does overwrite project defaults for a regular app thread (non-reuse env)", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-non-reuse-defaults",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });

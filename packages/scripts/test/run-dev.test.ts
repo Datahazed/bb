@@ -105,7 +105,6 @@ describe("run-dev", () => {
         "dev",
         "--filter=@bb/app",
         "--filter=@bb/server",
-        "--filter=@bb/host-daemon",
         "--filter=@bb/dev-env",
         "--ui",
         "tui",

@@ -34,7 +34,6 @@ import {
   requestEnvironmentReprovision,
 } from "../environments/environment-provisioning-internal.js";
 import { buildDirectEnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
@@ -813,30 +812,24 @@ async function resolveEnvironmentCreationPlan(
         intent: args.intent,
         thread: args.thread,
       });
-    case "direct-managed": {
-      const hostSession = await ensureHostSessionReadyForWork(deps, {
-        hostId: args.intent.hostId,
-      });
+    case "direct-managed":
+      // Managed workspaces land under the server's own data dir — the
+      // daemon-session dataDir died with the transport (merged dirs, plan §3).
       return buildManagedEnvironmentPlan({
-        dataDir: hostSession.dataDir,
+        dataDir: deps.config.dataDir,
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
         baseBranch: args.intent.baseBranch,
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });
-    }
-    case "direct-personal": {
-      const hostSession = await ensureHostSessionReadyForWork(deps, {
-        hostId: args.intent.hostId,
-      });
+    case "direct-personal":
       return buildPersonalEnvironmentPlan({
-        dataDir: hostSession.dataDir,
+        dataDir: deps.config.dataDir,
         hostId: args.intent.hostId,
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });
-    }
   }
   const _exhaustive: never = args.intent;
   return _exhaustive;

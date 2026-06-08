@@ -14,7 +14,6 @@ import {
   MANAGED_REPROVISION_QUEUED,
   queueManagedEnvironmentReprovision,
 } from "../environments/environment-provisioning-internal.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import { requestThreadReprovision } from "./thread-provisioning.js";
@@ -84,10 +83,6 @@ export async function queueTurnDuringReprovision(
       "Environment is already provisioning",
     );
   }
-  await ensureHostSessionReadyForWork(args.deps, {
-    hostId: args.environment.hostId,
-  });
-
   if (args.thread.status === "idle") {
     tryTransition(args.deps.db, args.deps.hub, args.thread.id, "provisioning");
   }

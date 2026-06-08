@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
-  closeSession,
   createConnection,
   createEnvironment,
   createProject,
@@ -16,7 +15,6 @@ import {
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
 import type { Thread, ThreadRuntimeState } from "@bb/domain";
-import { DAEMON_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -31,12 +29,6 @@ interface OpenTestSessionArgs {
   db: DbConnection;
   hostId: string;
   leaseExpiresAt?: number;
-}
-
-interface CloseTestSessionArgs {
-  closedAt: number;
-  db: DbConnection;
-  sessionId: string;
 }
 
 interface CreateThreadWithEnvironmentArgs {
@@ -87,18 +79,6 @@ function openTestSession(args: OpenTestSessionArgs) {
   }
 
   return session;
-}
-
-function closeTestSession(args: CloseTestSessionArgs): void {
-  closeSession(args.db, noopNotifier, args.sessionId, "daemon-disconnect");
-  args.db
-    .update(hostDaemonSessions)
-    .set({
-      closedAt: args.closedAt,
-      updatedAt: args.closedAt,
-    })
-    .where(eq(hostDaemonSessions.id, args.sessionId))
-    .run();
 }
 
 function createThreadWithEnvironment(args: CreateThreadWithEnvironmentArgs) {
@@ -159,48 +139,6 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
-    } satisfies ThreadRuntimeState);
-  });
-
-  it("shows host-reconnecting while a daemon disconnect is inside the grace period", () => {
-    const { db, hostId } = setup();
-    const now = 10_000;
-    const session = openTestSession({ db, hostId });
-    closeTestSession({
-      closedAt: now - 1_000,
-      db,
-      sessionId: session.id,
-    });
-
-    expect(
-      resolveThreadRuntimeState(
-        { db },
-        { environmentHostId: hostId, now, status: "active" },
-      ),
-    ).toEqual({
-      displayStatus: "host-reconnecting",
-      hostReconnectGraceExpiresAt: now - 1_000 + DAEMON_DISCONNECT_GRACE_MS,
-    } satisfies ThreadRuntimeState);
-  });
-
-  it("shows waiting-for-host after the daemon disconnect grace period expires", () => {
-    const { db, hostId } = setup();
-    const now = 10_000;
-    const session = openTestSession({ db, hostId });
-    closeTestSession({
-      closedAt: now - DAEMON_DISCONNECT_GRACE_MS - 1,
-      db,
-      sessionId: session.id,
-    });
-
-    expect(
-      resolveThreadRuntimeState(
-        { db },
-        { environmentHostId: hostId, now, status: "active" },
-      ),
-    ).toEqual({
-      displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
   });

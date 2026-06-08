@@ -4,7 +4,6 @@ import {
   getClientTurnRequest,
   getThread,
   listEvents,
-  hostDaemonCommands,
 } from "@bb/db";
 import {
   backgroundTaskItemStatus,
@@ -18,7 +17,6 @@ import type {
   BackgroundTaskStatus,
   ProviderTurnWatchdogThreadScopedActivityEventType,
 } from "@bb/domain";
-import { desc } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   runProviderTurnWatchdogSweep,
@@ -263,13 +261,7 @@ describe("provider turn watchdog", () => {
 
       expect(result.interruptedThreadIds).toEqual([]);
       expect(listWatchdogEvents(context)).toHaveLength(0);
-      expect(
-        context.harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .orderBy(desc(hostDaemonCommands.createdAt))
-          .all(),
-      ).toHaveLength(0);
+      expect(context.harness.engineRouting.dispatched).toHaveLength(0);
     } finally {
       await context.harness.cleanup();
     }

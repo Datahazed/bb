@@ -12,8 +12,8 @@ import {
   createReadyHostThread,
   createReadyReuseThread,
 } from "../../helpers/fixtures.js";
+import { countDispatchedCommandsByType } from "../../helpers/engine-commands.js";
 import { withHarness } from "../../helpers/harness.js";
-import { countQueuedCommandsByType } from "../../helpers/queries.js";
 import {
   ACTIVE_TIMEOUT_MS,
   assertEventsBelongToThread,
@@ -273,7 +273,10 @@ describe.sequential(
         );
 
         expect(
-          countQueuedCommandsByType(harness.db, "environment.destroy"),
+          countDispatchedCommandsByType(
+            harness.engineDispatch,
+            "environment.destroy",
+          ),
         ).toBe(0);
 
         const environment = await getEnvironment(

@@ -9,7 +9,9 @@ import {
   type BuildLocalAppOriginsArgs,
 } from "@bb/config/local-app-origins";
 import type { AppDeps, ServerAppDeps } from "./types.js";
+import { registerLocalApiRoutes } from "./engine/local-api/local-api.js";
 import { ApiError, errorToResponse } from "./errors.js";
+import { LOCAL_HOST_ID } from "./services/hosts/local-host.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerGlobalAppRoutes } from "./routes/apps.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
@@ -19,30 +21,12 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
-import { registerInternalCommandRoutes } from "./internal/commands.js";
-import { registerInternalCommandResultRoutes } from "./internal/command-result-route.js";
-import { registerInternalAppDataChangeRoutes } from "./internal/app-data-changes.js";
-import { registerInternalEventRoutes } from "./internal/events.js";
-import { registerInternalHostRoutes } from "./internal/hosts.js";
-import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
-import { registerInternalSessionRoutes } from "./internal/session.js";
-import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
-import {
-  setAuthenticatedDaemon,
-  verifyAuthenticatedDaemon,
-} from "./internal/auth.js";
 import { captureTrustedRemoteAddress } from "./request-context.js";
 import {
   onClientSocketClose,
   onClientSocketMessage,
   onClientSocketOpen,
 } from "./ws/client-protocol.js";
-import {
-  onDaemonSocketClose,
-  onDaemonSocketMessage,
-  onDaemonSocketOpen,
-  validateDaemonWebSocket,
-} from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "./services/lib/duration.js";
 import {
   onTerminalSocketClose,
@@ -64,23 +48,6 @@ interface CloseWebSocketServerArgs {
   forceCloseAfterMs: number;
   reason: string;
   server: NodeWebSocketServer;
-}
-
-function unauthorizedResponse(): Response {
-  return new Response(
-    JSON.stringify({ code: "unauthorized", message: "Unauthorized" }),
-    {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    },
-  );
-}
-
-function normalizeInternalAuthPath(path: string): string {
-  if (path === "/") {
-    return path;
-  }
-  return path.replace(/\/+$/u, "");
 }
 
 interface CreateAppOptions {
@@ -224,31 +191,12 @@ export function createApp(
     }
     return next();
   });
-  app.use("/internal/*", async (context, next) => {
-    const normalizedPath = normalizeInternalAuthPath(context.req.path);
-    if (normalizedPath === "/internal/hosts/enroll") {
-      return next();
-    }
-    if (normalizedPath === "/internal/ws") {
-      return next();
-    }
-    try {
-      const daemon = await verifyAuthenticatedDaemon(
-        deps,
-        context.req.header("authorization"),
-      );
-      setAuthenticatedDaemon(context, daemon);
-    } catch {
-      return unauthorizedResponse();
-    }
-    return next();
-  });
   const publicApi = new Hono();
   registerGlobalAppRoutes(publicApi, deps);
   registerProjectRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
-  registerHostRoutes(publicApi, deps);
+  registerHostRoutes(publicApi);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
@@ -258,16 +206,23 @@ export function createApp(
     throw new ApiError(404, "not_found", "Not found");
   });
 
-  const internalApi = new Hono();
-  registerInternalHostRoutes(internalApi, deps);
-  registerInternalSessionRoutes(internalApi, deps);
-  registerInternalCommandRoutes(internalApi, deps);
-  registerInternalCommandResultRoutes(internalApi, deps);
-  registerInternalAppDataChangeRoutes(internalApi, deps);
-  registerInternalEventRoutes(internalApi, deps);
-  registerInternalToolCallRoutes(internalApi, deps);
-  registerInternalInteractiveRequestRoutes(internalApi, deps);
-  app.route("/internal", internalApi);
+  // The daemon transport is unmounted (plan §6 Phase 1): /internal/* routes
+  // and the daemon WS protocol no longer exist at runtime. Their modules
+  // survive compiling until P1c deletes them.
+
+  // The former :38887 daemon local API, served from the server's own port at
+  // root paths (plan §4.3, Decision 5). MUST register before the SPA
+  // `app.get("*")` catch-all below — Hono dispatch is registration-order
+  // dependent, and the frozen FE treats a 200+HTML answer on `/status` as
+  // "no daemon" with zero error surfaced (plan R1). The daemon's text
+  // `GET /health` is deliberately not mounted: the server's JSON
+  // `/health {ok:true}` wins (desktop probe, plan §4.4). CORS for these
+  // paths is the app-wide `buildLocalAppOrigins` policy above.
+  registerLocalApiRoutes(app, {
+    hostId: LOCAL_HOST_ID,
+    // Lazy: the test harnesses patch `config.serverPort` after binding port 0.
+    resolveServerUrl: () => `http://127.0.0.1:${deps.config.serverPort}`,
+  });
 
   app.get(
     "/ws",
@@ -303,32 +258,6 @@ export function createApp(
             socket,
             terminalId,
           }),
-      };
-    }),
-  );
-
-  app.get(
-    "/internal/ws",
-    upgradeWebSocket(async (context) => {
-      const websocketContext = await validateDaemonWebSocket(deps, {
-        authorizationHeader: context.req.header("authorization"),
-        protocolHeader: context.req.header("sec-websocket-protocol"),
-        sessionId: context.req.query("sessionId") ?? null,
-      });
-      return {
-        onOpen: (_event, socket) =>
-          onDaemonSocketOpen(deps, {
-            ...websocketContext,
-            socket,
-          }),
-        onMessage: (event, socket) =>
-          onDaemonSocketMessage(deps, {
-            hostId: websocketContext.hostId,
-            raw: event.data,
-            sessionId: websocketContext.sessionId,
-            socket,
-          }),
-        onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
       };
     }),
   );

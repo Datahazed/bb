@@ -10,11 +10,13 @@ import { readEnvVarWithDefault, resolveEnvLoader } from "./env.js";
 import {
   BB_APP_URL_ENV,
   BB_APP_VERSION_ENV,
+  BB_DEV_REPLAY_CAPTURE_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INFERENCE_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_VERSION,
+  DEFAULT_BB_DEV_REPLAY_CAPTURE,
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE,
   DEFAULT_BB_TRANSCRIPTION,
@@ -31,6 +33,8 @@ export interface ServerConfig
   BB_APP_URL: string;
   BB_APP_VERSION: string;
   BB_DEV_APP_PORT?: number;
+  /** Dev replay capture, consumed by the in-process engine (single-host plan §2 Decision 12). */
+  BB_DEV_REPLAY_CAPTURE: boolean;
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INFERENCE: string;
@@ -83,6 +87,12 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_APP_VERSION,
       definition: BB_APP_VERSION_ENV,
+      env: loader.env,
+    }),
+    BB_DEV_REPLAY_CAPTURE: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_DEV_REPLAY_CAPTURE,
+      definition: BB_DEV_REPLAY_CAPTURE_ENV,
       env: loader.env,
     }),
     BB_EXTERNAL_URL: readEnvVarWithDefault({

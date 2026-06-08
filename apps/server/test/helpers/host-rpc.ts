@@ -1,17 +1,18 @@
-import {
-  hostDaemonOnlineRpcResponseMessageSchema,
-  hostDaemonServerWsMessageSchema,
-  type HostDaemonOnlineRpcRequestMessage,
-  type HostDaemonOnlineRpcResponseMessage,
-  type HostDaemonOnlineRpcResult,
-} from "@bb/host-daemon-contract";
+/**
+ * Engine-seam online-RPC responders: bind a handler on the harness's
+ * `TestEngineRouting` (the in-process replacement for the daemon's RPC
+ * socket). While a responder is registered, RPCs are answered inline from
+ * `handle`; unregistering restores the default capture behavior
+ * (`pendingOnlineRpcs` + `reportQueuedCommandSuccess`).
+ */
 import type { AvailableModel, ProviderInfo } from "@bb/domain";
+import type {
+  HostDaemonOnlineRpcCommand,
+  HostDaemonOnlineRpcResult,
+  HostDaemonOnlineRpcResultForCommand,
+} from "@bb/host-daemon-contract";
+import { hostDaemonOnlineRpcResultSchemaByType } from "@bb/host-daemon-contract";
 import type { TestAppHarness } from "./test-app.js";
-
-interface TestHostRpcSocket {
-  close(code?: number, reason?: string): void;
-  send(data: string): void;
-}
 
 interface ProviderModelResponse {
   models: AvailableModel[];
@@ -23,17 +24,14 @@ interface ProviderModelError {
   errorMessage: string;
 }
 
+export interface CapturedOnlineRpcRequest {
+  command: HostDaemonOnlineRpcCommand;
+}
+
 export interface RegisterProviderHostRpcArgs {
-  hostId: string;
   modelErrorsByProviderId?: Record<string, ProviderModelError>;
   modelsByProviderId?: Record<string, ProviderModelResponse>;
   providers: ProviderInfo[];
-  sessionId: string;
-}
-
-export interface ProviderHostRpcResponder {
-  requests: HostDaemonOnlineRpcRequestMessage[];
-  unregister(): void;
 }
 
 export type HostRpcHandlerResult =
@@ -48,46 +46,31 @@ export type HostRpcHandlerResult =
     };
 
 export interface RegisterHostRpcResponderArgs {
-  handle: (request: HostDaemonOnlineRpcRequestMessage) => HostRpcHandlerResult;
-  hostId: string;
-  sessionId: string;
+  handle: (request: CapturedOnlineRpcRequest) => HostRpcHandlerResult;
 }
 
 export interface HostRpcResponder {
-  requests: HostDaemonOnlineRpcRequestMessage[];
+  requests: CapturedOnlineRpcRequest[];
   unregister(): void;
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+export type ProviderHostRpcResponder = HostRpcResponder;
+
+class HostRpcResponderError extends Error {
+  readonly code: string;
+
+  constructor(args: { errorCode: string; errorMessage: string }) {
+    super(args.errorMessage);
+    this.code = args.errorCode;
+  }
 }
 
-function buildTestFailureResponse(
-  request: HostDaemonOnlineRpcRequestMessage,
-  error: unknown,
-): HostDaemonOnlineRpcResponseMessage {
-  return {
-    type: "host-rpc.response",
-    requestId: request.requestId,
-    commandType: request.command.type,
-    ok: false,
-    errorCode: "test_rpc_error",
-    errorMessage: toErrorMessage(error),
-  };
-}
-
-function buildProviderRpcResponse(
+function buildProviderRpcResult(
   args: RegisterProviderHostRpcArgs,
-  request: HostDaemonOnlineRpcRequestMessage,
-): HostDaemonOnlineRpcResponseMessage {
+  request: CapturedOnlineRpcRequest,
+): HostRpcHandlerResult {
   if (request.command.type === "provider.list") {
-    return {
-      type: "host-rpc.response",
-      requestId: request.requestId,
-      commandType: request.command.type,
-      ok: true,
-      result: { providers: args.providers },
-    };
+    return { ok: true, result: { providers: args.providers } };
   }
   if (request.command.type !== "provider.list_models") {
     throw new Error(`Unexpected provider RPC command ${request.command.type}`);
@@ -97,48 +80,18 @@ function buildProviderRpcResponse(
   const error = args.modelErrorsByProviderId?.[providerId];
   if (error) {
     return {
-      type: "host-rpc.response",
-      requestId: request.requestId,
-      commandType: request.command.type,
       ok: false,
       errorCode: error.errorCode,
       errorMessage: error.errorMessage,
     };
   }
 
-  const result = args.modelsByProviderId?.[providerId] ?? {
-    models: [],
-    selectedOnlyModels: [],
-  };
   return {
-    type: "host-rpc.response",
-    requestId: request.requestId,
-    commandType: request.command.type,
     ok: true,
-    result,
-  };
-}
-
-function buildHostRpcResponse(
-  request: HostDaemonOnlineRpcRequestMessage,
-  result: HostRpcHandlerResult,
-): HostDaemonOnlineRpcResponseMessage {
-  if (result.ok) {
-    return hostDaemonOnlineRpcResponseMessageSchema.parse({
-      type: "host-rpc.response",
-      requestId: request.requestId,
-      commandType: request.command.type,
-      ok: true,
-      result: result.result,
-    });
-  }
-  return {
-    type: "host-rpc.response",
-    requestId: request.requestId,
-    commandType: request.command.type,
-    ok: false,
-    errorCode: result.errorCode,
-    errorMessage: result.errorMessage,
+    result: args.modelsByProviderId?.[providerId] ?? {
+      models: [],
+      selectedOnlyModels: [],
+    },
   };
 }
 
@@ -146,34 +99,25 @@ export function registerHostRpcResponder(
   harness: TestAppHarness,
   args: RegisterHostRpcResponderArgs,
 ): HostRpcResponder {
-  const requests: HostDaemonOnlineRpcRequestMessage[] = [];
-  const socket: TestHostRpcSocket = {
-    close() {},
-    send(data) {
-      const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
-      if (message.type !== "host-rpc.request") {
-        throw new Error(`Unexpected daemon websocket message ${message.type}`);
-      }
-      requests.push(message);
-      const response = (() => {
-        try {
-          return buildHostRpcResponse(message, args.handle(message));
-        } catch (error) {
-          return buildTestFailureResponse(message, error);
-        }
-      })();
-      harness.hub.recordHostOnlineRpcResponse({
-        message: response,
-        sessionId: args.sessionId,
-      });
-    },
-  };
-  harness.hub.registerDaemon(args.sessionId, args.hostId, socket);
+  const requests: CapturedOnlineRpcRequest[] = [];
+  harness.engineRouting.bindOnlineRpcHandler(async (command) => {
+    const request: CapturedOnlineRpcRequest = { command };
+    requests.push(request);
+    const outcome = args.handle(request);
+    if (!outcome.ok) {
+      throw new HostRpcResponderError(outcome);
+    }
+    // The per-type schema guarantees the runtime command/result pairing;
+    // TypeScript cannot correlate the parsed union member to the generic.
+    return hostDaemonOnlineRpcResultSchemaByType[command.type].parse(
+      outcome.result,
+    ) as HostDaemonOnlineRpcResultForCommand;
+  });
 
   return {
     requests,
     unregister() {
-      harness.hub.unregisterDaemon(args.sessionId);
+      harness.engineRouting.unbindOnlineRpcHandler();
     },
   };
 }
@@ -183,18 +127,6 @@ export function registerProviderHostRpcResponder(
   args: RegisterProviderHostRpcArgs,
 ): ProviderHostRpcResponder {
   return registerHostRpcResponder(harness, {
-    hostId: args.hostId,
-    sessionId: args.sessionId,
-    handle: (request) => {
-      const response = buildProviderRpcResponse(args, request);
-      if (response.ok) {
-        return { ok: true, result: response.result };
-      }
-      return {
-        ok: false,
-        errorCode: response.errorCode,
-        errorMessage: response.errorMessage,
-      };
-    },
+    handle: (request) => buildProviderRpcResult(args, request),
   });
 }

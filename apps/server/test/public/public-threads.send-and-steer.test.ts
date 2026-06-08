@@ -7,7 +7,6 @@ import {
   events,
   getQueuedThreadMessage,
   getThread,
-  hostDaemonCommands,
   listEvents,
   markThreadDeleted,
 } from "@bb/db";
@@ -154,15 +153,10 @@ describe("public thread send and steer routes", () => {
       expect(getThread(harness.db, createdThread.id)).toMatchObject({
         status: "provisioning",
       });
+      // The dispatched thread.start is still in flight (unsettled).
       expect(
-        harness.db
-          .select()
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.id, queuedStart.row.id))
-          .get(),
-      ).toMatchObject({
-        state: "pending",
-      });
+        harness.engineRouting.getDispatched(queuedStart.row.id),
+      ).not.toBeNull();
     });
   });
 
@@ -1068,9 +1062,7 @@ describe("public thread send and steer routes", () => {
 
       expect(response.status).toBe(200);
       expect(getThread(harness.db, idleThread.id)?.stopRequestedAt).toBeNull();
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
     });
   });
 

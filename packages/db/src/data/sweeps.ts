@@ -22,7 +22,6 @@ import {
   hostDaemonSessions,
   environments,
   maintenanceScanCursors,
-  pendingInteractions,
   threadOperations,
 } from "../schema.js";
 
@@ -37,9 +36,6 @@ const LEGACY_TERMINALIZED_EXPIRED_ENVIRONMENT_LIFECYCLE_COMMAND_TYPES = [
 const LEGACY_TERMINALIZED_EXPIRED_THREAD_LIFECYCLE_COMMAND_TYPES = [
   "thread.start",
   "thread.stop",
-];
-const LEGACY_TERMINALIZED_EXPIRED_INTERACTION_LIFECYCLE_COMMAND_TYPES = [
-  "interactive.resolve",
 ];
 
 /** Destroyed environments are hard-deleted after 7 days. */
@@ -747,43 +743,11 @@ export function listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement(
     .all()
     .map((row) => row.id);
 
-  const remainingInteractionLimit =
-    args.limit - environmentCommandIds.length - threadCommandIds.length;
-  if (remainingInteractionLimit <= 0) {
-    return [...environmentCommandIds, ...threadCommandIds];
-  }
-
-  const interactionCommandIds = db
-    .select({ id: hostDaemonCommands.id })
-    .from(hostDaemonCommands)
-    .innerJoin(
-      pendingInteractions,
-      eq(pendingInteractions.resolvingCommandId, hostDaemonCommands.id),
-    )
-    .where(
-      and(
-        inArray(hostDaemonCommands.type, [
-          ...LEGACY_TERMINALIZED_EXPIRED_INTERACTION_LIFECYCLE_COMMAND_TYPES,
-        ]),
-        eq(hostDaemonCommands.state, "error"),
-        isNotNull(hostDaemonCommands.completedAt),
-        eq(
-          hostDaemonCommands.resultPayload,
-          LEGACY_TERMINALIZED_EXPIRED_COMMAND_RESULT_PAYLOAD,
-        ),
-        eq(pendingInteractions.status, "resolving"),
-      ),
-    )
-    .orderBy(asc(hostDaemonCommands.completedAt), asc(hostDaemonCommands.id))
-    .limit(remainingInteractionLimit)
-    .all()
-    .map((row) => row.id);
-
-  return [
-    ...environmentCommandIds,
-    ...threadCommandIds,
-    ...interactionCommandIds,
-  ];
+  // The interaction leg of this scan died with
+  // `pending_interactions.resolvingCommandId` (Phase 1 single-host schema
+  // migration) — the durable queue is never written anymore, so there is no
+  // backlog to join against. The whole function dies in P1c with the queue.
+  return [...environmentCommandIds, ...threadCommandIds];
 }
 
 /**

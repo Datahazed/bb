@@ -54,12 +54,12 @@ import {
   storeAttachment,
 } from "../services/projects/attachments.js";
 import {
-  requireNonDestroyedHostWithStatus,
   requireProject,
   requirePublicProject,
   requirePublicStandardProject,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
+import { requireLocalHost } from "../services/hosts/local-host.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT, type PromptInput } from "@bb/domain";
 import { createThreadFromRequest } from "../services/threads/thread-create.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
@@ -67,7 +67,7 @@ import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../services/threads/thread-runtime-display.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   beginProjectDeletion,
@@ -377,7 +377,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post("/projects", createProjectRequestSchema, async (context, payload) => {
     const { source } = payload;
     if (source.type === "local_path") {
-      requireNonDestroyedHostWithStatus(deps.db, source.hostId);
+      requireLocalHost(source.hostId);
     }
     const { project } = createProject(deps.db, deps.hub, {
       name: payload.name,
@@ -484,12 +484,25 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     "/projects/:id/sources",
     createProjectSourceRequestSchema,
     async (context, payload) => {
-      requirePublicStandardProject(deps.db, context.req.param("id"));
+      const projectId = context.req.param("id");
+      requirePublicStandardProject(deps.db, projectId);
       if (payload.type === "local_path") {
-        requireNonDestroyedHostWithStatus(deps.db, payload.hostId);
+        requireLocalHost(payload.hostId);
+        // One source per (project, host) is a schema invariant
+        // (project_sources_project_host_idx); answer cleanly instead of
+        // surfacing the unique-constraint violation as a 500. Single-host,
+        // every standard project already carries its local source, so this
+        // guards every duplicate create.
+        if (getProjectSourceByHost(deps.db, projectId, payload.hostId)) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Project already has a source for this host",
+          );
+        }
       }
       const source = createProjectSource(deps.db, deps.hub, {
-        projectId: context.req.param("id"),
+        projectId,
         ...payload,
       });
       return context.json(source, 201);
@@ -574,8 +587,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
               environmentId: query.environmentId,
             })
           : resolveProjectSourcePath(deps, { projectId, hostId: null });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
+      const result = await callEngineOnlineRpc(deps, {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_files",
@@ -608,8 +620,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         includeFiles: query.includeFiles,
         includeDirectories: query.includeDirectories,
       });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
+      const result = await callEngineOnlineRpc(deps, {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",
@@ -637,8 +648,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       });
       const branchQuery = normalizeBranchQuery(query.query);
       const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: source.hostId,
+      const result = await callEngineOnlineRpc(deps, {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_branches",
@@ -692,7 +702,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       const project = requireProject(deps.db, projectId);
 
       const { hostId } = payload.environment;
-      requireNonDestroyedHostWithStatus(deps.db, hostId);
+      requireLocalHost(hostId);
       let environment: EnvironmentArgs;
       if (project.kind === "personal") {
         environment = {

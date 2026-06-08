@@ -1,10 +1,6 @@
 import {
-  getActiveSession,
+  createHostDaemonCommandId,
   createPendingClientTurnRequestInTransaction,
-  queueCommand,
-  queueCommandInTransaction,
-  hasExistingThreadArchiveCommand,
-  hasPendingHostCommandForThread,
   environments,
   events,
   transitionThreadStatusInTransaction,
@@ -17,7 +13,6 @@ import {
 } from "@bb/agent-providers";
 import type { DbTransaction } from "@bb/db";
 import type {
-  Environment,
   PromptInput,
   ProjectExecutionDefaults,
   PermissionEscalation,
@@ -34,7 +29,8 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import type { EngineCommandEnvelope } from "../../engine/ports.js";
+import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 import { getLastProviderThreadId } from "./thread-events.js";
 import {
   resolveThreadRuntimeCommandConfig,
@@ -54,7 +50,6 @@ export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
 export interface QueueThreadStopCommandArgs {
   environmentId: string;
-  hostId: string;
   threadId: string;
 }
 
@@ -138,13 +133,11 @@ type BuildExecutionOptionsSource =
 
 interface QueueTurnSubmitCommandInTransactionArgs {
   command: Extract<HostDaemonCommand, { type: "turn.submit" }>;
-  hostId: string;
   /**
    * Null only for legacy/untracked submissions where no durable
    * client/turn/requested event exists to relate to this command.
    */
   requestEventSequence: number | null;
-  sessionId: string | null;
 }
 
 interface QueueTurnSubmitCommandArgs extends PrepareTurnSubmitCommandPayloadArgs {
@@ -170,7 +163,6 @@ interface QueueThreadUnarchiveCommandArgs {
 }
 
 interface EnsureThreadNativeArchiveSettledArgs {
-  environment: Pick<Environment, "hostId">;
   thread: Pick<Thread, "id">;
 }
 
@@ -347,19 +339,20 @@ export async function prepareTurnSubmitCommandPayload(
   });
 }
 
+/**
+ * Writes the turn-request bookkeeping for one turn.submit dispatch and
+ * returns the envelope; the caller dispatches it AFTER the enclosing
+ * transaction commits (Phase 1 dispatch shim — write-then-execute ordering
+ * the durable queue used to guarantee).
+ */
 export function queueTurnSubmitCommandInTransaction(
   db: DbTransaction,
   args: QueueTurnSubmitCommandInTransactionArgs,
-) {
-  const queuedCommand = queueCommandInTransaction(db, {
-    hostId: args.hostId,
-    sessionId: args.sessionId,
-    type: "turn.submit",
-    payload: JSON.stringify(args.command),
-  });
+): EngineCommandEnvelope {
+  const commandId = createHostDaemonCommandId();
   if (args.requestEventSequence !== null) {
     createPendingClientTurnRequestInTransaction(db, {
-      commandId: queuedCommand.id,
+      commandId,
       commandType: "turn.submit",
       environmentId: args.command.environmentId,
       requestEventSequence: args.requestEventSequence,
@@ -367,7 +360,7 @@ export function queueTurnSubmitCommandInTransaction(
       threadId: args.command.threadId,
     });
   }
-  return queuedCommand;
+  return { command: args.command, commandId };
 }
 
 export async function queueTurnSubmitCommand(
@@ -375,11 +368,7 @@ export async function queueTurnSubmitCommand(
   args: QueueTurnSubmitCommandArgs,
 ): Promise<void> {
   ensureThreadNativeArchiveSettled(deps, {
-    environment: args.environment,
     thread: args.thread,
-  });
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.environment.hostId,
   });
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, args);
   const command = addRequestIdToTurnSubmitCommandPayload({
@@ -387,13 +376,11 @@ export async function queueTurnSubmitCommand(
     preparedCommand,
   });
   let transitioned = false;
-  deps.db.transaction(
+  const envelope = deps.db.transaction(
     (tx) => {
-      queueTurnSubmitCommandInTransaction(tx, {
+      const queued = queueTurnSubmitCommandInTransaction(tx, {
         command,
-        hostId: args.environment.hostId,
         requestEventSequence: args.requestEventSequence,
-        sessionId: session.id,
       });
       if (args.thread.status === "idle") {
         transitionThreadStatusInTransaction(tx, {
@@ -402,10 +389,11 @@ export async function queueTurnSubmitCommand(
         });
         transitioned = true;
       }
+      return queued;
     },
     { behavior: "immediate" },
   );
-  deps.hub.notifyCommand(args.environment.hostId);
+  deps.engineDispatch.dispatch(envelope);
   if (transitioned) {
     deps.hub.notifyThread(args.thread.id, ["status-changed"], {
       projectId: args.thread.projectId,
@@ -466,58 +454,53 @@ function threadHasCodexSpawnAgentToolCall(
   return row !== undefined;
 }
 
-export function queueThreadRenameCommand(
-  deps: Pick<AppDeps, "db" | "hub">,
+function buildThreadRenameCommand(
   args: QueueThreadRenameCommandArgs,
-): void {
+): Extract<HostDaemonCommand, { type: "thread.rename" }> | null {
   if (!providerSupportsThreadRename(args.providerId)) {
-    return;
+    return null;
   }
-
-  const session = getActiveSession(deps.db, args.environment.hostId);
-  queueCommand(deps.db, deps.hub, {
-    hostId: args.environment.hostId,
-    sessionId: session?.id ?? null,
+  return {
     type: "thread.rename",
-    payload: JSON.stringify({
-      type: "thread.rename",
-      environmentId: args.environment.id,
-      threadId: args.threadId,
-      title: args.title,
-    }),
-  });
+    environmentId: args.environment.id,
+    threadId: args.threadId,
+    title: args.title,
+  };
 }
 
+export function queueThreadRenameCommand(
+  deps: Pick<AppDeps, "engineDispatch">,
+  args: QueueThreadRenameCommandArgs,
+): void {
+  const command = buildThreadRenameCommand(args);
+  if (!command) {
+    return;
+  }
+  deps.engineDispatch.dispatch({ command });
+}
+
+/**
+ * Stages a rename dispatch from inside a transaction (the settlement path);
+ * the buffer owner dispatches it after commit.
+ */
 export function queueThreadRenameCommandInTransaction(
-  db: DbTransaction,
+  engineDispatches: EngineDispatchBuffer,
   args: QueueThreadRenameCommandArgs,
 ): boolean {
-  if (!providerSupportsThreadRename(args.providerId)) {
+  const command = buildThreadRenameCommand(args);
+  if (!command) {
     return false;
   }
-
-  const session = getActiveSession(db, args.environment.hostId);
-  queueCommandInTransaction(db, {
-    hostId: args.environment.hostId,
-    sessionId: session?.id ?? null,
-    type: "thread.rename",
-    payload: JSON.stringify({
-      type: "thread.rename",
-      environmentId: args.environment.id,
-      threadId: args.threadId,
-      title: args.title,
-    }),
-  });
+  engineDispatches.stage({ command });
   return true;
 }
 
 export function ensureThreadNativeArchiveSettled(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "engineDispatch">,
   args: EnsureThreadNativeArchiveSettledArgs,
 ): void {
   if (
-    !hasPendingHostCommandForThread(deps.db, {
-      hostId: args.environment.hostId,
+    !deps.engineDispatch.hasInFlightThreadCommand({
       threadId: args.thread.id,
       type: "thread.archive",
     })
@@ -533,7 +516,7 @@ export function ensureThreadNativeArchiveSettled(
 }
 
 export function queueArchivedThreadProviderArchiveCommand(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "engineDispatch">,
   args: QueueArchivedThreadProviderArchiveCommandArgs,
 ): boolean {
   const thread = deps.db
@@ -581,9 +564,12 @@ export function queueArchivedThreadProviderArchiveCommand(
     workspaceProvisionType: environment.workspaceProvisionType,
   });
 
+  // In-flight-only dedupe: the durable queue also deduped against
+  // *completed* archive commands within the payload retention window; the
+  // engine's provider-side archive is idempotent, so repeat forwards after
+  // settlement are accepted (Phase 1 dispatch shim).
   if (
-    hasExistingThreadArchiveCommand(deps.db, {
-      hostId: environment.hostId,
+    deps.engineDispatch.hasInFlightThreadArchiveCommand({
       providerId: thread.providerId,
       providerThreadId,
       threadId: thread.id,
@@ -592,25 +578,21 @@ export function queueArchivedThreadProviderArchiveCommand(
     return false;
   }
 
-  const session = getActiveSession(deps.db, environment.hostId);
-  queueCommand(deps.db, deps.hub, {
-    hostId: environment.hostId,
-    sessionId: session?.id ?? null,
-    type: "thread.archive",
-    payload: JSON.stringify({
+  deps.engineDispatch.dispatch({
+    command: {
       type: "thread.archive",
       environmentId: environment.id,
       threadId: thread.id,
       workspaceContext,
       providerId: thread.providerId,
       providerThreadId,
-    }),
+    },
   });
   return true;
 }
 
 export function queueThreadUnarchiveCommand(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "engineDispatch">,
   args: QueueThreadUnarchiveCommandArgs,
 ): boolean {
   if (!providerSupportsThreadArchiveForwarding(args.thread.providerId)) {
@@ -620,41 +602,35 @@ export function queueThreadUnarchiveCommand(
     return false;
   }
 
-  const session = getActiveSession(deps.db, args.environment.hostId);
-  queueCommand(deps.db, deps.hub, {
-    hostId: args.environment.hostId,
-    sessionId: session?.id ?? null,
-    type: "thread.unarchive",
-    payload: JSON.stringify({
+  deps.engineDispatch.dispatch({
+    command: {
       type: "thread.unarchive",
       environmentId: args.environment.id,
       threadId: args.thread.id,
       providerId: args.thread.providerId,
       providerThreadId: args.providerThreadId,
-    }),
+    },
   });
   return true;
 }
 
+/**
+ * Stages the thread.deleted notification from inside a transaction (the
+ * thread-finalize path); the buffer owner dispatches after commit. The
+ * daemon-era "no connected session → skip and retry later" branch died with
+ * the transport: the engine is always reachable in-process.
+ */
 export function queueThreadDeletedCommandInTransaction(
-  db: DbTransaction,
+  engineDispatches: EngineDispatchBuffer,
   args: QueueThreadDeletedCommandArgs,
-): boolean {
-  const session = getActiveSession(db, args.environment.hostId);
-  if (!session) {
-    return false;
-  }
-  queueCommandInTransaction(db, {
-    hostId: args.environment.hostId,
-    sessionId: session.id,
-    type: "thread.deleted",
-    payload: JSON.stringify({
+): void {
+  engineDispatches.stage({
+    command: {
       type: "thread.deleted",
       environmentId: args.environment.id,
       threadId: args.threadId,
-    }),
+    },
   });
-  return true;
 }
 
 export function buildThreadStopCommand(

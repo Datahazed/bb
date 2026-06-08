@@ -3,7 +3,7 @@ import {
   resumeHostMock,
 } from "./public-thread-test-harness.js";
 
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   events,
@@ -11,7 +11,6 @@ import {
   getLatestThreadSequence,
   getQueuedThreadMessage,
   getThread,
-  hostDaemonCommands,
   markThreadDeleted,
   promptHistoryEntries,
   threads,
@@ -27,6 +26,7 @@ import { renderTemplate } from "@bb/templates";
 import { buildManagerToolReminderText } from "../../src/services/threads/manager-tool-reminder.js";
 import { MANAGER_PREFERENCES_FILE_KEY } from "../../src/services/threads/manager-dynamic-file-delivery.js";
 import {
+  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
@@ -49,19 +49,11 @@ import {
   withTestHarness,
 } from "../helpers/test-app.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
-
-interface HostDataDirArgs {
-  hostId: string;
-}
+import { eq } from "drizzle-orm";
 
 interface RespondToManagerPreferencesReadArgs {
   content: string;
   harness: TestAppHarness;
-}
-
-function hostDataDir(args: HostDataDirArgs): string {
-  return `/tmp/bb-host-data/${args.hostId}`;
 }
 
 function managerToolReminderInput() {
@@ -381,18 +373,18 @@ describe("public thread manager and ownership routes", () => {
         "Project root: `/tmp/thread-data-project`",
       );
       expect(managerStartCommand.command.instructions).toContain(
-        `Thread storage: \`/tmp/bb-host-data/${host.id}/thread-storage/${managerThread.id}\``,
+        `Thread storage: \`${path.join(
+          harness.config.threadStorageRootPath,
+          managerThread.id,
+        )}\``,
       );
     });
   });
 
   it("prepends changed manager preferences before the next tell", async () => {
     const harness = await createTestAppHarness();
-    const hostId = "host-manager-preferences-change-detection";
-    const dataDir = hostDataDir({ hostId });
-    await rm(dataDir, { recursive: true, force: true });
     try {
-      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -449,7 +441,10 @@ describe("public thread manager and ownership routes", () => {
         contentStatus: "present",
         shownAt: Date.now() - 1,
       });
-      const storagePath = path.join(dataDir, "thread-storage", thread.id);
+      const storagePath = path.join(
+        harness.config.threadStorageRootPath,
+        thread.id,
+      );
       await mkdir(storagePath, { recursive: true });
       await writeFile(
         path.join(storagePath, "PREFERENCES.md"),
@@ -507,17 +502,13 @@ describe("public thread manager and ownership routes", () => {
       );
     } finally {
       await harness.cleanup();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
   it("replaces the welcome template with a quick-start preamble + user input when input is provided", async () => {
     const harness = await createTestAppHarness();
-    const hostId = "host-manager-quick-start";
-    const dataDir = hostDataDir({ hostId });
-    await rm(dataDir, { recursive: true, force: true });
     try {
-      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -590,17 +581,13 @@ describe("public thread manager and ownership routes", () => {
       expect(promptHistoryRows).toEqual([]);
     } finally {
       await harness.cleanup();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
   it("falls back to the welcome template when no input is provided", async () => {
     const harness = await createTestAppHarness();
-    const hostId = "host-manager-welcome-fallback";
-    const dataDir = hostDataDir({ hostId });
-    await rm(dataDir, { recursive: true, force: true });
     try {
-      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -643,17 +630,13 @@ describe("public thread manager and ownership routes", () => {
       expect(startCommand.command.input).toHaveLength(1);
     } finally {
       await harness.cleanup();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
   it("falls back to the welcome template when input only contains whitespace text", async () => {
     const harness = await createTestAppHarness();
-    const hostId = "host-manager-whitespace-only";
-    const dataDir = hostDataDir({ hostId });
-    await rm(dataDir, { recursive: true, force: true });
     try {
-      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -712,17 +695,13 @@ describe("public thread manager and ownership routes", () => {
       ).toBe(false);
     } finally {
       await harness.cleanup();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
   it("does not read PREFERENCES.md or seed thread storage during manager creation", async () => {
     const harness = await createTestAppHarness();
-    const hostId = "host-manager-preferences-missing";
-    const dataDir = hostDataDir({ hostId });
-    await rm(dataDir, { recursive: true, force: true });
     try {
-      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { host } = seedHostSession(harness.deps);
       const { project, source } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
@@ -759,13 +738,14 @@ describe("public thread manager and ownership routes", () => {
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
-      const preferencesReads = harness.db
-        .select({ id: hostDaemonCommands.id })
-        .from(hostDaemonCommands)
-        .where(eq(hostDaemonCommands.type, "host.read_file"))
-        .all();
+      const preferencesReads = harness.engineRouting.pendingOnlineRpcs.filter(
+        (pending) => pending.command.type === "host.read_file",
+      );
       expect(preferencesReads).toEqual([]);
-      const storagePath = path.join(dataDir, "thread-storage", thread.id);
+      const storagePath = path.join(
+        harness.config.threadStorageRootPath,
+        thread.id,
+      );
       await expect(
         stat(path.join(storagePath, "PREFERENCES.md")),
       ).rejects.toThrow();
@@ -774,7 +754,6 @@ describe("public thread manager and ownership routes", () => {
       ).rejects.toThrow();
     } finally {
       await harness.cleanup();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
@@ -814,16 +793,9 @@ describe("public thread manager and ownership routes", () => {
         );
         expect(patchResponse.status).toBe(200);
 
-        const queuedRenames = harness.db
-          .select({ id: hostDaemonCommands.id })
-          .from(hostDaemonCommands)
-          .where(
-            and(
-              eq(hostDaemonCommands.hostId, host.id),
-              eq(hostDaemonCommands.type, "thread.rename"),
-            ),
-          )
-          .all();
+        const queuedRenames = harness.engineRouting.dispatched.filter(
+          (envelope) => envelope.command.type === "thread.rename",
+        );
         expect(queuedRenames).toEqual([]);
       });
     });
@@ -880,7 +852,11 @@ describe("public thread manager and ownership routes", () => {
         },
       );
 
-      const managerPreferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${managerThread.id}/PREFERENCES.md`;
+      const managerPreferencesPath = path.join(
+        harness.config.threadStorageRootPath,
+        managerThread.id,
+        "PREFERENCES.md",
+      );
       const preferencesReadCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -1011,9 +987,7 @@ describe("public thread manager and ownership routes", () => {
 
   it("defaults manager-created child threads to managed worktrees and keeps explicit reuse opt-in", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-manager-child-defaults",
-      });
+      const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/manager-child-defaults",
@@ -1272,12 +1246,7 @@ describe("public thread manager and ownership routes", () => {
         expect(getThread(harness.db, thread.id)?.parentThreadId).toBeNull();
       }
 
-      expect(
-        harness.db
-          .select({ id: hostDaemonCommands.id })
-          .from(hostDaemonCommands)
-          .all(),
-      ).toEqual([]);
+      expect(harness.engineRouting.dispatched).toEqual([]);
     });
   });
 
@@ -1332,7 +1301,11 @@ describe("public thread manager and ownership routes", () => {
         },
       );
 
-      const managerPreferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${managerThread.id}/PREFERENCES.md`;
+      const managerPreferencesPath = path.join(
+        harness.config.threadStorageRootPath,
+        managerThread.id,
+        "PREFERENCES.md",
+      );
       const preferencesReadCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -1439,28 +1412,26 @@ describe("public thread manager and ownership routes", () => {
       const loggerError = vi.fn();
       harness.deps.logger.error = loggerError;
 
-      const host = seedHost(harness.deps, {
-        id: "host-manager-notify-offline",
-      });
+      const host = seedHost(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
-        path: "/tmp/thread-ownership-offline-project",
+        path: "/tmp/thread-ownership-notify-failure-project",
       });
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        path: "/tmp/thread-ownership-offline-project/worktree",
+        path: "/tmp/thread-ownership-notify-failure-project/worktree",
       });
       const managerThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
         type: "manager",
-        title: "Offline manager",
+        title: "Notify-failure manager",
       });
       seedThreadRuntimeState(harness.deps, {
         threadId: managerThread.id,
         environmentId: environment.id,
-        providerThreadId: "provider-manager-offline",
+        providerThreadId: "provider-manager-notify-failure",
         inputText: "Initial manager task",
         model: "gpt-5.4",
       });
@@ -1470,7 +1441,7 @@ describe("public thread manager and ownership routes", () => {
         parentThreadId: null,
       });
 
-      const response = await harness.app.request(
+      const responsePromise = harness.app.request(
         `/api/v1/threads/${thread.id}`,
         {
           method: "PATCH",
@@ -1482,17 +1453,26 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
+      // Fail the manager-preferences read with a non-ENOENT error so the
+      // notification queuing path throws — the in-process stand-in for the
+      // daemon-era "host offline" queuing failure.
+      const preferencesRead = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path.endsWith("/PREFERENCES.md"),
+      );
+      await reportQueuedCommandError(harness, preferencesRead, {
+        errorCode: "io_error",
+        errorMessage: "Preferences read failed",
+      });
+      const response = await responsePromise;
 
       expect(response.status).toBe(200);
       expect(getThread(harness.db, thread.id)?.parentThreadId).toBe(
         managerThread.id,
       );
-      expect(
-        harness.db
-          .select({ id: hostDaemonCommands.id })
-          .from(hostDaemonCommands)
-          .all(),
-      ).toEqual([]);
+      expect(harness.engineRouting.dispatched).toEqual([]);
       expect(loggerError).toHaveBeenCalledWith(
         expect.objectContaining({
           err: expect.any(Error),

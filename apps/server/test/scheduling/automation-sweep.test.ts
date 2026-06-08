@@ -4,7 +4,6 @@ import {
   deleteProjectSource,
   getAutomation,
   getProjectExecutionDefaults,
-  hostDaemonCommands,
   listProjectSources,
   threads,
   upsertProjectExecutionDefaults,
@@ -455,9 +454,7 @@ describe("automation sweep", () => {
           .where(eq(threads.automationId, automation.id))
           .all(),
       ).toHaveLength(0);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
 
       const updatedAutomation = getAutomation(harness.db, automation.id);
       expect(updatedAutomation?.lastRunAt).toBeGreaterThanOrEqual(now);
@@ -513,9 +510,7 @@ describe("automation sweep", () => {
           .where(eq(threads.automationId, automation.id))
           .all(),
       ).toHaveLength(0);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
       expect(getAutomation(harness.db, automation.id)).toMatchObject({
         enabled: false,
         lastRunAt: null,
@@ -583,9 +578,7 @@ describe("automation sweep", () => {
           .where(eq(threads.automationId, automation.id))
           .all(),
       ).toHaveLength(1);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
 
       const updatedAutomation = getAutomation(harness.db, automation.id);
       expect(updatedAutomation?.runCount).toBe(1);
@@ -713,9 +706,7 @@ describe("automation sweep", () => {
           .where(eq(threads.automationId, automation.id))
           .all(),
       ).toHaveLength(0);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
       expect(restoredAutomation).toMatchObject({
         lastRunAt: null,
         runCount: 0,
@@ -730,9 +721,7 @@ describe("automation sweep", () => {
           .where(eq(threads.automationId, automation.id))
           .all(),
       ).toHaveLength(0);
-      expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
-        0,
-      );
+      expect(harness.engineRouting.dispatched).toHaveLength(0);
       expect(getAutomation(harness.db, automation.id)?.nextRunAt).toBe(
         restoredAutomation?.nextRunAt,
       );

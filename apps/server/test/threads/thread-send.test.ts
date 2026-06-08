@@ -3,8 +3,6 @@ import { eq } from "drizzle-orm";
 import {
   clientTurnRequests,
   getThread,
-  hostDaemonCommands,
-  listEvents,
   markClientTurnRequestAcceptedInTransaction,
 } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
@@ -21,7 +19,6 @@ import { createCommandApprovalPayload } from "../helpers/pending-interactions.js
 import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedQueuedMessage,
@@ -115,7 +112,7 @@ describe("sendThreadMessage", () => {
         },
       });
 
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
+      expect(harness.engineRouting.dispatched).toEqual([]);
     });
   });
 
@@ -158,26 +155,14 @@ describe("sendThreadMessage", () => {
         scope: "thread",
         input,
       });
-      expect(
-        harness.db
-          .select({ type: hostDaemonCommands.type })
-          .from(hostDaemonCommands)
-          .all()
-          .map((command) => command.type),
-      ).toContain("thread.start");
-      const startCommand =
-        harness.db
-          .select({ id: hostDaemonCommands.id })
-          .from(hostDaemonCommands)
-          .where(eq(hostDaemonCommands.type, "thread.start"))
-          .get() ?? null;
-      expect(startCommand).not.toBeNull();
-      if (!startCommand) {
-        throw new Error("Expected queued thread.start command");
-      }
+      const startCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
       expect(harness.db.select().from(clientTurnRequests).all()).toMatchObject([
         {
-          commandId: startCommand.id,
+          commandId: startCommand.row.id,
           commandType: "thread.start",
           status: "pending",
           threadId: thread.id,
@@ -285,28 +270,16 @@ describe("sendThreadMessage", () => {
           scope: "thread",
           input,
         });
-        expect(
-          harness.db
-            .select({ type: hostDaemonCommands.type })
-            .from(hostDaemonCommands)
-            .all()
-            .map((command) => command.type),
-        ).toContain("turn.submit");
-        const turnSubmitCommand =
-          harness.db
-            .select({ id: hostDaemonCommands.id })
-            .from(hostDaemonCommands)
-            .where(eq(hostDaemonCommands.type, "turn.submit"))
-            .get() ?? null;
-        expect(turnSubmitCommand).not.toBeNull();
-        if (!turnSubmitCommand) {
-          throw new Error("Expected queued turn.submit command");
-        }
+        const turnSubmitCommand = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" && command.threadId === thread.id,
+        );
         expect(
           harness.db.select().from(clientTurnRequests).all(),
         ).toMatchObject([
           {
-            commandId: turnSubmitCommand.id,
+            commandId: turnSubmitCommand.row.id,
             commandType: "turn.submit",
             status: "pending",
             threadId: thread.id,
@@ -510,57 +483,6 @@ describe("sendThreadMessage", () => {
         status: "accepted",
         threadId: thread.id,
       });
-    });
-  });
-
-  it("rejects idle start sends while the host is unavailable without appending a client event", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-thread-send-start-waiting-for-host",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        status: "idle",
-      });
-
-      await expect(
-        sendThreadMessage(harness.deps, {
-          environment,
-          payload: {
-            input: [{ type: "text", text: "should not append start" }],
-            mode: "start",
-            model: "gpt-5.4",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-          trigger: "user",
-        }),
-      ).rejects.toMatchObject({
-        status: 502,
-        body: {
-          code: "host_unavailable",
-          details: {
-            reason: "disconnected",
-            hostStatus: "disconnected",
-            suspendedAt: null,
-            destroyedAt: null,
-          },
-        },
-      });
-
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
-      expect(harness.db.select().from(clientTurnRequests).all()).toEqual([]);
-      expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
 
@@ -769,12 +691,8 @@ describe("sendThreadMessage", () => {
         input,
       });
       expect(
-        harness.db
-          .select({ type: hostDaemonCommands.type })
-          .from(hostDaemonCommands)
-          .all()
-          .map((command) => command.type),
-      ).toContain("turn.submit");
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(1);
     });
   });
 
@@ -829,61 +747,13 @@ describe("sendThreadMessage", () => {
         trigger: "auto-dispatch",
       });
 
-      const queuedCommands = harness.db.select().from(hostDaemonCommands).all();
+      const queuedCommands = harness.engineRouting.dispatched.map(
+        (envelope) => envelope.command,
+      );
       expect(queuedCommands).toHaveLength(1);
       expect(["thread.start", "turn.submit"]).toContain(
         queuedCommands[0]?.type,
       );
-    });
-  });
-
-  it("rejects active-thread sends while the host is unavailable before appending a client event", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-thread-send-waiting-for-host",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        status: "active",
-      });
-
-      await expect(
-        sendThreadMessage(harness.deps, {
-          environment,
-          payload: {
-            input: [{ type: "text", text: "should not append" }],
-            mode: "auto",
-            model: "gpt-5.4",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          },
-          thread,
-          trigger: "user",
-        }),
-      ).rejects.toMatchObject({
-        status: 502,
-        body: {
-          code: "host_unavailable",
-          details: {
-            reason: "disconnected",
-            hostStatus: "disconnected",
-            suspendedAt: null,
-            destroyedAt: null,
-          },
-        },
-      });
-
-      expect(harness.db.select().from(hostDaemonCommands).all()).toEqual([]);
-      expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
 });

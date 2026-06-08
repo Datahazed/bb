@@ -3,13 +3,10 @@ import {
   getEnvironment,
   getHost,
   getNonDestroyedHost,
-  getMostRecentlyUpdatedConnectedHostId,
   getProject,
   getProjectOperation,
   getThread,
-  listConnectedHostIds,
   listHostThreadIds as listHostThreadIdsFromDb,
-  listPublicHosts,
 } from "@bb/db";
 import type { Environment, Host, Project } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
@@ -25,7 +22,6 @@ import {
   threadEnvironmentUnavailableDetails,
 } from "./lifecycle-api-errors.js";
 
-type HostRow = NonNullable<ReturnType<typeof getHost>>;
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 type StandardProject = Project & { kind: "standard" };
 
@@ -48,18 +44,6 @@ function toHostStatus(db: DbConnection, hostId: string): Host["status"] {
   return "disconnected";
 }
 
-function toHostRecord(row: HostRow, status: Host["status"]): Host {
-  return {
-    id: row.id,
-    name: row.name,
-    type: row.type,
-    status,
-    lastSeenAt: row.lastSeenAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
 function throwHostNotFound(): never {
   throw new ApiError(404, "host_not_found", "Host not found");
 }
@@ -68,47 +52,11 @@ function isStandardProject(project: Project): project is StandardProject {
   return project.kind === "standard";
 }
 
-export function listPublicHostsWithStatus(db: DbConnection): Host[] {
-  const rows = listPublicHosts(db);
-  const connectedHostIds = new Set(listConnectedHostIds(db));
-
-  return rows.map((row) =>
-    toHostRecord(
-      row,
-      connectedHostIds.has(row.id) ? "connected" : "disconnected",
-    ),
-  );
-}
-
-export function requireNonDestroyedHostWithStatus(
-  db: DbConnection,
-  hostId: string,
-): Host {
-  const host = getHost(db, hostId);
-  if (!host) {
-    throwHostNotFound();
-  }
-  if (host.destroyedAt !== null) {
-    throwHostUnavailable(
-      404,
-      "Host is unavailable",
-      destroyedHostUnavailableDetails(host.destroyedAt),
-    );
-  }
-  return toHostRecord(host, toHostStatus(db, host.id));
-}
-
-export function getNonDestroyedHostWithStatus(
-  db: DbConnection,
-  hostId: string,
-): Host | null {
-  const host = getNonDestroyedHost(db, hostId);
-  if (!host) {
-    return null;
-  }
-  return toHostRecord(host, toHostStatus(db, host.id));
-}
-
+/**
+ * Orphaned with the daemon transport (host lookups answer from the synthetic
+ * `'local'` host, `services/hosts/local-host.ts`); sole remaining caller is
+ * the unmounted session machinery. Dies in P1c.
+ */
 export function requireConnectedHostSession(
   deps: Pick<{ db: DbConnection }, "db">,
   hostId: string,
@@ -281,22 +229,6 @@ export function requirePublicThreadEnvironment(
   const result = requirePublicThreadEnvironmentAllowingDestroyed(db, threadId);
   ensureThreadEnvironmentAvailable(result.environment);
   return result;
-}
-
-export function requireDefaultConnectedPersistentHostId(
-  db: DbConnection,
-): string {
-  const hostId = getMostRecentlyUpdatedConnectedHostId(db, {
-    hostType: "persistent",
-  });
-  if (!hostId) {
-    throw new ApiError(
-      502,
-      "host_disconnected",
-      "Persistent host is not connected",
-    );
-  }
-  return hostId;
 }
 
 export function listHostThreadIds(db: DbConnection, hostId: string): string[] {

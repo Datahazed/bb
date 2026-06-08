@@ -54,7 +54,7 @@ describe("db rebuild schema", () => {
       )
       .all();
 
-    expect(columns).toHaveLength(15);
+    expect(columns).toHaveLength(14);
     expect(columns).toEqual(
       expect.arrayContaining([
         { name: "id", type: "text", notNull: 1, primaryKey: 1 },
@@ -69,12 +69,6 @@ describe("db rebuild schema", () => {
           primaryKey: 0,
         },
         { name: "session_id", type: "text", notNull: 1, primaryKey: 0 },
-        {
-          name: "resolving_command_id",
-          type: "text",
-          notNull: 0,
-          primaryKey: 0,
-        },
         { name: "status", type: "text", notNull: 1, primaryKey: 0 },
         { name: "payload", type: "text", notNull: 1, primaryKey: 0 },
         { name: "resolution", type: "text", notNull: 0, primaryKey: 0 },
@@ -311,7 +305,10 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
-  it("cascades host deletion to host-scoped project sources", () => {
+  // Phase 1 single-host: project_sources.host_id no longer references hosts —
+  // sources survive host-row deletion (the hosts table is orphaned transport
+  // state until P1c deletes it).
+  it("keeps host-scoped project sources when a host row is deleted", () => {
     const db = createConnection(":memory:");
     migrate(db);
 
@@ -352,7 +349,7 @@ describe("db rebuild schema", () => {
 
     db.delete(hosts).where(eq(hosts.id, hostId)).run();
 
-    expect(db.select().from(projectSources).all()).toHaveLength(0);
+    expect(db.select().from(projectSources).all()).toHaveLength(1);
 
     closeConnection(db);
   });
@@ -567,7 +564,9 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
-  it("cascades host deletion to host-scoped records", () => {
+  // Phase 1 single-host: environments.host_id no longer references hosts —
+  // only the daemon-session cascade survives until P1c drops the tables.
+  it("cascades host deletion to daemon sessions but not environments", () => {
     const db = createConnection(":memory:");
     migrate(db);
 
@@ -645,7 +644,7 @@ describe("db rebuild schema", () => {
     db.delete(hostDaemonCommands).run();
     db.delete(hosts).where(eq(hosts.id, hostId)).run();
 
-    expect(db.select().from(environments).all()).toHaveLength(0);
+    expect(db.select().from(environments).all()).toHaveLength(1);
     expect(db.select().from(hostDaemonSessions).all()).toHaveLength(0);
     expect(db.select().from(hostDaemonCommands).all()).toHaveLength(0);
 

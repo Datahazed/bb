@@ -175,8 +175,7 @@ export async function resolveThreadRuntimeCommandConfig(
       workspaceProvisionType,
     };
   }
-  const threadStorageContext = await requireThreadStorageContext(deps, {
-    hostId: args.environment.hostId,
+  const threadStorageContext = requireThreadStorageContext(deps, {
     threadId: args.thread.id,
   });
 

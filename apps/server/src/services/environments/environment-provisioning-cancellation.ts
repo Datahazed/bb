@@ -1,10 +1,6 @@
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import {
-  cancelCommandInTransaction,
-  getCommand,
   getEnvironment,
-  hostDaemonCommands,
-  queueCommandInTransaction,
   threads,
   type DbNotifier,
   type DbQueryConnection,
@@ -16,6 +12,8 @@ import {
 } from "@bb/db/internal-environment-lifecycle";
 import type { Environment } from "@bb/domain";
 import type { EnvironmentProvisionCancelCommand } from "@bb/host-daemon-contract";
+import type { AppDeps } from "../../types.js";
+import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 import { getActiveEnvironmentProvisionOperation } from "./environment-provisioning-operations.js";
 
 export interface EnvironmentProvisionCancellationReadDeps {
@@ -28,16 +26,14 @@ interface EnvironmentProvisionCancellationWriteDeps extends EnvironmentProvision
 
 interface EnvironmentProvisionCancellationTransactionDeps extends EnvironmentProvisionCancellationWriteDeps {
   db: DbTransaction;
+  engineDispatch: AppDeps["engineDispatch"];
+  /** Follow-up dispatches staged in-transaction; flushed by the tx owner. */
+  engineDispatches: EngineDispatchBuffer;
 }
 
 interface CancelEnvironmentProvisioningForThreadStopArgs {
   environmentId: string;
   threadId: string;
-}
-
-interface QueueEnvironmentProvisionCancelCommandArgs {
-  environment: Environment;
-  sessionId: string | null;
 }
 
 export type EnvironmentProvisioningCancellationForThreadStopResult =
@@ -77,44 +73,27 @@ function restoreEnvironmentAfterProvisionCancellation(
   });
 }
 
-export function hasActiveEnvironmentProvisionCancelCommand(
-  deps: EnvironmentProvisionCancellationReadDeps,
-  environmentId: string,
-): boolean {
-  const row = deps.db
-    .select({ id: hostDaemonCommands.id })
-    .from(hostDaemonCommands)
-    .where(
-      and(
-        eq(hostDaemonCommands.type, "environment.provision.cancel"),
-        inArray(hostDaemonCommands.state, ["pending", "fetched"]),
-        sql`json_extract(${hostDaemonCommands.payload}, '$.environmentId') = ${environmentId}`,
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
-function queueEnvironmentProvisionCancelCommandInTransaction(
+function stageEnvironmentProvisionCancelCommand(
   deps: EnvironmentProvisionCancellationTransactionDeps,
-  args: QueueEnvironmentProvisionCancelCommandArgs,
+  environment: Environment,
 ): void {
-  if (hasActiveEnvironmentProvisionCancelCommand(deps, args.environment.id)) {
+  // Registry-backed dedupe: a cancel already running in the engine covers
+  // this stop request too (the cancel settlement finalizes every
+  // stop-requested thread on the environment).
+  if (
+    deps.engineDispatch.getInFlightEnvironmentCommandId({
+      environmentId: environment.id,
+      type: "environment.provision.cancel",
+    }) !== null
+  ) {
     return;
   }
 
   const command: EnvironmentProvisionCancelCommand = {
     type: "environment.provision.cancel",
-    environmentId: args.environment.id,
+    environmentId: environment.id,
   };
-  queueCommandInTransaction(deps.db, {
-    hostId: args.environment.hostId,
-    sessionId: args.sessionId,
-    type: command.type,
-    payload: JSON.stringify(command),
-  });
-  deps.hub.notifyCommand(args.environment.hostId);
+  deps.engineDispatches.stage({ command });
 }
 
 export function cancelEnvironmentProvisioningForThreadStopInTransaction(
@@ -138,24 +117,14 @@ export function cancelEnvironmentProvisioningForThreadStopInTransaction(
     return "ready_to_finalize";
   }
 
-  if (operation.commandId !== null) {
-    const command = getCommand(deps.db, operation.commandId);
-    if (command?.state === "fetched") {
-      queueEnvironmentProvisionCancelCommandInTransaction(deps, {
-        environment,
-        sessionId: command.sessionId,
-      });
-      return "awaiting_host_cancel";
-    }
-    if (command?.state === "pending") {
-      cancelCommandInTransaction(deps.db, {
-        commandId: command.id,
-        resultPayload: JSON.stringify({
-          errorCode: "environment_provision_cancelled",
-          errorMessage: "Environment provisioning was cancelled",
-        }),
-      });
-    }
+  // An in-flight provision is in the engine's hands: dispatch a cancel and
+  // defer finalization to the cancel settlement. The daemon-era "pending"
+  // (queued-but-unfetched, cancellable by row deletion) branch died with the
+  // durable queue — a dispatch the registry no longer tracks has settled, so
+  // cancelling the op record is sufficient.
+  if (deps.engineDispatch.isCommandInFlight(operation.commandId)) {
+    stageEnvironmentProvisionCancelCommand(deps, environment);
+    return "awaiting_host_cancel";
   }
 
   cancelEnvironmentOperationRecord(deps.db, {

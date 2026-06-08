@@ -3,14 +3,14 @@
  * (`apps/server/src/engine/`, the adapted copy of the host-daemon's living
  * modules) needs from the server.
  *
- * Phase 1a: these are type-only seams. Nothing in the server implements or
- * constructs them yet; engine code and engine unit tests are the only
- * consumers. Phase 1b implements every member with direct in-process calls
- * (the dispatch shim, the new event append module in
+ * The server implements every member with direct in-process calls in
+ * `services/engine/engine-ports.ts` (the event append module in
  * `services/threads/event-append.ts`, the pending-interactions service, the
- * notification hub, attachment file reads) and deletes the daemon transport
- * (`server-client.ts`, `event-buffer.ts`, `server-connection.ts`,
- * `/internal/*` routes) that each member replaces.
+ * notification hub, attachment file reads) and
+ * `services/engine/engine-dispatch.ts` (the dispatch shim's settlement);
+ * `services/engine/server-engine.ts` composes them at boot. The daemon
+ * transport each member replaces (`server-client.ts`, `event-buffer.ts`,
+ * `server-connection.ts`, `/internal/*` routes) dies in P1c.
  *
  * Rules for this file:
  * - Leaf module: imports only from shared packages, never from other engine
