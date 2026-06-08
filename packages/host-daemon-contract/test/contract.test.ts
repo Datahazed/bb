@@ -1,41 +1,25 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, type JsonObject } from "@bb/domain";
+import { type JsonObject } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
-  HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
-  createHostDaemonClient,
-  hostDaemonEnrollRequestSchema,
-  hostDaemonEnrollResponseSchema,
-  hostDaemonCommandEnvelopeSchema,
-  hostDaemonCommandResultResponseSchema,
   hostDaemonCommandResultSchemaByType,
-  hostDaemonCommandsQuerySchema,
   hostDaemonCommandSchema,
   hostDaemonDaemonWsMessageSchema,
-  hostDaemonEventBatchRequestSchema,
-  hostDaemonEventBatchResponseSchema,
-  hostDaemonInteractiveInterruptRequestSchema,
-  hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInjectedSkillSourceSchema,
   hostDaemonInteractiveRequestResponseSchema,
-  hostDaemonInteractiveRequestSchema,
   hostDaemonOnlineRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
-  hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonOnlineRpcResultSchemaByType,
   hostDaemonServerWsMessageSchema,
-  hostDaemonSessionOpenRequestSchema,
-  hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
 } from "../src/index.js";
 
-const PRODUCER_EVENT_ID = "hdevt_23456789abcdefghijkm";
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
 type OnlineRpcResponseResultFixtures = Record<
@@ -343,34 +327,17 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
   },
 ];
 
-function buildHostRpcResponseMessage(
-  commandType: HostDaemonOnlineRpcCommandType,
-  result: JsonObject,
-): JsonObject {
-  return {
-    type: "host-rpc.response",
-    requestId: `rpc-${commandType}`,
-    commandType,
-    ok: true,
-    result,
-  };
-}
-
-function expectHostRpcResponseRoundTrip(
+function expectHostRpcResultRoundTrip(
   commandType: HostDaemonOnlineRpcCommandType,
   result: JsonObject,
   name: string,
 ): void {
-  const message = buildHostRpcResponseMessage(commandType, result);
-  const jsonRoundTripped = JSON.parse(JSON.stringify(message));
+  const jsonRoundTripped = JSON.parse(JSON.stringify(result));
 
   expect(
-    hostDaemonOnlineRpcResponseMessageSchema.parse(jsonRoundTripped),
+    hostDaemonOnlineRpcResultSchemaByType[commandType].parse(jsonRoundTripped),
     name,
-  ).toEqual(message);
-  expect(hostDaemonDaemonWsMessageSchema.parse(jsonRoundTripped), name).toEqual(
-    message,
-  );
+  ).toEqual(result);
 }
 
 function terminalDataBase64(byteLength: number): string {
@@ -547,26 +514,6 @@ describe("host-daemon local schemas", () => {
 describe("host-daemon command schemas", () => {
   it("parses valid workspace and provisioning commands", () => {
     expect(
-      hostDaemonEnrollRequestSchema.parse({
-        hostId: "host_123",
-        hostName: "test-host",
-        hostType: "persistent",
-      }),
-    ).toMatchObject({
-      hostId: "host_123",
-      hostType: "persistent",
-    });
-
-    expect(
-      hostDaemonEnrollResponseSchema.parse({
-        hostId: "host_123",
-        hostKey: "bbdh_example",
-      }),
-    ).toMatchObject({
-      hostId: "host_123",
-    });
-
-    expect(
       hostDaemonCommandSchema.parse({
         type: "workspace.commit",
         environmentId: "env_123",
@@ -674,28 +621,6 @@ describe("host-daemon command schemas", () => {
       },
     });
 
-    expect(
-      hostDaemonCommandEnvelopeSchema.parse({
-        id: "hcmd_123",
-        attemptId: "hcat_123",
-        cursor: 7,
-        command: {
-          type: "workspace.commit",
-          environmentId: "env_123",
-          environmentStatus: "ready",
-          workspaceContext: {
-            workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
-          },
-          threadId: "thr_123",
-          message: "Checkpoint work",
-        },
-      }),
-    ).toMatchObject({
-      id: "hcmd_123",
-      attemptId: "hcat_123",
-      cursor: 7,
-    });
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
@@ -1248,8 +1173,6 @@ describe("host-daemon command schemas", () => {
     const optionalFieldPaths = collectOptionalFieldPaths({
       hostDaemonActiveThreadSchema: contract.hostDaemonActiveThreadSchema,
       hostDaemonCommandSchema: contract.hostDaemonCommandSchema,
-      hostDaemonInteractiveRequestSchema:
-        contract.hostDaemonInteractiveRequestSchema,
       hostDaemonInteractiveRequestResponseSchema:
         contract.hostDaemonInteractiveRequestResponseSchema,
       hostDaemonOnlineRpcCommandSchema:
@@ -1866,267 +1789,7 @@ describe("host-daemon command schemas", () => {
 });
 
 describe("host-daemon session schemas", () => {
-  it("parses valid session open and event batch payloads", () => {
-    expect(
-      hostDaemonSessionOpenRequestSchema.parse({
-        hostId: "host_123",
-        instanceId: "instance_1",
-        hostName: "Michael's MacBook",
-        hostType: "persistent",
-        dataDir: "/tmp/bb-data",
-        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        activeThreads: [
-          {
-            threadId: "thr_123",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      hostId: "host_123",
-      hostType: "persistent",
-      loadedEnvironments: [],
-    });
-
-    expect(
-      hostDaemonSessionOpenRequestSchema.parse({
-        hostId: "host_123",
-        instanceId: "instance_1",
-        hostName: "Michael's MacBook",
-        hostType: "persistent",
-        dataDir: "/tmp/bb-data",
-        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        activeThreads: [],
-        loadedEnvironments: [
-          {
-            environmentId: "env_123",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      loadedEnvironments: [
-        {
-          environmentId: "env_123",
-        },
-      ],
-    });
-
-    expect(() =>
-      hostDaemonSessionOpenRequestSchema.parse({
-        hostId: "host_123",
-        instanceId: "instance_1",
-        hostName: "Michael's MacBook",
-        hostType: "persistent",
-        dataDir: "/tmp/bb-data",
-        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        activeThreads: [
-          {
-            threadId: "",
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonSessionOpenRequestSchema.parse({
-        hostId: "host_123",
-        instanceId: "instance_1",
-        hostName: "Michael's MacBook",
-        hostType: "persistent",
-        dataDir: "/tmp/bb-data",
-        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-        activeThreads: [],
-      }),
-    ).toMatchObject({
-      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-    });
-
-    expect(() =>
-      hostDaemonSessionOpenRequestSchema.parse({
-        hostId: "host_123",
-        instanceId: "instance_1",
-        hostName: "Michael's MacBook",
-        hostType: "persistent",
-        dataDir: "/tmp/bb-data",
-        protocolVersion: 0,
-        activeThreads: [],
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandsQuerySchema.parse({
-        sessionId: "session_123",
-        limit: "100",
-        waitMs: "0",
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-    });
-
-    expect(
-      hostDaemonSessionOpenResponseSchema.parse({
-        sessionId: "session_123",
-        heartbeatIntervalMs: 5_000,
-        leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [
-          {
-            environmentId: "env_123",
-            threadId: "thr_123",
-          },
-        ],
-        trackedApplicationDataTargets: [],
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-      retiredEnvironmentIds: [],
-      trackedThreadTargets: [
-        {
-          environmentId: "env_123",
-          threadId: "thr_123",
-        },
-      ],
-    });
-
-    expect(() =>
-      hostDaemonSessionOpenResponseSchema.parse({
-        sessionId: "session_123",
-        heartbeatIntervalMs: 5_000,
-        leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [],
-        threadHighWaterMarks: { thr_123: 10 },
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonEventBatchRequestSchema.parse({
-        sessionId: "session_123",
-        events: [
-          {
-            producerEventId: PRODUCER_EVENT_ID,
-            threadId: "thr_123",
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
-          },
-        ],
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-      events: [
-        {
-          producerEventId: PRODUCER_EVENT_ID,
-          threadId: "thr_123",
-        },
-      ],
-    });
-
-    expect(
-      hostDaemonEventBatchResponseSchema.parse({
-        acceptedEvents: [
-          {
-            producerEventId: PRODUCER_EVENT_ID,
-            threadId: "thr_123",
-            sequence: 42,
-          },
-        ],
-        rejectedEvents: [
-          {
-            producerEventId: "hdevt_23456789abcdefghijkn",
-            reason: "thread_not_owned_by_host",
-            threadId: "thr_stale",
-          },
-        ],
-      }),
-    ).toEqual({
-      acceptedEvents: [
-        {
-          producerEventId: PRODUCER_EVENT_ID,
-          threadId: "thr_123",
-          sequence: 42,
-        },
-      ],
-      rejectedEvents: [
-        {
-          producerEventId: "hdevt_23456789abcdefghijkn",
-          reason: "thread_not_owned_by_host",
-          threadId: "thr_stale",
-        },
-      ],
-    });
-
-    expect(() =>
-      hostDaemonEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-        rejectedEvents: [
-          {
-            producerEventId: "hdevt_23456789abcdefghijkn",
-            reason: "unknown_reason",
-            threadId: "thr_stale",
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonEventBatchRequestSchema.parse({
-        sessionId: "session_123",
-        events: [
-          {
-            producerEventId: PRODUCER_EVENT_ID,
-            threadId: "thr_123",
-            sequence: 1,
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonEventBatchResponseSchema.parse({
-        acceptedEvents: [
-          {
-            producerEventId: PRODUCER_EVENT_ID,
-            threadId: "thr_123",
-            sequence: 42,
-          },
-        ],
-        rejectedEvents: [],
-        threadHighWaterMarks: {
-          thr_123: 42,
-        },
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandResultResponseSchema.parse({
-        ok: true,
-      }),
-    ).toEqual({
-      ok: true,
-    });
-
-    expect(() =>
-      hostDaemonCommandResultResponseSchema.parse({
-        ok: true,
-        threadHighWaterMarks: {
-          thr_123: 43,
-        },
-      }),
-    ).toThrow();
-
+  it("parses surviving engine runtime payloads", () => {
     expect(
       hostDaemonDaemonWsMessageSchema.parse({
         type: "environment-change",
@@ -2182,8 +1845,7 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
+      contract.hostDaemonAppDataChangePayloadSchema.parse({
         applicationId: "status",
         path: "state.json",
         value: { workers: [] },
@@ -2191,7 +1853,6 @@ describe("host-daemon session schemas", () => {
         version: "next-hash",
       }),
     ).toEqual({
-      sessionId: "session_123",
       applicationId: "status",
       path: "state.json",
       value: { workers: [] },
@@ -2200,8 +1861,7 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
+      contract.hostDaemonAppDataChangePayloadSchema.parse({
         applicationId: "status",
         path: "state.json",
         value: null,
@@ -2214,8 +1874,7 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(() =>
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
+      contract.hostDaemonAppDataChangePayloadSchema.parse({
         applicationId: "status",
         path: "state.json",
         value: { workers: [] },
@@ -2225,44 +1884,11 @@ describe("host-daemon session schemas", () => {
     ).toThrow();
 
     expect(
-      contract.hostDaemonAppDataResyncRequestSchema.parse({
-        sessionId: "session_123",
+      contract.hostDaemonAppDataResyncPayloadSchema.parse({
         applicationId: "status",
       }),
     ).toEqual({
-      sessionId: "session_123",
       applicationId: "status",
-    });
-
-    expect(
-      hostDaemonInteractiveRequestSchema.parse({
-        sessionId: "session_123",
-        interaction: {
-          threadId: "thr_123",
-          turnId: "turn_123",
-          providerId: "codex",
-          providerThreadId: "provider-thread-123",
-          providerRequestId: "request-123",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "command",
-              itemId: "item_123",
-              command: "git push",
-              cwd: "/tmp/project",
-              actions: [],
-              sessionGrant: null,
-            },
-            reason: "Needs approval",
-            availableDecisions: ["allow_once", "deny"],
-          },
-        },
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-      interaction: {
-        providerId: "codex",
-      },
     });
 
     expect(
@@ -2287,81 +1913,9 @@ describe("host-daemon session schemas", () => {
       interactionId: "pint_123",
       status: "resolving",
     });
-
-    expect(
-      hostDaemonInteractiveInterruptRequestSchema.parse({
-        sessionId: "session_123",
-        providerId: "codex",
-        threadIds: ["thr_123"],
-        reason: "Provider exited",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      providerId: "codex",
-      threadIds: ["thr_123"],
-      reason: "Provider exited",
-    });
-
-    expect(
-      hostDaemonInteractiveInterruptResponseSchema.parse({
-        ok: true,
-        interactionIds: ["pint_123"],
-      }),
-    ).toEqual({
-      ok: true,
-      interactionIds: ["pint_123"],
-    });
   });
 
-  it("restricts daemon websocket control and RPC messages", () => {
-    expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "commands-available",
-      }),
-    ).toEqual({ type: "commands-available" });
-
-    expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "session-close",
-        reason: "replaced",
-      }),
-    ).toMatchObject({
-      type: "session-close",
-      reason: "replaced",
-    });
-
-    expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "session-close",
-        reason: "daemon-disconnect",
-      }),
-    ).toMatchObject({
-      type: "session-close",
-      reason: "daemon-disconnect",
-    });
-
-    expect(() =>
-      hostDaemonServerWsMessageSchema.parse({
-        type: "session-close",
-        reason: "shutdown",
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "heartbeat",
-      }),
-    ).toMatchObject({
-      type: "heartbeat",
-    });
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "heartbeat",
-        bufferDepth: 0,
-      }),
-    ).toThrow();
-
+  it("keeps engine runtime websocket payloads strict", () => {
     expect(() =>
       hostDaemonDaemonWsMessageSchema.parse({
         type: "application-content-changed",
@@ -2382,107 +1936,9 @@ describe("host-daemon session schemas", () => {
         applicationId: "Not A Slug",
       }),
     ).toThrow();
-
-    expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      }),
-    ).toEqual({
-      type: "host-rpc.request",
-      requestId: "rpc-1",
-      command: { type: "provider.list" },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "provider.list",
-      ok: true,
-      result: { providers: [] },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "host.read_file",
-        ok: true,
-        result: {
-          path: "/tmp/bb-data/thread-storage/thread-123/PREFERENCES.md",
-          content: "# Preferences",
-          contentEncoding: "utf8",
-          mimeType: "text/markdown",
-          modifiedAtMs: 1234.5,
-          sizeBytes: 13,
-        },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "host.read_file",
-      ok: true,
-      result: {
-        path: "/tmp/bb-data/thread-storage/thread-123/PREFERENCES.md",
-        content: "# Preferences",
-        contentEncoding: "utf8",
-        mimeType: "text/markdown",
-        modifiedAtMs: 1234.5,
-        sizeBytes: 13,
-      },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "host.read_file_relative",
-        ok: true,
-        result: {
-          path: "assets/logo.png",
-          content: "iVBORw0KGgo=",
-          contentEncoding: "base64",
-          mimeType: "image/png",
-          modifiedAtMs: 1234.5,
-          sizeBytes: 8,
-        },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "host.read_file_relative",
-      ok: true,
-      result: {
-        path: "assets/logo.png",
-        content: "iVBORw0KGgo=",
-        contentEncoding: "base64",
-        mimeType: "image/png",
-        modifiedAtMs: 1234.5,
-        sizeBytes: 8,
-      },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.safeParse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "provider.list",
-        ok: true,
-        result: { models: [], selectedOnlyModels: [] },
-      }).success,
-    ).toBe(false);
   });
 
-  it("round-trips every online RPC response success variant through daemon websocket schemas", () => {
+  it("round-trips every online RPC result variant through the per-type schemas", () => {
     // Keep this table-driven instead of inspecting Zod internals: the exported
     // schema behavior is stable API, while union internals are not.
     expect(Object.keys(ONLINE_RPC_RESPONSE_RESULT_FIXTURES).sort()).toEqual(
@@ -2490,7 +1946,7 @@ describe("host-daemon session schemas", () => {
     );
 
     for (const commandType of HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES) {
-      expectHostRpcResponseRoundTrip(
+      expectHostRpcResultRoundTrip(
         commandType,
         ONLINE_RPC_RESPONSE_RESULT_FIXTURES[commandType],
         commandType,
@@ -2498,7 +1954,7 @@ describe("host-daemon session schemas", () => {
     }
 
     for (const testCase of ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES) {
-      expectHostRpcResponseRoundTrip(
+      expectHostRpcResultRoundTrip(
         testCase.commandType,
         testCase.result,
         testCase.name,
@@ -2506,21 +1962,14 @@ describe("host-daemon session schemas", () => {
     }
   });
 
-  it("rejects online RPC response results that do not match commandType", () => {
+  it("rejects online RPC results that do not match the command type", () => {
     for (const testCase of ONLINE_RPC_RESPONSE_MISMATCH_CASES) {
-      const message = buildHostRpcResponseMessage(
-        testCase.commandType,
-        testCase.result,
-      );
-      const jsonRoundTripped = JSON.parse(JSON.stringify(message));
+      const jsonRoundTripped = JSON.parse(JSON.stringify(testCase.result));
 
       expect(
-        hostDaemonOnlineRpcResponseMessageSchema.safeParse(jsonRoundTripped)
-          .success,
-        testCase.name,
-      ).toBe(false);
-      expect(
-        hostDaemonDaemonWsMessageSchema.safeParse(jsonRoundTripped).success,
+        hostDaemonOnlineRpcResultSchemaByType[testCase.commandType].safeParse(
+          jsonRoundTripped,
+        ).success,
         testCase.name,
       ).toBe(false);
     }
@@ -2616,21 +2065,4 @@ describe("host-daemon session schemas", () => {
     ).toBe(false);
   });
 
-  it("builds an internal client rooted at /internal", () => {
-    const client = createHostDaemonClient("http://localhost:3334", "secret");
-
-    expect(client.session.open.$url().pathname).toBe("/internal/session/open");
-    expect(client.session.commands.$url().pathname).toBe(
-      "/internal/session/commands",
-    );
-    expect(client.session["command-result"].$url().pathname).toBe(
-      "/internal/session/command-result",
-    );
-    expect(client.session["app-data-change"].$url().pathname).toBe(
-      "/internal/session/app-data-change",
-    );
-    expect(client.session["app-data-resync"].$url().pathname).toBe(
-      "/internal/session/app-data-resync",
-    );
-  });
 });

@@ -1,7 +1,6 @@
-import type { Environment, Host, Thread, ThreadStatus } from "@bb/domain";
+import type { Environment, Thread, ThreadStatus } from "@bb/domain";
 import type {
   EnvironmentNotReadyErrorDetails,
-  HostUnavailableErrorDetails,
   ParentThreadInvalidErrorDetails,
   ParentThreadInvalidReason,
   ParentThreadInvalidSubject,
@@ -23,8 +22,6 @@ export type ThreadWritableFields = Pick<
   Thread,
   "archivedAt" | "deletedAt" | "status" | "stopRequestedAt"
 >;
-
-export type HostUnavailableStatus = 404 | 502;
 
 interface ParentThreadInvalidDetailsArgs {
   reason: ParentThreadInvalidReason;
@@ -111,38 +108,6 @@ export function throwThreadNotWritable(
 ): never {
   throw new ApiError(409, "thread_not_writable", message, {
     details: threadNotWritableDetails(thread, reason),
-  });
-}
-
-export function disconnectedHostUnavailableDetails(
-  hostStatus: Host["status"] = "disconnected",
-): HostUnavailableErrorDetails {
-  return {
-    reason: "disconnected",
-    hostStatus,
-    suspendedAt: null,
-    destroyedAt: null,
-  };
-}
-
-export function destroyedHostUnavailableDetails(
-  destroyedAt: number,
-): HostUnavailableErrorDetails {
-  return {
-    reason: "destroyed",
-    hostStatus: null,
-    suspendedAt: null,
-    destroyedAt,
-  };
-}
-
-export function throwHostUnavailable(
-  status: HostUnavailableStatus,
-  message: string,
-  details: HostUnavailableErrorDetails,
-): never {
-  throw new ApiError(status, "host_unavailable", message, {
-    details,
   });
 }
 

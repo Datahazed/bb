@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createHostDaemonCommandId } from "../../src/ids.js";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
-import { queueCommand } from "../../src/data/commands.js";
 import {
   getProjectOperation,
   listProjectOperations,
@@ -12,15 +12,11 @@ import {
   upsertProjectOperationRecord,
 } from "../../src/data/project-operations.js";
 import { createProject } from "../../src/data/projects.js";
-import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -60,20 +56,8 @@ describe("project operations", () => {
   });
 
   it("records queued and failed project operations", () => {
-    const { db, host, project } = setup();
-    const command = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify({
-        type: "environment.destroy",
-        environmentId: "env_placeholder",
-        workspaceContext: {
-          workspacePath: "/tmp/test",
-          workspaceProvisionType: "managed-worktree",
-        },
-      }),
-    });
+    const { db, project } = setup();
+    const command = { id: createHostDaemonCommandId() };
 
     upsertProjectOperationRecord(db, {
       projectId: project.id,
@@ -138,33 +122,9 @@ describe("project operations", () => {
   });
 
   it("does not move terminal project operations back to queued", () => {
-    const { db, host, project } = setup();
-    const firstCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify({
-        type: "environment.destroy",
-        environmentId: "env_placeholder",
-        workspaceContext: {
-          workspacePath: "/tmp/test",
-          workspaceProvisionType: "managed-worktree",
-        },
-      }),
-    });
-    const secondCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify({
-        type: "environment.destroy",
-        environmentId: "env_placeholder",
-        workspaceContext: {
-          workspacePath: "/tmp/test",
-          workspaceProvisionType: "managed-worktree",
-        },
-      }),
-    });
+    const { db, project } = setup();
+    const firstCommand = { id: createHostDaemonCommandId() };
+    const secondCommand = { id: createHostDaemonCommandId() };
 
     upsertProjectOperationRecord(db, {
       projectId: project.id,

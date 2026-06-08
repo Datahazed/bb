@@ -17,7 +17,6 @@ import {
 } from "../../src/data/queued-thread-messages.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
-import { upsertHost } from "../../src/data/hosts.js";
 
 const defaultInput = [{ type: "text" as const, text: "hello" }];
 const altInput = [{ type: "text" as const, text: "world" }];
@@ -25,10 +24,7 @@ const altInput = [{ type: "text" as const, text: "world" }];
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },

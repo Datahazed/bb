@@ -41,7 +41,6 @@ type ThreadCreateDeps = Pick<
   | "hub"
   | "lifecycleDedupers"
   | "logger"
-  | "machineAuth"
 >;
 
 interface ExistingUnmanagedEnvironmentIntentByHostPathArgs {

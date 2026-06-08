@@ -4,7 +4,6 @@ import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { EngineCommandDispatcher } from "./services/engine/engine-dispatch.js";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
-import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
@@ -37,7 +36,6 @@ export interface AppDeps {
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;
-  machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
   terminalSessions: TerminalSessionLifecycle;
 }
@@ -49,7 +47,7 @@ export interface ServerAppDeps extends AppDeps {
 
 export type LifecycleDeps = Pick<
   AppDeps,
-  "config" | "db" | "engineDispatch" | "hub" | "lifecycleDedupers" | "machineAuth"
+  "config" | "db" | "engineDispatch" | "hub" | "lifecycleDedupers"
 >;
 
 export type WorkSessionDeps = LifecycleDeps;

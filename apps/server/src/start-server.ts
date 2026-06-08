@@ -12,7 +12,6 @@ import { migrateAppDataLayout } from "./services/apps/app-data-layout-migration.
 import { EngineCommandDispatcher } from "./services/engine/engine-dispatch.js";
 import { startServerEngine } from "./services/engine/server-engine.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
-import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
@@ -98,13 +97,6 @@ async function runLockedServer(
     logger,
   });
 
-  const machineAuth = await createMachineAuthService({
-    dataDir: serverConfig.BB_DATA_DIR,
-    db,
-    logger,
-  });
-  await machineAuth.ensureReady();
-
   const appVersion = createAppVersionService({
     config: runtimeConfig,
     logger,
@@ -117,7 +109,6 @@ async function runLockedServer(
     hub,
     lifecycleDedupers,
     logger,
-    machineAuth,
     pendingInteractions,
     terminalSessions,
   };

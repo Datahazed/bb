@@ -2,14 +2,10 @@ import {
   claimAutomationScheduledRun,
   type ClaimAutomationScheduledRunResult,
   type DueAutomationCursor,
-  getEnvironment,
   listDueAutomations,
   restoreAutomationAfterFailedRun,
 } from "@bb/db";
-import type {
-  AutomationAction,
-  AutomationThreadRequest,
-} from "@bb/server-contract";
+import type { AutomationAction } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import {
   type AutomationRow,
@@ -26,7 +22,6 @@ interface SweepDueAutomationsArgs {
 
 interface AutomationExecutionContext {
   action: AutomationAction;
-  hostId: string | null;
   nextRunAt: number;
 }
 
@@ -41,34 +36,12 @@ function toDueAutomationCursor(automation: AutomationRow): DueAutomationCursor {
   };
 }
 
-function resolveAutomationHostId(
-  deps: Pick<AppDeps, "db">,
-  threadRequest: AutomationThreadRequest,
-): string | null {
-  switch (threadRequest.environment.type) {
-    case "host":
-      return threadRequest.environment.hostId ?? null;
-    case "reuse": {
-      const environment = getEnvironment(
-        deps.db,
-        threadRequest.environment.environmentId,
-      );
-      if (!environment) {
-        throw new Error("Automation reuse environment was not found");
-      }
-      return environment.hostId;
-    }
-  }
-}
-
 function resolveAutomationExecutionContext(
-  deps: Pick<AppDeps, "db">,
   automation: AutomationRow,
   now: number,
 ): AutomationExecutionContext {
   const action = parseAutomationAction(automation.action);
   const trigger = parseAutomationTriggerConfig(automation.triggerConfig);
-  const hostId = resolveAutomationHostId(deps, action.threadRequest);
   const nextRunAt = computeNextScheduledTime({
     cron: trigger.cron,
     now,
@@ -76,7 +49,6 @@ function resolveAutomationExecutionContext(
   });
   return {
     action,
-    hostId,
     nextRunAt,
   };
 }
@@ -90,14 +62,13 @@ async function runAutomation(
     | "hub"
     | "lifecycleDedupers"
     | "logger"
-    | "machineAuth"
   >,
   automation: AutomationRow,
   now: number,
 ): Promise<void> {
   let executionContext: AutomationExecutionContext;
   try {
-    executionContext = resolveAutomationExecutionContext(deps, automation, now);
+    executionContext = resolveAutomationExecutionContext(automation, now);
   } catch (error) {
     deps.logger.error(
       {
@@ -113,7 +84,6 @@ async function runAutomation(
     claimAutomationScheduledRun(deps.db, deps.hub, {
       automationId: automation.id,
       expectedNextRunAt: automation.nextRunAt,
-      hostId: executionContext.hostId,
       nextRunAt: executionContext.nextRunAt,
     });
 
@@ -170,7 +140,6 @@ export async function sweepDueAutomations(
     | "hub"
     | "lifecycleDedupers"
     | "logger"
-    | "machineAuth"
   >,
   args: SweepDueAutomationsArgs = {},
 ): Promise<void> {

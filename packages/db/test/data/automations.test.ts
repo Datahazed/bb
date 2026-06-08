@@ -17,18 +17,13 @@ import {
 } from "../../src/data/automations.js";
 import { upsertProjectOperationRecord } from "../../src/data/project-operations.js";
 import { createProject } from "../../src/data/projects.js";
-import { openSession } from "../../src/data/sessions.js";
 import { createThread } from "../../src/data/threads.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { threads } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -144,7 +139,6 @@ describe("automations", () => {
     const claimed = claimAutomationScheduledRun(db, noopNotifier, {
       automationId: automation.id,
       expectedNextRunAt: automation.nextRunAt,
-      hostId: null,
       nextRunAt: now + 60_000,
     });
     expect(claimed).toEqual({
@@ -283,16 +277,6 @@ describe("automations", () => {
       projectId: project.id,
       now: now - 120_000,
     });
-    openSession(db, noopNotifier, {
-      hostId: host.id,
-      instanceId: "inst-automation-claim",
-      hostName: "test-host",
-      hostType: "persistent",
-      dataDir: "/tmp/test-host",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 1_000,
-      leaseTimeoutMs: 60_000,
-    });
     createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
@@ -303,7 +287,6 @@ describe("automations", () => {
     const claimed = claimAutomationScheduledRun(db, noopNotifier, {
       automationId: automation.id,
       expectedNextRunAt: automation.nextRunAt,
-      hostId: host.id,
       nextRunAt: now + 60_000,
     });
 
@@ -320,7 +303,6 @@ describe("automations", () => {
     const staleClaim = claimAutomationScheduledRun(db, noopNotifier, {
       automationId: automation.id,
       expectedNextRunAt: automation.nextRunAt,
-      hostId: host.id,
       nextRunAt: now + 120_000,
     });
     expect(staleClaim).toEqual({
@@ -330,29 +312,6 @@ describe("automations", () => {
     });
   });
 
-  it("claims scheduled runs as disconnected when the host has no active session", () => {
-    const { db, host, project } = setup();
-    const now = Date.now();
-    const automation = createScheduleAutomation({
-      db,
-      hostId: host.id,
-      projectId: project.id,
-      now: now - 120_000,
-    });
-
-    const claimed = claimAutomationScheduledRun(db, noopNotifier, {
-      automationId: automation.id,
-      expectedNextRunAt: automation.nextRunAt,
-      hostId: host.id,
-      nextRunAt: now + 60_000,
-    });
-
-    expect(claimed).toEqual({
-      advanced: true,
-      reason: "host-disconnected",
-      shouldCreateThread: false,
-    });
-  });
 
   it("deletes automations", () => {
     const { db, host, project } = setup();

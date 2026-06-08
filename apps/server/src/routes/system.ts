@@ -8,7 +8,7 @@ import type { Hono } from "hono";
 import type { ServerAppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,

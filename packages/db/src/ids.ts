@@ -12,10 +12,6 @@ function createId(prefix: string): string {
   return `${prefix}_${generatePrettyIdSuffix()}`;
 }
 
-export function createHostId(): string {
-  return createId("host");
-}
-
 export function createProjectId(): string {
   return createId("proj");
 }
@@ -80,16 +76,8 @@ export function createPendingInteractionId(): string {
   return createId("pint");
 }
 
-export function createHostDaemonSessionId(): string {
-  return createId("hses");
-}
-
 export function createHostDaemonCommandId(): string {
   return createId("hcmd");
-}
-
-export function createHostDaemonCommandAttemptId(): string {
-  return createId("hcat");
 }
 
 export function createTerminalSessionId(): string {

@@ -8,14 +8,12 @@
     "types": ["node"]
   },
   "include": ["scripts", "src", "test", "tests", "fixtures", "stories"],
-  // test/internal, expired-commands, and thread-lifecycle are quarantined
-  // wire-protocol/durable-queue suites (see vitest.config.ts) — excluded from
-  // typecheck so the engine-seam helper rework doesn't have to keep dead
-  // queue machinery compiling; deleted in P1c.
+  // thread-lifecycle is a quarantined durable-queue suite (see
+  // vitest.config.ts) — excluded from typecheck so dead queue machinery
+  // doesn't have to keep compiling; Phase 2's boot-reconciliation rewrite
+  // owes its replacement.
   "exclude": [
     "src/services/threads/app-scaffold-template/source",
-    "test/internal",
-    "test/hosts/expired-commands.test.ts",
     "test/threads/thread-lifecycle.test.ts"
   ]
 }

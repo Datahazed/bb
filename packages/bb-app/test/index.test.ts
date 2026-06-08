@@ -18,7 +18,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  createHostJoinRequestBody,
   isMainModule,
   parseLauncherArgs,
   resolveBbAppRuntimeContext,
@@ -189,13 +188,9 @@ describe("bb-app launcher", () => {
     expect(context.configFile).toBe("/home/tester/.bb/config.json");
     expect(context.envFile).toBe("/home/tester/.bb/env.json");
     expect(context.serverPort).toBe(38886);
-    expect(context.daemonPort).toBe(38887);
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
     expect(context.serverEntry).toBe(
       "/repo/packages/bb-app/server/dist/index.js",
-    );
-    expect(context.daemonEntry).toBe(
-      "/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs",
     );
     expect(context.appVersion).toBe("0.0.0-dev");
   });
@@ -233,41 +228,7 @@ describe("bb-app launcher", () => {
     ).toBe(48887);
   });
 
-  it("creates the same local persistent join request as pnpm start", () => {
-    expect(
-      createHostJoinRequestBody({ localJoin: true, requestedHostId: null }),
-    ).toEqual({
-      hostType: "persistent",
-      joinMode: "local",
-    });
-    expect(
-      createHostJoinRequestBody({
-        localJoin: true,
-        requestedHostId: "host_local",
-      }),
-    ).toEqual({
-      hostId: "host_local",
-      hostType: "persistent",
-      joinMode: "local",
-    });
-  });
 
-  it("creates persistent remote join requests without local mode", () => {
-    expect(
-      createHostJoinRequestBody({ localJoin: false, requestedHostId: null }),
-    ).toEqual({
-      hostType: "persistent",
-    });
-    expect(
-      createHostJoinRequestBody({
-        localJoin: false,
-        requestedHostId: "host_remote",
-      }),
-    ).toEqual({
-      hostId: "host_remote",
-      hostType: "persistent",
-    });
-  });
 
   it("starts bb when no command or the explicit start command is provided", () => {
     expect(resolveBbAppCommand([])).toEqual({ kind: "start" });
@@ -285,16 +246,6 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("starts only the host daemon for the explicit host-daemon start command", () => {
-    expect(resolveBbAppCommand(["host-daemon"])).toEqual({
-      args: [],
-      kind: "host-daemon",
-    });
-    expect(resolveBbAppCommand(["host-daemon", "join"])).toEqual({
-      args: ["join"],
-      kind: "host-daemon",
-    });
-  });
 
   it("resolves config commands", () => {
     expect(
@@ -322,26 +273,20 @@ describe("bb-app launcher", () => {
   it("parses launcher flags separately from commands", () => {
     expect(
       parseLauncherArgs([
-        "host-daemon",
-        "join",
+        "config",
+        "list",
         "--data-dir",
         "~/bb-data",
         "--server-url",
         "https://bb.example.test",
-        "--host-daemon-port",
-        "48887",
-        "--host-type",
-        "persistent",
       ]),
     ).toEqual({
       options: {
         dataDir: "~/bb-data",
         help: false,
-        hostDaemonPort: "48887",
-        hostType: "persistent",
         serverUrl: "https://bb.example.test",
       },
-      positionals: ["host-daemon", "join"],
+      positionals: ["config", "list"],
     });
   });
 

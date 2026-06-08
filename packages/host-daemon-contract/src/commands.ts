@@ -973,24 +973,6 @@ export function parseHostDaemonOnlineRpcResultForCommand(
   return hostDaemonOnlineRpcResultSchemaByType[command.type].parse(value);
 }
 
-/**
- * Wire format for a command sent from the server to the daemon.
- *
- * Each command is self-describing — `command` contains the discriminated
- * `type` field plus its payload. `id` is a unique command identifier used
- * to correlate results. `cursor` is per-host monotonic and preserves
- * deterministic fetch order for a host.
- */
-export const hostDaemonCommandEnvelopeSchema = z.object({
-  id: z.string().min(1),
-  attemptId: z.string().min(1),
-  cursor: z.number().int().nonnegative(),
-  command: hostDaemonCommandSchema,
-});
-export type HostDaemonCommandEnvelope = z.infer<
-  typeof hostDaemonCommandEnvelopeSchema
->;
-
 const hostDaemonCommandResultReportBaseSchema = z.object({
   sessionId: z.string().min(1),
   commandId: z.string().min(1),

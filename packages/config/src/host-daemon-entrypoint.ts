@@ -1,26 +1,20 @@
-import type { HostType } from "@bb/domain";
 import {
   readOptionalEnvVar,
   resolveEnvLoader,
   type EnvLoaderArgs,
 } from "./env.js";
-import {
-  BB_BRIDGE_DIR_ENV,
-  BB_CLI_DIR_ENV,
-  BB_HOST_ENROLL_KEY_ENV,
-  BB_HOST_ID_ENV,
-  BB_HOST_NAME_ENV,
-  BB_HOST_TYPE_ENV,
-} from "./env-vars.js";
+import { BB_BRIDGE_DIR_ENV, BB_CLI_DIR_ENV } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 
+/**
+ * Bundle-location env for the in-process engine (plan §5.9): where the
+ * provider bridge bundles and the injected-shell `bb` CLI live. Named for the
+ * daemon entrypoint it came from; Phase 3 repoints the launcher at the server
+ * bundle and renames this scope.
+ */
 export interface HostDaemonEntrypointConfig {
   BB_BRIDGE_DIR?: string;
   BB_CLI_DIR?: string;
-  BB_HOST_ENROLL_KEY?: string;
-  BB_HOST_ID?: string;
-  BB_HOST_NAME?: string;
-  BB_HOST_TYPE?: HostType;
 }
 
 export type LoadHostDaemonEntrypointConfigArgs = EnvLoaderArgs;
@@ -40,26 +34,6 @@ export function loadHostDaemonEntrypointConfig(
     definition: BB_CLI_DIR_ENV,
     env: loader.env,
   });
-  const enrollKey = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_HOST_ENROLL_KEY_ENV,
-    env: loader.env,
-  });
-  const hostId = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_HOST_ID_ENV,
-    env: loader.env,
-  });
-  const hostName = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_HOST_NAME_ENV,
-    env: loader.env,
-  });
-  const hostType = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_HOST_TYPE_ENV,
-    env: loader.env,
-  });
 
   assignIfDefined({
     key: "BB_BRIDGE_DIR",
@@ -70,26 +44,6 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_CLI_DIR",
     target: config,
     value: cliDir,
-  });
-  assignIfDefined({
-    key: "BB_HOST_ENROLL_KEY",
-    target: config,
-    value: enrollKey,
-  });
-  assignIfDefined({
-    key: "BB_HOST_ID",
-    target: config,
-    value: hostId,
-  });
-  assignIfDefined({
-    key: "BB_HOST_NAME",
-    target: config,
-    value: hostName,
-  });
-  assignIfDefined({
-    key: "BB_HOST_TYPE",
-    target: config,
-    value: hostType,
   });
 
   return config;

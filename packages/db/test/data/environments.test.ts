@@ -15,16 +15,12 @@ import {
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { environments } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -37,8 +33,6 @@ function createNotifierSpy(): DbNotifier {
     notifyThread: vi.fn(),
     notifyProject: vi.fn(),
     notifyEnvironment: vi.fn(),
-    notifyHost: vi.fn(),
-    notifyCommand: vi.fn(),
     notifySystem: vi.fn(),
   };
 }
@@ -258,10 +252,7 @@ describe("environments", () => {
 
   it("lists loaded environments that no longer belong to the host as live records", () => {
     const { db, host, project } = setup();
-    const otherHost = upsertHost(db, noopNotifier, {
-      name: "other-host",
-      type: "persistent",
-    });
+    const otherHost = { id: "host-other" };
     const { project: otherProject } = createProject(db, noopNotifier, {
       name: "other-project",
       source: {

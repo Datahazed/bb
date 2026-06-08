@@ -9,8 +9,6 @@ import {
   createEnvironmentProvisioningId,
   createEventId,
   createHostDaemonCommandId,
-  createHostDaemonSessionId,
-  createHostId,
   createManagerThreadNudgeId,
   createProjectId,
   createPromptHistoryEntryId,
@@ -18,9 +16,6 @@ import {
   createThreadId,
   environments,
   events,
-  hostDaemonCommands,
-  hostDaemonSessions,
-  hosts,
   managerThreadNudges,
   migrate,
   promptHistoryEntries,
@@ -87,28 +82,15 @@ describe("db rebuild schema", () => {
     migrate(db);
 
     const now = Date.now();
-    const hostId = createHostId();
     const projectId = createProjectId();
     const sourceId = createProjectSourceId();
     const environmentId = createEnvironmentId();
     const automationId = createAutomationId();
     const threadId = createThreadId();
     const nudgeId = createManagerThreadNudgeId();
-    const sessionId = createHostDaemonSessionId();
-    const commandId = createHostDaemonCommandId();
     const eventId = createEventId();
     const promptHistoryEntryId = createPromptHistoryEntryId();
 
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(projects)
       .values({
         id: projectId,
@@ -122,7 +104,7 @@ describe("db rebuild schema", () => {
         id: sourceId,
         projectId,
         type: "local_path",
-        hostId,
+        hostId: "local",
         path: "/tmp/rebuild",
         createdAt: now,
         updatedAt: now,
@@ -132,7 +114,7 @@ describe("db rebuild schema", () => {
       .values({
         id: environmentId,
         projectId,
-        hostId,
+        hostId: "local",
         path: null,
         managed: true,
         isGitRepo: true,
@@ -200,35 +182,6 @@ describe("db rebuild schema", () => {
         updatedAt: now,
       })
       .run();
-    db.insert(hostDaemonSessions)
-      .values({
-        id: sessionId,
-        hostId,
-        instanceId: "instance-1",
-        hostName: "Local host",
-        hostType: "persistent",
-        dataDir: "/tmp/test-data",
-        protocolVersion: 1,
-        heartbeatIntervalMs: 10_000,
-        leaseTimeoutMs: 30_000,
-        status: "connected",
-        leaseExpiresAt: now + 60_000,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(hostDaemonCommands)
-      .values({
-        id: commandId,
-        hostId,
-        sessionId,
-        cursor: 1,
-        type: "workspace.commit",
-        payload: "{}",
-        state: "queued",
-        createdAt: now,
-      })
-      .run();
     db.insert(queuedThreadMessages)
       .values({
         id: createQueuedThreadMessageId(),
@@ -292,10 +245,6 @@ describe("db rebuild schema", () => {
         contentHash: "sha256:abc",
       },
     );
-    expect(db.select().from(hostDaemonCommands).get()).toMatchObject({
-      sessionId,
-      type: "workspace.commit",
-    });
     expect(db.select().from(promptHistoryEntries).get()).toMatchObject({
       projectId,
       scope: "project",
@@ -305,75 +254,16 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
-  // Phase 1 single-host: project_sources.host_id no longer references hosts —
-  // sources survive host-row deletion (the hosts table is orphaned transport
-  // state until P1c deletes it).
-  it("keeps host-scoped project sources when a host row is deleted", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-
-    const now = Date.now();
-    const hostId = createHostId();
-    const projectId = createProjectId();
-    const sourceId = createProjectSourceId();
-
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(projects)
-      .values({
-        id: projectId,
-        name: "Rebuild",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(projectSources)
-      .values({
-        id: sourceId,
-        projectId,
-        type: "local_path",
-        hostId,
-        path: "/tmp/rebuild",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-
-    db.delete(hosts).where(eq(hosts.id, hostId)).run();
-
-    expect(db.select().from(projectSources).all()).toHaveLength(1);
-
-    closeConnection(db);
-  });
 
   it("cascades project deletion to environments and threads", () => {
     const db = createConnection(":memory:");
     migrate(db);
 
     const now = Date.now();
-    const hostId = createHostId();
     const projectId = createProjectId();
     const environmentId = createEnvironmentId();
     const threadId = createThreadId();
 
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(projects)
       .values({
         id: projectId,
@@ -386,7 +276,7 @@ describe("db rebuild schema", () => {
       .values({
         id: environmentId,
         projectId,
-        hostId,
+        hostId: "local",
         path: "/tmp/rebuild/.bb/env",
         managed: true,
         isGitRepo: true,
@@ -423,21 +313,10 @@ describe("db rebuild schema", () => {
     migrate(db);
 
     const now = Date.now();
-    const hostId = createHostId();
     const projectId = createProjectId();
     const automationId = createAutomationId();
     const threadId = createThreadId();
 
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(projects)
       .values({
         id: projectId,
@@ -493,21 +372,10 @@ describe("db rebuild schema", () => {
     migrate(db);
 
     const now = Date.now();
-    const hostId = createHostId();
     const projectId = createProjectId();
     const threadId = createThreadId();
     const nudgeId = createManagerThreadNudgeId();
 
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(projects)
       .values({
         id: projectId,
@@ -564,173 +432,17 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
-  // Phase 1 single-host: environments.host_id no longer references hosts —
-  // only the daemon-session cascade survives until P1c drops the tables.
-  it("cascades host deletion to daemon sessions but not environments", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
 
-    const now = Date.now();
-    const hostId = createHostId();
-    const projectId = createProjectId();
-    const environmentId = createEnvironmentId();
-    const sessionId = createHostDaemonSessionId();
-    const commandId = createHostDaemonCommandId();
-
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(projects)
-      .values({
-        id: projectId,
-        name: "Rebuild",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(environments)
-      .values({
-        id: environmentId,
-        projectId,
-        hostId,
-        path: "/tmp/rebuild/.bb/env",
-        managed: true,
-        isGitRepo: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: "bb/env-1",
-        status: "ready",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(hostDaemonSessions)
-      .values({
-        id: sessionId,
-        hostId,
-        instanceId: "instance-1",
-        hostName: "Local host",
-        hostType: "persistent",
-        dataDir: "/tmp/test-data",
-        protocolVersion: 1,
-        heartbeatIntervalMs: 10_000,
-        leaseTimeoutMs: 30_000,
-        status: "connected",
-        leaseExpiresAt: now + 60_000,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(hostDaemonCommands)
-      .values({
-        id: commandId,
-        hostId,
-        sessionId,
-        cursor: 1,
-        type: "workspace.commit",
-        payload: "{}",
-        state: "queued",
-        createdAt: now,
-      })
-      .run();
-
-    // Commands reference host without cascade, so delete commands first.
-    db.delete(hostDaemonCommands).run();
-    db.delete(hosts).where(eq(hosts.id, hostId)).run();
-
-    expect(db.select().from(environments).all()).toHaveLength(1);
-    expect(db.select().from(hostDaemonSessions).all()).toHaveLength(0);
-    expect(db.select().from(hostDaemonCommands).all()).toHaveLength(0);
-
-    closeConnection(db);
-  });
-
-  it("nullifies session reference on host-daemon commands when session is deleted", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-
-    const now = Date.now();
-    const hostId = createHostId();
-    const sessionId = createHostDaemonSessionId();
-    const commandId = createHostDaemonCommandId();
-
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(hostDaemonSessions)
-      .values({
-        id: sessionId,
-        hostId,
-        instanceId: "instance-1",
-        hostName: "Local host",
-        hostType: "persistent",
-        dataDir: "/tmp/test-data",
-        protocolVersion: 1,
-        heartbeatIntervalMs: 10_000,
-        leaseTimeoutMs: 30_000,
-        status: "connected",
-        leaseExpiresAt: now + 60_000,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    db.insert(hostDaemonCommands)
-      .values({
-        id: commandId,
-        hostId,
-        sessionId,
-        cursor: 1,
-        type: "workspace.commit",
-        payload: "{}",
-        state: "queued",
-        createdAt: now,
-      })
-      .run();
-
-    db.delete(hostDaemonSessions)
-      .where(eq(hostDaemonSessions.id, sessionId))
-      .run();
-
-    const commands = db.select().from(hostDaemonCommands).all();
-    expect(commands).toHaveLength(1);
-    expect(commands[0]?.sessionId).toBeNull();
-
-    closeConnection(db);
-  });
 
   it("sets nullable environment references to null when an environment is deleted", () => {
     const db = createConnection(":memory:");
     migrate(db);
 
     const now = Date.now();
-    const hostId = createHostId();
     const projectId = createProjectId();
     const environmentId = createEnvironmentId();
     const threadId = createThreadId();
 
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "Local host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
     db.insert(projects)
       .values({
         id: projectId,
@@ -743,7 +455,7 @@ describe("db rebuild schema", () => {
       .values({
         id: environmentId,
         projectId,
-        hostId,
+        hostId: "local",
         path: "/tmp/rebuild/.bb/env",
         managed: true,
         isGitRepo: true,
@@ -921,7 +633,6 @@ describe("db rebuild schema", () => {
   });
 
   it("generates prefixed ids for rebuild entities", () => {
-    expect(createHostId()).toMatch(/^host_/u);
     expect(createProjectId()).toMatch(/^proj_/u);
     expect(createProjectSourceId()).toMatch(/^src_/u);
     expect(createEnvironmentId()).toMatch(/^env_/u);
@@ -932,45 +643,7 @@ describe("db rebuild schema", () => {
     expect(createEventId()).toMatch(/^evt_/u);
     expect(createPromptHistoryEntryId()).toMatch(/^phist_/u);
     expect(createQueuedThreadMessageId()).toMatch(/^qmsg_/u);
-    expect(createHostDaemonSessionId()).toMatch(/^hses_/u);
     expect(createHostDaemonCommandId()).toMatch(/^hcmd_/u);
   });
 
-  it("requires a non-null data_dir on host_daemon_sessions", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-    const hostId = createHostId();
-    const now = Date.now();
-    db.insert(hosts)
-      .values({
-        id: hostId,
-        name: "host",
-        type: "persistent",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    expect(() =>
-      db
-        .insert(hostDaemonSessions)
-        .values({
-          id: createHostDaemonSessionId(),
-          hostId,
-          instanceId: "instance",
-          hostName: "host",
-          hostType: "persistent",
-          // data_dir intentionally omitted — column is NOT NULL.
-          protocolVersion: 1,
-          heartbeatIntervalMs: 1_000,
-          leaseTimeoutMs: 10_000,
-          status: "active",
-          leaseExpiresAt: now + 10_000,
-          createdAt: now,
-          updatedAt: now,
-        } as never)
-        .run(),
-    ).toThrow(/NOT NULL constraint failed: host_daemon_sessions\.data_dir/);
-    closeConnection(db);
-  });
 });

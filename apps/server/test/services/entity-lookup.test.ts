@@ -6,14 +6,13 @@ import {
   createThread,
   migrate,
   noopNotifier,
-  upsertHost,
   type DbConnection,
 } from "@bb/db";
 import {
   markProjectOperationRecordFailed,
   upsertProjectOperationRecord,
 } from "@bb/db/internal-lifecycle";
-import type { Host, Project } from "@bb/domain";
+import type { Project } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
   requirePublicProject,
@@ -23,7 +22,7 @@ import {
 
 interface SetupResult {
   db: DbConnection;
-  host: Host;
+  host: { id: string };
   project: Project;
 }
 
@@ -32,28 +31,15 @@ type ThrowingCallback = () => void;
 function setup(): SetupResult {
   const db = createConnection(":memory:");
   migrate(db);
-  const hostRow = upsertHost(db, noopNotifier, {
-    id: "host_entity_lookup",
-    name: "Entity Lookup Host",
-    type: "persistent",
-  });
   const { project } = createProject(db, noopNotifier, {
     name: "Entity Lookup Project",
     source: {
       type: "local_path",
-      hostId: hostRow.id,
+      hostId: "local",
       path: "/tmp/entity-lookup",
     },
   });
-  const host: Host = {
-    id: hostRow.id,
-    name: hostRow.name,
-    type: hostRow.type,
-    status: "disconnected",
-    lastSeenAt: hostRow.lastSeenAt,
-    createdAt: hostRow.createdAt,
-    updatedAt: hostRow.updatedAt,
-  };
+  const host = { id: "local" };
   return { db, host, project };
 }
 

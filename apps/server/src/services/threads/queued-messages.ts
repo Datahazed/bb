@@ -19,7 +19,7 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { scheduleAfterDaemonIngressResponse } from "../hosts/daemon-ingress-scheduler.js";
+import { scheduleDetachedWork } from "../lib/detached-work.js";
 import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
@@ -412,7 +412,7 @@ export function requestQueuedMessageAutoSendForThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueuedMessageAutoSendRequestArgs,
 ): void {
-  scheduleAfterDaemonIngressResponse({
+  scheduleDetachedWork({
     config: deps.config,
     context: {
       queuedMessageId: args.queuedMessageId,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createHostDaemonCommandId } from "../../src/ids.js";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { createEnvironment } from "../../src/data/environments.js";
-import { queueCommand } from "../../src/data/commands.js";
 import {
   getEnvironmentOperation,
   getEnvironmentOperationByCommandId,
@@ -12,16 +12,12 @@ import {
   markEnvironmentOperationRecordQueued,
   upsertEnvironmentOperationRecord,
 } from "../../src/data/environment-operations.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -70,22 +66,8 @@ describe("environment operations", () => {
   });
 
   it("tracks queued, completed, and failed environment operations", () => {
-    const { db, environment, host } = setup();
-    const command = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.provision",
-      payload: JSON.stringify({
-        type: "environment.provision",
-        environmentId: environment.id,
-        initiator: null,
-        workspaceProvisionType: "managed-worktree",
-        sourcePath: "/tmp/source",
-        targetPath: "/tmp/target",
-        branchName: "main",
-        setupTimeoutMs: 1000,
-      }),
-    });
+    const { db, environment } = setup();
+    const command = { id: createHostDaemonCommandId() };
 
     upsertEnvironmentOperationRecord(db, {
       environmentId: environment.id,
@@ -151,37 +133,9 @@ describe("environment operations", () => {
   });
 
   it("does not move terminal environment operations back to queued", () => {
-    const { db, environment, host } = setup();
-    const firstCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.provision",
-      payload: JSON.stringify({
-        type: "environment.provision",
-        environmentId: environment.id,
-        initiator: null,
-        workspaceProvisionType: "managed-worktree",
-        sourcePath: "/tmp/source",
-        targetPath: "/tmp/target",
-        branchName: "main",
-        setupTimeoutMs: 1000,
-      }),
-    });
-    const secondCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.provision",
-      payload: JSON.stringify({
-        type: "environment.provision",
-        environmentId: environment.id,
-        initiator: null,
-        workspaceProvisionType: "managed-worktree",
-        sourcePath: "/tmp/source",
-        targetPath: "/tmp/target",
-        branchName: "main",
-        setupTimeoutMs: 1000,
-      }),
-    });
+    const { db, environment } = setup();
+    const firstCommand = { id: createHostDaemonCommandId() };
+    const secondCommand = { id: createHostDaemonCommandId() };
 
     upsertEnvironmentOperationRecord(db, {
       environmentId: environment.id,

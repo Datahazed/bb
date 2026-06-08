@@ -10,16 +10,12 @@ import {
   listPublicProjects,
   reorderProject,
 } from "../../src/data/projects.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { upsertProjectOperationRecord } from "../../src/data/project-operations.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "projects-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   return { db, host };
 }
 

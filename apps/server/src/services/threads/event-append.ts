@@ -31,8 +31,8 @@ export type { ThreadEventAppendInput } from "./event-append-effects.js";
  *   global ordering), `flush` is the single barrier strength replacing both
  *   `flush` and `flushRequired` (the required-vs-debounced classification in
  *   `shouldFlushThreadEventImmediately` died with the batching);
- * - the daemon ingress route (`src/internal/events.ts`,
- *   `POST /internal/session/events`): each drain appends one batch in an
+ * - the daemon ingress route (`POST /internal/session/events`, deleted in
+ *   P1c): each drain appends one batch in an
  *   immediate transaction via `appendThreadEventsInTransaction` (per-thread
  *   monotonic sequence assignment stays owned by `thread-events.ts`), then
  *   notifies the hub once per thread per batch and applies event effects.

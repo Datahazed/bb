@@ -18,7 +18,6 @@ import {
 } from "../helpers/schedules.js";
 import {
   seedEnvironment,
-  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -407,61 +406,6 @@ describe("automation sweep", () => {
     });
   });
 
-  it("advances due automations without creating threads when the host is offline", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-automation-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/automation-offline-environment",
-      });
-      const now = Date.now();
-      const automation = createAutomation(harness.db, harness.hub, {
-        projectId: project.id,
-        name: "Offline automation",
-        enabled: true,
-        triggerType: "schedule",
-        triggerConfig: JSON.stringify(
-          createScheduleTrigger(createDailySchedule({ times: ["08:00"] })),
-        ),
-        action: JSON.stringify({
-          actionType: "scheduled-thread",
-          threadRequest: {
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Run offline automation" }],
-            environment: {
-              type: "reuse",
-              environmentId: environment.id,
-            },
-          },
-        }),
-        autoArchive: false,
-        nextRunAt: now - 1,
-      });
-
-      await sweepDueAutomations(harness.deps, { now });
-
-      expect(
-        harness.db
-          .select()
-          .from(threads)
-          .where(eq(threads.automationId, automation.id))
-          .all(),
-      ).toHaveLength(0);
-      expect(harness.engineRouting.dispatched).toHaveLength(0);
-
-      const updatedAutomation = getAutomation(harness.db, automation.id);
-      expect(updatedAutomation?.lastRunAt).toBeGreaterThanOrEqual(now);
-      expect(updatedAutomation?.runCount).toBe(1);
-      expect(updatedAutomation?.nextRunAt).toBeGreaterThan(now);
-    });
-  });
 
   it("ignores disabled automations even if nextRunAt is in the past", async () => {
     await withTestHarness(async (harness) => {

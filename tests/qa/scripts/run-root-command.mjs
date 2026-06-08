@@ -12,7 +12,6 @@ const commandConfig = {
       [
         "build",
         "--filter=@bb/server",
-        "--filter=@bb/host-daemon",
         "--filter=@bb/cli",
       ],
       ["typecheck", "--filter=@bb/qa"],

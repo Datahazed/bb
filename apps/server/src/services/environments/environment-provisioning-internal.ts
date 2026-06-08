@@ -1,7 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
   createHostDaemonCommandId,
-  type HostDaemonCommandRow,
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
@@ -85,7 +84,8 @@ import {
   type CommandResultReportForType,
   type CommandResultSideEffectsResult,
   type HostDaemonCommandForType,
-} from "../../internal/command-result-side-effects.js";
+  type SettledEngineCommand,
+} from "../engine/command-result-side-effects.js";
 import type { EngineDispatchBuffer } from "../engine/engine-dispatch.js";
 
 type EnvironmentProvisionCommand =
@@ -127,14 +127,14 @@ interface AdvanceEnvironmentProvisioningArgs {
 
 interface SettleEnvironmentProvisionCommandResultArgs {
   command: EnvironmentProvisionCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: EnvironmentProvisionTransactionDeps;
   report: EnvironmentProvisionCommandResultReport;
 }
 
 interface SettleEnvironmentProvisionCancelCommandResultArgs {
   command: EnvironmentProvisionCancelCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: EnvironmentProvisionTransactionDeps;
   report: EnvironmentProvisionCancelCommandResultReport;
 }
@@ -503,7 +503,7 @@ export function settleEnvironmentProvisionCommandResult(
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const operation = getActiveProvisionOperationByCommandId(
     args.deps,
-    args.commandRow.id,
+    args.settledCommand.id,
   );
   if (!operation) {
     return emptyCommandResultSideEffects();
@@ -648,7 +648,7 @@ export function settleEnvironmentProvisionCommandResult(
   const failureRecorded = recordEnvironmentProvisioningFailureInTransaction(
     args.deps,
     {
-      commandId: args.commandRow.id,
+      commandId: args.settledCommand.id,
       environmentId: args.command.environmentId,
       failureReason: args.report.errorMessage,
       failureEntry: {
@@ -656,8 +656,8 @@ export function settleEnvironmentProvisionCommandResult(
         key: "workspace-failed",
         text: "Workspace setup failed",
         status: "failed",
-        startedAt: args.commandRow.createdAt,
-        metadata: { durationMs: Date.now() - args.commandRow.createdAt },
+        startedAt: args.settledCommand.dispatchedAt,
+        metadata: { durationMs: Date.now() - args.settledCommand.dispatchedAt },
       },
     },
   );
@@ -693,7 +693,7 @@ export function settleEnvironmentProvisionCancelCommandResult(
         activeProvisionOperationCommandId: operation?.commandId ?? null,
         activeProvisionOperationKind: operation?.kind ?? null,
         activeProvisionOperationState: operation?.state ?? null,
-        commandId: args.commandRow.id,
+        commandId: args.settledCommand.id,
         environmentId: args.command.environmentId,
         errorCode: args.report.errorCode,
         errorMessage: args.report.errorMessage,

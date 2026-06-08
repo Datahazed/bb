@@ -21,12 +21,13 @@
  * settled the result (`handleCommands` awaits result reporting), so a guard
  * can never observe an op row that is neither settled nor in flight.
  */
-import { createHostDaemonCommandId, type HostDaemonCommandRow } from "@bb/db";
+import { createHostDaemonCommandId } from "@bb/db";
 import type {
   HostDaemonCommand,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultForCommand,
 } from "@bb/host-daemon-contract";
+import { COMMAND_RESULT_CACHE_TTL_MS } from "../../constants.js";
 import type { CommandRouter } from "../../engine/core/command-router.js";
 import type {
   EngineCommandEnvelope,
@@ -36,14 +37,15 @@ import {
   buildCommandResultSettlementDeps,
   type CommandResultSideEffectReport,
   type CommandResultWaiterResponse,
-} from "../../internal/command-result-side-effects.js";
+  type SettledEngineCommand,
+} from "./command-result-side-effects.js";
 import {
   dispatchCommandResultPostCommitActions,
   handleCommandResultSideEffects,
-} from "../../internal/command-results.js";
+} from "./command-results.js";
 import type { AppDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { LOCAL_ENGINE_SESSION_ID, LOCAL_HOST_ID } from "../hosts/local-host.js";
+import { LOCAL_HOST_ID } from "../hosts/local-host.js";
 
 interface InFlightEngineCommand {
   command: HostDaemonCommand;
@@ -201,9 +203,17 @@ function toWaiterResponse(
   };
 }
 
+interface CommandResultWaiter {
+  reject: (reason: Error) => void;
+  resolve: (result: CommandResultWaiterResponse) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 export class EngineCommandDispatcher {
   private readonly inFlight = new Map<string, InFlightEngineCommand>();
   private readonly inFlightTasks = new Set<Promise<void>>();
+  private readonly resultCache = new Map<string, CommandResultWaiterResponse>();
+  private readonly resultWaiters = new Map<string, Set<CommandResultWaiter>>();
   private bound: BindEngineCommandDispatcherArgs | null = null;
 
   /**
@@ -229,7 +239,7 @@ export class EngineCommandDispatcher {
    * Dispatches one durable-type command into the engine's lane scheduler.
    * Fire-and-forget, like the queue it replaces: the result settles through
    * `settleCommandResult`, and waiters observe it via
-   * `hub.waitForCommandResult(commandId)` exactly as before.
+   * `waitForResult(commandId)`.
    */
   dispatch(args: DispatchEngineCommandArgs): EngineCommandDispatch {
     const { deps, router } = this.requireBound();
@@ -270,7 +280,7 @@ export class EngineCommandDispatcher {
    * Executes a read-style command inline against the engine and returns its
    * parsed result — the in-process replacement for the daemon's online
    * host-RPC WS request/response. Errors thrown by the handler propagate to
-   * the caller (`services/hosts/online-rpc.ts` maps them onto the existing
+   * the caller (`services/engine/online-rpc.ts` maps them onto the existing
    * 502/504 API error taxonomy).
    */
   executeOnlineRpc<TCommand extends HostDaemonOnlineRpcCommand>(
@@ -344,11 +354,79 @@ export class EngineCommandDispatcher {
   }
 
   /**
+   * Awaits the settled result of a dispatched command — the in-process
+   * replacement for the hub's command-result waiter registry (the daemon-WS
+   * half of result delivery died in P1c). Recently settled results are served
+   * from a TTL cache so a waiter that registers just after settlement still
+   * resolves, matching the old hub semantics.
+   */
+  async waitForResult(
+    commandId: string,
+    timeoutMs: number,
+  ): Promise<CommandResultWaiterResponse> {
+    const cached = this.resultCache.get(commandId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    return new Promise<CommandResultWaiterResponse>((resolve, reject) => {
+      const waiter: CommandResultWaiter = {
+        reject,
+        resolve,
+        timeout: setTimeout(() => {
+          this.deleteResultWaiter(commandId, waiter);
+          reject(new Error("Timed out waiting for command result"));
+        }, timeoutMs),
+      };
+      const waiters =
+        this.resultWaiters.get(commandId) ?? new Set<CommandResultWaiter>();
+      waiters.add(waiter);
+      this.resultWaiters.set(commandId, waiters);
+    });
+  }
+
+  private deleteResultWaiter(
+    commandId: string,
+    waiter: CommandResultWaiter,
+  ): void {
+    const waiters = this.resultWaiters.get(commandId);
+    if (!waiters) {
+      return;
+    }
+    clearTimeout(waiter.timeout);
+    waiters.delete(waiter);
+    if (waiters.size === 0) {
+      this.resultWaiters.delete(commandId);
+    }
+  }
+
+  private recordResult(
+    commandId: string,
+    result: CommandResultWaiterResponse,
+  ): void {
+    this.resultCache.set(commandId, result);
+    const expiry = setTimeout(() => {
+      this.resultCache.delete(commandId);
+    }, COMMAND_RESULT_CACHE_TTL_MS);
+    expiry.unref();
+
+    const waiters = this.resultWaiters.get(commandId);
+    if (!waiters) {
+      return;
+    }
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timeout);
+      waiter.resolve(result);
+    }
+    this.resultWaiters.delete(commandId);
+  }
+
+  /**
    * The `DeliverCommandResult` port: a settlement transaction that fabricates
-   * the `HostDaemonCommandRow` argument for the command-result owners
-   * registry and the existing `settle*` functions, then resolves waiters via
-   * `hub.recordCommandResult` — `handleCommandResult`'s row + attempt gating
-   * died with the queue.
+   * the `SettledEngineCommand` argument for the command-result owners
+   * registry and the existing `settle*` functions, then resolves result
+   * waiters — `handleCommandResult`'s row + attempt gating died with the
+   * queue.
    */
   async settleCommandResult(report: EngineCommandResultReport): Promise<void> {
     const { deps } = this.requireBound();
@@ -368,20 +446,11 @@ export class EngineCommandDispatcher {
       return;
     }
 
-    const commandRow: HostDaemonCommandRow = {
-      id: entry.commandId,
+    const settledCommand: SettledEngineCommand = {
+      command: entry.command,
+      dispatchedAt: entry.dispatchedAt,
       hostId: LOCAL_HOST_ID,
-      sessionId: LOCAL_ENGINE_SESSION_ID,
-      // Fetch-cursor ordering died with the queue; settlement never reads it.
-      cursor: 0,
-      type: entry.command.type,
-      payload: JSON.stringify(entry.command),
-      state: "fetched",
-      retryCount: 0,
-      resultPayload: null,
-      createdAt: entry.dispatchedAt,
-      fetchedAt: entry.dispatchedAt,
-      completedAt: null,
+      id: entry.commandId,
     };
     const sideEffectReport = toSideEffectReport(report);
     const notificationBuffer = new NotificationBuffer();
@@ -399,7 +468,7 @@ export class EngineCommandDispatcher {
           return handleCommandResultSideEffects(
             settlementDeps,
             sideEffectReport,
-            commandRow,
+            settledCommand,
           );
         },
         { behavior: "immediate" },
@@ -424,15 +493,15 @@ export class EngineCommandDispatcher {
     // thread.deleted, provision-cancel) — fire-and-forget dispatches, safe
     // inline; only result *waits* must stay out of the router's report chain.
     engineDispatches.flushInto(this);
-    deps.hub.recordCommandResult(report.commandId, toWaiterResponse(report));
+    this.recordResult(report.commandId, toWaiterResponse(report));
     await dispatchCommandResultPostCommitActions({
       actions: sideEffects.postCommitActions,
-      command: commandRow,
       deps,
       // Detached (setImmediate), never inline: a post-commit action may
       // dispatch and wait on another engine command, and the router's report
       // chain is serialized — running it inline would deadlock settlement.
-      mode: "schedule-after-daemon-ingress",
+      mode: "detached",
+      settledCommand,
     });
   }
 }

@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import {
-  access,
   mkdir,
   readFile,
   rename,
@@ -34,7 +33,6 @@ import {
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import {
-  BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
   BB_PROD_SERVER_PORT,
   resolveConfiguredDataDir,
@@ -44,15 +42,11 @@ import {
 } from "@bb/config/runtime";
 import { z } from "zod";
 
-const HOST_AUTH_FILE_NAME = "auth.json";
-const HOST_ID_FILE_NAME = "host-id";
 const HEALTH_CHECK_TIMEOUT_MS = 60_000;
 const HEALTH_CHECK_INTERVAL_MS = 100;
 const MANAGED_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
 const MANAGED_PROCESS_KILL_TIMEOUT_MS = 1_000;
 const START_COMMAND = "start";
-const HOST_DAEMON_COMMAND = "host-daemon";
-const HOST_DAEMON_JOIN_COMMAND = "join";
 const CONFIG_COMMAND = "config";
 const ENV_COMMAND = "env";
 const SET_COMMAND = "set";
@@ -75,42 +69,14 @@ const bbAppPackageJsonSchema = z
   })
   .passthrough();
 
-const hostJoinResponseSchema = z
-  .object({
-    hostId: z.string().min(1),
-    joinCode: z.string().min(1),
-  })
-  .passthrough();
-
 const apiErrorResponseSchema = z.object({
   message: z.string(),
 });
 
-export type HostJoinResponse = z.infer<typeof hostJoinResponseSchema>;
 export type ManagedConfigValues = BbAppManagedConfigValues;
 export type ManagedEnvConfig = BbAppManagedEnvConfig;
 export type ManagedEnvFile = BbAppManagedEnvFile;
 export type ManagedConfig = BbAppManagedConfig;
-
-export interface PersistentHostJoinRequestBody {
-  hostId?: string;
-  hostType?: "persistent";
-}
-
-export interface LocalHostJoinRequestBody {
-  hostId?: string;
-  hostType: "persistent";
-  joinMode: "local";
-}
-
-export type HostJoinRequestBody =
-  | LocalHostJoinRequestBody
-  | PersistentHostJoinRequestBody;
-
-export interface CreateHostJoinRequestBodyArgs {
-  localJoin: boolean;
-  requestedHostId: string | null;
-}
 
 export interface ResolveDataDirArgs {
   env: NodeJS.ProcessEnv;
@@ -141,11 +107,8 @@ export interface BbAppStartContext {
   appDistDir: string;
   appVersion: string;
   configFile: string;
+  /** Bundled CLI/bridge dir; repointed to the server bundle in Phase 3. */
   daemonBundleDir: string;
-  daemonEntry: string;
-  daemonLockDir: string;
-  daemonLockFile: string;
-  daemonPort: number;
   dataDir: string;
   dbPath: string;
   envFile: string;
@@ -172,11 +135,6 @@ export interface StartCommand {
   kind: "start";
 }
 
-export interface HostDaemonCommand {
-  args: string[];
-  kind: "host-daemon";
-}
-
 export interface ConfigCommand {
   args: string[];
   kind: "config";
@@ -198,12 +156,7 @@ export interface InvalidCommand {
 
 export interface LauncherCliOptions {
   dataDir?: string;
-  enrollKey?: string;
   help: boolean;
-  hostDaemonPort?: string;
-  hostId?: string;
-  hostType?: string;
-  joinCode?: string;
   serverPort?: string;
   serverUrl?: string;
 }
@@ -230,7 +183,7 @@ export interface ProcessExitResult {
   signal: NodeJS.Signals | null;
 }
 
-type ManagedProcessName = "daemon" | "server";
+type ManagedProcessName = "server";
 type OutputChunk = Buffer | string;
 type WaitForProcessExitWithTimeoutResult = "exited" | "timed-out";
 type ResolveWaitForProcessExitWithTimeout = (
@@ -240,7 +193,6 @@ type BbAppCommand =
   | ConfigCommand
   | EnvCommand
   | HelpCommand
-  | HostDaemonCommand
   | InvalidCommand
   | StartCommand;
 
@@ -271,29 +223,12 @@ interface WaitForHealthArgs {
   url: string;
 }
 
-interface RequestHostJoinArgs {
-  localJoin: boolean;
-  requestedHostId: string | null;
-  serverUrl: string;
-}
-
-interface MaybeAddAutoJoinEnvArgs {
-  dataDir: string;
-  env: NodeJS.ProcessEnv;
-  serverUrl: string;
-}
-
 interface ArtifactPath {
   label: string;
   path: string;
 }
 
 interface CreateCliEnvArgs {
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-}
-
-interface CreateSharedEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
 }
@@ -307,33 +242,6 @@ interface CreateServerBaseEnvArgs {
   config: ManagedConfig;
   env: NodeJS.ProcessEnv;
   envFile: ManagedEnvFile;
-}
-
-interface CreateHostDaemonOnlyEnvArgs {
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-  serverUrl: string;
-}
-
-interface EnrollmentRequirements {
-  enrollKey?: string;
-  enrolled: boolean;
-}
-
-interface ResolveEnrollmentRequirementsArgs {
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-}
-
-interface ResolveHostDaemonServerUrlArgs {
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-}
-
-interface CreateHostDaemonJoinEnvArgs {
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-  serverUrl: string;
 }
 
 interface CreateEnvFromOptionsArgs {
@@ -398,20 +306,10 @@ interface RefreshRunningServerConfigArgs {
   serverUrl: string;
 }
 
-interface RunHostDaemonOnlyArgs {
-  args: string[];
-  context: BbAppStartContext;
-  env: NodeJS.ProcessEnv;
-}
-
 interface RunBundledCliCommandArgs {
   args: string[];
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
-}
-
-interface ResolveHostDaemonCommandResult {
-  kind: "join" | "start";
 }
 
 function color(code: number, value: string): string {
@@ -455,14 +353,7 @@ function endStep(icon: string, message: string): void {
 }
 
 function formatReadyOutputRow(label: string, value: string): string {
-  return `${dim(label.padEnd("daemon".length))} ${value}`;
-}
-
-function warnExistingDaemonLock(lockDir: string): void {
-  log(yellow("!"), "Daemon lock exists - waiting or reclaiming if stale");
-  log(" ", dim(`lock: ${lockDir}`));
-  log(" ", dim("If startup fails, stop the other bb process or remove it."));
-  process.stdout.write("\n");
+  return `${dim(label.padEnd("server".length))} ${value}`;
 }
 
 function isManagedConfigValueKey(
@@ -526,11 +417,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     args,
     options: {
       "data-dir": { type: "string" },
-      "enroll-key": { type: "string" },
-      "host-daemon-port": { type: "string" },
-      "host-id": { type: "string" },
-      "host-type": { type: "string" },
-      "join-code": { type: "string" },
       "server-port": { type: "string" },
       "server-url": { type: "string" },
       help: { short: "h", type: "boolean" },
@@ -541,11 +427,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     help: readBooleanOption(parsed.values.help),
   };
   const dataDir = readStringOption(parsed.values["data-dir"]);
-  const enrollKey = readStringOption(parsed.values["enroll-key"]);
-  const hostDaemonPort = readStringOption(parsed.values["host-daemon-port"]);
-  const hostId = readStringOption(parsed.values["host-id"]);
-  const hostType = readStringOption(parsed.values["host-type"]);
-  const joinCode = readStringOption(parsed.values["join-code"]);
   const serverPort = readStringOption(parsed.values["server-port"]);
   const serverUrl = chooseServerUrlOption(
     readStringOption(parsed.values["server-url"]),
@@ -553,21 +434,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   );
   if (dataDir !== undefined) {
     options.dataDir = dataDir;
-  }
-  if (enrollKey !== undefined) {
-    options.enrollKey = enrollKey;
-  }
-  if (hostDaemonPort !== undefined) {
-    options.hostDaemonPort = hostDaemonPort;
-  }
-  if (hostId !== undefined) {
-    options.hostId = hostId;
-  }
-  if (hostType !== undefined) {
-    options.hostType = hostType;
-  }
-  if (joinCode !== undefined) {
-    options.joinCode = joinCode;
   }
   if (serverPort !== undefined) {
     options.serverPort = serverPort;
@@ -601,26 +467,11 @@ function createEnvFromOptions(
   if (args.options.dataDir !== undefined) {
     env.BB_DATA_DIR = args.options.dataDir;
   }
-  if (args.options.hostDaemonPort !== undefined) {
-    env.BB_HOST_DAEMON_PORT = args.options.hostDaemonPort;
-  }
   if (args.options.serverPort !== undefined) {
     env.BB_SERVER_PORT = args.options.serverPort;
   }
   if (args.options.serverUrl !== undefined) {
     env.BB_SERVER_URL = args.options.serverUrl;
-  }
-  if (args.options.hostId !== undefined) {
-    env.BB_HOST_ID = args.options.hostId;
-  }
-  if (args.options.hostType !== undefined) {
-    env.BB_HOST_TYPE = args.options.hostType;
-  }
-  if (args.options.joinCode !== undefined) {
-    env.BB_HOST_ENROLL_KEY = args.options.joinCode;
-  }
-  if (args.options.enrollKey !== undefined) {
-    env.BB_HOST_ENROLL_KEY = args.options.enrollKey;
   }
   return env;
 }
@@ -886,11 +737,6 @@ export function resolveBbAppStartContext(
     env: args.env,
     name: "BB_SERVER_PORT",
   });
-  const daemonPort = resolvePort({
-    defaultPort: BB_PROD_HOST_DAEMON_PORT,
-    env: args.env,
-    name: "BB_HOST_DAEMON_PORT",
-  });
   const daemonBundleDir = resolve(packageRoot, "host-daemon", "dist");
 
   return {
@@ -898,10 +744,6 @@ export function resolveBbAppStartContext(
     appVersion: readBbAppPackageVersion(packageRoot),
     configFile: formatBbAppConfigPath(dataDir),
     daemonBundleDir,
-    daemonEntry: resolve(daemonBundleDir, "daemon-bundle.mjs"),
-    daemonLockDir: `${join(dataDir, "daemon.lock")}.lock`,
-    daemonLockFile: join(dataDir, "daemon.lock"),
-    daemonPort,
     dataDir,
     dbPath: resolveDataDirDatabasePath({ dataDir }),
     envFile: formatBbAppEnvPath(dataDir),
@@ -987,29 +829,6 @@ export async function resolveBbAppRuntimeContext(
   return (await resolveBbAppRuntimeState(args)).context;
 }
 
-export function createHostJoinRequestBody(
-  args: CreateHostJoinRequestBodyArgs,
-): HostJoinRequestBody {
-  if (args.localJoin) {
-    const requestBody: LocalHostJoinRequestBody = {
-      hostType: "persistent",
-      joinMode: "local",
-    };
-    if (args.requestedHostId !== null) {
-      requestBody.hostId = args.requestedHostId;
-    }
-    return requestBody;
-  }
-
-  const requestBody: PersistentHostJoinRequestBody = {
-    hostType: "persistent",
-  };
-  if (args.requestedHostId !== null) {
-    requestBody.hostId = args.requestedHostId;
-  }
-  return requestBody;
-}
-
 export function resolveBbAppCommand(args: string[]): BbAppCommand {
   if (args.length === 0) {
     return { kind: "start" };
@@ -1017,13 +836,6 @@ export function resolveBbAppCommand(args: string[]): BbAppCommand {
 
   if (args[0] === START_COMMAND && args.length === 1) {
     return { kind: "start" };
-  }
-
-  if (args[0] === HOST_DAEMON_COMMAND) {
-    return {
-      args: args.slice(1),
-      kind: "host-daemon",
-    };
   }
 
   if (args[0] === CONFIG_COMMAND) {
@@ -1359,18 +1171,11 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
 }
 
 function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
+  // The bundled CLI and provider bridges shipped from the daemon dist, which
+  // died with the daemon (P1c). The packaged launcher path is allowed broken
+  // until Phase 3 repoints them at the server bundle (plan Decision 9).
   return [
     { label: "server entry", path: context.serverEntry },
-    { label: "host daemon entry", path: context.daemonEntry },
-    { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
-    {
-      label: "Claude Code bridge",
-      path: join(context.daemonBundleDir, "bb-claude-code-bridge.mjs"),
-    },
-    {
-      label: "Pi bridge",
-      path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
-    },
     { label: "web app", path: join(context.appDistDir, "index.html") },
   ];
 }
@@ -1384,84 +1189,6 @@ export function assertBbAppArtifacts(context: BbAppStartContext): void {
       `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild bb-app before running this package.`,
     );
   }
-}
-
-async function pathExists(pathToCheck: string): Promise<boolean> {
-  try {
-    await access(pathToCheck);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readPersistedHostId(dataDir: string): Promise<string | null> {
-  try {
-    const value = (
-      await readFile(join(dataDir, HOST_ID_FILE_NAME), "utf8")
-    ).trim();
-    return value.length > 0 ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function requestHostJoin(
-  args: RequestHostJoinArgs,
-): Promise<HostJoinResponse> {
-  const response = await fetch(`${args.serverUrl}/api/v1/hosts/join`, {
-    body: JSON.stringify(
-      createHostJoinRequestBody({
-        localJoin: args.localJoin,
-        requestedHostId: args.requestedHostId,
-      }),
-    ),
-    headers: {
-      "content-type": "application/json",
-    },
-    method: "POST",
-  });
-
-  if (response.status !== 201) {
-    const detail = await response.text();
-    throw new Error(
-      `Failed to request host join material: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`,
-    );
-  }
-
-  return hostJoinResponseSchema.parse(await response.json());
-}
-
-export async function maybeAddAutoJoinEnv(
-  args: MaybeAddAutoJoinEnvArgs,
-): Promise<NodeJS.ProcessEnv> {
-  if (trimToUndefined(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
-    return args.env;
-  }
-  if (await pathExists(join(args.dataDir, HOST_AUTH_FILE_NAME))) {
-    return args.env;
-  }
-
-  const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
-    (await readPersistedHostId(args.dataDir));
-  const joinResponse = await requestHostJoin({
-    localJoin: true,
-    requestedHostId,
-    serverUrl: args.serverUrl,
-  });
-
-  if (requestedHostId !== null && joinResponse.hostId !== requestedHostId) {
-    throw new Error(
-      `Join response host ID ${joinResponse.hostId} does not match persisted host ID ${requestedHostId}`,
-    );
-  }
-
-  return {
-    ...args.env,
-    BB_HOST_ENROLL_KEY: joinResponse.joinCode,
-    BB_HOST_ID: joinResponse.hostId,
-  };
 }
 
 async function waitForHealth(args: WaitForHealthArgs): Promise<void> {
@@ -1629,40 +1356,12 @@ async function terminateProcessIfRunning(
   });
 }
 
-function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
-  return {
-    ...args.env,
-    BB_APP_VERSION: args.context.appVersion,
-    BB_DATA_DIR: args.context.dataDir,
-    BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
-    BB_SERVER_PORT: String(args.context.serverPort),
-    NODE_ENV: "production",
-  };
-}
-
 function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   return {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     BB_DATA_DIR: args.context.dataDir,
-    BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
     BB_SERVER_PORT: String(args.context.serverPort),
-    NODE_ENV: "production",
-  };
-}
-
-function createDaemonEnv(
-  context: BbAppStartContext,
-  autoJoinEnv: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
-  return {
-    ...autoJoinEnv,
-    BB_APP_VERSION: context.appVersion,
-    BB_BRIDGE_DIR: context.daemonBundleDir,
-    BB_CLI_DIR: context.daemonBundleDir,
-    BB_DATA_DIR: context.dataDir,
-    BB_HOST_DAEMON_PORT: String(context.daemonPort),
-    BB_SERVER_URL: context.serverUrl,
     NODE_ENV: "production",
   };
 }
@@ -1671,7 +1370,6 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
   const cliEnv: NodeJS.ProcessEnv = {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
-    BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
     NODE_ENV: "production",
   };
 
@@ -1680,88 +1378,6 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
   }
 
   return cliEnv;
-}
-
-function resolveHostDaemonServerUrl(
-  args: ResolveHostDaemonServerUrlArgs,
-): string {
-  return trimToUndefined(args.env.BB_SERVER_URL) ?? args.context.serverUrl;
-}
-
-function createHostDaemonOnlyEnv(
-  args: CreateHostDaemonOnlyEnvArgs,
-): NodeJS.ProcessEnv {
-  return {
-    ...args.env,
-    BB_APP_VERSION: args.context.appVersion,
-    BB_BRIDGE_DIR: args.context.daemonBundleDir,
-    BB_CLI_DIR: args.context.daemonBundleDir,
-    BB_DATA_DIR: args.context.dataDir,
-    BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
-    BB_SERVER_URL: args.serverUrl,
-    NODE_ENV: "production",
-  };
-}
-
-function resolveEnrollmentRequirements(
-  args: ResolveEnrollmentRequirementsArgs,
-): EnrollmentRequirements {
-  const enrollKey = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
-  return {
-    enrolled: existsSync(join(args.context.dataDir, HOST_AUTH_FILE_NAME)),
-    ...(enrollKey !== undefined ? { enrollKey } : {}),
-  };
-}
-
-function resolveHostDaemonCommand(
-  args: string[],
-): ResolveHostDaemonCommandResult {
-  if (args.length === 0) {
-    return { kind: "start" };
-  }
-  if (args.length === 1 && args[0] === HOST_DAEMON_JOIN_COMMAND) {
-    return { kind: "join" };
-  }
-  throw new Error(
-    `bb-app host-daemon accepts no subcommand except ${HOST_DAEMON_JOIN_COMMAND}`,
-  );
-}
-
-function isLoopbackServerUrl(serverUrl: string): boolean {
-  const { hostname } = new URL(serverUrl);
-  return (
-    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-  );
-}
-
-async function createHostDaemonJoinEnv(
-  args: CreateHostDaemonJoinEnvArgs,
-): Promise<NodeJS.ProcessEnv> {
-  const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
-    (await readPersistedHostId(args.context.dataDir));
-  const joinResponse = await requestHostJoin({
-    localJoin: isLoopbackServerUrl(args.serverUrl),
-    requestedHostId,
-    serverUrl: args.serverUrl,
-  });
-
-  if (requestedHostId !== null && joinResponse.hostId !== requestedHostId) {
-    throw new Error(
-      `Join response host ID ${joinResponse.hostId} does not match persisted host ID ${requestedHostId}`,
-    );
-  }
-
-  await writeManagedConfig({
-    config: { serverUrl: args.serverUrl },
-    dataDir: args.context.dataDir,
-  });
-
-  return {
-    ...args.env,
-    BB_HOST_ENROLL_KEY: joinResponse.joinCode,
-    BB_HOST_ID: joinResponse.hostId,
-  };
 }
 
 async function runBundledCliCommand(
@@ -1834,157 +1450,6 @@ Usage:
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
 }
 
-async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
-  const command = resolveHostDaemonCommand(args.args);
-  const baseDaemonEnv = args.env;
-  const serverUrl = resolveHostDaemonServerUrl({
-    context: args.context,
-    env: baseDaemonEnv,
-  });
-  const joinEnv =
-    command.kind === "join"
-      ? await createHostDaemonJoinEnv({
-          context: args.context,
-          env: baseDaemonEnv,
-          serverUrl,
-        })
-      : baseDaemonEnv;
-  const daemonEnv = createHostDaemonOnlyEnv({
-    context: args.context,
-    env: joinEnv,
-    serverUrl,
-  });
-  const enrollment = resolveEnrollmentRequirements({
-    context: args.context,
-    env: daemonEnv,
-  });
-
-  process.stdout.write(`\n  ${bold("bb host-daemon")}\n\n`);
-
-  if (existsSync(args.context.daemonLockDir)) {
-    warnExistingDaemonLock(args.context.daemonLockDir);
-  }
-
-  if (!enrollment.enrolled && enrollment.enrollKey === undefined) {
-    endStep(
-      red("✗"),
-      `Not enrolled - set BB_HOST_ENROLL_KEY to join ${serverUrl}`,
-    );
-    process.stdout.write("\n");
-    log(" ", dim("Run this command to request enrollment and start daemon:"));
-    log(" ", dim(`  bb-app host-daemon join --server-url ${serverUrl}`));
-    process.stdout.write("\n");
-    process.exitCode = 1;
-    return;
-  }
-
-  beginStep(
-    enrollment.enrolled ? "Starting daemon" : "Enrolling and starting daemon",
-  );
-
-  const outputBuffer = createOutputBuffer();
-  const daemonProcess = spawnManagedProcess({
-    args: [args.context.daemonEntry],
-    command: process.execPath,
-    env: daemonEnv,
-    outputBuffer,
-  });
-
-  let shuttingDown = false;
-  const daemonExit = waitForProcessExit(daemonProcess);
-
-  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    process.stdout.write("\n");
-    log(dim("●"), "Shutting down");
-    await terminateProcessIfRunning({
-      childProcess: daemonProcess,
-      processName: "daemon",
-      signal,
-    });
-  };
-
-  const removeSignalForwarding = installTerminationSignalForwarding(
-    (signal) => {
-      void shutdown(signal);
-    },
-  );
-
-  try {
-    try {
-      await waitForHealth({
-        childProcess: daemonProcess,
-        url: `http://${BB_LOOPBACK_HOST}:${args.context.daemonPort}/health`,
-      });
-    } catch {
-      endStep(red("✗"), "Host daemon failed to start");
-      log(" ", dim(`lock: ${args.context.daemonLockDir}`));
-      log(" ", dim(`logs: ${args.context.logDir}/`));
-      outputBuffer.flush();
-      process.exitCode = 1;
-      await shutdown("SIGTERM");
-      return;
-    }
-
-    endStep(green("✓"), "Host daemon running");
-
-    process.stdout.write("\n");
-    log(green("●"), bold("bb host-daemon is ready"));
-    process.stdout.write("\n");
-    log(" ", formatReadyOutputRow("server", cyan(serverUrl)));
-    log(" ", formatReadyOutputRow("daemon", String(args.context.daemonPort)));
-    log(" ", formatReadyOutputRow("data", args.context.dataDir));
-    log(" ", formatReadyOutputRow("logs", `${args.context.logDir}/`));
-    log(" ", formatReadyOutputRow("lock", args.context.daemonLockFile));
-    log(
-      " ",
-      formatReadyOutputRow(
-        "auth",
-        join(args.context.dataDir, HOST_AUTH_FILE_NAME),
-      ),
-    );
-    process.stdout.write("\n");
-    log(" ", dim("Press Ctrl+C to stop"));
-
-    outputBuffer.flush();
-    process.exitCode = toExitCode(await daemonExit);
-  } finally {
-    removeSignalForwarding();
-  }
-}
-
-export async function runBbHostDaemon(
-  cliArgs: string[] = process.argv.slice(2),
-): Promise<void> {
-  const parsedArgs = parseLauncherArgs(cliArgs);
-  if (parsedArgs.options.help) {
-    process.stdout.write(`bb-host-daemon
-
-Usage:
-  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-host-daemon join --server-url <url>
-`);
-    return;
-  }
-
-  const runtime = await resolveBbAppRuntimeState({
-    entrypointUrl: import.meta.url,
-    env: process.env,
-    homeDir: homedir(),
-    options: parsedArgs.options,
-    serverUrlMode: "managed",
-  });
-  assertBbAppArtifacts(runtime.context);
-  await runHostDaemonOnly({
-    args: parsedArgs.positionals,
-    context: runtime.context,
-    env: runtime.env,
-  });
-}
-
 function installTerminationSignalForwarding(
   callback: (signal: NodeJS.Signals) => void,
 ): () => void {
@@ -2016,13 +1481,11 @@ function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
 Usage:
-  bb-app [--data-dir <path>] [--server-port <port>] [--host-daemon-port <port>]
+  bb-app [--data-dir <path>] [--server-port <port>]
   bb-app start
   bb-app config set <key> <value>
   bb-app config refresh
   bb-app env set <key> <value>
-  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-app host-daemon join --server-url <url>
 
 CLI:
   npx --package bb-app bb <command>
@@ -2057,9 +1520,7 @@ export async function runBbApp(
     homeDir: homedir(),
     options: parsedArgs.options,
     serverUrlMode:
-      command.kind === "config" ||
-      command.kind === "env" ||
-      command.kind === "host-daemon"
+      command.kind === "config" || command.kind === "env"
         ? "managed"
         : "local",
   });
@@ -2084,31 +1545,14 @@ export async function runBbApp(
 
   assertBbAppArtifacts(runtime.context);
 
-  if (command.kind === "host-daemon") {
-    await runHostDaemonOnly({
-      args: command.args,
-      context: runtime.context,
-      env: runtime.env,
-    });
-    return;
-  }
-
   const context = runtime.context;
   const outputBuffer = createOutputBuffer();
   const serverEnv = createServerEnv({
     context,
     env: runtime.serverEnv,
   });
-  const sharedEnv = createSharedEnv({
-    context,
-    env: runtime.env,
-  });
 
   process.stdout.write(`\n  ${bold("bb")}\n\n`);
-
-  if (existsSync(runtime.context.daemonLockDir)) {
-    warnExistingDaemonLock(runtime.context.daemonLockDir);
-  }
 
   beginStep("Starting server");
 
@@ -2124,7 +1568,6 @@ export async function runBbApp(
   });
 
   let shuttingDown = false;
-  let daemonProcess: ChildProcess | null = null;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (shuttingDown) {
@@ -2133,23 +1576,11 @@ export async function runBbApp(
     shuttingDown = true;
     process.stdout.write("\n");
     log(dim("●"), "Shutting down");
-    const terminationPromises = [
-      terminateProcessIfRunning({
-        childProcess: serverProcess,
-        processName: "server",
-        signal,
-      }),
-    ];
-    if (daemonProcess !== null) {
-      terminationPromises.push(
-        terminateProcessIfRunning({
-          childProcess: daemonProcess,
-          processName: "daemon",
-          signal,
-        }),
-      );
-    }
-    await Promise.all(terminationPromises);
+    await terminateProcessIfRunning({
+      childProcess: serverProcess,
+      processName: "server",
+      signal,
+    });
   };
 
   const removeSignalForwarding = installTerminationSignalForwarding(
@@ -2175,69 +1606,18 @@ export async function runBbApp(
 
     endStep(green("✓"), `Server listening on ${cyan(context.serverUrl)}`);
 
-    beginStep("Starting host daemon");
-    const autoJoinEnv = await maybeAddAutoJoinEnv({
-      dataDir: context.dataDir,
-      env: sharedEnv,
-      serverUrl: context.serverUrl,
-    });
-
-    daemonProcess = spawnManagedProcess({
-      args: [context.daemonEntry],
-      command: process.execPath,
-      env: createDaemonEnv(context, autoJoinEnv),
-      outputBuffer,
-    });
-    const daemonExit = waitForNamedProcessExit({
-      childProcess: daemonProcess,
-      processName: "daemon",
-    });
-
-    try {
-      await waitForHealth({
-        childProcess: daemonProcess,
-        url: `http://${BB_LOOPBACK_HOST}:${context.daemonPort}/health`,
-      });
-    } catch {
-      endStep(red("✗"), "Host daemon failed to start");
-      log(" ", dim(`lock: ${context.daemonLockDir}`));
-      log(" ", dim(`logs: ${context.logDir}/`));
-      outputBuffer.flush();
-      process.exitCode = 1;
-      await shutdown("SIGTERM");
-      return;
-    }
-
-    endStep(green("✓"), "Host daemon running");
-
     process.stdout.write("\n");
     log(green("●"), bold("bb is ready"));
     process.stdout.write("\n");
     log(" ", formatReadyOutputRow("app", cyan(context.serverUrl)));
-    log(" ", formatReadyOutputRow("daemon", String(context.daemonPort)));
     log(" ", formatReadyOutputRow("data", context.dataDir));
     log(" ", formatReadyOutputRow("db", context.dbPath));
     log(" ", formatReadyOutputRow("logs", `${context.logDir}/`));
-    log(" ", formatReadyOutputRow("lock", context.daemonLockFile));
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
 
     outputBuffer.flush();
-    const firstExit = await Promise.race([serverExit, daemonExit]);
-
-    if (firstExit.processName === "server") {
-      await terminateProcessIfRunning({
-        childProcess: daemonProcess,
-        processName: "daemon",
-        signal: firstExit.result.signal ?? "SIGTERM",
-      });
-    } else {
-      await terminateProcessIfRunning({
-        childProcess: serverProcess,
-        processName: "server",
-        signal: firstExit.result.signal ?? "SIGTERM",
-      });
-    }
+    const firstExit = await serverExit;
 
     process.exitCode = toExitCode(firstExit.result);
   } catch (error) {

@@ -20,7 +20,6 @@ import {
 } from "../../../apps/server/src/services/engine/server-engine.js";
 import { LOCAL_HOST_ID } from "../../../apps/server/src/services/hosts/local-host.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
-import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
@@ -220,12 +219,6 @@ async function startIntegrationServer(
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
   };
-  const machineAuth = await createMachineAuthService({
-    dataDir,
-    db,
-    logger: testLogger,
-  });
-  await machineAuth.ensureReady();
   const lifecycleDedupers = createLifecycleDedupers();
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
@@ -243,7 +236,6 @@ async function startIntegrationServer(
     hub,
     lifecycleDedupers,
     logger: testLogger,
-    machineAuth,
     pendingInteractions,
     terminalSessions,
   };

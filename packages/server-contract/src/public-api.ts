@@ -373,7 +373,7 @@ export type PublicApiSchema = {
 
   // ─── Hosts ───────────────────────────────────────────────────────────
 
-  /** Host `status` is derived at query time from the `host_daemon_sessions` table. */
+  /** Single-host: returns the synthetic always-connected local host. */
   "/hosts": {
     $get: Endpoint<EmptyInput, Host[]>;
   };

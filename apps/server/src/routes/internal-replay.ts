@@ -22,7 +22,7 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
 import { LOCAL_HOST_ID } from "../services/hosts/local-host.js";
-import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import { appendClientTurnEvent } from "../services/threads/thread-events.js";
 
 interface ResolvedReplayCapture {

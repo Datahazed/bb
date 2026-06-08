@@ -1,6 +1,5 @@
 import type {
   EnvironmentChangeKind,
-  HostChangeKind,
   ProjectChangeKind,
   SystemChangeKind,
   ThreadChangeKind,
@@ -39,18 +38,6 @@ export class NotificationBuffer implements DbNotifier {
     this.notifications.push({
       flush: (notifier) =>
         notifier.notifyEnvironment(environmentId, [...changes]),
-    });
-  }
-
-  notifyHost(hostId: string, changes: HostChangeKind[]): void {
-    this.notifications.push({
-      flush: (notifier) => notifier.notifyHost(hostId, [...changes]),
-    });
-  }
-
-  notifyCommand(hostId: string): void {
-    this.notifications.push({
-      flush: (notifier) => notifier.notifyCommand(hostId),
     });
   }
 

@@ -31,7 +31,6 @@ export interface ResolveStableThreadRequestEnvironmentArgs {
 
 export interface StableThreadRequestProjectData {
   environmentsById: ReadonlyMap<string, Environment>;
-  existingHostIds: ReadonlySet<string>;
   projectId: string;
   projectSources: readonly ProjectSource[];
 }
@@ -59,13 +58,9 @@ export type ResolvedStableThreadRequestEnvironment =
   | ResolvedPersonalThreadRequestEnvironment
   | ResolvedReuseThreadRequestEnvironment;
 
-function requireExistingProjectHost(
-  data: StableThreadRequestProjectData,
-  hostId: string,
-): void {
-  if (!data.existingHostIds.has(hostId)) {
-    throw new ApiError(404, "host_not_found", "Host not found");
-  }
+function requireExistingProjectHost(hostId: string): void {
+  // Single-host: the synthetic 'local' host is the only one that exists.
+  requireLocalHost(hostId);
 }
 
 function requireHostEnvironmentId(
@@ -124,7 +119,7 @@ function resolveStableHostThreadRequestEnvironmentFromProjectData(
     assertPersonalWorkspaceProjectCompatibility(data.projectId);
     const hostId = environment.hostId ?? null;
     if (hostId !== null) {
-      requireExistingProjectHost(data, hostId);
+      requireExistingProjectHost(hostId);
     }
     return {
       hostId,
@@ -133,7 +128,7 @@ function resolveStableHostThreadRequestEnvironmentFromProjectData(
   }
 
   const hostId = requireHostEnvironmentId(environment);
-  requireExistingProjectHost(data, hostId);
+  requireExistingProjectHost(hostId);
 
   if (
     environment.workspace.type === "unmanaged" &&

@@ -1,4 +1,4 @@
-import { defaultFeatureFlags, hostTypeSchema, type HostType } from "@bb/domain";
+import { defaultFeatureFlags } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
@@ -95,20 +95,6 @@ function parseInferenceModelValue(args: EnvVarParseArgs): string {
 
 function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
   return validateTranscriptionModel(args.value);
-}
-
-function parseHostTypeValue(args: EnvVarParseArgs): HostType | undefined {
-  const trimmedValue = args.value.trim();
-  if (trimmedValue.length === 0) {
-    return undefined;
-  }
-
-  const parsedHostType = hostTypeSchema.safeParse(trimmedValue);
-  if (!parsedHostType.success) {
-    throw new Error(`Invalid ${args.name} "${trimmedValue}"`);
-  }
-
-  return parsedHostType.data;
 }
 
 export const BB_DATA_DIR_ENV = defineEnvVar<string>({
@@ -226,33 +212,6 @@ export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({
     "Directory containing provider bridge bundles for the host daemon runtime",
   name: "BB_BRIDGE_DIR",
   parse: parseOptionalTrimmedStringEnvValue,
-});
-
-export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
-  description:
-    "One-time enrollment token used to bootstrap a host daemon with the bb server",
-  name: "BB_HOST_ENROLL_KEY",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
-export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({
-  description:
-    "Preferred host ID to persist for the daemon instead of generating one locally",
-  name: "BB_HOST_ID",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
-export const BB_HOST_NAME_ENV = defineEnvVar<string | undefined>({
-  description:
-    "Preferred host name to report instead of detecting the local hostname",
-  name: "BB_HOST_NAME",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
-export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
-  description: "Host type override for daemon bootstrap",
-  name: "BB_HOST_TYPE",
-  parse: parseHostTypeValue,
 });
 
 export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";

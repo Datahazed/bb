@@ -29,8 +29,8 @@ import {
   requireEnvironment,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import { dispatchEngineCommandAndWait } from "../services/hosts/command-wait.js";
-import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
+import { dispatchEngineCommandAndWait } from "../services/engine/command-wait.js";
+import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import {

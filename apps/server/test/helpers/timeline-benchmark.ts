@@ -12,7 +12,6 @@ import {
   migrate,
   noopNotifier,
   type StoredEventRow,
-  upsertHost,
 } from "@bb/db";
 import {
   buildThreadTimelineFromEvents,
@@ -93,11 +92,7 @@ function createTimelineBenchmarkScenario(
   const db = createConnection(":memory:");
   migrate(db);
 
-  const host = upsertHost(db, noopNotifier, {
-    id: "host-bench",
-    name: "Timeline Bench Host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: `Timeline Bench ${fixture.taskId}`,
     source: {

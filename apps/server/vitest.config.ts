@@ -17,15 +17,11 @@ export default defineConfig({
     exclude: [
       "dist/**",
       "node_modules/**",
-      // Quarantined wire-protocol suites (single-host rebuild, plan §6
-      // Phase 1): they drive the unmounted /internal routes and daemon-WS
-      // protocol, or the orphaned durable-queue machinery
-      // (expired-commands), or assert durable queue-row lifecycle states
-      // (thread-lifecycle). Deleted in P1c with the transport modules; the
-      // surviving behavior gets new tests with the Phase 2 lifecycle
-      // rewrite. Also excluded from typecheck in tsconfig.json.
-      "test/internal/**",
-      "test/hosts/expired-commands.test.ts",
+      // Quarantined (single-host rebuild, plan §6): asserts durable
+      // queue-row lifecycle states that died with the transport. Phase 2's
+      // boot-reconciliation rewrite owes its replacement — core lifecycle
+      // coverage must not be deleted before then. Also excluded from
+      // typecheck in tsconfig.json.
       "test/threads/thread-lifecycle.test.ts",
     ],
     env: {

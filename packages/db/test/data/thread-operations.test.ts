@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createHostDaemonCommandId } from "../../src/ids.js";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { createThread } from "../../src/data/threads.js";
-import { queueCommand } from "../../src/data/commands.js";
 import {
   getThreadOperation,
   getThreadOperationByCommandId,
@@ -12,16 +12,12 @@ import {
   upsertThreadOperationRecord,
 } from "../../src/data/thread-operations.js";
 import { createEnvironment } from "../../src/data/environments.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -72,19 +68,8 @@ describe("thread operations", () => {
   });
 
   it("stores provisioning state columns for provision operations", () => {
-    const { db, environment, host, thread } = setup();
-    const command = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "environment.provision",
-      payload: JSON.stringify({
-        type: "environment.provision",
-        environmentId: environment.id,
-        initiator: null,
-        workspaceProvisionType: "unmanaged",
-        path: "/tmp/test",
-      }),
-    });
+    const { db, environment, thread } = setup();
+    const command = { id: createHostDaemonCommandId() };
 
     const first = upsertThreadOperationRecord(db, {
       threadId: thread.id,
@@ -148,17 +133,8 @@ describe("thread operations", () => {
   });
 
   it("records queued and completed thread operations", () => {
-    const { db, host, thread } = setup();
-    const command = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "thread.stop",
-      payload: JSON.stringify({
-        type: "thread.stop",
-        threadId: thread.id,
-        environmentId: thread.environmentId,
-      }),
-    });
+    const { db, thread } = setup();
+    const command = { id: createHostDaemonCommandId() };
 
     upsertThreadOperationRecord(db, {
       threadId: thread.id,
@@ -199,27 +175,9 @@ describe("thread operations", () => {
   });
 
   it("does not move terminal thread operations back to queued", () => {
-    const { db, host, thread } = setup();
-    const firstCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "thread.stop",
-      payload: JSON.stringify({
-        type: "thread.stop",
-        threadId: thread.id,
-        environmentId: thread.environmentId,
-      }),
-    });
-    const secondCommand = queueCommand(db, noopNotifier, {
-      hostId: host.id,
-      sessionId: null,
-      type: "thread.stop",
-      payload: JSON.stringify({
-        type: "thread.stop",
-        threadId: thread.id,
-        environmentId: thread.environmentId,
-      }),
-    });
+    const { db, thread } = setup();
+    const firstCommand = { id: createHostDaemonCommandId() };
+    const secondCommand = { id: createHostDaemonCommandId() };
 
     upsertThreadOperationRecord(db, {
       threadId: thread.id,

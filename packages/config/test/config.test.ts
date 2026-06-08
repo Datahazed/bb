@@ -6,11 +6,6 @@ import { loadCommonConfig } from "../src/common.js";
 import { loadDatabaseConfig } from "../src/database.js";
 import { loadDevEnvConfig } from "../src/dev-env.js";
 import { loadHostDaemonEntrypointConfig } from "../src/host-daemon-entrypoint.js";
-import {
-  loadHostDaemonConfig,
-  loadHostDaemonConnectionConfig,
-  loadHostDaemonStartConfig,
-} from "../src/host-daemon.js";
 import { parseProviderModelConfig } from "../src/inference-model.js";
 import { loadLoggerConfig } from "../src/logger.js";
 import {
@@ -33,7 +28,6 @@ async function importConfigModules(): Promise<void> {
     import("../src/database.js"),
     import("../src/dev-env.js"),
     import("../src/host-daemon-entrypoint.js"),
-    import("../src/host-daemon.js"),
     import("../src/logger.js"),
     import("../src/objects.js"),
     import("../src/server-port.js"),
@@ -419,23 +413,21 @@ describe("consumer-specific config", () => {
   });
 
   it("accepts envsafe-compatible boolean forms from env", () => {
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({
-      env: createHostDaemonRuntimeEnv({
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
         BB_DEV_REPLAY_CAPTURE: "0",
       }),
     });
 
-    expect(hostDaemonConfig.BB_DEV_REPLAY_CAPTURE).toBe(false);
+    expect(serverConfig.BB_DEV_REPLAY_CAPTURE).toBe(false);
   });
 
-  it("requires a valid server URL for the daemon and CLI", () => {
+  it("requires a valid server URL for the CLI", () => {
     const env = createHostDaemonRuntimeEnv({
       BB_SERVER_URL: "http://localhost:9999",
     });
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({ env });
     const cliConfig = loadCliConfig({ env });
 
-    expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(cliConfig.BB_SERVER_URL).toBe("http://localhost:9999");
 
     expect(() =>
@@ -447,14 +439,12 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_SERVER_URL/u);
   });
 
-  it("normalizes server URL whitespace consistently for the daemon and CLI", () => {
+  it("normalizes server URL whitespace consistently for the CLI", () => {
     const env = createHostDaemonRuntimeEnv({
       BB_SERVER_URL: " http://localhost:9999 ",
     });
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({ env });
     const cliConfig = loadCliConfig({ env });
 
-    expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(cliConfig.BB_SERVER_URL).toBe("http://localhost:9999");
 
     expect(() =>
@@ -466,81 +456,10 @@ describe("consumer-specific config", () => {
     ).toThrow("BB_SERVER_URL must not be empty");
   });
 
-  it("validates host-daemon connection config without requiring data dir", () => {
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({
-      env: {
-        BB_HOST_DAEMON_PORT: "3999",
-        BB_SERVER_URL: "http://localhost:9999",
-        NODE_ENV: "development",
-      },
-    });
 
-    expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
-    expect(hostDaemonConfig.BB_HOST_DAEMON_PORT).toBe(3999);
-  });
 
-  it("validates explicit host-daemon ports with the shared port validator", () => {
-    expect(() =>
-      loadHostDaemonConnectionConfig({
-        env: {
-          BB_SERVER_URL: "http://localhost:9999",
-          NODE_ENV: "development",
-        },
-        hostDaemonPort: 0,
-      }),
-    ).toThrow("BB_HOST_DAEMON_PORT must be a valid TCP port");
-  });
 
-  it("builds full host-daemon config when the daemon entrypoint owns data dir", () => {
-    const hostDaemonConfig = loadHostDaemonConfig({
-      env: {
-        BB_DATA_DIR: "/tmp/bb-data",
-        BB_HOST_DAEMON_PORT: "3999",
-        BB_SERVER_URL: "http://localhost:9999",
-        NODE_ENV: "development",
-      },
-    });
 
-    expect(hostDaemonConfig.BB_DATA_DIR).toBe("/tmp/bb-data");
-    expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
-    expect(hostDaemonConfig.BB_HOST_DAEMON_PORT).toBe(3999);
-  });
-
-  it("builds host-daemon start config from full config when data dir is not provided", () => {
-    const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      enableLocalApi: true,
-      env: {
-        BB_DATA_DIR: "/tmp/bb-data",
-        BB_HOST_DAEMON_PORT: "3999",
-        BB_SERVER_URL: "http://localhost:9999",
-        NODE_ENV: "development",
-      },
-    });
-
-    expect(hostDaemonStartConfig.dataDir).toBe("/tmp/bb-data");
-    expect(hostDaemonStartConfig.connectionConfig?.BB_SERVER_URL).toBe(
-      "http://localhost:9999",
-    );
-    expect(hostDaemonStartConfig.connectionConfig?.BB_HOST_DAEMON_PORT).toBe(
-      3999,
-    );
-  });
-
-  it("skips host-daemon env loading when explicit start options are complete", () => {
-    const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      dataDir: "/tmp/bb-data",
-      enableLocalApi: false,
-      env: {
-        BB_SERVER_URL: "not-a-url",
-        NODE_ENV: "development",
-      },
-      serverUrl: "http://localhost:9999",
-    });
-
-    expect(hostDaemonStartConfig).toEqual({
-      dataDir: "/tmp/bb-data",
-    });
-  });
 
   it("builds logger config from an explicit data dir without resolving BB_DATA_DIR", () => {
     const loggerConfig = loadLoggerConfig({
@@ -670,20 +589,12 @@ describe("consumer-specific config", () => {
       env: {
         BB_BRIDGE_DIR: " /tmp/bridges ",
         BB_CLI_DIR: " /tmp/bb-bin ",
-        BB_HOST_ENROLL_KEY: " enroll-token ",
-        BB_HOST_ID: " host-123 ",
-        BB_HOST_NAME: " host-123 ",
-        BB_HOST_TYPE: "persistent",
       },
     });
 
     expect(hostDaemonEntrypointConfig).toEqual({
       BB_BRIDGE_DIR: "/tmp/bridges",
       BB_CLI_DIR: "/tmp/bb-bin",
-      BB_HOST_ENROLL_KEY: "enroll-token",
-      BB_HOST_ID: "host-123",
-      BB_HOST_NAME: "host-123",
-      BB_HOST_TYPE: "persistent",
     });
   });
 
@@ -692,24 +603,12 @@ describe("consumer-specific config", () => {
       env: {
         BB_BRIDGE_DIR: "",
         BB_CLI_DIR: "   ",
-        BB_HOST_ENROLL_KEY: " ",
-        BB_HOST_NAME: "",
-        BB_HOST_TYPE: "",
       },
     });
 
     expect(hostDaemonEntrypointConfig).toEqual({});
   });
 
-  it("rejects invalid host-daemon entrypoint host types", () => {
-    expect(() =>
-      loadHostDaemonEntrypointConfig({
-        env: {
-          BB_HOST_TYPE: "ephemeral",
-        },
-      }),
-    ).toThrow('Invalid BB_HOST_TYPE "ephemeral"');
-  });
 });
 
 describe("provider model config", () => {

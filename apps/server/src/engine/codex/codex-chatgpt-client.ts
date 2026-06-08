@@ -171,7 +171,7 @@ function createChatGptHeaders(auth: CodexChatGptAuthCredentials): Headers {
   headers.set("Authorization", `Bearer ${auth.accessToken}`);
   headers.set("chatgpt-account-id", auth.accountId);
   headers.set("originator", "bb");
-  headers.set("User-Agent", "bb-host-daemon");
+  headers.set("User-Agent", "bb-server");
   if (auth.isFedrampAccount) {
     headers.set("X-OpenAI-Fedramp", "true");
   }
@@ -181,7 +181,7 @@ function createChatGptHeaders(auth: CodexChatGptAuthCredentials): Headers {
 function createOpenAiHeaders(auth: CodexOpenAiApiKeyCredentials): Headers {
   const headers = new Headers();
   headers.set("Authorization", `Bearer ${auth.apiKey}`);
-  headers.set("User-Agent", "bb-host-daemon");
+  headers.set("User-Agent", "bb-server");
   return headers;
 }
 

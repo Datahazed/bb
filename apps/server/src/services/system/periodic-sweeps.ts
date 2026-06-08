@@ -195,7 +195,6 @@ export async function runProjectDeletionSweep(
     | "hub"
     | "lifecycleDedupers"
     | "logger"
-    | "machineAuth"
     | "pendingInteractions"
     | "terminalSessions"
   >,
@@ -224,7 +223,6 @@ export async function runEnvironmentProvisioningSweep(
     | "hub"
     | "lifecycleDedupers"
     | "logger"
-    | "machineAuth"
   >,
 ): Promise<void> {
   const seenEnvironmentIds = new Set<string>();
@@ -377,7 +375,6 @@ export async function runPeriodicSweeps(
     | "hub"
     | "lifecycleDedupers"
     | "logger"
-    | "machineAuth"
     | "pendingInteractions"
     | "terminalSessions"
   >,
@@ -385,10 +382,6 @@ export async function runPeriodicSweeps(
   try {
     const now = Date.now();
 
-    // The queue/lease/expiry sweeps (expired commands, lease expiry, command
-    // row/payload pruning, closed-session pruning, machine-auth key pruning)
-    // died with the durable queue and the daemon transport (Phase 1 dispatch
-    // shim); their modules survive un-scheduled until P1c deletes them.
     truncateCompletedEventItemOutputs(deps.db, {
       createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
       limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,

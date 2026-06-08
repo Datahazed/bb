@@ -15,7 +15,7 @@ async function assertPathExists(pathToCheck, label) {
     await access(pathToCheck);
   } catch {
     throw new Error(
-      `Missing ${label} at ${pathToCheck}. Build @bb/app, @bb/server, and @bb/host-daemon before packaging bb-app.`,
+      `Missing ${label} at ${pathToCheck}. Build @bb/app and @bb/server before packaging bb-app.`,
     );
   }
 }
@@ -29,7 +29,6 @@ const entrypoints = [
   ["bb-app", "bb-app.js"],
   ["bb", "bb.js"],
   ["bb-server", "bb-server.js"],
-  ["bb-host-daemon", "bb-host-daemon.js"],
 ];
 
 for (const [sourceName, outputName] of entrypoints) {
@@ -52,10 +51,4 @@ await copyBuildOutput({
   label: "@bb/server dist",
   to: resolve(packageRoot, "server", "dist"),
 });
-await copyBuildOutput({
-  from: resolve(workspaceRoot, "apps", "host-daemon", "dist"),
-  label: "@bb/host-daemon dist",
-  to: resolve(packageRoot, "host-daemon", "dist"),
-});
-
 process.stdout.write("bb-app: built package assets\n");

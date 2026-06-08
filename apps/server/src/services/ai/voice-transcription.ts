@@ -6,7 +6,7 @@ import {
 } from "@bb/config/inference-model";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
+import { dispatchEngineCommandAndWait } from "../engine/command-wait.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 interface TranscribeVoiceInputArgs {

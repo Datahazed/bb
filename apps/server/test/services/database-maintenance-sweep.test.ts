@@ -18,7 +18,6 @@ import {
   isDatabaseMaintenanceIdle,
   migrate,
   noopNotifier,
-  upsertHost,
 } from "@bb/db";
 import type { ServerLogger } from "../../src/types.js";
 import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-sweeps.js";
@@ -93,10 +92,7 @@ function createLegacyDatabaseFile(dbPath: string): void {
 }
 
 function markDatabaseBusy(db: DbConnection): void {
-  const host = upsertHost(db, noopNotifier, {
-    name: "maintenance-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "maintenance-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/project" },

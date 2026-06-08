@@ -1,6 +1,5 @@
 import {
   ENVIRONMENT_CHANGE_KINDS,
-  HOST_CHANGE_KINDS,
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
@@ -246,31 +245,7 @@ describe("NotificationHub", () => {
     ]);
   });
 
-  it("notifies only the daemon socket registered for the host", () => {
-    const hub = new NotificationHub();
-    const socket1 = createMockHubSocket();
-    const socket2 = createMockHubSocket();
 
-    hub.registerDaemon("session-1", "host-1", socket1);
-    hub.registerDaemon("session-2", "host-2", socket2);
-    hub.notifyCommand("host-1");
-
-    expect(socket1.messages).toHaveLength(1);
-    expect(JSON.parse(socket1.messages[0])).toEqual({
-      type: "commands-available",
-    });
-    expect(socket2.messages).toHaveLength(0);
-  });
-
-  it("treats daemon notifications for unknown hosts as a no-op", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.registerDaemon("session-1", "host-1", socket);
-
-    expect(() => hub.notifyDaemon("nonexistent-session-id")).not.toThrow();
-    expect(socket.messages).toHaveLength(0);
-  });
 
   it("notifies all clients subscribed to the same thread", () => {
     const hub = new NotificationHub();
@@ -288,204 +263,12 @@ describe("NotificationHub", () => {
     expect(socket3.messages).toHaveLength(0);
   });
 
-  it("cancels the replaced daemon session's pending disconnect timer", async () => {
-    vi.useFakeTimers();
-    try {
-      const hub = new NotificationHub();
-      const socket1 = createMockHubSocket();
-      const socket2 = createMockHubSocket();
-      const callback = vi.fn();
 
-      hub.registerDaemon("session-1", "host-1", socket1);
-      hub.scheduleDaemonDisconnect("session-1", 1_000, callback);
 
-      hub.registerDaemon("session-2", "host-1", socket2);
-      await vi.advanceTimersByTimeAsync(1_000);
 
-      expect(callback).not.toHaveBeenCalled();
-      hub.notifyCommand("host-1");
-      expect(socket1.messages).toHaveLength(0);
-      expect(socket2.messages).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 
-  it("resolves command waiters and command-result waiters", async () => {
-    const hub = new NotificationHub();
 
-    const commandWait = hub.waitForCommands("host-1", 1_000);
-    const resultWait = hub.waitForCommandResult("cmd-1", 1_000);
 
-    setTimeout(() => {
-      hub.notifyCommand("host-1");
-      hub.recordCommandResult("cmd-1", {
-        commandId: "cmd-1",
-        ok: true,
-        result: {},
-        type: "thread.stop",
-      });
-    }, 0);
-
-    await expect(commandWait).resolves.toBe(true);
-    await expect(resultWait).resolves.toEqual({
-      commandId: "cmd-1",
-      ok: true,
-      result: {},
-      type: "thread.stop",
-    });
-  });
-
-  it("resolves failed command-result waiters", async () => {
-    const hub = new NotificationHub();
-    const resultWait = hub.waitForCommandResult("cmd-2", 1_000);
-
-    setTimeout(() => {
-      hub.recordCommandResult("cmd-2", {
-        commandId: "cmd-2",
-        errorCode: "command_failed",
-        errorMessage: "Command failed",
-        ok: false,
-        type: "thread.stop",
-      });
-    }, 0);
-
-    await expect(resultWait).resolves.toEqual({
-      commandId: "cmd-2",
-      errorCode: "command_failed",
-      errorMessage: "Command failed",
-      ok: false,
-      type: "thread.stop",
-    });
-  });
-
-  it("rejects command-result waiters on timeout", async () => {
-    const hub = new NotificationHub();
-    await expect(hub.waitForCommandResult("cmd-timeout", 1)).rejects.toThrow(
-      "Timed out waiting for command result",
-    );
-  });
-
-  it("sends host RPC requests to the active daemon and resolves responses", async () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-    hub.registerDaemon("session-1", "host-1", socket);
-
-    const wait = hub.requestHostOnlineRpc({
-      hostId: "host-1",
-      timeoutMs: 1_000,
-      message: {
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      },
-    });
-
-    expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
-      {
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      },
-    ]);
-    const disposition = hub.recordHostOnlineRpcResponse({
-      message: {
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      },
-      sessionId: "session-1",
-    });
-    expect(disposition).toEqual({ handled: true });
-
-    await expect(wait).resolves.toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "provider.list",
-      ok: true,
-      result: { providers: [] },
-    });
-  });
-
-  it("does not resolve host RPC waiters from mismatched daemon sessions", async () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-    hub.registerDaemon("session-1", "host-1", socket);
-    hub.registerDaemon("session-2", "host-2", createMockHubSocket());
-
-    const wait = hub.requestHostOnlineRpc({
-      hostId: "host-1",
-      timeoutMs: 1_000,
-      message: {
-        type: "host-rpc.request",
-        requestId: "rpc-session-scoped",
-        command: { type: "provider.list" },
-      },
-    });
-    let resolved = false;
-    const observed = wait.then((response) => {
-      resolved = true;
-      return response;
-    });
-
-    const mismatch = hub.recordHostOnlineRpcResponse({
-      message: {
-        type: "host-rpc.response",
-        requestId: "rpc-session-scoped",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      },
-      sessionId: "session-2",
-    });
-    expect(mismatch).toEqual({
-      expectedSessionId: "session-1",
-      handled: false,
-      reason: "session_mismatch",
-    });
-    await Promise.resolve();
-    expect(resolved).toBe(false);
-
-    const handled = hub.recordHostOnlineRpcResponse({
-      message: {
-        type: "host-rpc.response",
-        requestId: "rpc-session-scoped",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      },
-      sessionId: "session-1",
-    });
-    expect(handled).toEqual({ handled: true });
-    await expect(observed).resolves.toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-session-scoped",
-      commandType: "provider.list",
-      ok: true,
-      result: { providers: [] },
-    });
-  });
-
-  it("rejects in-flight host RPC requests when the daemon unregisters", async () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-    hub.registerDaemon("session-1", "host-1", socket);
-
-    const wait = hub.requestHostOnlineRpc({
-      hostId: "host-1",
-      timeoutMs: 1_000,
-      message: {
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      },
-    });
-    hub.unregisterDaemon("session-1");
-
-    await expect(wait).rejects.toThrow("Host daemon is not connected");
-  });
 
   it("keeps subscription bookkeeping consistent across repeated changes", () => {
     const hub = new NotificationHub();
@@ -545,31 +328,6 @@ describe("NotificationHub", () => {
     });
   });
 
-  it("delivers host notifications to entity-wide and id-scoped subscribers", () => {
-    const hub = new NotificationHub();
-    const entityWideSocket = createMockHubSocket();
-    const idScopedSocket = createMockHubSocket();
-    const otherHostSocket = createMockHubSocket();
-
-    hub.subscribe(entityWideSocket, "host");
-    hub.subscribe(idScopedSocket, "host", "host-1");
-    hub.subscribe(otherHostSocket, "host", "host-2");
-    hub.notifyHost("host-1", ["host-connected"]);
-
-    const expected = {
-      type: "changed",
-      entity: "host",
-      id: "host-1",
-      changes: ["host-connected"],
-    };
-    expect(
-      entityWideSocket.messages.map((message) => JSON.parse(message)),
-    ).toEqual([expected]);
-    expect(
-      idScopedSocket.messages.map((message) => JSON.parse(message)),
-    ).toEqual([expected]);
-    expect(otherHostSocket.messages).toHaveLength(0);
-  });
 
   // One broadcast per entity carrying every declared change kind must clear
   // the outgoing schema gate intact. The per-kind delivery behavior is the
@@ -579,19 +337,16 @@ describe("NotificationHub", () => {
     const threadSocket = createMockHubSocket();
     const projectSocket = createMockHubSocket();
     const environmentSocket = createMockHubSocket();
-    const hostSocket = createMockHubSocket();
     const systemSocket = createMockHubSocket();
 
     hub.subscribe(threadSocket, "thread", "thread-1");
     hub.subscribe(projectSocket, "project", "project-1");
     hub.subscribe(environmentSocket, "environment", "environment-1");
-    hub.subscribe(hostSocket, "host", "host-1");
     hub.subscribe(systemSocket, "system");
 
     hub.notifyThread("thread-1", [...THREAD_CHANGE_KINDS]);
     hub.notifyProject("project-1", [...PROJECT_CHANGE_KINDS]);
     hub.notifyEnvironment("environment-1", [...ENVIRONMENT_CHANGE_KINDS]);
-    hub.notifyHost("host-1", [...HOST_CHANGE_KINDS]);
     hub.notifySystem([...SYSTEM_CHANGE_KINDS]);
 
     expect(threadSocket.messages).toHaveLength(1);
@@ -605,10 +360,6 @@ describe("NotificationHub", () => {
     expect(environmentSocket.messages).toHaveLength(1);
     expect(JSON.parse(environmentSocket.messages[0]).changes).toEqual([
       ...ENVIRONMENT_CHANGE_KINDS,
-    ]);
-    expect(hostSocket.messages).toHaveLength(1);
-    expect(JSON.parse(hostSocket.messages[0]).changes).toEqual([
-      ...HOST_CHANGE_KINDS,
     ]);
     expect(systemSocket.messages).toHaveLength(1);
     expect(JSON.parse(systemSocket.messages[0]).changes).toEqual([

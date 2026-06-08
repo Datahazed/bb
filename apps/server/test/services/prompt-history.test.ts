@@ -10,7 +10,6 @@ import {
   migrate,
   noopNotifier,
   promptHistoryEntries,
-  upsertHost,
 } from "@bb/db";
 import type { PromptHistoryScope, PromptInput } from "@bb/domain";
 import {
@@ -34,10 +33,7 @@ interface InsertPromptHistoryEntryArgs {
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const firstProject = createProject(db, noopNotifier, {
     name: "Project A",
     source: { type: "local_path", hostId: host.id, path: "/tmp/project-a" },

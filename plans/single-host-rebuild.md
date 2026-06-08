@@ -168,7 +168,7 @@ Real workspace package count is 25 (5 of the 30 `packages/*` dirs have no packag
 | `process-utils` | **Stays** (consumers: agent-runtime, scripts, server engine — all survivors; desktop has zero usage) |
 | `replay-capture` | **Stays** (in the FE closure via server-contract; agent-fixtures + server engine also consume it) |
 | `agent-fixtures` | Fold into `apps/server` test helpers (sole consumer: `test/helpers/timeline-benchmark.ts`) unless the capture/promote CLI toolchain is wanted standalone — decide at Phase 4. (The test seam is `@bb/agent-runtime/test`, not this.) |
-| `secret-storage` | Audit after machine-auth dies → fold into `apps/server` or delete if orphaned |
+| `secret-storage` | Audit after machine-auth dies → fold into `apps/server` or delete if orphaned. P1c update: machine-auth (its sole consumer) is gone and the dead `apps/server` dependency edge was dropped with it — the package now has zero workspace importers; Phase 4 decides keep-vs-delete. |
 | `hono-typed-routes` | Stays (server-contract foundation) |
 | `domain`, `db`, `server-contract`, `sdk`, `config`, `logger`, `agent-runtime`, `test-helpers`, `dev-env`, `scripts`, `tsconfig`, `bb-app`, `templates`, `fuzzy-match`, `core-ui`, `thread-view` | Stay |
 

@@ -7,8 +7,6 @@ import {
   getEnvironment,
   getEnvironmentOperation,
   migrate,
-  queueCommand,
-  upsertHost,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -40,8 +38,8 @@ interface EnvironmentCleanupCommandResultSetup {
 
 interface SettleDestroyReportArgs {
   command: EnvironmentDestroyCommand;
-  commandRow: SettleEnvironmentDestroyCommandResultArgs["commandRow"];
   report: EnvironmentDestroyCommandResultReport;
+  settledCommand: SettleEnvironmentDestroyCommandResultArgs["settledCommand"];
   testSetup: EnvironmentCleanupCommandResultSetup;
 }
 
@@ -50,10 +48,7 @@ function setup(): EnvironmentCleanupCommandResultSetup {
   migrate(db);
 
   const hub = new NotificationHub();
-  const host = upsertHost(db, hub, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, hub, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/source" },
@@ -80,12 +75,12 @@ function settleDestroyReport(args: SettleDestroyReportArgs) {
     (tx) =>
       settleEnvironmentDestroyCommandResult({
         command: args.command,
-        commandRow: args.commandRow,
         deps: {
           db: tx,
           hub: args.testSetup.hub,
         },
         report: args.report,
+        settledCommand: args.settledCommand,
       }),
     { behavior: "immediate" },
   );
@@ -207,12 +202,12 @@ describe("environment cleanup command result settlement", () => {
         workspaceProvisionType: "managed-worktree",
       },
     };
-    const command = queueCommand(testSetup.db, testSetup.hub, {
+    const settledCommand = {
+      command: commandPayload,
+      dispatchedAt: 400,
       hostId: testSetup.hostId,
-      sessionId: null,
-      type: "environment.destroy",
-      payload: JSON.stringify(commandPayload),
-    });
+      id: createHostDaemonCommandId(),
+    };
     upsertEnvironmentOperationRecord(testSetup.db, {
       environmentId: testSetup.environmentId,
       kind: "destroy",
@@ -221,12 +216,12 @@ describe("environment cleanup command result settlement", () => {
     markEnvironmentOperationRecordQueued(testSetup.db, {
       environmentId: testSetup.environmentId,
       kind: "destroy",
-      commandId: command.id,
+      commandId: settledCommand.id,
     });
 
     const successReport: EnvironmentDestroyCommandResultReport = {
       attemptId: "attempt-destroy",
-      commandId: command.id,
+      commandId: settledCommand.id,
       completedAt: 500,
       ok: true,
       result: {},
@@ -234,8 +229,8 @@ describe("environment cleanup command result settlement", () => {
     };
     const sideEffects = settleDestroyReport({
       command: commandPayload,
-      commandRow: command,
       report: successReport,
+      settledCommand,
       testSetup,
     });
 
@@ -258,13 +253,13 @@ describe("environment cleanup command result settlement", () => {
     });
     expect(completed).toMatchObject({
       state: "completed",
-      commandId: command.id,
+      commandId: settledCommand.id,
       failureReason: null,
     });
 
     const duplicateFailureReport: EnvironmentDestroyCommandResultReport = {
       attemptId: "attempt-destroy",
-      commandId: command.id,
+      commandId: settledCommand.id,
       completedAt: 600,
       errorCode: "late_destroy_failure",
       errorMessage: "destroy failed late",
@@ -273,8 +268,8 @@ describe("environment cleanup command result settlement", () => {
     };
     settleDestroyReport({
       command: commandPayload,
-      commandRow: command,
       report: duplicateFailureReport,
+      settledCommand,
       testSetup,
     });
 
@@ -285,7 +280,7 @@ describe("environment cleanup command result settlement", () => {
       }),
     ).toMatchObject({
       state: "completed",
-      commandId: command.id,
+      commandId: settledCommand.id,
       completedAt: completed?.completedAt,
       failureReason: null,
     });

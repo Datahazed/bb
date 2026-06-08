@@ -12,7 +12,6 @@ import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { createAutomationId } from "../ids.js";
 import { automations, projectOperations, threads } from "../schema.js";
-import { getActiveSession } from "./sessions.js";
 import { buildOrderedNumberCursorFilter } from "./cursor-pagination.js";
 
 export interface CreateAutomationInput {
@@ -70,14 +69,12 @@ export interface ListDueAutomationsArgs {
 export interface ClaimAutomationScheduledRunArgs {
   automationId: string;
   expectedNextRunAt: number | null;
-  hostId: string | null;
   nextRunAt: number;
 }
 
 export interface ClaimAutomationScheduledRunResult {
   advanced: boolean;
   reason:
-    | "host-disconnected"
     | "lost-race"
     | "open-thread"
     | "project-deleting"
@@ -355,10 +352,10 @@ export function claimAutomationScheduledRun(
         } satisfies ClaimAutomationScheduledRunResult;
       }
 
-      const hostConnected =
-        args.hostId === null || getActiveSession(tx, args.hostId) !== null;
-      const shouldCreateThread =
-        hostConnected && !hasOpenAutomationThread(tx, args.automationId);
+      const shouldCreateThread = !hasOpenAutomationThread(
+        tx,
+        args.automationId,
+      );
       const advanced = advanceAutomationAfterRunInTransaction(tx, {
         automationId: args.automationId,
         expectedNextRunAt: current.nextRunAt,
@@ -369,14 +366,6 @@ export function claimAutomationScheduledRun(
         return {
           advanced: false,
           reason: "lost-race",
-          shouldCreateThread: false,
-        } satisfies ClaimAutomationScheduledRunResult;
-      }
-
-      if (!hostConnected) {
-        return {
-          advanced: true,
-          reason: "host-disconnected",
           shouldCreateThread: false,
         } satisfies ClaimAutomationScheduledRunResult;
       }

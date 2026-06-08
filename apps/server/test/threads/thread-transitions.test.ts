@@ -5,7 +5,6 @@ import {
   createThread,
   migrate,
   noopNotifier,
-  upsertHost,
 } from "@bb/db";
 import { tryTransition } from "../../src/services/threads/thread-transitions.js";
 import { NotificationHub } from "../../src/ws/hub.js";
@@ -13,10 +12,7 @@ import { NotificationHub } from "../../src/ws/hub.js";
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },

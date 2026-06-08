@@ -35,16 +35,12 @@ import {
   ALLOWED_TRANSITIONS,
 } from "../../src/data/threads.js";
 import { createProject } from "../../src/data/projects.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -159,8 +155,6 @@ describe("threads", () => {
       const spy: DbNotifier = {
         notifyThread: vi.fn(),
         notifyEnvironment: vi.fn(),
-        notifyHost: vi.fn(),
-        notifyCommand: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
       };
@@ -775,8 +769,6 @@ describe("threads", () => {
     const spy: DbNotifier = {
       notifyThread: vi.fn(),
       notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyCommand: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
     };
@@ -861,8 +853,6 @@ describe("threads", () => {
       const spy: DbNotifier = {
         notifyThread: vi.fn(),
         notifyEnvironment: vi.fn(),
-        notifyHost: vi.fn(),
-        notifyCommand: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
       };
@@ -1077,10 +1067,7 @@ describe("threads", () => {
 
   it("lists canonical thread environments for a host", () => {
     const { db, project, host } = setup();
-    const otherHost = upsertHost(db, noopNotifier, {
-      name: "other-host",
-      type: "persistent",
-    });
+    const otherHost = { id: "host-other" };
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
       hostId: host.id,
@@ -1121,10 +1108,7 @@ describe("threads", () => {
 
   it("lists host thread ids and detects pending shutdowns by environment", () => {
     const { db, project, host } = setup();
-    const otherHost = upsertHost(db, noopNotifier, {
-      name: "other-host",
-      type: "persistent",
-    });
+    const otherHost = { id: "host-other" };
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
       hostId: host.id,
@@ -1478,8 +1462,6 @@ describe("transitionThreadStatus", () => {
     const spy: DbNotifier = {
       notifyThread: vi.fn(),
       notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyCommand: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
     };

@@ -7,15 +7,11 @@ import {
   getProjectExecutionDefaults,
   upsertProjectExecutionDefaults,
 } from "../../src/data/project-execution-defaults.js";
-import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "defaults-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "defaults-project",
     source: {

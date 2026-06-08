@@ -78,7 +78,7 @@ function parseCodexAuthFile(raw: string, authPath: string): JsonObject {
   }
   throw new ExpectedCommandDispatchError(
     "codex_auth_invalid",
-    `Codex auth file at ${authPath} is not valid JSON. Run codex login on this host.`,
+    `Codex auth file at ${authPath} is not valid JSON. Run codex login on this machine.`,
   );
 }
 
@@ -152,7 +152,7 @@ async function readCodexAuthJson(): Promise<CodexAuthJson> {
   } catch {
     throw new ExpectedCommandDispatchError(
       "codex_auth_missing",
-      `Codex auth file not found at ${authPath}. Run codex login on this host.`,
+      `Codex auth file not found at ${authPath}. Run codex login on this machine.`,
     );
   }
 
@@ -177,7 +177,7 @@ function resolveAccountId(args: ResolveCodexTokenArgs): string {
   if (!accountId) {
     throw new ExpectedCommandDispatchError(
       "codex_auth_invalid",
-      "Codex auth tokens do not include a ChatGPT account id. Run codex login on this host.",
+      "Codex auth tokens do not include a ChatGPT account id. Run codex login on this machine.",
     );
   }
 
@@ -205,7 +205,7 @@ function buildOpenAiApiKeyCredentials(
   if (!auth.openAiApiKey) {
     throw new ExpectedCommandDispatchError(
       "codex_auth_invalid",
-      `Codex auth file at ${authPath} does not contain a usable API key. Run codex login on this host.`,
+      `Codex auth file at ${authPath} does not contain a usable API key. Run codex login on this machine.`,
     );
   }
   return {
@@ -221,7 +221,7 @@ function buildChatGptCredentials(
   if (!auth.tokens || !auth.accessToken) {
     throw new ExpectedCommandDispatchError(
       "codex_auth_invalid",
-      `Codex auth file at ${authPath} does not contain a usable access token. Run codex login on this host.`,
+      `Codex auth file at ${authPath} does not contain a usable access token. Run codex login on this machine.`,
     );
   }
   return {

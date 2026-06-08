@@ -13,16 +13,11 @@
  * unarchive-before-submit barriers, provision-cancel bypass,
  * flush-before-result ordering, and completion-order reporting.
  *
- * Deliberately deferred (not ported in P1a): the four daemon dispatch-handler
- * suites (`environment-dispatch` / `thread-dispatch` / `workspace-dispatch` /
- * `host-branches-dispatch`, 3,494 lines). They pin handler behavior, not the
- * R3 scheduler semantics this file exists for; the daemon copies stay green
- * against the live runtime path until P1c, and the engine already carries
- * handler-level suites for the riskiest adapted code (host-files, file-list,
- * replay, runtime-manager, engine wiring). They must be ported (or
- * consciously retired case-by-case) in the same change that deletes
- * `apps/host-daemon` in P1c — deleting the daemon earlier would orphan that
- * coverage.
+ * The four daemon dispatch-handler suites (`environment-dispatch` /
+ * `thread-dispatch` / `workspace-dispatch` / `host-branches-dispatch`) were
+ * ported wholesale into `../handlers/` in P1c when the daemon was deleted —
+ * they pin handler behavior, not the R3 scheduler semantics this file exists
+ * for.
  */
 import fs from "node:fs/promises";
 import os from "node:os";

@@ -14,7 +14,7 @@ import {
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../engine/online-rpc.js";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,

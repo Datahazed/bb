@@ -8,7 +8,6 @@ export type LifecycleCoordinationDeps = Pick<
   | "hub"
   | "lifecycleDedupers"
   | "logger"
-  | "machineAuth"
 >;
 
 export type InteractiveLifecycleCoordinationDeps = LifecycleCoordinationDeps &

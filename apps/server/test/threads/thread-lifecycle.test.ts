@@ -26,7 +26,11 @@ import {
 } from "@bb/host-daemon-contract";
 import { upsertThreadOperationRecord } from "@bb/db/internal-lifecycle";
 import { eq } from "drizzle-orm";
-import { handleCommandResult } from "../../src/internal/command-results.js";
+// Quarantined suite (excluded from vitest + tsconfig): `handleCommandResult`
+// died with the durable queue in P1c; its surviving settle* owners live in
+// the engine module below. Phase 2's boot-reconciliation rewrite replaces
+// this suite.
+import { handleCommandResult } from "../../src/services/engine/command-results.js";
 import {
   finalizeStoppedThread,
   interruptActiveTurnForThread,

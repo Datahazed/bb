@@ -8,7 +8,6 @@ import {
   getThreadOperation,
   migrate,
   noopNotifier,
-  upsertHost,
 } from "@bb/db";
 import { upsertThreadOperationRecord } from "@bb/db/internal-lifecycle";
 import type { PromptInput } from "@bb/domain";
@@ -26,10 +25,7 @@ import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js"
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/source" },

@@ -284,10 +284,6 @@ describe("migrate", () => {
     try {
       migrate(db);
 
-      db.$client.prepare("DROP INDEX host_daemon_commands_session_idx").run();
-      db.$client
-        .prepare("DROP INDEX host_daemon_sessions_closed_prune_idx")
-        .run();
       db.$client
         .prepare(
           "DROP INDEX thread_dynamic_context_file_states_thread_file_idx",
@@ -296,12 +292,6 @@ describe("migrate", () => {
       db.$client.prepare("DROP INDEX projects_sort_idx").run();
       db.$client.prepare("DROP INDEX projects_personal_singleton_idx").run();
       db.$client.prepare("DROP INDEX threads_project_type_sort_idx").run();
-      db.$client
-        .prepare("DROP INDEX host_daemon_commands_host_type_state_idx")
-        .run();
-      db.$client
-        .prepare("DROP INDEX host_daemon_commands_type_state_idx")
-        .run();
       db.$client.prepare("DROP INDEX threads_pin_sort_idx").run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
       db.$client.prepare("DROP TABLE client_turn_requests").run();
@@ -317,7 +307,81 @@ describe("migrate", () => {
       db.$client
         .prepare("ALTER TABLE threads DROP COLUMN reasoning_level_override")
         .run();
-      db.$client.prepare("DROP TABLE host_daemon_command_attempts").run();
+      // 0015 drops the hosts/auth/daemon-session/command tables; the
+      // main-0001 schema this block reconstructs still had them, and the
+      // replayed 0002/0007/0010 migrations create indexes/rows on them
+      // before 0015 drops them again. host_daemon_command_attempts is
+      // created by the replayed 0010, so it is not reconstructed here.
+      db.$client.exec(`
+        CREATE TABLE \`user\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`name\` text NOT NULL,
+          \`email\` text NOT NULL,
+          \`emailVerified\` integer NOT NULL,
+          \`image\` text,
+          \`createdAt\` integer NOT NULL,
+          \`updatedAt\` integer NOT NULL
+        );
+        CREATE TABLE \`apikey\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`key\` text NOT NULL,
+          \`referenceId\` text NOT NULL,
+          \`enabled\` integer NOT NULL,
+          \`rateLimitEnabled\` integer NOT NULL,
+          \`rateLimitTimeWindow\` integer NOT NULL,
+          \`rateLimitMax\` integer NOT NULL,
+          \`requestCount\` integer NOT NULL,
+          \`createdAt\` integer NOT NULL,
+          \`updatedAt\` integer NOT NULL,
+          \`configId\` text NOT NULL,
+          FOREIGN KEY (\`referenceId\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade
+        );
+        CREATE TABLE \`hosts\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`name\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`command_cursor\` integer DEFAULT 0 NOT NULL,
+          \`destroyed_at\` integer,
+          \`last_seen_at\` integer,
+          \`created_at\` integer NOT NULL,
+          \`updated_at\` integer NOT NULL
+        );
+        CREATE TABLE \`host_daemon_sessions\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`host_id\` text NOT NULL,
+          \`instance_id\` text NOT NULL,
+          \`host_name\` text NOT NULL,
+          \`host_type\` text NOT NULL,
+          \`data_dir\` text NOT NULL,
+          \`protocol_version\` integer NOT NULL,
+          \`heartbeat_interval_ms\` integer NOT NULL,
+          \`lease_timeout_ms\` integer NOT NULL,
+          \`status\` text NOT NULL,
+          \`lease_expires_at\` integer NOT NULL,
+          \`last_heartbeat_at\` integer,
+          \`closed_at\` integer,
+          \`close_reason\` text,
+          \`created_at\` integer NOT NULL,
+          \`updated_at\` integer NOT NULL,
+          FOREIGN KEY (\`host_id\`) REFERENCES \`hosts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+        );
+        CREATE TABLE \`host_daemon_commands\` (
+          \`id\` text PRIMARY KEY NOT NULL,
+          \`host_id\` text NOT NULL,
+          \`session_id\` text,
+          \`cursor\` integer NOT NULL,
+          \`type\` text NOT NULL,
+          \`payload\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`retry_count\` integer DEFAULT 0 NOT NULL,
+          \`result_payload\` text,
+          \`created_at\` integer NOT NULL,
+          \`fetched_at\` integer,
+          \`completed_at\` integer,
+          FOREIGN KEY (\`host_id\`) REFERENCES \`hosts\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+          FOREIGN KEY (\`session_id\`) REFERENCES \`host_daemon_sessions\`(\`id\`) ON UPDATE no action ON DELETE set null
+        );
+      `);
       // 0014 drops these two baseline columns; the main-0001 schema this
       // block reconstructs still had them (0013's table rebuilds copy them).
       db.$client
@@ -359,20 +423,28 @@ describe("migrate", () => {
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
 
       expect(
-        readIndexNames({ db, tableName: "host_daemon_commands" }),
-      ).not.toContain("host_daemon_commands_session_idx");
-      expect(
-        readIndexNames({ db, tableName: "host_daemon_sessions" }),
-      ).not.toContain("host_daemon_sessions_closed_prune_idx");
+        readIndexNames({ db, tableName: "thread_dynamic_context_file_states" }),
+      ).not.toContain("thread_dynamic_context_file_states_thread_file_idx");
 
       migrate(db);
 
+      // 0003 recreated the dynamic-context index; 0015 dropped the daemon
+      // tables the replayed 0002/0007/0010 migrations operated on.
       expect(
-        readIndexNames({ db, tableName: "host_daemon_commands" }),
-      ).toContain("host_daemon_commands_session_idx");
-      expect(
-        readIndexNames({ db, tableName: "host_daemon_sessions" }),
-      ).toContain("host_daemon_sessions_closed_prune_idx");
+        readIndexNames({ db, tableName: "thread_dynamic_context_file_states" }),
+      ).toContain("thread_dynamic_context_file_states_thread_file_idx");
+      const remainingDaemonTables = db.$client
+        .prepare<[], { name: string }>(
+          `
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name IN (
+              'hosts', 'host_daemon_sessions', 'host_daemon_commands',
+              'host_daemon_command_attempts', 'user', 'apikey'
+            )
+          `,
+        )
+        .all();
+      expect(remainingDaemonTables).toEqual([]);
 
       const migrationCreatedAts = db.$client
         .prepare<[], MigrationCreatedAtRow>(

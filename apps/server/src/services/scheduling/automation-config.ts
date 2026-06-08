@@ -1,6 +1,5 @@
 import {
   listEnvironmentsByIds,
-  listNonDestroyedHostsByIds,
   listProjectSources,
   type automations,
 } from "@bb/db";
@@ -172,7 +171,6 @@ export function buildStableThreadRequestProjectData(
   deps: Pick<AppDeps, "db">,
   args: {
     environmentIds: readonly string[];
-    hostIds: readonly string[];
     projectId: string;
   },
 ): StableThreadRequestProjectData {
@@ -182,9 +180,6 @@ export function buildStableThreadRequestProjectData(
         environment.id,
         environment,
       ]),
-    ),
-    existingHostIds: new Set(
-      listNonDestroyedHostsByIds(deps.db, args.hostIds).map((host) => host.id),
     ),
     projectId: args.projectId,
     projectSources: listProjectSources(deps.db, args.projectId),

@@ -255,7 +255,6 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       automation,
       ...safeParseAutomationDefinition(automation),
     }));
-    const hostIds = new Set<string>();
     const environmentIds = new Set<string>();
 
     for (const parsed of parsedAutomations) {
@@ -266,9 +265,6 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
 
       switch (action.threadRequest.environment.type) {
         case "host":
-          if (action.threadRequest.environment.hostId !== undefined) {
-            hostIds.add(action.threadRequest.environment.hostId);
-          }
           break;
         case "reuse":
           environmentIds.add(action.threadRequest.environment.environmentId);
@@ -284,7 +280,6 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
 
     const projectData = buildStableThreadRequestProjectData(deps, {
       projectId,
-      hostIds: [...hostIds],
       environmentIds: [...environmentIds],
     });
     const responses = parsedAutomations.flatMap(

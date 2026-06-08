@@ -4,12 +4,11 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import type { DbConnection } from "@bb/db";
-import { defaultFeatureFlags, type HostType } from "@bb/domain";
+import { defaultFeatureFlags } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { EngineCommandDispatcher } from "../../src/services/engine/engine-dispatch.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
-import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -23,7 +22,6 @@ import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { TestEngineRouting } from "./test-engine-routing.js";
 
-const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
 
 export interface TestAppHarness {
@@ -53,42 +51,6 @@ export const testLogger = {
   warn(): void {},
 };
 
-interface TestDaemonKeyParts {
-  hostId: string;
-  hostType: HostType;
-}
-
-function encodeTestDaemonKey(args: TestDaemonKeyParts): string {
-  return `${TEST_MACHINE_KEY_PREFIX}:${args.hostType}:${args.hostId}`;
-}
-
-function decodeTestDaemonKey(token: string): TestDaemonKeyParts | null {
-  const parts = token.split(":");
-  if (parts.length !== 3 || parts[0] !== TEST_MACHINE_KEY_PREFIX) {
-    return null;
-  }
-
-  const hostType = parts[1];
-  const hostId = parts[2];
-  if (hostType !== "persistent" || hostId.length === 0) {
-    return null;
-  }
-
-  return {
-    hostId,
-    hostType,
-  };
-}
-
-export function createTestDaemonHostKey(
-  args: Partial<TestDaemonKeyParts> = {},
-): string {
-  return encodeTestDaemonKey({
-    hostId: args.hostId ?? "host-1",
-    hostType: args.hostType ?? "persistent",
-  });
-}
-
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
@@ -112,25 +74,6 @@ export async function createTestAppHarness(
   });
   pendingInteractions.start();
   const lifecycleDedupers = createLifecycleDedupers();
-  const machineAuth = await createMachineAuthService({
-    dataDir,
-    db,
-    logger: testLogger,
-  });
-  await machineAuth.ensureReady();
-  const testMachineAuth = {
-    ...machineAuth,
-    async verifyDaemonHostKey(token: string) {
-      const testKey = decodeTestDaemonKey(token);
-      if (testKey) {
-        return {
-          keyId: `test:${testKey.hostType}:${testKey.hostId}`,
-          metadata: testKey,
-        };
-      }
-      return machineAuth.verifyDaemonHostKey(token);
-    },
-  };
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
@@ -169,7 +112,6 @@ export async function createTestAppHarness(
     hub,
     lifecycleDedupers,
     logger: testLogger,
-    machineAuth: testMachineAuth,
     pendingInteractions,
     terminalSessions,
   };

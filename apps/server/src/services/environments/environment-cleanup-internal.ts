@@ -14,7 +14,6 @@ import {
   getEnvironmentOperationByCommandId,
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
-  type HostDaemonCommandRow,
   type DbNotifier,
   type DbConnection,
   type DbQueryConnection,
@@ -37,10 +36,11 @@ import {
   type CommandResultReportForType,
   type CommandResultSideEffectsResult,
   type HostDaemonCommandForType,
-} from "../../internal/command-result-side-effects.js";
+  type SettledEngineCommand,
+} from "../engine/command-result-side-effects.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
-import { scheduleAfterDaemonIngressResponse } from "../hosts/daemon-ingress-scheduler.js";
+import { dispatchEngineCommandAndWait } from "../engine/command-wait.js";
+import { scheduleDetachedWork } from "../lib/detached-work.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { appendSystemErrorEventInTransaction } from "../threads/thread-events.js";
 import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
@@ -81,7 +81,7 @@ type EnvironmentDestroyCommandResultReport =
 
 export interface SettleEnvironmentDestroyCommandResultArgs {
   command: EnvironmentDestroyCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: EnvironmentCleanupSettlementDeps;
   report: EnvironmentDestroyCommandResultReport;
 }
@@ -251,7 +251,7 @@ export function settleEnvironmentDestroyCommandResult(
 ): CommandResultSideEffectsResult {
   const operation = getActiveDestroyOperationByCommandId(
     args.deps,
-    args.commandRow.id,
+    args.settledCommand.id,
   );
   if (!operation) {
     return emptyCommandResultSideEffects();
@@ -589,7 +589,7 @@ export function requestEnvironmentCleanupAdvance(
   }
   const environmentId = args.environmentId;
 
-  scheduleAfterDaemonIngressResponse({
+  scheduleDetachedWork({
     config: deps.config,
     context: {
       environmentId,

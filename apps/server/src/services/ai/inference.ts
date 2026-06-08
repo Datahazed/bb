@@ -7,7 +7,7 @@ import { complete, getModel, validateToolCall } from "@mariozechner/pi-ai";
 import type { Static, TSchema, Tool, ToolCall } from "@mariozechner/pi-ai";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { dispatchEngineCommandAndWait } from "../hosts/command-wait.js";
+import { dispatchEngineCommandAndWait } from "../engine/command-wait.js";
 
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
 type InferenceCompleteDeps = LoggedWorkSessionDeps;

@@ -4,7 +4,7 @@ import mimeTypes from "mime-types";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
-import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,

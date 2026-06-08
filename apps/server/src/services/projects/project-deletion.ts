@@ -20,7 +20,7 @@ import {
   advanceEnvironmentCleanup,
   requestEnvironmentCleanup,
 } from "../environments/environment-cleanup-internal.js";
-import { scheduleAfterDaemonIngressResponse } from "../hosts/daemon-ingress-scheduler.js";
+import { scheduleDetachedWork } from "../lib/detached-work.js";
 import {
   finalizeStoppedThread,
   requestActiveRuntimeThreadStopIfNeeded,
@@ -146,7 +146,7 @@ export function requestProjectDeletionAdvance(
   deps: ProjectDeletionDeps,
   args: ProjectDeletionArgs,
 ): void {
-  scheduleAfterDaemonIngressResponse({
+  scheduleDetachedWork({
     config: deps.config,
     context: {
       projectId: args.projectId,

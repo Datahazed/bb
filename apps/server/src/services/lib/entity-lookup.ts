@@ -1,22 +1,15 @@
 import {
-  getActiveSession,
   getEnvironment,
-  getHost,
-  getNonDestroyedHost,
   getProject,
   getProjectOperation,
   getThread,
-  listHostThreadIds as listHostThreadIdsFromDb,
 } from "@bb/db";
-import type { Environment, Host, Project } from "@bb/domain";
+import type { Environment, Project } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import {
-  destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
-  disconnectedHostUnavailableDetails,
   throwEnvironmentNotReady,
-  throwHostUnavailable,
   throwProjectUnavailable,
   throwThreadEnvironmentUnavailable,
   threadEnvironmentUnavailableDetails,
@@ -30,58 +23,8 @@ export interface ThreadEnvironmentLookupResult {
   thread: ThreadRow;
 }
 
-function toHostStatus(db: DbConnection, hostId: string): Host["status"] {
-  const host = getNonDestroyedHost(db, hostId);
-  if (!host) {
-    return "disconnected";
-  }
-
-  const session = getActiveSession(db, hostId);
-  if (session) {
-    return "connected";
-  }
-
-  return "disconnected";
-}
-
-function throwHostNotFound(): never {
-  throw new ApiError(404, "host_not_found", "Host not found");
-}
-
 function isStandardProject(project: Project): project is StandardProject {
   return project.kind === "standard";
-}
-
-/**
- * Orphaned with the daemon transport (host lookups answer from the synthetic
- * `'local'` host, `services/hosts/local-host.ts`); sole remaining caller is
- * the unmounted session machinery. Dies in P1c.
- */
-export function requireConnectedHostSession(
-  deps: Pick<{ db: DbConnection }, "db">,
-  hostId: string,
-) {
-  const session = getActiveSession(deps.db, hostId);
-  if (!session) {
-    const host = getHost(deps.db, hostId);
-    if (!host) {
-      throwHostNotFound();
-    }
-    if (host.destroyedAt !== null) {
-      throwHostUnavailable(
-        404,
-        "Host is unavailable",
-        destroyedHostUnavailableDetails(host.destroyedAt),
-      );
-    }
-    const hostStatus = toHostStatus(deps.db, hostId);
-    throwHostUnavailable(
-      502,
-      "Host is not connected",
-      disconnectedHostUnavailableDetails(hostStatus),
-    );
-  }
-  return session;
 }
 
 export function requireProject(db: DbConnection, projectId: string): Project {
@@ -229,8 +172,4 @@ export function requirePublicThreadEnvironment(
   const result = requirePublicThreadEnvironmentAllowingDestroyed(db, threadId);
   ensureThreadEnvironmentAvailable(result.environment);
   return result;
-}
-
-export function listHostThreadIds(db: DbConnection, hostId: string): string[] {
-  return listHostThreadIdsFromDb(db, { hostId });
 }

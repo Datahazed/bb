@@ -1,16 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   createConnection,
   createEnvironment,
   createProject,
   createThread,
-  hostDaemonSessions,
   migrate,
   noopNotifier,
-  openSession,
-  upsertHost,
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
@@ -23,12 +19,6 @@ import {
 interface SetupResult {
   db: DbConnection;
   hostId: string;
-}
-
-interface OpenTestSessionArgs {
-  db: DbConnection;
-  hostId: string;
-  leaseExpiresAt?: number;
 }
 
 interface CreateThreadWithEnvironmentArgs {
@@ -50,35 +40,7 @@ interface CreateThreadListEntryArgs {
 function setup(): SetupResult {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    id: "host-runtime-display",
-    name: "Runtime Display Host",
-    type: "persistent",
-  });
-  return { db, hostId: host.id };
-}
-
-function openTestSession(args: OpenTestSessionArgs) {
-  const session = openSession(args.db, noopNotifier, {
-    hostId: args.hostId,
-    instanceId: `instance-${randomUUID()}`,
-    hostName: "Runtime Display Host",
-    hostType: "persistent",
-    dataDir: `/tmp/${args.hostId}`,
-    protocolVersion: 1,
-    heartbeatIntervalMs: 5_000,
-    leaseTimeoutMs: 30_000,
-  });
-
-  if (args.leaseExpiresAt !== undefined) {
-    args.db
-      .update(hostDaemonSessions)
-      .set({ leaseExpiresAt: args.leaseExpiresAt })
-      .where(eq(hostDaemonSessions.id, session.id))
-      .run();
-  }
-
-  return session;
+  return { db, hostId: "local" };
 }
 
 function createThreadWithEnvironment(args: CreateThreadWithEnvironmentArgs) {
@@ -126,11 +88,6 @@ describe("thread runtime display", () => {
   it("keeps active threads active while the latest host session is active", () => {
     const { db, hostId } = setup();
     const now = 1_000;
-    openTestSession({
-      db,
-      hostId,
-      leaseExpiresAt: now + 30_000,
-    });
 
     expect(
       resolveThreadRuntimeState(
@@ -174,11 +131,6 @@ describe("thread runtime display", () => {
   it("resolves list entry runtime from the latest session per host", () => {
     const { db, hostId } = setup();
     const now = 1_000;
-    openTestSession({
-      db,
-      hostId,
-      leaseExpiresAt: now + 30_000,
-    });
     const first = createThreadWithEnvironment({ db, hostId });
     const second = createThreadWithEnvironment({ db, hostId });
     const noHost = createThreadWithEnvironment({

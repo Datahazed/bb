@@ -248,20 +248,6 @@ export type {
 } from "./provider-turn-watchdog.js";
 
 export {
-  upsertHost,
-  getHost,
-  getNonDestroyedHost,
-  listHosts,
-  listHostsByIds,
-  listNonDestroyedHostsByIds,
-  listPublicHosts,
-  markHostSeen,
-  updateHost,
-  deleteHost,
-} from "./hosts.js";
-export type { UpsertHostInput, UpdateHostInput } from "./hosts.js";
-
-export {
   appendDaemonEventsInTransaction,
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
@@ -344,42 +330,6 @@ export type {
 } from "./events.js";
 
 export {
-  cancelCommand,
-  cancelCommandInTransaction,
-  deleteQueuedCommandInTransaction,
-  getActiveCommandAttempt,
-  getActiveCommandAttemptForCommand,
-  getCommandAttempt,
-  getCommand,
-  getHostDaemonCommandLeaseMs,
-  getPendingEnvironmentCommand,
-  hasExistingThreadArchiveCommand,
-  hasPendingHostCommandForThread,
-  queueCommand,
-  queueCommandInTransaction,
-  fetchCommands,
-  reportCommandResult,
-  requeueFetchedCommandsForSession,
-  settleCommandAttemptInTransaction,
-} from "./commands.js";
-export type {
-  DeleteQueuedCommandInTransactionArgs,
-  FetchCommandsOptions,
-  FetchedHostDaemonCommandRow,
-  GetActiveCommandAttemptArgs,
-  GetCommandAttemptArgs,
-  HasExistingThreadArchiveCommandArgs,
-  HasPendingHostCommandForThreadArgs,
-  HostDaemonCommandAttemptRow,
-  QueueCommandInput,
-  HostDaemonCommandRow,
-  ReportCommandResultInput,
-  RequeueFetchedCommandsForSessionArgs,
-  RequeueFetchedCommandsForSessionResult,
-  SettleCommandAttemptInTransactionArgs,
-} from "./commands.js";
-
-export {
   createTerminalSession,
   getTerminalSessionForThread,
   listTerminalSessionsByEnvironment,
@@ -431,24 +381,6 @@ export type {
 } from "./pending-interactions.js";
 
 export {
-  openSession,
-  closeSession,
-  getActiveSession,
-  getActiveSessionById,
-  getLatestSessionForHost,
-  getMostRecentlyUpdatedConnectedHostId,
-  heartbeatSession,
-  listLatestSessionsForHosts,
-  listConnectedHostIds,
-} from "./sessions.js";
-export type {
-  GetLatestSessionForHostArgs,
-  HostDaemonSessionRow,
-  ListLatestSessionsForHostsArgs,
-  OpenSessionInput,
-} from "./sessions.js";
-
-export {
   claimQueuedThreadMessage,
   claimNextQueuedThreadMessage,
   createQueuedThreadMessage,
@@ -477,35 +409,13 @@ export type {
 } from "./queued-thread-messages.js";
 
 export {
-  CLOSED_SESSION_ROW_RETENTION_MS,
-  COMPLETED_COMMAND_ROW_RETENTION_MS,
-  COMPLETED_COMMAND_PAYLOAD_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-  DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_COMPLETED_COMMAND_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
-  pruneClosedSessions,
-  pruneCompletedDurableCommandRows,
-  pruneCompletedReadOnlyCommandRows,
-  pruneCompletedCommandPayloads,
-  listLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlement,
   truncateCompletedEventItemOutputs,
-  sweepExpiredCommands,
-  sweepExpiredLeases,
   sweepDestroyingEnvironments,
   sweepManagedEnvironments,
 } from "./sweeps.js";
 export type {
-  PruneClosedSessionsArgs,
-  PruneClosedSessionsResult,
-  PruneCompletedCommandRowsArgs,
-  PruneCompletedCommandsResult,
-  PruneCompletedCommandPayloadsArgs,
-  PruneCompletedCommandPayloadsResult,
-  ExpiredCommandAttempt,
-  ListLegacyTerminalizedExpiredLifecycleCommandsNeedingSettlementArgs,
-  SweepExpiredCommandsResult,
-  SweepExpiredLeasesResult,
   TruncateCompletedEventItemOutputsArgs,
   TruncateCompletedEventItemOutputsResult,
 } from "./sweeps.js";

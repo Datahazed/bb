@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeClientTurnRequestIdNumber, turnScope } from "@bb/domain";
+import { createHostDaemonCommandId } from "../../src/ids.js";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -13,17 +14,8 @@ import {
   settlePendingClientTurnRequestsForThreadsInTransaction,
 } from "../../src/data/client-turn-requests.js";
 import { appendDaemonEventsInTransaction } from "../../src/data/events.js";
-import {
-  queueCommand,
-  reportCommandResult,
-} from "../../src/data/commands.js";
-import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
-import {
-  pruneCompletedCommandPayloads,
-  pruneCompletedDurableCommandRows,
-} from "../../src/data/sweeps.js";
 
 const requestId1 = encodeClientTurnRequestIdNumber({ value: 1 });
 const requestId2 = encodeClientTurnRequestIdNumber({ value: 2 });
@@ -31,10 +23,7 @@ const requestId2 = encodeClientTurnRequestIdNumber({ value: 2 });
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -43,12 +32,7 @@ function setup() {
     projectId: project.id,
     providerId: "codex",
   });
-  const command = queueCommand(db, noopNotifier, {
-    hostId: host.id,
-    sessionId: null,
-    type: "turn.submit",
-    payload: JSON.stringify({ type: "turn.submit", threadId: thread.id }),
-  });
+  const command = { id: createHostDaemonCommandId() };
   return { command, db, host, project, thread };
 }
 
@@ -319,40 +303,5 @@ describe("client turn requests", () => {
     });
   });
 
-  it("keeps request command ids after completed command pruning", () => {
-    const { command, db, thread } = setup();
-    const completedAt = Date.now() - 10_000;
-    const completedBefore = Date.now() - 5_000;
-    db.transaction((tx) =>
-      createPendingClientTurnRequestInTransaction(tx, {
-        commandId: command.id,
-        commandType: "turn.submit",
-        environmentId: null,
-        requestEventSequence: 7,
-        requestId: requestId1,
-        threadId: thread.id,
-      }),
-    );
-    reportCommandResult(db, noopNotifier, {
-      commandId: command.id,
-      completedAt,
-      resultPayload: JSON.stringify({ appliedAs: "new-turn" }),
-      state: "success",
-    });
-
-    expect(pruneCompletedCommandPayloads(db, { completedBefore })).toEqual({
-      pruned: 1,
-    });
-    expect(
-      pruneCompletedDurableCommandRows(db, { completedBefore, limit: 100 }),
-    ).toEqual({
-      deleted: 1,
-    });
-
-    expect(getClientTurnRequest(db, { requestId: requestId1 })).toMatchObject({
-      commandId: command.id,
-      requestId: requestId1,
-    });
-  });
 
 });

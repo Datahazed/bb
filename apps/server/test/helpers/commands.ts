@@ -9,30 +9,16 @@
  * The daemon-era names (`QueuedCommand`, `waitForQueuedCommand`,
  * `reportQueuedCommandSuccess`) survive so the ~40 consumer suites port
  * mechanically; the whole helper dies with the suites' Phase 2 rewrite.
- *
- * `internalAuthHeaders` and the producer-event-id fabricators remain
- * queue-era machinery used only by the quarantined `test/internal` wire
- * suites (deleted in P1c).
  */
 import { setTimeout as sleep } from "node:timers/promises";
-import { eq } from "drizzle-orm";
-import { hostDaemonSessions } from "@bb/db";
 import {
   hostDaemonCommandResultSchemaByType,
   hostDaemonCommandSchema,
   hostDaemonOnlineRpcResultSchemaByType,
 } from "@bb/host-daemon-contract";
-import {
-  CLIENT_TURN_REQUEST_ID_ALPHABET,
-  hostDaemonProducerEventIdSchema,
-  type HostDaemonProducerEventId,
-  type HostType,
-  type ThreadEvent,
-} from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonCommandResultByType,
-  HostDaemonEventEnvelope,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResultByType,
   HostDaemonOnlineRpcResultForCommand,
@@ -47,7 +33,6 @@ import {
 } from "../../src/services/hosts/local-host.js";
 import type { PendingOnlineRpc } from "./test-engine-routing.js";
 import type { TestAppHarness } from "./test-app.js";
-import { createTestDaemonHostKey } from "./test-app.js";
 
 type QueuedCommandPayload = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 type QueuedCommandResult<TCommand extends QueuedCommandPayload> =
@@ -169,81 +154,6 @@ export function listQueuedEnvironmentCommands(
         "environmentId" in command &&
         command.environmentId === environmentId,
     );
-}
-
-const TEST_PRODUCER_EVENT_ID_PREFIX = "hdevt_";
-const TEST_PRODUCER_EVENT_ID_SUFFIX_LENGTH = 20;
-
-export interface CreateTestProducerEventIdArgs {
-  value: number;
-}
-
-export interface CreateTestDaemonEventEnvelopeArgs {
-  event: ThreadEvent;
-  producerEventIdValue: number;
-  threadId?: string;
-}
-
-export function createTestProducerEventId(
-  args: CreateTestProducerEventIdArgs,
-): HostDaemonProducerEventId {
-  if (!Number.isSafeInteger(args.value) || args.value < 0) {
-    throw new Error(
-      "Producer event id number must be a safe non-negative integer",
-    );
-  }
-
-  let value = args.value;
-  let suffix = "";
-  for (
-    let index = 0;
-    index < TEST_PRODUCER_EVENT_ID_SUFFIX_LENGTH;
-    index += 1
-  ) {
-    const alphabetIndex = value % CLIENT_TURN_REQUEST_ID_ALPHABET.length;
-    suffix = CLIENT_TURN_REQUEST_ID_ALPHABET.charAt(alphabetIndex) + suffix;
-    value = Math.floor(value / CLIENT_TURN_REQUEST_ID_ALPHABET.length);
-  }
-
-  return hostDaemonProducerEventIdSchema.parse(
-    `${TEST_PRODUCER_EVENT_ID_PREFIX}${suffix}`,
-  );
-}
-
-export function createTestDaemonEventEnvelope(
-  args: CreateTestDaemonEventEnvelopeArgs,
-): HostDaemonEventEnvelope {
-  return {
-    producerEventId: createTestProducerEventId({
-      value: args.producerEventIdValue,
-    }),
-    threadId: args.threadId ?? args.event.threadId,
-    event: args.event,
-  };
-}
-
-export function internalAuthHeaders(
-  harness: TestAppHarness,
-  args: { hostId?: string; hostType?: HostType } = {},
-): HeadersInit {
-  const activeSessions = harness.db
-    .select({
-      hostId: hostDaemonSessions.hostId,
-      hostType: hostDaemonSessions.hostType,
-    })
-    .from(hostDaemonSessions)
-    .where(eq(hostDaemonSessions.status, "active"))
-    .all();
-
-  const inferredHost = activeSessions.length === 1 ? activeSessions[0] : null;
-
-  return {
-    authorization: `Bearer ${createTestDaemonHostKey({
-      hostId: args.hostId ?? inferredHost?.hostId ?? "host-1",
-      hostType: args.hostType ?? inferredHost?.hostType ?? "persistent",
-    })}`,
-    "content-type": "application/json",
-  };
 }
 
 export async function waitForQueuedCommand(

@@ -37,10 +37,6 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/config/src/defaults.ts",
   ),
-  "@bb/config/host-daemon": path.resolve(
-    repoRoot,
-    "packages/config/src/host-daemon.ts",
-  ),
   "@bb/domain/thread-status": path.resolve(
     repoRoot,
     "packages/domain/src/thread-status.ts",
@@ -75,10 +71,6 @@ export const workspaceTestAliases = {
   "@bb/host-watcher": path.resolve(
     repoRoot,
     "packages/host-watcher/src/index.ts",
-  ),
-  "@bb/host-daemon/test": path.resolve(
-    repoRoot,
-    "apps/host-daemon/src/test/index.ts",
   ),
   "@bb/server": path.resolve(repoRoot, "apps/server/src/index.ts"),
   "@bb/cli": path.resolve(repoRoot, "apps/cli/src/index.ts"),

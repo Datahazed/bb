@@ -5,11 +5,9 @@ import { join } from "node:path";
 import {
   getPersonalProject,
   getProjectExecutionDefaults,
-  hosts,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID, threadTypeValues } from "@bb/domain";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { readJson } from "../helpers/json.js";
@@ -68,7 +66,7 @@ describe("server skeleton", () => {
           hostName: "Host",
           hostType: "persistent",
           dataDir: "/tmp/host-data",
-          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          protocolVersion: 1,
           activeThreads: [],
         }),
       });
@@ -171,7 +169,7 @@ describe("server skeleton", () => {
 
   it("initializes an in-memory database and applies migrations", () => {
     const db = initDb(":memory:");
-    expect(db.select().from(hosts).all()).toEqual([]);
+    expect(getPersonalProject(db)).not.toBeNull();
     db.$client.close();
   });
 

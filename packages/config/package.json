@@ -23,11 +23,6 @@
       "types": "./src/vite-dev.ts",
       "default": "./src/vite-dev.ts"
     },
-    "./host-daemon": {
-      "source": "./src/host-daemon.ts",
-      "types": "./src/host-daemon.ts",
-      "default": "./src/host-daemon.ts"
-    },
     "./host-daemon-entrypoint": {
       "source": "./src/host-daemon-entrypoint.ts",
       "types": "./src/host-daemon-entrypoint.ts",

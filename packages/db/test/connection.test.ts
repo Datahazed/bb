@@ -6,7 +6,7 @@ import {
   type SlowDbQueryLogFields,
 } from "../src/connection.js";
 import { migrate } from "../src/migrate.js";
-import { hosts } from "../src/schema.js";
+import { projects } from "../src/schema.js";
 
 interface LoggedDebug {
   fields: SlowDbQueryLogFields;
@@ -77,12 +77,11 @@ describe("createConnection", () => {
       slowQueryThresholdMs: 0,
     });
     migrate(db);
-    db.insert(hosts)
+    db.insert(projects)
       .values({
         createdAt: 1,
-        id: "host-drizzle",
-        name: "Drizzle Host",
-        type: "persistent",
+        id: "proj-drizzle",
+        name: "Drizzle Project",
         updatedAt: 1,
       })
       .run();
@@ -90,18 +89,18 @@ describe("createConnection", () => {
 
     const row = db
       .select()
-      .from(hosts)
-      .where(eq(hosts.id, "host-drizzle"))
+      .from(projects)
+      .where(eq(projects.id, "proj-drizzle"))
       .get();
 
-    expect(row?.name).toBe("Drizzle Host");
+    expect(row?.name).toBe("Drizzle Project");
     const debugLog = getOnlyDebugLog(logger);
     expect(debugLog.message).toBe("Slow DB query");
     expect(debugLog.fields.operation).toBe("get");
     expect(debugLog.fields.bindingArgumentCount).toBe(1);
     expect(debugLog.fields.sql).toContain("from");
-    expect(debugLog.fields.sql).toContain("hosts");
-    expect(debugLog.fields.sql).not.toContain("host-drizzle");
+    expect(debugLog.fields.sql).toContain("projects");
+    expect(debugLog.fields.sql).not.toContain("proj-drizzle");
 
     db.$client.close();
   });

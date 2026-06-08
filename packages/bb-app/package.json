@@ -28,17 +28,12 @@
   "bin": {
     "bb-app": "dist/bb-app.js",
     "bb": "dist/bb.js",
-    "bb-server": "dist/bb-server.js",
-    "bb-host-daemon": "dist/bb-host-daemon.js"
+    "bb-server": "dist/bb-server.js"
   },
   "files": [
     "app/dist",
     "dist",
     "!dist/*.map",
-    "host-daemon/dist/bb",
-    "host-daemon/dist/bb-claude-code-bridge.mjs",
-    "host-daemon/dist/bb-pi-bridge.mjs",
-    "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",
     "!server/dist/index.js.map",
     "README.md"

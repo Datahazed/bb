@@ -47,29 +47,6 @@
       ],
       "outputs": ["dist/**"]
     },
-    "@bb/host-daemon#build": {
-      "dependsOn": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/*/package.json",
-        "$TURBO_ROOT$/apps/*/scripts/**",
-        "$TURBO_ROOT$/apps/*/src/**",
-        "$TURBO_ROOT$/apps/*/tsconfig.json",
-        "$TURBO_ROOT$/apps/*/vite.config.ts",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/*/tsconfig.json",
-        "$TURBO_ROOT$/packages/db/drizzle/**",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": ["dist/**"]
-    },
     "@bb/scripts#build": {
       "dependsOn": [],
       "inputs": [
@@ -167,14 +144,12 @@
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
-        "@bb/host-daemon#build",
         "@bb/cli#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/app/dist/**",
         "$TURBO_ROOT$/apps/server/dist/**",
-        "$TURBO_ROOT$/apps/host-daemon/dist/**",
         "$TURBO_ROOT$/packages/bb-app/package.json",
         "$TURBO_ROOT$/packages/bb-app/scripts/**",
         "$TURBO_ROOT$/packages/bb-app/src/**",
@@ -182,7 +157,7 @@
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
-      "outputs": ["app/**", "dist/**", "host-daemon/**", "server/**"]
+      "outputs": ["app/**", "dist/**", "server/**"]
     },
     "@bb/desktop#build": {
       "dependsOn": ["bb-app#build"],
@@ -191,7 +166,6 @@
         "$TURBO_ROOT$/apps/desktop/**",
         "$TURBO_ROOT$/packages/bb-app/app/**",
         "$TURBO_ROOT$/packages/bb-app/dist/**",
-        "$TURBO_ROOT$/packages/bb-app/host-daemon/**",
         "$TURBO_ROOT$/packages/bb-app/package.json",
         "$TURBO_ROOT$/packages/bb-app/server/**",
         "$TURBO_ROOT$/pnpm-lock.yaml",
@@ -248,12 +222,6 @@
     },
     "@bb/server#dev": {
       "dependsOn": [],
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["*"]
-    },
-    "@bb/host-daemon#start:prod": {
-      "dependsOn": ["build"],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]

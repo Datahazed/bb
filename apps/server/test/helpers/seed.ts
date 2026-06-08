@@ -7,10 +7,7 @@ import {
   insertEvents,
   createProject,
   createThread,
-  openSession,
-  upsertHost,
 } from "@bb/db";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
   parseStoredThreadEvent,
@@ -27,7 +24,10 @@ import type {
   ThreadEventType,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { LOCAL_HOST_ID } from "../../src/services/hosts/local-host.js";
+import {
+  LOCAL_ENGINE_SESSION_ID,
+  LOCAL_HOST_ID,
+} from "../../src/services/hosts/local-host.js";
 import type { AppDeps } from "../../src/types.js";
 
 export interface SeedEventArgs<TType extends ThreadEventType> {
@@ -62,18 +62,32 @@ export interface SeedTurnStartedArgs {
   turnId: string;
 }
 
+export interface SeededHost {
+  id: string;
+  name: string;
+  type: "persistent";
+}
+
+export interface SeededEngineSession {
+  hostId: string;
+  id: string;
+}
+
+/**
+ * The hosts table died with the daemon transport (P1c): the synthetic
+ * `'local'` host is pure code. Seeding is now a stub that hands fixtures the
+ * id routes accept (plan Decision 4); tests exercising an unknown-host id
+ * pass an explicit `id`.
+ */
 export function seedHost(
-  deps: Pick<AppDeps, "db" | "hub">,
+  _deps: Pick<AppDeps, "db" | "hub">,
   args: { id?: string; name?: string; type?: "persistent" } = {},
-) {
-  // Defaults to the single synthetic host id: routes accept only 'local'
-  // (plan Decision 4), so seeded fixtures must align unless a test
-  // explicitly exercises an unknown-host id.
-  return upsertHost(deps.db, deps.hub, {
+): SeededHost {
+  return {
     id: args.id ?? LOCAL_HOST_ID,
     name: args.name ?? "Test Host",
     type: args.type ?? "persistent",
-  });
+  };
 }
 
 export function seedHostSession(
@@ -85,18 +99,17 @@ export function seedHostSession(
   return { host, session };
 }
 
-export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
-  const session = openSession(deps.db, deps.hub, {
-    hostId,
-    instanceId: "instance-1",
-    hostName: "Test Host",
-    hostType: "persistent",
-    dataDir: `/tmp/bb-host-data/${hostId}`,
-    protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-    heartbeatIntervalMs: 5_000,
-    leaseTimeoutMs: 30_000,
-  });
-  return session;
+/**
+ * Daemon sessions died with the transport; the in-process engine is the one
+ * implicit "session" (`LOCAL_ENGINE_SESSION_ID`). The stub keeps the
+ * session-shaped fixture that pending-interaction tests thread through
+ * `registerPendingInteraction({sessionId})`.
+ */
+export function seedSession(
+  _deps: Pick<AppDeps, "db" | "hub">,
+  hostId: string,
+): SeededEngineSession {
+  return { hostId, id: LOCAL_ENGINE_SESSION_ID };
 }
 
 export function seedProjectWithSource(

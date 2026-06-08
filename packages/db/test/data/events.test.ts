@@ -48,15 +48,11 @@ import {
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
-import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
   const db = createConnection(":memory:");
   migrate(db);
-  const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
-    type: "persistent",
-  });
+  const host = { id: "local" };
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -2968,10 +2964,7 @@ describe("events", () => {
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
     const db = createConnection(":memory:");
     migrate(db);
-    const host = upsertHost(db, noopNotifier, {
-      name: "task-host",
-      type: "persistent",
-    });
+    const host = { id: "local" };
     const { project } = createProject(db, noopNotifier, {
       name: "task-project",
       source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
@@ -3068,10 +3061,7 @@ describe("events", () => {
       item: { taskStatus: "paused" },
     });
 
-    const otherHost = upsertHost(db, noopNotifier, {
-      name: "other-host",
-      type: "persistent",
-    });
+    const otherHost = { id: "host-other" };
     expect(
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: otherHost.id }),
     ).toEqual([]);
@@ -3140,8 +3130,6 @@ describe("events", () => {
     const spy: DbNotifier = {
       notifyThread: vi.fn(),
       notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyCommand: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
     };

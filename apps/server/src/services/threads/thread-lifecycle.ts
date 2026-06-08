@@ -30,7 +30,6 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
-  type HostDaemonCommandRow,
 } from "@bb/db";
 import type { ThreadOperationRow } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
@@ -81,7 +80,8 @@ import {
   type CommandResultReportForType,
   type CommandResultSideEffectsResult,
   type HostDaemonCommandForType,
-} from "../../internal/command-result-side-effects.js";
+  type SettledEngineCommand,
+} from "../engine/command-result-side-effects.js";
 import {
   appendSystemErrorEventInTransaction,
   appendThreadEventInTransaction,
@@ -268,21 +268,21 @@ interface SettleThreadCommandFailureArgs {
 
 interface SettleThreadStartCommandResultArgs {
   command: ThreadStartCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: FinalizeStoppedThreadTransactionDeps;
   report: ThreadStartCommandResultReport;
 }
 
 interface SettleTurnSubmitCommandResultArgs {
   command: TurnSubmitCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: ThreadCommandResultSettlementDeps;
   report: TurnSubmitCommandResultReport;
 }
 
 interface SettleThreadStopCommandResultArgs {
   command: ThreadStopCommand;
-  commandRow: HostDaemonCommandRow;
+  settledCommand: SettledEngineCommand;
   deps: FinalizeStoppedThreadTransactionDeps;
   report: ThreadStopCommandResultReport;
 }
@@ -787,13 +787,13 @@ export function settleThreadStartCommandResult(
     return emptyCommandResultSideEffects();
   }
   const operation = getActiveThreadOperationByCommandId(args.deps, {
-    commandId: args.commandRow.id,
+    commandId: args.settledCommand.id,
     kind: "start",
   });
   if (!args.report.ok) {
     settleFailedClientTurnRequestsForCommand(args.deps.db, {
       commandCompletedAt: args.report.completedAt,
-      commandId: args.commandRow.id,
+      commandId: args.settledCommand.id,
       errorCode: args.report.errorCode,
       errorMessage: args.report.errorMessage,
     });
@@ -812,7 +812,7 @@ export function settleThreadStartCommandResult(
   }
   settleSuccessfulClientTurnRequestsForCommand(args.deps.db, {
     commandCompletedAt: args.report.completedAt,
-    commandId: args.commandRow.id,
+    commandId: args.settledCommand.id,
   });
 
   if (!operation) {
@@ -847,7 +847,7 @@ export function settleThreadStartCommandResult(
     queueThreadRenameCommandInTransaction(args.deps.engineDispatches, {
       environment: {
         id: args.command.environmentId,
-        hostId: args.commandRow.hostId,
+        hostId: args.settledCommand.hostId,
       },
       providerId: thread.providerId,
       threadId: thread.id,
@@ -863,7 +863,7 @@ export function settleTurnSubmitCommandResult(
   if (!args.report.ok) {
     settleFailedClientTurnRequestsForCommand(args.deps.db, {
       commandCompletedAt: args.report.completedAt,
-      commandId: args.commandRow.id,
+      commandId: args.settledCommand.id,
       errorCode: args.report.errorCode,
       errorMessage: args.report.errorMessage,
     });
@@ -875,7 +875,7 @@ export function settleTurnSubmitCommandResult(
   }
   settleSuccessfulClientTurnRequestsForCommand(args.deps.db, {
     commandCompletedAt: args.report.completedAt,
-    commandId: args.commandRow.id,
+    commandId: args.settledCommand.id,
   });
   return emptyCommandResultSideEffects();
 }
@@ -1044,7 +1044,7 @@ export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
   const operation = getActiveThreadOperationByCommandId(args.deps, {
-    commandId: args.commandRow.id,
+    commandId: args.settledCommand.id,
     kind: "stop",
   });
   if (!operation) {
@@ -1061,7 +1061,7 @@ export function settleThreadStopCommandResult(
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
-    expectedCommandId: args.commandRow.id,
+    expectedCommandId: args.settledCommand.id,
     threadId: args.command.threadId,
   });
 

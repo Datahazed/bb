@@ -15,7 +15,7 @@ import { renderTemplate } from "@bb/templates";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../engine/online-rpc.js";
 import { requireThreadStoragePath } from "./thread-storage.js";
 
 export const MANAGER_PREFERENCES_FILE_KEY = "manager-preferences";

@@ -42,11 +42,9 @@ import { tryTransition } from "./thread-transitions.js";
  * Effect application for the in-process thread-event append path
  * (`event-append.ts`).
  *
- * These are transitional COPIES of the daemon-ingress effect batch in
- * `src/internal/events.ts` (plan §6 Phase 1 strangler shape): the ingress
- * route stays the live path for the out-of-process daemon until P1b wires the
- * engine in and deletes the `/internal` routes. Deliberately not shared with
- * the originals — they die with the transport.
+ * Adapted from the daemon-ingress effect batch (the
+ * `POST /internal/session/events` route, deleted with the transport in P1c) —
+ * this is the sole effect-application path now.
  *
  * Adaptations vs the ingress originals:
  * - Inputs are plain `{threadId, event}` emissions. The spool envelope
@@ -55,7 +53,7 @@ import { tryTransition } from "./thread-transitions.js";
  *   and the inserted-index bookkeeping collapses. Only the
  *   turn-already-completed guard on `turn/started` effects survives in
  *   `resolveEventsToApply`.
- * - `deferEventFollowUpBatch`'s `scheduleAfterDaemonIngressResponse` deferral
+ * - `deferEventFollowUpBatch`'s `scheduleDetachedWork` deferral
  *   becomes run-after-commit: `runEventFollowUpBatchDetached` fires once the
  *   append transaction has committed and effects have been applied, detached
  *   from the append chain so command waits inside follow-ups never stall
@@ -139,9 +137,9 @@ function toTurnKey(args: TurnKeyArgs): string {
   return `${args.threadId}:${args.turnId}`;
 }
 
-// Transitional copy of `src/internal/turn-completed-events.ts` (sole other
-// consumer is the dying daemon ingress).
-function applyTurnCompletedEvent(
+// Adopted from the deleted daemon-ingress `turn-completed-events.ts`;
+// exported for the event-pruning regression tests.
+export function applyTurnCompletedEvent(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   payload: Extract<ThreadEvent, { type: "turn/completed" }>,
 ): ApplyTurnCompletedEventResult {
@@ -487,7 +485,7 @@ async function executeEventFollowUpBestEffort(
 
 /**
  * Run-after-commit replacement for the ingress `deferEventFollowUpBatch` +
- * `scheduleAfterDaemonIngressResponse`: by the time this is called the append
+ * `scheduleDetachedWork`: by the time this is called the append
  * transaction has committed and effects have been applied, so the follow-ups
  * (which may wait on engine commands) run detached from the append chain.
  * `executeEventFollowUpBestEffort` never rejects.

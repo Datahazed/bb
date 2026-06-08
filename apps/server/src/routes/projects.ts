@@ -67,7 +67,7 @@ import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../services/threads/thread-runtime-display.js";
-import { callEngineOnlineRpc } from "../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../services/engine/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   beginProjectDeletion,

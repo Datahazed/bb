@@ -3,7 +3,6 @@ import { activeLifecycleOperationStates } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import {
   environmentOperations,
-  hostDaemonCommands,
   pendingInteractions,
   projectOperations,
   threadOperations,
@@ -27,7 +26,6 @@ export const DATABASE_INCREMENTAL_VACUUM_MAX_PAGES = 20_000;
  */
 export const DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS = 100;
 
-const ACTIVE_COMMAND_STATES = ["pending", "fetched"] as const;
 const ACTIVE_THREAD_STATUSES = ["active", "provisioning"] as const;
 const ACTIVE_PENDING_INTERACTION_STATUSES = ["pending", "resolving"] as const;
 
@@ -56,7 +54,6 @@ interface DbstatUnusedRow {
 }
 
 export interface DatabaseMaintenanceActivity {
-  activeCommandCount: number;
   activeEnvironmentOperationCount: number;
   activePendingInteractionCount: number;
   activeProjectOperationCount: number;
@@ -171,13 +168,6 @@ function runWithMaintenanceBusyTimeout<TValue>(
 export function getDatabaseMaintenanceActivity(
   db: DbConnection,
 ): DatabaseMaintenanceActivity {
-  const activeCommandCount = countValue(
-    db
-      .select({ value: count() })
-      .from(hostDaemonCommands)
-      .where(inArray(hostDaemonCommands.state, [...ACTIVE_COMMAND_STATES]))
-      .get(),
-  );
   const activeThreadCount = countValue(
     db
       .select({ value: count() })
@@ -233,7 +223,6 @@ export function getDatabaseMaintenanceActivity(
   );
 
   return {
-    activeCommandCount,
     activeEnvironmentOperationCount,
     activePendingInteractionCount,
     activeProjectOperationCount,
@@ -246,7 +235,6 @@ export function isDatabaseMaintenanceIdle(
   activity: DatabaseMaintenanceActivity,
 ): boolean {
   return (
-    activity.activeCommandCount === 0 &&
     activity.activeEnvironmentOperationCount === 0 &&
     activity.activePendingInteractionCount === 0 &&
     activity.activeProjectOperationCount === 0 &&

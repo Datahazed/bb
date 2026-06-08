@@ -12,7 +12,7 @@ import {
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
-import { callEngineOnlineRpc } from "../hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../engine/online-rpc.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 

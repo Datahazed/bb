@@ -3,7 +3,6 @@ import type {
   ThreadChangeMetadata,
   ProjectChangeKind,
   EnvironmentChangeKind,
-  HostChangeKind,
   SystemChangeKind,
 } from "@bb/domain";
 
@@ -18,8 +17,6 @@ export interface DbNotifier {
     environmentId: string,
     changes: EnvironmentChangeKind[],
   ): void;
-  notifyHost(hostId: string, changes: HostChangeKind[]): void;
-  notifyCommand(hostId: string): void;
   notifySystem(changes: SystemChangeKind[]): void;
 }
 
@@ -27,7 +24,5 @@ export const noopNotifier: DbNotifier = {
   notifyThread() {},
   notifyProject() {},
   notifyEnvironment() {},
-  notifyHost() {},
-  notifyCommand() {},
   notifySystem() {},
 };

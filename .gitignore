@@ -59,3 +59,4 @@ output.txt
 # turborepo
 .turbo
 .claude/
+.claude-tmp/

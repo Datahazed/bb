@@ -33,7 +33,7 @@ import {
   threadEnvironmentUnavailableDetails,
   throwThreadEnvironmentUnavailable,
 } from "../../services/lib/lifecycle-api-errors.js";
-import { callEngineOnlineRpc } from "../../services/hosts/online-rpc.js";
+import { callEngineOnlineRpc } from "../../services/engine/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
