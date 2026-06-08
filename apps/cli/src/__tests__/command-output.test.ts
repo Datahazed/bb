@@ -74,15 +74,9 @@ vi.mock("node:readline/promises", () => ({
   })),
 }));
 
-vi.mock("../daemon.js", () => ({
-  fetchLocalHostId: vi.fn(async () => "host-test-001"),
-}));
-
-import { fetchLocalHostId } from "../daemon.js";
 import { registerAppCommands } from "../commands/app.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
-import { registerHostCommands } from "../commands/host.js";
 import { registerManagerCommands } from "../commands/manager.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
@@ -409,7 +403,6 @@ async function getHelpOutput(
 
 describe("CLI command output contracts", () => {
   const createClientMock = serverClientState.createClient;
-  const fetchLocalHostIdMock = vi.mocked(fetchLocalHostId);
 
   beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -428,8 +421,6 @@ describe("CLI command output contracts", () => {
     );
 
     createClientMock.mockReset();
-    fetchLocalHostIdMock.mockClear();
-    fetchLocalHostIdMock.mockResolvedValue("host-test-001");
     Object.defineProperty(process.stdin, "isTTY", {
       value: true,
       configurable: true,
@@ -494,7 +485,7 @@ describe("CLI command output contracts", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, managers, app, providers, projects, hosts, styling, async.",
+      "Available: threads, environments, managers, app, providers, projects, styling, async.",
     );
   });
 
@@ -534,9 +525,7 @@ describe("CLI command output contracts", () => {
       {
         id: "proj-1",
         name: "Alpha",
-        sources: [
-          { hostId: "host-test-001", type: "local_path", path: "/tmp/alpha" },
-        ],
+        sources: [{ hostId: "local", type: "local_path", path: "/tmp/alpha" }],
         createdAt: 1,
         updatedAt: 2,
       },
@@ -586,17 +575,7 @@ describe("CLI command output contracts", () => {
     );
 
     await runCommand(
-      [
-        "project",
-        "create",
-        "--name",
-        "Alpha",
-        "--root",
-        "/tmp/alpha",
-        "--host",
-        "host-1",
-        "--json",
-      ],
+      ["project", "create", "--name", "Alpha", "--root", "/tmp/alpha", "--json"],
       (program) => registerProjectCommands(program, () => "http://server"),
     );
 
@@ -613,7 +592,7 @@ describe("CLI command output contracts", () => {
       sources: [
         {
           createdAt: 1,
-          hostId: "host-test-001",
+          hostId: "local",
           id: "source-1",
           isDefault: true,
           path: "/tmp/alpha",
@@ -626,7 +605,7 @@ describe("CLI command output contracts", () => {
     }));
     const patch = vi.fn(async () => ({
       createdAt: 1,
-      hostId: "host-test-001",
+      hostId: "local",
       id: "source-1",
       isDefault: true,
       path: "/tmp/renamed",
@@ -670,7 +649,7 @@ describe("CLI command output contracts", () => {
       "Project source updated: source-1",
     );
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "source-1  host-test-001 (local)  local_path  /tmp/renamed [default]",
+      "source-1  local_path  /tmp/renamed [default]",
     );
     expect(patch).toHaveBeenCalledTimes(1);
     expect(patch).toHaveBeenNthCalledWith(
@@ -771,7 +750,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "project-123" },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         origin: "cli",
         model: "claude-opus-4-7",
         name: "Manager",
@@ -818,7 +797,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: PERSONAL_PROJECT_ID },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         name: "Manager",
         origin: "cli",
       },
@@ -867,7 +846,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: PERSONAL_PROJECT_ID },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         name: "Manager",
         origin: "cli",
       },
@@ -912,7 +891,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: PERSONAL_PROJECT_ID },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         name: "Manager",
         origin: "cli",
       },
@@ -967,7 +946,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "project-123" },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         origin: "cli",
         model: "claude-opus-4-7",
         name: "Manager",
@@ -1013,7 +992,7 @@ describe("CLI command output contracts", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "project-123" },
       json: {
-        environment: { type: "host", hostId: "host-test-001" },
+        environment: { type: "host", hostId: "local" },
         name: "Manager",
         origin: "cli",
       },
@@ -1676,7 +1655,7 @@ describe("CLI command output contracts", () => {
     expect(lines).toContain("Thread: thread-1");
   });
 
-  it("bb status fetches the environment host by id", async () => {
+  it("bb status prints the thread environment", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-1");
 
@@ -1696,18 +1675,9 @@ describe("CLI command output contracts", () => {
       makeEnvironment({
         id: "env-1",
         projectId: "proj-1",
-        hostId: "host-remote",
+        hostId: "local",
       }),
     );
-    const getHost = vi.fn(async () => ({
-      id: "host-remote",
-      name: "Remote Host",
-      type: "persistent",
-      status: "connected",
-      createdAt: 1,
-      updatedAt: 2,
-      lastSeenAt: 3,
-    }));
     createClientMock.mockReturnValue(
       asServerClient({
         api: {
@@ -1727,11 +1697,6 @@ describe("CLI command output contracts", () => {
                 $get: getEnvironment,
               },
             },
-            hosts: {
-              ":id": {
-                $get: getHost,
-              },
-            },
           },
         },
       }),
@@ -1741,11 +1706,11 @@ describe("CLI command output contracts", () => {
       registerStatusCommand(program, () => "http://server"),
     );
 
-    expect(getHost).toHaveBeenCalledWith({
-      param: { id: "host-remote" },
+    expect(getEnvironment).toHaveBeenCalledWith({
+      param: { id: "env-1" },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "  Environment: Working remotely (env-1)",
+      "  Environment: Working locally (env-1)",
     );
   });
 
@@ -1828,14 +1793,14 @@ describe("CLI command output contracts", () => {
         input: [{ type: "text", text: "hello" }],
         environment: {
           type: "host",
-          hostId: "host-test-001",
+          hostId: "local",
           workspace: { type: "unmanaged", path: null },
         },
       },
     });
   });
 
-  it("bb thread spawn defaults to the personal project without local host lookup", async () => {
+  it("bb thread spawn defaults to the personal project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
     const thread: Thread = makeThread({
       id: "thread-personal",
@@ -1863,7 +1828,6 @@ describe("CLI command output contracts", () => {
       registerThreadCommands(program, () => "http://server"),
     );
 
-    expect(fetchLocalHostIdMock).not.toHaveBeenCalled();
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
@@ -1871,6 +1835,7 @@ describe("CLI command output contracts", () => {
         input: [{ type: "text", text: "hello" }],
         environment: {
           type: "host",
+          hostId: "local",
           workspace: { type: "personal" },
         },
       },
@@ -1906,7 +1871,6 @@ describe("CLI command output contracts", () => {
       registerThreadCommands(program, () => "http://server"),
     );
 
-    expect(fetchLocalHostIdMock).toHaveBeenCalled();
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
@@ -1914,7 +1878,7 @@ describe("CLI command output contracts", () => {
         input: [{ type: "text", text: "hello" }],
         environment: {
           type: "host",
-          hostId: "host-test-001",
+          hostId: "local",
           workspace: { type: "unmanaged", path: null },
         },
       },
@@ -1979,7 +1943,7 @@ describe("CLI command output contracts", () => {
         input: [{ type: "text", text: "hello" }],
         environment: {
           type: "host",
-          hostId: "host-test-001",
+          hostId: "local",
           workspace: { type: "unmanaged", path: null },
         },
       },
@@ -2228,75 +2192,6 @@ describe("CLI command output contracts", () => {
     ]);
   });
 
-  it("bb host list --json prints raw hosts", async () => {
-    const hosts = [
-      {
-        id: "host-1",
-        name: "Workstation",
-        type: "persistent",
-        status: "connected",
-        createdAt: 1,
-        updatedAt: 2,
-        lastSeenAt: 3,
-      },
-    ];
-    const get = vi.fn(async () => hosts);
-    createClientMock.mockReturnValue(
-      asServerClient({
-        api: {
-          v1: {
-            hosts: {
-              $get: get,
-            },
-          },
-        },
-      }),
-    );
-
-    await runCommand(["host", "list", "--json"], (program) =>
-      registerHostCommands(program, () => "http://server"),
-    );
-
-    expect(
-      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
-    ).toEqual(hosts);
-  });
-
-  it("bb host list renders the shared borderless table", async () => {
-    const get = vi.fn(async () => [
-      {
-        id: "host-1",
-        name: "Workstation",
-        type: "persistent",
-        status: "connected",
-        createdAt: 1,
-        updatedAt: 2,
-        lastSeenAt: 3,
-      },
-    ]);
-    createClientMock.mockReturnValue(
-      asServerClient({
-        api: {
-          v1: {
-            hosts: {
-              $get: get,
-            },
-          },
-        },
-      }),
-    );
-
-    await runCommand(["host", "list"], (program) =>
-      registerHostCommands(program, () => "http://server"),
-    );
-
-    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "",
-      "ID      Name         Status\n------  -----------  ---------\nhost-1  Workstation  connected",
-      "",
-    ]);
-  });
-
   it("bb provider models renders the shared borderless table", async () => {
     const get = vi.fn(async () => [
       { model: "gpt-5", displayName: "GPT-5", isDefault: true },
@@ -2517,7 +2412,7 @@ describe("CLI command output contracts", () => {
         parentThreadId: "thread-parent",
         environment: {
           type: "host",
-          hostId: "host-test-001",
+          hostId: "local",
           workspace: { type: "unmanaged", path: null },
         },
       },
@@ -2631,7 +2526,7 @@ describe("CLI command output contracts", () => {
         input: [{ type: "text", text: "hello" }],
         environment: {
           type: "host",
-          hostId: "host-test-001",
+          hostId: "local",
           workspace: {
             type: "managed-worktree",
             baseBranch: { kind: "default" },

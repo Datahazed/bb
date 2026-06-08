@@ -24,7 +24,6 @@ Spawning:
     --new-environment <kind>       Create a new environment (worktree)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
-    --host <id>                    Host ID (defaults to local host)
     --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID
 
   When --provider and --model are omitted, the project's remembered defaults apply.

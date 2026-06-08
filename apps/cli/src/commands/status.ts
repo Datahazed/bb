@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import type { EnvironmentDisplayInfo } from "@bb/core-ui";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
 import { action } from "../action.js";
 import {
@@ -8,7 +9,6 @@ import {
 import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
 import {
-  type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "./environment-helpers.js";
@@ -23,7 +23,7 @@ interface StatusPayload {
     title: string | null;
     pinnedAt: number | null;
     parentThreadId: string | null;
-    environment: ThreadEnvironmentInfo | null;
+    environment: EnvironmentDisplayInfo | null;
   } | null;
   managedThreads: Array<{
     id: string;
@@ -79,7 +79,7 @@ export function registerStatusCommand(
           }
 
           if (status.thread) {
-            let environmentInfo: ThreadEnvironmentInfo | null = null;
+            let environmentInfo: EnvironmentDisplayInfo | null = null;
             if (status.thread.environmentId) {
               environmentInfo = await fetchEnvironmentInfo({
                 environmentId: status.thread.environmentId,

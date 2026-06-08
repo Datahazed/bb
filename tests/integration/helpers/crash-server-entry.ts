@@ -159,7 +159,6 @@ async function main(): Promise<void> {
 
   await startServerEngine({
     deps: appDeps,
-    serverPort: port,
     serverUrl: `http://127.0.0.1:${port}`,
     createRuntime: (runtimeOptions) =>
       createAgentRuntimeWithAdapters({

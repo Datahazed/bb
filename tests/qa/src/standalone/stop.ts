@@ -22,7 +22,6 @@ async function main() {
   const state = parseStandaloneState(rawState);
   const runtime = readStandaloneStateRuntime(state);
 
-  await killProcess(runtime.daemonPid).catch(() => undefined);
   await killProcess(runtime.serverPid).catch(() => undefined);
   const cleanupResult = await cleanupStandaloneInstance(state);
 

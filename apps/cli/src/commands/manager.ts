@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { fetchLocalHostId } from "../daemon.js";
+import { LOCAL_HOST_ID } from "../local-host.js";
 import { renderBorderlessTable } from "../table.js";
 import { resolveProjectIdWithLabel } from "../context-env.js";
 import {
@@ -17,7 +17,6 @@ interface ManagerHireCommandOptions {
   json?: boolean;
   project?: string;
   name?: string;
-  host?: string;
   provider?: string;
   model?: string;
   serviceTier?: string;
@@ -70,7 +69,6 @@ export function registerManagerCommands(
       "--reasoning-level <level>",
       "Reasoning level (low, medium, high, xhigh, max; provider-dependent)",
     )
-    .option("--host <id>", "Host ID (defaults to local host)")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -93,15 +91,6 @@ export function registerManagerCommands(
           }
           const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
           const serviceTier = parseServiceTier(opts.serviceTier);
-          let hostId: string | undefined = opts.host;
-          if (!hostId) {
-            hostId = (await fetchLocalHostId()) ?? undefined;
-            if (!hostId) {
-              throw new Error(
-                "Cannot auto-detect host ID (daemon unreachable). Pass --host <id> explicitly.",
-              );
-            }
-          }
           const thread = await sdk.managers.hire({
             projectId,
             origin: "cli",
@@ -109,7 +98,7 @@ export function registerManagerCommands(
             ...(opts.provider ? { providerId: opts.provider } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             ...(serviceTier ? { serviceTier } : {}),
-            environment: { type: "host", hostId },
+            environment: { type: "host", hostId: LOCAL_HOST_ID },
             ...(reasoningLevel ? { reasoningLevel } : {}),
           });
           if (outputJson(opts, thread)) return;

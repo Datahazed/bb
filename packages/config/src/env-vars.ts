@@ -115,12 +115,6 @@ export const BB_SERVER_PORT_ENV = defineEnvVar<number>({
   parse: parsePortEnvValue,
 });
 
-export const BB_HOST_DAEMON_PORT_ENV = defineEnvVar<number>({
-  description: "Port the host daemon listens on for local API requests",
-  name: "BB_HOST_DAEMON_PORT",
-  parse: parsePortEnvValue,
-});
-
 export const BB_SERVER_URL_ENV = defineEnvVar<string>({
   description: "URL of the bb server",
   name: "BB_SERVER_URL",

@@ -452,7 +452,6 @@ async function prepareDueNudge(
     const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
       environment: {
         id: environment.id,
-        hostId: environment.hostId,
         cleanupRequestedAt: environment.cleanupRequestedAt,
         path: environment.path,
         status: environment.status,

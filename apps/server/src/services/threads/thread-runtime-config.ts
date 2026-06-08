@@ -61,7 +61,6 @@ function resolveLocalTimezone(): string {
 
 export interface ThreadRuntimeCommandEnvironment {
   cleanupRequestedAt: number | null;
-  hostId: string;
   id: string;
   path: string | null;
   status: EnvironmentStatus;
@@ -185,7 +184,6 @@ export async function resolveThreadRuntimeCommandConfig(
     injectedSkillSources,
     instructionMode: "replace",
     instructions: renderTemplate("managerAgentInstructions", {
-      hostId: args.environment.hostId,
       localTimezone: resolveLocalTimezone(),
       managerDataDir: threadStorageContext.dataDir,
       managerThreadId: args.thread.id,

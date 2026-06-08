@@ -23,7 +23,6 @@ const guideChapters: Record<string, TemplateId> = {
   app: "bbGuideApp",
   providers: "bbGuideProviders",
   projects: "bbGuideProjects",
-  hosts: "bbGuideHosts",
   styling: "bbGuideApp",
   async: "bbGuideAsync",
 };

@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  buildStandaloneShellExports,
-  buildDaemonRestartCommand,
+  buildServerRestartCommand,
   buildStandaloneRuntimeEnv,
+  buildStandaloneShellExports,
   cleanupStandaloneOrphans,
   createProject,
-  createStandaloneHostJoin,
   createTestGitRepo,
+  fetchLocalHost,
   killProcess,
   loadDotEnv,
   repoRoot,
@@ -19,8 +19,6 @@ import {
   startQaServer,
   STANDALONE_INSTANCE_ENV,
   STANDALONE_PARENT_PID_ENV,
-  spawnLoggedProcess,
-  waitForConnectedHost,
 } from "../shared.js";
 
 function parseArgs() {
@@ -59,22 +57,18 @@ async function main() {
 
   const tmpRoot = await fs.mkdtemp(path.join(tmpdir(), "bb-standalone-"));
   const logsDir = path.join(tmpRoot, "logs");
-  const bbRoot = path.join(tmpRoot, "bb-root");
-  const serverDataDir = path.join(tmpRoot, "server-data");
+  const dataDir = path.join(tmpRoot, "data");
   const projectRoot = path.join(tmpRoot, "repos", "test-project");
   const statePath = path.join(tmpRoot, "standalone-state.json");
-  const daemonLogPath = path.join(logsDir, "host-daemon.log");
   const serverLogPath = path.join(logsDir, "server.log");
 
   await fs.mkdir(logsDir, { recursive: true });
   await createTestGitRepo(projectRoot);
 
   const serverPort = await reservePort();
-  const daemonPort = await reservePort();
   const serverUrl = `http://127.0.0.1:${serverPort}`;
 
   let serverProcess;
-  let daemonProcess;
 
   try {
     const standaloneBaseEnv = buildStandaloneRuntimeEnv({
@@ -85,7 +79,7 @@ async function main() {
       },
     });
     const qaServer = await startQaServer({
-      dataDir: serverDataDir,
+      dataDir,
       env: standaloneBaseEnv,
       logPath: serverLogPath,
       port: serverPort,
@@ -97,28 +91,7 @@ async function main() {
       );
     }
 
-    const join = await createStandaloneHostJoin(serverUrl);
-
-    daemonProcess = spawnLoggedProcess({
-      command: "node",
-      args: ["apps/host-daemon/dist/index.js"],
-      cwd: repoRoot,
-      env: buildStandaloneRuntimeEnv({
-        baseEnv: standaloneBaseEnv,
-        overrides: {
-          BB_DATA_DIR: bbRoot,
-          BB_HOST_DAEMON_PORT: String(daemonPort),
-          BB_HOST_ENROLL_KEY: join.joinCode,
-          BB_HOST_ID: join.hostId,
-          BB_SERVER_URL: serverUrl,
-          [STANDALONE_INSTANCE_ENV]: instanceId,
-          [STANDALONE_PARENT_PID_ENV]: String(parentPid),
-        },
-      }),
-      logPath: daemonLogPath,
-    });
-
-    const host = await waitForConnectedHost(serverUrl);
+    const host = await fetchLocalHost(serverUrl);
     const project = await createProject(serverUrl, {
       name: "Standalone QA Project",
       source: { type: "local_path", hostId: host.id, path: projectRoot },
@@ -128,20 +101,19 @@ async function main() {
       `pnpm --silent --dir ${shellQuote(repoRoot)} --filter @bb/qa standalone:stop ` +
       `--state ${shellQuote(statePath)} && ` +
       `pnpm --silent --dir ${shellQuote(repoRoot)} --filter @bb/qa standalone:cleanup`;
-    const restartDaemonCommand = buildDaemonRestartCommand({
-      daemonPid: daemonProcess.pid,
-      daemonPort,
-      dataDir: bbRoot,
-      entrypoint: path.join(repoRoot, "apps/host-daemon/dist/index.js"),
+    const restartServerCommand = buildServerRestartCommand({
+      dataDir,
+      entrypoint: path.join(repoRoot, "apps/server/dist/index.js"),
       envFilePath: envFile.path,
-      hostId: host.id,
-      logPath: daemonLogPath,
+      instanceId,
+      logPath: serverLogPath,
       parentPid,
+      serverPid: serverProcess.pid,
+      serverPort,
       serverUrl,
     });
 
     const cliEnv = {
-      BB_HOST_DAEMON_PORT: String(daemonPort),
       BB_PROJECT_ID: project.id,
       BB_SERVER_URL: serverUrl,
     };
@@ -149,11 +121,10 @@ async function main() {
     const setupEnv = {
       ...cliEnv,
       CLEANUP_COMMAND: cleanupCommand,
-      DAEMON_PID: String(daemonProcess.pid),
       HOST_ID: host.id,
       LOGS_DIR: logsDir,
       PROJECT_ROOT: projectRoot,
-      RESTART_DAEMON_COMMAND: restartDaemonCommand,
+      RESTART_SERVER_COMMAND: restartServerCommand,
       SERVER_PID: String(serverProcess.pid),
       STATE_PATH: statePath,
     };
@@ -162,23 +133,15 @@ async function main() {
       cliEnv,
       commands: {
         cleanup: cleanupCommand,
-        restartDaemon: restartDaemonCommand,
-      },
-      daemon: {
-        dataDir: bbRoot,
-        logPath: daemonLogPath,
-        pid: daemonProcess.pid,
-        port: daemonPort,
-        url: `http://127.0.0.1:${daemonPort}`,
+        restartServer: restartServerCommand,
       },
       instanceId,
       parentPid,
       paths: {
-        bbRoot,
+        dataDir,
         envFilePath: envFile.path,
         logsDir,
         projectRoot,
-        serverDataDir,
         statePath,
         tmpRoot,
       },
@@ -187,7 +150,7 @@ async function main() {
         id: project.id,
       },
       server: {
-        dataDir: serverDataDir,
+        dataDir,
         logPath: serverLogPath,
         pid: serverProcess.pid,
         port: serverPort,
@@ -202,7 +165,6 @@ async function main() {
         : JSON.stringify(state, null, 2);
     process.stdout.write(`${output}\n`);
   } catch (error) {
-    await killProcess(daemonProcess?.pid).catch(() => undefined);
     await killProcess(serverProcess?.pid).catch(() => undefined);
     await fs.rm(tmpRoot, { recursive: true, force: true });
     throw error;

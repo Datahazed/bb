@@ -314,7 +314,6 @@ async function startHarnessEngine(
   const adapterFactory = resolveAdapterFactory(options);
   return startServerEngine({
     deps: started.deps,
-    serverPort: started.server.config.serverPort,
     serverUrl: started.server.baseUrl,
     ...(adapterFactory
       ? {

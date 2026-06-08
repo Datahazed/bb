@@ -107,13 +107,13 @@ export interface BbAppStartContext {
   appDistDir: string;
   appVersion: string;
   configFile: string;
-  /** Bundled CLI/bridge dir; repointed to the server bundle in Phase 3. */
-  daemonBundleDir: string;
   dataDir: string;
   dbPath: string;
   envFile: string;
   logDir: string;
   packageRoot: string;
+  /** Server dist dir; also ships the bundled `bb` CLI and provider bridges. */
+  serverBundleDir: string;
   serverEntry: string;
   serverPort: number;
   serverUrl: string;
@@ -737,19 +737,19 @@ export function resolveBbAppStartContext(
     env: args.env,
     name: "BB_SERVER_PORT",
   });
-  const daemonBundleDir = resolve(packageRoot, "host-daemon", "dist");
+  const serverBundleDir = resolve(packageRoot, "server", "dist");
 
   return {
     appDistDir: resolve(packageRoot, "app", "dist"),
     appVersion: readBbAppPackageVersion(packageRoot),
     configFile: formatBbAppConfigPath(dataDir),
-    daemonBundleDir,
     dataDir,
     dbPath: resolveDataDirDatabasePath({ dataDir }),
     envFile: formatBbAppEnvPath(dataDir),
     logDir: join(dataDir, "logs"),
     packageRoot,
-    serverEntry: resolve(packageRoot, "server", "dist", "index.js"),
+    serverBundleDir,
+    serverEntry: join(serverBundleDir, "index.js"),
     serverPort,
     serverUrl:
       trimToUndefined(args.env.BB_SERVER_URL) ??
@@ -1171,12 +1171,18 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
 }
 
 function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
-  // The bundled CLI and provider bridges shipped from the daemon dist, which
-  // died with the daemon (P1c). The packaged launcher path is allowed broken
-  // until Phase 3 repoints them at the server bundle (plan Decision 9).
   return [
     { label: "server entry", path: context.serverEntry },
     { label: "web app", path: join(context.appDistDir, "index.html") },
+    { label: "bundled bb CLI", path: join(context.serverBundleDir, "bb") },
+    {
+      label: "claude-code bridge",
+      path: join(context.serverBundleDir, "bb-claude-code-bridge.mjs"),
+    },
+    {
+      label: "pi bridge",
+      path: join(context.serverBundleDir, "bb-pi-bridge.mjs"),
+    },
   ];
 }
 
@@ -1360,6 +1366,11 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   return {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
+    // The packaged server bundle cannot resolve `@bb/cli` or the bridge
+    // sources through node_modules, so the launcher points the engine at the
+    // bundled copies shipped alongside the server dist (plan §5.9).
+    BB_BRIDGE_DIR: args.context.serverBundleDir,
+    BB_CLI_DIR: args.context.serverBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_SERVER_PORT: String(args.context.serverPort),
     NODE_ENV: "production",
@@ -1384,7 +1395,7 @@ async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
   const childProcess = spawn(
-    join(args.context.daemonBundleDir, "bb"),
+    join(args.context.serverBundleDir, "bb"),
     args.args,
     {
       cwd: process.cwd(),
@@ -1412,42 +1423,6 @@ export async function runBbCli(
     context: runtime.context,
     env: runtime.env,
   });
-}
-
-export async function runBbServer(
-  cliArgs: string[] = process.argv.slice(2),
-): Promise<void> {
-  const parsedArgs = parseLauncherArgs(cliArgs);
-  if (parsedArgs.options.help) {
-    process.stdout.write(`bb-server
-
-Usage:
-  bb-server [--data-dir <path>] [--server-port <port>]
-`);
-    return;
-  }
-  if (parsedArgs.positionals.length > 0) {
-    throw new Error("bb-server does not accept arguments.");
-  }
-
-  const runtime = await resolveBbAppRuntimeState({
-    entrypointUrl: import.meta.url,
-    env: process.env,
-    homeDir: homedir(),
-    options: parsedArgs.options,
-    serverUrlMode: "local",
-  });
-  assertBbAppArtifacts(runtime.context);
-
-  const childProcess = spawn(process.execPath, [runtime.context.serverEntry], {
-    cwd: process.cwd(),
-    env: createServerEnv({
-      context: runtime.context,
-      env: runtime.serverEnv,
-    }),
-    stdio: "inherit",
-  });
-  process.exitCode = toExitCode(await waitForProcessExit(childProcess));
 }
 
 function installTerminationSignalForwarding(

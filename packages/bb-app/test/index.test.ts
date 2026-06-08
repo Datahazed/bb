@@ -189,6 +189,9 @@ describe("bb-app launcher", () => {
     expect(context.envFile).toBe("/home/tester/.bb/env.json");
     expect(context.serverPort).toBe(38886);
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
+    expect(context.serverBundleDir).toBe(
+      "/repo/packages/bb-app/server/dist",
+    );
     expect(context.serverEntry).toBe(
       "/repo/packages/bb-app/server/dist/index.js",
     );
@@ -213,7 +216,6 @@ describe("bb-app launcher", () => {
   it("honors explicit production ports and data directory", () => {
     const env = {
       BB_DATA_DIR: "~/custom-bb",
-      BB_HOST_DAEMON_PORT: "48887",
       BB_SERVER_PORT: "48886",
     };
 
@@ -223,9 +225,6 @@ describe("bb-app launcher", () => {
     expect(resolvePort({ defaultPort: 1, env, name: "BB_SERVER_PORT" })).toBe(
       48886,
     );
-    expect(
-      resolvePort({ defaultPort: 1, env, name: "BB_HOST_DAEMON_PORT" }),
-    ).toBe(48887);
   });
 
 

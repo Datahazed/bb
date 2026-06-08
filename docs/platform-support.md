@@ -2,8 +2,8 @@
 
 ## Supported host environments
 
-- macOS persistent host
-- Linux persistent host
+- macOS
+- Linux
 - Windows via Ubuntu on WSL2
 
 Supported npm package runtimes:
@@ -31,7 +31,7 @@ Windows support means the Linux stack runs entirely inside WSL2:
 - source checkout package startup with `pnpm start`
 - source checkout validation with `pnpm install`, `pnpm build`,
   `pnpm exec turbo run typecheck`, and `pnpm exec turbo run test`
-- app + server + host-daemon startup on supported persistent-host OSes
+- app + server startup on supported OSes
 - local-path project creation and update in the app
 - unmanaged environments
 - managed worktree environments
@@ -49,15 +49,15 @@ Windows support means the Linux stack runs entirely inside WSL2:
 - Those wrappers set `NODE_ENV` explicitly so ambient shell state does not
   change which bb instance they target.
 - Explicit `BB_*` values override the `NODE_ENV`-selected defaults.
-- Process-to-process handoff, such as daemon-injected CLI environment, must use
-  explicit `BB_*` values for the exact target instance instead of relying on
-  mode defaults.
+- Process-to-process handoff, such as the server-injected CLI environment for
+  runtime shells, must use explicit `BB_*` values for the exact target instance
+  instead of relying on mode defaults.
 
 ### WSL2-specific expectations
 
-- Run `npx bb-app`, source checkout commands such as `pnpm install`,
-  `pnpm dev`, `pnpm bb:dev`, and host-daemon commands from a WSL2 shell, not
-  from native Windows terminals.
+- Run `npx bb-app` and source checkout commands such as `pnpm install`,
+  `pnpm dev`, and `pnpm bb:dev` from a WSL2 shell, not from native Windows
+  terminals.
 - Repositories inside the WSL filesystem are recommended for best behavior.
 - `/mnt/c/...` mounted paths are deliberately supported so WSL2 users can keep
   working with existing Windows checkouts instead of relocating every repo into
@@ -71,7 +71,7 @@ Windows support means the Linux stack runs entirely inside WSL2:
 
 - workspace-owned QA helpers under [`tests/qa/`](../tests/qa/)
 - dev restart internals that are not part of the shipped product path
-- native Windows PowerShell, CMD, and host-daemon runtime flows
+- native Windows PowerShell and CMD runtime flows
 
 ## Dependency Policy
 

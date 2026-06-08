@@ -25,12 +25,6 @@ import { buildEnginePorts } from "./engine-ports.js";
 
 export interface StartServerEngineOptions {
   deps: AppDeps;
-  /**
-   * The server's own listening port. Injected into runtime shells as
-   * `BB_HOST_DAEMON_PORT` (plan §5.9 — the injected `bb` CLI keeps
-   * discovering the local API through that name, now served by the server).
-   */
-  serverPort: number;
   /** The server's own origin, injected into runtime shells as `BB_SERVER_URL`. */
   serverUrl: string;
   /** `BB_CLI_DIR` override; defaults to resolving the built `@bb/cli` bin. */
@@ -66,7 +60,6 @@ export async function startServerEngine(
   const runtimeShellEnv = prepareRuntimeShellEnv({
     appsRootPath: resolveAppsRootPath(deps.config.dataDir),
     bbExecutableDirectory,
-    serverPort: options.serverPort,
     serverUrl: options.serverUrl,
   });
 

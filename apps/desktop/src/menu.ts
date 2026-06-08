@@ -1,6 +1,6 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
-export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server Logs";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 

@@ -68,9 +68,6 @@ process.stdout.write(
   `@bb/desktop: server http://127.0.0.1:${devConfig.ports.serverPort}\n`,
 );
 process.stdout.write(
-  `@bb/desktop: daemon http://127.0.0.1:${devConfig.ports.hostDaemonPort}\n`,
-);
-process.stdout.write(
   viteReachable
     ? `@bb/desktop: app ${appUrl} (Vite dev server — live reload)\n`
     : `@bb/desktop: app (own bb-app runtime — no Vite dev server on ${appUrl})\n`,

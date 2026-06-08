@@ -201,7 +201,7 @@ export function createLogViewerViewUrl(args: CreateLogViewerViewUrlArgs): string
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>bb - Server & Daemon Logs</title>
+  <title>bb - Server Logs</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -316,7 +316,7 @@ export function createLogViewerViewUrl(args: CreateLogViewerViewUrlArgs): string
 <body>
   <header>
     <div>
-      <h1>Server & Daemon Logs</h1>
+      <h1>Server Logs</h1>
       <div class="path" title="${escapedLogDir}">${escapedLogDir}</div>
     </div>
     <div class="actions">

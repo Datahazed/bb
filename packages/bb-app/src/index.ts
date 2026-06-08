@@ -10,7 +10,6 @@ export {
   resolvePort,
   runBbApp,
   runBbCli,
-  runBbServer,
 } from "./launcher.js";
 export type {
   BbAppStartContext,

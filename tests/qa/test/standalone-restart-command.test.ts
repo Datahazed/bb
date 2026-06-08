@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
-  buildDaemonRestartCommand,
+  buildServerRestartCommand,
   buildStandaloneRuntimeEnv,
   buildStandaloneShellExports,
   resolveStandaloneParentPid,
@@ -11,18 +11,18 @@ import {
 
 const RESTART_PROVIDER_ENV_BLOCK =
   'case "${BB_QA_OPENAI_API_KEY-}" in *[![:space:]]*) OPENAI_API_KEY="$BB_QA_OPENAI_API_KEY"; export OPENAI_API_KEY ;; *) unset OPENAI_API_KEY ;; esac';
-const DAEMON_ENV_BLOCK_PREFIX = "; BB_DATA_DIR=";
+const SERVER_ENV_BLOCK_PREFIX = "; BB_DATA_DIR=";
 
 function buildTestRestartCommand(): string {
-  return buildDaemonRestartCommand({
-    daemonPid: 123,
-    daemonPort: 456,
+  return buildServerRestartCommand({
     dataDir: "/tmp/bb root",
-    entrypoint: "/repo/apps/host-daemon/dist/index.js",
+    entrypoint: "/repo/apps/server/dist/index.js",
     envFilePath: "/repo/.env",
-    hostId: "host_123",
-    logPath: "/tmp/bb logs/host-daemon.log",
+    instanceId: "instance-123",
+    logPath: "/tmp/bb logs/server.log",
     parentPid: 789,
+    serverPid: 123,
+    serverPort: 3334,
     serverUrl: "http://127.0.0.1:3334",
   });
 }
@@ -32,9 +32,9 @@ function extractProviderEnvBlock(command: string): string {
   if (blockStart < 0) {
     throw new Error("restart command is missing provider env block");
   }
-  const blockEnd = command.indexOf(DAEMON_ENV_BLOCK_PREFIX, blockStart);
+  const blockEnd = command.indexOf(SERVER_ENV_BLOCK_PREFIX, blockStart);
   if (blockEnd < 0) {
-    throw new Error("restart command is missing daemon env block");
+    throw new Error("restart command is missing server env block");
   }
   return command.slice(blockStart, blockEnd);
 }
@@ -100,7 +100,6 @@ describe("standalone restart command", () => {
   it("clears inherited thread context from env-format setup output", () => {
     expect(
       buildStandaloneShellExports({
-        BB_HOST_DAEMON_PORT: "3334",
         BB_PROJECT_ID: "proj_standalone",
         BB_SERVER_URL: "http://127.0.0.1:3333",
       }).split("\n"),
@@ -108,7 +107,6 @@ describe("standalone restart command", () => {
       "unset BB_THREAD_ID",
       "unset BB_ENVIRONMENT_ID",
       "unset BB_THREAD_STORAGE",
-      "export BB_HOST_DAEMON_PORT='3334'",
       "export BB_PROJECT_ID='proj_standalone'",
       "export BB_SERVER_URL='http://127.0.0.1:3333'",
     ]);
@@ -171,15 +169,13 @@ describe("standalone restart command", () => {
     expect(command).toContain("[ ! -f '/repo/.env' ] || . '/repo/.env'");
     expect(command).toContain(RESTART_PROVIDER_ENV_BLOCK);
     expect(command).toContain("BB_DATA_DIR='/tmp/bb root'");
-    expect(command).toContain(
-      "exec node '/repo/apps/host-daemon/dist/index.js'",
-    );
-    expect(command).toContain(">> '/tmp/bb logs/host-daemon.log' 2>&1) &");
-    expect(command).toContain("'http://127.0.0.1:3334/api/v1/hosts'");
-    expect(command).toContain(
-      '\'any(.[]; .id == "host_123" and .status == "connected")\'',
-    );
-    expect(command).toContain('[ "$connected" = 1 ]');
+    expect(command).toContain("BB_SERVER_PORT='3334'");
+    expect(command).toContain("BB_STANDALONE_INSTANCE='instance-123'");
+    expect(command).toContain("BB_STANDALONE_PARENT_PID='789'");
+    expect(command).toContain("exec node '/repo/apps/server/dist/index.js'");
+    expect(command).toContain(">> '/tmp/bb logs/server.log' 2>&1) &");
+    expect(command).toContain("'http://127.0.0.1:3334/api/v1/system/config'");
+    expect(command).toContain('[ "$ready" = 1 ]');
     expect(command).not.toContain("&;");
     expect(command).not.toContain("do; if");
     expect(command).not.toContain("test-openai-key");
@@ -210,15 +206,15 @@ describe("standalone restart command", () => {
   });
 
   it("uses a no-op env loader when no env file exists", () => {
-    const command = buildDaemonRestartCommand({
-      daemonPid: null,
-      daemonPort: 456,
-      dataDir: "/tmp/bb-root",
-      entrypoint: "/repo/apps/host-daemon/dist/index.js",
+    const command = buildServerRestartCommand({
+      dataDir: "/tmp/bb-data",
+      entrypoint: "/repo/apps/server/dist/index.js",
       envFilePath: null,
-      hostId: "host_123",
-      logPath: "/tmp/host-daemon.log",
+      instanceId: "instance-123",
+      logPath: "/tmp/server.log",
       parentPid: 789,
+      serverPid: null,
+      serverPort: 3334,
       serverUrl: "http://127.0.0.1:3334",
     });
 

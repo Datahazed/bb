@@ -139,22 +139,18 @@ describe("resolveLocalBbExecutableDirectory", () => {
 });
 
 describe("prepareRuntimeShellEnv", () => {
-  it("prepends the configured bb executable directory to PATH and injects the server port", () => {
+  it("prepends the configured bb executable directory to PATH and injects the server URL", () => {
     expect(
       prepareRuntimeShellEnv({
         appsRootPath: "/tmp/bb-data/apps",
         bbExecutableDirectory: "/tmp/bb-bin",
         inheritedPath: "/usr/bin",
-        serverPort: 3002,
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
       BB_APPS_ROOT: "/tmp/bb-data/apps",
       BB_SERVER_URL: "http://127.0.0.1:3334",
-      // The legacy variable name survives the merge: the injected bb CLI
-      // discovers the local API through it, now served by the server itself.
-      BB_HOST_DAEMON_PORT: "3002",
     });
   });
 
@@ -165,14 +161,12 @@ describe("prepareRuntimeShellEnv", () => {
       prepareRuntimeShellEnv({
         appsRootPath: "/tmp/bb-data/apps",
         bbExecutableDirectory: "/tmp/bb-bin",
-        serverPort: 3002,
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
       BB_APPS_ROOT: "/tmp/bb-data/apps",
       BB_SERVER_URL: "http://127.0.0.1:3334",
-      BB_HOST_DAEMON_PORT: "3002",
     });
   });
 });

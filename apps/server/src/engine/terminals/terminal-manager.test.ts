@@ -367,7 +367,7 @@ describe("TerminalManager", () => {
 
   it("scrubs inherited bb runtime env vars before spawning a terminal", async () => {
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
-    vi.stubEnv("BB_HOST_DAEMON_PORT", "38887");
+    vi.stubEnv("BB_SERVER_PORT", "38886");
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("OPENAI_API_KEY", "external-secret");
 
@@ -381,7 +381,7 @@ describe("TerminalManager", () => {
       OPENAI_API_KEY: "external-secret",
     });
     expect(env?.BB_DATA_DIR).toBeUndefined();
-    expect(env?.BB_HOST_DAEMON_PORT).toBeUndefined();
+    expect(env?.BB_SERVER_PORT).toBeUndefined();
     expect(env?.NODE_ENV).toBeUndefined();
   });
 

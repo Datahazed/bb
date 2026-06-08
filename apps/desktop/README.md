@@ -1,7 +1,7 @@
 # @bb/desktop
 
 macOS Electron shell for bb. The desktop app loads the existing bb web UI and
-uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
+uses the packaged `bb-app` launcher for server lifecycle.
 
 ## Development
 
@@ -14,16 +14,15 @@ opens Electron directly. By default it uses the same checkout-scoped
 `~/.bb-dev/<checkout-instance>` data directory and deterministic high ports as
 the main repo dev launcher; it prints the resolved data dir, server URL, and
 Electron user-data dir at startup. It intentionally overwrites inherited
-`BB_DATA_DIR`, `BB_SERVER_PORT`, `BB_SERVER_URL`, and `BB_HOST_DAEMON_PORT` so a
-desktop dev run launched from an existing bb session still targets the current
-checkout. Set `BB_DESKTOP_USER_DATA_DIR` to override only Electron's user-data
+`BB_DATA_DIR`, `BB_SERVER_PORT`, and `BB_SERVER_URL` so a desktop dev run
+launched from an existing bb session still targets the current checkout. Set `BB_DESKTOP_USER_DATA_DIR` to override only Electron's user-data
 directory.
 
 The launcher probes the checkout's Vite app port at startup and adapts:
 
 - **`pnpm dev` is already running** (Vite reachable): the shell loads the Vite
   dev URL, so you get live source and HMR for `@bb/app` changes — no rebuild
-  needed. It still attaches to the same running server/daemon for all API/WS
+  needed. It still attaches to the same running server for all API/WS
   traffic. The launcher prints `app <url> (Vite dev server — live reload)`. This
   is the fast loop for iterating on the desktop UI.
 - **`pnpm dev` is not running**: the shell starts its own `bb-app` runtime and
@@ -147,7 +146,7 @@ binary with `BB_DESKTOP_OPEN_DEVTOOLS=1`:
 BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/bb
 ```
 
-When the desktop app spawns `bb-app`, server and daemon logs land under
+When the desktop app spawns `bb-app`, server logs land under
 `~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set.
 
 To verify attach-if-found manually, start a compatible bb first, then launch the

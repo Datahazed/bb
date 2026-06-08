@@ -1723,7 +1723,6 @@ export class ThreadRuntimeLifecycle {
       thread,
       environment: {
         id: environment.id,
-        hostId: environment.hostId,
         cleanupRequestedAt: environment.cleanupRequestedAt,
         path: workspacePath,
         status: environment.status,

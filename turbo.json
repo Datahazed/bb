@@ -192,11 +192,6 @@
       "persistent": true,
       "passThroughEnv": ["*"]
     },
-    "bundle": {
-      "dependsOn": [],
-      "cache": false,
-      "outputs": []
-    },
     "template:build": {
       "dependsOn": [],
       "cache": false,

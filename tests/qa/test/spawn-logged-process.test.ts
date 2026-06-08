@@ -117,7 +117,6 @@ vi.mock("node:child_process", async (importOriginal) => {
 import {
   buildStandaloneRuntimeEnv,
   cleanupStandaloneOrphans,
-  createStandaloneHostJoin,
   spawnLoggedProcess,
   startQaServer,
 } from "../src/shared.js";
@@ -223,42 +222,6 @@ describe("spawnLoggedProcess", () => {
     });
   });
 
-  it("requests a local host join for standalone host bootstrap", async () => {
-    let capturedBody: string | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-        capturedBody = typeof init?.body === "string" ? init.body : null;
-        return new Response(
-          JSON.stringify({
-            expiresAt: Date.now() + 60_000,
-            hostId: "host_standalone",
-            joinCode: "bbde_standalone",
-            joinCommand: "npx bb-app host-daemon",
-          }),
-          {
-            headers: {
-              "content-type": "application/json",
-            },
-            status: 201,
-          },
-        );
-      }),
-    );
-
-    await expect(
-      createStandaloneHostJoin("http://127.0.0.1:4567"),
-    ).resolves.toMatchObject({
-      hostId: "host_standalone",
-      joinCode: "bbde_standalone",
-    });
-    expect(capturedBody).toBe(
-      JSON.stringify({
-        hostType: "persistent",
-        joinMode: "local",
-      }),
-    );
-  });
 });
 
 describe("cleanupStandaloneOrphans", () => {

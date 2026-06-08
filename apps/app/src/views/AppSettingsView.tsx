@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { timeAgo } from "@bb/core-ui";
 import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
@@ -17,10 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { AppSourcesSection } from "@/components/settings/AppSourcesSection";
-import { CONNECTED_DOT_CLASS } from "@/components/settings/constants";
 import {
-  SettingsRow,
-  SettingsRowList,
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section.js";
@@ -50,8 +46,6 @@ import {
   invalidateHostAvailabilityQueries,
 } from "@/hooks/cache-owners/system-cache-effects";
 import * as api from "@/lib/api";
-import { HttpError } from "@/lib/api";
-import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { CreateHostJoinResponse } from "@bb/server-contract";
 import { cn } from "@/lib/utils";
 import {
@@ -302,7 +296,7 @@ export function AppSettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
-  const { data: hosts = [], isLoading: hostsLoading } = useEffectiveHosts();
+  const { data: hosts = [] } = useEffectiveHosts();
   const queryClient = useQueryClient();
 
   const [renameTarget, setRenameTarget] =
@@ -338,29 +332,6 @@ export function AppSettingsView() {
     },
   });
 
-  const createHostJoin = useMutation({
-    meta: {
-      errorMessage: "Failed to create host join command",
-      showErrorToast: false,
-    },
-    mutationFn: () => api.createHostJoin(),
-    onSuccess: (result) => {
-      invalidateHostAvailabilityQueries({ queryClient });
-      setJoinTarget(result);
-      setJoinDialogOpen(true);
-    },
-    onError: (error) => {
-      if (error instanceof HttpError && error.code === "app_url_required") {
-        setAppUrlRequiredOpen(true);
-        return;
-      }
-      showMutationErrorToast({
-        error,
-        fallbackMessage: "Failed to create host join command",
-      });
-    },
-  });
-
   const cancelHostJoin = useMutation({
     meta: {
       errorMessage: "Failed to cancel host join.",
@@ -380,29 +351,6 @@ export function AppSettingsView() {
     joinTarget !== null
       ? (hosts.find((host) => host.id === joinTarget.hostId) ?? null)
       : null;
-  const hostJoinActionPending =
-    createHostJoin.isPending || cancelHostJoin.isPending;
-
-  async function handleCreateHostJoin() {
-    if (
-      joinTarget !== null &&
-      joinTarget.expiresAt > Date.now() &&
-      joinHost?.status !== "connected"
-    ) {
-      setJoinDialogOpen(true);
-      return;
-    }
-
-    if (joinTarget !== null && joinHost?.status !== "connected") {
-      try {
-        await cancelHostJoin.mutateAsync({ id: joinTarget.hostId });
-      } catch {
-        return;
-      }
-    }
-
-    createHostJoin.mutate();
-  }
 
   useEffect(() => {
     if (!joinDialogOpen || joinHost?.status !== "connected") {
@@ -484,104 +432,6 @@ export function AppSettingsView() {
             onEnabledChange={setOpenLinksInAppBrowser}
           />
         ) : null}
-
-        <div className="space-y-2">
-          <SettingsSection title="Hosts">
-            {hostsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (
-              <SettingsRowList>
-                {hosts.length === 0 ? (
-                  <SettingsRow>
-                    <span className="text-sm text-muted-foreground">
-                      No registered hosts.
-                    </span>
-                  </SettingsRow>
-                ) : (
-                  hosts.map((host) => {
-                    const isConnected = host.status === "connected";
-                    return (
-                      <SettingsRow key={host.id}>
-                        <span className="min-w-0 flex-1 truncate">
-                          {host.name}
-                          <span className="ml-1.5 text-xs text-muted-foreground">
-                            {host.id}
-                          </span>
-                        </span>
-                        {isConnected ? (
-                          <span
-                            className={CONNECTED_DOT_CLASS}
-                            title="Connected"
-                          />
-                        ) : host.lastSeenAt !== null ? (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            Offline · {timeAgo(host.lastSeenAt)}
-                          </span>
-                        ) : (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            Never connected
-                          </span>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              aria-label="Host actions"
-                            >
-                              <Icon name="MoreHorizontal" className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem
-                              onSelect={() =>
-                                setRenameTarget({
-                                  id: host.id,
-                                  currentName: host.name,
-                                })
-                              }
-                            >
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() =>
-                                setDeleteTarget({
-                                  id: host.id,
-                                  name: host.name,
-                                })
-                              }
-                            >
-                              Remove
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </SettingsRow>
-                    );
-                  })
-                )}
-              </SettingsRowList>
-            )}
-          </SettingsSection>
-          {!hostsLoading ? (
-            <div className="flex justify-start">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-auto justify-start gap-1.5 px-2 py-1 text-muted-foreground"
-                disabled={hostJoinActionPending}
-                onClick={() => {
-                  void handleCreateHostJoin();
-                }}
-              >
-                <Icon name="Plus" className="size-3.5" />
-                Add another host
-              </Button>
-            </div>
-          ) : null}
-        </div>
 
         <AppSourcesSection />
       </div>

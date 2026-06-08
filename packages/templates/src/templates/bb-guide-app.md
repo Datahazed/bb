@@ -7,7 +7,7 @@ editingNotes: Keep this aligned with routes/apps.ts, app-client-script.ts, and a
 ---
 Apps
 
-Apps are global within the local host data directory. They are the supported
+Apps are global within the bb data directory. They are the supported
 way to build dashboards, control panels, and other interactive surfaces that
 can open inside a thread panel.
 
@@ -143,7 +143,7 @@ bb app delete review-board --yes
 ```
 
 `--json` is available for scripts. Commands accept application ids only, never
-display names. There is no host selector in v1; apps are local-host only.
+display names.
 
 App sources install apps from a git repo (or local path) and update them with
 manual syncs. Every top-level repo directory with a valid `manifest.json` is

@@ -28,7 +28,6 @@ async function copyBuildOutput({ from, label, to }) {
 const entrypoints = [
   ["bb-app", "bb-app.js"],
   ["bb", "bb.js"],
-  ["bb-server", "bb-server.js"],
 ];
 
 for (const [sourceName, outputName] of entrypoints) {

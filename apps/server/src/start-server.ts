@@ -132,7 +132,6 @@ async function runLockedServer(
   const engineEntrypointConfig = loadHostDaemonEntrypointConfig();
   const serverEngine = await startServerEngine({
     deps: appDeps,
-    serverPort: serverConfig.BB_SERVER_PORT,
     serverUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
     ...(engineEntrypointConfig.BB_CLI_DIR !== undefined
       ? { bbExecutableDirectory: engineEntrypointConfig.BB_CLI_DIR }

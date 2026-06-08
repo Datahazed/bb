@@ -52,7 +52,6 @@ export interface QueueThreadStopCommandArgs {
 
 interface QueueThreadStartCommandEnvironment {
   cleanupRequestedAt: number | null;
-  hostId: string;
   id: string;
   path: string | null;
   status: EnvironmentStatus;

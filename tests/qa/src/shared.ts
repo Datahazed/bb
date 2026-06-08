@@ -10,17 +10,11 @@ import { fileURLToPath } from "node:url";
 import { hostSchema } from "@bb/domain";
 import type { Host } from "@bb/domain";
 import {
-  createHostJoinResponseSchema,
-  createLocalPersistentHostJoinRequest,
   projectResponseSchema,
-  type CreateHostJoinRequest,
-  type CreateHostJoinResponse,
   type CreateProjectRequest,
   type ProjectResponse,
 } from "@bb/server-contract";
 import { z } from "zod";
-
-export { createLocalPersistentHostJoinRequest };
 
 const execFile = promisify(execFileCallback);
 
@@ -32,10 +26,11 @@ const PROCESS_SCAN_MAX_BUFFER = 10 * 1024 * 1024;
 
 type EnvironmentMap = Record<string, string>;
 // Thread-context env the parent agent injects into every shell. A standalone
-// pair must not inherit it: BB_THREAD_STORAGE in particular points at the parent
-// thread's own storage subdirectory, which the daemon would otherwise adopt as
-// its storage root and diverge from the server's data-dir-derived path, breaking
-// manager thread.start with "Thread storage path escapes the storage root".
+// instance must not inherit it: BB_THREAD_STORAGE in particular points at the
+// parent thread's own storage subdirectory, which the standalone server would
+// otherwise adopt as its storage root and diverge from its data-dir-derived
+// path, breaking manager thread.start with "Thread storage path escapes the
+// storage root".
 const STANDALONE_THREAD_CONTEXT_ENV = [
   "BB_THREAD_ID",
   "BB_ENVIRONMENT_ID",
@@ -43,7 +38,6 @@ const STANDALONE_THREAD_CONTEXT_ENV = [
 ];
 
 interface StandaloneStateRuntime {
-  daemonPid: number | null;
   instanceId: string | null;
   parentPid: number | null;
   serverPid: number | null;
@@ -90,15 +84,15 @@ interface StartQaServerResult {
   serverUrl: string;
 }
 
-interface BuildDaemonRestartCommandArgs {
-  daemonPid: number | null | undefined;
-  daemonPort: number;
+interface BuildServerRestartCommandArgs {
   dataDir: string;
   entrypoint: string;
   envFilePath: string | null;
-  hostId: string;
+  instanceId: string;
   logPath: string;
   parentPid: number;
+  serverPid: number | null | undefined;
+  serverPort: number;
   serverUrl: string;
 }
 
@@ -137,11 +131,6 @@ interface WaitForOptions {
 }
 
 const standaloneStateSchema = z.object({
-  daemon: z
-    .object({
-      pid: z.number().int().positive().nullable().optional(),
-    })
-    .optional(),
   instanceId: z.string().nullable().optional(),
   parentPid: z.number().int().positive().nullable().optional(),
   paths: z
@@ -199,8 +188,8 @@ export function buildStandaloneShellExports(env: EnvironmentMap): string {
 }
 
 /**
- * Builds the standalone QA process environment. Isolates the pair from the
- * parent agent by stripping inherited thread context (see
+ * Builds the standalone QA process environment. Isolates the instance from
+ * the parent agent by stripping inherited thread context (see
  * STANDALONE_THREAD_CONTEXT_ENV) and applies provider-key policy: ambient
  * OPENAI_API_KEY is stripped unless BB_QA_OPENAI_API_KEY opts in.
  */
@@ -227,7 +216,6 @@ export function readStandaloneStateRuntime(
   state: StandaloneState | null,
 ): StandaloneStateRuntime {
   return {
-    daemonPid: state?.daemon?.pid ?? null,
     instanceId: state?.instanceId ?? null,
     parentPid: state?.parentPid ?? null,
     serverPid: state?.server?.pid ?? null,
@@ -315,32 +303,23 @@ export async function createProject(
   return projectResponseSchema.parse(await response.json());
 }
 
-export async function createHostJoin(
-  serverUrl: string,
-  body: CreateHostJoinRequest = { hostType: "persistent" },
-): Promise<CreateHostJoinResponse> {
-  const response = await fetch(`${serverUrl}/api/v1/hosts/join`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+/**
+ * The server runs the agents itself and reports exactly one synthetic
+ * connected host; project sources still require its id in the contract.
+ */
+export async function fetchLocalHost(serverUrl: string): Promise<Host> {
+  const response = await fetch(`${serverUrl}/api/v1/hosts`);
   if (!response.ok) {
     throw new Error(
-      `Failed to create host join material: ${response.status} ${await response.text()}`,
+      `Failed to list hosts: ${response.status} ${await response.text()}`,
     );
   }
-  return createHostJoinResponseSchema.parse(await response.json());
-}
-
-export async function createStandaloneHostJoin(
-  serverUrl: string,
-): Promise<CreateHostJoinResponse> {
-  return createHostJoin(
-    serverUrl,
-    createLocalPersistentHostJoinRequest({ hostId: null }),
-  );
+  const hosts = connectedHostListSchema.parse(await response.json());
+  const host = hosts.find((entry) => entry.status === "connected");
+  if (!host) {
+    throw new Error("Expected the server to report a connected local host");
+  }
+  return host;
 }
 
 export async function killProcess(
@@ -773,7 +752,6 @@ export async function cleanupStandaloneInstance(
   const runtime = readStandaloneStateRuntime(state);
   const killedPids = new Set<number>();
   const pidsToKill = new Set<number | null>([
-    runtime.daemonPid,
     runtime.serverPid,
     ...(runtime.instanceId
       ? await listProcessesByInstance(runtime.instanceId)
@@ -849,13 +827,13 @@ export async function cleanupStandaloneOrphans(): Promise<CleanupStandaloneResul
   };
 }
 
-export function buildDaemonRestartCommand(
-  args: BuildDaemonRestartCommandArgs,
+export function buildServerRestartCommand(
+  args: BuildServerRestartCommandArgs,
 ): string {
-  const shutdownCommand = args.daemonPid
+  const shutdownCommand = args.serverPid
     ? [
-        `(kill ${shellQuote(String(args.daemonPid))} >/dev/null 2>&1 || true)`,
-        `while kill -0 ${shellQuote(String(args.daemonPid))} 2>/dev/null; do sleep 1; done`,
+        `(kill ${shellQuote(String(args.serverPid))} >/dev/null 2>&1 || true)`,
+        `while kill -0 ${shellQuote(String(args.serverPid))} 2>/dev/null; do sleep 1; done`,
       ]
     : [];
 
@@ -867,25 +845,25 @@ export function buildDaemonRestartCommand(
     `case "${qaOpenAiApiKeyParameter}" in *[![:space:]]*) ` +
     `OPENAI_API_KEY="$${STANDALONE_OPENAI_API_KEY_ENV}"; export OPENAI_API_KEY ;; ` +
     "*) unset OPENAI_API_KEY ;; esac";
-  const daemonEnv = [
+  const serverEnv = [
     `BB_DATA_DIR=${shellQuote(args.dataDir)}`,
-    `BB_HOST_DAEMON_PORT=${shellQuote(String(args.daemonPort))}`,
-    `BB_SERVER_URL=${shellQuote(args.serverUrl)}`,
-    `BB_STANDALONE_PARENT_PID=${shellQuote(String(args.parentPid))}`,
+    `BB_SERVER_PORT=${shellQuote(String(args.serverPort))}`,
+    `${STANDALONE_INSTANCE_ENV}=${shellQuote(args.instanceId)}`,
+    `${STANDALONE_PARENT_PID_ENV}=${shellQuote(String(args.parentPid))}`,
   ].join(" ");
   const startCommand =
     `(set -a; ${envFileCommand}; set +a; ` +
     `${providerEnvCommand}; ` +
-    `${daemonEnv} exec node ${shellQuote(args.entrypoint)} ` +
+    `${serverEnv} exec node ${shellQuote(args.entrypoint)} ` +
     `>> ${shellQuote(args.logPath)} 2>&1) &`;
-  const waitForReconnectCommand = [
-    "connected=0",
-    `for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if curl -fsS ${shellQuote(`${args.serverUrl}/api/v1/hosts`)} | jq -e ${shellQuote(`any(.[]; .id == ${JSON.stringify(args.hostId)} and .status == "connected")`)} >/dev/null; then connected=1; break; fi`,
+  const waitForReadyCommand = [
+    "ready=0",
+    `for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if curl -fsS ${shellQuote(`${args.serverUrl}/api/v1/system/config`)} >/dev/null; then ready=1; break; fi`,
     "sleep 1",
     "done",
-    `[ "$connected" = 1 ]`,
+    `[ "$ready" = 1 ]`,
   ].join("; ");
-  const startAndWaitCommand = `${startCommand} ${waitForReconnectCommand}`;
+  const startAndWaitCommand = `${startCommand} ${waitForReadyCommand}`;
 
   return [...shutdownCommand, startAndWaitCommand].join("; ");
 }
@@ -907,28 +885,6 @@ export async function waitFor<TResult>(
   }
 
   throw new Error(`Timed out waiting for ${options.description}`);
-}
-
-export async function waitForConnectedHost(serverUrl: string): Promise<Host> {
-  return waitFor(
-    async () => {
-      let response;
-      try {
-        response = await fetch(`${serverUrl}/api/v1/hosts`);
-      } catch {
-        return null;
-      }
-      if (!response.ok) {
-        return null;
-      }
-      const hosts = connectedHostListSchema.parse(await response.json());
-      return hosts.find((host) => host.status === "connected") ?? null;
-    },
-    {
-      timeoutMs: 10_000,
-      description: "host daemon connection",
-    },
-  );
 }
 
 export async function waitForServerReady(serverUrl: string): Promise<boolean> {

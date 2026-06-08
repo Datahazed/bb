@@ -1,10 +1,9 @@
 /**
  * Adapted from `apps/host-daemon/src/runtime-shell-env.ts` (P1a engine
- * scaffold; the daemon copy dies in P1c). Two deliberate changes:
- * - `hostDaemonPort?` becomes required `serverPort` — in the merged process
- *   the port always exists, but the injected env var keeps the name
- *   `BB_HOST_DAEMON_PORT` (plan §5.9): the injected `bb` CLI discovers the
- *   local API through it, and the server now serves that surface itself.
+ * scaffold; the daemon copy died in P1c). Two deliberate changes:
+ * - The daemon-era `BB_HOST_DAEMON_PORT` injection is gone (plan §11 open
+ *   item 3): the injected `bb` CLI discovers the server through
+ *   `BB_SERVER_URL` alone and no longer reads a daemon port.
  * - The default CLI path resolves the `@bb/cli` package instead of a
  *   daemon-relative `../../cli/bin/bb` walk, which is wrong from
  *   `apps/server`.
@@ -23,7 +22,6 @@ export interface PrepareRuntimeShellEnvOptions {
   appsRootPath: string;
   bbExecutableDirectory: string;
   inheritedPath?: string;
-  serverPort: number;
   serverUrl: string;
 }
 
@@ -109,6 +107,5 @@ export function prepareRuntimeShellEnv(
     ),
     BB_APPS_ROOT: options.appsRootPath,
     BB_SERVER_URL: options.serverUrl,
-    BB_HOST_DAEMON_PORT: String(options.serverPort),
   };
 }

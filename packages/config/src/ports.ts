@@ -4,12 +4,8 @@ import {
   type EnvLoaderArgs,
   type EnvVarDefinition,
 } from "./env.js";
-import { BB_HOST_DAEMON_PORT_ENV, BB_SERVER_PORT_ENV } from "./env-vars.js";
-import {
-  BB_PROD_HOST_DAEMON_PORT,
-  BB_PROD_SERVER_PORT,
-  resolveDevInstanceConfig,
-} from "./runtime.js";
+import { BB_SERVER_PORT_ENV } from "./env-vars.js";
+import { BB_PROD_SERVER_PORT, resolveDevInstanceConfig } from "./runtime.js";
 
 export interface RuntimePortLoaderArgs extends EnvLoaderArgs {
   repoRoot?: string;
@@ -26,7 +22,7 @@ interface LoadRuntimePortValueArgs extends RuntimePortLoaderArgs {
   devDefault: number | undefined;
 }
 
-function resolveDevServerPortDefault(
+export function resolveServerPortDefault(
   args: RuntimePortDefaultArgs,
 ): number | undefined {
   if (args.repoRoot === undefined) {
@@ -37,31 +33,6 @@ function resolveDevServerPortDefault(
     homeDir: args.homeDir,
     repoRoot: args.repoRoot,
   }).ports.serverPort;
-}
-
-function resolveDevHostDaemonPortDefault(
-  args: RuntimePortDefaultArgs,
-): number | undefined {
-  if (args.repoRoot === undefined) {
-    return undefined;
-  }
-
-  return resolveDevInstanceConfig({
-    homeDir: args.homeDir,
-    repoRoot: args.repoRoot,
-  }).ports.hostDaemonPort;
-}
-
-export function resolveServerPortDefault(
-  args: RuntimePortDefaultArgs,
-): number | undefined {
-  return resolveDevServerPortDefault(args);
-}
-
-export function resolveHostDaemonPortDefault(
-  args: RuntimePortDefaultArgs,
-): number | undefined {
-  return resolveDevHostDaemonPortDefault(args);
 }
 
 export function loadRuntimePortValue(args: LoadRuntimePortValueArgs): number {
@@ -101,23 +72,5 @@ export function loadServerPortValue(args: RuntimePortLoaderArgs = {}): number {
     homeDir: loader.context.homeDir,
     mode: loader.mode,
     prodDefault: BB_PROD_SERVER_PORT,
-  });
-}
-
-export function loadHostDaemonPortValue(
-  args: RuntimePortLoaderArgs = {},
-): number {
-  const loader = resolveEnvLoader(args);
-  return loadRuntimePortValue({
-    ...args,
-    definition: BB_HOST_DAEMON_PORT_ENV,
-    devDefault: resolveHostDaemonPortDefault({
-      homeDir: loader.context.homeDir,
-      repoRoot: args.repoRoot,
-    }),
-    env: loader.env,
-    homeDir: loader.context.homeDir,
-    mode: loader.mode,
-    prodDefault: BB_PROD_HOST_DAEMON_PORT,
   });
 }

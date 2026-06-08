@@ -2,10 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveCliExecution } from "../src/commands/run-cli.js";
-import {
-  expectedDevPorts,
-  expectedDevServerUrl,
-} from "./dev-instance-expectations.js";
+import { expectedDevServerUrl } from "./dev-instance-expectations.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "..", "..", "..");
@@ -27,9 +24,6 @@ describe("run-cli", () => {
       "list",
     ]);
     expect(execution.env.BB_SERVER_URL).toBe(expectedDevServerUrl(repoRoot));
-    expect(execution.env.BB_HOST_DAEMON_PORT).toBe(
-      String(expectedDevPorts(repoRoot).hostDaemonPort),
-    );
   });
 
   it("runs the built CLI in production mode", () => {
@@ -45,11 +39,9 @@ describe("run-cli", () => {
   it("lets explicit development CLI targets win", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("BB_SERVER_URL", "http://localhost:4444");
-    vi.stubEnv("BB_HOST_DAEMON_PORT", "5555");
 
     const execution = resolveCliExecution(["status"]);
 
     expect(execution.env.BB_SERVER_URL).toBe("http://localhost:4444");
-    expect(execution.env.BB_HOST_DAEMON_PORT).toBe("5555");
   });
 });

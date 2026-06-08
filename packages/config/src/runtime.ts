@@ -7,7 +7,6 @@ export type BbRuntimeMode = "dev" | "prod";
 export interface DevPortSet {
   appPort: number;
   devEnvPort: number;
-  hostDaemonPort: number;
   serverPort: number;
 }
 
@@ -74,7 +73,6 @@ export interface ResolvePortFromEnvArgs {
 export const BB_PROD_DATA_DIR_NAME = ".bb";
 export const BB_DEV_DATA_ROOT_DIR = ".bb-dev";
 export const BB_PROD_SERVER_PORT = 38886;
-export const BB_PROD_HOST_DAEMON_PORT = 38887;
 export const BB_LOOPBACK_HOST = "127.0.0.1";
 export const BB_SQLITE_DATABASE_FILE_NAME = "bb.db";
 
@@ -82,7 +80,6 @@ const DEV_HASH_LENGTH = 12;
 const DEV_PORT_BUCKETS = 8_000;
 const DEV_APP_PORT_BASE = 11_000;
 const DEV_SERVER_PORT_BASE = 19_000;
-const DEV_HOST_DAEMON_PORT_BASE = 27_000;
 const DEV_ENV_PORT_BASE = 43_000;
 
 function createRepoRootHash(repoRootPath: string): string {
@@ -128,7 +125,6 @@ function resolvePorts(repoRootPath: string): DevPortSet {
   return {
     appPort: DEV_APP_PORT_BASE + offset,
     devEnvPort: DEV_ENV_PORT_BASE + offset,
-    hostDaemonPort: DEV_HOST_DAEMON_PORT_BASE + offset,
     serverPort: DEV_SERVER_PORT_BASE + offset,
   };
 }
@@ -269,7 +265,6 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
     BB_DATA_DIR: args.config.dataDir,
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
     BB_DEV_ENV_PORT: String(args.config.ports.devEnvPort),
-    BB_HOST_DAEMON_PORT: String(args.config.ports.hostDaemonPort),
     BB_SERVER_PORT: String(args.config.ports.serverPort),
     BB_SERVER_URL: args.config.serverUrl,
     NODE_ENV: "development",

@@ -63,38 +63,38 @@ starts.
 | `BB_APP_URL`       | `bb-app config` | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.               |
 | `BB_INFERENCE`     | `bb-app config` | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.4-mini`.                                   |
 | `BB_TRANSCRIPTION` | `bb-app config` | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-4o-mini-transcribe`.                        |
-| `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine.                                    |
+| `BB_SERVER_URL`    | `bb-app config` | Remote CLI use          | Server URL for the standalone `bb` CLI on the current machine.                                                           |
 | `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                  |
 | `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-4o-transcribe`. |
 
-By default, helper inference and voice transcription use Codex credentials from
-the host daemon. Run `codex login` on the host for the default path. Set
+By default, helper inference and voice transcription use Codex credentials on
+the machine running bb. Run `codex login` there for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
 
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
-bundled `bb` CLI or a standalone host daemon.
+bundled `bb` CLI.
 
 ## Startup Flags
 
 Use launcher flags for per-run startup details:
 
 ```bash
-npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
+npx bb-app --data-dir ~/.bb-test --server-port 48886
 ```
 
 The data directory is the root directory for all bb-managed state: the SQLite
-database, logs, host identity, and thread storage. It defaults to `~/.bb/` for
+database, logs, and thread storage. It defaults to `~/.bb/` for
 the packaged app. The `pnpm dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your
 home directory, plus a short hash suffix. Use `--data-dir` to point packaged-app
 instances at different data directories for fully isolated environments.
 
-If the default ports are already in use, set explicit ports before starting:
+If the default port is already in use, set an explicit port before starting:
 
 ```bash
-npx bb-app --server-port 48886 --host-daemon-port 48887
+npx bb-app --server-port 48886
 ```
 
 ## Source Development
@@ -110,16 +110,14 @@ cp .env.example .env
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
 `.env.development`, and `.env.development.local`, then overrides the instance
-selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, Vite
-port, and dev-env port) with deterministic values derived from the checkout
-path. The SQLite database path is always derived from `BB_DATA_DIR`.
+selectors (`BB_DATA_DIR`, server URL/port, Vite port, and dev-env port) with
+deterministic values derived from the checkout path. The SQLite database path is always derived from `BB_DATA_DIR`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
 Production startup from source goes through the packaged launcher path:
-`pnpm start` runs `packages/bb-app/dist/bb-app.js`, and
-`pnpm start:host-daemon` runs `packages/bb-app/dist/bb-app.js host-daemon`.
-Source-only scripts do not own production ports or data-dir defaults.
+`pnpm start` runs `packages/bb-app/dist/bb-app.js`. Source-only scripts do not
+own production ports or data-dir defaults.
 
 Source checkout commands such as `pnpm bb`, `pnpm bb:dev`, and `pnpm reset`
 are thin wrappers around `@bb/scripts`. Those wrappers force `NODE_ENV` to the

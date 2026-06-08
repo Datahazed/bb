@@ -17,7 +17,6 @@ Use bb thread commands for most manager interactions.
     --model <model>                       Model override
     --reasoning-level <level>             Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --permission-mode <mode>              Permission mode: full, workspace-write, or readonly
-    --host <id>                           Target host (defaults to local host)
     --json                                Print machine-readable JSON output
 
   When --provider and --model are omitted, the project's remembered manager defaults apply first.

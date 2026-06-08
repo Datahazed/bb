@@ -61,9 +61,10 @@ npx bb-app@latest
 
 Then open: `http://localhost:38886`
 
-`npx bb-app@latest` downloads the published `bb-app` package, starts the server and
-local host daemon, and serves the web app. It stores bb-managed state under
-`~/.bb/` by default. Press `Ctrl+C` in the terminal to stop both processes.
+`npx bb-app@latest` downloads the published `bb-app` package and starts the bb
+server — one process that serves the web app and runs your coding agents. It
+stores bb-managed state under `~/.bb/` by default. Press `Ctrl+C` in the
+terminal to stop it.
 
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.
@@ -112,5 +113,4 @@ behavior, see the
 - [Platform support](https://github.com/ymichael/bb/blob/main/docs/platform-support.md)
 - [Configuration](https://github.com/ymichael/bb/blob/main/docs/configuration.md)
 - [Using bb on multiple devices](https://github.com/ymichael/bb/blob/main/docs/multiple-devices.md)
-- [Adding another host](https://github.com/ymichael/bb/blob/main/docs/additional-hosts.md)
 - [Worktrees and setup scripts](https://github.com/ymichael/bb/blob/main/docs/worktrees.md)

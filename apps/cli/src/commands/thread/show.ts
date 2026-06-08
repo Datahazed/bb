@@ -11,6 +11,7 @@ import {
   type ThreadTimelinePendingTodos,
   type WorkspaceStatus,
 } from "@bb/domain";
+import type { EnvironmentDisplayInfo } from "@bb/core-ui";
 import type { BbSdk } from "@bb/sdk";
 import type {
   EnvironmentDiffQuery,
@@ -24,7 +25,6 @@ import {
   requireThreadIdWithLabelOrSelf,
 } from "../helpers.js";
 import {
-  type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "../environment-helpers.js";
@@ -420,7 +420,7 @@ export function registerShowCommand(
 
 function printThreadStatus(
   payload: ThreadStatusPayload,
-  environmentInfo: ThreadEnvironmentInfo | null,
+  environmentInfo: EnvironmentDisplayInfo | null,
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);

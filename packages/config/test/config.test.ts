@@ -42,7 +42,6 @@ function createServerRuntimeEnv(
 ): NodeJS.ProcessEnv {
   return {
     BB_DATA_DIR: "/tmp/bb-data",
-    BB_HOST_DAEMON_PORT: "5555",
     BB_SERVER_PORT: "4444",
     NODE_ENV: "development",
     OPENAI_API_KEY: "test-openai-key",
@@ -50,11 +49,10 @@ function createServerRuntimeEnv(
   };
 }
 
-function createHostDaemonRuntimeEnv(
+function createCliRuntimeEnv(
   overrides: NodeJS.ProcessEnv = {},
 ): NodeJS.ProcessEnv {
   return {
-    BB_HOST_DAEMON_PORT: "5555",
     BB_SERVER_URL: "http://localhost:4444",
     NODE_ENV: "development",
     ...overrides,
@@ -280,14 +278,6 @@ describe("port helpers", () => {
         name: "BB_SERVER_PORT",
       }),
     ).toThrow("BB_SERVER_PORT must be a valid TCP port");
-
-    expect(() =>
-      loadCliConfig({
-        env: createHostDaemonRuntimeEnv({
-          BB_HOST_DAEMON_PORT: " 5555",
-        }),
-      }),
-    ).toThrow("BB_HOST_DAEMON_PORT must be a valid TCP port");
   });
 });
 
@@ -305,7 +295,6 @@ describe("consumer-specific config", () => {
     });
 
     expect(serverConfig.BB_SERVER_PORT).toBe(4444);
-    expect(serverConfig.BB_HOST_DAEMON_PORT).toBe(5555);
     expect(serverConfig.databasePath).toBe("/tmp/bb-data/bb.db");
     expect(serverConfig.BB_APP_URL).toBe("");
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
@@ -423,7 +412,7 @@ describe("consumer-specific config", () => {
   });
 
   it("requires a valid server URL for the CLI", () => {
-    const env = createHostDaemonRuntimeEnv({
+    const env = createCliRuntimeEnv({
       BB_SERVER_URL: "http://localhost:9999",
     });
     const cliConfig = loadCliConfig({ env });
@@ -432,7 +421,7 @@ describe("consumer-specific config", () => {
 
     expect(() =>
       loadCliConfig({
-        env: createHostDaemonRuntimeEnv({
+        env: createCliRuntimeEnv({
           BB_SERVER_URL: "not-a-url",
         }),
       }),
@@ -440,7 +429,7 @@ describe("consumer-specific config", () => {
   });
 
   it("normalizes server URL whitespace consistently for the CLI", () => {
-    const env = createHostDaemonRuntimeEnv({
+    const env = createCliRuntimeEnv({
       BB_SERVER_URL: " http://localhost:9999 ",
     });
     const cliConfig = loadCliConfig({ env });
@@ -449,7 +438,7 @@ describe("consumer-specific config", () => {
 
     expect(() =>
       loadCliConfig({
-        env: createHostDaemonRuntimeEnv({
+        env: createCliRuntimeEnv({
           BB_SERVER_URL: "   ",
         }),
       }),
@@ -486,14 +475,12 @@ describe("consumer-specific config", () => {
   it("lets explicit CLI env overrides win over NODE_ENV-selected defaults", () => {
     const cliConfig = loadCliConfig({
       env: {
-        BB_HOST_DAEMON_PORT: "3999",
         BB_SERVER_URL: "http://localhost:9999",
         NODE_ENV: "development",
       },
     });
 
     expect(cliConfig.BB_SERVER_URL).toBe("http://localhost:9999");
-    expect(cliConfig.BB_HOST_DAEMON_PORT).toBe(3999);
   });
 
   it("allows app and external URLs to be omitted in production server config", () => {

@@ -1,15 +1,8 @@
 /**
  * Builds the CORS allowlist of origins the BB app frontend may be served
- * from. The same allowlist is enforced by:
- *
- *   - the BB server's API CORS middleware
- *   - the host daemon's local API CORS middleware
- *
- * so that cross-origin webpages can't drive either API from the user's
- * browser. Each consumer derives its own list from its own config rather
- * than sharing a runtime singleton, because the server and daemon run as
- * separate processes that don't necessarily agree on every value (the
- * daemon, for example, learns the server's port by parsing `BB_SERVER_URL`).
+ * from, enforced by the server's app-wide CORS middleware (which also covers
+ * the local-API routes the frontend reaches at root paths) so that
+ * cross-origin webpages can't drive the API from the user's browser.
  *
  * Both `127.0.0.1` and `localhost` variants are emitted because browsers
  * treat them as distinct origins for CORS purposes.

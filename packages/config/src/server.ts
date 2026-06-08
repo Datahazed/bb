@@ -25,7 +25,6 @@ import {
 } from "./env-vars.js";
 import { loadFeatureFlags } from "./feature-flags.js";
 import { assignIfDefined } from "./objects.js";
-import { loadHostDaemonPortValue } from "./ports.js";
 import { loadServerPortConfig, type ServerPortConfig } from "./server-port.js";
 
 export interface ServerConfig
@@ -36,7 +35,6 @@ export interface ServerConfig
   /** Dev replay capture, consumed by the in-process engine (single-host plan §2 Decision 12). */
   BB_DEV_REPLAY_CAPTURE: boolean;
   BB_EXTERNAL_URL: string;
-  BB_HOST_DAEMON_PORT: number;
   BB_INFERENCE: string;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
@@ -100,12 +98,6 @@ export function loadServerConfig(
       defaultValue: DEFAULT_BB_EXTERNAL_URL,
       definition: BB_EXTERNAL_URL_ENV,
       env: loader.env,
-    }),
-    BB_HOST_DAEMON_PORT: loadHostDaemonPortValue({
-      env: loader.env,
-      homeDir: loader.context.homeDir,
-      mode: loader.mode,
-      repoRoot: args.repoRoot,
     }),
     BB_INFERENCE: readEnvVarWithDefault({
       context: loader.context,

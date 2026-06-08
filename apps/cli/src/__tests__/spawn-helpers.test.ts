@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpawnEnvironment,
   looksLikePath,
-  requireHostId,
+  resolveSpawnEnvironmentValue,
 } from "../commands/thread/spawn.js";
 import {
   parseThreadWaitTimeoutSeconds,
@@ -41,31 +41,36 @@ describe("looksLikePath", () => {
   });
 });
 
-describe("requireHostId", () => {
-  it("returns the host ID when non-null", () => {
-    expect(requireHostId("host-123")).toBe("host-123");
+describe("resolveSpawnEnvironmentValue", () => {
+  it("passes path-shaped values through without id validation", () => {
+    expect(resolveSpawnEnvironmentValue("/tmp/some/repo")).toBe(
+      "/tmp/some/repo",
+    );
+    expect(resolveSpawnEnvironmentValue("./relative")).toBe("./relative");
+    expect(resolveSpawnEnvironmentValue("~/home/dir")).toBe("~/home/dir");
   });
 
-  it("throws when host ID is null", () => {
-    expect(() => requireHostId(null)).toThrow("Cannot reach local host daemon");
+  it("validates id-shaped values as ids", () => {
+    expect(resolveSpawnEnvironmentValue("env_abc123")).toBe("env_abc123");
+    expect(() => resolveSpawnEnvironmentValue("not an id")).toThrow(
+      "--environment flag",
+    );
   });
 
-  it("throws when host ID is empty string", () => {
-    expect(() => requireHostId("")).toThrow("Cannot reach local host daemon");
+  it("returns undefined for missing or blank values", () => {
+    expect(resolveSpawnEnvironmentValue(undefined)).toBeUndefined();
+    expect(resolveSpawnEnvironmentValue("   ")).toBeUndefined();
   });
 });
 
 describe("buildSpawnEnvironment", () => {
-  const HOST_ID = "test-host-id";
-
   it("returns unmanaged host with null path when no flags are provided", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: { type: "unmanaged", path: null },
     });
   });
@@ -73,33 +78,22 @@ describe("buildSpawnEnvironment", () => {
   it("returns personal workspace when personal project defaults are active", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: true,
-      hostId: null,
     });
     expect(result).toEqual({
       type: "host",
+      hostId: "local",
       workspace: { type: "personal" },
     });
   });
 
-  it("throws for unsupported managed environment kinds", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        newEnvironmentKind: "docker",
-        hostId: null,
-      }),
-    ).toThrow("Unknown environment kind 'docker'");
-  });
-
-  it("returns managed-worktree for --new-environment worktree with host", () => {
+  it("returns managed-worktree for --new-environment worktree", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       newEnvironmentKind: "worktree",
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: {
         type: "managed-worktree",
         baseBranch: { kind: "default" },
@@ -111,12 +105,11 @@ describe("buildSpawnEnvironment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       newEnvironmentKind: "worktree",
-      hostId: HOST_ID,
       baseBranch: "release-1.2",
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: {
         type: "managed-worktree",
         baseBranch: { kind: "named", name: "release-1.2" },
@@ -124,22 +117,11 @@ describe("buildSpawnEnvironment", () => {
     });
   });
 
-  it("throws for --new-environment worktree when host is null", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        newEnvironmentKind: "worktree",
-        hostId: null,
-      }),
-    ).toThrow("Cannot reach local host daemon");
-  });
-
   it("throws for unknown --new-environment kind", () => {
     expect(() =>
       buildSpawnEnvironment({
         defaultPersonalWorkspace: false,
         newEnvironmentKind: "docker",
-        hostId: HOST_ID,
       }),
     ).toThrow("Unknown environment kind 'docker'");
   });
@@ -150,7 +132,6 @@ describe("buildSpawnEnvironment", () => {
         defaultPersonalWorkspace: false,
         environmentValue: "some-env-id",
         newEnvironmentKind: "docker",
-        hostId: HOST_ID,
       }),
     ).toThrow("Cannot combine --environment with --new-environment");
   });
@@ -159,11 +140,10 @@ describe("buildSpawnEnvironment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       environmentValue: "/absolute/workspace",
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: { type: "unmanaged", path: "/absolute/workspace" },
     });
   });
@@ -172,11 +152,10 @@ describe("buildSpawnEnvironment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       environmentValue: "./my-project",
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: { type: "unmanaged", path: "./my-project" },
     });
   });
@@ -185,7 +164,6 @@ describe("buildSpawnEnvironment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       environmentValue: "env-uuid-123",
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "reuse",
@@ -197,11 +175,10 @@ describe("buildSpawnEnvironment", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       newEnvironmentKind: "  worktree  ",
-      hostId: HOST_ID,
     });
     expect(result).toEqual({
       type: "host",
-      hostId: HOST_ID,
+      hostId: "local",
       workspace: {
         type: "managed-worktree",
         baseBranch: { kind: "default" },

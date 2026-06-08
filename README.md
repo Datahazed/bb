@@ -59,11 +59,10 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | [`packages/bb-app`](./packages/bb-app)                             | Published npm package and `npx bb-app@latest` launcher.                               |
 | [`apps/app`](./apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.              |
-| [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy. |
-| [`apps/host-daemon`](./apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.            |
+| [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, workspace provisioning, and the agent provider runtime. |
 | [`apps/cli`](./apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                             |
 | [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                           |
-| [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                           |
+| [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Schemas for the server's machine-local API used by the app and CLI (folder picker, open-in-editor, provider CLI status). |
 
 ## Development
 
@@ -85,17 +84,16 @@ Development behavior is intentionally split:
 
 - the app hot reloads itself
 - the server does not hot reload
-- the host daemon does not hot reload
 
-When you want the server and host daemon to pick up the latest build output, use:
+When you want the server to pick up the latest build output, use:
 
 ```bash
 pnpm dev:restart
-pnpm dev:restart-server
-pnpm dev:restart-host-daemon
 ```
 
-These rebuild first, then restart only the targeted stateful services.
+This rebuilds first, then restarts the server. A dev restart interrupts any
+in-flight agent turns; threads show the standard interrupted state and you
+re-send.
 
 To test the release-style package launcher from a source checkout:
 
@@ -106,18 +104,6 @@ pnpm start
 That builds the local `bb-app` package artifacts and runs
 `packages/bb-app/dist/bb-app.js`, matching the published `npx bb-app@latest` path
 without downloading from npm.
-
-To test an additional host against that dev server, use:
-
-```bash
-BB_HOST_DAEMON_PORT=39999 pnpm dev:host-daemon -- --auto-join
-```
-
-That runs a second host daemon against the dev server and stores its state
-under the current checkout's dev data directory. The extra daemon requires an
-explicit unused `BB_HOST_DAEMON_PORT` so it does not collide with the primary
-dev daemon. On first run, it requests local enrollment from the dev server;
-after enrollment, the daemon persists its auth state locally.
 
 ```bash
 pnpm bb --help            # built CLI, targets the default/prod instance
@@ -135,36 +121,31 @@ These reset commands prompt for confirmation before deleting anything.
 
 ### The runtime pieces
 
-| Component       | Role                                                                                                                                                                                                                                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server**      | Central hub. Stores all state in a SQLite database, exposes an HTTP API, and pushes change notifications over WebSocket. Stateless itself — the DB is the source of truth. Routes work to hosts by queuing commands.                                                                                    |
-| **Host daemon** | Runs on each host (your laptop or a remote server). Connects to the server, picks up commands, provisions workspaces, runs agent provider processes, and streams events back. Exposes a local HTTP API for the app and CLI to do machine-local things (open editor, pick folders, check daemon status). |
-| **App**         | Web UI for inspecting projects and threads, following progress, and steering work.                                                                                                                                                                                                                      |
-| **CLI** (`bb`)  | First-class interface for both users and agents. Same capabilities as the app, scriptable.                                                                                                                                                                                                              |
+| Component      | Role                                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Server**     | One process that runs everything: stores all state in a SQLite database, exposes an HTTP API, pushes change notifications over WebSocket, provisions workspaces, and runs the agent provider processes directly. The DB is the source of truth. It also serves a machine-local API for the app and CLI (open editor, pick folders, provider CLI status). |
+| **App**        | Web UI for inspecting projects and threads, following progress, and steering work.                                                                                                                                                                                                                                                                          |
+| **CLI** (`bb`) | First-class interface for both users and agents. Same capabilities as the app, scriptable.                                                                                                                                                                                                                                                                  |
 
 ### Data model
 
 The core entities and how they relate:
 
-**Project** — the top-level container, usually mapped to a repository. A project has one or more **sources** that say where its code lives: local paths on specific hosts.
+**Project** — the top-level container, usually mapped to a repository. A project has one or more **sources** that say where its code lives: local paths on the machine running bb.
 
 **Thread** — the unit of work. Each thread tracks a conversation with an agent provider, has lifecycle state, and produces an append-only stream of **events** (messages, tool calls, file changes, etc.). Threads can be **standard** (does work directly) or **manager** (coordinates other threads). Threads can own child threads for delegation.
 
-**Environment** — the execution context for a thread. It binds a workspace (a directory on disk) to a host. An environment can be **unmanaged** (point at an existing directory), or **managed**. Environments managed by bb will be cleaned up when there are no longer any unarchived threads using it. Multiple threads can share an environment.
-
-**Host** — a long-lived machine that runs a daemon, such as your laptop or a remote server.
-
-**Commands and events** — the server talks to daemons by queuing commands (provision an environment, start a thread, stop a thread). Daemons report back by posting events. This is an asynchronous command/event protocol — the server queues work, the daemon picks it up, results flow back as events.
+**Environment** — the execution context for a thread: a workspace (a directory on disk) on the machine running bb. An environment can be **unmanaged** (point at an existing directory), or **managed**. Environments managed by bb will be cleaned up when there are no longer any unarchived threads using it. Multiple threads can share an environment.
 
 ### Contracts and boundaries
 
-Two contract packages define the boundaries between components:
+Two contract packages define the boundaries between clients and the server:
 
 **`@bb/server-contract`** — the HTTP + WebSocket API between clients (app, CLI) and the server. Route schemas, request/response types, WebSocket notification types.
 
-**`@bb/host-daemon-contract`** — the protocol between the server and host daemons. Command types, event types, session lifecycle, the local API for app/CLI.
+**`@bb/host-daemon-contract`** — the schemas for the server's machine-local API: the endpoints the app and CLI use for machine-local things like the folder picker, open-in-editor, and provider CLI status.
 
-Implementation packages never import across these boundaries. The server doesn't know how workspaces are provisioned. The daemon doesn't know about threads or projects beyond what commands tell it.
+Clients only talk to the server through these contracts — they never reach into server internals.
 
 ## Further Reading
 
@@ -172,7 +153,6 @@ Implementation packages never import across these boundaries. The server doesn't
 - [Platform support](docs/platform-support.md)
 - [Configuration](docs/configuration.md)
 - [Using bb on multiple devices](docs/multiple-devices.md)
-- [Adding another host](docs/additional-hosts.md)
 - [Worktrees and setup scripts](docs/worktrees.md)
 
 ## Contributing

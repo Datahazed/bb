@@ -9,7 +9,6 @@ const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
-const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
@@ -346,14 +345,14 @@ async function smokeProviderBridgeBundles(tarballPath) {
   await smokeBridgeModelList({
     bridgePath: join(
       packageDir,
-      "host-daemon",
+      "server",
       "dist",
       "bb-claude-code-bridge.mjs",
     ),
     label: "Claude Code bridge model/list",
   });
   await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
+    bridgePath: join(packageDir, "server", "dist", "bb-pi-bridge.mjs"),
     label: "Pi bridge model/list",
   });
 }
@@ -368,16 +367,6 @@ async function smokeHelpCommands(tarballPath) {
     args: createNpxArgs(tarballPath, "bb", ["--help"]),
     command: "npx",
     label: "bb cli help",
-  });
-  await runCommand({
-    args: createNpxArgs(tarballPath, "bb-server", ["--help"]),
-    command: "npx",
-    label: "bb-server help",
-  });
-  await runCommand({
-    args: createNpxArgs(tarballPath, "bb-host-daemon", ["--help"]),
-    command: "npx",
-    label: "bb-host-daemon help",
   });
 }
 
@@ -420,10 +409,24 @@ async function smokeConfigCommand(tarballPath) {
   }
 }
 
+async function fetchJson({ label, url }) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${label} responded with HTTP ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      `${label} responded with content-type ${contentType}; expected JSON ` +
+        "(an HTML answer means the SPA catch-all swallowed the route)",
+    );
+  }
+  return response.json();
+}
+
 async function smokeFullStack(tarballPath) {
   const dataDir = join(tempRoot, "full-stack-data");
   const serverPort = await getFreePort();
-  const daemonPort = await getFreePort();
   const serverUrl = `http://127.0.0.1:${serverPort}`;
   const stack = spawnManagedProcess({
     args: createNpxArgs(tarballPath, "bb-app", [
@@ -431,8 +434,6 @@ async function smokeFullStack(tarballPath) {
       dataDir,
       "--server-port",
       String(serverPort),
-      "--host-daemon-port",
-      String(daemonPort),
     ]),
     command: "npx",
     env: {
@@ -447,17 +448,33 @@ async function smokeFullStack(tarballPath) {
       processRef: stack,
       url: `${serverUrl}/health`,
     });
-    await waitForHttp({
-      label: stack.label,
-      processRef: stack,
-      url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/health`,
+
+    // The server answers the former daemon local API on its own port; the
+    // frontend silently disables local features on any drift here.
+    const status = await fetchJson({
+      label: "local API /status",
+      url: `${serverUrl}/status`,
     });
+    if (status.hostId !== "local" || status.connected !== true) {
+      throw new Error(
+        `Unexpected /status payload: ${JSON.stringify(status)}`,
+      );
+    }
+    const systemConfig = await fetchJson({
+      label: "/api/v1/system/config",
+      url: `${serverUrl}/api/v1/system/config`,
+    });
+    if (systemConfig.hostDaemonPort !== serverPort) {
+      throw new Error(
+        `Expected hostDaemonPort ${serverPort}, received ${systemConfig.hostDaemonPort}`,
+      );
+    }
+
     await runCommand({
       args: createNpxArgs(tarballPath, "bb", ["status"]),
       command: "npx",
       env: {
         BB_DATA_DIR: dataDir,
-        BB_HOST_DAEMON_PORT: String(daemonPort),
         BB_SERVER_URL: serverUrl,
       },
       label: "bb cli status",
@@ -467,82 +484,12 @@ async function smokeFullStack(tarballPath) {
   }
 }
 
-async function smokeDaemonJoin(tarballPath) {
-  const serverDataDir = join(tempRoot, "join-server-data");
-  const daemonDataDir = join(tempRoot, "join-daemon-data");
-  const serverPort = await getFreePort();
-  const daemonPort = await getFreePort();
-  const serverUrl = `http://127.0.0.1:${serverPort}`;
-  const staleEnvServerUrl = `http://127.0.0.1:${await getFreePort()}`;
-  const server = spawnManagedProcess({
-    args: createNpxArgs(tarballPath, "bb-server", [
-      "--data-dir",
-      serverDataDir,
-      "--server-port",
-      String(serverPort),
-      "--host-daemon-port",
-      String(daemonPort),
-    ]),
-    command: "npx",
-    env: {
-      BB_LOG_LEVEL: "warn",
-    },
-    label: "bb-server",
-  });
-
-  let daemon;
-  try {
-    await waitForHttp({
-      label: server.label,
-      processRef: server,
-      url: `${serverUrl}/health`,
-    });
-    daemon = spawnManagedProcess({
-      args: createNpxArgs(tarballPath, "bb-app", [
-        "host-daemon",
-        "join",
-        "--data-dir",
-        daemonDataDir,
-        "--server-url",
-        serverUrl,
-        "--host-daemon-port",
-        String(daemonPort),
-      ]),
-      command: "npx",
-      env: {
-        BB_LOG_LEVEL: "warn",
-        BB_SERVER_URL: staleEnvServerUrl,
-      },
-      label: "bb-app host-daemon join",
-    });
-    await waitForHttp({
-      label: daemon.label,
-      processRef: daemon,
-      url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/health`,
-    });
-    const configJson = JSON.parse(
-      await readFile(join(daemonDataDir, "config.json"), "utf8"),
-    );
-    if (configJson.serverUrl !== serverUrl) {
-      throw new Error(
-        `Expected persisted server URL ${serverUrl}, received ${configJson.serverUrl}`,
-      );
-    }
-  } finally {
-    if (daemon) {
-      await stopManagedProcess(daemon);
-    }
-    await stopManagedProcess(server);
-  }
-}
-
 try {
   const tarballPath = await packTarball();
   await smokeProviderBridgeBundles(tarballPath);
   await smokeHelpCommands(tarballPath);
   await smokeConfigCommand(tarballPath);
   await smokeFullStack(tarballPath);
-  await smokeDaemonJoin(tarballPath);
   process.stdout.write("bb-app tarball smoke passed\n");
 } finally {
   await rm(tempRoot, { force: true, recursive: true });

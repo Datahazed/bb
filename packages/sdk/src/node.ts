@@ -1,8 +1,4 @@
 import { loadCliConfig, type CliConfig } from "@bb/config/cli";
-import {
-  createHostDaemonLocalClient,
-  DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
-} from "@bb/host-daemon-contract";
 import { createBbSdk, type BbSdk } from "./core.js";
 import { createNodeWebsocketFactory } from "./node-websocket.js";
 import {
@@ -30,18 +26,8 @@ export interface CreateNodeBbSdkArgs extends CreateNodeTransportArgs {
   context?: BbSdkContext;
 }
 
-export interface FetchLocalHostIdArgs {
-  cliConfig?: CliConfig;
-  hostDaemonUrl?: string;
-}
-
 function resolveCliConfig(cliConfig?: CliConfig): CliConfig {
   return cliConfig ?? loadCliConfig();
-}
-
-function resolveHostDaemonUrl(cliConfig?: CliConfig): string {
-  const config = resolveCliConfig(cliConfig);
-  return `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${config.BB_HOST_DAEMON_PORT}`;
 }
 
 export function createNodeTransport(
@@ -67,24 +53,6 @@ export function createNodeBbSdk(args: CreateNodeBbSdkArgs = {}): BbSdk {
     context: args.context,
     transport: createNodeTransport(args),
   });
-}
-
-export async function fetchLocalHostId(
-  args: FetchLocalHostIdArgs = {},
-): Promise<string | null> {
-  try {
-    const client = createHostDaemonLocalClient(
-      args.hostDaemonUrl ?? resolveHostDaemonUrl(args.cliConfig),
-    );
-    const response = await client.status.$get();
-    if (!response.ok) {
-      return null;
-    }
-    const body = await response.json();
-    return body.hostId;
-  } catch {
-    return null;
-  }
 }
 
 export {

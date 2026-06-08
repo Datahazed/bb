@@ -159,7 +159,6 @@ async function queueActiveManagerSystemMessage(
     },
     environment: {
       id: args.environment.id,
-      hostId: args.environment.hostId,
       cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
@@ -209,7 +208,6 @@ async function queueReadyManagerSystemMessage(
     permissionEscalation,
     environment: {
       id: args.environment.id,
-      hostId: args.environment.hostId,
       cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,

@@ -387,7 +387,6 @@ export async function sendThreadMessage(
         permissionEscalation,
         environment: {
           id: readyEnvironment.id,
-          hostId: readyEnvironment.hostId,
           cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
           path: readyEnvironment.path,
           status: readyEnvironment.status,
@@ -459,7 +458,6 @@ export async function sendThreadMessage(
       },
       environment: {
         id: readyEnvironment.id,
-        hostId: readyEnvironment.hostId,
         cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
         path: readyEnvironment.path,
         status: readyEnvironment.status,

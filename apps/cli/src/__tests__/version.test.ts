@@ -35,7 +35,7 @@ describe("resolveBbAppVersion", () => {
 
   it("reads the bb-app package.json adjacent to the binary", async () => {
     const packageRoot = join(tempRoot, "package-root");
-    const binDir = join(packageRoot, "host-daemon", "dist");
+    const binDir = join(packageRoot, "server", "dist");
     await mkdir(binDir, { recursive: true });
     await writeFile(
       join(packageRoot, "package.json"),

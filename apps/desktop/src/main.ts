@@ -505,7 +505,7 @@ async function loadLogViewerWindow(
     minHeight: 520,
     minWidth: 840,
     show: false,
-    title: "bb - Server & Daemon Logs",
+    title: "bb - Server Logs",
     titleBarStyle: "default",
     webPreferences: {
       contextIsolation: true,

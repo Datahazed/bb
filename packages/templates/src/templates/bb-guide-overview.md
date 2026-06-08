@@ -13,7 +13,6 @@ Core concepts:
 - Thread — a single agent conversation. The fundamental unit of work.
 - Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.
 - Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.
-- Host — where environments run. Hosts are long-lived local or remote machines.
 
 Thread types:
 
@@ -40,6 +39,5 @@ Run `bb guide <chapter>` for command details:
   app            Global apps, app data, browser APIs, and styling
   providers      Discovering providers and models
   projects       Project CRUD and sources
-  hosts          Listing and understanding hosts
   styling        Alias for app
   async          Defining scheduled nudges with ASYNC.md

@@ -3,7 +3,6 @@ import { Command } from "commander";
 import { registerAppCommands } from "./commands/app.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
-import { registerHostCommands } from "./commands/host.js";
 import { registerManagerCommands } from "./commands/manager.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerProviderCommands } from "./commands/provider.js";
@@ -63,7 +62,6 @@ function getContext() {
 // Register all command groups
 registerStatusCommand(program, getUrl, getContext);
 registerProjectCommands(program, getUrl);
-registerHostCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerAppCommands(program, getUrl);

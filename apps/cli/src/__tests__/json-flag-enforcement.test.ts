@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 
 // Import all register functions
-import { registerHostCommands } from "../commands/host.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
@@ -35,7 +34,6 @@ describe("CLI --json flag enforcement", () => {
 
     registerStatusCommand(program, getUrl);
     registerProjectCommands(program, getUrl);
-    registerHostCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
     registerManagerCommands(program, getUrl);
     registerThreadCommands(program, getUrl);

@@ -8,7 +8,7 @@ import {
   resolveEnvironmentId,
   resolveThreadId,
 } from "../../context-env.js";
-import { fetchLocalHostId } from "../../daemon.js";
+import { LOCAL_HOST_ID } from "../../local-host.js";
 import {
   outputJson,
   parseReasoningLevel,
@@ -34,7 +34,6 @@ interface ThreadSpawnCommandOptions {
   reasoningLevel?: string;
   title?: string;
   serviceTier?: string;
-  host?: string;
   permissionMode?: string;
   contextParentThread?: boolean;
 }
@@ -43,18 +42,22 @@ export function looksLikePath(value: string): boolean {
   return value.includes("/") || value.startsWith(".") || value.startsWith("~");
 }
 
-export function requireHostId(hostId: string | null): string {
-  if (!hostId) {
-    throw new Error("Cannot reach local host daemon. Is it running?");
-  }
-  return hostId;
+/**
+ * `--environment` is documented as id-or-path: path-shaped values bypass id
+ * validation and flow to `buildSpawnEnvironment`'s unmanaged-workspace branch.
+ */
+export function resolveSpawnEnvironmentValue(
+  flagValue?: string,
+): string | undefined {
+  const trimmed = flagValue?.trim();
+  if (!trimmed) return undefined;
+  return looksLikePath(trimmed) ? trimmed : resolveEnvironmentId(trimmed);
 }
 
 export function buildSpawnEnvironment(args: {
   defaultPersonalWorkspace: boolean;
   environmentValue?: string;
   newEnvironmentKind?: string;
-  hostId: string | null;
   baseBranch?: string;
 }): EnvironmentArgs {
   const environmentValue = args.environmentValue?.trim();
@@ -71,7 +74,7 @@ export function buildSpawnEnvironment(args: {
     if (newEnvironmentKind === "worktree") {
       return {
         type: "host",
-        hostId: requireHostId(args.hostId),
+        hostId: LOCAL_HOST_ID,
         workspace: { type: "managed-worktree", baseBranch },
       };
     }
@@ -83,20 +86,20 @@ export function buildSpawnEnvironment(args: {
     if (args.defaultPersonalWorkspace) {
       return {
         type: "host",
-        ...(args.hostId ? { hostId: args.hostId } : {}),
+        hostId: LOCAL_HOST_ID,
         workspace: { type: "personal" },
       };
     }
     return {
       type: "host",
-      hostId: requireHostId(args.hostId),
+      hostId: LOCAL_HOST_ID,
       workspace: { type: "unmanaged", path: null },
     };
   }
   if (looksLikePath(environmentValue)) {
     return {
       type: "host",
-      hostId: requireHostId(args.hostId),
+      hostId: LOCAL_HOST_ID,
       workspace: { type: "unmanaged", path: environmentValue },
     };
   }
@@ -152,7 +155,6 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--host <id>", "Host ID (defaults to local host)")
     .option(
       "--no-context-parent-thread",
       "Do not default parent thread context to BB_THREAD_ID",
@@ -166,24 +168,17 @@ export function registerSpawnCommand(
         }
 
         const projectId = resolveProjectId(opts.project) ?? PERSONAL_PROJECT_ID;
-        const environmentValue = resolveEnvironmentId(opts.environment);
-        let hostId: string | null = opts.host ?? null;
+        const environmentValue = resolveSpawnEnvironmentValue(
+          opts.environment,
+        );
         const defaultPersonalWorkspace =
           projectId === PERSONAL_PROJECT_ID &&
           !environmentValue &&
           !opts.newEnvironment;
-        const needsHostId =
-          !defaultPersonalWorkspace &&
-          !hostId &&
-          (!environmentValue || looksLikePath(environmentValue));
-        if (needsHostId) {
-          hostId = await fetchLocalHostId();
-        }
         const environment = buildSpawnEnvironment({
           defaultPersonalWorkspace,
           environmentValue,
           newEnvironmentKind: opts.newEnvironment,
-          hostId,
           baseBranch: opts.baseBranch,
         });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
