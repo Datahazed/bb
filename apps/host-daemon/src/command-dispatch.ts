@@ -24,12 +24,9 @@ import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   listHostFiles,
   listHostPaths,
-  deleteHostRelativeFile,
-  deleteHostRelativePath,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
-  writeHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import {
@@ -230,9 +227,6 @@ const commandHandlers: CommandHandlerMap = {
   "interactive.resolve": resolveInteractiveRequest,
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
-  "host.write_file_relative": writeHostRelativeFile,
-  "host.delete_file_relative": deleteHostRelativeFile,
-  "host.delete_path_relative": deleteHostRelativePath,
   "environment.provision": provisionEnvironment,
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {

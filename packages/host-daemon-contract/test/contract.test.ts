@@ -739,44 +739,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.write_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-        content: "[1,2,3]\n",
-        contentEncoding: "utf8",
-      }),
-    ).toMatchObject({
-      type: "host.write_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_path_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps",
-        path: "demo",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_path_relative",
-      path: "demo",
-    });
-
-    expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
@@ -1671,16 +1633,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandResultSchemaByType["host.delete_path_relative"].parse({
-        path: "demo",
-        deleted: true,
-      }),
-    ).toEqual({
-      path: "demo",
-      deleted: true,
-    });
-
-    expect(
       hostDaemonOnlineRpcResultSchemaByType[
         "environment.cleanup_preflight"
       ].parse({
@@ -1788,7 +1740,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(35);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(36);
   });
 
   it("parses valid session open and event batch payloads", () => {

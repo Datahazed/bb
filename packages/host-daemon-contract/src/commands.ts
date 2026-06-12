@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 35 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 36 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -49,9 +49,6 @@ export const HOST_DAEMON_SETTLED_COMMAND_TYPES = [
   "interactive.resolve",
   "codex.inference.complete",
   "codex.voice.transcribe",
-  "host.write_file_relative",
-  "host.delete_file_relative",
-  "host.delete_path_relative",
   "environment.provision",
   "environment.provision.cancel",
   "environment.destroy",
@@ -337,35 +334,6 @@ export type HostReadFileRelativeDotfilePolicy = z.infer<
 const hostReadFileRelativeCommandSchema = z
   .object({
     type: z.literal("host.read_file_relative"),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-
-const hostWriteFileRelativeCommandSchema = z
-  .object({
-    type: z.literal("host.write_file_relative"),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-    content: z.string(),
-    contentEncoding: z.enum(["base64", "utf8"]),
-  })
-  .strict();
-
-const hostDeleteFileRelativeCommandSchema = z
-  .object({
-    type: z.literal("host.delete_file_relative"),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-
-const hostDeletePathRelativeCommandSchema = z
-  .object({
-    type: z.literal("host.delete_path_relative"),
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
@@ -716,9 +684,6 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   interactiveResolveCommandSchema,
   codexInferenceCompleteCommandSchema,
   codexVoiceTranscribeCommandSchema,
-  hostWriteFileRelativeCommandSchema,
-  hostDeleteFileRelativeCommandSchema,
-  hostDeletePathRelativeCommandSchema,
   environmentProvisionCancelCommandSchema,
   environmentDestroyCommandSchema,
   workspaceCommitCommandSchema,
@@ -763,9 +728,6 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "environment.provision.cancel":
       return true;
     case "environment.destroy":
-    case "host.write_file_relative":
-    case "host.delete_file_relative":
-    case "host.delete_path_relative":
     case "codex.inference.complete":
     case "thread.deleted":
     case "thread.archive":
@@ -791,24 +753,6 @@ const fileMetadataResultSchema = z.object({
   path: z.string(),
   modifiedAtMs: z.number().nonnegative(),
   sizeBytes: z.number().int().nonnegative(),
-});
-
-const fileWriteResultSchema = z.object({
-  path: z.string(),
-  hash: z.string().min(1),
-  modifiedAtMs: z.number().nonnegative(),
-  sizeBytes: z.number().int().nonnegative(),
-});
-
-const fileDeleteResultSchema = z.object({
-  path: z.string(),
-  deleted: z.boolean(),
-  previousHash: z.string().nullable(),
-});
-
-const pathDeleteResultSchema = z.object({
-  path: z.string(),
-  deleted: z.boolean(),
 });
 
 const environmentCleanupPreflightResultSchema = z.discriminatedUnion(
@@ -927,9 +871,6 @@ export const hostDaemonCommandResultSchemaByType = {
     model: z.string().min(1),
     text: z.string(),
   }),
-  "host.write_file_relative": fileWriteResultSchema,
-  "host.delete_file_relative": fileDeleteResultSchema,
-  "host.delete_path_relative": pathDeleteResultSchema,
   "environment.provision": discoveredWorkspacePropertiesSchema.extend({
     transcript: z.array(provisioningTranscriptEntrySchema),
   }),

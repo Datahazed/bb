@@ -89,15 +89,6 @@ interface InFlightThreadProviderLane {
   lane: ProviderExecutionLane;
 }
 
-type FileWriteLaneCommand = Extract<
-  HostDaemonCommand,
-  {
-    type:
-      | "host.write_file_relative"
-      | "host.delete_file_relative"
-      | "host.delete_path_relative";
-  }
->;
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
@@ -125,7 +116,6 @@ function elapsedMs(startedAtMs: number): number {
 export class CommandRouter {
   private readonly logger;
   private readonly environmentLanes = new Map<string, ReadWriteLaneState>();
-  private readonly fileWriteLaneTails = new Map<string, Promise<void>>();
   // Per-thread barrier keyed by threadId. A turn submission
   // (turn.submit/thread.start) waits for an in-flight thread.unarchive of the
   // same thread so it cannot resume a still-archived provider session.
@@ -219,24 +209,16 @@ export class CommandRouter {
   private executeLiveDaemonCommand(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
-    let task: Promise<HostDaemonCommandResultForCommand>;
-    const fileWriteLaneKey = this.getFileWriteLaneKey(command);
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
-    const runCommand = () =>
-      this.runAfterThreadUnarchiveBarrier(command, () =>
-        this.runInExecutionLanes(
-          command,
-          environmentLaneMode,
-          providerLane,
-          () => this.executeLiveDaemonCommandBody(command),
-        ),
-      );
-    if (fileWriteLaneKey) {
-      task = this.runInFileWriteLane(fileWriteLaneKey, runCommand);
-    } else {
-      task = runCommand();
-    }
+    const task = this.runAfterThreadUnarchiveBarrier(command, () =>
+      this.runInExecutionLanes(
+        command,
+        environmentLaneMode,
+        providerLane,
+        () => this.executeLiveDaemonCommandBody(command),
+      ),
+    );
     this.registerThreadUnarchiveBarrier(command, task);
     this.registerInFlightThreadProviderLane(command, task);
     return task;
@@ -392,17 +374,6 @@ export class CommandRouter {
     });
   }
 
-  private runInFileWriteLane<T>(
-    key: string,
-    work: () => Promise<T>,
-  ): Promise<T> {
-    return this.runInSerialLane({
-      key,
-      lanes: this.fileWriteLaneTails,
-      work,
-    });
-  }
-
   private runInProviderProcessLane<T>(
     key: string,
     mode: EnvironmentLaneMode,
@@ -495,23 +466,6 @@ export class CommandRouter {
         lanes.delete(key);
       }
     });
-  }
-
-  private getFileWriteLaneKey(command: HostDaemonCommand): string | null {
-    if (!this.isFileWriteLaneCommand(command)) {
-      return null;
-    }
-    return `${command.rootPath}\0${command.path}`;
-  }
-
-  private isFileWriteLaneCommand(
-    command: HostDaemonCommand,
-  ): command is FileWriteLaneCommand {
-    return (
-      command.type === "host.write_file_relative" ||
-      command.type === "host.delete_file_relative" ||
-      command.type === "host.delete_path_relative"
-    );
   }
 
   private getProviderProcessLaneKey(
