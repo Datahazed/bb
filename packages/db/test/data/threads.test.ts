@@ -635,6 +635,38 @@ describe("threads", () => {
     );
   });
 
+  it("notifies when a thread environment changes", () => {
+    const { db, host, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      path: "/tmp/test-workspace",
+      status: "ready",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    updateThread(db, spy, thread.id, {
+      environmentId: environment.id,
+    });
+
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      thread.id,
+      ["environment-changed"],
+      { projectId: project.id },
+    );
+  });
+
   it("preserves read state when renaming a read thread", () => {
     vi.useFakeTimers();
     try {

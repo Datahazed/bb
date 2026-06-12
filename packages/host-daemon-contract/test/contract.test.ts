@@ -1710,7 +1710,6 @@ describe("host-daemon command schemas", () => {
         commitSha: "",
       }),
     ).toThrow();
-
   });
 
   it("includes discovered workspace properties in environment.provision result", () => {
@@ -2147,6 +2146,41 @@ describe("host-daemon session schemas", () => {
       type: "host-rpc.request",
       requestId: "rpc-1",
       command: { type: "provider.list" },
+    });
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "watch-set.replace",
+        generation: 1,
+        workspaceTargets: [
+          {
+            environmentId: "env_123",
+            workspaceContext: {
+              workspacePath: "/tmp/env-123",
+              workspaceProvisionType: "unmanaged",
+            },
+          },
+        ],
+        threadStorageTargets: [
+          {
+            environmentId: "env_123",
+            threadId: "thr_123",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      type: "watch-set.replace",
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env_123",
+        },
+      ],
+      threadStorageTargets: [
+        {
+          threadId: "thr_123",
+        },
+      ],
     });
 
     expect(

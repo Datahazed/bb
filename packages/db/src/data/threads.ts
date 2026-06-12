@@ -995,6 +995,12 @@ export function updateThread(
   ) {
     changes.push("parent-changed");
   }
+  if (
+    "environmentId" in input &&
+    input.environmentId !== existing.environmentId
+  ) {
+    changes.push("environment-changed");
+  }
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
