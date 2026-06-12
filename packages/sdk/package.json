@@ -4,10 +4,10 @@
   "type": "module",
   "exports": {
     ".": {
-      "browser": "./dist/browser.js",
-      "node": "./dist/node.js",
       "source": "./src/node.ts",
       "types": "./src/node.ts",
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     },

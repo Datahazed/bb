@@ -60,7 +60,8 @@
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/scripts/*.mjs",
-        "$TURBO_ROOT$/turbo.json"
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "bb-app#build": {
@@ -211,10 +212,16 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "test": {},
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     "smoke:tarball": {
       "dependsOn": [
         "build"
@@ -230,10 +237,16 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "test:smoke": {},
+    "test:smoke": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     "@bb/integration-tests#test:smoke": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -242,11 +255,22 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "test:integration": {},
-    "test:soak": {},
+    "test:integration": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    "test:soak": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     "@bb/integration-tests#test:soak": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -255,7 +279,8 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "@bb/integration-tests#test:integration": {
@@ -269,7 +294,8 @@
         "$TURBO_ROOT$/apps/server/src/**",
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**"
+        "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "@bb/sdk#typecheck": {},
