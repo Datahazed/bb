@@ -202,12 +202,6 @@ export const BB_DEV_APP_PORT_ENV = defineEnvVar<number | undefined>({
   parse: parseOptionalPortEnvValue,
 });
 
-export const BB_DEV_ENV_PORT_ENV = defineEnvVar<number | undefined>({
-  description: "Development-only localhost port for the bb dev-env helper API.",
-  name: "BB_DEV_ENV_PORT",
-  parse: parseOptionalPortEnvValue,
-});
-
 export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
   description:
     "Directory containing the bb CLI executable to inject into runtime shells",

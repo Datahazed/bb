@@ -286,13 +286,6 @@
         "*"
       ]
     },
-    "@bb/dev-env#dev": {
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": [
-        "*"
-      ]
-    },
     "@bb/host-daemon#dev": {
       "cache": false,
       "persistent": true,

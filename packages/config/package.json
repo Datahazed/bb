@@ -13,10 +13,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
-    "./dev-env": {
-      "source": "./src/dev-env.ts",
-      "types": "./src/dev-env.ts",
-      "default": "./src/dev-env.ts"
+    "./dev-app": {
+      "source": "./src/dev-app.ts",
+      "types": "./src/dev-app.ts",
+      "default": "./src/dev-app.ts"
     },
     "./vite-dev": {
       "source": "./src/vite-dev.ts",

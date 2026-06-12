@@ -110,9 +110,9 @@ cp .env.example .env
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
 `.env.development`, and `.env.development.local`, then overrides the instance
-selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, Vite
-port, and dev-env port) with deterministic values derived from the checkout
-path. The SQLite database path is always derived from `BB_DATA_DIR`.
+selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
+port) with deterministic values derived from the checkout path. The SQLite
+database path is always derived from `BB_DATA_DIR`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

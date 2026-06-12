@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadCliConfig } from "../src/cli.js";
 import { loadCommonConfig } from "../src/common.js";
 import { loadDatabaseConfig } from "../src/database.js";
-import { loadDevEnvConfig } from "../src/dev-env.js";
+import { loadDevAppConfig } from "../src/dev-app.js";
 import { loadHostDaemonEntrypointConfig } from "../src/host-daemon-entrypoint.js";
 import {
   loadHostDaemonConfig,
@@ -31,7 +31,7 @@ async function importConfigModules(): Promise<void> {
     import("../src/cli.js"),
     import("../src/common.js"),
     import("../src/database.js"),
-    import("../src/dev-env.js"),
+    import("../src/dev-app.js"),
     import("../src/host-daemon-entrypoint.js"),
     import("../src/host-daemon.js"),
     import("../src/logger.js"),
@@ -613,16 +613,15 @@ describe("consumer-specific config", () => {
   });
 
   it("reads dev app host from its dedicated config scope", () => {
-    const devEnvConfig = loadDevEnvConfig({
+    const devAppConfig = loadDevAppConfig({
       env: {
         BB_DEV_APP_HOST: "0.0.0.0",
         NODE_ENV: "development",
       },
     });
 
-    expect(devEnvConfig.BB_DEV_APP_HOST).toBe("0.0.0.0");
-    expect(devEnvConfig.BB_DEV_APP_PORT).toBeUndefined();
-    expect(devEnvConfig.BB_DEV_ENV_PORT).toBeUndefined();
+    expect(devAppConfig.BB_DEV_APP_HOST).toBe("0.0.0.0");
+    expect(devAppConfig.BB_DEV_APP_PORT).toBeUndefined();
   });
 
   it("builds app Vite dev config from the app dev entrypoint scope", () => {

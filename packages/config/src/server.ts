@@ -5,7 +5,7 @@ import {
   type LoadCommonConfigArgs,
 } from "./common.js";
 import { loadDatabaseConfig, type DatabaseConfig } from "./database.js";
-import { loadDevEnvConfig } from "./dev-env.js";
+import { loadDevAppConfig } from "./dev-app.js";
 import { readEnvVarWithDefault, resolveEnvLoader } from "./env.js";
 import {
   BB_APP_URL_ENV,
@@ -70,7 +70,7 @@ export function loadServerConfig(
     mode: loader.mode,
     repoRoot: args.repoRoot,
   });
-  const devEnvConfig = loadDevEnvConfig({
+  const devAppConfig = loadDevAppConfig({
     env: loader.env,
     homeDir: loader.context.homeDir,
     mode: loader.mode,
@@ -143,7 +143,7 @@ export function loadServerConfig(
   assignIfDefined({
     key: "BB_DEV_APP_PORT",
     target: config,
-    value: devEnvConfig.BB_DEV_APP_PORT,
+    value: devAppConfig.BB_DEV_APP_PORT,
   });
 
   return config;

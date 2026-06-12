@@ -1,4 +1,4 @@
-import { loadDevEnvConfig } from "./dev-env.js";
+import { loadDevAppConfig } from "./dev-app.js";
 import { type EnvLoaderArgs } from "./env.js";
 import { assignIfDefined } from "./objects.js";
 import { loadServerPortConfig } from "./server-port.js";
@@ -18,8 +18,8 @@ export interface LoadViteDevConfigArgs extends EnvLoaderArgs {
 export function loadViteDevConfig(
   args: LoadViteDevConfigArgs = {},
 ): ViteDevConfig {
-  const devEnvConfig = loadDevEnvConfig(args);
-  const appPort = devEnvConfig.BB_DEV_APP_PORT;
+  const devAppConfig = loadDevAppConfig(args);
+  const appPort = devAppConfig.BB_DEV_APP_PORT;
   if (appPort === undefined) {
     throw new Error("BB_DEV_APP_PORT is required to run the app dev server");
   }
@@ -37,9 +37,9 @@ export function loadViteDevConfig(
     key: "appHost",
     target: config,
     value:
-      devEnvConfig.BB_DEV_APP_HOST === ""
+      devAppConfig.BB_DEV_APP_HOST === ""
         ? undefined
-        : devEnvConfig.BB_DEV_APP_HOST,
+        : devAppConfig.BB_DEV_APP_HOST,
   });
 
   return config;
