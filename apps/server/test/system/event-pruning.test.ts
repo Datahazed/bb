@@ -6,7 +6,7 @@ import {
   pruneThreadEventHistory,
   pruneThreadEventHistoryBestEffort,
 } from "../../src/services/system/event-pruning.js";
-import { buildThreadTimeline } from "../../src/services/threads/timeline.js";
+import { buildThreadTimelineFeed } from "../../src/services/threads/timeline.js";
 import {
   createTestDaemonEventEnvelope,
   internalAuthHeaders,
@@ -248,7 +248,7 @@ describe("thread event pruning", () => {
         mode: "idle",
         threadId: thread.id,
       });
-      const timeline = buildThreadTimeline(harness.db, thread, {
+      const timeline = buildThreadTimelineFeed(harness.db, thread, {
         isDevelopment: true,
         page: {
           kind: "latest",

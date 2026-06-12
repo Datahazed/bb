@@ -1,4 +1,7 @@
-export { formatThreadTimelineText } from "./format-timeline-text.js";
+export {
+  formatThreadTimelineText,
+  formatThreadTimelineViewRowsText,
+} from "./format-timeline-text.js";
 export type { ThreadTimelineTextFormat } from "./format-timeline-text.js";
 export { assertNever } from "./assert-never.js";
 export {
@@ -72,6 +75,20 @@ export type {
   TimelineWorkSummaryKind,
   TimelineWorkSummaryRow,
 } from "./timeline-view.js";
+export {
+  getTimelineFeedDetail,
+  hasTimelineFeedDetailPart,
+  hasTimelineFeedMetadata,
+  isTimelineFeedSummaryViewRow,
+  mapTimelineFeedRowsToViewRows,
+} from "./timeline-feed-view.js";
+export type {
+  MapTimelineFeedRowsToViewRowsArgs,
+  TimelineFeedSummaryMetadata,
+  TimelineFeedSummaryViewRow,
+  TimelineFeedViewMetadata,
+  TimelineFeedViewRow,
+} from "./timeline-feed-view.js";
 export { compactThreadTimelineSummaryEvents } from "./summary-event-compaction.js";
 export { decodeThreadEventRow } from "./event-decode.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";

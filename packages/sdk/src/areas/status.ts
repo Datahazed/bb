@@ -5,7 +5,7 @@ import type {
 } from "@bb/domain";
 import type {
   ProjectResponse,
-  ThreadTimelineResponse,
+  ThreadTimelineFeedResponse,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs } from "./common.js";
 
@@ -87,12 +87,12 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(async () => {
-              const timeline: ThreadTimelineResponse = await transport.readJson(
-                transport.api.v1.threads[":id"].timeline.$get({
-                  param: { id: thread.id },
-                  query: { summaryOnly: "true" },
-                }),
-              );
+              const timeline: ThreadTimelineFeedResponse =
+                await transport.readJson(
+                  transport.api.v1.threads[":id"].timeline.feed.$get({
+                    param: { id: thread.id },
+                  }),
+                );
               return timeline.pendingTodos;
             });
       const childThreads =

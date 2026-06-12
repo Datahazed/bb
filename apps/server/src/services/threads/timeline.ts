@@ -1,16 +1,32 @@
+import { createHash } from "node:crypto";
 import {
   buildThreadTimelineFromEvents,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
+  buildTimelineViewRows,
+  buildTimelineWorkSummaryLabel,
   compactThreadTimelineSummaryEvents,
   type AcceptedClientRequestContext,
+  type ThreadTimelineViewRow,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
+import {
+  isSettledWorkflowAgentState,
+  LOCAL_WORKFLOW_TASK_TYPE,
+  type ClientTurnRequestId,
+  type Thread,
+} from "@bb/domain";
 import type {
+  TimelineFeedDetailPart,
+  TimelineFeedRow,
   TimelinePaginationCursor,
-  ThreadTimelineResponse,
+  TimelineCommandWorkRow,
+  TimelineRow,
+  TimelineToolWorkRow,
+  ThreadTimelineFeedResponse,
+  TimelineRowDetailResponse,
   TimelineTurnSummaryDetailsResponse,
+  TimelineWorkOutputDetailResponse,
 } from "@bb/server-contract";
 import {
   findTimelineSegmentAnchorSequenceAfter,
@@ -26,10 +42,7 @@ import {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
 } from "@bb/db";
-import type {
-  DbConnection,
-  StoredEventRow,
-} from "@bb/db";
+import type { DbConnection, StoredEventRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
@@ -96,21 +109,47 @@ interface BuildThreadTimelineOptions {
   isDevelopment: boolean;
   includeNestedRows?: boolean;
   page: ThreadTimelinePageRequest;
-  /**
-   * When true, the response is built without rows (rows: []). The tail-only
-   * fields (`activeThinking`, `pendingTodos`, `contextWindowUsage`) are still
-   * populated. Saves the row-generation work + serialization bytes for
-   * consumers that only need tail state (e.g. `bb status` / `bb thread show`).
-   */
-  summaryOnly?: boolean;
+}
+
+interface BuildThreadTimelineFeedOptions {
+  isDevelopment: boolean;
+  page: ThreadTimelinePageRequest;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
   isDevelopment: boolean;
 }
 
+interface BuildTimelineRowDetailOptions {
+  isDevelopment: boolean;
+  parts: readonly TimelineFeedDetailPart[];
+  rowKey: string;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+}
+
+interface BuildTimelineWorkOutputDetailOptions {
+  callId: string;
+  isDevelopment: boolean;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+  workKind: "command" | "tool";
+}
+
+interface TimelineFeedTextPreview {
+  complete: boolean;
+  fullLength: number;
+  text: string;
+}
+
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
+const TIMELINE_FEED_TEXT_PREVIEW_HEAD_CHARS = 1024;
+const TIMELINE_FEED_TEXT_PREVIEW_TAIL_CHARS = 1024;
+const TIMELINE_FEED_TEXT_PREVIEW_THRESHOLD_CHARS =
+  TIMELINE_FEED_TEXT_PREVIEW_HEAD_CHARS + TIMELINE_FEED_TEXT_PREVIEW_TAIL_CHARS;
+const TIMELINE_FEED_TEXT_PREVIEW_MARKER =
+  "\n\n[... detail omitted from timeline feed; expand row to load full detail ...]\n\n";
 
 export type ThreadTimelineBuildProfileStage =
   | "event-query"
@@ -123,9 +162,7 @@ export type ThreadTimelineBuildProfileStage =
   | "pagination-segmentation"
   | "response-serialization";
 
-export type ThreadTimelineEventSelectionStrategy =
-  | "full"
-  | "standard-window";
+export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
 export interface ThreadTimelineBuildProfileStageTiming {
   durationMs: number;
@@ -149,9 +186,16 @@ export interface ThreadTimelineBuildProfile {
   stageTimings: ThreadTimelineBuildProfileStageTiming[];
 }
 
+type ThreadTimelineProjectionResponse = Omit<
+  ThreadTimelineFeedResponse,
+  "threadId" | "rows"
+> & {
+  rows: TimelineRow[];
+};
+
 interface BuildThreadTimelineInternalResult {
   profile: ThreadTimelineBuildProfile | null;
-  response: ThreadTimelineResponse;
+  response: ThreadTimelineProjectionResponse;
 }
 
 interface ThreadTimelineBuildProfileAccumulator {
@@ -697,6 +741,461 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
   return byteLength;
 }
 
+function timelineFeedRowKindPrefix(row: ThreadTimelineViewRow): string {
+  switch (row.kind) {
+    case "bundle-summary":
+      return "b";
+    case "conversation":
+      return "c";
+    case "step-summary":
+      return "p";
+    case "system":
+      return "s";
+    case "turn":
+      return "t";
+    case "work":
+      return `w${row.workKind.slice(0, 1)}`;
+  }
+}
+
+function timelineFeedRowKey(row: ThreadTimelineViewRow): string {
+  const digest = createHash("sha256")
+    .update(row.id)
+    .digest("base64url")
+    .slice(0, 10);
+  return `${timelineFeedRowKindPrefix(row)}_${row.sourceSeqStart}_${digest}`;
+}
+
+function buildTimelineFeedTextPreview(text: string): TimelineFeedTextPreview {
+  if (text.length <= TIMELINE_FEED_TEXT_PREVIEW_THRESHOLD_CHARS) {
+    return {
+      complete: true,
+      fullLength: text.length,
+      text,
+    };
+  }
+
+  return {
+    complete: false,
+    fullLength: text.length,
+    text: [
+      text.slice(0, TIMELINE_FEED_TEXT_PREVIEW_HEAD_CHARS),
+      TIMELINE_FEED_TEXT_PREVIEW_MARKER,
+      text.slice(-TIMELINE_FEED_TEXT_PREVIEW_TAIL_CHARS),
+    ].join(""),
+  };
+}
+
+function nullableTimelineFeedTextPreview(
+  text: string | null,
+): TimelineFeedTextPreview | null {
+  return text === null ? null : buildTimelineFeedTextPreview(text);
+}
+
+function buildOmittedTimelineFeedTextPreview(
+  text: string,
+): TimelineFeedTextPreview {
+  return {
+    complete: text.length === 0,
+    fullLength: text.length,
+    text: "",
+  };
+}
+
+function buildExpandableBodyFeedPreview(
+  text: string,
+  status: "pending" | "completed" | "error" | "interrupted" | null,
+): TimelineFeedTextPreview {
+  return status === "pending"
+    ? buildTimelineFeedTextPreview(text)
+    : buildOmittedTimelineFeedTextPreview(text);
+}
+
+function nullableExpandableBodyFeedPreview(
+  text: string | null,
+  status: "pending" | "completed" | "error" | "interrupted" | null,
+): TimelineFeedTextPreview | null {
+  return text === null ? null : buildExpandableBodyFeedPreview(text, status);
+}
+
+function timelineFeedDetailRef(
+  row: ThreadTimelineViewRow,
+  key: string,
+  parts: readonly TimelineFeedDetailPart[],
+): NonNullable<TimelineFeedRow["detail"]> | null {
+  return parts.length === 0
+    ? null
+    : {
+        rowKey: key,
+        source: {
+          start: row.sourceSeqStart,
+          end: row.sourceSeqEnd,
+        },
+        parts: [...parts],
+      };
+}
+
+function timelineFeedBase(
+  row: ThreadTimelineViewRow,
+  key: string,
+  parts: readonly TimelineFeedDetailPart[],
+): Pick<
+  TimelineFeedRow,
+  "key" | "turnId" | "source" | "startedAt" | "createdAt" | "detail"
+> {
+  return {
+    key,
+    turnId: row.turnId,
+    source: {
+      start: row.sourceSeqStart,
+      end: row.sourceSeqEnd,
+    },
+    startedAt: row.startedAt,
+    createdAt: row.createdAt,
+    detail: timelineFeedDetailRef(row, key, parts),
+  };
+}
+
+function timelineFeedDetailPartsForText(
+  part: TimelineFeedDetailPart,
+  preview: TimelineFeedTextPreview | null,
+): TimelineFeedDetailPart[] {
+  return preview !== null && !preview.complete ? [part] : [];
+}
+
+function timelineFeedDetailPartsForNullableText(
+  part: TimelineFeedDetailPart,
+  preview: TimelineFeedTextPreview | null,
+): TimelineFeedDetailPart[] {
+  return timelineFeedDetailPartsForText(part, preview);
+}
+
+function mapTimelineViewRowToFeedRow(
+  row: ThreadTimelineViewRow,
+): TimelineFeedRow {
+  const key = timelineFeedRowKey(row);
+  switch (row.kind) {
+    case "bundle-summary":
+    case "step-summary":
+      return {
+        ...timelineFeedBase(row, key, ["children"]),
+        kind: row.kind,
+        status: row.status,
+        title: buildTimelineWorkSummaryLabel(row, {
+          active: row.status === "pending",
+        }),
+        childCount: row.children.length,
+      };
+    case "conversation": {
+      const textPreview = buildTimelineFeedTextPreview(row.text);
+      const parts = timelineFeedDetailPartsForText("text", textPreview);
+      if (row.role === "user") {
+        return {
+          ...timelineFeedBase(row, key, parts),
+          kind: "conversation",
+          role: "user",
+          textPreview,
+          attachments: row.attachments,
+          initiator: row.initiator,
+          senderThreadId: row.senderThreadId,
+          turnRequest: row.turnRequest,
+          mentions: row.mentions,
+        };
+      }
+      return {
+        ...timelineFeedBase(row, key, parts),
+        kind: "conversation",
+        role: "assistant",
+        textPreview,
+        attachments: row.attachments,
+        turnRequest: null,
+      };
+    }
+    case "system": {
+      const detailPreview = nullableExpandableBodyFeedPreview(
+        row.detail,
+        row.status,
+      );
+      const parts = timelineFeedDetailPartsForNullableText(
+        "system-detail",
+        detailPreview,
+      );
+      if (row.systemKind === "operation") {
+        if (row.operationKind === "parent-change") {
+          return {
+            ...timelineFeedBase(row, key, parts),
+            kind: "system",
+            systemKind: "operation",
+            operationKind: "parent-change",
+            title: row.title,
+            detailPreview,
+            status: row.status,
+            parentChange: row.parentChange,
+            completedAt: row.completedAt,
+          };
+        }
+        return {
+          ...timelineFeedBase(row, key, parts),
+          kind: "system",
+          systemKind: "operation",
+          operationKind: row.operationKind,
+          title: row.title,
+          detailPreview,
+          status: row.status,
+          completedAt: row.completedAt,
+        };
+      }
+      return {
+        ...timelineFeedBase(row, key, parts),
+        kind: "system",
+        systemKind: row.systemKind,
+        title: row.title,
+        detailPreview,
+        status: row.status,
+      };
+    }
+    case "turn": {
+      return {
+        ...timelineFeedBase(row, key, []),
+        kind: "turn",
+        turnId: row.turnId,
+        status: row.status,
+        summaryCount: row.summaryCount,
+        completedAt: row.completedAt,
+        children:
+          row.children === null
+            ? null
+            : mapTimelineViewRowsToFeedRows(row.children),
+      };
+    }
+    case "work":
+      switch (row.workKind) {
+        case "command": {
+          const outputPreview = buildExpandableBodyFeedPreview(
+            row.output,
+            row.status,
+          );
+          const parts = timelineFeedDetailPartsForText("output", outputPreview);
+          return {
+            ...timelineFeedBase(row, key, parts),
+            kind: "work",
+            workKind: "command",
+            status: row.status,
+            callId: row.callId,
+            command: row.command,
+            cwd: row.cwd,
+            sourceLabel: row.source,
+            outputPreview,
+            exitCode: row.exitCode,
+            completedAt: row.completedAt,
+            approvalStatus: row.approvalStatus,
+            activityIntents: row.activityIntents,
+          };
+        }
+        case "tool": {
+          const outputPreview = buildExpandableBodyFeedPreview(
+            row.output,
+            row.status,
+          );
+          const parts = timelineFeedDetailPartsForText("output", outputPreview);
+          return {
+            ...timelineFeedBase(row, key, parts),
+            kind: "work",
+            workKind: "tool",
+            status: row.status,
+            callId: row.callId,
+            toolName: row.toolName,
+            toolArgs: row.toolArgs,
+            outputPreview,
+            completedAt: row.completedAt,
+            approvalStatus: row.approvalStatus,
+            activityIntents: row.activityIntents,
+          };
+        }
+        case "file-change": {
+          const diffPreview = nullableExpandableBodyFeedPreview(
+            row.change.diff,
+            row.status,
+          );
+          const stdoutPreview = nullableExpandableBodyFeedPreview(
+            row.stdout,
+            row.status,
+          );
+          const stderrPreview = nullableExpandableBodyFeedPreview(
+            row.stderr,
+            row.status,
+          );
+          const parts = [
+            ...timelineFeedDetailPartsForNullableText("file-diff", diffPreview),
+            ...timelineFeedDetailPartsForNullableText("stdout", stdoutPreview),
+            ...timelineFeedDetailPartsForNullableText("stderr", stderrPreview),
+          ];
+          return {
+            ...timelineFeedBase(row, key, parts),
+            kind: "work",
+            workKind: "file-change",
+            status: row.status,
+            callId: row.callId,
+            change: {
+              path: row.change.path,
+              kind: row.change.kind,
+              movePath: row.change.movePath,
+              diffPreview,
+              diffStats: row.change.diffStats,
+            },
+            stdoutPreview,
+            stderrPreview,
+            approvalStatus: row.approvalStatus,
+          };
+        }
+        case "web-search":
+          return {
+            ...timelineFeedBase(row, key, []),
+            kind: "work",
+            workKind: "web-search",
+            status: row.status,
+            callId: row.callId,
+            queries: row.queries,
+            completedAt: row.completedAt,
+          };
+        case "web-fetch":
+          return {
+            ...timelineFeedBase(row, key, []),
+            kind: "work",
+            workKind: "web-fetch",
+            status: row.status,
+            callId: row.callId,
+            url: row.url,
+            prompt: row.prompt,
+            pattern: row.pattern,
+            completedAt: row.completedAt,
+          };
+        case "image-view":
+          return {
+            ...timelineFeedBase(row, key, []),
+            kind: "work",
+            workKind: "image-view",
+            status: row.status,
+            callId: row.callId,
+            path: row.path,
+            completedAt: row.completedAt,
+          };
+        case "approval":
+          if (row.approvalKind === "file-edit") {
+            return {
+              ...timelineFeedBase(row, key, []),
+              kind: "work",
+              workKind: "approval",
+              status: row.status,
+              interactionId: row.interactionId,
+              target: row.target,
+              approvalKind: "file-edit",
+              lifecycle: row.lifecycle,
+            };
+          }
+          return {
+            ...timelineFeedBase(row, key, []),
+            kind: "work",
+            workKind: "approval",
+            status: row.status,
+            interactionId: row.interactionId,
+            target: row.target,
+            approvalKind: "permission-grant",
+            lifecycle: row.lifecycle,
+            grantScope: row.grantScope,
+            statusReason: row.statusReason,
+          };
+        case "question":
+          return {
+            ...timelineFeedBase(row, key, []),
+            kind: "work",
+            workKind: "question",
+            status: row.status,
+            interactionId: row.interactionId,
+            lifecycle: row.lifecycle,
+            questions: row.questions,
+            answers: row.answers,
+            statusReason: row.statusReason,
+          };
+        case "delegation": {
+          const outputPreview = buildExpandableBodyFeedPreview(
+            row.output,
+            row.status,
+          );
+          const includeChildRows = row.status === "pending";
+          const childRows = includeChildRows
+            ? mapTimelineViewRowsToFeedRows(row.childRows)
+            : [];
+          const parts = [
+            ...timelineFeedDetailPartsForText("output", outputPreview),
+            ...(childRows.length < row.childRows.length
+              ? (["children"] satisfies TimelineFeedDetailPart[])
+              : []),
+          ];
+          return {
+            ...timelineFeedBase(row, key, parts),
+            kind: "work",
+            workKind: "delegation",
+            status: row.status,
+            callId: row.callId,
+            toolName: row.toolName,
+            subagentType: row.subagentType,
+            description: row.description,
+            outputPreview,
+            completedAt: row.completedAt,
+            childCount: row.childRows.length,
+            childRows,
+          };
+        }
+        case "workflow": {
+          const summaryPreview = nullableTimelineFeedTextPreview(row.summary);
+          const errorPreview = nullableTimelineFeedTextPreview(row.error);
+          const parts = [
+            ...(row.workflow === null
+              ? []
+              : (["workflow"] satisfies TimelineFeedDetailPart[])),
+            ...timelineFeedDetailPartsForNullableText(
+              "workflow",
+              summaryPreview,
+            ),
+            ...timelineFeedDetailPartsForNullableText("workflow", errorPreview),
+          ];
+          return {
+            ...timelineFeedBase(row, key, [...new Set(parts)]),
+            kind: "work",
+            workKind: "workflow",
+            status: row.status,
+            itemId: row.itemId,
+            taskType: LOCAL_WORKFLOW_TASK_TYPE,
+            workflowName: row.workflowName,
+            description: row.description,
+            taskStatus: row.taskStatus,
+            workflowSummary:
+              row.workflow === null
+                ? null
+                : {
+                    agentCount: row.workflow.agents.length,
+                    phaseCount: row.workflow.phases.length,
+                    settledAgentCount: row.workflow.agents.filter((agent) =>
+                      isSettledWorkflowAgentState(agent.state),
+                    ).length,
+                  },
+            usage: row.usage,
+            summaryPreview,
+            errorPreview,
+            completedAt: row.completedAt,
+          };
+        }
+      }
+  }
+}
+
+function mapTimelineViewRowsToFeedRows(
+  rows: readonly ThreadTimelineViewRow[],
+): TimelineFeedRow[] {
+  return rows.map(mapTimelineViewRowToFeedRow);
+}
+
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
@@ -735,7 +1234,7 @@ function measureThreadTimelineStage<TResult>(
 function completeThreadTimelineBuildProfile(
   accumulator: ThreadTimelineBuildProfileAccumulator,
   options: BuildThreadTimelineOptions,
-  response: ThreadTimelineResponse,
+  response: ThreadTimelineProjectionResponse,
 ): ThreadTimelineBuildProfile {
   accumulator.responseJsonBytes = measureThreadTimelineStage(
     accumulator,
@@ -868,8 +1367,8 @@ function buildThreadTimelineInternal(
     profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
   }
 
-  const response: ThreadTimelineResponse = {
-    rows: options.summaryOnly ? [] : paginatedTimeline.rows,
+  const response: ThreadTimelineProjectionResponse = {
+    rows: paginatedTimeline.rows,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,
     // pendingTodos is gated inside the projection via `isLatestPage` so the
@@ -897,15 +1396,325 @@ function buildThreadTimelineInternal(
   };
 }
 
-export function buildThreadTimeline(
+export function buildThreadTimelineFeed(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadTimelineOptions,
-): ThreadTimelineResponse {
-  return buildThreadTimelineInternal(db, thread, {
-    ...options,
+  options: BuildThreadTimelineFeedOptions,
+): ThreadTimelineFeedResponse {
+  const response = buildThreadTimelineInternal(db, thread, {
+    isDevelopment: options.isDevelopment,
+    includeNestedRows: false,
     includeProfile: false,
+    page: options.page,
   }).response;
+  return {
+    threadId: thread.id,
+    rows: mapTimelineViewRowsToFeedRows(buildTimelineViewRows(response.rows)),
+    activeThinking: response.activeThinking,
+    pendingTodos: response.pendingTodos,
+    contextWindowUsage: response.contextWindowUsage,
+    timelinePage: response.timelinePage,
+  };
+}
+
+function buildTimelineRowsForDetail(
+  db: DbConnection,
+  thread: Thread,
+  options: {
+    isDevelopment: boolean;
+    sourceSeqEnd: number;
+    sourceSeqStart: number;
+  },
+): TimelineRow[] {
+  if (options.sourceSeqStart > options.sourceSeqEnd) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceSeqStart must be less than or equal to sourceSeqEnd",
+    );
+  }
+
+  const exactEventRows = listStoredEventRowsInRange(db, {
+    threadId: thread.id,
+    seqStart: options.sourceSeqStart,
+    seqEnd: options.sourceSeqEnd,
+  });
+  if (exactEventRows.length === 0) {
+    throw new ApiError(404, "invalid_request", "Timeline row not found");
+  }
+
+  const missingTurnIds = collectTurnIdsMissingStartedRows(exactEventRows);
+  const turnStartedRows =
+    missingTurnIds.length === 0
+      ? []
+      : listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
+          threadId: thread.id,
+          sequenceCutoff: maxStoredEventSequence(exactEventRows),
+          turnIds: missingTurnIds,
+        });
+  return buildThreadTimelineFromEvents({
+    acceptedClientRequestContext: {
+      acceptedClientRequestEvents: [],
+    },
+    contextWindowEvents: [],
+    events: [...turnStartedRows, ...exactEventRows].map((row) =>
+      toThreadEventWithMeta(row),
+    ),
+    options: {
+      includeDebugRawEvents: false,
+      includeNestedRows: true,
+      includeProviderUnhandledOperations: options.isDevelopment,
+      isLatestPage: false,
+      threadStatus: thread.status,
+      turnMessageDetail: "full",
+      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    },
+  }).rows;
+}
+
+function collectTimelineViewRows(
+  rows: readonly ThreadTimelineViewRow[],
+): ThreadTimelineViewRow[] {
+  const collectedRows: ThreadTimelineViewRow[] = [];
+  for (const row of rows) {
+    collectedRows.push(row);
+    switch (row.kind) {
+      case "bundle-summary":
+      case "step-summary":
+        collectedRows.push(...collectTimelineViewRows(row.children));
+        continue;
+      case "conversation":
+      case "system":
+        continue;
+      case "turn":
+        if (row.children !== null) {
+          collectedRows.push(...collectTimelineViewRows(row.children));
+        }
+        continue;
+      case "work":
+        if (row.workKind === "delegation") {
+          collectedRows.push(...collectTimelineViewRows(row.childRows));
+        }
+        continue;
+    }
+  }
+  return collectedRows;
+}
+
+function timelineDetailRowSourceMatches(
+  row: ThreadTimelineViewRow,
+  options: BuildTimelineRowDetailOptions,
+): boolean {
+  return (
+    row.sourceSeqStart === options.sourceSeqStart &&
+    row.sourceSeqEnd === options.sourceSeqEnd
+  );
+}
+
+function timelineDetailRowCanUseSourceFallback(
+  row: ThreadTimelineViewRow,
+): boolean {
+  return row.kind === "bundle-summary" || row.kind === "step-summary";
+}
+
+function timelineDetailRowMatchesRequest(
+  row: ThreadTimelineViewRow,
+  options: BuildTimelineRowDetailOptions,
+): boolean {
+  if (!timelineDetailRowSourceMatches(row, options)) {
+    return false;
+  }
+  if (timelineFeedRowKey(row) === options.rowKey) {
+    return true;
+  }
+  return (
+    timelineDetailRowCanUseSourceFallback(row) &&
+    options.rowKey.startsWith(
+      `${timelineFeedRowKindPrefix(row)}_${options.sourceSeqStart}_`,
+    )
+  );
+}
+
+function findTimelineDetailRow(
+  rows: readonly ThreadTimelineViewRow[],
+  options: BuildTimelineRowDetailOptions,
+): ThreadTimelineViewRow | null {
+  return (
+    collectTimelineViewRows(rows).find((row) =>
+      timelineDetailRowMatchesRequest(row, options),
+    ) ?? null
+  );
+}
+
+export function buildTimelineRowDetail(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineRowDetailOptions,
+): TimelineRowDetailResponse {
+  const rows = buildTimelineRowsForDetail(db, thread, {
+    isDevelopment: options.isDevelopment,
+    sourceSeqEnd: options.sourceSeqEnd,
+    sourceSeqStart: options.sourceSeqStart,
+  });
+  const viewRows = buildTimelineViewRows(rows);
+  const matchingRow =
+    findTimelineDetailRow(viewRows, options) ??
+    findTimelineDetailRow(
+      buildTimelineViewRows(rows, { closedScope: true }),
+      options,
+    );
+  if (!matchingRow) {
+    throw new ApiError(404, "invalid_request", "Timeline row not found");
+  }
+
+  const parts: TimelineRowDetailResponse["parts"] = {
+    text: null,
+    output: null,
+    systemDetail: null,
+    fileDiff: null,
+    stdout: null,
+    stderr: null,
+    children: null,
+    workflow: null,
+  };
+  const requestedParts = new Set(options.parts);
+
+  switch (matchingRow.kind) {
+    case "bundle-summary":
+    case "step-summary":
+      if (requestedParts.has("children")) {
+        parts.children = mapTimelineViewRowsToFeedRows(matchingRow.children);
+      }
+      break;
+    case "conversation":
+      if (requestedParts.has("text")) {
+        parts.text = matchingRow.text;
+      }
+      break;
+    case "system":
+      if (requestedParts.has("system-detail")) {
+        parts.systemDetail = matchingRow.detail;
+      }
+      break;
+    case "turn":
+      if (requestedParts.has("children")) {
+        parts.children =
+          matchingRow.children === null
+            ? []
+            : mapTimelineViewRowsToFeedRows(matchingRow.children);
+      }
+      break;
+    case "work":
+      switch (matchingRow.workKind) {
+        case "command":
+        case "tool":
+          if (requestedParts.has("output")) {
+            parts.output = matchingRow.output;
+          }
+          break;
+        case "file-change":
+          if (requestedParts.has("file-diff")) {
+            parts.fileDiff = matchingRow.change.diff;
+          }
+          if (requestedParts.has("stdout")) {
+            parts.stdout = matchingRow.stdout;
+          }
+          if (requestedParts.has("stderr")) {
+            parts.stderr = matchingRow.stderr;
+          }
+          break;
+        case "delegation":
+          if (requestedParts.has("output")) {
+            parts.output = matchingRow.output;
+          }
+          if (requestedParts.has("children")) {
+            parts.children = mapTimelineViewRowsToFeedRows(
+              matchingRow.childRows,
+            );
+          }
+          break;
+        case "workflow":
+          if (requestedParts.has("workflow")) {
+            parts.workflow = matchingRow.workflow;
+          }
+          break;
+        case "web-search":
+        case "web-fetch":
+        case "image-view":
+        case "approval":
+        case "question":
+          break;
+      }
+      break;
+  }
+
+  return {
+    rowKey: options.rowKey,
+    source: {
+      start: matchingRow.sourceSeqStart,
+      end: matchingRow.sourceSeqEnd,
+    },
+    parts,
+  };
+}
+
+function collectTimelineWorkOutputRows(
+  rows: readonly TimelineRow[],
+): Array<TimelineCommandWorkRow | TimelineToolWorkRow> {
+  const outputRows: Array<TimelineCommandWorkRow | TimelineToolWorkRow> = [];
+  for (const row of rows) {
+    switch (row.kind) {
+      case "conversation":
+      case "system":
+        continue;
+      case "turn":
+        if (row.children !== null) {
+          outputRows.push(...collectTimelineWorkOutputRows(row.children));
+        }
+        continue;
+      case "work":
+        switch (row.workKind) {
+          case "command":
+          case "tool":
+            outputRows.push(row);
+            continue;
+          case "delegation":
+            outputRows.push(...collectTimelineWorkOutputRows(row.childRows));
+            continue;
+          case "file-change":
+          case "web-search":
+          case "web-fetch":
+          case "image-view":
+          case "approval":
+          case "question":
+          case "workflow":
+            continue;
+        }
+    }
+  }
+  return outputRows;
+}
+
+export function buildTimelineWorkOutputDetail(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineWorkOutputDetailOptions,
+): TimelineWorkOutputDetailResponse {
+  const rows = buildTimelineRowsForDetail(db, thread, {
+    isDevelopment: options.isDevelopment,
+    sourceSeqEnd: options.sourceSeqEnd,
+    sourceSeqStart: options.sourceSeqStart,
+  });
+  const matchingRow = collectTimelineWorkOutputRows(rows).find(
+    (row) => row.callId === options.callId && row.workKind === options.workKind,
+  );
+  if (!matchingRow) {
+    throw new ApiError(404, "invalid_request", "Timeline row not found");
+  }
+
+  return {
+    output: matchingRow.output,
+  };
 }
 
 export function buildTimelineTurnSummaryDetails(

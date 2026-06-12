@@ -9,7 +9,8 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
-  threadTimelineQueryKeyPrefix,
+  threadTimelineFeedQueryKeyPrefix,
+  threadTimelineRowDetailQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
 import type {
@@ -239,7 +240,10 @@ export function removeThreadScopedQueries({
 }: ThreadArg): void {
   queryClient.removeQueries({ queryKey: threadQueryKey(threadId) });
   queryClient.removeQueries({
-    queryKey: threadTimelineQueryKeyPrefix(threadId),
+    queryKey: threadTimelineFeedQueryKeyPrefix(threadId),
+  });
+  queryClient.removeQueries({
+    queryKey: threadTimelineRowDetailQueryKeyPrefix(threadId),
   });
   queryClient.removeQueries({
     queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(threadId),

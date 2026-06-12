@@ -197,18 +197,14 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Thread listing may omit parentThreadId when not filtering by parent.",
   "threadListQuerySchema.projectId":
     "Thread listing may omit projectId to list across projects.",
-  "threadTimelineQuerySchema.includeNestedRows":
-    "Timeline queries may omit nested rows unless explicitly requested.",
-  "threadTimelineQuerySchema.segmentLimit":
-    "Timeline queries may omit segmentLimit to use the server-side default page size.",
-  "threadTimelineQuerySchema.beforeAnchorSeq":
-    "Timeline queries omit beforeAnchorSeq when requesting the latest page.",
-  "threadTimelineQuerySchema.beforeAnchorId":
-    "Timeline queries omit beforeAnchorId when requesting the latest page.",
-  "threadTimelineQuerySchema.summaryOnly":
-    "Timeline queries may omit summaryOnly; CLI sets it to skip row generation, web client always wants rows.",
-  "threadTimelineResponseSchema.contextWindowUsage":
-    "Timeline responses omit context window usage when the provider did not report it.",
+  "threadTimelineFeedQuerySchema.segmentLimit":
+    "Timeline feed queries may omit segmentLimit to use the server-side default page size.",
+  "threadTimelineFeedQuerySchema.beforeAnchorSeq":
+    "Timeline feed queries omit beforeAnchorSeq when requesting the latest page.",
+  "threadTimelineFeedQuerySchema.beforeAnchorId":
+    "Timeline feed queries omit beforeAnchorId when requesting the latest page.",
+  "threadTimelineFeedResponseSchema.contextWindowUsage":
+    "Timeline feed responses omit context window usage when the provider did not report it.",
   "updateProjectRequestSchema.name":
     "Project PATCH requests omit name when leaving it unchanged.",
   "updateProjectSourceRequestSchema.isDefault":
@@ -1158,6 +1154,22 @@ describe("server-contract clients", () => {
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/automations/auto_123");
     expect(
+      publicClient.threads[":id"].timeline.feed.$url({
+        param: { id: "thr_123" },
+        query: { segmentLimit: "20" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/timeline/feed");
+    expect(
+      publicClient.threads[":id"].timeline.rows[":rowKey"].detail.$url({
+        param: { id: "thr_123", rowKey: "row_123" },
+        query: {
+          parts: "output",
+          sourceSeqStart: "1",
+          sourceSeqEnd: "2",
+        },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/timeline/rows/row_123/detail");
+    expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {
@@ -1167,6 +1179,17 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/timeline/turn-summary-details");
+    expect(
+      publicClient.threads[":id"].timeline["work-output"].$url({
+        param: { id: "thr_123" },
+        query: {
+          callId: "call_123",
+          workKind: "command",
+          sourceSeqStart: "1",
+          sourceSeqEnd: "2",
+        },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/timeline/work-output");
     expect(
       publicClient.threads[":id"]["thread-storage"].files.$url({
         param: { id: "thr_123" },
@@ -1270,7 +1293,7 @@ describe("server-contract clients", () => {
       }),
     ).toThrow();
     expect(() =>
-      contract.threadTimelineQuerySchema.parse({
+      contract.threadTimelineFeedQuerySchema.parse({
         beforeAnchorSeq: "0",
         beforeAnchorId: "row-1",
       }),
@@ -1357,8 +1380,9 @@ describe("server-contract clients", () => {
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:
         contract.threadPendingInteractionsResponseSchema,
-      threadTimelineQuerySchema: contract.threadTimelineQuerySchema,
-      threadTimelineResponseSchema: contract.threadTimelineResponseSchema,
+      threadTimelineFeedQuerySchema: contract.threadTimelineFeedQuerySchema,
+      threadTimelineFeedResponseSchema:
+        contract.threadTimelineFeedResponseSchema,
       timelineTurnSummaryDetailsQuerySchema:
         contract.timelineTurnSummaryDetailsQuerySchema,
       timelineTurnSummaryDetailsRequestSchema:

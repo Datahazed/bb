@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
-  ThreadTimelineResponse,
+  ThreadTimelineFeedResponse,
+  TimelineFeedRow,
   TimelinePaginationCursor,
-  TimelineRow,
 } from "@bb/server-contract";
-import { useThreadTimeline } from "@/hooks/queries/thread-queries";
+import { useThreadTimelineFeed } from "@/hooks/queries/thread-queries";
 import * as api from "@/lib/api";
 
 interface UseThreadTimelinePagesArgs {
@@ -12,27 +12,27 @@ interface UseThreadTimelinePagesArgs {
 }
 
 interface UseThreadTimelinePagesResult {
-  activeThinking: ThreadTimelineResponse["activeThinking"];
-  contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
+  activeThinking: ThreadTimelineFeedResponse["activeThinking"];
+  contextWindowUsage: ThreadTimelineFeedResponse["contextWindowUsage"];
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   loadOlderTimelineRows: () => Promise<void>;
-  pendingTodos: ThreadTimelineResponse["pendingTodos"];
+  pendingTodos: ThreadTimelineFeedResponse["pendingTodos"];
   timelineError: Error | null;
   timelineLoading: boolean;
-  timelineRows: TimelineRow[];
+  timelineRows: readonly TimelineFeedRow[];
 }
 
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 
 export interface LoadedTimelineState {
   olderCursor: NullableTimelinePaginationCursor;
-  rows: TimelineRow[];
+  rows: readonly TimelineFeedRow[];
   surfaceKey: string;
 }
 
 interface BuildLoadedTimelineStateArgs {
-  latestRows: TimelineRow[];
+  latestRows: readonly TimelineFeedRow[];
   olderCursor: NullableTimelinePaginationCursor;
   surfaceKey: string;
 }
@@ -43,44 +43,44 @@ interface AreTimelinePaginationCursorsEqualArgs {
 }
 
 export interface MergeLatestTimelineRowsArgs {
-  latestRows: readonly TimelineRow[];
-  loadedRows: TimelineRow[];
+  latestRows: readonly TimelineFeedRow[];
+  loadedRows: readonly TimelineFeedRow[];
 }
 
 interface MergeLatestTimelineRowsResult {
   hasLatestOverlap: boolean;
-  rows: TimelineRow[];
+  rows: readonly TimelineFeedRow[];
 }
 
 interface TimelineRowIdentityEntry {
-  row: TimelineRow;
+  row: TimelineFeedRow;
   signature: string;
 }
 
 interface PreserveTimelineRowIdentityArgs {
-  nextRows: readonly TimelineRow[];
-  previousRows: readonly TimelineRow[];
+  nextRows: readonly TimelineFeedRow[];
+  previousRows: readonly TimelineFeedRow[];
 }
 
 interface AreTimelineRowReferencesEqualArgs {
-  left: readonly TimelineRow[];
-  right: readonly TimelineRow[];
+  left: readonly TimelineFeedRow[];
+  right: readonly TimelineFeedRow[];
 }
 
 export interface PrependOlderTimelineRowsArgs {
-  loadedRows: readonly TimelineRow[];
-  olderRows: readonly TimelineRow[];
+  loadedRows: readonly TimelineFeedRow[];
+  olderRows: readonly TimelineFeedRow[];
 }
 
 export interface MergeLoadedTimelineWithLatestArgs {
   current: LoadedTimelineState;
-  latestTimeline: ThreadTimelineResponse;
+  latestTimeline: ThreadTimelineFeedResponse;
   surfaceKey: string;
 }
 
 export interface RecoverLoadedTimelineAfterStaleCursorArgs {
   current: LoadedTimelineState;
-  latestTimeline: ThreadTimelineResponse;
+  latestTimeline: ThreadTimelineFeedResponse;
   surfaceKey: string;
 }
 
@@ -95,7 +95,7 @@ function buildLoadedTimelineState({
 }: BuildLoadedTimelineStateArgs): LoadedTimelineState {
   return {
     olderCursor,
-    rows: latestRows,
+    rows: [...latestRows],
     surfaceKey,
   };
 }
@@ -111,38 +111,29 @@ function areTimelinePaginationCursorsEqual({
 }
 
 function appendTimelineRowsPreservingOrder(
-  target: TimelineRow[],
-  rows: readonly TimelineRow[],
+  target: TimelineFeedRow[],
+  rows: readonly TimelineFeedRow[],
 ): void {
-  const seenIds = new Set(target.map((row) => row.id));
+  const seenIds = new Set(target.map((row) => row.key));
   for (const row of rows) {
-    if (seenIds.has(row.id)) {
+    if (seenIds.has(row.key)) {
       continue;
     }
-    seenIds.add(row.id);
+    seenIds.add(row.key);
     target.push(row);
   }
 }
 
-function timelineRowIdentitySignature(row: TimelineRow): string {
-  return [
-    row.kind,
-    row.id,
-    row.threadId,
-    row.turnId ?? "<null>",
-    row.sourceSeqStart,
-    row.sourceSeqEnd,
-    row.startedAt,
-    row.createdAt,
-  ].join("\u001f");
+function timelineRowIdentitySignature(row: TimelineFeedRow): string {
+  return JSON.stringify(row) ?? "";
 }
 
 function buildTimelineRowIdentityMap(
-  rows: readonly TimelineRow[],
+  rows: readonly TimelineFeedRow[],
 ): ReadonlyMap<string, TimelineRowIdentityEntry> {
   const rowsById = new Map<string, TimelineRowIdentityEntry>();
   for (const row of rows) {
-    rowsById.set(row.id, {
+    rowsById.set(row.key, {
       row,
       signature: timelineRowIdentitySignature(row),
     });
@@ -153,14 +144,11 @@ function buildTimelineRowIdentityMap(
 function preserveTimelineRowIdentity({
   nextRows,
   previousRows,
-}: PreserveTimelineRowIdentityArgs): TimelineRow[] {
+}: PreserveTimelineRowIdentityArgs): TimelineFeedRow[] {
   const previousRowsById = buildTimelineRowIdentityMap(previousRows);
   return nextRows.map((row) => {
-    const previous = previousRowsById.get(row.id);
-    if (
-      previous &&
-      previous.signature === timelineRowIdentitySignature(row)
-    ) {
+    const previous = previousRowsById.get(row.key);
+    if (previous && previous.signature === timelineRowIdentitySignature(row)) {
       return previous.row;
     }
     return row;
@@ -178,8 +166,8 @@ function areTimelineRowReferencesEqual({
 export function prependOlderTimelineRows({
   loadedRows,
   olderRows,
-}: PrependOlderTimelineRowsArgs): TimelineRow[] {
-  const rows: TimelineRow[] = [];
+}: PrependOlderTimelineRowsArgs): TimelineFeedRow[] {
+  const rows: TimelineFeedRow[] = [];
   appendTimelineRowsPreservingOrder(rows, olderRows);
   appendTimelineRowsPreservingOrder(rows, loadedRows);
   return rows;
@@ -201,9 +189,9 @@ export function mergeLatestTimelineRows({
     };
   }
 
-  const latestRowIds = new Set(latestRows.map((row) => row.id));
+  const latestRowIds = new Set(latestRows.map((row) => row.key));
   const firstLatestOverlapIndex = loadedRows.findIndex((row) =>
-    latestRowIds.has(row.id),
+    latestRowIds.has(row.key),
   );
   if (firstLatestOverlapIndex === -1) {
     const rows = [...loadedRows];
@@ -301,7 +289,7 @@ export function isStaleTimelinePaginationCursorError(error: Error): boolean {
 export function useThreadTimelinePages({
   threadId,
 }: UseThreadTimelinePagesArgs): UseThreadTimelinePagesResult {
-  const latestTimelineQuery = useThreadTimeline(threadId, {
+  const latestTimelineQuery = useThreadTimelineFeed(threadId, {
     refetchOnMount: true,
     staleTime: Infinity,
   });
@@ -354,7 +342,7 @@ export function useThreadTimelinePages({
 
     setIsLoadingOlderTimelineRows(true);
     try {
-      const response = await api.getThreadTimeline({
+      const response = await api.getThreadTimelineFeed({
         beforeCursor: nextOlderCursor,
         id: threadId,
       });

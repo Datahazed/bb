@@ -23,12 +23,14 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
-  type TimelineRow,
+  type ThreadTimelineFeedResponse,
+  threadTimelineFeedResponseSchema,
   threadComposerBootstrapResponseSchema,
   threadQueuedMessageListResponseSchema,
-  threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
+  timelineRowDetailResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
+  timelineWorkOutputDetailResponseSchema,
   uploadedPromptAttachmentSchema,
 } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
@@ -76,7 +78,18 @@ const clientTurnRequestedDataSchema = z.object({
   senderThreadId: z.string().nullable(),
 });
 
-type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
+type TimelineFeedCommandRow = Extract<
+  ThreadTimelineFeedResponse["rows"][number],
+  { kind: "work"; workKind: "command" }
+>;
+type TimelineFeedTurnRow = Extract<
+  ThreadTimelineFeedResponse["rows"][number],
+  { kind: "turn" }
+>;
+type TimelineFeedWorkSummaryRow = Extract<
+  ThreadTimelineFeedResponse["rows"][number],
+  { kind: "bundle-summary" | "step-summary" }
+>;
 
 describe("public thread data routes", () => {
   it("embeds thread environment and host snapshots when requested", async () => {
@@ -170,7 +183,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("returns timeline rows from thread events", async () => {
+  it("returns timeline feed rows from thread events", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
 
@@ -192,7 +205,7 @@ describe("public thread data routes", () => {
       });
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
       await expect(readJson(timelineResponse)).resolves.toEqual(
@@ -200,10 +213,272 @@ describe("public thread data routes", () => {
           rows: expect.arrayContaining([
             expect.objectContaining({
               kind: "conversation",
+              textPreview: expect.objectContaining({
+                text: "Legacy note one",
+              }),
             }),
           ]),
         }),
       );
+    });
+  });
+
+  it("previews large command output and lazy-loads full timeline work output", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "provider-thread-large-output";
+      const turnId = "turn-large-output";
+      const callId = "command-large-output";
+      const largeOutput = ["head\n", "a".repeat(5_000), "\n", "tail\n"].join(
+        "",
+      );
+
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Run a large command",
+        providerThreadId,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 3,
+        type: "turn/started",
+        data: { providerThreadId },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "commandExecution",
+            id: callId,
+            command: "printf large",
+            cwd: "/repo",
+            aggregatedOutput: largeOutput,
+            exitCode: 0,
+            status: "completed",
+            approvalStatus: null,
+          },
+        },
+      });
+
+      const feedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/feed`,
+      );
+      expect(feedResponse.status).toBe(200);
+      const feedText = await feedResponse.text();
+      const feed = threadTimelineFeedResponseSchema.parse(JSON.parse(feedText));
+      const feedCommandRow = feed.rows.find(
+        (row): row is TimelineFeedCommandRow =>
+          row.kind === "work" && row.workKind === "command",
+      );
+      expect(feedCommandRow).toBeDefined();
+      if (!feedCommandRow) {
+        throw new Error("Expected command feed row");
+      }
+      expect(feedCommandRow).not.toHaveProperty("threadId");
+      expect(feedCommandRow.outputPreview.complete).toBe(false);
+      expect(feedCommandRow.outputPreview.text).not.toBe(largeOutput);
+      expect(feedCommandRow.detail?.parts).toContain("output");
+
+      const outputResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/work-output?callId=${callId}&workKind=command&sourceSeqStart=${feedCommandRow.source.start}&sourceSeqEnd=${feedCommandRow.source.end}`,
+      );
+      expect(outputResponse.status).toBe(200);
+      const outputDetail = timelineWorkOutputDetailResponseSchema.parse(
+        await readJson(outputResponse),
+      );
+      expect(outputDetail.output).toBe(largeOutput);
+
+      const rowDetailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${feedCommandRow.key}/detail?parts=output&sourceSeqStart=${feedCommandRow.source.start}&sourceSeqEnd=${feedCommandRow.source.end}`,
+      );
+      expect(rowDetailResponse.status).toBe(200);
+      const rowDetail = timelineRowDetailResponseSchema.parse(
+        await readJson(rowDetailResponse),
+      );
+      expect(rowDetail.parts.output).toBe(largeOutput);
+    });
+  });
+
+  it("collapses large active work bursts in the timeline feed", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "provider-thread-work-burst";
+      const turnId = "turn-work-burst";
+      const commandOutput = "x".repeat(20_000);
+
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Run many commands",
+        providerThreadId,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 3,
+        type: "turn/started",
+        data: { providerThreadId },
+      });
+      for (let index = 0; index < 30; index += 1) {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          scope: turnScope(turnId),
+          sequence: 4 + index,
+          type: "item/completed",
+          data: {
+            item: {
+              type: "commandExecution",
+              id: `command-burst-${index}`,
+              command: `printf burst-${index}`,
+              cwd: "/repo",
+              aggregatedOutput: commandOutput,
+              exitCode: 0,
+              status: "completed",
+              approvalStatus: null,
+            },
+          },
+        });
+      }
+
+      const fullOutputPayloadLowerBound = commandOutput.length * 30;
+
+      const feedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/feed`,
+      );
+      expect(feedResponse.status).toBe(200);
+      const feedText = await feedResponse.text();
+      const feed = threadTimelineFeedResponseSchema.parse(JSON.parse(feedText));
+      const summaryRow = feed.rows.find(
+        (row): row is TimelineFeedWorkSummaryRow =>
+          row.kind === "bundle-summary" || row.kind === "step-summary",
+      );
+      expect(summaryRow).toBeDefined();
+      if (!summaryRow) {
+        throw new Error("Expected feed work summary row");
+      }
+      expect(summaryRow.childCount).toBe(30);
+      expect(summaryRow.detail?.parts).toContain("children");
+      expect(fullOutputPayloadLowerBound).toBeGreaterThan(500_000);
+      expect(Buffer.byteLength(feedText, "utf8")).toBeLessThan(20_000);
+
+      const detailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${summaryRow.key}/detail?parts=children&sourceSeqStart=${summaryRow.source.start}&sourceSeqEnd=${summaryRow.source.end}`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = timelineRowDetailResponseSchema.parse(
+        await readJson(detailResponse),
+      );
+      expect(detail.parts.children?.length).toBe(30);
+    });
+  });
+
+  it("lazy-loads closed step-summary children from the timeline feed", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "provider-thread-closed-step";
+      const turnId = "turn-closed-step";
+
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Run two commands",
+        providerThreadId,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 3,
+        type: "turn/started",
+        data: { providerThreadId },
+      });
+      for (let index = 0; index < 2; index += 1) {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          scope: turnScope(turnId),
+          sequence: 4 + index,
+          type: "item/completed",
+          data: {
+            item: {
+              type: "commandExecution",
+              id: `command-closed-step-${index}`,
+              command: `printf closed-step-${index}`,
+              cwd: "/repo",
+              aggregatedOutput: `closed-step-${index}`,
+              exitCode: 0,
+              status: "completed",
+              approvalStatus: null,
+            },
+          },
+        });
+      }
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 6,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "assistant-closed-step",
+            text: "Done.",
+          },
+        },
+      });
+
+      const feedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/feed`,
+      );
+      expect(feedResponse.status).toBe(200);
+      const feed = threadTimelineFeedResponseSchema.parse(
+        await readJson(feedResponse),
+      );
+      const summaryRow = feed.rows.find(
+        (row): row is TimelineFeedWorkSummaryRow =>
+          row.kind === "step-summary",
+      );
+      expect(summaryRow).toBeDefined();
+      if (!summaryRow) {
+        throw new Error("Expected feed step-summary row");
+      }
+      expect(summaryRow.childCount).toBe(2);
+      expect(summaryRow.detail?.parts).toContain("children");
+
+      const detailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${summaryRow.key}/detail?parts=children&sourceSeqStart=${summaryRow.source.start}&sourceSeqEnd=${summaryRow.source.end}`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = timelineRowDetailResponseSchema.parse(
+        await readJson(detailResponse),
+      );
+      expect(detail.parts.children?.length).toBe(2);
     });
   });
 
@@ -308,10 +583,10 @@ describe("public thread data routes", () => {
       ]);
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${createdThread.id}/timeline`,
+        `/api/v1/threads/${createdThread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
-      const timeline = threadTimelineResponseSchema.parse(
+      const timeline = threadTimelineFeedResponseSchema.parse(
         await readJson(timelineResponse),
       );
       const userRow = timeline.rows.find(
@@ -324,7 +599,7 @@ describe("public thread data routes", () => {
       ) {
         throw new Error("Expected user conversation timeline row");
       }
-      expect(userRow.text).toBe(promptText);
+      expect(userRow.textPreview.text).toBe(promptText);
       expect(userRow.mentions).toEqual([mention]);
       expect(userRow.attachments).toEqual({
         webImages: 0,
@@ -448,14 +723,14 @@ describe("public thread data routes", () => {
       });
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
-      const timeline = threadTimelineResponseSchema.parse(
+      const timeline = threadTimelineFeedResponseSchema.parse(
         await readJson(timelineResponse),
       );
       const turnRow = timeline.rows.find(
-        (row): row is TimelineTurnRow => row.kind === "turn",
+        (row): row is TimelineFeedTurnRow => row.kind === "turn",
       );
       expect(turnRow).toBeDefined();
       if (!turnRow) {
@@ -464,7 +739,7 @@ describe("public thread data routes", () => {
       expect(turnRow.children).toBeNull();
 
       const toolDetailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.source.start}&sourceSeqEnd=${turnRow.source.end}`,
       );
       expect(toolDetailsResponse.status).toBe(200);
       const toolDetails = timelineTurnSummaryDetailsResponseSchema.parse(

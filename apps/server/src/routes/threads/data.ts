@@ -10,12 +10,16 @@ import {
   threadStoragePathsQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
-  threadTimelineQuerySchema,
+  threadTimelineFeedQuerySchema,
+  timelineFeedDetailPartSchema,
+  timelineRowDetailQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
+  timelineWorkOutputDetailQuerySchema,
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
-  type ThreadTimelineQuery,
+  type TimelineFeedDetailPart,
+  type ThreadTimelineFeedQuery,
 } from "@bb/server-contract";
 import type {
   AppDeps,
@@ -42,8 +46,10 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  buildThreadTimeline,
+  buildThreadTimelineFeed,
+  buildTimelineRowDetail,
   buildTimelineTurnSummaryDetails,
+  buildTimelineWorkOutputDetail,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
   type ThreadTimelinePageKind,
@@ -173,7 +179,7 @@ function parseThreadTimelineSegmentLimit(
 }
 
 function parseThreadTimelinePage(
-  query: ThreadTimelineQuery,
+  query: ThreadTimelineFeedQuery,
 ): ThreadTimelinePageRequest {
   const hasBeforeAnchorSeq = query.beforeAnchorSeq !== undefined;
   const kind: ThreadTimelinePageKind = hasBeforeAnchorSeq ? "older" : "latest";
@@ -208,6 +214,19 @@ function parseThreadTimelinePage(
     kind,
     segmentLimit,
   };
+}
+
+function parseTimelineRowDetailParts(
+  rawParts: string,
+): TimelineFeedDetailPart[] {
+  const parts: TimelineFeedDetailPart[] = [];
+  for (const rawPart of rawParts.split(",")) {
+    const part = timelineFeedDetailPartSchema.parse(rawPart);
+    if (!parts.includes(part)) {
+      parts.push(part);
+    }
+  }
+  return parts;
 }
 
 export async function requireThreadStorageTarget(
@@ -318,17 +337,36 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
-  get("/threads/:id/timeline", threadTimelineQuerySchema, (context, query) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      buildThreadTimeline(deps.db, thread, {
-        isDevelopment: deps.config.isDevelopment,
-        includeNestedRows: query.includeNestedRows === "true",
-        page: parseThreadTimelinePage(query),
-        summaryOnly: query.summaryOnly === "true",
-      }),
-    );
-  });
+  get(
+    "/threads/:id/timeline/feed",
+    threadTimelineFeedQuerySchema,
+    (context, query) => {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      return context.json(
+        buildThreadTimelineFeed(deps.db, thread, {
+          isDevelopment: deps.config.isDevelopment,
+          page: parseThreadTimelinePage(query),
+        }),
+      );
+    },
+  );
+
+  get(
+    "/threads/:id/timeline/rows/:rowKey/detail",
+    timelineRowDetailQuerySchema,
+    (context, query) => {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      return context.json(
+        buildTimelineRowDetail(deps.db, thread, {
+          isDevelopment: deps.config.isDevelopment,
+          parts: parseTimelineRowDetailParts(query.parts),
+          rowKey: context.req.param("rowKey"),
+          sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+          sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+        }),
+      );
+    },
+  );
 
   get(
     "/threads/:id/timeline/turn-summary-details",
@@ -341,6 +379,23 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           turnId: query.turnId,
           sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
           sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+        }),
+      );
+    },
+  );
+
+  get(
+    "/threads/:id/timeline/work-output",
+    timelineWorkOutputDetailQuerySchema,
+    (context, query) => {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      return context.json(
+        buildTimelineWorkOutputDetail(deps.db, thread, {
+          callId: query.callId,
+          isDevelopment: deps.config.isDevelopment,
+          sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+          sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+          workKind: query.workKind,
         }),
       );
     },
