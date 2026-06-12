@@ -13,6 +13,7 @@ import {
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
+import type { TerminalSession } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
@@ -119,6 +120,10 @@ import { useThreadReadTracking } from "./useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
+  buildTerminalSyncedSecondaryFileTabs,
+  findActiveTerminalIdInSecondaryFileTabs,
+} from "./threadTerminalTabs";
+import {
   buildOpenInEditorHandler,
   resolveWorkspaceChangedFileOpenTarget,
   resolveThreadLocalWorkspaceRootPath,
@@ -163,6 +168,7 @@ import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBoots
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
+const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
@@ -501,22 +507,29 @@ export function ThreadDetailView() {
   const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
+  const terminalSessions =
+    terminalsListQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
   const activeTerminalCount = useMemo(
     () =>
-      terminalsListQuery.data?.sessions.filter(
-        (session) => isActiveTerminalSessionStatus(session.status),
-      ).length ?? 0,
-    [terminalsListQuery.data],
+      terminalSessions.filter((session) =>
+        isActiveTerminalSessionStatus(session.status),
+      ).length,
+    [terminalSessions],
   );
   const terminalsById = useMemo(
     () =>
       new Map(
-        (terminalsListQuery.data?.sessions ?? []).map((session) => [
-          session.id,
-          session,
-        ]),
+        terminalSessions.map((session) => [session.id, session]),
       ),
-    [terminalsListQuery.data],
+    [terminalSessions],
+  );
+  const syncedOrderedSecondaryFileTabs = useMemo(
+    () =>
+      buildTerminalSyncedSecondaryFileTabs({
+        orderedTabs: orderedSecondaryFileTabs,
+        terminalSessions,
+      }),
+    [orderedSecondaryFileTabs, terminalSessions],
   );
   const hostConnectionNotice = useMemo(
     () => (thread ? buildHostConnectionNotice(thread) : null),
@@ -754,97 +767,100 @@ export function ThreadDetailView() {
   );
   const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
-    const tabs = orderedSecondaryFileTabs.map((tab): SecondaryPanelFileTab => {
-      switch (tab.kind) {
-        case "browser": {
-          const browserLabel =
-            tab.title ?? (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-          return {
-            id: tab.id,
-            filename: browserLabel.length > 0 ? browserLabel : "Browser",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="Globe"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => activateBrowserTab(tab.id),
-            onClose: () => closeBrowserTab(tab.id),
-          };
+    const tabs = syncedOrderedSecondaryFileTabs.map(
+      (tab): SecondaryPanelFileTab => {
+        switch (tab.kind) {
+          case "browser": {
+            const browserLabel =
+              tab.title ??
+              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+            return {
+              id: tab.id,
+              filename: browserLabel.length > 0 ? browserLabel : "Browser",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Globe"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => activateBrowserTab(tab.id),
+              onClose: () => closeBrowserTab(tab.id),
+            };
+          }
+          case "terminal": {
+            const session = terminalsById.get(tab.terminalId);
+            return {
+              id: tab.id,
+              filename: session?.title ?? "Terminal",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Terminal"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel:
+                session === undefined || session.status === "running"
+                  ? null
+                  : terminalStatusLabel(session),
+              onSelect: () => handleActivateTerminalTab(tab.terminalId),
+              onClose: () => handleCloseTerminalTab(tab.terminalId),
+            };
+          }
+          case "workspace-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: tab.statusLabel,
+              onSelect: () => activateWorkspaceFileTab(tab.path),
+              onClose: () => closeWorkspaceFileTab(tab.path),
+            };
+          case "host-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => activateHostFileTab(tab.path),
+              onClose: () => closeHostFileTab(tab.path),
+            };
+          case "thread-storage-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              isPinned: tab.isPinned,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => activateStorageFileTab(tab.path),
+              onClose: () => closeStorageFileTab(tab.path),
+            };
+          case "new-tab":
+            return {
+              id: tab.id,
+              filename: "New tab",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="NewTab"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: activateNewTab,
+              onClose: closeNewTab,
+            };
         }
-        case "terminal": {
-          const session = terminalsById.get(tab.terminalId);
-          return {
-            id: tab.id,
-            filename: session?.title ?? "Terminal",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="Terminal"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel:
-              session === undefined || session.status === "running"
-                ? null
-                : terminalStatusLabel(session),
-            onSelect: () => handleActivateTerminalTab(tab.terminalId),
-            onClose: () => handleCloseTerminalTab(tab.terminalId),
-          };
-        }
-        case "workspace-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: tab.statusLabel,
-            onSelect: () => activateWorkspaceFileTab(tab.path),
-            onClose: () => closeWorkspaceFileTab(tab.path),
-          };
-        case "host-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => activateHostFileTab(tab.path),
-            onClose: () => closeHostFileTab(tab.path),
-          };
-        case "thread-storage-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            isPinned: tab.isPinned,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => activateStorageFileTab(tab.path),
-            onClose: () => closeStorageFileTab(tab.path),
-          };
-        case "new-tab":
-          return {
-            id: tab.id,
-            filename: "New tab",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="NewTab"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: activateNewTab,
-            onClose: closeNewTab,
-          };
-      }
-    });
+      },
+    );
     return tabs.length > 0 ? tabs : undefined;
   }, [
     activateBrowserTab,
@@ -860,7 +876,7 @@ export function ThreadDetailView() {
     closeWorkspaceFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
-    orderedSecondaryFileTabs,
+    syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
   const requestedMergeBaseBranch =
@@ -1452,9 +1468,10 @@ export function ThreadDetailView() {
     />
   );
   const activeTerminalId =
-    activeFixedSecondaryTab?.kind === "terminal"
-      ? activeFixedSecondaryTab.terminalId
-      : null;
+    findActiveTerminalIdInSecondaryFileTabs({
+      activeTabId: activeFixedSecondaryTabId,
+      tabs: syncedOrderedSecondaryFileTabs,
+    });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
