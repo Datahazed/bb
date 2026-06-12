@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { TerminalSession } from "@bb/server-contract";
+import { isVisibleTerminalSessionStatus } from "@bb/domain";
 import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   useCloseThreadTerminal,
@@ -58,7 +59,7 @@ export type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
 function isVisibleTerminalSession(session: TerminalSession): boolean {
-  return session.status !== "exited";
+  return isVisibleTerminalSessionStatus(session.status);
 }
 
 function pickActiveTerminalId(
