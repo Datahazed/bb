@@ -1398,6 +1398,12 @@ export type ThreadHostFileContentQuery = z.infer<
   typeof threadHostFileContentQuerySchema
 >;
 
+export const threadFilesRawQuerySchema = z.object({
+  /** Absolute filesystem path of an HTML file on the thread's host. */
+  path: z.string().min(1),
+});
+export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
+
 export const serverMessageSchema = changedMessageSchema;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 

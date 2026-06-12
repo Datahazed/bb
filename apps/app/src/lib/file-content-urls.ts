@@ -1,5 +1,10 @@
 import { apiClient, toRelativeUrl } from "./api-server";
 
+/**
+ * Percent-encode each segment of a path-suffix route param. Hono's `$url()`
+ * substitutes params verbatim (slashes must survive, but everything else
+ * needs encoding), so `:filePath{.+}` values are encoded here.
+ */
 function encodePathSegments(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
@@ -32,7 +37,11 @@ export function buildThreadStorageRawContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodePathSegments(path)}`;
+  return toRelativeUrl(
+    apiClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url({
+      param: { id: threadId, filePath: encodePathSegments(path) },
+    }),
+  );
 }
 
 export function buildThreadHostFileContentUrl(
@@ -51,12 +60,21 @@ export function buildRawFilesystemHtmlContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/files/raw?path=${encodeURIComponent(path)}`;
+  return toRelativeUrl(
+    apiClient.threads[":id"].files.raw.$url({
+      param: { id: threadId },
+      query: { path },
+    }),
+  );
 }
 
 export function buildThreadWorktreeRawContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/worktree/files/${encodePathSegments(path)}`;
+  return toRelativeUrl(
+    apiClient.threads[":id"].worktree.files[":filePath{.+}"].$url({
+      param: { id: threadId, filePath: encodePathSegments(path) },
+    }),
+  );
 }

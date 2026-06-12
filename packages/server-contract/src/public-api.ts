@@ -17,6 +17,7 @@ import type {
   PathId,
   PathProjectAutomationId,
   PathProjectId,
+  PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathThreadScheduleId,
   PathThreadAndTerminal,
@@ -49,6 +50,7 @@ import type {
   EnvironmentPullRequestResponse,
   ThreadArchiveAllResponse,
   ThreadStorageContentQuery,
+  ThreadFilesRawQuery,
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
   ProjectAttachmentContentQuery,
@@ -619,6 +621,16 @@ export type PublicApiSchema = {
       ThreadStorageFileListResponse
     >;
   };
+  "/threads/:id/thread-storage/files/:filePath{.+}": {
+    /**
+     * Serve one thread storage file addressed by path suffix (`filePath` may
+     * contain slashes). Path-shaped rather than `?path=` so relative asset
+     * links inside iframe-previewed HTML resolve beside the file. HTML
+     * responses are capped at 5 MB and served with a `sandbox allow-scripts`
+     * CSP; app bridge globals are never injected.
+     */
+    $get: Endpoint<PathThreadAndFilePath, Uint8Array, 200, "binary">;
+  };
   "/threads/:id/thread-storage/paths": {
     /**
      * List files and/or folders in durable thread storage for a thread
@@ -650,6 +662,33 @@ export type PublicApiSchema = {
      */
     $get: Endpoint<
       PathId & { query: ThreadHostFileContentQuery },
+      Uint8Array,
+      200,
+      "binary"
+    >;
+  };
+  "/threads/:id/worktree/files/:filePath{.+}": {
+    /**
+     * Serve one file from the thread's ready environment workspace addressed
+     * by path suffix (`filePath` may contain slashes). Path-shaped rather
+     * than `?path=` so relative asset links inside iframe-previewed HTML
+     * resolve beside the file. HTML responses are capped at 5 MB and served
+     * with a `sandbox allow-scripts` CSP; app bridge globals are never
+     * injected.
+     */
+    $get: Endpoint<PathThreadAndFilePath, Uint8Array, 200, "binary">;
+  };
+  "/threads/:id/files/raw": {
+    /**
+     * Serve one absolute-path HTML file from the thread's host for sandboxed
+     * iframe previews. `text/html` only (415 otherwise), capped at 5 MB, and
+     * served with a `sandbox allow-scripts` CSP, `nosniff`, and `no-store`;
+     * app bridge globals are never injected. Serves local user-authored
+     * bytes — do not expose `/api/v1` on public HTTP without adding an auth
+     * boundary.
+     */
+    $get: Endpoint<
+      PathId & { query: ThreadFilesRawQuery },
       Uint8Array,
       200,
       "binary"

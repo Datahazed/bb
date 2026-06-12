@@ -1088,7 +1088,6 @@ describe("server-contract canonical schemas", () => {
         },
       }),
     ).toThrow();
-
   });
 });
 
@@ -1194,6 +1193,28 @@ describe("server-contract clients", () => {
         query: { path: "/Users/me/notes/plan.md" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/host-files/content");
+    // Path-suffix file routes: `:filePath{.+}` spans slashes and the caller
+    // passes a pre-encoded value ($url substitutes params verbatim).
+    expect(
+      publicClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url(
+        {
+          param: { id: "thr_123", filePath: "reports/a%20b/preview.html" },
+        },
+      ).pathname,
+    ).toBe(
+      "/api/v1/threads/thr_123/thread-storage/files/reports/a%20b/preview.html",
+    );
+    expect(
+      publicClient.threads[":id"].worktree.files[":filePath{.+}"].$url({
+        param: { id: "thr_123", filePath: "public/report.html" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/worktree/files/public/report.html");
+    expect(
+      publicClient.threads[":id"].files.raw.$url({
+        param: { id: "thr_123" },
+        query: { path: "/Users/me/report.html" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/files/raw");
     expect(
       publicClient.threads[":id"].interactions.$url({
         param: { id: "thr_123" },
@@ -1285,9 +1306,7 @@ describe("server-contract clients", () => {
     };
 
     expect(
-      contract.timelineParentChangeSystemRowSchema.parse(
-        parentChangeRow,
-      ),
+      contract.timelineParentChangeSystemRowSchema.parse(parentChangeRow),
     ).toMatchObject({
       status: "completed",
     });
