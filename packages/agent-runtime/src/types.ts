@@ -11,7 +11,6 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -78,9 +77,6 @@ export interface AgentRuntimeOptions {
   /** Called when a provider emits a translated event.
    *  Every event has `threadId` (bb ID) and `providerThreadId` (provider's internal ID). */
   onEvent: (event: ThreadEvent) => void;
-
-  /** Called when runtime audit capture is enabled by a harness or test. */
-  onCapture?: (entry: AgentRuntimeCaptureEntry) => void;
 
   /** Called when a provider needs to execute a tool.
    *  `threadId` is always the BB thread id and `providerThreadId` is always present. */

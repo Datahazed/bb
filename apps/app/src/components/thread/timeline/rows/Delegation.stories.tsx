@@ -270,7 +270,7 @@ const correctnessChild08: TimelineRow = {
     limit: 200,
   },
   output:
-    '1\timport type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";\n2\timport type { AgentRuntimeCaptureEntry } from "./capture-types.js";\n3\timport type {\n4\t  AdapterCommand,\n5\t  ProviderAdapterFactory,\n6\t  ProviderCommandPlan,\n7\t  ProviderRequestCommandPlan,\n8\t} from "./provider-adapter.j... [truncated]',
+    '1\timport type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";\n2\timport type {\n3\t  AdapterCommand,\n4\t  ProviderAdapterFactory,\n5\t  ProviderCommandPlan,\n6\t  ProviderRequestCommandPlan,\n7\t} from "./provider-adapter.j... [truncated]',
   completedAt: 1778174307849,
   approvalStatus: null,
   activityIntents: [
@@ -334,7 +334,7 @@ const correctnessChild10: TimelineRow = {
     limit: 100,
   },
   output:
-    '195\t    } satisfies JsonRpcMessage;\n196\t\n197\t    try {\n198\t      handleRuntimeProviderRequest({\n199\t        createCaptureId: () => "cap-1",\n200\t        emitCapture: (entry) => captures.push(entry),\n201\t        getActiveTurnId: () => undefined,\n202\t        getThreadExecutionOptions: () => undefined,\n... [truncated]',
+    '195\t    } satisfies JsonRpcMessage;\n196\t\n197\t    try {\n198\t      handleRuntimeProviderRequest({\n199\t        getActiveTurnId: () => undefined,\n200\t        getThreadExecutionOptions: () => undefined,\n201\t        onInteractiveRequest: async () => ({\n202\t          decision: "deny",\n... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -1440,7 +1440,7 @@ const testQualityChild04: TimelineRow = {
     limit: 50,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      args.emitCapture({\n360\t        kind: "interactive-result",\n361\t        capturedAt: Date.now(),\n362\t        providerId,\n363\t        requestCaptureId: captureId,\n364\t        requestId: scopedI... [truncated]',
+    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -1473,7 +1473,7 @@ const testQualityChild05: TimelineRow = {
     limit: 30,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      args.emitCapture({\n360\t        kind: "interactive-result",\n361\t        capturedAt: Date.now(),\n362\t        providerId,\n363\t        requestCaptureId: captureId,\n364\t        requestId: scopedI... [truncated]',
+    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [

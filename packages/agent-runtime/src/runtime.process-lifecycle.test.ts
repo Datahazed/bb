@@ -55,7 +55,6 @@ describe("createAgentRuntime process lifecycle", () => {
       bridgeBundleDir: undefined,
       createProviderIdentityState: (providerId) =>
         identityRegistry.createProviderState({ providerId }),
-      emitCapture: () => undefined,
       env: args.env,
       getNextRequestId: () => nextRequestId++,
       handleStdoutLine: () => undefined,

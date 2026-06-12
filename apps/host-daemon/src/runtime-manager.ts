@@ -310,7 +310,6 @@ export interface RuntimeManagerOptions {
   ) => Promise<HostWorkspace>;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
-  onCapture?: AgentRuntimeOptions["onCapture"];
   threadStorageRootPath?: string | null;
   onThreadStorageChanged?: (args: {
     environmentId: string;
@@ -1254,7 +1253,6 @@ export class RuntimeManager {
       shellEnv: this.getShellEnv(),
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
-      onCapture: this.options.onCapture,
       onEvent: (event) => {
         this.options.onStderr?.(
           `Dropping provider maintenance event ${event.type}; no environment owns provider-only maintenance commands.`,
@@ -1345,7 +1343,6 @@ export class RuntimeManager {
         shellEnv: this.getShellEnv(),
         threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
         bridgeBundleDir: this.options.bridgeBundleDir,
-        onCapture: this.options.onCapture,
         onEvent: (event) => {
           if (event.type === "thread/identity") {
             this.markThreadActive(

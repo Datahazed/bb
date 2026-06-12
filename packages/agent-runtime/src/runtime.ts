@@ -4,7 +4,6 @@ import {
   toProviderExternalThreadName,
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import type {
   AdapterCommand,
   ProviderAdapterFactory,
@@ -19,7 +18,6 @@ import {
 import {
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
-  type JsonRpcMessage,
   type JsonRpcObject,
   parseJsonRpcLine,
   type SendJsonRpcRequestArgs,
@@ -112,34 +110,16 @@ interface RuntimeJsonRpcResponseArgs extends RuntimeParsedMessageArgs {
   parsedId: string | number;
 }
 
-interface RuntimeProviderNotificationArgs extends RuntimeParsedMessageArgs {
-  line: string;
-  notificationMethod: string;
-}
-
 interface EmitTranslatedEventsArgs {
   events: ThreadEvent[];
   proc: ProviderProcess;
-  providerId: string;
-  rawCaptureId?: string;
-  rawMethod?: string;
-  sourceThreadId?: string;
-}
-
-interface EmitRuntimeEventArgs {
-  event: ThreadEvent;
-  proc: ProviderProcess;
-  providerId: string;
-  rawMethod?: string;
   sourceThreadId?: string;
 }
 
 interface EmitAcceptedCommandEventsArgs {
   command: AdapterCommand;
   proc: ProviderProcess;
-  providerId: string;
   providerThreadId?: string;
-  rawMethod: string;
   sourceThreadId?: string;
 }
 
@@ -183,21 +163,10 @@ function createAgentRuntimeInternal(
     skillRoots: options.skillRoots,
   });
   let nextRequestId = 1;
-  let nextCaptureId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
-
-  function createCaptureId(): string {
-    const captureId = `capture-${nextCaptureId}`;
-    nextCaptureId += 1;
-    return captureId;
-  }
-
-  function emitCapture(entry: AgentRuntimeCaptureEntry): void {
-    options.onCapture?.(entry);
-  }
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
@@ -205,7 +174,6 @@ function createAgentRuntimeInternal(
     bridgeBundleDir: options.bridgeBundleDir,
     createProviderIdentityState: (providerId) =>
       threadIdentityRegistry.createProviderState({ providerId }),
-    emitCapture,
     env: options.env,
     getNextRequestId: () => nextRequestId++,
     handleStdoutLine: (args) =>
@@ -226,8 +194,6 @@ function createAgentRuntimeInternal(
         emitTranslatedEvents({
           events: detachEvents,
           proc: providerProcess,
-          providerId: providerProcess.adapter.id,
-          rawMethod: "runtime/thread-detached",
           sourceThreadId: threadId,
         });
       }
@@ -422,8 +388,6 @@ function createAgentRuntimeInternal(
     emitAcceptedCommandEvents({
       command: adapterCommand,
       proc,
-      providerId,
-      rawMethod: cmd.method,
       sourceThreadId: threadId,
     });
   }
@@ -494,9 +458,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: currentConfig.providerId,
         ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-        rawMethod: plan.method,
         sourceThreadId: args.threadId,
       });
     }
@@ -578,29 +540,8 @@ function createAgentRuntimeInternal(
         replayResult.event,
       );
       turnState.observe(normalizedEvent);
-      emitRuntimeEvent({
-        event: normalizedEvent,
-        proc: args.proc,
-        providerId: args.providerId,
-        rawCaptureId: args.rawCaptureId,
-        rawMethod: args.rawMethod,
-        sourceThreadId: args.sourceThreadId,
-      });
+      options.onEvent(normalizedEvent);
     }
-  }
-
-  function emitRuntimeEvent(
-    args: EmitRuntimeEventArgs & { rawCaptureId?: string },
-  ): void {
-    emitCapture({
-      kind: "translated-thread-event",
-      capturedAt: Date.now(),
-      providerId: args.providerId,
-      rawCaptureId: args.rawCaptureId,
-      rawMethod: args.rawMethod,
-      event: args.event,
-    });
-    options.onEvent(args.event);
   }
 
   function emitAcceptedCommandEvents(
@@ -618,43 +559,18 @@ function createAgentRuntimeInternal(
     emitTranslatedEvents({
       events,
       proc: args.proc,
-      providerId: args.providerId,
-      rawMethod: `${args.rawMethod}/result`,
       sourceThreadId: args.sourceThreadId,
     });
   }
 
-  function handleProviderNotification(
-    args: RuntimeProviderNotificationArgs,
-  ): void {
+  function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
-    const rawCaptureId = createCaptureId();
-    const rawEvent: JsonRpcMessage = {
-      jsonrpc: "2.0",
-      method: args.notificationMethod,
-      ...(Object.hasOwn(args.parsed, "params")
-        ? { params: args.parsed.params }
-        : {}),
-    };
-    const providerId = args.proc.adapter.id;
-    emitCapture({
-      kind: "raw-provider-event",
-      captureId: rawCaptureId,
-      capturedAt: Date.now(),
-      providerId,
-      rawLine: args.line,
-      rawEvent,
-      sourceThreadId,
-    });
     emitTranslatedEvents({
       events: args.proc.adapter.translateEvent(args.parsed, {
         threadId: sourceThreadId,
       }),
       proc: args.proc,
-      providerId,
       sourceThreadId,
-      rawCaptureId,
-      rawMethod: rawEvent.method,
     });
   }
 
@@ -679,12 +595,9 @@ function createAgentRuntimeInternal(
 
     if (parsedLine.kind === "request") {
       handleRuntimeProviderRequest({
-        createCaptureId,
-        emitCapture,
         getActiveTurnId: (threadId) => turnState.getActiveTurnId(threadId),
         getThreadExecutionOptions: (threadId) =>
           threadRuntimeConfigs.get(threadId)?.options,
-        line,
         onInteractiveRequest: options.onInteractiveRequest,
         onToolCall: options.onToolCall,
         parsedId: parsedLine.parsedId,
@@ -705,8 +618,6 @@ function createAgentRuntimeInternal(
     // own wire format (codex sends direct notifications, bridges wrap
     // SDK messages in sdk/message envelopes, etc.).
     handleProviderNotification({
-      line,
-      notificationMethod: parsedLine.notificationMethod,
       parsed: parsedLine.parsed,
       proc,
     });
@@ -808,9 +719,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId,
         ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
 
@@ -943,9 +852,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId,
         providerThreadId: resolvedId,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
 
@@ -1003,8 +910,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
     },
@@ -1068,8 +973,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
       return { status: "steered" };
@@ -1106,8 +1009,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
       turnState.clearThread(threadId);
@@ -1140,8 +1041,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
     },

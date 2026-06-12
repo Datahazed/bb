@@ -5,7 +5,6 @@ import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
 } from "@bb/process-utils";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactory,
@@ -42,7 +41,6 @@ export interface RuntimeProviderProcessManagerArgs {
   createProviderIdentityState: (
     providerId: string,
   ) => RuntimeProviderIdentityState;
-  emitCapture: (entry: AgentRuntimeCaptureEntry) => void;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
@@ -315,12 +313,6 @@ export class RuntimeProviderProcessManager {
       }
       providerProcess.stderrChunks.push(line);
       this.args.onStderr?.(line);
-      this.args.emitCapture({
-        kind: "provider-stderr",
-        capturedAt: Date.now(),
-        providerId,
-        line,
-      });
     });
 
     child.on("error", (err) => {
@@ -405,13 +397,6 @@ export class RuntimeProviderProcessManager {
     args.providerProcess.pending.clear();
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
-    this.args.emitCapture({
-      kind: "provider-process-error",
-      capturedAt: Date.now(),
-      providerId: args.providerId,
-      message,
-    });
-
     this.args.onProcessExit?.({
       providerId: args.providerId,
       threadIds: [...args.providerProcess.identity.threadIds],
@@ -444,16 +429,6 @@ export class RuntimeProviderProcessManager {
     }
     args.providerProcess.pending.clear();
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
-
-    this.args.emitCapture({
-      kind: "provider-process-exit",
-      capturedAt: Date.now(),
-      providerId: args.providerId,
-      threadIds,
-      code: args.code,
-      signal: args.signal,
-      stderrChunks: [...args.providerProcess.stderrChunks],
-    });
 
     this.args.onProcessExit?.({
       providerId: args.providerId,
