@@ -278,8 +278,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
-  "provider.list": async (_command, options) => ({
-    providers: (options.listProviders ?? listAvailableProviders)(),
+  "provider.list": async () => ({
+    providers: listAvailableProviders(),
   }),
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({

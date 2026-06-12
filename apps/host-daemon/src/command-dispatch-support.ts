@@ -3,7 +3,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
-import type { AvailableModel, ProviderInfo } from "@bb/domain";
+import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
@@ -44,7 +44,6 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
-  listProviders?: () => ProviderInfo[];
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;

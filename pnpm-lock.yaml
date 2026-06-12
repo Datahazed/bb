@@ -553,9 +553,6 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
-      '@bb/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
       '@bb/secret-storage':
         specifier: workspace:*
         version: link:../../packages/secret-storage

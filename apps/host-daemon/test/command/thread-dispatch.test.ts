@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import {
+  listAvailableProviders,
+  type AgentRuntimeOptions,
+} from "@bb/agent-runtime";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
@@ -1486,41 +1489,11 @@ describe("thread command dispatch", () => {
       {
         type: "provider.list",
       },
-      {
-        ...harness.dispatchOptions(),
-        listProviders: () => [
-          {
-            id: "fake",
-            displayName: "Fake Provider",
-            capabilities: {
-              supportsArchive: false,
-              supportsRename: false,
-              supportsServiceTier: false,
-              supportsUserQuestion: true,
-              supportedPermissionModes: ["full", "workspace-write", "readonly"],
-            },
-            available: true,
-          },
-        ],
-      },
+      harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({
-      providers: [
-        {
-          id: "fake",
-          displayName: "Fake Provider",
-          capabilities: {
-            supportsArchive: false,
-            supportsRename: false,
-            supportsServiceTier: false,
-            supportsUserQuestion: true,
-            supportedPermissionModes: ["full", "workspace-write", "readonly"],
-          },
-          available: true,
-        },
-      ],
-    });
+    expect(result).toEqual({ providers: listAvailableProviders() });
+    expect(result.providers.length).toBeGreaterThan(0);
   });
 
   it("covers provider.list_models", async () => {
