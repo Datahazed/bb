@@ -167,6 +167,10 @@ type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
+type OpenInEditorHandler = NonNullable<
+  ReturnType<typeof buildOpenInEditorHandler>
+>;
+type OpenFilePreviewHandler = (relativePath: string) => void;
 
 interface RightPanelFileTabIconProps {
   path: string;
@@ -1150,6 +1154,149 @@ export function ThreadDetailView() {
     },
     [openSecondaryPanelDiffFile],
   );
+  const metadataStorage = useMemo(
+    () => ({
+      controller: storageBrowserController,
+      filesError: threadStorageFilesError,
+      isFilesLoading: isThreadStorageFilesLoading,
+    }),
+    [
+      isThreadStorageFilesLoading,
+      storageBrowserController,
+      threadStorageFilesError,
+    ],
+  );
+  const handleOpenFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: localWorkspaceRootPath,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      localWorkspaceRootPath,
+      openPathInPreferredFileTarget,
+    ],
+  );
+  const handleOpenStorageFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: threadEnvironmentIsLocal ? threadStorageRootPath : null,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      openPathInPreferredFileTarget,
+      threadEnvironmentIsLocal,
+      threadStorageRootPath,
+    ],
+  );
+  const handleOpenHostFileInEditor = useMemo<
+    OpenInEditorHandler | undefined
+  >(() => {
+    if (!threadEnvironmentIsLocal || !canOpenPreferredFileTarget) {
+      return undefined;
+    }
+    return (path) => {
+      void openPathInPreferredFileTarget({
+        lineNumber: getFilePreviewLineRangeStart({
+          lineRange: activeHostFileLineRange,
+        }),
+        path,
+      });
+    };
+  }, [
+    activeHostFileLineRange,
+    canOpenPreferredFileTarget,
+    openPathInPreferredFileTarget,
+    threadEnvironmentIsLocal,
+  ]);
+  const workspaceFileCopyPath = activeWorkspaceFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeWorkspaceFilePath,
+        rootPath: environment?.path,
+      })
+    : null;
+  const storageFileCopyPath = activeStorageFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeStorageFilePath,
+        rootPath: threadStorageRootPath,
+      })
+    : null;
+  // Relative links inside a previewed markdown file resolve against the file's
+  // own directory, mirroring how the file's links would resolve on disk.
+  const workspaceFileLinkBaseDir = workspaceFileCopyPath
+    ? getAbsoluteDirname({ path: workspaceFileCopyPath })
+    : undefined;
+  const storageFileLinkBaseDir = storageFileCopyPath
+    ? getAbsoluteDirname({ path: storageFileCopyPath })
+    : undefined;
+  const hostFileLinkBaseDir = activeHostFilePath
+    ? getAbsoluteDirname({ path: activeHostFilePath })
+    : undefined;
+  const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
+    baseDir: hostFileLinkBaseDir,
+    threadStorageRootPath,
+    workspaceRootPath: localWorkspaceRootPath,
+  });
+  const workspaceMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: workspaceFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: environment?.path,
+      }),
+    [
+      environment?.path,
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      workspaceFileLinkBaseDir,
+    ],
+  );
+  const hostMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: hostFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: hostFileLinkRootPath,
+      }),
+    [
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      hostFileLinkBaseDir,
+      hostFileLinkRootPath,
+    ],
+  );
+  const storageMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: storageFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: threadStorageRootPath,
+      }),
+    [
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      storageFileLinkBaseDir,
+      threadStorageRootPath,
+    ],
+  );
+  const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
+    (relativePath) => {
+      openWorkspaceFile({
+        lineRange: null,
+        path: relativePath,
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      });
+    },
+    [openWorkspaceFile],
+  );
 
   if (!projectId || !threadId) {
     return (
@@ -1303,78 +1450,6 @@ export function ThreadDetailView() {
       thread={thread}
     />
   );
-  const metadataStorage = {
-    controller: storageBrowserController,
-    filesError: threadStorageFilesError,
-    isFilesLoading: isThreadStorageFilesLoading,
-  };
-  const handleOpenFileInEditor = buildOpenInEditorHandler({
-    rootPath: localWorkspaceRootPath,
-    canOpenPreferredTarget: canOpenPreferredFileTarget,
-    openInPreferredTarget: openPathInPreferredFileTarget,
-  });
-  const handleOpenStorageFileInEditor = buildOpenInEditorHandler({
-    rootPath: threadEnvironmentIsLocal ? threadStorageRootPath : null,
-    canOpenPreferredTarget: canOpenPreferredFileTarget,
-    openInPreferredTarget: openPathInPreferredFileTarget,
-  });
-  const handleOpenHostFileInEditor =
-    threadEnvironmentIsLocal && canOpenPreferredFileTarget
-      ? (path: string) => {
-          void openPathInPreferredFileTarget({
-            lineNumber: getFilePreviewLineRangeStart({
-              lineRange: activeHostFileLineRange,
-            }),
-            path,
-          });
-        }
-      : undefined;
-  const workspaceFileCopyPath = activeWorkspaceFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeWorkspaceFilePath,
-        rootPath: environment?.path,
-      })
-    : null;
-  const storageFileCopyPath = activeStorageFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeStorageFilePath,
-        rootPath: threadStorageRootPath,
-      })
-    : null;
-  // Relative links inside a previewed markdown file resolve against the file's
-  // own directory, mirroring how the file's links would resolve on disk.
-  const workspaceFileLinkBaseDir = workspaceFileCopyPath
-    ? getAbsoluteDirname({ path: workspaceFileCopyPath })
-    : undefined;
-  const storageFileLinkBaseDir = storageFileCopyPath
-    ? getAbsoluteDirname({ path: storageFileCopyPath })
-    : undefined;
-  const hostFileLinkBaseDir = activeHostFilePath
-    ? getAbsoluteDirname({ path: activeHostFilePath })
-    : undefined;
-  const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
-    baseDir: hostFileLinkBaseDir,
-    threadStorageRootPath,
-    workspaceRootPath: localWorkspaceRootPath,
-  });
-  const workspaceMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: workspaceFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: environment?.path,
-  });
-  const hostMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: hostFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: hostFileLinkRootPath,
-  });
-  const storageMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: storageFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: threadStorageRootPath,
-  });
   const activeTerminalId =
     activeFixedSecondaryTab?.kind === "terminal"
       ? activeFixedSecondaryTab.terminalId
@@ -1495,14 +1570,7 @@ export function ThreadDetailView() {
           onOpenFileInEditor: handleOpenFileInEditor,
           onFileTabReorder: reorderFileTab,
           onOpenNewTab: handleOpenNewTab,
-          onOpenFilePreview: (relativePath: string) => {
-            openWorkspaceFile({
-              lineRange: null,
-              path: relativePath,
-              source: { kind: "working-tree" },
-              statusLabel: null,
-            });
-          },
+          onOpenFilePreview: handleOpenFilePreview,
           onPanelFocus: handleSecondaryPanelFocus,
           onPanelChange: handleSecondaryPanelChange,
           showGitDiffTab: canUseGitUi,

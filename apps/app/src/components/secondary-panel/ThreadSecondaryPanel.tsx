@@ -232,6 +232,7 @@ export function ThreadSecondaryPanel({
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
+  const shouldRenderFileTabContent = isOpen;
   const {
     currentGitDiff,
     gitDiffError,
@@ -450,11 +451,13 @@ export function ThreadSecondaryPanel({
               isTerminalTabActive ? undefined : ""
             }
           >
-            {fileTabContent ?? (
-              <EmptyStatePanel className="mx-4 rounded-lg">
-                No file preview content provided.
-              </EmptyStatePanel>
-            )}
+            {shouldRenderFileTabContent
+              ? (fileTabContent ?? (
+                  <EmptyStatePanel className="mx-4 rounded-lg">
+                    No file preview content provided.
+                  </EmptyStatePanel>
+                ))
+              : null}
           </div>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent

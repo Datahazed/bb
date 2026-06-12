@@ -28,6 +28,8 @@ import {
   buildLocalFileAnchorHref,
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
+  type MarkdownAbsoluteLocalFileLinkRouting,
+  type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 import type {
   MarkdownLinkRouting,
@@ -84,7 +86,31 @@ interface SetMarkdownContentWidthVariableArgs {
   width: number;
 }
 
+interface AreMarkdownAbsoluteLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownAbsoluteLocalFileLinkRouting | undefined;
+  previous: MarkdownAbsoluteLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownRelativeLocalFileLinkRouting | undefined;
+  previous: MarkdownRelativeLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownLocalFileLinkRoutingsEqualArgs {
+  next: MarkdownLocalFileLinkRouting | undefined;
+  previous: MarkdownLocalFileLinkRouting | undefined;
+}
+
+interface AreMarkdownLinkRoutingsEqualArgs {
+  next: MarkdownLinkRouting | undefined;
+  previous: MarkdownLinkRouting | undefined;
+}
+
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
+type MarkdownPreviewPropsEqual = (
+  previous: MarkdownPreviewProps,
+  next: MarkdownPreviewProps,
+) => boolean;
 type MarkdownAnchorEvent = ReactMouseEvent<HTMLAnchorElement>;
 type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
   ExtraProps;
@@ -119,6 +145,81 @@ const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
   rehypeSanitize,
 ];
+
+function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownAbsoluteLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  if (previous.kind !== next.kind) return false;
+  if (previous.kind === "trusted-host" || next.kind === "trusted-host") {
+    return true;
+  }
+  return previous.rootPath === next.rootPath;
+}
+
+function areMarkdownRelativeLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.baseDir === next.baseDir && previous.rootPath === next.rootPath
+  );
+}
+
+function areMarkdownLocalFileLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownLocalFileLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.onOpenLink === next.onOpenLink &&
+    areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
+      next: next.absoluteLinks,
+      previous: previous.absoluteLinks,
+    }) &&
+    areMarkdownRelativeLocalFileLinkRoutingsEqual({
+      next: next.relativeLinks,
+      previous: previous.relativeLinks,
+    })
+  );
+}
+
+function areMarkdownLinkRoutingsEqual({
+  next,
+  previous,
+}: AreMarkdownLinkRoutingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.onOpenLink === next.onOpenLink &&
+    areMarkdownLocalFileLinkRoutingsEqual({
+      next: next.localFile,
+      previous: previous.localFile,
+    })
+  );
+}
+
+const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
+  previous,
+  next,
+) =>
+  (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
+  previous.className === next.className &&
+  previous.content === next.content &&
+  (previous.expandedImageAlt ?? "Expanded image") ===
+    (next.expandedImageAlt ?? "Expanded image") &&
+  (previous.imageLightboxTitle ?? "Expanded image preview") ===
+    (next.imageLightboxTitle ?? "Expanded image preview") &&
+  previous.urlTransform === next.urlTransform &&
+  areMarkdownLinkRoutingsEqual({
+    next: next.linkRouting,
+    previous: previous.linkRouting,
+  });
 
 function isMarkdownAppRouteHref({
   href,
@@ -625,5 +726,8 @@ function MarkdownPreviewComponent({
   );
 }
 
-export const MarkdownPreview = memo(MarkdownPreviewComponent);
+export const MarkdownPreview = memo(
+  MarkdownPreviewComponent,
+  areMarkdownPreviewPropsEqual,
+);
 MarkdownPreview.displayName = "MarkdownPreview";
