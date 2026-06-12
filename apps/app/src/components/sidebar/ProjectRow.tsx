@@ -76,14 +76,9 @@ import {
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
-import { type SidebarSortableDragBindings } from "./sortableMotion";
+import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-
-// Pin the project row plus this many parent levels (parent threads,
-// worktree group headers); rows deeper than the cap render non-sticky so a deep
-// chain can't pin more ancestors than a short viewport can hold.
-const SIDEBAR_STICKY_PARENT_DEPTH_CAP = 4;
 
 export type ProjectThreadListState =
   | {
@@ -103,13 +98,11 @@ export interface ProjectRowProps {
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
-  collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   isLocalPathInvalid: boolean;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeProjectClickSuppression?: ConsumeDragClickSuppression;
   projectDragBindings?: SidebarSortableDragBindings;
@@ -121,11 +114,9 @@ export interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
   selectedThreadId?: string;
-  collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
@@ -150,12 +141,8 @@ interface ThreadTreeNodeRowProps {
   depthOffset: number;
   isEnvGrouped: boolean;
   selectedThreadId?: string;
-  collapsedThreadIds: Set<string>;
-  collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
-  onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   sortableRef?: (element: HTMLDivElement | null) => void;
@@ -167,11 +154,9 @@ interface ThreadTreeItemRowProps {
   item: ProjectThreadItem;
   depthOffset: number;
   selectedThreadId?: string;
-  collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
@@ -181,11 +166,8 @@ interface EnvironmentThreadGroupRowProps {
   depthOffset: number;
   selectedThreadId?: string;
   isCollapsed: boolean;
-  collapsedThreadIds: Set<string>;
-  collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
@@ -193,21 +175,11 @@ interface ThreadTreeGroupLineProps {
   parentRowDepth: number;
 }
 
-interface ThreadTreeLineContinuationProps {
-  parentRowDepth: number;
-}
-
-interface GetThreadNodeStickyLevelArgs {
-  depthOffset: number;
-  node: ProjectThreadNode;
-}
-
 interface EnvironmentThreadGroupHeaderProps {
   environmentId: string;
   representativeThread: ThreadListEntry;
   rowDepth: number;
   stickyLevel?: number;
-  parentLineDepth?: number;
   childActivity: CollapsedChildActivity;
   isCollapsed: boolean;
   archiveThreadsPending?: boolean;
@@ -302,102 +274,44 @@ function getProjectThreadTreeRootDepthOffset(
 
 function getThreadRowDepth({
   depthOffset,
-  nodeDepth,
   variant,
 }: GetThreadRowDepthArgs): number {
-  return getProjectThreadTreeRootDepthOffset(variant) + nodeDepth + depthOffset;
+  return getProjectThreadTreeRootDepthOffset(variant) + depthOffset;
 }
 
 function getThreadRowOptions({
-  childActivity,
-  childCount,
   consumeClickSuppression,
   dragBindings,
   depthOffset,
-  isCollapsed,
   isEnvGrouped,
-  isParent,
-  nodeDepth,
-  onToggleThreadCollapsed,
-  stickyLevel,
   variant,
 }: GetThreadRowOptionsArgs): ThreadRowOptions {
-  const depth = getThreadRowDepth({ depthOffset, nodeDepth, variant });
-  const baseOptions = {
-    depth,
-    isCompact: nodeDepth > 0 || isEnvGrouped,
-    isEnvGrouped,
-  };
-
-  if (!isParent) {
-    return {
-      ...baseOptions,
-      kind: "default",
-    };
-  }
-
   return {
-    ...baseOptions,
-    kind: "parent",
-    isCollapsed,
-    childCount,
-    childActivity,
-    ...(stickyLevel !== undefined ? { stickyLevel } : {}),
-    onToggleCollapsed: onToggleThreadCollapsed,
+    depth: getThreadRowDepth({ depthOffset, variant }),
+    isCompact: depthOffset > 0 || isEnvGrouped,
+    isEnvGrouped,
     ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
     ...(dragBindings ? { dragBindings } : {}),
   };
 }
 
 interface GetThreadRowOptionsArgs {
-  childActivity: CollapsedChildActivity;
-  childCount: number;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
-  isCollapsed: boolean;
   isEnvGrouped: boolean;
-  isParent: boolean;
   depthOffset: number;
-  nodeDepth: number;
-  onToggleThreadCollapsed: (threadId: string) => void;
-  stickyLevel?: number;
   variant: ProjectThreadTreeVariant;
 }
 
 interface GetThreadRowDepthArgs {
   depthOffset: number;
-  nodeDepth: number;
   variant: ProjectThreadTreeVariant;
-}
-
-// A node's pin depth among parents equals how many ancestor rows sit above it
-// in the tree: its tree depth plus any offset from an enclosing env group
-// header (which occupies a row of its own). Beyond the cap, return undefined so
-// the row renders non-sticky.
-function getThreadNodeStickyLevel({
-  depthOffset,
-  node,
-}: GetThreadNodeStickyLevelArgs): number | undefined {
-  const level = node.depth + depthOffset;
-  return level < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? level : undefined;
 }
 
 function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
   return (
     <span
       className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline"
-      style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
-      aria-hidden="true"
-    />
-  );
-}
-
-function ThreadTreeLineContinuation({
-  parentRowDepth,
-}: ThreadTreeLineContinuationProps) {
-  return (
-    <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline"
       style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
       aria-hidden="true"
     />
@@ -598,7 +512,6 @@ function EnvironmentThreadGroupHeader({
   representativeThread,
   rowDepth,
   stickyLevel,
-  parentLineDepth,
   childActivity,
   isCollapsed,
   archiveThreadsPending = false,
@@ -642,9 +555,6 @@ function EnvironmentThreadGroupHeader({
   };
   const content = (
     <>
-      {parentLineDepth === undefined ? null : (
-        <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
-      )}
       <button
         type="button"
         aria-hidden="true"
@@ -756,28 +666,15 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   isCollapsed,
   variant,
   onProjectSelect,
-  collapsedThreadIds,
-  collapsedEnvironmentIds,
-  onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: EnvironmentThreadGroupRowProps) {
   const { environmentId, nodes, stats } = environmentThreadGroup;
   const representativeNode = nodes[0];
   const representativeThread = representativeNode.thread;
-  const nodeDepth = representativeNode.depth;
   const rowDepth = getThreadRowDepth({
     depthOffset,
-    nodeDepth,
     variant,
   });
-  const parentLineDepth =
-    nodeDepth > 0
-      ? getThreadRowDepth({
-          depthOffset,
-          nodeDepth: nodeDepth - 1,
-          variant,
-        })
-      : undefined;
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId,
     environmentId,
@@ -811,11 +708,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           environmentId={environmentId}
           representativeThread={representativeThread}
           rowDepth={rowDepth}
-          stickyLevel={getThreadNodeStickyLevel({
-            depthOffset,
-            node: representativeNode,
-          })}
-          parentLineDepth={parentLineDepth}
+          stickyLevel={depthOffset}
           childActivity={stats.childActivity}
           isCollapsed={isCollapsed}
           archiveThreadsPending={archiveThreadsPending}
@@ -835,12 +728,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                 depthOffset={depthOffset + 1}
                 isEnvGrouped
                 selectedThreadId={selectedThreadId}
-                collapsedThreadIds={collapsedThreadIds}
-                collapsedEnvironmentIds={collapsedEnvironmentIds}
                 variant={variant}
                 onProjectSelect={onProjectSelect}
-                onToggleThreadCollapsed={onToggleThreadCollapsed}
-                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
               />
             ))}
           </div>
@@ -862,11 +751,9 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   item,
   depthOffset,
   selectedThreadId,
-  collapsedThreadIds,
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ThreadTreeItemRowProps) {
   if (item.kind === "thread") {
@@ -877,12 +764,8 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         depthOffset={depthOffset}
         isEnvGrouped={false}
         selectedThreadId={selectedThreadId}
-        collapsedThreadIds={collapsedThreadIds}
-        collapsedEnvironmentIds={collapsedEnvironmentIds}
         variant={variant}
         onProjectSelect={onProjectSelect}
-        onToggleThreadCollapsed={onToggleThreadCollapsed}
-        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       />
     );
   }
@@ -894,11 +777,8 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
       depthOffset={depthOffset}
       selectedThreadId={selectedThreadId}
       isCollapsed={collapsedEnvironmentIds.has(item.group.environmentId)}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
       variant={variant}
       onProjectSelect={onProjectSelect}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
     />
   );
@@ -910,57 +790,30 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   depthOffset,
   isEnvGrouped,
   selectedThreadId,
-  collapsedThreadIds,
-  collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onToggleThreadCollapsed,
-  onToggleEnvironmentCollapsed,
   consumeClickSuppression,
   dragBindings,
   sortableRef,
   sortableStyle,
 }: ThreadTreeNodeRowProps) {
-  const isCollapsed = collapsedThreadIds.has(node.thread.id);
-  const hasChildren = node.children.length > 0;
-  const isParent = hasChildren;
-  const parentRowDepth = getThreadRowDepth({
-    depthOffset,
-    nodeDepth: node.depth,
-    variant,
-  });
   const options = useMemo<ThreadRowOptions>(
     () =>
       getThreadRowOptions({
-        childActivity: node.stats.childActivity,
-        childCount: node.stats.childCount,
         consumeClickSuppression,
         dragBindings,
         depthOffset,
-        isCollapsed,
         isEnvGrouped,
-        isParent,
-        nodeDepth: node.depth,
-        onToggleThreadCollapsed,
-        stickyLevel: hasChildren
-          ? getThreadNodeStickyLevel({ depthOffset, node })
-          : undefined,
         variant,
       }),
     [
       consumeClickSuppression,
       depthOffset,
       dragBindings,
-      isCollapsed,
       isEnvGrouped,
-      isParent,
-      hasChildren,
-      node,
-      onToggleThreadCollapsed,
       variant,
     ],
   );
-  const showChildren = !isCollapsed && hasChildren;
   const hasComposerDraft = usePromptDraftHasInput({
     projectId,
     threadId: node.thread.id,
@@ -976,7 +829,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     />
   );
 
-  if (!hasChildren && !sortableRef) {
+  if (!sortableRef) {
     return row;
   }
 
@@ -987,30 +840,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       className="space-y-0.5"
     >
       {row}
-      {showChildren ? (
-        <div className="relative space-y-px">
-          <ThreadTreeGroupLine parentRowDepth={parentRowDepth} />
-          {node.children.map((item) => (
-            <ThreadTreeItemRow
-              key={
-                item.kind === "thread"
-                  ? `thread:${item.node.thread.id}`
-                  : `env:${item.group.environmentId}`
-              }
-              projectId={projectId}
-              item={item}
-              depthOffset={depthOffset}
-              selectedThreadId={selectedThreadId}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              variant={variant}
-              onProjectSelect={onProjectSelect}
-              onToggleThreadCollapsed={onToggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            />
-          ))}
-        </div>
-      ) : null}
     </SidebarStickyGroup>
   );
 });
@@ -1019,18 +848,16 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
   selectedThreadId,
-  collapsedThreadIds,
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
-  const rootItems = useMemo(
+  const topLevelItems = useMemo(
     () => buildProjectThreadGroups(projectThreads),
     [projectThreads],
   );
@@ -1073,7 +900,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
 
   return (
     <ProjectThreadTreeGroup variant={variant}>
-      {rootItems.map((item) => (
+      {topLevelItems.map((item) => (
         <ThreadTreeItemRow
           key={
             item.kind === "thread"
@@ -1084,11 +911,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
           item={item}
           depthOffset={0}
           selectedThreadId={selectedThreadId}
-          collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           variant={variant}
           onProjectSelect={onProjectSelect}
-          onToggleThreadCollapsed={onToggleThreadCollapsed}
           onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         />
       ))}
@@ -1102,13 +927,11 @@ function ProjectRowComponent({
   selectedThreadId,
   isActive,
   isCollapsed,
-  collapsedThreadIds,
   collapsedEnvironmentIds,
   isLocalPathInvalid,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
-  onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeProjectClickSuppression,
   projectDragBindings,
@@ -1263,11 +1086,9 @@ function ProjectRowComponent({
             projectId={project.id}
             threadListState={threadListState}
             selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             variant="project"
             onProjectSelect={onProjectSelect}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
           />
         ) : null}
@@ -1279,48 +1100,6 @@ function ProjectRowComponent({
 interface ProjectRowPropsComparisonArgs {
   prev: ProjectRowProps;
   next: ProjectRowProps;
-}
-
-function getThreadIdsWithChildren(
-  threads: readonly ThreadListEntry[],
-): Set<string> {
-  const threadIds = new Set(threads.map((thread) => thread.id));
-  const threadIdsWithChildren = new Set<string>();
-
-  for (const thread of threads) {
-    if (thread.parentThreadId === null) continue;
-    if (!threadIds.has(thread.parentThreadId)) continue;
-
-    threadIdsWithChildren.add(thread.parentThreadId);
-  }
-
-  return threadIdsWithChildren;
-}
-
-function hasCollapsedThreadStateChanged({
-  prev,
-  next,
-}: ProjectRowPropsComparisonArgs): boolean {
-  if (prev.collapsedThreadIds === next.collapsedThreadIds) {
-    return false;
-  }
-  if (prev.threadListState.status !== "ready") {
-    return false;
-  }
-
-  const threadIdsWithChildren = getThreadIdsWithChildren(
-    prev.threadListState.threads,
-  );
-  for (const threadId of threadIdsWithChildren) {
-    if (
-      prev.collapsedThreadIds.has(threadId) !==
-      next.collapsedThreadIds.has(threadId)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function hasCollapsedEnvironmentStateChanged({
@@ -1360,7 +1139,6 @@ function areProjectRowPropsEqual(
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||
     prev.onToggleProjectCollapsed !== next.onToggleProjectCollapsed ||
-    prev.onToggleThreadCollapsed !== next.onToggleThreadCollapsed ||
     prev.onToggleEnvironmentCollapsed !== next.onToggleEnvironmentCollapsed ||
     prev.consumeProjectClickSuppression !==
       next.consumeProjectClickSuppression ||
@@ -1386,14 +1164,11 @@ function areProjectRowPropsEqual(
     }
   }
   // Collapsed row sets are shared sidebar props; only invalidate if this
-  // project's parent-thread or worktree-env collapse state actually changed.
+  // project's worktree-env collapse state actually changed.
   if (prev.threadListState.status !== "ready") {
     return true;
   }
-  return (
-    !hasCollapsedThreadStateChanged({ prev, next }) &&
-    !hasCollapsedEnvironmentStateChanged({ prev, next })
-  );
+  return !hasCollapsedEnvironmentStateChanged({ prev, next });
 }
 
 export const ProjectRow = memo(ProjectRowComponent, areProjectRowPropsEqual);

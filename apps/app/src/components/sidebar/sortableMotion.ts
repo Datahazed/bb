@@ -13,7 +13,7 @@ const SIDEBAR_SORTABLE_TRANSITION = {
 
 /**
  * Drag-handle plumbing shared by every sortable sidebar surface (sections,
- * projects, pinned roots, manager roots). Spread `attributes`/`listeners` onto
+ * projects, pinned threads, manager threads). Spread `attributes`/`listeners` onto
  * the activator element and wire `setActivatorNodeRef` to it.
  */
 export interface SidebarSortableDragBindings {

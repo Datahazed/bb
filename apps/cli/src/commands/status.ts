@@ -21,14 +21,8 @@ interface StatusPayload {
     status: string;
     title: string | null;
     pinnedAt: number | null;
-    parentThreadId: string | null;
     environment: ThreadEnvironmentInfo | null;
   } | null;
-  childThreads: Array<{
-    id: string;
-    status: string;
-    title: string | null;
-  }> | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
 }
 
@@ -55,7 +49,6 @@ export function registerStatusCommand(
         const payload: StatusPayload = {
           project: null,
           thread: null,
-          childThreads: null,
           pendingTodos: null,
         };
 
@@ -92,18 +85,9 @@ export function registerStatusCommand(
               status: status.thread.status,
               title: status.thread.title ?? null,
               pinnedAt: status.thread.pinnedAt,
-              parentThreadId: status.thread.parentThreadId ?? null,
               environment: environmentInfo,
             };
             serverAvailable = true;
-
-            if (status.childThreads) {
-              payload.childThreads = status.childThreads.map((thread) => ({
-                id: thread.id,
-                status: thread.status,
-                title: thread.title ?? null,
-              }));
-            }
           }
         }
 
@@ -134,20 +118,8 @@ export function registerStatusCommand(
               `  Pinned: ${new Date(payload.thread.pinnedAt).toLocaleString()}`,
             );
           }
-          if (payload.thread.parentThreadId) {
-            console.log(`  Parent: ${payload.thread.parentThreadId}`);
-          }
           if (payload.thread.environment) {
             printEnvironmentInfo(payload.thread.environment);
-          }
-
-          if (payload.childThreads && payload.childThreads.length > 0) {
-            console.log("");
-            console.log(`Child threads: ${payload.childThreads.length}`);
-            for (const mt of payload.childThreads) {
-              const title = mt.title ? `"${mt.title}"` : "";
-              console.log(`  ${mt.id}  ${mt.status}  ${title}`);
-            }
           }
 
           printPendingTodos(payload.pendingTodos);

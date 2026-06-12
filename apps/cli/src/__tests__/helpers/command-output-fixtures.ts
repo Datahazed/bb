@@ -116,7 +116,6 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     titleFallback: null,
     automationId: null,
     environmentId: null,
-    parentThreadId: null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,

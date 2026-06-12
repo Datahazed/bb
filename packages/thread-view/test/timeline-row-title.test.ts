@@ -5,9 +5,7 @@ import type {
   TimelineCommandWorkRow,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineParentChange,
   TimelineRowBase,
-  TimelineRowStatus,
   TimelineSystemRow,
   TimelineToolWorkRow,
   TimelineWebFetchWorkRow,
@@ -47,11 +45,6 @@ interface PermissionGrantApprovalRowArgs {
   lifecycle: PermissionGrantApprovalLifecycle;
   statusReason?: string | null;
   toolName?: string | null;
-}
-
-interface ParentChangeSystemRowArgs {
-  parentChange: TimelineParentChange;
-  status?: TimelineRowStatus;
 }
 
 function baseRow(id: string): TimelineRowBase {
@@ -305,23 +298,6 @@ function systemOperationRow(): TimelineSystemRow {
     title: "Thread release failed",
     detail: null,
     status: "error",
-    completedAt: 1,
-  };
-}
-
-function parentChangeSystemRow({
-  parentChange,
-  status = "completed",
-}: ParentChangeSystemRowArgs): TimelineSystemRow {
-  return {
-    ...baseRow(`system-parent-${parentChange.action}`),
-    kind: "system",
-    systemKind: "operation",
-    operationKind: "parent-change",
-    parentChange,
-    title: "Thread assigned to parent",
-    detail: null,
-    status,
     completedAt: 1,
   };
 }
@@ -664,167 +640,6 @@ describe("buildTimelineRowTitle", () => {
     );
     expect(title.tone).toBe("default");
   });
-
-  it.each([
-    {
-      action: "assign",
-      parentChange: {
-        action: "assign" as const,
-        previousParentThreadId: null,
-        previousParentThreadTitle: null,
-        nextParentThreadId: "thr_next",
-        nextParentThreadTitle: "Frontend Parent",
-      },
-      expectedPlain: "Thread assigned to Frontend Parent",
-      expectedSegments: ["Thread assigned to", "Frontend Parent"],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_next",
-    },
-    {
-      action: "release",
-      parentChange: {
-        action: "release" as const,
-        previousParentThreadId: "thr_prev",
-        previousParentThreadTitle: "Frontend Parent",
-        nextParentThreadId: null,
-        nextParentThreadTitle: null,
-      },
-      expectedPlain: "Thread unassigned from Frontend Parent",
-      expectedSegments: ["Thread unassigned from", "Frontend Parent"],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_prev",
-    },
-    {
-      action: "transfer",
-      parentChange: {
-        action: "transfer" as const,
-        previousParentThreadId: "thr_prev",
-        previousParentThreadTitle: "Frontend Parent",
-        nextParentThreadId: "thr_next",
-        nextParentThreadTitle: "Backend Parent",
-      },
-      expectedPlain: "Thread reassigned from Frontend Parent to Backend Parent",
-      expectedSegments: [
-        "Thread reassigned from",
-        "Frontend Parent",
-        "to",
-        "Backend Parent",
-      ],
-      expectedLinkIndex: 1,
-      expectedLinkThreadId: "thr_prev",
-    },
-  ] satisfies Array<{
-    action: TimelineParentChange["action"];
-    parentChange: TimelineParentChange;
-    expectedPlain: string;
-    expectedSegments: string[];
-    expectedLinkIndex: number;
-    expectedLinkThreadId: string;
-  }>)(
-    "renders typed parent change system action $action",
-    ({
-      parentChange,
-      expectedPlain,
-      expectedSegments,
-      expectedLinkIndex,
-      expectedLinkThreadId,
-    }) => {
-      const title = buildTimelineRowTitle(
-        parentChangeSystemRow({ parentChange }),
-        DEFAULT_OPTIONS,
-      );
-
-      expect(title.plain).toBe(expectedPlain);
-      expect(title.segments.map((s) => s.text)).toEqual(expectedSegments);
-      const linkSegment = title.segments[expectedLinkIndex];
-      expect(linkSegment?.em).toBe(true);
-      expect(linkSegment?.link).toEqual({
-        kind: "thread",
-        threadId: expectedLinkThreadId,
-      });
-    },
-  );
-
-  it("falls back to the parent thread id when title is null", () => {
-    const title = buildTimelineRowTitle(
-      parentChangeSystemRow({
-        parentChange: {
-          action: "assign",
-          previousParentThreadId: null,
-          previousParentThreadTitle: null,
-          nextParentThreadId: "thr_xyz",
-          nextParentThreadTitle: null,
-        },
-      }),
-      DEFAULT_OPTIONS,
-    );
-
-    expect(title.plain).toBe("Thread assigned to thr_xyz");
-    expect(title.segments[1]?.text).toBe("thr_xyz");
-    expect(title.segments[1]?.link).toEqual({
-      kind: "thread",
-      threadId: "thr_xyz",
-    });
-  });
-
-  it.each([
-    {
-      expectedPlain: "Assigning thread to Frontend Parent",
-      expectedShimmer: true,
-      expectedDecorationText: "",
-      status: "pending",
-    },
-    {
-      expectedPlain: "Thread assigned to Frontend Parent (error)",
-      expectedShimmer: false,
-      expectedDecorationText: "(error)",
-      status: "error",
-    },
-    {
-      expectedPlain: "Thread assigned to Frontend Parent (interrupted)",
-      expectedShimmer: false,
-      expectedDecorationText: "(interrupted)",
-      status: "interrupted",
-    },
-  ] satisfies Array<{
-    expectedPlain: string;
-    expectedShimmer: boolean;
-    expectedDecorationText: string;
-    status: Exclude<TimelineSystemRow["status"], "completed" | null>;
-  }>)(
-    "renders parent change $status status with typed wording",
-    ({
-      expectedPlain,
-      expectedShimmer,
-      expectedDecorationText,
-      status,
-    }) => {
-      const title = buildTimelineRowTitle(
-        parentChangeSystemRow({
-          parentChange: {
-            action: "assign",
-            previousParentThreadId: null,
-            previousParentThreadTitle: null,
-            nextParentThreadId: "thr_next",
-            nextParentThreadTitle: "Frontend Parent",
-          },
-          status,
-        }),
-        DEFAULT_OPTIONS,
-      );
-
-      expect(title.plain).toBe(expectedPlain);
-      expect(title.segments[0]?.shimmer).toBe(expectedShimmer);
-      expect(title.tone).toBe("default");
-      if (expectedDecorationText.length > 0) {
-        expect(title.decorations.map(formatTimelineDecorationText)).toContain(
-          expectedDecorationText,
-        );
-      } else {
-        expect(title.decorations).toEqual([]);
-      }
-    },
-  );
 
   it("renders failed exploration intents using the intent verb", () => {
     const row = {

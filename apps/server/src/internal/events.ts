@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   archiveThread,
@@ -44,7 +44,6 @@ import {
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
 } from "../services/environments/environment-cleanup-internal.js";
-import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { dispatchSettledArchivedThreadProviderArchiveCommand } from "../services/threads/thread-lifecycle.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
@@ -110,15 +109,6 @@ interface TurnKeyArgs {
   turnId: string;
 }
 
-interface HasThreadCommandFailureSystemErrorForTurnDeps {
-  db: AppDeps["db"];
-}
-
-interface HasThreadCommandFailureSystemErrorForTurnArgs {
-  threadId: string;
-  turnId: string;
-}
-
 interface HasThreadStopBeforeTurnStartedArgs {
   threadId: string;
   turnId: string;
@@ -140,23 +130,12 @@ interface ArchiveCompletedAutomationThreadIfNeededArgs {
   turnStatus: ThreadEventTurnStatus;
 }
 
-interface ParentTurnNotificationFollowUp {
-  kind: "parent-turn-notification";
-  childThreadId: string;
-  projectId: string;
-  parentThreadId: string;
-  title: string | null;
-  turnStatus: ThreadEventTurnStatus;
-}
-
 interface QueuedMessageAutoSendFollowUp {
   kind: "queued-message-auto-send";
   threadId: string;
 }
 
-type EventEffectFollowUp =
-  | ParentTurnNotificationFollowUp
-  | QueuedMessageAutoSendFollowUp;
+type EventEffectFollowUp = QueuedMessageAutoSendFollowUp;
 
 function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
   providerThreadId: string | null;
@@ -341,26 +320,6 @@ async function applyEventEffects(
           ...event,
           threadId: entry.threadId,
         });
-        if (turnCompleted.thread?.parentThreadId) {
-          // Command-result failures already notify parent threads for failed turns
-          // without terminal events; late terminal events still own status effects.
-          const alreadyHandledByCommandFailure =
-            event.status === "failed" &&
-            hasThreadCommandFailureSystemErrorForTurn(deps, {
-              threadId: turnCompleted.thread.id,
-              turnId,
-            });
-          if (!alreadyHandledByCommandFailure) {
-            followUps.push({
-              kind: "parent-turn-notification",
-              childThreadId: turnCompleted.thread.id,
-              projectId: turnCompleted.thread.projectId,
-              parentThreadId: turnCompleted.thread.parentThreadId,
-              title: turnCompleted.thread.title,
-              turnStatus: event.status,
-            });
-          }
-        }
         if (event.status === "completed") {
           followUps.push({
             kind: "queued-message-auto-send",
@@ -424,17 +383,6 @@ async function executeEventFollowUpBestEffort(
 ): Promise<void> {
   try {
     switch (followUp.kind) {
-      case "parent-turn-notification":
-        await queueChildThreadTurnNotificationBestEffort(deps, {
-          childThread: {
-            id: followUp.childThreadId,
-            projectId: followUp.projectId,
-            title: followUp.title,
-          },
-          parentThreadId: followUp.parentThreadId,
-          turnStatus: followUp.turnStatus,
-        });
-        return;
       case "queued-message-auto-send":
         await runQueuedMessageAutoSendForThread(deps, {
           threadId: followUp.threadId,
@@ -486,28 +434,6 @@ function deferEventFollowUpBatch(
 
 function toTurnKey(args: TurnKeyArgs): string {
   return `${args.threadId}:${args.turnId}`;
-}
-
-function hasThreadCommandFailureSystemErrorForTurn(
-  deps: HasThreadCommandFailureSystemErrorForTurnDeps,
-  args: HasThreadCommandFailureSystemErrorForTurnArgs,
-): boolean {
-  return (
-    deps.db
-      .select({ id: storedEvents.id })
-      .from(storedEvents)
-      .where(
-        and(
-          eq(storedEvents.threadId, args.threadId),
-          eq(storedEvents.turnId, args.turnId),
-          eq(storedEvents.scopeKind, "turn"),
-          eq(storedEvents.type, "system/error"),
-          sql`json_extract(${storedEvents.data}, '$.code') = 'thread_command_failed'`,
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
 }
 
 function hasThreadStopBeforeTurnStarted(

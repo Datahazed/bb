@@ -79,7 +79,6 @@ const loadedSidebarNavigation = {
         makeThreadListEntry({
           id: "thr_story_pinned_child",
           projectId: bbProject.id,
-          parentThreadId: "thr_story_pinned",
           title: "Verify Ladle coverage",
           titleFallback: "Verify Ladle coverage",
           latestAttentionAt: 190,

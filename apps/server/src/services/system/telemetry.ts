@@ -29,7 +29,6 @@ export type TelemetryEvent =
       name: "thread_created";
       properties: {
         is_automation: boolean;
-        is_child_thread: boolean;
         provider: string;
       };
     };

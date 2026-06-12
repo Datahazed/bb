@@ -48,7 +48,6 @@ import {
   disconnectedHostUnavailableDetails,
   threadNotWritableReasonForStatus,
   throwHostUnavailable,
-  throwSenderThreadInvalid,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
@@ -224,10 +223,14 @@ export function resolveMessageSenderThreadId(
 
   const senderThread = getThread(deps.db, args.senderThreadId);
   if (!senderThread) {
-    throwSenderThreadInvalid("not_found");
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Sender thread does not exist",
+    );
   }
   if (senderThread.deletedAt !== null) {
-    throwSenderThreadInvalid("deleted");
+    throw new ApiError(400, "invalid_request", "Sender thread was deleted");
   }
 
   return senderThread.id;

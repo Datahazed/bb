@@ -16,7 +16,6 @@ function makeChild(
     status: "idle",
     lastReadAt: 10,
     latestAttentionAt: 10,
-    parentThreadId: null,
     hasPendingInteraction: false,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -67,23 +66,13 @@ describe("thread-activity", () => {
         status: "idle",
         latestAttentionAt: 20,
         lastReadAt: 10,
-        parentThreadId: null,
       }),
     ).toBe(true);
-    expect(
-      isUnreadDoneThread({
-        status: "idle",
-        latestAttentionAt: 20,
-        lastReadAt: 10,
-        parentThreadId: "manager-1",
-      }),
-    ).toBe(false);
     expect(
       isUnreadDoneThread({
         status: "error",
         latestAttentionAt: 20,
         lastReadAt: 10,
-        parentThreadId: null,
       }),
     ).toBe(true);
     expect(
@@ -91,7 +80,6 @@ describe("thread-activity", () => {
         status: "active",
         latestAttentionAt: 20,
         lastReadAt: null,
-        parentThreadId: null,
       }),
     ).toBe(false);
   });
@@ -177,14 +165,13 @@ describe("thread-activity", () => {
       });
     });
 
-    it("never flags 'unread' for parented children", () => {
-      const unreadButParented = makeChild({
+    it("flags unread idle threads", () => {
+      const unreadIdle = makeChild({
         latestAttentionAt: 20,
         lastReadAt: 10,
-        parentThreadId: "manager-1",
       });
-      expect(getCollapsedChildActivity([unreadButParented])).toMatchObject({
-        unread: false,
+      expect(getCollapsedChildActivity([unreadIdle])).toMatchObject({
+        unread: true,
         unreadError: false,
       });
     });

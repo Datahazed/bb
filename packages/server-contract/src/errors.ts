@@ -27,7 +27,6 @@ export const domainErrorCodeSchema = z.enum([
   "thread_environment_unavailable",
   "host_unavailable",
   "project_unavailable",
-  "parent_thread_invalid",
 ]);
 
 /** Base public error envelope shared by server routes. Route-specific schemas
@@ -119,32 +118,6 @@ export type ProjectUnavailableErrorDetails = z.infer<
   typeof projectUnavailableErrorDetailsSchema
 >;
 
-export const parentThreadInvalidReasonSchema = z.enum([
-  "not_found",
-  "archived",
-  "deleted",
-  "wrong_project",
-  "self",
-  "cycle",
-  "too_deep",
-]);
-export type ParentThreadInvalidReason = z.infer<
-  typeof parentThreadInvalidReasonSchema
->;
-
-export const parentThreadInvalidSubjectSchema = z.enum(["parent", "sender"]);
-export type ParentThreadInvalidSubject = z.infer<
-  typeof parentThreadInvalidSubjectSchema
->;
-
-export const parentThreadInvalidErrorDetailsSchema = z.object({
-  reason: parentThreadInvalidReasonSchema,
-  subject: parentThreadInvalidSubjectSchema,
-});
-export type ParentThreadInvalidErrorDetails = z.infer<
-  typeof parentThreadInvalidErrorDetailsSchema
->;
-
 export const environmentNotReadyApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("environment_not_ready"),
   details: environmentNotReadyErrorDetailsSchema,
@@ -171,17 +144,11 @@ export const projectUnavailableApiErrorSchema = apiErrorSchema.extend({
   details: projectUnavailableErrorDetailsSchema,
 });
 
-export const parentThreadInvalidApiErrorSchema = apiErrorSchema.extend({
-  code: z.literal("parent_thread_invalid"),
-  details: parentThreadInvalidErrorDetailsSchema,
-});
-
 export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   environmentNotReadyApiErrorSchema,
   threadNotWritableApiErrorSchema,
   threadEnvironmentUnavailableApiErrorSchema,
   hostUnavailableApiErrorSchema,
   projectUnavailableApiErrorSchema,
-  parentThreadInvalidApiErrorSchema,
 ]);
 export type LifecycleApiError = z.infer<typeof lifecycleApiErrorSchema>;

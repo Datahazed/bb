@@ -62,7 +62,7 @@ export interface UseSidebarReorderDndResult {
 
 /**
  * Container-side reorder plumbing shared by every sortable sidebar surface
- * (sections, projects, pinned roots, parent-thread roots): the activation-tuned
+ * (sections, projects, pinned threads): the activation-tuned
  * sensors, the drag-click suppression glue, and the `DndContext` handler shell.
  * Pair with {@link useSidebarSortable} on the items inside the context.
  */

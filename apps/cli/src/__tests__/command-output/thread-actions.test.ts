@@ -142,7 +142,6 @@ describe("bb thread action command output", () => {
     });
     expect(deleteFn).toHaveBeenCalledWith({
       param: { id: "thread-delete-1" },
-      json: { childThreadsConfirmed: false },
     });
     expect(readlineMocks.question).toHaveBeenCalled();
     expect(collectLogLines(vi.mocked(console.log))).toContain(
@@ -199,40 +198,6 @@ describe("bb thread action command output", () => {
     expect(readlineMocks.question).not.toHaveBeenCalled();
     expect(deleteFn).toHaveBeenCalledWith({
       param: { id: "thread-delete-3" },
-      json: { childThreadsConfirmed: false },
-    });
-  });
-
-  it("bb thread delete forwards explicit child-thread confirmation", async () => {
-    const thread: domain.Thread = fixtures.makeThread({
-      id: "thread-delete-children",
-      projectId: "proj-1",
-      providerId: "codex",
-      status: "idle",
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    const get = vi.fn(async () => thread);
-    const deleteFn = vi.fn(async () => ({ ok: true }));
-    stubServerApi({
-      "v1.threads.:id.$get": get,
-      "v1.threads.:id.$delete": deleteFn,
-    });
-
-    await runCommand(
-      [
-        "thread",
-        "delete",
-        "thread-delete-children",
-        "--yes",
-        "--confirm-child-threads",
-      ],
-      register,
-    );
-
-    expect(deleteFn).toHaveBeenCalledWith({
-      param: { id: "thread-delete-children" },
-      json: { childThreadsConfirmed: true },
     });
   });
 

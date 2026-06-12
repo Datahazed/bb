@@ -8,7 +8,6 @@ import {
 import type {
   CreateThreadScheduleRequest,
   CreateThreadRequest,
-  DeleteThreadRequest,
   SendMessageRequest,
   ThreadSchedule,
   ThreadEventsQuery,
@@ -28,8 +27,6 @@ import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
 
 export interface ThreadListArgs {
   archived?: boolean;
-  hasParent?: boolean;
-  parentThreadId?: string;
   projectId?: string;
 }
 
@@ -46,7 +43,7 @@ export interface ThreadUpdateArgs extends UpdateThreadRequest {
   threadId: string;
 }
 
-export interface ThreadDeleteArgs extends DeleteThreadRequest {
+export interface ThreadDeleteArgs {
   threadId: string;
 }
 
@@ -164,20 +161,13 @@ export interface ThreadsArea {
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   return {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
-    ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
     ...(args?.archived ? { archived: "true" } : {}),
-    ...(args?.hasParent === undefined
-      ? {}
-      : { hasParent: args.hasParent ? "true" : "false" }),
   };
 }
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     ...(args.title !== undefined ? { title: args.title } : {}),
-    ...(args.parentThreadId !== undefined
-      ? { parentThreadId: args.parentThreadId }
-      : {}),
     ...(args.model !== undefined ? { model: args.model } : {}),
     ...(args.reasoningLevel !== undefined
       ? { reasoningLevel: args.reasoningLevel }
@@ -381,9 +371,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       await transport.readVoid(
         transport.api.v1.threads[":id"].$delete({
           param: { id: input.threadId },
-          json: {
-            childThreadsConfirmed: input.childThreadsConfirmed,
-          },
         }),
       );
       return { ok: true };

@@ -27,7 +27,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="standard"
-        hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
+        hint="canonical state — env + worktree path + branch + merge base + pull request + clean git status"
       >
         {render({
           pullRequest: {
@@ -36,17 +36,6 @@ export function Overview() {
             state: "open",
             url: "https://github.com/acme/bb/pull/128",
           },
-        })}
-      </StoryRow>
-      <StoryRow
-        label="standard, child thread"
-        hint='thread.parentThreadId set — selector renders the link form'
-      >
-        {render({
-          thread: makeThread({ parentThreadId: "thr_codex_parent" }),
-          parentThreadDisplayName: "Codex Parent",
-          canAssignToParent: false,
-          canTakeOverThread: true,
         })}
       </StoryRow>
       <StoryRow
@@ -74,14 +63,11 @@ export function Overview() {
           ],
         })}
       </StoryRow>
-      <StoryRow
-        label="parent thread"
-        hint='parent thread with no environment — environment/branch/merge-base hidden'
-      >
+      <StoryRow label="no environment" hint="environment/branch/merge-base hidden">
         {render({
           thread: makeThread({
-            title: "Codex Parent",
-            titleFallback: "Codex Parent",
+            title: "Planning thread",
+            titleFallback: "Planning thread",
             environmentId: null,
           }),
           environment: null,

@@ -1,7 +1,7 @@
 import {
+  archiveThread,
   disableThreadSchedulesByThread,
   listLiveThreadsInEnvironment,
-  listUnarchivedAssignedChildThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -18,8 +18,6 @@ import {
   dispatchSettledArchivedThreadProviderArchiveCommand,
   requestActiveRuntimeThreadStopIfNeeded,
 } from "./thread-lifecycle.js";
-import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
-import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: {
@@ -33,17 +31,11 @@ interface ArchiveEnvironmentThreadsArgs {
   environment: Environment;
 }
 
-interface ArchiveThreadAndChildrenArgs {
-  parentThread: Thread;
-}
-
 export function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
-  const archivedThread = archiveThreadAndReleaseChildren(deps, {
-    threadId: args.thread.id,
-  });
+  const archivedThread = archiveThread(deps.db, deps.hub, args.thread.id);
   if (!archivedThread) {
     return null;
   }
@@ -106,51 +98,6 @@ export function archiveEnvironmentThreads(
     requestEnvironmentCleanupAdvance(deps, {
       environmentId: args.environment.id,
     });
-  }
-
-  return archivedThreadIds;
-}
-
-export function archiveThreadAndChildren(
-  deps: AppDeps,
-  args: ArchiveThreadAndChildrenArgs,
-): string[] {
-  const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
-    parentThreadId: args.parentThread.id,
-  });
-  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] =
-    childThreads.filter((thread) => thread.id !== args.parentThread.id);
-  if (args.parentThread.archivedAt === null) {
-    threads.push(args.parentThread);
-  }
-  const archivedThreadIds: string[] = [];
-  const affectedEnvironmentIds = new Set<string>();
-
-  for (const thread of threads) {
-    const environment = requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread,
-    });
-    const result = archiveThreadWithLifecycleEffects(deps, {
-      environment,
-      thread,
-    });
-    if (!result) {
-      continue;
-    }
-    archivedThreadIds.push(result.id);
-    affectedEnvironmentIds.add(environment.id);
-  }
-
-  for (const environmentId of affectedEnvironmentIds) {
-    if (
-      wouldCleanupEnvironment(deps, {
-        environmentId,
-      })
-    ) {
-      requestEnvironmentCleanup(deps, { environmentId });
-      requestEnvironmentCleanupAdvance(deps, { environmentId });
-    }
   }
 
   return archivedThreadIds;

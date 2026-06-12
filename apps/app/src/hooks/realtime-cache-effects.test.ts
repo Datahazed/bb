@@ -41,7 +41,6 @@ const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "archived-changed",
 ] as const;
 const NON_PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
-  "parent-changed",
   "read-state-changed",
   "title-changed",
 ] as const;
@@ -208,7 +207,6 @@ describe("createRealtimeCacheEffects", () => {
       projectId: "project-1",
     });
     const firstProjectArchivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     const secondProjectThreadListKey = threadListQueryKey({
@@ -285,58 +283,27 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active root thread lists without refetching child lists for order changes", async () => {
+  it("refetches active thread lists for order changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const activeProjectThreadListKey = threadListQueryKey({
       projectId: "project-1",
       archived: false,
     });
-    const rootThreadListKey = threadListQueryKey({
-      projectId: "project-1",
-      hasParent: false,
-      archived: false,
-    });
-    const childThreadListKey = threadListQueryKey({
-      projectId: "project-1",
-      parentThreadId: "thr_1",
-      archived: false,
-    });
     const globalActiveThreadListKey = threadListQueryKey({
       archived: false,
     });
-    const globalRootThreadListKey = threadListQueryKey({
-      archived: false,
-      hasParent: false,
-    });
     const archivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     queryClient.setQueryData(activeProjectThreadListKey, []);
-    queryClient.setQueryData(rootThreadListKey, []);
-    queryClient.setQueryData(childThreadListKey, []);
     queryClient.setQueryData(globalActiveThreadListKey, []);
-    queryClient.setQueryData(globalRootThreadListKey, []);
     queryClient.setQueryData(archivedThreadListKey, []);
     const activeProjectThreadListQueryFn = vi.fn(async () => []);
-    const rootThreadListQueryFn = vi.fn(async () => []);
-    const childThreadListQueryFn = vi.fn(async () => []);
     const globalActiveThreadListQueryFn = vi.fn(async () => []);
-    const globalRootThreadListQueryFn = vi.fn(async () => []);
     const activeProjectThreadListObserver = new QueryObserver(queryClient, {
       queryKey: activeProjectThreadListKey,
       queryFn: activeProjectThreadListQueryFn,
-      staleTime: Infinity,
-    });
-    const rootThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: rootThreadListKey,
-      queryFn: rootThreadListQueryFn,
-      staleTime: Infinity,
-    });
-    const childThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: childThreadListKey,
-      queryFn: childThreadListQueryFn,
       staleTime: Infinity,
     });
     const globalActiveThreadListObserver = new QueryObserver(queryClient, {
@@ -344,27 +311,12 @@ describe("createRealtimeCacheEffects", () => {
       queryFn: globalActiveThreadListQueryFn,
       staleTime: Infinity,
     });
-    const globalRootThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: globalRootThreadListKey,
-      queryFn: globalRootThreadListQueryFn,
-      staleTime: Infinity,
-    });
     const unsubscribeActiveProjectThreadList =
       activeProjectThreadListObserver.subscribe(() => {});
-    const unsubscribeRootThreadList = rootThreadListObserver.subscribe(
-      () => {},
-    );
-    const unsubscribeChildThreadList =
-      childThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalActiveThreadList =
       globalActiveThreadListObserver.subscribe(() => {});
-    const unsubscribeGlobalRootThreadList =
-      globalRootThreadListObserver.subscribe(() => {});
     activeProjectThreadListQueryFn.mockClear();
-    rootThreadListQueryFn.mockClear();
-    childThreadListQueryFn.mockClear();
     globalActiveThreadListQueryFn.mockClear();
-    globalRootThreadListQueryFn.mockClear();
 
     effects.handleChanged({
       type: "changed",
@@ -376,19 +328,13 @@ describe("createRealtimeCacheEffects", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     expect(activeProjectThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(rootThreadListQueryFn).toHaveBeenCalledTimes(1);
     expect(globalActiveThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(globalRootThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(childThreadListQueryFn).not.toHaveBeenCalled();
     expect(
       queryClient.getQueryState(archivedThreadListKey)?.isInvalidated,
     ).not.toBe(true);
 
     unsubscribeActiveProjectThreadList();
-    unsubscribeRootThreadList();
-    unsubscribeChildThreadList();
     unsubscribeGlobalActiveThreadList();
-    unsubscribeGlobalRootThreadList();
     effects.dispose();
   });
 
@@ -869,56 +815,6 @@ describe("createRealtimeCacheEffects", () => {
         ?.threads.at(0)?.hasPendingInteraction,
     ).toBe(true);
     expect(queryClient.getQueryState(threadKey)?.isInvalidated).not.toBe(true);
-    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).not.toBe(
-      true,
-    );
-
-    effects.dispose();
-  });
-
-  it("invalidates thread list and detail but not timeline for parent changes", () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineQueryKey("thr_1");
-    const firstProjectThreadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    const secondProjectThreadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-2",
-    });
-    queryClient.setQueryData(threadKey, { id: "thr_1" });
-    queryClient.setQueryData(firstProjectThreadListKey, []);
-    queryClient.setQueryData(secondProjectThreadListKey, []);
-    queryClient.setQueryData(timelineKey, {
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { projectId: "project-1" },
-      changes: ["parent-changed"],
-    });
-    vi.advanceTimersByTime(50);
-
-    expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
-    expect(
-      queryClient.getQueryState(firstProjectThreadListKey)?.isInvalidated,
-    ).toBe(true);
-    expect(
-      queryClient.getQueryState(secondProjectThreadListKey)?.isInvalidated,
-    ).not.toBe(true);
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).not.toBe(
       true,
     );

@@ -12,7 +12,6 @@ export interface ThreadCreateServiceRequestInput {
   input: PromptInput[];
   model?: CreateThreadRequest["model"];
   origin: ThreadCreateOrigin | null;
-  parentThreadId?: string;
   permissionMode?: CreateThreadRequest["permissionMode"];
   projectId: string;
   providerId?: CreateThreadRequest["providerId"];

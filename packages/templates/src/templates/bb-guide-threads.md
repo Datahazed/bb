@@ -16,7 +16,6 @@ Spawning:
     --prompt <prompt>              Initial prompt (required)
     --title <title>                Thread title
     --project <id>                 Project (defaults to BB_PROJECT_ID)
-    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
@@ -24,16 +23,13 @@ Spawning:
     --new-environment <kind>       Create a new environment (worktree)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
-    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID
 
-  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
-  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.
+  Execution defaults resolve from explicit flags, project defaults, then product defaults.
 
 Listing:
 
   bb thread list                           List threads
     --project <id>                         Filter by project (defaults to BB_PROJECT_ID)
-    --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
 
 Inspecting:
@@ -72,13 +68,11 @@ Messaging:
   bb thread stop [id]                      Stop an active or provisioning thread
     --self                                 Stop current thread
 
-Ownership:
+Metadata:
 
   bb thread update [id]                    Update thread metadata
     --self                                 Target current thread
     --title <title>                        Set title
-    --parent-thread <id>                   Assign to a parent thread
-    --clear-parent-thread                  Remove parent assignment
 
 Lifecycle:
 

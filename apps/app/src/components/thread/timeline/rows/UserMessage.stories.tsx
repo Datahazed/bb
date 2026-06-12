@@ -111,7 +111,7 @@ const agentInitiatedMessage = buildMessage(
     "Fix summary:",
     "- Clipboard blocker: `parsePromptMentionClipboardElement` now validates pasted resource metadata and derives `serializedText` from that resource.",
     "- Manager range blocker: added segment/template-slot builders and moved rich manager system message call sites to build text and ranges together.",
-    "- Template docs nit: updated @packages/templates/src/templates/system-message-thread-ownership-assigned.md, then regenerated `templates.generated.ts`.",
+    "- Template docs nit: updated @packages/templates/src/templates/bb-guide-overview.md, then regenerated `templates.generated.ts`.",
   ].join("\n"),
   [
     {
@@ -126,13 +126,13 @@ const agentInitiatedMessage = buildMessage(
     },
     {
       token:
-        "@packages/templates/src/templates/system-message-thread-ownership-assigned.md",
+        "@packages/templates/src/templates/bb-guide-overview.md",
       resource: {
         kind: "path",
         source: "workspace",
         entryKind: "file",
-        path: "packages/templates/src/templates/system-message-thread-ownership-assigned.md",
-        label: "system-message-thread-ownership-assigned.md",
+        path: "packages/templates/src/templates/bb-guide-overview.md",
+        label: "bb-guide-overview.md",
       },
     },
   ],

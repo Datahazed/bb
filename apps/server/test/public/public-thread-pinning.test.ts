@@ -121,7 +121,7 @@ describe("public thread pinning", () => {
     });
   });
 
-  it("reorders pinned threads and returns visible pinned roots", async () => {
+  it("reorders pinned threads and returns visible pinned threads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-pinning-reorder",

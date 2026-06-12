@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
   makeThread,
-  makeThreadListEntry,
   makeThreadSchedule,
   makeWorkspaceStatus,
 } from "../../../.ladle/story-fixtures";
@@ -15,7 +13,6 @@ import type { ThreadMetadataContentProps } from "./ThreadMetadataContent";
 export {
   makeEnvironment,
   makeThread,
-  makeThreadListEntry,
   makeThreadSchedule,
   makeWorkspaceStatus,
 };
@@ -34,26 +31,8 @@ export function PanelStage({ children }: { children: ReactNode }) {
   );
 }
 
-export const parentThreads: ThreadListEntry[] = [
-  makeThreadListEntry({
-    id: "thr_codex_parent",
-    title: "Codex Parent",
-    titleFallback: "Codex Parent",
-  }),
-  makeThreadListEntry({
-    id: "thr_frontend_parent",
-    title: "Frontend Parent",
-    titleFallback: "Frontend Parent",
-  }),
-];
-
 export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),
-  projectId: "proj_bb",
-  parentThreadDisplayName: null,
-  parentThreads,
-  canAssignToParent: true,
-  canTakeOverThread: false,
   environment: makeEnvironment(),
   environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
@@ -63,8 +42,6 @@ export const baseProps: ThreadMetadataContentProps = {
   mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
   isLoadingMergeBaseBranchOptions: false,
   threadSchedules: [],
-  updateThreadPending: false,
-  onAssignParent: noop,
   onMergeBaseBranchChange: noop,
   onChangedFileClick: noop,
 };

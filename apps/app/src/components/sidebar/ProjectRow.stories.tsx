@@ -23,7 +23,7 @@ export default {
   title: "sidebar/Projects",
 };
 
-// Caps at the production sidebar max (460px) but shrinks with the parent so
+// Caps at the production sidebar max (460px) but shrinks with its container so
 // truncation behavior is visible at any container width. Provides the outer
 // sidebar frame only; each story decides whether to use ProjectListShell (for
 // full-sidebar shots) or a bare SidebarStickyStack (for isolated ProjectRow
@@ -73,7 +73,6 @@ interface StoryProjectRow {
 
 interface InteractiveProjectListArgs {
   rows: StoryProjectRow[];
-  initialCollapsedThreadIds?: ReadonlySet<string>;
   initialCollapsedEnvironmentIds?: ReadonlySet<string>;
 }
 
@@ -82,7 +81,6 @@ interface InteractiveProjectListArgs {
 // real ProjectListProjects — the same component the live sidebar uses.
 function InteractiveProjectList({
   rows,
-  initialCollapsedThreadIds,
   initialCollapsedEnvironmentIds,
 }: InteractiveProjectListArgs) {
   const resolvedRows: ProjectListRowModel[] = rows.map((row) => ({
@@ -99,17 +97,11 @@ function InteractiveProjectList({
         ),
       ),
   );
-  const [collapsedThreadIds, setCollapsedThreadIds] = useState<Set<string>>(
-    () => new Set(initialCollapsedThreadIds ?? []),
-  );
   const [collapsedEnvironmentIds, setCollapsedEnvironmentIds] = useState<
     Set<string>
   >(() => new Set(initialCollapsedEnvironmentIds ?? []));
   const onToggleProjectCollapsed = useCallback<ToggleStoryCollapsedId>((id) => {
     setCollapsedProjectIds((current) => toggleStoryCollapsedId(current, id));
-  }, []);
-  const onToggleThreadCollapsed = useCallback<ToggleStoryCollapsedId>((id) => {
-    setCollapsedThreadIds((current) => toggleStoryCollapsedId(current, id));
   }, []);
   const onToggleEnvironmentCollapsed = useCallback<ToggleStoryCollapsedId>(
     (id) => {
@@ -124,11 +116,9 @@ function InteractiveProjectList({
       status="ready"
       rows={resolvedRows}
       collapsedProjectIds={collapsedProjectIds}
-      collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       onCreateProjectThread={noop}
       onToggleProjectCollapsed={onToggleProjectCollapsed}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
     />
   );
@@ -138,7 +128,6 @@ interface SingleProjectArgs {
   project?: ProjectResponse;
   threadListState: ProjectThreadListState;
   initialCollapsed?: boolean;
-  initialCollapsedThreadIds?: ReadonlySet<string>;
   initialCollapsedEnvironmentIds?: ReadonlySet<string>;
   isActive?: boolean;
   isLocalPathInvalid?: boolean;
@@ -150,7 +139,6 @@ function singleProject({
   project,
   threadListState,
   initialCollapsed,
-  initialCollapsedThreadIds,
   initialCollapsedEnvironmentIds,
   isActive,
   isLocalPathInvalid,
@@ -168,7 +156,6 @@ function singleProject({
               initiallyCollapsed: initialCollapsed,
             },
           ]}
-          initialCollapsedThreadIds={initialCollapsedThreadIds}
           initialCollapsedEnvironmentIds={initialCollapsedEnvironmentIds}
         />
       </SidebarStickyStack>
@@ -223,79 +210,67 @@ const sharedWorktreeThreadB = makeThread({
   environmentBranchName: "bb/set-default-tab-for-panel-thr_vnj2qze4fg",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
-const parentThread = makeThread({
-  id: "thr_parent",
-  title: "Frontend Parent",
-  titleFallback: "Frontend Parent",
+const planningThread = makeThread({
+  id: "thr_planning",
+  title: "Frontend Planning",
+  titleFallback: "Frontend Planning",
 });
-const parentChildA = makeThread({
-  id: "thr_parent_child_a",
+const relatedThreadA = makeThread({
+  id: "thr_related_a",
   title: "Update Timeline Row Types",
   titleFallback: "Update Timeline Row Types",
-  parentThreadId: parentThread.id,
 });
-const parentChildB = makeThread({
-  id: "thr_parent_child_b",
+const relatedThreadB = makeThread({
+  id: "thr_related_b",
   title: "Fix Timeline Pagination Bugs",
   titleFallback: "Fix Timeline Pagination Bugs",
-  parentThreadId: parentThread.id,
   status: "active",
   runtime: {
     displayStatus: "active",
     hostReconnectGraceExpiresAt: null,
   },
 });
-const deepRootParent = makeThread({
-  id: "thr_deep_root_parent",
-  title: "Prototype Parent",
-  titleFallback: "Prototype Parent",
+const deepRootThread = makeThread({
+  id: "thr_deep_root",
+  title: "Prototype Planning",
+  titleFallback: "Prototype Planning",
 });
-const deepIntermediateParent = makeThread({
-  id: "thr_deep_intermediate_parent",
-  title: "Sidebar Parent Thread",
-  titleFallback: "Sidebar Parent Thread",
-  parentThreadId: deepRootParent.id,
+const deepIntermediateThread = makeThread({
+  id: "thr_deep_intermediate",
+  title: "Sidebar Planning Thread",
+  titleFallback: "Sidebar Planning Thread",
 });
-const deepParentChild = makeThread({
-  id: "thr_deep_parent_child",
-  title: "Child With Its Own Children",
-  titleFallback: "Child With Its Own Children",
-  parentThreadId: deepIntermediateParent.id,
+const deepRelatedThread = makeThread({
+  id: "thr_deep_related",
+  title: "Follow-up Workstream",
+  titleFallback: "Follow-up Workstream",
 });
-const deepNestedParent = makeThread({
-  id: "thr_deep_nested_parent",
-  title: "Nested Parent Marker",
-  titleFallback: "Nested Parent Marker",
-  parentThreadId: deepParentChild.id,
+const deepNestedThread = makeThread({
+  id: "thr_deep_nested",
+  title: "Nested Marker",
+  titleFallback: "Nested Marker",
 });
-// depth 4: child of the depth-3 nested parent. Its parent is the deepest row
-// that still pins (level 3 = the cap); this row itself sits one past the cap and
-// renders non-sticky, so the story exercises both the last pinned level and the
-// first unpinned one.
-const deepNestedParentChild = makeThread({
-  id: "thr_deep_nested_parent_child",
+const deepNestedExtraThread = makeThread({
+  id: "thr_deep_nested_extra",
   title: "Beyond The Sticky Cap",
   titleFallback: "Beyond The Sticky Cap",
-  parentThreadId: deepNestedParent.id,
 });
 const deepWorktreeA = makeThread({
   id: "thr_deep_worktree_a",
   title: "Worktree Thread A",
   titleFallback: "Worktree Thread A",
-  parentThreadId: deepIntermediateParent.id,
   environmentId: "env_deep_worktree",
   environmentHostId: HOST_IDS.local,
-  environmentBranchName: "bb/sidebar-parent-child-nesting",
+  environmentBranchName: "bb/sidebar-grouping-story",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
 const deepWorktreeB = makeThread({
   id: "thr_deep_worktree_b",
   title: "Worktree Thread B",
   titleFallback: "Worktree Thread B",
-  parentThreadId: deepIntermediateParent.id,
   environmentId: "env_deep_worktree",
   environmentHostId: HOST_IDS.local,
-  environmentBranchName: "bb/sidebar-parent-child-nesting",
+  environmentBranchName: "bb/sidebar-grouping-story",
   environmentWorkspaceDisplayKind: "managed-worktree",
   hasPendingInteraction: true,
 });
@@ -308,9 +283,9 @@ const multipleProjects: StoryProjectRow[] = [
       status: "ready",
       threads: [
         { ...rootThread, projectId: "proj_bb" },
-        { ...parentThread, projectId: "proj_bb" },
-        { ...parentChildA, projectId: "proj_bb" },
-        { ...parentChildB, projectId: "proj_bb" },
+        { ...planningThread, projectId: "proj_bb" },
+        { ...relatedThreadA, projectId: "proj_bb" },
+        { ...relatedThreadB, projectId: "proj_bb" },
         { ...busyThread, projectId: "proj_bb" },
         { ...pendingThread, projectId: "proj_bb" },
       ],
@@ -388,44 +363,32 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
-        label="parent + root"
-        hint="ProjectRow nests child threads under their parent — click the parent chevron to collapse its children"
+        label="multiple threads"
+        hint="ProjectRow renders project threads as a flat ordered list"
       >
         {singleProject({
           threadListState: {
             status: "ready",
-            threads: [parentThread, parentChildA, parentChildB, idleThread],
+            threads: [planningThread, relatedThreadA, relatedThreadB, idleThread],
           },
         })}
       </StoryRow>
       <StoryRow
-        label="deep parent nesting"
-        hint="nested parent threads past the sticky cap (4 levels), with a worktree group nested below a parent thread — scroll to see the deepest parent within the cap pin while the row past it stays loose"
+        label="large project with worktree group"
+        hint="worktree grouping stays visible inside a long flat thread list"
       >
         {singleProject({
           threadListState: {
             status: "ready",
             threads: [
-              deepRootParent,
-              deepIntermediateParent,
-              deepParentChild,
-              deepNestedParent,
-              deepNestedParentChild,
+              deepRootThread,
+              deepIntermediateThread,
+              deepRelatedThread,
+              deepNestedThread,
+              deepNestedExtraThread,
               deepWorktreeA,
               deepWorktreeB,
             ],
-          },
-        })}
-      </StoryRow>
-      <StoryRow
-        label="parent starts collapsed"
-        hint="children hidden by default"
-      >
-        {singleProject({
-          initialCollapsedThreadIds: new Set([parentThread.id]),
-          threadListState: {
-            status: "ready",
-            threads: [parentThread, parentChildA, parentChildB],
           },
         })}
       </StoryRow>
@@ -442,7 +405,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="environment starts collapsed"
-        hint="worktree header remains visible while child threads are hidden"
+        hint="worktree header remains visible while grouped threads are hidden"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_shared_worktree"]),
@@ -453,40 +416,8 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
-        label="collapsed parent — child needs input"
-        hint="trailing attention dot surfaces a hidden child blocked on the user"
-      >
-        {singleProject({
-          initialCollapsedThreadIds: new Set([parentThread.id]),
-          threadListState: {
-            status: "ready",
-            threads: [
-              parentThread,
-              parentChildA,
-              { ...parentChildB, hasPendingInteraction: true },
-            ],
-          },
-        })}
-      </StoryRow>
-      <StoryRow
-        label="collapsed parent — needs input + working"
-        hint="one child blocked, another running: attention wins, trailing slot shows the attention dot"
-      >
-        {singleProject({
-          initialCollapsedThreadIds: new Set([parentThread.id]),
-          threadListState: {
-            status: "ready",
-            threads: [
-              parentThread,
-              { ...parentChildA, hasPendingInteraction: true },
-              parentChildB,
-            ],
-          },
-        })}
-      </StoryRow>
-      <StoryRow
-        label="collapsed worktree — child working"
-        hint="trailing slot shows the busy spinner when a hidden child is working"
+        label="collapsed worktree — grouped thread working"
+        hint="trailing slot shows the busy spinner when a hidden grouped thread is working"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_busy"]),
@@ -508,7 +439,7 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
-        label="collapsed worktree — unread child"
+        label="collapsed worktree — unread grouped thread"
         hint="surfaces like a regular unread thread — trailing primary dot"
       >
         {singleProject({
@@ -531,8 +462,8 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
-        label="collapsed worktree — unread error child"
-        hint="hidden child status=error and unread — worktree header shows the destructive unread dot"
+        label="collapsed worktree — unread error thread"
+        hint="hidden grouped thread status=error and unread — worktree header shows the destructive unread dot"
       >
         {singleProject({
           initialCollapsedEnvironmentIds: new Set(["env_collapsed_error"]),
@@ -556,7 +487,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple projects"
-        hint="four projects stacked — active project at the top with a root thread, parent group, and busy/pending threads; another collapsed with a long truncated name; one with two idle threads; an empty one at the bottom"
+        hint="four projects stacked — active project at the top with busy/pending threads; another collapsed with a long truncated name; one with two idle threads; an empty one at the bottom"
       >
         <SidebarStage>
           <SidebarStickyStack>
@@ -572,23 +503,23 @@ export function Overview() {
 // Projects list — three realistic, fully-expanded projects stacked together.
 // Scoped to the Projects section (not the whole sidebar: no Pinned/Threads/Apps
 // sections or section chrome). Helpful for eyeballing the vertical rhythm:
-// project↔project separation vs. the tighter grouping inside a parent thread.
+// project↔project separation vs. the tighter grouping inside worktree groups.
 // ---------------------------------------------------------------------------
 
-const fullParentA = makeThread({
-  id: "thr_full_a_parent",
+const fullPlanningThreadA = makeThread({
+  id: "thr_full_a_planning",
   projectId: "proj_full_a",
-  title: "Codex Parent",
-  titleFallback: "Codex Parent",
+  title: "Codex Planning",
+  titleFallback: "Codex Planning",
 });
 
-interface FullChildSpec {
+interface FullThreadSpec {
   title: string;
   busy?: boolean;
   pending?: boolean;
 }
 
-const fullProjectAChildSpecs: FullChildSpec[] = [
+const fullProjectAThreadSpecs: FullThreadSpec[] = [
   { title: "Implement UI and stories consolidation" },
   { title: "Fix Claude active stop recovery", busy: true },
   { title: "Update React Performance Audit" },
@@ -596,14 +527,13 @@ const fullProjectAChildSpecs: FullChildSpec[] = [
 ];
 
 const fullProjectAThreads: ThreadListEntry[] = [
-  fullParentA,
-  ...fullProjectAChildSpecs.map((spec, index) =>
+  fullPlanningThreadA,
+  ...fullProjectAThreadSpecs.map((spec, index) =>
     makeThread({
-      id: `thr_full_a_child_${index}`,
+      id: `thr_full_a_thread_${index}`,
       projectId: "proj_full_a",
       title: spec.title,
       titleFallback: spec.title,
-      parentThreadId: fullParentA.id,
       ...(spec.busy
         ? {
             status: "active",
@@ -621,7 +551,6 @@ const fullProjectAThreads: ThreadListEntry[] = [
     projectId: "proj_full_a",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
-    parentThreadId: fullParentA.id,
     environmentId: "env_full_a_codex_train",
     environmentHostId: "host_local",
     environmentBranchName: "bb/squash-merge-ready-app-train-thr_s6fn8fuv9w",
@@ -632,7 +561,6 @@ const fullProjectAThreads: ThreadListEntry[] = [
     projectId: "proj_full_a",
     title: "Investigate ux regression bug",
     titleFallback: "Investigate ux regression bug",
-    parentThreadId: fullParentA.id,
     environmentId: "env_full_a_codex_train",
     environmentHostId: "host_local",
     environmentBranchName: "bb/squash-merge-ready-app-train-thr_s6fn8fuv9w",
@@ -703,15 +631,15 @@ const fullProjectBThreads: ThreadListEntry[] = [
   }),
 ];
 
-const fullParentC = makeThread({
-  id: "thr_full_c_parent",
+const fullPlanningThreadC = makeThread({
+  id: "thr_full_c_planning",
   projectId: "proj_full_c",
-  title: "Frontend Parent",
-  titleFallback: "Frontend Parent",
+  title: "Frontend Planning",
+  titleFallback: "Frontend Planning",
 });
 
 const fullProjectCThreads: ThreadListEntry[] = [
-  fullParentC,
+  fullPlanningThreadC,
   makeThread({
     id: "thr_full_c_standalone",
     projectId: "proj_full_c",
@@ -743,7 +671,7 @@ export function MultipleProjects() {
     <StoryCard>
       <StoryRow
         label="projects list — three projects"
-        hint="the Projects section only (no Pinned/Threads/Apps): bb (active) with a parent that has 4 loose children + a 2-thread env sub-group, plus 2 standalones and a 2-thread project-level env group; pierre with 3 standalones; ingest-pipeline with a parent + 1 standalone"
+        hint="the Projects section only (no Pinned/Threads/Apps): bb (active) with busy/pending threads, 2 standalones, and two 2-thread env groups; pierre with 3 standalones; ingest-pipeline with 2 standalones"
       >
         <SidebarStage>
           <ProjectListShell>

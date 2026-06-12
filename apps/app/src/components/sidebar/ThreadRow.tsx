@@ -1,6 +1,5 @@
 import {
   memo,
-  useCallback,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -12,7 +11,6 @@ import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon, type IconName } from "@/components/ui/icon.js";
-import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
   ThreadActionsContextMenu,
@@ -38,8 +36,6 @@ import {
 import {
   isBusyThread,
   isUnreadDoneThread,
-  NO_COLLAPSED_CHILD_ACTIVITY,
-  type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -54,30 +50,14 @@ import {
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
-import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 
-interface ThreadRowBaseOptions {
+export interface ThreadRowOptions {
   depth: number;
   isCompact: boolean;
   isEnvGrouped: boolean;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
 }
-
-export type ThreadRowOptions =
-  | (ThreadRowBaseOptions & {
-      kind: "default";
-    })
-  | (ThreadRowBaseOptions & {
-      kind: "parent";
-      isCollapsed: boolean;
-      childCount: number;
-      childActivity: CollapsedChildActivity;
-      // Depth among pinned parents when this row is sticky; absent = not pinned
-      // (deeper than the sticky cap, or not a sticky parent role).
-      stickyLevel?: number;
-      onToggleCollapsed: (threadId: string) => void;
-      consumeClickSuppression?: ConsumeDragClickSuppression;
-      dragBindings?: SidebarSortableDragBindings;
-    });
 
 interface ThreadRowProps {
   projectId: string;
@@ -95,7 +75,6 @@ interface ThreadRowContainerArgs {
   className: string;
   dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
-  stickyLevel?: number;
   style: CSSProperties;
 }
 
@@ -120,28 +99,17 @@ function renderThreadRowContainer({
   className,
   dragBindings,
   onClickCapture,
-  stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  if (stickyLevel !== undefined) {
-    return (
-      <SidebarStickyTier
-        ref={dragBindings?.setActivatorNodeRef}
-        tier="parent"
-        level={stickyLevel}
-        className={className}
-        style={style}
-        {...dragBindings?.attributes}
-        {...(dragBindings?.listeners ?? {})}
-        onClickCapture={onClickCapture}
-      >
-        {children}
-      </SidebarStickyTier>
-    );
-  }
-
   return (
-    <div className={className} style={style} onClickCapture={onClickCapture}>
+    <div
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+      {...dragBindings?.attributes}
+      {...(dragBindings?.listeners ?? {})}
+      onClickCapture={onClickCapture}
+    >
       {children}
     </div>
   );
@@ -291,28 +259,6 @@ function ThreadRowComponent({
   const unreadBadgeTone: SidebarUnreadDotTone =
     showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
-  const parentOptions = options.kind === "parent" ? options : null;
-  const isParentRow = parentOptions !== null;
-  const isParentCollapsed = parentOptions?.isCollapsed ?? false;
-  const childCount = parentOptions?.childCount ?? 0;
-  const childActivity =
-    parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
-  const hasChildren = childCount > 0;
-  // A collapsed parent hides its descendants behind one glyph, so it must
-  // surface its own status combined with the rolled-up child activity. Expanded
-  // parents and leaves show only their own status.
-  const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
-  const trailingHasPendingInteraction = hasHiddenChildren
-    ? hasPendingInteraction || childActivity.pending
-    : hasPendingInteraction;
-  const trailingIsBusy = hasHiddenChildren
-    ? threadIsBusy || childActivity.working
-    : threadIsBusy;
-  const trailingShowUnreadBadge = hasHiddenChildren
-    ? showUnreadBadge || childActivity.unread
-    : showUnreadBadge;
-  const trailingUnreadBadgeTone: SidebarUnreadDotTone =
-    hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
@@ -329,34 +275,34 @@ function ThreadRowComponent({
     : getEnvironmentWorkspaceDisplayIconLabel(
         thread.environmentWorkspaceDisplayKind,
       );
-  const parentDragBindings = parentOptions?.dragBindings;
+  const { dragBindings } = options;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
     SIDEBAR_ROW_BASE_CLASS,
-    parentOptions?.stickyLevel === undefined && "relative",
+    "relative",
     options.isCompact
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
     showActive
       ? "bg-sidebar-border text-sidebar-foreground"
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-    parentDragBindings &&
-      !parentDragBindings.disabled &&
+    dragBindings &&
+      !dragBindings.disabled &&
       "select-none cursor-grab active:cursor-grabbing",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
-  const handleParentClickCapture = useCallback<ThreadRowClickCaptureHandler>(
-    (event) => {
-      if (!parentOptions?.consumeClickSuppression?.()) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [parentOptions],
-  );
+  const handleClickCapture: ThreadRowClickCaptureHandler | undefined =
+    options.consumeClickSuppression
+      ? (event) => {
+          if (!options.consumeClickSuppression?.()) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      : undefined;
 
   const rowContent = (
     <>
@@ -374,16 +320,6 @@ function ThreadRowComponent({
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate">{threadTitle}</span>
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${threadTitle} threads`}
-            collapseLabel={`Collapse ${threadTitle} threads`}
-            expandTitle="Expand child threads"
-            collapseTitle="Collapse child threads"
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-          />
-        ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span
@@ -408,10 +344,10 @@ function ThreadRowComponent({
             <ThreadTrailingIndicator
               environmentIcon={environmentIcon}
               environmentIconLabel={environmentIconLabel}
-              hasPendingInteraction={trailingHasPendingInteraction}
-              isBusy={trailingIsBusy}
-              showUnreadBadge={trailingShowUnreadBadge}
-              unreadBadgeTone={trailingUnreadBadgeTone}
+              hasPendingInteraction={hasPendingInteraction}
+              isBusy={threadIsBusy}
+              showUnreadBadge={showUnreadBadge}
+              unreadBadgeTone={unreadBadgeTone}
             />
           </span>
           <div
@@ -438,9 +374,8 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
-    dragBindings: parentDragBindings,
-    onClickCapture: parentOptions ? handleParentClickCapture : undefined,
-    stickyLevel: parentOptions?.stickyLevel,
+    dragBindings,
+    onClickCapture: handleClickCapture,
     style: rowStyle,
   });
 

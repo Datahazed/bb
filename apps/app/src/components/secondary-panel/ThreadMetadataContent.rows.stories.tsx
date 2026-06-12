@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
-  ParentSelectorRow,
   EnvironmentRow,
   WorkspacePathRow,
   BranchRow,
@@ -16,9 +15,7 @@ import {
 } from "./ThreadMetadataContent";
 import {
   PanelStage,
-  baseProps,
   localEnvironmentDisplayHost,
-  parentThreads,
   makeEnvironment,
   makeThread,
   makeThreadSchedule,
@@ -43,78 +40,6 @@ function RowStage({ children }: { children: ReactNode }) {
     </PanelStage>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Parent selector row.
-// ---------------------------------------------------------------------------
-
-export function ParentSelector() {
-  return (
-    <StoryCard>
-      <StoryRow label="unassigned">
-        <RowStage>
-          <ParentSelectorRow
-            thread={makeThread()}
-            projectId={baseProps.projectId}
-            parentThreadDisplayName={null}
-            parentThreads={parentThreads}
-            canAssignToParent
-            canTakeOverThread={false}
-            updateThreadPending={false}
-            onAssignParent={noop}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="unassigned, no candidates">
-        <RowStage>
-          <ParentSelectorRow
-            thread={makeThread()}
-            projectId={baseProps.projectId}
-            parentThreadDisplayName={null}
-            parentThreads={[]}
-            canAssignToParent={false}
-            canTakeOverThread={false}
-            updateThreadPending={false}
-            onAssignParent={noop}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="assigned">
-        <RowStage>
-          <ParentSelectorRow
-            thread={makeThread({ parentThreadId: "thr_codex_parent" })}
-            projectId={baseProps.projectId}
-            parentThreadDisplayName="Codex Parent"
-            parentThreads={parentThreads}
-            canAssignToParent={false}
-            canTakeOverThread
-            updateThreadPending={false}
-            onAssignParent={noop}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="dropdown open">
-        <RowStage>
-          <ParentSelectorRow
-            thread={makeThread()}
-            projectId={baseProps.projectId}
-            parentThreadDisplayName={null}
-            parentThreads={parentThreads}
-            canAssignToParent
-            canTakeOverThread={false}
-            updateThreadPending={false}
-            onAssignParent={noop}
-            defaultOpen
-          />
-        </RowStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Environment — the "Environment" row.
-// ---------------------------------------------------------------------------
 
 export function Environment() {
   return (

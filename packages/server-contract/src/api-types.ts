@@ -619,7 +619,6 @@ export const createThreadRequestSchema = z.object({
   permissionMode: permissionModeSchema.optional(),
   executionInputSources: createExecutionInputSourcesSchema.optional(),
   environment: environmentArgsSchema,
-  parentThreadId: z.string().min(1).optional(),
 });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
@@ -634,7 +633,6 @@ const automationThreadRequestSchema = z.object({
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   environment: environmentArgsSchema,
-  parentThreadId: z.string().min(1).optional(),
 });
 export type AutomationThreadRequest = z.infer<
   typeof automationThreadRequestSchema
@@ -972,22 +970,9 @@ export type ThreadQueuedMessageListResponse = z.infer<
   typeof threadQueuedMessageListResponseSchema
 >;
 
-export const threadChildSummaryResponseSchema = z.object({
-  nonDeletedChildCount: z.number().int().nonnegative(),
-});
-export type ThreadChildSummaryResponse = z.infer<
-  typeof threadChildSummaryResponseSchema
->;
-
-export const deleteThreadRequestSchema = z.object({
-  childThreadsConfirmed: z.boolean(),
-});
-export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
-
 export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
-    parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
     // together or independently.
@@ -998,7 +983,6 @@ export const updateThreadRequestSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
-      value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined,
     "At least one field must be provided",
@@ -1345,20 +1329,9 @@ export type EnvironmentArchiveThreadsResponse = z.infer<
   typeof environmentArchiveThreadsResponseSchema
 >;
 
-export const threadArchiveAllResponseSchema = z.object({
-  ok: z.literal(true),
-  archivedThreadIds: z.array(z.string().min(1)),
-});
-export type ThreadArchiveAllResponse = z.infer<
-  typeof threadArchiveAllResponseSchema
->;
-
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
-  parentThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
-  /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
-  hasParent: z.enum(["true", "false"]).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });

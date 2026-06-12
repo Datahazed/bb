@@ -4,15 +4,7 @@ import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
-import {
-  NO_COLLAPSED_CHILD_ACTIVITY,
-  type CollapsedChildActivity,
-} from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-
-const childActivity = (
-  overrides: Partial<CollapsedChildActivity> = {},
-): CollapsedChildActivity => ({ ...NO_COLLAPSED_CHILD_ACTIVITY, ...overrides });
 
 export default {
   title: "sidebar/Threads",
@@ -37,8 +29,6 @@ function SidebarStage({ children }: { children: ReactNode }) {
 const makeThread = (overrides: Partial<ThreadListEntry> = {}) =>
   makeThreadListEntry({ id: "thr_default", ...overrides });
 
-const noop = () => {};
-
 type StoryThreadRowProps = Omit<
   ComponentProps<typeof ThreadRow>,
   "hasComposerDraft"
@@ -54,41 +44,18 @@ function StoryThreadRow({
 }
 
 const defaultOption: ThreadRowOptions = {
-  kind: "default",
   depth: 1,
   isCompact: false,
   isEnvGrouped: false,
 };
-const childOption: ThreadRowOptions = {
-  kind: "default",
+const groupedOption: ThreadRowOptions = {
   depth: 2,
   isCompact: true,
-  isEnvGrouped: false,
+  isEnvGrouped: true,
 };
-function parentOption(
-  overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
-): ThreadRowOptions {
-  return {
-    kind: "parent",
-    depth: 1,
-    isCompact: false,
-    isEnvGrouped: false,
-    isCollapsed: false,
-    childCount: 0,
-    childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-    onToggleCollapsed: noop,
-    ...overrides,
-  };
-}
 
-const parentThread = makeThread({
-  id: "thr_parent",
-  title: "Codex Parent",
-  titleFallback: "Codex Parent",
-});
-
-const childThread = makeThread({
-  id: "thr_child",
+const groupedThread = makeThread({
+  id: "thr_grouped",
   title: "UI And Stories Consolidation",
   titleFallback: "UI And Stories Consolidation",
 });
@@ -303,119 +270,14 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="parent, no children"
-        hint="leading user icon, no chevron"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({ childCount: 0 })}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="parent, expanded with child"
-        hint="parent row above its child — user icon swaps to a rotated chevron on hover, child text aligns with the parent title"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({
-              isCollapsed: false,
-              childCount: 4,
-            })}
-          />
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={childThread}
-            isActive={false}
-            options={childOption}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="parent, collapsed"
-        hint="chevron points right (default) for a collapsed parent with child rows"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({
-              isCollapsed: true,
-              childCount: 4,
-            })}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="parent, collapsed — child working"
-        hint="trailing slot shows the busy spinner when a hidden child is working"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({
-              isCollapsed: true,
-              childCount: 4,
-              childActivity: childActivity({ working: true }),
-            })}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="parent, collapsed — child needs input"
-        hint="trailing slot shows the attention dot when a hidden child is blocked on the user"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({
-              isCollapsed: true,
-              childCount: 4,
-              childActivity: childActivity({ pending: true }),
-            })}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="parent, collapsed — needs input + working"
-        hint="attention wins priority: the trailing slot shows the attention dot, not the spinner"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={parentThread}
-            isActive={false}
-            options={parentOption({
-              isCollapsed: true,
-              childCount: 4,
-              childActivity: childActivity({
-                pending: true,
-                working: true,
-              }),
-            })}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="child, busy"
+        label="worktree grouped row, busy"
         hint="far-right reserved slot shows the busy spinner"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
             thread={makeThread({
-              ...childThread,
+              ...groupedThread,
               status: "active",
               runtime: {
                 displayStatus: "active",
@@ -423,23 +285,23 @@ export function Overview() {
               },
             })}
             isActive={false}
-            options={childOption}
+            options={groupedOption}
           />
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="child, pending"
+        label="worktree grouped row, pending"
         hint="far-right reserved slot shows the attention dot"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
             thread={makeThread({
-              ...childThread,
+              ...groupedThread,
               hasPendingInteraction: true,
             })}
             isActive={false}
-            options={childOption}
+            options={groupedOption}
           />
         </SidebarStage>
       </StoryRow>

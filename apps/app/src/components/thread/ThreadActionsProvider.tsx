@@ -2,16 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import { defaultExperiments, type Thread } from "@bb/domain";
 import {
-  useArchiveThreadAndChildren,
+  useArchiveThread,
   useDeleteThread,
   useMarkThreadRead,
   useMarkThreadUnread,
@@ -20,13 +18,9 @@ import {
   useUnpinThread,
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
-import { getThreadChildSummary } from "@/lib/api";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
-import {
-  getMutationErrorMessage,
-  shouldShowMutationErrorToast,
-} from "@/lib/mutation-errors";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadRenameDialog,
@@ -48,7 +42,7 @@ import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 export interface ThreadActionsContextValue {
-  archiveThreadAndChildren: (thread: Thread) => void;
+  archiveThread: (thread: Thread) => void;
   requestRename: (thread: Thread) => void;
   requestDelete: (thread: Thread) => void;
   sendToPopout: ((thread: Thread) => void) | null;
@@ -75,23 +69,13 @@ interface ThreadActionsProviderProps {
   children: ReactNode;
 }
 
-interface DeleteThreadActionRequest {
-  childThreadsConfirmed: boolean;
-  closeDialog: () => void;
-  thread: Thread;
-}
-
-interface ThreadActionContext {
-  childThreadCount: number;
-}
-
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const { threadId: viewedThreadId } = useRouteState();
-  const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
+  const archiveThreadMutation = useArchiveThread();
   const unarchiveThreadMutation = useUnarchiveThread();
   const markThreadRead = useMarkThreadRead();
   const markThreadUnread = useMarkThreadUnread();
@@ -100,13 +84,11 @@ export function ThreadActionsProvider({
   const deleteThread = useDeleteThread();
   const updateThread = useUpdateThread();
   const systemConfigQuery = useSystemConfig();
-  const threadActionContextAbortRef = useRef<AbortController | null>(null);
   // Destructure `.mutate` so useCallback deps see stable references across
   // renders. Depending on the full mutation objects would churn callback
   // identities on every isPending flip and force every useThreadActions()
   // consumer to re-render whenever any mutation fires.
-  const { mutate: archiveThreadAndChildrenMutate } =
-    archiveThreadAndChildrenMutation;
+  const { mutate: archiveThreadMutate } = archiveThreadMutation;
   const { mutate: unarchiveMutate } = unarchiveThreadMutation;
   const { mutate: markReadMutate } = markThreadRead;
   const { mutate: markUnreadMutate } = markThreadUnread;
@@ -120,13 +102,6 @@ export function ThreadActionsProvider({
 
   const { onClose: closeRenameDialog, onOpen: openRenameDialog } = renameDialog;
   const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
-
-  useEffect(() => {
-    return () => {
-      threadActionContextAbortRef.current?.abort();
-      threadActionContextAbortRef.current = null;
-    };
-  }, []);
 
   const navigateAwayIfViewing = useCallback(
     (thread: Thread) => {
@@ -164,106 +139,31 @@ export function ThreadActionsProvider({
     [closeRenameDialog, updateMutate],
   );
 
-  // Fetches the delete dialog context. Returns null when the caller's request
-  // was superseded (a newer click aborted us) or the fetch errored; in the
-  // error case, also surfaces a toast before returning.
-  const loadThreadActionContext = useCallback(
-    async (
-      thread: Thread,
-      signal: AbortSignal,
-    ): Promise<ThreadActionContext | null> => {
-      try {
-        const childSummary = await getThreadChildSummary(thread.id, signal);
-        if (signal.aborted) return null;
-
-        return {
-          childThreadCount: childSummary?.nonDeletedChildCount ?? 0,
-        };
-      } catch (error) {
-        if (signal.aborted) return null;
-        if (shouldShowMutationErrorToast(error)) {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to check thread state",
-            }),
-          );
-        }
-        return null;
-      }
-    },
-    [],
-  );
-
-  const claimThreadActionContextAbortController =
-    useCallback((): AbortController => {
-      threadActionContextAbortRef.current?.abort();
-      const controller = new AbortController();
-      threadActionContextAbortRef.current = controller;
-      return controller;
-    }, []);
-
-  function buildDialogTargetFromContext<T extends { thread: Thread }>(
-    base: T,
-    context: ThreadActionContext,
-  ): T & { childThreadCount?: number } {
-    return {
-      ...base,
-      ...(context.childThreadCount > 0
-        ? { childThreadCount: context.childThreadCount }
-        : {}),
-    };
-  }
-
-  const performDelete = useCallback(
-    ({
-      childThreadsConfirmed,
-      closeDialog,
-      thread,
-    }: DeleteThreadActionRequest) => {
+  const confirmDelete = useCallback(
+    (target: ThreadDeleteDialogTarget) => {
+      const { thread } = target;
       deleteMutate(
-        { id: thread.id, childThreadsConfirmed },
+        { id: thread.id },
         {
           onSuccess: () => {
             destroyPersistedBrowserViewsForThread({
               desktopBrowser: getDesktopBrowserApi(),
               threadId: thread.id,
             });
-            closeDialog();
+            closeDeleteDialog();
             navigateAwayIfViewing(thread);
           },
         },
       );
     },
-    [deleteMutate, navigateAwayIfViewing],
+    [closeDeleteDialog, deleteMutate, navigateAwayIfViewing],
   );
 
   const requestDelete = useCallback(
-    async (thread: Thread) => {
-      const controller = claimThreadActionContextAbortController();
-      const context = await loadThreadActionContext(thread, controller.signal);
-      if (context === null || controller.signal.aborted) return;
-      if (threadActionContextAbortRef.current === controller) {
-        threadActionContextAbortRef.current = null;
-      }
-      openDeleteDialog(buildDialogTargetFromContext({ thread }, context));
+    (thread: Thread) => {
+      openDeleteDialog({ thread });
     },
-    [
-      claimThreadActionContextAbortController,
-      loadThreadActionContext,
-      openDeleteDialog,
-    ],
-  );
-
-  const confirmDelete = useCallback(
-    (target: ThreadDeleteDialogTarget) => {
-      performDelete({
-        childThreadsConfirmed: target.childThreadCount !== undefined,
-        closeDialog: closeDeleteDialog,
-        thread: target.thread,
-      });
-    },
-    [closeDeleteDialog, performDelete],
+    [openDeleteDialog],
   );
 
   const unarchiveThreadAction = useCallback(
@@ -273,23 +173,19 @@ export function ThreadActionsProvider({
     [unarchiveMutate],
   );
 
-  const archiveThreadAndChildrenAction = useCallback(
+  const archiveThreadAction = useCallback(
     (thread: Thread) => {
-      archiveThreadAndChildrenMutate(
+      archiveThreadMutate(
         { id: thread.id },
         {
-          onSuccess: (response) => {
-            if (
-              viewedThreadId &&
-              response.archivedThreadIds.includes(viewedThreadId)
-            ) {
+          onSuccess: () => {
+            if (viewedThreadId === thread.id) {
               setRootComposeProjectId(thread.projectId);
               navigate(getRootComposeRoutePath());
             }
             const toastId = `thread-archived-${thread.id}`;
             appToast.success(
               <ArchivedThreadToastTitle
-                archivedThreadCount={response.archivedThreadIds.length}
                 threadTitle={getThreadDisplayTitle(thread)}
                 onOpenThread={() => {
                   navigate(
@@ -308,7 +204,7 @@ export function ThreadActionsProvider({
             appToast.error(
               getMutationErrorMessage({
                 error,
-                fallbackMessage: "Failed to archive thread and children",
+                fallbackMessage: "Failed to archive thread",
                 lifecycleOperation: "archive_thread",
               }),
             );
@@ -316,12 +212,7 @@ export function ThreadActionsProvider({
         },
       );
     },
-    [
-      archiveThreadAndChildrenMutate,
-      navigate,
-      setRootComposeProjectId,
-      viewedThreadId,
-    ],
+    [archiveThreadMutate, navigate, setRootComposeProjectId, viewedThreadId],
   );
 
   const toggleRead = useCallback(
@@ -382,14 +273,14 @@ export function ThreadActionsProvider({
     () => ({
       requestRename,
       requestDelete,
-      archiveThreadAndChildren: archiveThreadAndChildrenAction,
+      archiveThread: archiveThreadAction,
       sendToPopout,
       unarchiveThread: unarchiveThreadAction,
       togglePin,
       toggleRead,
     }),
     [
-      archiveThreadAndChildrenAction,
+      archiveThreadAction,
       requestRename,
       requestDelete,
       sendToPopout,

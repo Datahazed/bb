@@ -42,7 +42,6 @@ describe("telemetry service", () => {
       name: "thread_created",
       properties: {
         is_automation: false,
-        is_child_thread: true,
         provider: "claude-code",
       },
     });
@@ -77,7 +76,6 @@ describe("telemetry service", () => {
       properties: {
         app_version: "1.2.3",
         is_automation: false,
-        is_child_thread: true,
         provider: "claude-code",
       },
     });

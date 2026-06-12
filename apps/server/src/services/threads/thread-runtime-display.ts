@@ -91,7 +91,6 @@ function toPublicThread(thread: Thread): Thread {
     title: thread.title,
     titleFallback: thread.titleFallback,
     status: thread.status,
-    parentThreadId: thread.parentThreadId,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
     stopRequestedAt: thread.stopRequestedAt,

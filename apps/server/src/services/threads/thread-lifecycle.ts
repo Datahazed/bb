@@ -90,7 +90,6 @@ import {
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -645,7 +644,6 @@ function canActivateThreadAfterSuccessfulStart(
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
-  const postCommitActions: CommandResultPostCommitAction[] = [];
   const thread = getThread(args.deps.db, args.command.threadId);
   if (!thread || thread.deletedAt !== null) {
     return emptyCommandResultSideEffects();
@@ -662,22 +660,7 @@ function settleThreadCommandFailure(
     scope: getThreadFailureCommandErrorScope(args.command),
   });
   tryTransitionInTransaction(args.deps.db, args.deps.hub, thread.id, "error");
-  if (thread.parentThreadId !== null) {
-    const parentThreadId = thread.parentThreadId;
-    postCommitActions.push({
-      name: "Child thread command failure notification",
-      context: {
-        threadId: thread.id,
-      },
-      run: (deps) =>
-        queueChildThreadTurnNotificationBestEffort(deps, {
-          childThread: thread,
-          parentThreadId,
-          turnStatus: "failed",
-        }),
-    });
-  }
-  return { postCommitActions };
+  return emptyCommandResultSideEffects();
 }
 
 export function settleThreadStartCommandResult(

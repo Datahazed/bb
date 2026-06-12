@@ -3,10 +3,7 @@ import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import { isRunningThreadRuntimeDisplayStatus } from "@/components/thread/timeline";
 import { isThreadRead } from "@/lib/thread-read-state";
 
-type ThreadStatusShape = Pick<
-  Thread,
-  "status" | "lastReadAt" | "latestAttentionAt" | "parentThreadId"
->;
+type ThreadStatusShape = Pick<Thread, "status" | "lastReadAt" | "latestAttentionAt">;
 
 type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
 
@@ -29,9 +26,7 @@ export interface CollapsedChildActivity {
   /** At least one child is actively working. */
   working: boolean;
   /**
-   * At least one finished child is unread. Only top-level worktree children
-   * qualify — `isUnreadDoneThread` is false for parented threads, so manager
-   * and managed-subgroup rollups never set this.
+   * At least one finished child is unread.
    */
   unread: boolean;
   /** At least one unread child has reached the terminal error state. */
@@ -49,7 +44,7 @@ type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
   Pick<ThreadListEntry, "hasPendingInteraction">;
 
-/** Rolls a child thread list up to the set of activity signals present in it. */
+/** Rolls a thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
   threads: readonly ThreadActivityShape[],
 ): CollapsedChildActivity {
@@ -76,10 +71,6 @@ export function getCollapsedChildActivity(
 }
 
 export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
-  if (thread.parentThreadId != null) {
-    return false;
-  }
-
   switch (thread.status) {
     case "error":
     case "idle":

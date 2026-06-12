@@ -1,4 +1,3 @@
-import type { ThreadListFilters } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -57,17 +56,12 @@ export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
 export interface ThreadListQueryFilters {
   projectId?: string;
-  hasParent?: ThreadListFilters["hasParent"];
-  parentThreadId?: string;
   archived: boolean;
   limit?: number;
 }
 
-export type ArchivedThreadsKindFilter = "all" | "root" | "child";
-
 export interface ArchivedThreadsListFilters {
   projectId: string;
-  kind: ArchivedThreadsKindFilter;
 }
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";

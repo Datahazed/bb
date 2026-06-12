@@ -95,16 +95,16 @@ describe("run-dev", () => {
     expect(env.BB_DEV_APP_PORT).toBe(String(config.ports.appPort));
   });
 
-  it("strips parent thread context from dev child processes", () => {
+  it("strips ambient thread context from dev child processes", () => {
     const config = resolveDevInstanceConfig({
       homeDir: "/Users/tester",
       repoRoot: "/Users/tester/src/bb",
     });
     const baseEnv: NodeJS.ProcessEnv = {
-      BB_ENVIRONMENT_ID: "env_parent",
-      BB_PROJECT_ID: "proj_parent",
-      BB_THREAD_ID: "thr_parent",
-      BB_THREAD_STORAGE: "/Users/tester/.bb/thread-storage/thr_parent",
+      BB_ENVIRONMENT_ID: "env_existing",
+      BB_PROJECT_ID: "proj_existing",
+      BB_THREAD_ID: "thr_existing",
+      BB_THREAD_STORAGE: "/Users/tester/.bb/thread-storage/thr_existing",
     };
 
     const env = toDevProcessEnv({ baseEnv, config });
@@ -112,7 +112,7 @@ describe("run-dev", () => {
     expect(env.BB_ENVIRONMENT_ID).toBeUndefined();
     expect(env.BB_THREAD_ID).toBeUndefined();
     expect(env.BB_THREAD_STORAGE).toBeUndefined();
-    expect(env.BB_PROJECT_ID).toBe("proj_parent");
+    expect(env.BB_PROJECT_ID).toBe("proj_existing");
   });
 
   it("runs the same persistent dev tasks as pnpm dev", () => {

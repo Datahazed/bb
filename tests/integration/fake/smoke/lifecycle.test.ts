@@ -85,7 +85,7 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
       expect(worktreeList).toContain(`worktree ${resolvedWorktreePath}`);
     }));
 
-  it("starts parent and child threads with the shared runtime config", async () => {
+  it("starts two flat threads in one environment with the shared runtime config", async () => {
     const runtimeConfigCommands: RuntimeConfigCommand[] = [];
     await withHarness(
       {
@@ -128,9 +128,9 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
       async (harness) => {
         const project = await createProjectFixture(
           harness,
-          "Parent Thread Smoke",
+          "Shared Runtime Config Smoke",
         );
-        const { environment: parentEnvironment, thread: parentThread } =
+        const { environment: sharedEnvironment, thread: firstThread } =
           await createReadyThread(harness, {
             execution: {
               model: "fake-model",
@@ -138,59 +138,57 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
             },
             projectId: project.id,
             providerId: "codex",
-            title: "Parent thread",
+            title: "Primary thread",
             workspace: {
               type: "unmanaged",
               path: harness.repoDir,
             },
           });
 
-        const childThread = await createReuseThread(harness.api, {
-          environmentId: parentEnvironment.id,
+        const secondThread = await createReuseThread(harness.api, {
+          environmentId: sharedEnvironment.id,
           execution: {
             model: "fake-model",
             reasoningLevel: "medium",
           },
-          parentThreadId: parentThread.id,
           projectId: project.id,
           providerId: "codex",
-          title: "Child thread",
+          title: "Second thread",
         });
-        expect(childThread.parentThreadId).toBe(parentThread.id);
-        expect(childThread.environmentId).toBe(parentEnvironment.id);
+        expect(secondThread.environmentId).toBe(sharedEnvironment.id);
 
         await waitForThreadStatus(
           harness.api,
-          childThread.id,
+          secondThread.id,
           "idle",
           TURN_TIMEOUT_MS,
         );
 
-        const parentRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === parentThread.id,
+        const firstRuntimeCommand = runtimeConfigCommands.find(
+          (command) => command.threadId === firstThread.id,
         );
-        const childRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === childThread.id,
+        const secondRuntimeCommand = runtimeConfigCommands.find(
+          (command) => command.threadId === secondThread.id,
         );
-        if (!parentRuntimeCommand || !childRuntimeCommand) {
-          throw new Error("Expected runtime commands for parent and child");
+        if (!firstRuntimeCommand || !secondRuntimeCommand) {
+          throw new Error("Expected runtime commands for both flat threads");
         }
 
-        expect(parentRuntimeCommand.commandType).toBe("thread/start");
-        expect(childRuntimeCommand.commandType).toBe("thread/start");
-        expect(parentRuntimeCommand.dynamicToolNames).toEqual([]);
-        expect(childRuntimeCommand.dynamicToolNames).toEqual([]);
-        expect(parentRuntimeCommand.instructions).toContain(
+        expect(firstRuntimeCommand.commandType).toBe("thread/start");
+        expect(secondRuntimeCommand.commandType).toBe("thread/start");
+        expect(firstRuntimeCommand.dynamicToolNames).toEqual([]);
+        expect(secondRuntimeCommand.dynamicToolNames).toEqual([]);
+        expect(firstRuntimeCommand.instructions).toContain(
           "If you need to orchestrate work across bb",
         );
-        expect(childRuntimeCommand.instructions).toContain(
+        expect(secondRuntimeCommand.instructions).toContain(
           "If you need to orchestrate work across bb",
         );
-        expect(parentRuntimeCommand.instructions).not.toContain("manager");
-        expect(childRuntimeCommand.instructions).not.toContain("manager");
+        expect(firstRuntimeCommand.instructions).not.toContain("manager");
+        expect(secondRuntimeCommand.instructions).not.toContain("manager");
 
-        const parentHasBbCliSkill = await Promise.all(
-          parentRuntimeCommand.skillRootPaths.map(async (rootPath) => {
+        const firstHasBbCliSkill = await Promise.all(
+          firstRuntimeCommand.skillRootPaths.map(async (rootPath) => {
             try {
               await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
               return true;
@@ -199,8 +197,8 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
             }
           }),
         );
-        const childHasBbCliSkill = await Promise.all(
-          childRuntimeCommand.skillRootPaths.map(async (rootPath) => {
+        const secondHasBbCliSkill = await Promise.all(
+          secondRuntimeCommand.skillRootPaths.map(async (rootPath) => {
             try {
               await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
               return true;
@@ -209,8 +207,8 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
             }
           }),
         );
-        expect(parentHasBbCliSkill).toContain(true);
-        expect(childHasBbCliSkill).toContain(true);
+        expect(firstHasBbCliSkill).toContain(true);
+        expect(secondHasBbCliSkill).toContain(true);
       },
     );
   });

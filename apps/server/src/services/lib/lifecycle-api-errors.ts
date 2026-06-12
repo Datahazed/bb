@@ -2,9 +2,6 @@ import type { Environment, Host, Thread, ThreadStatus } from "@bb/domain";
 import type {
   EnvironmentNotReadyErrorDetails,
   HostUnavailableErrorDetails,
-  ParentThreadInvalidErrorDetails,
-  ParentThreadInvalidReason,
-  ParentThreadInvalidSubject,
   ProjectUnavailableErrorDetails,
   ThreadEnvironmentUnavailableErrorDetails,
   ThreadNotWritableErrorDetails,
@@ -25,11 +22,6 @@ export type ThreadWritableFields = Pick<
 >;
 
 export type HostUnavailableStatus = 404 | 502;
-
-interface ParentThreadInvalidDetailsArgs {
-  reason: ParentThreadInvalidReason;
-  subject: ParentThreadInvalidSubject;
-}
 
 export function environmentNotReadyDetails(
   environment: EnvironmentReadinessFields,
@@ -152,33 +144,4 @@ export function throwProjectUnavailable(
   throw new ApiError(404, "project_unavailable", "Project is unavailable", {
     details,
   });
-}
-
-export function throwParentThreadInvalid(
-  reason: ParentThreadInvalidReason,
-): never {
-  throw new ApiError(
-    400,
-    "parent_thread_invalid",
-    "Parent thread is invalid",
-    { details: parentThreadInvalidDetails({ reason, subject: "parent" }) },
-  );
-}
-
-export function throwSenderThreadInvalid(
-  reason: Extract<ParentThreadInvalidReason, "deleted" | "not_found">,
-): never {
-  throw new ApiError(
-    400,
-    "parent_thread_invalid",
-    "Sender thread is invalid",
-    { details: parentThreadInvalidDetails({ reason, subject: "sender" }) },
-  );
-}
-
-function parentThreadInvalidDetails({
-  reason,
-  subject,
-}: ParentThreadInvalidDetailsArgs): ParentThreadInvalidErrorDetails {
-  return { reason, subject };
 }

@@ -14,7 +14,6 @@ import type {
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateQueuedMessageRequest,
-  DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
   EnvironmentActionRequest,
   EnvironmentActionResponse,
@@ -41,8 +40,6 @@ import type {
   SystemVersionResponse,
   TimelinePaginationCursor,
   SystemVoiceTranscriptionResponse,
-  ThreadArchiveAllResponse,
-  ThreadChildSummaryResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -685,8 +682,6 @@ export async function createThread(
 
 export interface ThreadListFilters {
   projectId?: string;
-  parentThreadId?: string;
-  hasParent?: boolean;
   /** App callers must choose active or archived; server omission intentionally means both. */
   archived: boolean;
   limit?: number;
@@ -706,12 +701,6 @@ export async function listThreads(
       {
         query: {
           ...(filters.projectId ? { projectId: filters.projectId } : {}),
-          ...(filters.parentThreadId
-            ? { parentThreadId: filters.parentThreadId }
-            : {}),
-          ...(filters.hasParent !== undefined
-            ? { hasParent: toBooleanQueryValue(filters.hasParent) }
-            : {}),
           archived: toBooleanQueryValue(filters.archived),
           ...(filters.limit !== undefined
             ? { limit: String(filters.limit) }
@@ -766,18 +755,6 @@ export async function getThreadWithEnvironmentHost(
         param: { id },
         query: { include: "environment,host" },
       },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function getThreadChildSummary(
-  id: string,
-  signal?: AbortSignal,
-): Promise<ThreadChildSummaryResponse> {
-  return request<ThreadChildSummaryResponse>(
-    apiClient.threads[":id"]["child-summary"].$get(
-      { param: { id } },
       requestOptions(signal),
     ),
   );
@@ -1066,26 +1043,15 @@ export async function archiveThread(id: string): Promise<void> {
   );
 }
 
-export async function archiveThreadAndChildren(
-  id: string,
-): Promise<ThreadArchiveAllResponse> {
-  return request<ThreadArchiveAllResponse>(
-    apiClient.threads[":id"]["archive-all"].$post({ param: { id } }),
-  );
-}
-
 export async function unarchiveThread(id: string): Promise<void> {
   await requestVoid(
     apiClient.threads[":id"].unarchive.$post({ param: { id } }),
   );
 }
 
-export async function deleteThread(
-  id: string,
-  opts: DeleteThreadRequest,
-): Promise<void> {
+export async function deleteThread(id: string): Promise<void> {
   await requestVoid(
-    apiClient.threads[":id"].$delete({ param: { id }, json: opts }),
+    apiClient.threads[":id"].$delete({ param: { id } }),
   );
 }
 

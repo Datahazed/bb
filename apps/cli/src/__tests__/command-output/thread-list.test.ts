@@ -16,54 +16,6 @@ describe("bb thread list command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
-  it("bb thread list supports parent-thread filtering", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.threads.$get": list });
-
-    await runCommand(
-      [
-        "thread",
-        "list",
-        "--project",
-        "proj-1",
-        "--parent-thread",
-        "thread-manager-1",
-      ],
-      register,
-    );
-
-    expect(list).toHaveBeenCalledWith({
-      query: {
-        projectId: "proj-1",
-        parentThreadId: "thread-manager-1",
-      },
-    });
-  });
-
-  it("bb thread list rejects invalid parent-thread values", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.threads.$get": list });
-
-    await expect(
-      runCommand(
-        [
-          "thread",
-          "list",
-          "--project",
-          "proj-1",
-          "--parent-thread",
-          "thread/invalid",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(console.error).toHaveBeenCalledWith(
-      'Error: Invalid ID from --parent-thread: "thread/invalid". IDs must contain only letters, digits, hyphens, and underscores.',
-    );
-    expect(list).not.toHaveBeenCalled();
-  });
-
   it("bb thread list renders archived status in the shared borderless table", async () => {
     const list = vi.fn(async () => [
       fixtures.makeThread({

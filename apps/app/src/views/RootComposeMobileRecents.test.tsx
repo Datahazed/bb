@@ -20,7 +20,6 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     title: args.title,
     titleFallback: args.title,
     status: "idle",
-    parentThreadId: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,

@@ -140,7 +140,6 @@ function makeThreadWithRuntime(
     environmentId: "env-1",
     title: null,
     titleFallback: null,
-    parentThreadId: null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,

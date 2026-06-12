@@ -10,17 +10,13 @@ import type {
 import {
   isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
-  type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
-import {
-  useMarkThreadRead,
-  useUpdateThread,
-} from "../../hooks/mutations/thread-state-mutations";
+import { useMarkThreadRead } from "../../hooks/mutations/thread-state-mutations";
 import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutations";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
@@ -30,12 +26,10 @@ import {
 } from "../../hooks/queries/environment-queries";
 import {
   getLatestPendingInteraction,
-  useProjectThreadSubset,
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
   useThreadSchedules,
-  type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
@@ -78,12 +72,7 @@ import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDif
 import type { GitDiffPanelIntent } from "@/components/secondary-panel/git-diff/gitDiffPanelStateReducer";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
-import {
-  type ContextBannerMergeBaseConfig,
-  isThreadDisplayStatusBannerActive,
-  type ThreadPromptParentThreadSection,
-  type ThreadPromptChildThreadsSection,
-} from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import { type ContextBannerMergeBaseConfig } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   useThreadSecondaryPanelVisibility,
@@ -157,10 +146,6 @@ import {
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import {
-  buildParentSelectorOptions,
-  isRootThread,
-} from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
@@ -177,11 +162,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 
-const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
-  {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
@@ -462,7 +443,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const composerHydratedDataStaleTime = hasThreadComposerBootstrapData
     ? 10_000
     : undefined;
-  const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const { data: pendingInteractions = [] } = useThreadPendingInteractions(
     composerQueryThreadId,
     {
@@ -564,32 +544,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       openBrowserTab(url);
     });
   }, [openBrowserTab]);
-  const isThreadRoot = isRootThread(thread);
-  const shouldLoadParentThreads =
-    threadQueryState.status === "ready" && isThreadRoot;
-  const parentThreadSubsetQuery = useProjectThreadSubset({
-    enabled: shouldLoadParentThreads,
-    filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
-    projectId,
-  });
-  const childThreadSubsetFilters = useMemo<ProjectThreadSubsetFilters>(() => {
-    if (!thread?.id) {
-      return EMPTY_PROJECT_THREAD_SUBSET_FILTERS;
-    }
-    return { parentThreadId: thread.id };
-  }, [thread?.id]);
-  const childThreadSubsetQuery = useProjectThreadSubset({
-    enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    filters: childThreadSubsetFilters,
-    projectId,
-  });
-  const parentThreads = useMemo(
-    () =>
-      shouldLoadParentThreads
-        ? (parentThreadSubsetQuery.data ?? EMPTY_PARENT_THREADS)
-        : EMPTY_PARENT_THREADS,
-    [parentThreadSubsetQuery.data, shouldLoadParentThreads],
-  );
   const {
     activeThinking,
     contextWindowUsage,
@@ -607,9 +561,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
-  const updateThread = useUpdateThread({
-    errorMessage: "Failed to assign parent thread.",
-  });
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
   const terminalSessions =
@@ -1084,60 +1035,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useLocalOpenTargets({
     enabled: threadEnvironmentIsLocal,
   });
-  const parentThreadSection: ThreadPromptParentThreadSection | null =
-    useMemo(() => {
-      if (!thread?.parentThreadId) return null;
-      const href = getSurfaceAwareThreadRoutePath({
-        projectId: thread.projectId,
-        surface: props.surface,
-        threadId: thread.parentThreadId,
-      });
-      if (parentThread === undefined) {
-        // Parent record not yet loaded — show id-based fallback so the user
-        // doesn't get a flicker of "no parent" before resolution.
-        return {
-          parentThreadTitle: `Parent ${thread.parentThreadId.slice(0, 8)}`,
-          href,
-        };
-      }
-      // Plan ownership invariants: silently exclude dirty references rather
-      // than rendering a stale or unreachable parent link.
-      if (
-        parentThread.archivedAt !== null ||
-        parentThread.deletedAt !== null ||
-        parentThread.projectId !== thread.projectId
-      ) {
-        return null;
-      }
-      return {
-        parentThreadTitle: getThreadDisplayTitle(parentThread),
-        href,
-      };
-    }, [
-      parentThread,
-      props.surface,
-      thread?.parentThreadId,
-      thread?.projectId,
-    ]);
-  const childThreadsSection: ThreadPromptChildThreadsSection | null =
-    useMemo(() => {
-      const list = childThreadSubsetQuery.data ?? [];
-      const activeItems = list
-        .filter((entry) =>
-          isThreadDisplayStatusBannerActive(entry.runtime.displayStatus),
-        )
-        .map((entry) => ({
-          id: entry.id,
-          title: getThreadDisplayTitle(entry),
-          href: getSurfaceAwareThreadRoutePath({
-            projectId: entry.projectId,
-            surface: props.surface,
-            threadId: entry.id,
-          }),
-        }));
-      if (activeItems.length === 0) return null;
-      return { items: activeItems };
-    }, [childThreadSubsetQuery.data, props.surface]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -1169,34 +1066,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       setHasRequestedMergeBaseOptions(true);
     }
   }, [gitActions.threadGitActionDialog.target]);
-  const parentThreadId = thread?.parentThreadId;
-  const parentThreadDisplayName =
-    parentThread?.title && parentThread.title.trim().length > 0
-      ? parentThread.title
-      : parentThreadId;
-  const parentSelectorOptions = useMemo(
-    () =>
-      buildParentSelectorOptions({
-        currentThreadId: thread?.id,
-        parentThreads,
-        parentThreadDisplayName,
-        parentThreadId,
-      }),
-    [parentThreads, parentThreadDisplayName, parentThreadId, thread?.id],
-  );
-  const handleAssignParent = useCallback(
-    (nextParentThreadId: string | null) => {
-      if (!thread || updateThread.isPending) {
-        return;
-      }
-
-      updateThread.mutate({
-        id: thread.id,
-        parentThreadId: nextParentThreadId,
-      });
-    },
-    [thread, updateThread],
-  );
   const handleTimelineLocalFileLinkResolution = useCallback(
     (resolution: ThreadLocalFileLinkResolution) => {
       if (resolution.kind === "app-route") {
@@ -1488,11 +1357,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       </PageShell>
     );
   }
-  const hasAssignableParent = parentSelectorOptions.some(
-    (option) => option.value !== "none",
-  );
-  const canAssignToParent = isThreadRoot && hasAssignableParent;
-  const canTakeOverThread = Boolean(thread.parentThreadId);
   const threadEnvironmentDisplay = environment
     ? formatEnvironmentDisplay({
         environment,
@@ -1573,7 +1437,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     ) : (
       <ThreadDetailHeader
         actionsMenu={threadActionsMenu}
-        isChildThread={Boolean(parentThreadId)}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         activeTerminalCount={activeTerminalCount}
         onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
@@ -1625,8 +1488,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}
-      parentThreadSection={parentThreadSection}
-      childThreadsSection={childThreadsSection}
       thread={thread}
     />
   );
@@ -1709,11 +1570,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{
           thread,
-          projectId,
-          parentThreadDisplayName: parentThreadDisplayName ?? null,
-          parentThreads,
-          canAssignToParent,
-          canTakeOverThread,
           environment: environment ?? null,
           environmentDisplayHost: environmentDisplayHostContext,
           workspaceStatus,
@@ -1726,10 +1582,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           mergeBaseRemoteBranchOptions,
           isLoadingMergeBaseBranchOptions,
           threadSchedules,
-          updateThreadPending:
-            updateThread.isPending || updateEnvironment.isPending,
           storage: metadataStorage,
-          onAssignParent: handleAssignParent,
           onMergeBaseBranchChange: handleMergeBaseBranchChange,
           onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
           onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,

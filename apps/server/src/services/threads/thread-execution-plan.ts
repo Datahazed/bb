@@ -238,14 +238,6 @@ export async function resolveExistingThreadExecutionPlan(
     rawProjectExecution?.providerId === thread.providerId
       ? rawProjectExecution
       : null;
-  const parentThread =
-    thread.parentThreadId !== null
-      ? getThread(deps.db, thread.parentThreadId)
-      : null;
-  const parentExecution =
-    parentThread !== null
-      ? getLastExecutionOptions(deps, parentThread.id)
-      : null;
   const model = resolveRequiredField<string>([
     args.input.model?.value,
     thread.modelOverride ?? undefined,
@@ -259,8 +251,6 @@ export async function resolveExistingThreadExecutionPlan(
   const permissionMode = resolveThreadExecutionPermissionMode({
     requestedPermissionMode: args.input.permissionMode?.value,
     lastExecutionPermissionMode: lastExecution?.permissionMode,
-    parentThread,
-    parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
     projectExecutionPermissionMode: projectExecution?.permissionMode,
     thread,
   });

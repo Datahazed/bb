@@ -58,19 +58,19 @@ describe("context-env", () => {
 
     expect(
       resolveExplicitIdFlag({
-        flagName: "--parent-thread",
-        value: " thread-parent ",
+        flagName: "--environment",
+        value: " env-target ",
       }),
-    ).toBe("thread-parent");
+    ).toBe("env-target");
     expect(
       resolveExplicitIdFlag({
-        flagName: "--parent-thread",
+        flagName: "--environment",
         value: "   ",
       }),
     ).toBeUndefined();
     expect(
       resolveExplicitIdFlag({
-        flagName: "--parent-thread",
+        flagName: "--environment",
         value: undefined,
       }),
     ).toBeUndefined();
@@ -79,10 +79,10 @@ describe("context-env", () => {
   it("rejects invalid explicit ID flags", () => {
     expect(() =>
       resolveExplicitIdFlag({
-        flagName: "--parent-thread",
-        value: "thread/invalid",
+        flagName: "--environment",
+        value: "env/invalid",
       }),
-    ).toThrow('Invalid ID from --parent-thread: "thread/invalid".');
+    ).toThrow('Invalid ID from --environment: "env/invalid".');
   });
 
   it("captures a consistent context snapshot", () => {

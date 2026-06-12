@@ -49,7 +49,7 @@ const toolSearchTool: TimelineRow = toolRow({
 });
 
 // thr_bj3p5vk9py, seq 13, turn 019de9bd-c299-7053-b11d-11b1f40e8b83 —
-// parent thread sending an introductory notify_user. Free-form text
+// thread sending an introductory notify_user. Free-form text
 // arg, "Notification delivered" result.
 const notifyUserShort: TimelineRow = toolRow({
   id: "thr_bj3p5vk9py:tool:call_MZFh9Lp2X4LkW9gQteoyDB2F",
@@ -63,7 +63,7 @@ const notifyUserShort: TimelineRow = toolRow({
   callId: "call_MZFh9Lp2X4LkW9gQteoyDB2F",
   toolName: "notify_user",
   toolArgs: {
-    text: "Hi — I’m your bb parent thread for this project. I’ll coordinate work by delegating substantive coding, debugging, and investigation tasks to child threads in isolated worktrees, then review results and report back.\n\nA few quick preferences so I can work the way you like:\n1. What should I call you?\n2. Do you prefer heavy delegation with concise summaries, or more hands-on collaboration with more frequent check-ins?\n3. What kinds of tasks should I expect most often: implementation, debugging, planning/reviews, or something else?",
+    text: "Hi — I’m your bb thread for this project. I’ll coordinate the work, keep track of decisions, and report back as the implementation moves.\n\nA few quick preferences so I can work the way you like:\n1. What should I call you?\n2. Do you prefer concise summaries, or more frequent check-ins?\n3. What kinds of tasks should I expect most often: implementation, debugging, planning/reviews, or something else?",
   },
   output: "Notification delivered",
   approvalStatus: null,
@@ -71,7 +71,7 @@ const notifyUserShort: TimelineRow = toolRow({
   durationMs: 0,
 });
 
-// thr_bj3p5vk9py, seq 28209 — parent merge-evaluation summary. Long
+// thr_bj3p5vk9py, seq 28209 — merge-evaluation summary. Long
 // markdown body in args.text (multi-section, tables, code-fence-ish lists).
 // Useful for the "expanded" story so we can see how long tool-arg payloads
 // render inside the row body.

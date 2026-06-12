@@ -47,8 +47,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "createAutomationRequestSchema.action.threadRequest.environment.hostId":
     "Personal scheduled threads may omit hostId so the server can use the default connected local host.",
-  "createAutomationRequestSchema.action.threadRequest.parentThreadId":
-    "Automation creation may omit parentThreadId when the scheduled thread stays a root thread.",
   "createAutomationRequestSchema.action.threadRequest.permissionMode":
     "Automation creation may omit permissionMode and inherit the scheduled thread default.",
   "createAutomationRequestSchema.action.threadRequest.reasoningLevel":
@@ -89,8 +87,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "updateAutomationRequestSchema.action.threadRequest.environment.hostId":
     "Personal scheduled-thread updates may omit hostId so the server can use the default connected local host.",
-  "updateAutomationRequestSchema.action.threadRequest.parentThreadId":
-    "Automation action updates may omit parentThreadId when the scheduled thread stays a root thread.",
   "updateAutomationRequestSchema.action.threadRequest.permissionMode":
     "Automation action updates may omit permissionMode and inherit the scheduled thread default.",
   "updateAutomationRequestSchema.action.threadRequest.reasoningLevel":
@@ -115,8 +111,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Personal thread creation may omit hostId so the server can use the default connected local host.",
   "createThreadRequestSchema.model":
     "Thread creation may omit model and inherit the project/provider default.",
-  "createThreadRequestSchema.parentThreadId":
-    "Root thread creation omits a parent thread id.",
   "createThreadRequestSchema.providerId":
     "Thread creation may omit providerId and use the project's remembered provider choice.",
   "createThreadRequestSchema.permissionMode":
@@ -189,12 +183,8 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Thread listing may omit archived to include both archived and unarchived threads.",
   "threadListQuerySchema.limit":
     "Thread listing may omit limit to return all matching threads without pagination.",
-  "threadListQuerySchema.hasParent":
-    "Thread listing may omit hasParent to include both root and child threads.",
   "threadListQuerySchema.offset":
     "Thread listing may omit offset to start from the first row.",
-  "threadListQuerySchema.parentThreadId":
-    "Thread listing may omit parentThreadId when not filtering by parent.",
   "threadListQuerySchema.projectId":
     "Thread listing may omit projectId to list across projects.",
   "threadTimelineQuerySchema.includeNestedRows":
@@ -217,8 +207,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Project source PATCH requests omit path when leaving it unchanged.",
   "updateThreadRequestSchema.model":
     "Thread PATCH requests omit model when leaving the sticky model override unchanged or use null to clear it.",
-  "updateThreadRequestSchema.parentThreadId":
-    "Thread PATCH requests omit parentThreadId when leaving it unchanged or use null to clear it.",
   "updateThreadRequestSchema.reasoningLevel":
     "Thread PATCH requests omit reasoningLevel when leaving the sticky reasoning override unchanged or use null to clear it.",
   "updateThreadRequestSchema.title":
@@ -640,17 +628,6 @@ describe("server-contract canonical schemas", () => {
 
     expect(() =>
       contract.lifecycleApiErrorSchema.parse({
-        code: "parent_thread_invalid",
-        message: "Parent thread is invalid",
-        details: {
-          reason: "not_a_valid_reason",
-          subject: "parent",
-        },
-      }),
-    ).toThrow();
-
-    expect(() =>
-      contract.lifecycleApiErrorSchema.parse({
         code: "thread_not_writable",
         message: "Thread is not writable",
         details: {
@@ -826,7 +803,6 @@ describe("server-contract canonical schemas", () => {
           title: "Pending thread",
           titleFallback: "Pending thread",
           status: "idle",
-          parentThreadId: null,
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,
@@ -1277,7 +1253,7 @@ describe("server-contract clients", () => {
     ).toThrow();
   });
 
-  it("requires parent change timeline system rows to carry status", () => {
+  it("allows nullable status on timeline system rows", () => {
     const baseRow = {
       id: "row-1",
       threadId: "thr_123",
@@ -1287,35 +1263,19 @@ describe("server-contract clients", () => {
       startedAt: 1,
       createdAt: 1,
       kind: "system",
-      title: "Thread assigned to parent",
+      title: "Operation update",
       detail: null,
-    };
-    const parentChangeRow = {
-      ...baseRow,
-      systemKind: "operation",
-      operationKind: "parent-change",
-      status: "completed",
-      completedAt: 1,
-      parentChange: {
-        action: "assign",
-        previousParentThreadId: null,
-        previousParentThreadTitle: null,
-        nextParentThreadId: "thr_parent",
-        nextParentThreadTitle: "Parent thread",
-      },
     };
 
     expect(
-      contract.timelineParentChangeSystemRowSchema.parse(parentChangeRow),
-    ).toMatchObject({
-      status: "completed",
-    });
-    expect(() =>
-      contract.timelineParentChangeSystemRowSchema.parse({
-        ...parentChangeRow,
+      contract.timelineSystemRowSchema.parse({
+        ...baseRow,
+        systemKind: "operation",
+        operationKind: "generic",
         status: null,
+        completedAt: 1,
       }),
-    ).toThrow();
+    ).toMatchObject({ status: null });
     expect(
       contract.timelineSystemRowSchema.parse({
         ...baseRow,

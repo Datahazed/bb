@@ -1,13 +1,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { deleteThread } from "@bb/db";
 import type { HostDaemonInteractiveRequest } from "@bb/host-daemon-contract";
-import { renderTemplate } from "@bb/templates";
 import { describe, expect, it } from "vitest";
 import {
   internalAuthHeaders,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
-  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -16,7 +14,6 @@ import {
   seedThreadFixture,
   seedProjectWithSource,
   seedThread,
-  seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import {
@@ -410,117 +407,6 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
-  it("notifies a parent thread when a child needs attention for a pending interaction", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-child-needs-attention",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const parentEnvironment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/child-needs-attention-parent",
-        projectId: project.id,
-      });
-      const childEnvironment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/child-needs-attention-child",
-        projectId: project.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        environmentId: parentEnvironment.id,
-        projectId: project.id,
-        title: "Project coordinator",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: parentEnvironment.id,
-        inputText: "Initial parent task",
-        providerThreadId: "provider-parent-needs-attention",
-        threadId: parentThread.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        environmentId: childEnvironment.id,
-        parentThreadId: parentThread.id,
-        projectId: project.id,
-        title: "Backend port validation cleanup",
-      });
-      const body = buildCommandApprovalInteractiveRequest({
-        sessionId: session.id,
-        suffix: "child-needs-attention",
-        threadId: childThread.id,
-      });
-
-      const response = await registerInteractiveRequest({ body, harness });
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toMatchObject({
-        outcome: "created",
-        status: "pending",
-      });
-
-      const parentTurnCommand = await waitForQueuedCommand(
-        harness,
-        ({ command, row }) =>
-          row.state === "pending" &&
-          command.type === "turn.submit" &&
-          command.threadId === parentThread.id,
-      );
-      if (parentTurnCommand.command.type !== "turn.submit") {
-        throw new Error(
-          `Expected parent turn command, got ${parentTurnCommand.command.type}`,
-        );
-      }
-      const threadMention = `@thread:${childThread.id}`;
-      const expectedText = renderTemplate(
-        "systemMessageChildThreadNeedsAttention",
-        {
-          threadMention,
-        },
-      );
-      const mentionStart = expectedText.indexOf(threadMention);
-      expect(parentTurnCommand.command.input).toEqual(
-        expect.arrayContaining([
-          {
-            type: "text",
-            text: expectedText,
-            mentions: [
-              {
-                start: mentionStart,
-                end: mentionStart + threadMention.length,
-                resource: {
-                  kind: "thread",
-                  label: "Backend port validation cleanup",
-                  projectId: project.id,
-                  threadId: childThread.id,
-                },
-              },
-            ],
-          },
-        ]),
-      );
-
-      const retryResponse = await registerInteractiveRequest({
-        body,
-        harness,
-      });
-      expect(retryResponse.status).toBe(200);
-      await expect(readJson(retryResponse)).resolves.toMatchObject({
-        outcome: "existing",
-        status: "pending",
-      });
-      await expect(
-        waitForQueuedCommandAfter(
-          harness,
-          parentTurnCommand.row.cursor,
-          ({ command }) =>
-            command.type === "turn.submit" &&
-            command.threadId === parentThread.id,
-          100,
-        ),
-      ).rejects.toThrow("Timed out waiting for queued command");
-    });
-  });
-
   it("returns retryable 503 when interactive request turn/started has not landed", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
@@ -830,7 +716,7 @@ describe("internal interactive request lifecycle", () => {
           headers: {
             "content-type": "application/json",
           },
-          body: JSON.stringify({ childThreadsConfirmed: false }),
+          body: JSON.stringify({}),
         },
       );
       expect(deleteResponse.status).toBe(200);

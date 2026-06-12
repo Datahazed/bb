@@ -54,7 +54,6 @@ export interface CreateThreadInput {
   title?: string | null;
   titleFallback?: string | null;
   status?: ThreadStatus;
-  parentThreadId?: string | null;
 }
 
 export function createThread(
@@ -75,7 +74,6 @@ export function createThread(
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
       status: input.status ?? "created",
-      parentThreadId: input.parentThreadId ?? null,
       lastReadAt: now,
       latestAttentionAt: now,
       createdAt: now,
@@ -97,9 +95,6 @@ export function getThread(db: ThreadWriteConnection, id: string) {
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
-  parentThreadId?: string;
-  /** When true, restrict to child threads. When false, restrict to root threads. */
-  hasParent?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -137,17 +132,6 @@ interface ResolvePinnedThreadNeighborArgs {
 interface PinThreadMutationResult {
   changed: boolean;
   thread: ThreadRow;
-}
-
-type PinnedThreadRootCandidate = Pick<
-  ThreadRow,
-  "id" | "parentThreadId"
->;
-
-interface FilterVisiblePinnedThreadRootsArgs<
-  TThread extends PinnedThreadRootCandidate,
-> {
-  pinnedThreads: readonly TThread[];
 }
 
 export interface ReorderPinnedThreadSuccess {
@@ -204,30 +188,15 @@ function getFirstPinnedThread(db: DbQueryConnection): ThreadRow | null {
   );
 }
 
-function filterVisiblePinnedThreadRoots<
-  TThread extends PinnedThreadRootCandidate,
->({
-  pinnedThreads,
-}: FilterVisiblePinnedThreadRootsArgs<TThread>): TThread[] {
-  const pinnedThreadIds = new Set(pinnedThreads.map((thread) => thread.id));
-  return pinnedThreads.filter(
-    (thread) =>
-      thread.parentThreadId === null ||
-      !pinnedThreadIds.has(thread.parentThreadId),
-  );
-}
-
-export function listActiveVisiblePinnedThreadRoots(
+export function listActiveVisiblePinnedThreads(
   db: DbQueryConnection,
 ): ThreadRow[] {
-  const pinnedThreads = db
+  return db
     .select()
     .from(threads)
     .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all();
-
-  return filterVisiblePinnedThreadRoots({ pinnedThreads });
 }
 
 function threadWithPendingInteractionBaseQuery(db: DbConnection) {
@@ -252,17 +221,15 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
     );
 }
 
-export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
+export function listActiveVisiblePinnedThreadsWithPendingInteractionState(
   db: DbConnection,
 ): ThreadWithPendingInteractionState[] {
-  const pinnedThreads = threadWithPendingInteractionBaseQuery(db)
+  return threadWithPendingInteractionBaseQuery(db)
     .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
     .groupBy(threads.id)
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all()
     .map(toThreadWithPendingInteractionState);
-
-  return filterVisiblePinnedThreadRoots({ pinnedThreads });
 }
 
 function resolvePinnedThreadNeighbor(
@@ -331,18 +298,6 @@ export interface ListLiveThreadsInEnvironmentArgs {
   environmentId: string;
 }
 
-export interface CountNonDeletedAssignedChildThreadsArgs {
-  parentThreadId: string;
-}
-
-export interface ListUnarchivedAssignedChildThreadsArgs {
-  parentThreadId: string;
-}
-
-export interface ListNonDeletedChildThreadsArgs {
-  parentThreadId: string;
-}
-
 export interface MarkThreadStopRequestedArgs {
   requestedAt?: number;
   threadId: string;
@@ -405,12 +360,11 @@ const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
 interface StatusTransition {
   currentStatus: ThreadStatus;
   newStatus: ThreadStatus;
-  parentThreadId: string | null;
 }
 
 function statusTransitionNeedsAttention(args: StatusTransition): boolean {
   if (args.currentStatus === "active" && args.newStatus === "idle") {
-    return args.parentThreadId === null;
+    return true;
   }
 
   if (args.newStatus !== "error") {
@@ -426,18 +380,10 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     isNull(threads.deletedAt),
-    options.parentThreadId
-      ? eq(threads.parentThreadId, options.parentThreadId)
-      : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
         ? isNull(threads.archivedAt)
-        : undefined,
-    options.hasParent === true
-      ? isNotNull(threads.parentThreadId)
-      : options.hasParent === false
-        ? isNull(threads.parentThreadId)
         : undefined,
   ].filter((value) => value !== undefined);
 }
@@ -606,57 +552,6 @@ export function listLiveThreadsInEnvironment(
       ),
     )
     .orderBy(desc(threads.createdAt))
-    .all();
-}
-
-export function countNonDeletedAssignedChildThreads(
-  db: DbConnection,
-  args: CountNonDeletedAssignedChildThreadsArgs,
-): number {
-  const assignedChildThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .get();
-
-  return assignedChildThreadCount?.count ?? 0;
-}
-
-export function listUnarchivedAssignedChildThreads(
-  db: ThreadWriteConnection,
-  args: ListUnarchivedAssignedChildThreadsArgs,
-): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
-}
-
-export function listNonDeletedChildThreads(
-  db: ThreadWriteConnection,
-  args: ListNonDeletedChildThreadsArgs,
-): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
     .all();
 }
 
@@ -885,7 +780,7 @@ export function reorderPinnedThread({
         return { kind: "not_pinned" };
       }
 
-      const currentThreads = listActiveVisiblePinnedThreadRoots(tx);
+      const currentThreads = listActiveVisiblePinnedThreads(tx);
       const currentIndex = currentThreads.findIndex(
         (thread) => thread.id === threadId,
       );
@@ -948,7 +843,7 @@ export function reorderPinnedThread({
 
       return {
         kind: "reordered",
-        threads: listActiveVisiblePinnedThreadRoots(tx),
+        threads: listActiveVisiblePinnedThreads(tx),
       };
     },
     { behavior: "immediate" },
@@ -970,7 +865,6 @@ export function reorderPinnedThread({
 export interface UpdateThreadInput {
   environmentId?: string | null;
   lastReadAt?: number | null;
-  parentThreadId?: string | null;
   title?: string | null;
 }
 
@@ -989,12 +883,6 @@ export function updateThread(
   const changes: ThreadChangeKind[] = [];
   if ("title" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");
-  if (
-    "parentThreadId" in input &&
-    input.parentThreadId !== existing.parentThreadId
-  ) {
-    changes.push("parent-changed");
-  }
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
@@ -1002,7 +890,6 @@ export function updateThread(
   if ("lastReadAt" in input) {
     set.lastReadAt = input.lastReadAt;
   }
-  if ("parentThreadId" in input) set.parentThreadId = input.parentThreadId;
 
   const updated = db
     .update(threads)
@@ -1268,7 +1155,6 @@ function transitionThreadStatusRecord(
     statusTransitionNeedsAttention({
       currentStatus,
       newStatus,
-      parentThreadId: thread.parentThreadId,
     })
   ) {
     set.latestAttentionAt = now;

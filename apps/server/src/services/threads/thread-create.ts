@@ -26,8 +26,6 @@ import {
   resolveStableThreadRequestEnvironment,
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
-import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
-import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
@@ -269,12 +267,6 @@ export async function createThreadFromRequest(
     requestInput.projectId,
   );
   assertProjectWorkspaceCompatibility(project, requestInput);
-  const parentThread = requestInput.parentThreadId
-    ? assertValidParentThread(deps, {
-        parentThreadId: requestInput.parentThreadId,
-        projectId: requestInput.projectId,
-      })
-    : null;
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input: requestInput.input,
@@ -286,14 +278,10 @@ export async function createThreadFromRequest(
       model: requestInput.model,
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
-    });
+  });
   const request: ThreadCreateServiceRequest = {
     ...requestInput,
-    environment: resolveCreateThreadEnvironment({
-      parentThread,
-      projectId: requestInput.projectId,
-      requestedEnvironment: requestInput.environment,
-    }),
+    environment: requestInput.environment,
     providerId,
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
@@ -395,7 +383,6 @@ export async function createThreadFromRequest(
     name: "thread_created",
     properties: {
       is_automation: requestInput.automationId !== null,
-      is_child_thread: parentThread !== null,
       provider: request.providerId,
     },
   });

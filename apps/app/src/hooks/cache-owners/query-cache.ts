@@ -120,13 +120,6 @@ function isThreadListQueryFilters(
     return false;
   }
   if (
-    "parentThreadId" in candidate &&
-    candidate.parentThreadId !== undefined &&
-    typeof candidate.parentThreadId !== "string"
-  ) {
-    return false;
-  }
-  if (
     "limit" in candidate &&
     candidate.limit !== undefined &&
     typeof candidate.limit !== "number"
@@ -149,14 +142,6 @@ function isArchivedThreadsListFilters(
   }
 
   if (!("projectId" in candidate) || typeof candidate.projectId !== "string") {
-    return false;
-  }
-  if (
-    !("kind" in candidate) ||
-    (candidate.kind !== "all" &&
-      candidate.kind !== "root" &&
-      candidate.kind !== "child")
-  ) {
     return false;
   }
 
@@ -222,8 +207,6 @@ export function getCachedRootOrderThreadListInvalidationQueryKeys({
     if (filters === undefined) continue;
     if (filters.projectId !== projectId) continue;
     if (filters.archived) continue;
-    if (filters.parentThreadId !== undefined) continue;
-    if (filters.hasParent === true) continue;
     queryKeys.push(queryKey);
   }
   return queryKeys;
@@ -460,18 +443,6 @@ function threadMatchesListFilters(
     return false;
   }
   if (filters?.projectId && thread.projectId !== filters.projectId) {
-    return false;
-  }
-  if (
-    filters?.hasParent !== undefined &&
-    (thread.parentThreadId !== null) !== filters.hasParent
-  ) {
-    return false;
-  }
-  if (
-    filters?.parentThreadId !== undefined &&
-    thread.parentThreadId !== filters.parentThreadId
-  ) {
     return false;
   }
 

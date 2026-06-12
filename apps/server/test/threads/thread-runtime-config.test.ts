@@ -1,11 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  markThreadDeleted,
-  setExperiments,
-  setThreadExecutionOverride,
-} from "@bb/db";
+import { setExperiments, setThreadExecutionOverride } from "@bb/db";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   encodeClientTurnRequestIdNumber,
@@ -21,7 +17,6 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
-  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -53,30 +48,21 @@ async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
 describe("thread runtime config", () => {
   it.each([
     {
-      childProviderId: "codex",
       expectedPermissionMode: "full",
-      parentProviderId: null,
       name: "defaults root-thread execution permission mode to full",
+      providerId: "codex",
       requestedModel: "gpt-5",
     },
     {
-      childProviderId: "codex",
       expectedPermissionMode: "full",
-      parentProviderId: "codex",
-      name: "defaults child execution permission mode to full without parent history or project defaults",
-      requestedModel: "gpt-5",
-    },
-    {
-      childProviderId: "pi",
-      expectedPermissionMode: "full",
-      parentProviderId: "pi",
-      name: "defaults Pi child execution permission mode to full",
+      name: "defaults Pi execution permission mode to full",
+      providerId: "pi",
       requestedModel: "openai-codex/gpt-5.4",
     },
-  ])("$name", async ({ childProviderId, expectedPermissionMode, parentProviderId, requestedModel }) => {
+  ])("$name", async ({ expectedPermissionMode, providerId, requestedModel }) => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: `host-runtime-${childProviderId}-${parentProviderId ?? "root"}`,
+        id: `host-runtime-${providerId}`,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -85,19 +71,10 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const parentThread =
-        parentProviderId === null
-          ? null
-          : seedThread(harness.deps, {
-              projectId: project.id,
-              environmentId: environment.id,
-              providerId: parentProviderId,
-            });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        parentThreadId: parentThread?.id ?? null,
-        providerId: childProviderId,
+        providerId,
       });
 
       const execution = await resolveExecutionOptions(harness.deps, {
@@ -112,10 +89,10 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("uses project permission defaults for child threads without parent execution history", async () => {
+  it("uses project permission defaults", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-managed-child-project-default-permission-mode",
+        id: "host-runtime-project-default-permission-mode",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -124,112 +101,14 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const parentThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: parentThread.id,
         providerId: "codex",
       });
 
       const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: childThread.id,
-        projectDefaults: {
-          providerId: "codex",
-          model: "gpt-5",
-          reasoningLevel: "medium",
-          permissionMode: "readonly",
-          serviceTier: "default",
-        },
-        requestedExecution: {
-          model: "gpt-5",
-          source: "client/turn/requested",
-        },
-      });
-
-      expect(execution.permissionMode).toBe("readonly");
-    });
-  });
-
-  it("inherits live parent execution permission before project defaults", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-child-parent-execution-permission-mode",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      seedThreadRuntimeState(harness.deps, {
-        threadId: parentThread.id,
-        environmentId: environment.id,
-        providerThreadId: "provider-parent-permission-mode",
-        permissionMode: "workspace-write",
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: parentThread.id,
-        providerId: "codex",
-      });
-
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: childThread.id,
-        projectDefaults: {
-          providerId: "codex",
-          model: "gpt-5",
-          reasoningLevel: "medium",
-          permissionMode: "readonly",
-          serviceTier: "default",
-        },
-        requestedExecution: {
-          model: "gpt-5",
-          source: "client/turn/requested",
-        },
-      });
-
-      expect(execution.permissionMode).toBe("workspace-write");
-    });
-  });
-
-  it("treats ghost parent references as root-thread execution defaults", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-deleted-parent-permission-mode",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const deletedParent = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      markThreadDeleted(harness.db, harness.hub, {
-        threadId: deletedParent.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: deletedParent.id,
-        providerId: "codex",
-      });
-
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: childThread.id,
+        threadId: thread.id,
         projectDefaults: {
           providerId: "codex",
           model: "gpt-5",
@@ -506,7 +385,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("derives ask escalation only for direct user root-thread work", async () => {
+  it("derives ask escalation only for direct user work", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-permission-escalation",
@@ -518,44 +397,23 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const rootThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: rootThread.id,
-      });
-      const parentThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
       });
 
       expect(
         resolvePermissionEscalation({
-          thread: rootThread,
+          thread,
           initiator: "user",
         }),
       ).toBe("ask");
       expect(
         resolvePermissionEscalation({
-          thread: rootThread,
+          thread,
           initiator: "system",
         }),
       ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: childThread,
-          initiator: "user",
-        }),
-      ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: parentThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
     });
   });
 

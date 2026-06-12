@@ -2,9 +2,9 @@ import { Command } from "commander";
 import { action, CliExitError } from "../action.js";
 
 const REMOVED_MANAGER_COMMAND_MESSAGE = [
-  "Manager threads were replaced by parent threads.",
-  "Use `bb thread spawn --parent-thread <id>` to delegate work,",
-  "`bb thread list --parent-thread <id>` to list child threads,",
+  "Manager commands were removed.",
+  "Use `bb thread spawn` to start work,",
+  "`bb thread list` to list threads,",
   "and `bb thread show <id>` to inspect a thread.",
 ].join(" ");
 
@@ -44,21 +44,21 @@ export function registerManagerCommands(
   registerRemovedManagerSubcommand(
     manager,
     "hire [projectId]",
-    "Managers were replaced by parent threads",
+    "Manager commands were removed",
   );
   registerRemovedManagerSubcommand(
     manager,
     "list [projectId]",
-    "Managers were replaced by parent threads",
+    "Manager commands were removed",
   );
   registerRemovedManagerSubcommand(
     manager,
     "status <id>",
-    "Managers were replaced by parent threads",
+    "Manager commands were removed",
   );
   registerRemovedManagerSubcommand(
     manager,
     "delete <id>",
-    "Managers were replaced by parent threads",
+    "Manager commands were removed",
   );
 }

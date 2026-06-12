@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   appendStoredThreadEventsInTransaction,
-  createEventId,
   getActiveStoredTurnId,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
@@ -93,15 +92,6 @@ export interface AppendedClientTurnRequestWithNotification
   extends AppendedClientTurnRequest {
   notificationChanges: ThreadChangeKind[];
   notificationMetadata: ThreadChangeMetadata;
-}
-
-export type ThreadOwnershipChangeAction = "assign" | "release" | "transfer";
-
-export interface AppendThreadOwnershipChangeEventArgs {
-  environmentId?: string | null;
-  nextParentThreadId: string | null;
-  previousParentThreadId: string | null;
-  threadId: string;
 }
 
 export interface AppendSystemErrorEventArgs {
@@ -790,132 +780,6 @@ export function appendThreadInterruptedEventInTransaction(
       reason: args.reason,
     },
   });
-}
-
-function resolveThreadOwnershipChangeAction(
-  args: AppendThreadOwnershipChangeEventArgs,
-): ThreadOwnershipChangeAction | null {
-  const { previousParentThreadId, nextParentThreadId } = args;
-  if (previousParentThreadId === nextParentThreadId) {
-    return null;
-  }
-  if (previousParentThreadId === null && nextParentThreadId !== null) {
-    return "assign";
-  }
-  if (previousParentThreadId !== null && nextParentThreadId === null) {
-    return "release";
-  }
-  if (previousParentThreadId !== null && nextParentThreadId !== null) {
-    return "transfer";
-  }
-  return null;
-}
-
-function threadOwnershipChangeMessage(
-  action: ThreadOwnershipChangeAction,
-): string {
-  switch (action) {
-    case "assign":
-      return "Thread assigned to parent";
-    case "release":
-      return "Thread released from parent";
-    case "transfer":
-      return "Thread transferred to new parent";
-  }
-}
-
-function resolveParentThreadTitle(
-  db: DbQueryConnection,
-  parentThreadId: string | null,
-): string | null {
-  if (parentThreadId === null) {
-    return null;
-  }
-  const thread = getThread(db, parentThreadId);
-  if (!thread) {
-    return null;
-  }
-  return thread.title ?? thread.titleFallback ?? null;
-}
-
-export function appendThreadOwnershipChangeEvent(
-  deps: Pick<AppDeps, "db" | "hub">,
-  args: AppendThreadOwnershipChangeEventArgs,
-): number | null {
-  const action = resolveThreadOwnershipChangeAction(args);
-  if (!action) {
-    return null;
-  }
-
-  const previousParentThreadTitle = resolveParentThreadTitle(
-    deps.db,
-    args.previousParentThreadId,
-  );
-  const nextParentThreadTitle = resolveParentThreadTitle(
-    deps.db,
-    args.nextParentThreadId,
-  );
-
-  return appendThreadEvent(deps, {
-    threadId: args.threadId,
-    environmentId: args.environmentId ?? null,
-    type: "system/operation",
-    scope: threadScope(),
-    data: {
-      operation: "ownership_change",
-      operationId: createEventId(),
-      status: "completed",
-      message: threadOwnershipChangeMessage(action),
-      metadata: {
-        action,
-        previousParentThreadId: args.previousParentThreadId,
-        previousParentThreadTitle,
-        nextParentThreadId: args.nextParentThreadId,
-        nextParentThreadTitle,
-      },
-    },
-  });
-}
-
-export function appendThreadOwnershipChangeEventInTransaction(
-  deps: ThreadEventTransactionDeps,
-  args: AppendThreadOwnershipChangeEventArgs,
-): number | null {
-  const action = resolveThreadOwnershipChangeAction(args);
-  if (!action) {
-    return null;
-  }
-
-  const previousParentThreadTitle = resolveParentThreadTitle(
-    deps.db,
-    args.previousParentThreadId,
-  );
-  const nextParentThreadTitle = resolveParentThreadTitle(
-    deps.db,
-    args.nextParentThreadId,
-  );
-
-  const sequence = appendThreadEventInTransaction(deps.db, {
-    threadId: args.threadId,
-    environmentId: args.environmentId ?? null,
-    type: "system/operation",
-    scope: threadScope(),
-    data: {
-      operation: "ownership_change",
-      operationId: createEventId(),
-      status: "completed",
-      message: threadOwnershipChangeMessage(action),
-      metadata: {
-        action,
-        previousParentThreadId: args.previousParentThreadId,
-        previousParentThreadTitle,
-        nextParentThreadId: args.nextParentThreadId,
-        nextParentThreadTitle,
-      },
-    },
-  });
-  deps.hub.notifyThread(args.threadId, ["events-appended"]);
-  return sequence;
 }
 
 export function getActiveTurnId(

@@ -17,7 +17,6 @@ export interface StatusGetArgs {
 export interface StatusThreadResponse {
   environmentId: string | null;
   id: string;
-  parentThreadId: string | null;
   pinnedAt: number | null;
   projectId: string;
   status: ThreadStatus;
@@ -25,7 +24,6 @@ export interface StatusThreadResponse {
 }
 
 export interface StatusGetResponse {
-  childThreads: Thread[] | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   project: ProjectResponse | null;
   thread: StatusThreadResponse | null;
@@ -49,7 +47,6 @@ function summarizeThread(thread: Thread): StatusThreadResponse {
   return {
     environmentId: thread.environmentId ?? null,
     id: thread.id,
-    parentThreadId: thread.parentThreadId ?? null,
     pinnedAt: thread.pinnedAt,
     projectId: thread.projectId,
     status: thread.status,
@@ -95,22 +92,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
               );
               return timeline.pendingTodos;
             });
-      const childThreads =
-        thread === null
-          ? null
-          : await fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.threads.$get({
-                  query: {
-                    projectId: thread.projectId,
-                    parentThreadId: thread.id,
-                  },
-                }),
-              ),
-            );
-
       return {
-        childThreads,
         pendingTodos,
         project,
         thread: thread === null ? null : summarizeThread(thread),

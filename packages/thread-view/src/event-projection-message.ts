@@ -2,7 +2,6 @@ import type {
   BackgroundTaskStatus,
   BackgroundTaskUsage,
   JsonObject,
-  OwnershipChangeOperationMetadata,
   PendingInteractionUserAnswer,
   PendingInteractionUserQuestionQuestion,
   ProviderErrorInfo,
@@ -232,13 +231,6 @@ export const eventProjectionOperationTypeValues = [
 export type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];
 
-export const eventProjectionThreadOperationKindValues = [
-  "ownership_change",
-  "other",
-] as const;
-export type EventProjectionThreadOperationKind =
-  (typeof eventProjectionThreadOperationKindValues)[number];
-
 export const eventProjectionThreadOperationStatusValues = [
   "requested",
   "queued",
@@ -252,27 +244,13 @@ export const eventProjectionThreadOperationStatusValues = [
 export type EventProjectionThreadOperationStatus =
   (typeof eventProjectionThreadOperationStatusValues)[number];
 
-export interface EventProjectionOwnershipChangeThreadOperationMetadata {
-  operation: "ownership_change";
-  rawOperation: string;
-  status: EventProjectionThreadOperationStatus;
-  rawStatus: string;
-  operationId: string;
-  metadata: OwnershipChangeOperationMetadata | null;
-}
-
-export interface EventProjectionOtherThreadOperationMetadata {
-  operation: "other";
+export interface EventProjectionThreadOperationMetadata {
   rawOperation: string;
   status: EventProjectionThreadOperationStatus;
   rawStatus: string;
   operationId: string;
   metadata?: JsonObject;
 }
-
-export type EventProjectionThreadOperationMetadata =
-  | EventProjectionOwnershipChangeThreadOperationMetadata
-  | EventProjectionOtherThreadOperationMetadata;
 
 export interface EventProjectionProvisioningTranscriptEntry {
   type: "step" | "output";

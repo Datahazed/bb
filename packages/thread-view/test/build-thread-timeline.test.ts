@@ -2,7 +2,6 @@ import { threadScope, turnScope } from "@bb/domain";
 import type {
   ApprovalPendingInteractionResolution,
   JsonObject,
-  OwnershipChangeOperationAction,
   ProviderErrorInfo,
   ThreadEventFileChange,
   ThreadEventItemStatus,
@@ -13,7 +12,6 @@ import type {
   ThreadContextWindowUsage,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineParentChange,
   TimelineQuestionWorkRow,
   TimelineRow,
   TimelineSystemRow,
@@ -25,7 +23,6 @@ import {
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type ThreadEventWithMeta,
 } from "../src/index.js";
-import { parseOperationMessage } from "../src/parse-operation-message.js";
 import {
   createTimelineEventFactory,
   fromRows,
@@ -130,46 +127,6 @@ interface UserQuestionLifecycleEventArgs {
 }
 
 type BuildTimelineRowsThreadStatus = "active" | "idle";
-
-interface OwnershipOperationCase {
-  action: OwnershipChangeOperationAction;
-  parentChangeAction: TimelineParentChange["action"];
-  message: string;
-  nextParentThreadId: string | null;
-  nextParentThreadTitle: string | null;
-  previousParentThreadId: string | null;
-  previousParentThreadTitle: string | null;
-}
-
-const ownershipOperationCases: OwnershipOperationCase[] = [
-  {
-    action: "assign",
-    parentChangeAction: "assign",
-    message: "Thread assigned to parent",
-    nextParentThreadId: "thr-parent",
-    nextParentThreadTitle: "Parent",
-    previousParentThreadId: null,
-    previousParentThreadTitle: null,
-  },
-  {
-    action: "release",
-    parentChangeAction: "release",
-    message: "Thread released from parent",
-    nextParentThreadId: null,
-    nextParentThreadTitle: null,
-    previousParentThreadId: "thr-parent",
-    previousParentThreadTitle: "Parent",
-  },
-  {
-    action: "transfer",
-    parentChangeAction: "transfer",
-    message: "Thread transferred to new parent",
-    nextParentThreadId: "thr-parent-next",
-    nextParentThreadTitle: "Next Parent",
-    previousParentThreadId: "thr-parent-previous",
-    previousParentThreadTitle: "Previous Parent",
-  },
-];
 
 function contextWindowUsageEvent({
   estimated,
@@ -325,7 +282,7 @@ function turnCompletedEvent({
 function systemOperationEvent({
   message,
   metadata,
-  operation = "ownership_change",
+  operation = "operation_update",
   operationId = "operation-1",
   seq,
   status = "completed",
@@ -969,97 +926,6 @@ describe("buildThreadTimelineFromEvents", () => {
     });
   });
 
-  it.each(ownershipOperationCases)(
-    "uses $action ownership metadata rather than event message for operation titles",
-    ({
-      action,
-      message,
-      nextParentThreadId,
-      nextParentThreadTitle,
-      previousParentThreadId,
-      previousParentThreadTitle,
-    }) => {
-      const event = systemOperationEvent({
-        message: "Ownership operation completed",
-        metadata: {
-          action,
-          nextParentThreadId,
-          nextParentThreadTitle,
-          previousParentThreadId,
-          previousParentThreadTitle,
-        },
-        seq: 1,
-      });
-
-      expect(parseOperationMessage(event.event, event.meta)).toMatchObject({
-        kind: "operation",
-        title: message,
-      });
-    },
-  );
-
-  it("uses a neutral completed ownership title for legacy metadata", () => {
-    const event = systemOperationEvent({
-      message: "Ownership operation completed",
-      metadata: {
-        action: "unknown-action",
-        nextParentThreadId: null,
-        nextParentThreadTitle: null,
-        previousParentThreadId: null,
-        previousParentThreadTitle: null,
-      },
-      seq: 1,
-    });
-
-    expect(parseOperationMessage(event.event, event.meta)).toMatchObject({
-      kind: "operation",
-      title: "Ownership change completed",
-    });
-  });
-
-  it.each(ownershipOperationCases)(
-    "does not duplicate $action ownership operation titles as row detail",
-    ({
-      action,
-      parentChangeAction,
-      message,
-      nextParentThreadId,
-      nextParentThreadTitle,
-      previousParentThreadId,
-      previousParentThreadTitle,
-    }) => {
-      const rows = buildTimelineRows([
-        systemOperationEvent({
-          message,
-          metadata: {
-            action,
-            nextParentThreadId,
-            nextParentThreadTitle,
-            previousParentThreadId,
-            previousParentThreadTitle,
-          },
-          seq: 1,
-        }),
-      ]);
-
-      expect(collectSystemRows(rows)).toEqual([
-        expect.objectContaining({
-          detail: null,
-          parentChange: {
-            action: parentChangeAction,
-            previousParentThreadId: previousParentThreadId,
-            previousParentThreadTitle: previousParentThreadTitle,
-            nextParentThreadId: nextParentThreadId,
-            nextParentThreadTitle: nextParentThreadTitle,
-          },
-          operationKind: "parent-change",
-          systemKind: "operation",
-          title: message,
-        }),
-      ]);
-    },
-  );
-
   it("keeps system error message and detail as separate row fields", () => {
     const rows = buildTimelineRows([
       systemErrorEvent({
@@ -1233,30 +1099,26 @@ describe("buildThreadTimelineFromEvents", () => {
     ]);
   });
 
-  it("uses a neutral completed ownership title for invalid ownership actions", () => {
+  it("projects legacy ownership operations as generic system rows", () => {
     const rows = buildTimelineRows([
       systemOperationEvent({
-        message: "Thread ownership updated by migration",
+        message: "Legacy operation updated by migration",
         metadata: {
-          action: "migrate",
-          nextParentThreadId: "thr-parent",
-          nextParentThreadTitle: "Parent",
-          previousParentThreadId: null,
-          previousParentThreadTitle: null,
+          source: "migration",
         },
+        operation: "ownership_change",
         seq: 1,
       }),
     ]);
 
     expect(collectSystemRows(rows)).toEqual([
       expect.objectContaining({
-        detail: "Thread ownership updated by migration",
+        detail: "Legacy operation updated by migration",
         operationKind: "generic",
         systemKind: "operation",
         title: "Ownership change completed",
       }),
     ]);
-    expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
   });
 
   it.each([
@@ -1275,19 +1137,16 @@ describe("buildThreadTimelineFromEvents", () => {
     operationStatus: "failed" | "running";
     threadStatus: BuildTimelineRowsThreadStatus;
   }>)(
-    "keeps parent change typing for $operationStatus operation status",
+    "keeps generic operation status for $operationStatus operation status",
     ({ expectedRowStatus, operationStatus, threadStatus }) => {
       const rows = buildTimelineRows(
         [
           systemOperationEvent({
-            message: `Ownership change ${operationStatus}`,
+            message: `Workspace cleanup ${operationStatus}`,
             metadata: {
-              action: "assign",
-              nextParentThreadId: "thr-parent",
-              nextParentThreadTitle: "Parent",
-              previousParentThreadId: null,
-              previousParentThreadTitle: null,
+              source: "test",
             },
+            operation: "workspace_cleanup",
             seq: 1,
             status: operationStatus,
           }),
@@ -1297,16 +1156,10 @@ describe("buildThreadTimelineFromEvents", () => {
 
       expect(collectSystemRows(rows)).toEqual([
         expect.objectContaining({
-          parentChange: {
-            action: "assign",
-            previousParentThreadId: null,
-            previousParentThreadTitle: null,
-            nextParentThreadId: "thr-parent",
-            nextParentThreadTitle: "Parent",
-          },
-          operationKind: "parent-change",
+          operationKind: "generic",
           status: expectedRowStatus,
           systemKind: "operation",
+          title: `Workspace cleanup ${operationStatus}`,
         }),
       ]);
     },

@@ -13,23 +13,23 @@ describe("bb manager command output", () => {
   const register: CommandRegistrar = (program) =>
     registerManagerCommands(program, () => "http://server");
 
-  it("bb manager exits with a parent-thread replacement message", async () => {
+  it("bb manager exits with a removal message", async () => {
     await expect(runCommand(["manager"], register)).rejects.toThrow(
       "process.exit:1",
     );
 
     const error = collectLogLines(vi.mocked(console.error)).join("\n");
-    expect(error).toContain("Manager threads were replaced by parent threads.");
-    expect(error).toContain("bb thread spawn --parent-thread <id>");
+    expect(error).toContain("Manager commands were removed.");
+    expect(error).toContain("bb thread spawn");
   });
 
-  it("bb manager subcommands exit with the same replacement message", async () => {
+  it("bb manager subcommands exit with the same removal message", async () => {
     await expect(
       runCommand(["manager", "list", "project-123"], register),
     ).rejects.toThrow("process.exit:1");
 
     const error = collectLogLines(vi.mocked(console.error)).join("\n");
-    expect(error).toContain("Manager threads were replaced by parent threads.");
-    expect(error).toContain("bb thread list --parent-thread <id>");
+    expect(error).toContain("Manager commands were removed.");
+    expect(error).toContain("bb thread list");
   });
 });

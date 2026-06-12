@@ -167,13 +167,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Detail consumers render the thread metadata contract.
     ],
   },
-  "parent-changed": {
-    flush: "debounced",
-    dirty: [
-      dirtyThreadListQueries, // Sidebar grouping and child filters depend on parentThreadId.
-      dirtyThreadDetailQueries, // Detail metadata and parent UI render parentThreadId.
-    ],
-  },
   "read-state-changed": {
     flush: "debounced",
     dirty: [

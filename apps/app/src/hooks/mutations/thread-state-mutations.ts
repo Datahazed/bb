@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ReorderPinnedThreadRequest,
-  ThreadArchiveAllResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
@@ -11,21 +10,17 @@ import {
   applyThreadPinStateResult,
   applyThreadReadStateResult,
   applyThreadUpdateResult,
-  beginArchiveThreadAndChildrenTransaction,
   beginArchiveThreadTransaction,
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinThreadTransaction,
-  rollbackArchiveThreadsTransaction,
   rollbackDeleteThreadTransaction,
   rollbackReorderPinnedThreadTransaction,
   rollbackThreadListMutationTransaction,
-  settleArchiveThreadsTransaction,
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
-  type ArchiveThreadsTransaction,
   type DeleteThreadTransaction,
   type PinnedThreadOrderTransaction,
   type ThreadListMutationTransaction,
@@ -48,13 +43,8 @@ interface ArchiveThreadMutationRequest {
   id: string;
 }
 
-interface ArchiveThreadAndChildrenMutationRequest {
-  id: string;
-}
-
 interface DeleteThreadMutationRequest {
   id: string;
-  childThreadsConfirmed: boolean;
 }
 
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
@@ -162,8 +152,8 @@ export function useReorderPinnedThread() {
         transaction: context,
       });
     },
-    onSuccess: (orderedRoots) => {
-      applyReorderPinnedThreadResult({ orderedRoots, queryClient });
+    onSuccess: (orderedThreads) => {
+      applyReorderPinnedThreadResult({ orderedThreads, queryClient });
     },
   });
 }
@@ -191,37 +181,6 @@ export function useArchiveThread() {
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
-      });
-    },
-  });
-}
-
-export function useArchiveThreadAndChildren() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to archive thread and children.",
-      lifecycleOperation: "archive_thread",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      id,
-    }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> =>
-      api.archiveThreadAndChildren(id),
-    onMutate: async ({ id }): Promise<ArchiveThreadsTransaction> =>
-      beginArchiveThreadAndChildrenTransaction({
-        queryClient,
-        threadId: id,
-      }),
-    onError: (_error, _variables, context) => {
-      rollbackArchiveThreadsTransaction({ queryClient, transaction: context });
-    },
-    onSettled: (data, _error, _variables, context) => {
-      settleArchiveThreadsTransaction({
-        queryClient,
-        response: data,
-        transaction: context,
       });
     },
   });
@@ -260,11 +219,7 @@ export function useDeleteThread() {
     meta: {
       errorMessage: "Failed to delete thread.",
     },
-    mutationFn: ({
-      childThreadsConfirmed,
-      id,
-    }: DeleteThreadMutationRequest) =>
-      api.deleteThread(id, { childThreadsConfirmed }),
+    mutationFn: ({ id }: DeleteThreadMutationRequest) => api.deleteThread(id),
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
     onError: (_error, variables, context) => {

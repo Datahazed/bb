@@ -132,7 +132,6 @@ export type TimelineConversationRow = z.infer<
 export const timelineSystemOperationKindValues = [
   "generic",
   "compaction",
-  "parent-change",
   "thread-provisioning",
   "thread-interrupted",
   "provider-unhandled",
@@ -144,35 +143,6 @@ export const timelineSystemOperationKindSchema = z.enum(
 );
 export type TimelineSystemOperationKind = z.infer<
   typeof timelineSystemOperationKindSchema
->;
-const timelineGenericSystemOperationKindSchema = z.enum([
-  "generic",
-  "compaction",
-  "thread-provisioning",
-  "thread-interrupted",
-  "provider-unhandled",
-  "warning",
-  "deprecation",
-] as const);
-
-export const timelineParentChangeActionValues = [
-  "assign",
-  "release",
-  "transfer",
-] as const;
-export const timelineParentChangeActionSchema = z.enum(
-  timelineParentChangeActionValues,
-);
-
-export const timelineParentChangeSchema = z.object({
-  action: timelineParentChangeActionSchema,
-  previousParentThreadId: z.string().nullable(),
-  previousParentThreadTitle: z.string().nullable(),
-  nextParentThreadId: z.string().nullable(),
-  nextParentThreadTitle: z.string().nullable(),
-});
-export type TimelineParentChange = z.infer<
-  typeof timelineParentChangeSchema
 >;
 
 const timelineSystemRowBaseSchema = timelineRowBaseSchema.extend({
@@ -190,32 +160,12 @@ export type TimelineNonOperationSystemRow = z.infer<
   typeof timelineNonOperationSystemRowSchema
 >;
 
-export const timelineGenericOperationSystemRowSchema =
+export const timelineOperationSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
-    operationKind: timelineGenericSystemOperationKindSchema,
+    operationKind: timelineSystemOperationKindSchema,
     completedAt: z.number().nullable(),
   });
-
-export const timelineParentChangeSystemRowSchema =
-  timelineSystemRowBaseSchema.extend({
-    systemKind: z.literal("operation"),
-    operationKind: z.literal("parent-change"),
-    status: timelineRowStatusSchema,
-    parentChange: timelineParentChangeSchema,
-    completedAt: z.number().nullable(),
-  });
-export type TimelineParentChangeSystemRow = z.infer<
-  typeof timelineParentChangeSystemRowSchema
->;
-
-export const timelineOperationSystemRowSchema = z.discriminatedUnion(
-  "operationKind",
-  [
-    timelineGenericOperationSystemRowSchema,
-    timelineParentChangeSystemRowSchema,
-  ],
-);
 
 export const timelineSystemRowSchema = z.union([
   timelineNonOperationSystemRowSchema,

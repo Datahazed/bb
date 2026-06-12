@@ -7,7 +7,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import type {
   EnvironmentCleanupMode,
@@ -281,10 +280,6 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("created"),
-    parentThreadId: text("parent_thread_id").references(
-      (): AnySQLiteColumn => threads.id,
-      { onDelete: "set null" },
-    ),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),
@@ -313,7 +308,6 @@ export const threads = sqliteTable(
       table.deletedAt,
       table.status,
     ),
-    index("threads_parent_idx").on(table.parentThreadId),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,

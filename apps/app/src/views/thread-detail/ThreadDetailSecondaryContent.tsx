@@ -95,11 +95,6 @@ const areThreadMetadataPropsEqual: ThreadMetadataPropsEqual = (
   next,
 ) =>
   previous.thread === next.thread &&
-  previous.projectId === next.projectId &&
-  previous.parentThreadDisplayName === next.parentThreadDisplayName &&
-  previous.parentThreads === next.parentThreads &&
-  previous.canAssignToParent === next.canAssignToParent &&
-  previous.canTakeOverThread === next.canTakeOverThread &&
   previous.environment === next.environment &&
   previous.environmentDisplayHost === next.environmentDisplayHost &&
   previous.workspaceStatus === next.workspaceStatus &&
@@ -113,9 +108,7 @@ const areThreadMetadataPropsEqual: ThreadMetadataPropsEqual = (
   previous.isLoadingMergeBaseBranchOptions ===
     next.isLoadingMergeBaseBranchOptions &&
   previous.threadSchedules === next.threadSchedules &&
-  previous.updateThreadPending === next.updateThreadPending &&
   previous.storage === next.storage &&
-  previous.onAssignParent === next.onAssignParent &&
   previous.onMergeBaseBranchChange === next.onMergeBaseBranchChange &&
   previous.onMergeBasePickerOpenChange === next.onMergeBasePickerOpenChange &&
   previous.onMergeBaseBranchSearchQueryChange ===

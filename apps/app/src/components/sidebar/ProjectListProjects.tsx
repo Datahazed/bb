@@ -47,12 +47,10 @@ export interface ProjectListProjectsProps {
   rows: ProjectListRowModel[];
   selectedThreadId?: string;
   collapsedProjectIds: Set<string>;
-  collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
-  onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   reorder?: ProjectListReorderBindings;
 }
@@ -94,12 +92,10 @@ export function ProjectListProjects({
   rows,
   selectedThreadId,
   collapsedProjectIds,
-  collapsedThreadIds,
   collapsedEnvironmentIds,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
-  onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   reorder,
 }: ProjectListProjectsProps) {
@@ -109,13 +105,11 @@ export function ProjectListProjects({
     selectedThreadId,
     isActive: row.isActive,
     isCollapsed: collapsedProjectIds.has(row.project.id),
-    collapsedThreadIds,
     collapsedEnvironmentIds,
     isLocalPathInvalid: row.isLocalPathInvalid,
     onProjectSelect,
     onCreateProjectThread,
     onToggleProjectCollapsed,
-    onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
   });
 

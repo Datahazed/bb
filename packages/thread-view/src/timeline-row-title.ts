@@ -6,7 +6,6 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineParentChangeSystemRow,
   TimelineRowStatus,
   TimelineToolWorkRow,
   TimelineWebFetchWorkRow,
@@ -1181,115 +1180,8 @@ function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
   });
 }
 
-function parentLinkSegment(
-  threadId: string | null,
-  title: string | null,
-): TimelineTitleSegment | null {
-  if (threadId === null) {
-    return null;
-  }
-  return segment(title ?? threadId, {
-    em: true,
-    truncate: true,
-    link: { kind: "thread", threadId },
-  });
-}
-
-interface ParentChangeVerbs {
-  assign: string;
-  release: string;
-  transferFrom: string;
-  transferTo: string;
-}
-
-function parentChangeVerbs(
-  status: TimelineRowStatus,
-): ParentChangeVerbs {
-  switch (status) {
-    case "completed":
-    case "error":
-    case "interrupted":
-      // Past-tense verb shared across terminal statuses; status decoration
-      // ("(failed)" / "(interrupted)") differentiates the outcome.
-      return {
-        assign: "Thread assigned to",
-        release: "Thread unassigned from",
-        transferFrom: "Thread reassigned from",
-        transferTo: "to",
-      };
-    case "pending":
-      return {
-        assign: "Assigning thread to",
-        release: "Releasing thread from",
-        transferFrom: "Reassigning thread from",
-        transferTo: "to",
-      };
-    default:
-      return assertNever(status);
-  }
-}
-
-function mapParentChangeSystemTitle(
-  row: TimelineParentChangeSystemRow,
-): TimelineTitle {
-  const assignment = row.parentChange;
-  const linkPrev = parentLinkSegment(
-    assignment.previousParentThreadId,
-    assignment.previousParentThreadTitle,
-  );
-  const linkNext = parentLinkSegment(
-    assignment.nextParentThreadId,
-    assignment.nextParentThreadTitle,
-  );
-  const shimmer = row.status === "pending";
-  const verbs = parentChangeVerbs(row.status);
-
-  const segments: TimelineTitleSegment[] = (() => {
-    switch (assignment.action) {
-      case "assign":
-        return filterNull([segment(verbs.assign, { shimmer }), linkNext]);
-      case "release":
-        return filterNull([segment(verbs.release, { shimmer }), linkPrev]);
-      case "transfer":
-        return filterNull([
-          segment(verbs.transferFrom, { shimmer }),
-          linkPrev,
-          linkNext !== null ? segment(verbs.transferTo, { shimmer }) : null,
-          linkNext,
-        ]);
-      default:
-        return assertNever(assignment.action);
-    }
-  })();
-
-  const decorations: TimelineTitleDecoration[] = (() => {
-    switch (row.status) {
-      case "error":
-        return [statusDecoration("error", null, { emphasis: true })];
-      case "interrupted":
-        return [statusDecoration("interrupted", null)];
-      case "pending":
-      case "completed":
-        return [];
-      default:
-        return assertNever(row.status);
-    }
-  })();
-
-  return makeTitle({
-    segments,
-    decorations,
-  });
-}
-
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   const hasError = row.systemKind === "error" || row.status === "error";
-  if (
-    row.systemKind === "operation" &&
-    row.operationKind === "parent-change"
-  ) {
-    return mapParentChangeSystemTitle(row);
-  }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
   const titleText =

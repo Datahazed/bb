@@ -83,7 +83,7 @@ function requireWorkspacePath(
 export function resolvePermissionEscalation(
   args: ResolvePermissionEscalationArgs,
 ): PermissionEscalation {
-  if (args.initiator !== "user" || args.thread.parentThreadId !== null) {
+  if (args.initiator !== "user") {
     return "deny";
   }
 

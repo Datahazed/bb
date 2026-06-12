@@ -256,8 +256,6 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
       onPromptBannerFileClick: noop,
     }}
     gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />

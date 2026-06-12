@@ -170,7 +170,6 @@ export function seedThread(
     providerId?: string;
     status?: "created" | "provisioning" | "idle" | "active" | "error";
     title?: string | null;
-    parentThreadId?: string | null;
     titleFallback?: string | null;
   },
 ) {
@@ -181,7 +180,6 @@ export function seedThread(
     status: args.status ?? "idle",
     title: args.title ?? "Test Thread",
     titleFallback: args.titleFallback ?? "Test Thread",
-    parentThreadId: args.parentThreadId ?? null,
   });
 }
 

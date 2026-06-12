@@ -80,7 +80,7 @@ function ThreadActionsMenuItems({
   surface,
 }: ThreadActionsMenuItemsProps) {
   const {
-    archiveThreadAndChildren,
+    archiveThread,
     requestRename,
     requestDelete,
     togglePin,
@@ -146,7 +146,7 @@ function ThreadActionsMenuItems({
             unarchiveThread(thread);
             return;
           }
-          archiveThreadAndChildren(thread);
+          archiveThread(thread);
         }}
       >
         {isArchived ? "Unarchive" : "Archive"}

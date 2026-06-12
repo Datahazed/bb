@@ -17,9 +17,9 @@ const defaultTarget: ThreadRenameDialogTarget = {
   currentTitle: "Audit recurring permission failures",
 };
 
-const parentTarget: ThreadRenameDialogTarget = {
-  id: "thr_parent",
-  currentTitle: "Frontend Parent",
+const titledTarget: ThreadRenameDialogTarget = {
+  id: "thr_titled",
+  currentTitle: "Frontend Cleanup",
 };
 
 const longTitleTarget: ThreadRenameDialogTarget = {
@@ -43,12 +43,12 @@ export function Overview() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="parent thread"
-        hint="parent threads use the same rename dialog copy"
+        label="titled thread"
+        hint="existing custom title"
       >
         <DialogStage>
           <ThreadRenameDialogContent
-            target={parentTarget}
+            target={titledTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}

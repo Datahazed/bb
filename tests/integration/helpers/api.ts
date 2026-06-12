@@ -52,7 +52,6 @@ export interface CreateHostThreadOptions {
   hostId: string;
   input?: CreateThreadRequest["input"];
   origin?: CreateThreadRequest["origin"];
-  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   title?: string;
@@ -66,7 +65,6 @@ export interface CreateReuseThreadOptions {
   environmentId: string;
   input?: CreateThreadRequest["input"];
   origin?: CreateThreadRequest["origin"];
-  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   title?: string;
@@ -191,7 +189,6 @@ export async function createHostThread(
       origin,
       ...execution,
       model: model ?? defaultModelForProvider(providerId),
-      parentThreadId: options.parentThreadId,
       projectId: options.projectId,
       providerId,
       title: options.title,
@@ -218,7 +215,6 @@ export async function createReuseThread(
       origin,
       ...execution,
       model: model ?? defaultModelForProvider(providerId),
-      parentThreadId: options.parentThreadId,
       projectId: options.projectId,
       providerId,
       title: options.title,
@@ -234,7 +230,6 @@ export async function deleteThread(
 ): Promise<void> {
   const response = await api.threads[":id"].$delete({
     param: { id: threadId },
-    json: { childThreadsConfirmed: false },
   });
   await expectStatus(response, 200, `delete thread ${threadId}`);
 }

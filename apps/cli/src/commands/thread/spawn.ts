@@ -6,7 +6,6 @@ import { createCliBbSdk } from "../../client.js";
 import {
   resolveProjectId,
   resolveExplicitIdFlag,
-  resolveThreadId,
 } from "../../context-env.js";
 import { resolveLocalHostId } from "../../daemon.js";
 import {
@@ -28,14 +27,12 @@ interface ThreadSpawnCommandOptions {
   environment?: string;
   newEnvironment?: string;
   baseBranch?: string;
-  parentThread?: string;
   provider?: string;
   model?: string;
   reasoningLevel?: string;
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
-  contextParentThread?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -143,10 +140,6 @@ export function registerSpawnCommand(
       "Base branch for new managed environments (worktree). Defaults to the source's default branch.",
     )
     .option(
-      "--parent-thread <id>",
-      "Parent thread ID for worker thread links (defaults to BB_THREAD_ID)",
-    )
-    .option(
       "--provider <id>",
       "Provider ID for the thread. Omit to use the project's remembered provider choice",
     )
@@ -161,18 +154,8 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option(
-      "--no-context-parent-thread",
-      "Do not default parent thread context to BB_THREAD_ID",
-    )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        if (opts.parentThread && opts.contextParentThread === false) {
-          throw new Error(
-            "Cannot combine --parent-thread with --no-context-parent-thread.",
-          );
-        }
-
         const projectId = resolveProjectId(opts.project) ?? PERSONAL_PROJECT_ID;
         const environmentValue = resolveSpawnEnvironmentValue(
           opts.environment,
@@ -196,13 +179,6 @@ export function registerSpawnCommand(
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
-        const explicitParentThreadId = resolveExplicitIdFlag({
-          flagName: "--parent-thread",
-          value: opts.parentThread,
-        });
-        const parentThreadId =
-          explicitParentThreadId ??
-          (opts.contextParentThread === false ? undefined : resolveThreadId());
 
         let thread: Thread;
         try {
@@ -218,7 +194,6 @@ export function registerSpawnCommand(
             ...(serviceTier ? { serviceTier } : {}),
             ...(permissionMode ? { permissionMode } : {}),
             environment,
-            ...(parentThreadId ? { parentThreadId } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -226,12 +201,6 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
-        if (
-          thread.parentThreadId &&
-          thread.parentThreadId === resolveThreadId()
-        ) {
-          console.log("You will be notified when this thread is done.");
-        }
         printThread(thread);
       }),
     );

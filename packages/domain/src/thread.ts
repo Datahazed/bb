@@ -185,7 +185,6 @@ export const threadSchema = z.object({
   title: z.string().nullable(),
   titleFallback: z.string().nullable(),
   status: threadStatusSchema,
-  parentThreadId: z.string().nullable(),
   archivedAt: z.number().nullable(),
   pinnedAt: z.number().nullable(),
   stopRequestedAt: z.number().nullable(),

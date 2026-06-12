@@ -240,18 +240,16 @@ const fileChangeTimelineService: TimelineRow = fileChangeRow({
 +  toViewProjectionEntries,
    toViewProjection,
 @@ -256,2 +257,23 @@
-     thread.parentThreadId !== null && !options.showAllParentEvents;
 +  const contextWindowUsageRows = listContextWindowUsageRows(db, {
 +    threadId: thread.id,
 +  });
 +
-+  if (isDefaultParentView) {
++  if (options.includeContextWindowUsage) {
 +    return {
-+      rows: buildParentConversationRows(
++      rows: buildConversationRows(
 +        toViewMessages(decodedEvents, {
 +          includeInternalSystemMessages: options.showAllParentEvents,
 +          threadStatus: thread.status,
-+          parentThreadId: thread.parentThreadId,
 +        }),
 +      ),
 +      activeThinking: null,

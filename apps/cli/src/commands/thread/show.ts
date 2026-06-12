@@ -433,9 +433,6 @@ function printThreadStatus(
     console.log(`  Title: ${thread.title}`);
   }
   console.log(`  Project: ${thread.projectId}`);
-  if (thread.parentThreadId) {
-    console.log(`  Parent: ${thread.parentThreadId}`);
-  }
   if (thread.archivedAt !== null) {
     console.log(`  Archived: ${new Date(thread.archivedAt).toLocaleString()}`);
   }

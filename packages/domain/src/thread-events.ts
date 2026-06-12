@@ -143,29 +143,6 @@ export const systemErrorEventDataSchema = z
   });
 export type SystemErrorEventData = z.infer<typeof systemErrorEventDataSchema>;
 
-export const ownershipChangeOperationActionValues = [
-  "assign",
-  "release",
-  "transfer",
-] as const;
-export const ownershipChangeOperationActionSchema = z.enum(
-  ownershipChangeOperationActionValues,
-);
-export type OwnershipChangeOperationAction = z.infer<
-  typeof ownershipChangeOperationActionSchema
->;
-
-export const ownershipChangeOperationMetadataSchema = z.object({
-  action: ownershipChangeOperationActionSchema,
-  nextParentThreadId: z.string().nullable(),
-  nextParentThreadTitle: z.string().nullable(),
-  previousParentThreadId: z.string().nullable(),
-  previousParentThreadTitle: z.string().nullable(),
-});
-export type OwnershipChangeOperationMetadata = z.infer<
-  typeof ownershipChangeOperationMetadataSchema
->;
-
 export const systemOperationEventDataSchema = z.object({
   operation: z.string(),
   status: z.string(),

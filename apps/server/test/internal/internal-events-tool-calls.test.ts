@@ -453,12 +453,6 @@ describe("internal event and tool-call routes", () => {
           { type: "inputText", text: "Unsupported tool: spawn_thread" },
         ],
       });
-      const childThreads = harness.db
-        .select()
-        .from(threads)
-        .where(eq(threads.parentThreadId, thread.id))
-        .all();
-      expect(childThreads).toHaveLength(0);
     });
   });
 

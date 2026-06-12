@@ -1,5 +1,5 @@
 import { environments, events, getExperiments, threads } from "@bb/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
@@ -325,25 +325,6 @@ function requireProviderThreadId(
   return providerThreadId;
 }
 
-function threadHasLiveChildren(
-  deps: Pick<AppDeps, "db">,
-  threadId: string,
-): boolean {
-  const row = deps.db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, threadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
 function threadHasCodexSpawnAgentToolCall(
   deps: Pick<AppDeps, "db">,
   threadId: string,
@@ -423,10 +404,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     return false;
   }
 
-  if (
-    threadHasLiveChildren(deps, thread.id) ||
-    threadHasCodexSpawnAgentToolCall(deps, thread.id)
-  ) {
+  if (threadHasCodexSpawnAgentToolCall(deps, thread.id)) {
     return false;
   }
 

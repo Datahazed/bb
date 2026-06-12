@@ -253,20 +253,11 @@ describe("prompt history service", () => {
     ]);
   });
 
-  it("does not record project history for child thread starts", () => {
+  it("records project history for user thread starts", () => {
     const { db, firstProject, logger } = setup();
-    const parentThread = createThread(db, noopNotifier, {
-      projectId: firstProject.id,
-      providerId: "codex",
-    });
     const directThread = createThread(db, noopNotifier, {
       projectId: firstProject.id,
       providerId: "codex",
-    });
-    const childThread = createThread(db, noopNotifier, {
-      projectId: firstProject.id,
-      providerId: "codex",
-      parentThreadId: parentThread.id,
     });
 
     expect(
@@ -281,18 +272,6 @@ describe("prompt history service", () => {
         },
       ),
     ).toBe(true);
-    expect(
-      recordAcceptedPromptHistoryEntry(
-        { db },
-        {
-          thread: childThread,
-          input: textInput("Parent-created worker"),
-          initiator: "user",
-          target: { kind: "thread-start" },
-          requestSequence: 1,
-        },
-      ),
-    ).toBe(false);
 
     expect(
       listProjectPromptHistory(

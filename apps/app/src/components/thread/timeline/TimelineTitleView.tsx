@@ -27,7 +27,7 @@ export type TimelineTitleActionResolver = (
 ) => (() => void) | null;
 
 /**
- * Resolves a segment-level link target (e.g. a parent thread) to an href the
+ * Resolves a segment-level link target to an href the
  * renderer uses for an `<a>` element. Return `null` to render the segment as
  * plain (non-interactive) text — useful when the target is not navigable from
  * the current surface (e.g. a story without routing context).

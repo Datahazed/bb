@@ -556,8 +556,8 @@ interface SidebarStickyGroupProps extends React.ComponentProps<"div"> {
  * collapsible body. CSS `position: sticky` only pushes a header out of the way
  * of the next one when each header is constrained by its own containing block —
  * sticky siblings that share a containing block pin at the same offset and
- * overlap instead. Every nesting level (section/label, project, parent thread,
- * worktree) wraps its header + body in one of these so the shove-out behavior
+ * overlap instead. Every nesting level (section/label, project, worktree)
+ * wraps its header + body in one of these so the shove-out behavior
  * is structural, not per-tier boilerplate that a new tier can forget.
  *
  * Pass `asChild` to project the wrapper onto a caller-owned element (e.g. the

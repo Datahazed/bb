@@ -4,46 +4,12 @@ import {
   typedRoutes,
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
-import { getThread, hasStoredTurnStarted } from "@bb/db";
+import { hasStoredTurnStarted } from "@bb/db";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
-import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
-import {
-  queueChildThreadNeedsAttentionNotificationBestEffort,
-} from "../services/threads/child-thread-notifications.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
-
-interface RequestChildThreadNeedsAttentionNotificationArgs {
-  childThreadId: string;
-}
-
-function requestChildThreadNeedsAttentionNotification(
-  deps: AppDeps,
-  args: RequestChildThreadNeedsAttentionNotificationArgs,
-): void {
-  const childThread = getThread(deps.db, args.childThreadId);
-  if (!childThread?.parentThreadId) {
-    return;
-  }
-  const parentThreadId = childThread.parentThreadId;
-
-  deferAfterResponse({
-    config: deps.config,
-    context: {
-      childThreadId: childThread.id,
-      parentThreadId,
-    },
-    logger: deps.logger,
-    name: "Child thread needs-attention notification",
-    work: () =>
-      queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
-        childThread,
-        parentThreadId,
-      }),
-  });
-}
 
 export function registerInternalInteractiveRequestRoutes(
   app: Hono,
@@ -110,12 +76,6 @@ export function registerInternalInteractiveRequestRoutes(
           reason: registered.reason,
         });
       }
-      if (registered.outcome === "created") {
-        requestChildThreadNeedsAttentionNotification(deps, {
-          childThreadId: registered.interaction.threadId,
-        });
-      }
-
       return context.json({
         outcome: registered.outcome,
         interactionId: registered.interaction.id,

@@ -1,5 +1,4 @@
 import {
-  countNonDeletedAssignedChildThreads,
   getEnvironment,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
@@ -9,7 +8,6 @@ import {
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import {
   createThreadRequestSchema,
-  deleteThreadRequestSchema,
   threadGetQuerySchema,
   threadIncludeOptionSchema,
   threadListQuerySchema,
@@ -17,7 +15,6 @@ import {
   typedRoutes,
   type ThreadGetQuery,
   type ThreadIncludeOption,
-  type ThreadChildSummaryResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
@@ -41,13 +38,10 @@ import {
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
-import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
-import { assertValidParentThread } from "../../services/threads/thread-parent.js";
-import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -122,11 +116,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
-      ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
-      hasParent:
-        query.hasParent === undefined ? undefined : query.hasParent === "true",
       ...(limit !== undefined ? { limit } : {}),
       ...(offset !== undefined ? { offset } : {}),
     });
@@ -154,34 +145,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  function getThreadChildSummary(
-    threadId: string,
-  ): ThreadChildSummaryResponse {
-    const nonDeletedChildCount = countNonDeletedAssignedChildThreads(
-      deps.db,
-      {
-        parentThreadId: threadId,
-      },
-    );
-    return {
-      nonDeletedChildCount,
-    };
-  }
-
-  get("/threads/:id/child-summary", (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(getThreadChildSummary(thread.id));
-  });
-
   patch("/threads/:id", updateThreadRequestSchema, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.parentThreadId) {
-      assertValidParentThread(deps, {
-        childThreadId: thread.id,
-        parentThreadId: payload.parentThreadId,
-        projectId: thread.projectId,
-      });
-    }
 
     // Sticky execution override (model / reasoning level). Validated and
     // persisted by a dedicated service — kept off the generic metadata update
@@ -201,9 +166,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const metadataUpdate: UpdateThreadInput = {};
     if ("title" in payload) {
       metadataUpdate.title = payload.title;
-    }
-    if ("parentThreadId" in payload) {
-      metadataUpdate.parentThreadId = payload.parentThreadId;
     }
     const updated =
       Object.keys(metadataUpdate).length > 0
@@ -232,28 +194,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       }
     }
 
-    if (
-      "parentThreadId" in payload &&
-      payload.parentThreadId !== thread.parentThreadId
-    ) {
-      await handleThreadOwnershipChange(deps, {
-        previousThread: thread,
-        queueParentMessages: true,
-        updatedThread: updated,
-      });
-    }
-
     return context.json(toThreadResponseFromThread(deps, { thread: updated }));
   });
 
-  del("/threads/:id", deleteThreadRequestSchema, async (context, payload) => {
+  del("/threads/:id", async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    requireChildThreadsConfirmation({
-      action: "delete",
-      confirmed: payload.childThreadsConfirmed,
-      deps,
-      thread,
-    });
     markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {

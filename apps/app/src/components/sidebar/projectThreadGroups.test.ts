@@ -3,14 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildProjectThreadGroups,
   type ProjectThreadItem,
-  type ProjectThreadNode,
 } from "./projectThreadGroups";
 
 type ThreadListEntryOverrides = Partial<ThreadListEntry>;
-type TreeSummary =
-  | string
-  | { id: string; children: TreeSummary[] }
-  | { env: string; threads: TreeSummary[] };
+type ThreadGroupSummary = string | { env: string; threads: string[] };
 
 function createThread(
   overrides: ThreadListEntryOverrides = {},
@@ -24,7 +20,6 @@ function createThread(
     title: "Thread",
     titleFallback: "Thread",
     status: "idle",
-    parentThreadId: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -47,191 +42,24 @@ function createThread(
   };
 }
 
-function summarizeNode(node: ProjectThreadNode): TreeSummary {
-  if (node.children.length === 0) {
-    return node.thread.id;
-  }
-
-  return {
-    id: node.thread.id,
-    children: summarizeItems(node.children),
-  };
-}
-
-function summarizeItems(items: readonly ProjectThreadItem[]): TreeSummary[] {
+function summarizeItems(
+  items: readonly ProjectThreadItem[],
+): ThreadGroupSummary[] {
   return items.map((item) =>
     item.kind === "thread"
-      ? summarizeNode(item.node)
+      ? item.node.thread.id
       : {
           env: item.group.environmentId,
-          threads: item.group.nodes.map(summarizeNode),
+          threads: item.group.nodes.map((node) => node.thread.id),
         },
   );
 }
 
-function findNode(
-  items: readonly ProjectThreadItem[],
-  threadId: string,
-): ProjectThreadNode | null {
-  for (const item of items) {
-    const nodes = item.kind === "thread" ? [item.node] : item.group.nodes;
-    for (const node of nodes) {
-      if (node.thread.id === threadId) {
-        return node;
-      }
-      const childNode = findNode(node.children, threadId);
-      if (childNode) {
-        return childNode;
-      }
-    }
-  }
-
-  return null;
-}
-
 describe("buildProjectThreadGroups", () => {
-  it("nests threads recursively from parentThreadId regardless of thread type", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "manager-root",
-        createdAt: 10,
-      }),
-      createThread({
-        id: "standard-child",
-        parentThreadId: "manager-root",
-        createdAt: 20,
-      }),
-      createThread({
-        id: "standard-grandchild",
-        parentThreadId: "standard-child",
-        createdAt: 30,
-      }),
-      createThread({
-        id: "manager-grandchild",
-        parentThreadId: "standard-grandchild",
-        createdAt: 40,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "manager-root",
-        children: [
-          {
-            id: "standard-child",
-            children: [
-              {
-                id: "standard-grandchild",
-                children: ["manager-grandchild"],
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-    expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
-  });
-
-  it("keeps orphaned children as project roots", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "orphan-child",
-        parentThreadId: "missing-parent",
-        createdAt: 20,
-        latestAttentionAt: 20,
-      }),
-      createThread({
-        id: "root-thread",
-        createdAt: 10,
-        latestAttentionAt: 10,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual(["orphan-child", "root-thread"]);
-  });
-
-  it("cuts cycles without duplicating or dropping every cycle member", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "cycle-a",
-        parentThreadId: "cycle-b",
-        createdAt: 10,
-      }),
-      createThread({
-        id: "cycle-b",
-        parentThreadId: "cycle-a",
-        createdAt: 20,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "cycle-a",
-        children: ["cycle-b"],
-      },
-    ]);
-  });
-
-  it("groups shared worktree environments at nested sibling levels", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "parent",
-        createdAt: 100,
-      }),
-      createThread({
-        id: "worktree-a",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        environmentWorkspaceDisplayKind: "managed-worktree",
-        createdAt: 10,
-        latestAttentionAt: 100,
-      }),
-      createThread({
-        id: "worktree-b",
-        parentThreadId: "parent",
-        environmentId: "env_shared",
-        environmentWorkspaceDisplayKind: "managed-worktree",
-        createdAt: 20,
-        latestAttentionAt: 200,
-      }),
-      createThread({
-        id: "loose-child",
-        parentThreadId: "parent",
-        createdAt: 5,
-        latestAttentionAt: 50,
-      }),
-    ]);
-
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "parent",
-        children: [
-          { env: "env_shared", threads: ["worktree-b", "worktree-a"] },
-          "loose-child",
-        ],
-      },
-    ]);
-  });
-
-  it("sorts siblings with active rows first, then inactive attention recency", () => {
-    const rootItems = buildProjectThreadGroups([
-      createThread({
-        id: "root",
-      }),
-      createThread({
-        id: "active-older-created",
-        parentThreadId: "root",
-        status: "active",
-        createdAt: 10,
-        latestAttentionAt: 2_000,
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
+  it("renders all threads as top-level nodes", () => {
+    const topLevelItems = buildProjectThreadGroups([
       createThread({
         id: "active-newer-created",
-        parentThreadId: "root",
         status: "active",
         createdAt: 20,
         latestAttentionAt: 1_500,
@@ -241,44 +69,75 @@ describe("buildProjectThreadGroups", () => {
         },
       }),
       createThread({
+        id: "active-older-created",
+        status: "active",
+        createdAt: 10,
+        latestAttentionAt: 2_000,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+      createThread({
         id: "idle-newer-attention",
-        parentThreadId: "root",
         createdAt: 40,
         latestAttentionAt: 900,
       }),
       createThread({
         id: "idle-older-attention",
-        parentThreadId: "root",
         createdAt: 30,
         latestAttentionAt: 750,
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
-      {
-        id: "root",
-        children: [
-          "active-newer-created",
-          "active-older-created",
-          "idle-newer-attention",
-          "idle-older-attention",
-        ],
-      },
+    expect(summarizeItems(topLevelItems)).toEqual([
+      "active-newer-created",
+      "active-older-created",
+      "idle-newer-attention",
+      "idle-older-attention",
     ]);
   });
 
-  it("rolls collapsed child activity up from all descendants", () => {
-    const rootItems = buildProjectThreadGroups([
+  it("groups shared worktree environments at the top level", () => {
+    const topLevelItems = buildProjectThreadGroups([
       createThread({
-        id: "parent",
+        id: "worktree-a",
+        environmentId: "env_shared",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+        createdAt: 10,
+        latestAttentionAt: 100,
       }),
       createThread({
-        id: "quiet-child",
-        parentThreadId: "parent",
+        id: "worktree-b",
+        environmentId: "env_shared",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+        createdAt: 20,
+        latestAttentionAt: 200,
       }),
       createThread({
-        id: "busy-grandchild",
-        parentThreadId: "quiet-child",
+        id: "loose-thread",
+        createdAt: 5,
+        latestAttentionAt: 50,
+      }),
+    ]);
+
+    expect(summarizeItems(topLevelItems)).toEqual([
+      { env: "env_shared", threads: ["worktree-b", "worktree-a"] },
+      "loose-thread",
+    ]);
+  });
+
+  it("rolls environment group activity up from grouped threads", () => {
+    const topLevelItems = buildProjectThreadGroups([
+      createThread({
+        id: "quiet-thread",
+        environmentId: "env_shared",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+      }),
+      createThread({
+        id: "busy-thread",
+        environmentId: "env_shared",
+        environmentWorkspaceDisplayKind: "managed-worktree",
         status: "active",
         runtime: {
           displayStatus: "active",
@@ -286,55 +145,48 @@ describe("buildProjectThreadGroups", () => {
         },
       }),
       createThread({
-        id: "pending-grandchild",
-        parentThreadId: "quiet-child",
+        id: "pending-thread",
+        environmentId: "env_shared",
+        environmentWorkspaceDisplayKind: "managed-worktree",
         hasPendingInteraction: true,
       }),
     ]);
 
-    expect(findNode(rootItems, "parent")?.stats).toEqual({
+    const group =
+      topLevelItems[0]?.kind === "environment" ? topLevelItems[0].group : null;
+    expect(group?.stats).toEqual({
       childActivity: {
         pending: true,
         working: true,
-        unread: false,
+        unread: true,
         unreadError: false,
       },
-      childCount: 3,
-    });
-    expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
-      childActivity: {
-        pending: true,
-        working: true,
-        unread: false,
-        unreadError: false,
-      },
-      childCount: 2,
     });
   });
 
-  it("sorts top-level manager roots with the regular root ordering", () => {
-    const rootItems = buildProjectThreadGroups([
+  it("sorts top-level threads with the regular ordering", () => {
+    const topLevelItems = buildProjectThreadGroups([
       createThread({
         id: "root-thread",
         createdAt: 100,
         latestAttentionAt: 100,
       }),
       createThread({
-        id: "manager-old",
+        id: "older-thread",
         createdAt: 10,
         latestAttentionAt: 10,
       }),
       createThread({
-        id: "manager-new",
+        id: "newer-thread",
         createdAt: 20,
         latestAttentionAt: 20,
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
+    expect(summarizeItems(topLevelItems)).toEqual([
       "root-thread",
-      "manager-new",
-      "manager-old",
+      "newer-thread",
+      "older-thread",
     ]);
   });
 });

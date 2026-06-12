@@ -11,7 +11,6 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineParentChange,
   TimelineNonOperationSystemRow,
   TimelinePermissionGrantApprovalGrantScope,
   TimelineQuestionWorkRow,
@@ -207,7 +206,6 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   detail?: string | null;
   durationMs?: number | null;
   id?: string;
-  parentChange?: TimelineParentChange;
   operationKind?: TimelineSystemOperationKind;
   seq?: number;
   sourceSeqEnd?: number;
@@ -221,7 +219,7 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
 export interface NonOperationSystemRowArgs
   extends Omit<
     SystemRowArgs,
-    "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
+    "completedAt" | "durationMs" | "operationKind" | "systemKind"
   > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
@@ -924,7 +922,6 @@ export function systemRow({
   detail = "Running setup\nProvisioned thread (2s)",
   durationMs,
   id = DEFAULT_SYSTEM_ID,
-  parentChange,
   operationKind,
   seq,
   sourceSeqEnd,
@@ -958,8 +955,7 @@ export function systemRow({
       systemKind,
     };
   }
-  const resolvedOperationKind =
-    operationKind ?? (parentChange ? "parent-change" : "generic");
+  const resolvedOperationKind = operationKind ?? "generic";
   const resolvedCompletedAt =
     completedAt !== undefined
       ? completedAt
@@ -970,25 +966,6 @@ export function systemRow({
             status === "interrupted"
           ? base.createdAt
           : null;
-  if (resolvedOperationKind === "parent-change") {
-    if (status === null) {
-      throw new Error("Parent change system row requires a status");
-    }
-    return {
-      ...base,
-      systemKind,
-      operationKind: resolvedOperationKind,
-      status,
-      completedAt: resolvedCompletedAt,
-      parentChange: parentChange ?? {
-        action: "assign",
-        previousParentThreadId: null,
-        previousParentThreadTitle: null,
-        nextParentThreadId: null,
-        nextParentThreadTitle: null,
-      },
-    };
-  }
   return {
     ...base,
     systemKind,

@@ -33,7 +33,6 @@ import type {
   CreateThreadTerminalRequest,
   CreateThreadRequest,
   CloseThreadTerminalRequest,
-  DeleteThreadRequest,
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffResponse,
   EnvironmentDiffQuery,
@@ -48,7 +47,6 @@ import type {
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
-  ThreadArchiveAllResponse,
   ThreadStorageContentQuery,
   ThreadFilesRawQuery,
   ThreadHostFileContentQuery,
@@ -73,7 +71,6 @@ import type {
   SendQueuedMessageResponse,
   SendMessageRequest,
   ResolvePendingInteractionRequest,
-  ThreadChildSummaryResponse,
   ThreadComposerBootstrapResponse,
   ThreadQueuedMessageListResponse,
   SystemConfigReloadResponse,
@@ -386,7 +383,7 @@ export type PublicApiSchema = {
 
   "/threads": {
     /**
-     * List threads. Supports filters: projectId, parentThreadId, hasParent, archived.
+     * List threads. Supports filters: projectId and archived.
      * Omitting archived intentionally returns both active and archived threads.
      */
     $get: Endpoint<{ query?: ThreadListQuery }, ThreadListResponse>;
@@ -409,15 +406,8 @@ export type PublicApiSchema = {
     >;
     /** Update thread metadata. If the title changes, also notifies providers that support `thread.rename`. */
     $patch: Endpoint<PathId & { json: UpdateThreadRequest }, ThreadResponse>;
-    /**
-     * Delete a thread. Also destroys its environment if one exists. Threads
-     * with child threads require explicit confirmation.
-     */
-    $delete: Endpoint<PathId & { json: DeleteThreadRequest }, { ok: true }>;
-  };
-  "/threads/:id/child-summary": {
-    /** Count non-deleted child threads via parentThreadId. Archived child threads are included. */
-    $get: Endpoint<PathId, ThreadChildSummaryResponse>;
+    /** Delete a thread. Also destroys its environment if one exists. */
+    $delete: Endpoint<PathId, { ok: true }>;
   };
   "/threads/:id/schedules": {
     /** List schedules that wake this existing thread later. */
@@ -531,15 +521,6 @@ export type PublicApiSchema = {
      * unmerged work.
      */
     $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/threads/:id/archive-all": {
-    /**
-     * Archive a thread and every live child thread assigned to it. Child
-     * threads are archived before the parent so archived child ownership is
-     * preserved, and cleanup is requested for each affected managed environment
-     * once it has no live threads.
-     */
-    $post: Endpoint<PathId, ThreadArchiveAllResponse>;
   };
   "/threads/:id/unarchive": {
     /** Unarchive a thread and cancel any still-pending cleanup for its environment. */

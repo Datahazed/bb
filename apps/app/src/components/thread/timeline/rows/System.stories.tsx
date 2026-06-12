@@ -12,8 +12,6 @@ function TimelineStage({ children }: { children: React.ReactNode }) {
 }
 
 const baseProps = {
-  // projectId enables the thread-link resolver in `ThreadTimelineRows`, so
-  // parent-change titles render as `<a>` links to the parent thread.
   projectId: "proj_gyz9przugq",
   threadRuntimeDisplayStatus: "idle" as const,
   workspaceRootPath: undefined,
@@ -221,83 +219,6 @@ const deprecationNotice: TimelineRow = systemRow({
   completedAt: 1777885200000,
 });
 
-// system/operation with operation="ownership_change", action="assign". The
-// projector routes this to the parent-change row variant, which
-// requires `status` and a `parentChange` object. Real event from
-// thr_wxmxksux4w (assigned to parent thr_bj3p5vk9py "Parent").
-const parentChangeAssign: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:parent-change:evt_vvidja2pjg",
-  threadId: "thr_wxmxksux4w",
-  turnId: null,
-  sourceSeqStart: 14,
-  sourceSeqEnd: 14,
-  startedAt: 1777680600000,
-  createdAt: 1777680600000,
-  systemKind: "operation",
-  operationKind: "parent-change",
-  title: "Thread assigned to parent",
-  detail: null,
-  status: "completed",
-  completedAt: 1777680600000,
-  parentChange: {
-    action: "assign",
-    previousParentThreadId: null,
-    previousParentThreadTitle: null,
-    nextParentThreadId: "thr_bj3p5vk9py",
-    nextParentThreadTitle: "Parent",
-  },
-});
-
-// Parent-change release. Construct a plausible row using the same schema;
-// ownership_change action="release" titles via the parent-change title
-// builder. The link points back to the previous parent thread.
-const parentChangeRelease: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:parent-change:release",
-  threadId: "thr_wxmxksux4w",
-  turnId: null,
-  sourceSeqStart: 9_412,
-  sourceSeqEnd: 9_412,
-  startedAt: 1777724900000,
-  createdAt: 1777724900000,
-  systemKind: "operation",
-  operationKind: "parent-change",
-  title: "Thread released from parent",
-  detail: null,
-  status: "completed",
-  completedAt: 1777724900000,
-  parentChange: {
-    action: "release",
-    previousParentThreadId: "thr_bj3p5vk9py",
-    previousParentThreadTitle: "Parent",
-    nextParentThreadId: null,
-    nextParentThreadTitle: null,
-  },
-});
-
-// Parent-change transfer between two real parent threads.
-const parentChangeTransfer: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:parent-change:transfer",
-  threadId: "thr_wxmxksux4w",
-  turnId: null,
-  sourceSeqStart: 11_004,
-  sourceSeqEnd: 11_004,
-  startedAt: 1777800100000,
-  createdAt: 1777800100000,
-  systemKind: "operation",
-  operationKind: "parent-change",
-  title: "Thread transferred to new parent",
-  detail: null,
-  status: "completed",
-  completedAt: 1777800100000,
-  parentChange: {
-    action: "transfer",
-    previousParentThreadId: "thr_bj3p5vk9py",
-    previousParentThreadTitle: "Parent",
-    nextParentThreadId: "thr_mdg94kvcz8",
-    nextParentThreadTitle: "Frontend Parent",
-  },
-});
-
 // Non-operation system row, systemKind="debug". The projector emits these
 // for raw provider events when debug routing is enabled — title is the
 // rawType, detail is the JSON payload.
@@ -454,39 +375,6 @@ export function Operations() {
           <ThreadTimelineRows
             {...baseProps}
             timelineRows={[deprecationNotice]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="parent-change — assign"
-        hint="ownership_change, action=assign, status=completed"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            timelineRows={[parentChangeAssign]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="parent-change — release"
-        hint="ownership_change, action=release"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            timelineRows={[parentChangeRelease]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="parent-change — transfer"
-        hint="ownership_change, action=transfer"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            timelineRows={[parentChangeTransfer]}
           />
         </TimelineStage>
       </StoryRow>

@@ -6,14 +6,13 @@ import type { DbNotifier } from "../../src/notifier.js";
 import {
   createThread,
   countLiveThreadsInEnvironment,
-  countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
   setThreadExecutionOverride,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
   listStopRequestedThreads,
-  listActiveVisiblePinnedThreadRoots,
+  listActiveVisiblePinnedThreads,
   listThreadEnvironmentAssignmentsOnHost,
   listTrackedThreadStorageTargetsOnHost,
   listThreads,
@@ -196,7 +195,7 @@ describe("threads", () => {
     }
   });
 
-  it("reorders active visible pinned roots globally", () => {
+  it("reorders active visible pinned threads globally", () => {
     const { db, host, project } = setup();
     const { project: otherProject } = createProject(db, noopNotifier, {
       name: "other-project",
@@ -223,7 +222,7 @@ describe("threads", () => {
     pinThread(db, noopNotifier, { threadId: third.id });
     pinThread(db, noopNotifier, { threadId: otherProjectThread.id });
 
-    expect(listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id))
+    expect(listActiveVisiblePinnedThreads(db).map((thread) => thread.id))
       .toEqual([otherProjectThread.id, third.id, second.id, first.id]);
 
     const result = reorderPinnedThread({
@@ -235,11 +234,11 @@ describe("threads", () => {
     });
 
     expect(result.kind).toBe("reordered");
-    expect(listActiveVisiblePinnedThreadRoots(db).map((thread) => thread.id))
+    expect(listActiveVisiblePinnedThreads(db).map((thread) => thread.id))
       .toEqual([first.id, otherProjectThread.id, third.id, second.id]);
   });
 
-  it("rejects pinned reorder for unpinned threads, stale neighbors, and hidden child pins", () => {
+  it("rejects pinned reorder for unpinned threads and stale neighbors", () => {
     const { db, project } = setup();
     const pinned = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -249,18 +248,7 @@ describe("threads", () => {
       projectId: project.id,
       providerId: "codex",
     });
-    const pinnedParent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const pinnedChild = createThread(db, noopNotifier, {
-      parentThreadId: pinnedParent.id,
-      projectId: project.id,
-      providerId: "codex",
-    });
     pinThread(db, noopNotifier, { threadId: pinned.id });
-    pinThread(db, noopNotifier, { threadId: pinnedParent.id });
-    pinThread(db, noopNotifier, { threadId: pinnedChild.id });
 
     expect(
       reorderPinnedThread({
@@ -278,24 +266,6 @@ describe("threads", () => {
         threadId: pinned.id,
         previousThreadId: unpinned.id,
         nextThreadId: null,
-      }).kind,
-    ).toBe("stale_neighbor");
-    expect(
-      reorderPinnedThread({
-        db,
-        notifier: noopNotifier,
-        threadId: pinned.id,
-        previousThreadId: pinnedChild.id,
-        nextThreadId: null,
-      }).kind,
-    ).toBe("stale_neighbor");
-    expect(
-      reorderPinnedThread({
-        db,
-        notifier: noopNotifier,
-        threadId: pinnedChild.id,
-        previousThreadId: null,
-        nextThreadId: pinned.id,
       }).kind,
     ).toBe("stale_neighbor");
   });
@@ -332,63 +302,24 @@ describe("threads", () => {
     expect(listThreads(db, { projectId: otherProject.id })).toHaveLength(1);
   });
 
-  it("filters threads by parent thread and archived state", () => {
+  it("filters threads by archived state", () => {
     const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
+    const archivedThread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-    });
-    const child = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
     });
     createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
     });
-    archiveThread(db, noopNotifier, child.id);
+    archiveThread(db, noopNotifier, archivedThread.id);
 
-    expect(
-      listThreads(db, { projectId: project.id, parentThreadId: parent.id }),
-    ).toHaveLength(1);
     expect(
       listThreads(db, { projectId: project.id, archived: true }),
     ).toHaveLength(1);
     expect(
       listThreads(db, { projectId: project.id, archived: false }),
-    ).toHaveLength(2);
-  });
-
-  it("filters threads by parent presence", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const child = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-    });
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    const childThreads = listThreads(db, {
-      projectId: project.id,
-      hasParent: true,
-    });
-    expect(childThreads).toHaveLength(1);
-    expect(childThreads[0]?.id).toBe(child.id);
-
-    const rootThreads = listThreads(db, {
-      projectId: project.id,
-      hasParent: false,
-    });
-    expect(rootThreads).toHaveLength(2);
-    expect(rootThreads.map((thread) => thread.id)).toContain(parent.id);
+    ).toHaveLength(1);
   });
 
   it("paginates archived threads ordered by archive recency", async () => {
@@ -430,90 +361,6 @@ describe("threads", () => {
       created[1]?.id,
       created[0]?.id,
     ]);
-  });
-
-  it("counts active assigned child threads", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-    });
-
-    expect(
-      countNonDeletedAssignedChildThreads(db, {
-        parentThreadId: parent.id,
-      }),
-    ).toBe(1);
-  });
-
-  it("counts archived assigned child threads", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const archivedChild = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-    });
-
-    archiveThread(db, noopNotifier, archivedChild.id);
-
-    expect(
-      countNonDeletedAssignedChildThreads(db, {
-        parentThreadId: parent.id,
-      }),
-    ).toBe(1);
-  });
-
-  it("excludes deleted assigned child threads", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const deletedChild = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-    });
-
-    markThreadDeleted(db, noopNotifier, { threadId: deletedChild.id });
-
-    expect(
-      countNonDeletedAssignedChildThreads(db, {
-        parentThreadId: parent.id,
-      }),
-    ).toBe(0);
-  });
-
-  it("excludes assigned child threads under a different parent", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const otherParent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: otherParent.id,
-    });
-
-    expect(
-      countNonDeletedAssignedChildThreads(db, {
-        parentThreadId: parent.id,
-      }),
-    ).toBe(0);
   });
 
   it("lists thread environment workspace display kind without per-thread lookups", () => {
@@ -604,35 +451,6 @@ describe("threads", () => {
       title: "New title",
     });
     expect(updated?.title).toBe("New title");
-  });
-
-  it("notifies when a thread parent changes", () => {
-    const { db, project } = setup();
-    const spy: DbNotifier = {
-      notifyThread: vi.fn(),
-      notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyProject: vi.fn(),
-      notifySystem: vi.fn(),
-    };
-    const parentThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const childThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    updateThread(db, spy, childThread.id, {
-      parentThreadId: parentThread.id,
-    });
-
-    expect(spy.notifyThread).toHaveBeenCalledWith(
-      childThread.id,
-      ["parent-changed"],
-      { projectId: project.id },
-    );
   });
 
   it("preserves read state when renaming a read thread", () => {
@@ -1246,41 +1064,6 @@ describe("transitionThreadStatus", () => {
       expect(activeAgainThread.updatedAt).toBe(3_000);
       expect(activeAgainThread.latestAttentionAt).toBe(2_000);
       expect(activeAgainThread.lastReadAt).toBe(2_000);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not mark child thread completion as unread by itself", () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(1_000);
-      const { db, project } = setup();
-      const parentThread = createThread(db, noopNotifier, {
-        projectId: project.id,
-        providerId: "codex",
-      });
-      const childThread = createThread(db, noopNotifier, {
-        parentThreadId: parentThread.id,
-        projectId: project.id,
-        providerId: "codex",
-        status: "active",
-      });
-      updateThread(db, noopNotifier, childThread.id, {
-        lastReadAt: childThread.latestAttentionAt,
-      });
-
-      vi.setSystemTime(2_000);
-      const idleThread = transitionThreadStatus(
-        db,
-        noopNotifier,
-        childThread.id,
-        "idle",
-      );
-
-      expect(idleThread.updatedAt).toBe(2_000);
-      expect(idleThread.latestAttentionAt).toBe(1_000);
-      expect(idleThread.lastReadAt).toBe(1_000);
     } finally {
       vi.useRealTimers();
     }

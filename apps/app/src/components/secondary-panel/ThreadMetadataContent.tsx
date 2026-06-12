@@ -1,13 +1,11 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { ThreadStorageBrowser } from "./ThreadStorageBrowser";
 import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
-import { Link } from "react-router-dom";
 import type {
   Environment,
   GitBranchRefClassification,
   PullRequestState,
   Thread,
-  ThreadListEntry,
   ThreadPullRequest,
   WorkspaceCommitSummary,
   WorkspaceStatus,
@@ -22,9 +20,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-  COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
 import {
@@ -38,13 +33,6 @@ import {
   formatScheduleStatusLabel,
 } from "@/lib/format-schedule";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import {
   BranchPicker,
@@ -60,8 +48,6 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
-import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
-import { getThreadRoutePath } from "@/lib/route-paths";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -69,149 +55,6 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 // that composes them. This shape lets per-row stories render exactly one row
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
-
-export interface ParentSelectorRowProps {
-  thread: Thread;
-  projectId: string;
-  parentThreadDisplayName: string | null;
-  parentThreads: readonly ThreadListEntry[];
-  canAssignToParent: boolean;
-  canTakeOverThread: boolean;
-  updateThreadPending: boolean;
-  onAssignParent: (parentThreadId: string | null) => void;
-  /** Force the assignment dropdown open on first render. Used by stories. */
-  defaultOpen?: boolean;
-}
-
-export function ParentSelectorRow({
-  thread,
-  projectId,
-  parentThreadDisplayName,
-  parentThreads,
-  canAssignToParent,
-  canTakeOverThread,
-  updateThreadPending,
-  onAssignParent,
-  defaultOpen,
-}: ParentSelectorRowProps) {
-  const parentThreadId = thread.parentThreadId ?? undefined;
-  const parentSelectorOptions = useMemo(
-    () =>
-      buildParentSelectorOptions({
-        currentThreadId: thread.id,
-        parentThreads,
-        parentThreadDisplayName,
-        parentThreadId,
-      }),
-    [parentThreads, parentThreadDisplayName, parentThreadId, thread.id],
-  );
-  const parentSelectorValue = parentThreadId ?? "none";
-  const selectedParentOptionLabel = parentSelectorOptions.find(
-    (option) => option.value === parentSelectorValue,
-  )?.label;
-
-  if (!parentThreadId && !canAssignToParent && !canTakeOverThread) {
-    return null;
-  }
-
-  return (
-    <DetailRow
-      label={<DetailRowIconLabel icon="UserRound">Parent</DetailRowIconLabel>}
-      valueClassName="min-w-0"
-    >
-      {parentThreadId ? (
-        <div
-          className={cn(
-            "inline-flex max-w-full min-w-0 items-center gap-1 text-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          <Link
-            to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
-            className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-          >
-            {selectedParentOptionLabel ?? "Parent thread"}
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-3.5 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5"
-            disabled={updateThreadPending}
-            onClick={() => {
-              onAssignParent(null);
-            }}
-            aria-label="Clear parent thread"
-          >
-            <Icon name="X" />
-          </Button>
-        </div>
-      ) : (
-        <DropdownMenu defaultOpen={defaultOpen}>
-          <DropdownMenuTrigger asChild>
-            <div
-              role="button"
-              tabIndex={
-                updateThreadPending ||
-                (parentSelectorOptions.length <= 1 &&
-                  parentSelectorValue === "none")
-                  ? -1
-                  : 0
-              }
-              className={cn(
-                "-mx-1 inline-flex h-5 w-fit max-w-full min-w-0 items-center gap-1 rounded-sm px-1 leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover data-[state=open]:bg-state-hover focus-visible:ring-2",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            >
-              <span
-                className={cn(
-                  "min-w-0 truncate text-foreground",
-                  COARSE_POINTER_TEXT_SM_CLASS,
-                )}
-              >
-                {selectedParentOptionLabel ?? "None"}
-              </span>
-              <Icon
-                name="ChevronDown"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                  "text-muted-foreground",
-                )}
-              />
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-40 max-w-72">
-            <DropdownMenuLabel>Assign parent thread</DropdownMenuLabel>
-            {parentSelectorOptions.map((option) => (
-              <DropdownMenuItem
-                key={option.value}
-                onSelect={() => {
-                  onAssignParent(option.value === "none" ? null : option.value);
-                }}
-                className="flex items-center justify-between gap-3"
-              >
-                <span className="truncate" title={option.label}>
-                  {option.label}
-                </span>
-                <Icon
-                  name="Check"
-                  className={
-                    parentSelectorValue === option.value
-                      ? cn("opacity-100", COARSE_POINTER_ICON_SIZE_CLASS)
-                      : cn("opacity-0", COARSE_POINTER_ICON_SIZE_CLASS)
-                  }
-                />
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </DetailRow>
-  );
-}
 
 export interface EnvironmentRowProps {
   thread: Thread;
@@ -807,11 +650,6 @@ export function ThreadStorageRow({
 
 export interface ThreadMetadataContentProps {
   thread: Thread;
-  projectId: string;
-  parentThreadDisplayName: string | null;
-  parentThreads: readonly ThreadListEntry[];
-  canAssignToParent: boolean;
-  canTakeOverThread: boolean;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -824,9 +662,7 @@ export interface ThreadMetadataContentProps {
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   threadSchedules: readonly ThreadSchedule[];
-  updateThreadPending: boolean;
   storage?: ThreadStorageRowProps;
-  onAssignParent: (parentThreadId: string | null) => void;
   onMergeBaseBranchChange: (branch: string) => void;
   onMergeBasePickerOpenChange?: (open: boolean) => void;
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
@@ -841,7 +677,6 @@ export interface ThreadMetadataContentProps {
  */
 export function hasAnyThreadMetadata({
   thread,
-  parentThreadDisplayName,
   environment,
   workspaceStatus,
   workspaceStatusError,
@@ -851,7 +686,6 @@ export function hasAnyThreadMetadata({
 }: Pick<
   ThreadMetadataContentProps,
   | "thread"
-  | "parentThreadDisplayName"
   | "environment"
   | "workspaceStatus"
   | "workspaceStatusError"
@@ -859,7 +693,6 @@ export function hasAnyThreadMetadata({
   | "pullRequest"
   | "threadSchedules"
 >): boolean {
-  const parentThreadId = thread.parentThreadId ?? undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const showWorkspaceStatus =
     (Boolean(workspaceStatus) ||
@@ -873,15 +706,13 @@ export function hasAnyThreadMetadata({
   const showThreadChangedFiles = workspaceChangedFilesSections.length > 0;
 
   return Boolean(
-    parentThreadId ||
     environment ||
     branchName ||
     pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     threadSchedules.length > 0 ||
-    thread.archivedAt != null ||
-    (parentThreadDisplayName && parentThreadId),
+    thread.archivedAt != null,
   );
 }
 
@@ -913,11 +744,6 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
-    projectId,
-    parentThreadDisplayName,
-    parentThreads,
-    canAssignToParent,
-    canTakeOverThread,
     environment,
     environmentDisplayHost,
     workspaceStatus,
@@ -930,9 +756,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
     threadSchedules,
-    updateThreadPending,
     storage,
-    onAssignParent,
     onMergeBaseBranchChange,
     onMergeBasePickerOpenChange,
     onMergeBaseBranchSearchQueryChange,
@@ -942,16 +766,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
 
   return (
     <ThreadMetadataCard>
-      <ParentSelectorRow
-        thread={thread}
-        projectId={projectId}
-        parentThreadDisplayName={parentThreadDisplayName}
-        parentThreads={parentThreads}
-        canAssignToParent={canAssignToParent}
-        canTakeOverThread={canTakeOverThread}
-        updateThreadPending={updateThreadPending}
-        onAssignParent={onAssignParent}
-      />
       <EnvironmentRow
         thread={thread}
         environment={environment}

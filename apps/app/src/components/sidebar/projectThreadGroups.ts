@@ -8,16 +8,12 @@ import {
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 
-export interface ProjectThreadNodeStats {
-  childCount: number;
+export interface EnvironmentThreadGroupStats {
   childActivity: CollapsedChildActivity;
 }
 
 export interface ProjectThreadNode {
   thread: ThreadListEntry;
-  children: ProjectThreadItem[];
-  depth: number;
-  stats: ProjectThreadNodeStats;
 }
 
 export type EnvironmentThreadGroupNodes = [
@@ -29,7 +25,7 @@ export type EnvironmentThreadGroupNodes = [
 export interface EnvironmentThreadGroup {
   environmentId: string;
   nodes: EnvironmentThreadGroupNodes;
-  stats: ProjectThreadNodeStats;
+  stats: EnvironmentThreadGroupStats;
 }
 
 // A single render slot in a thread sibling list. Threads and env groups
@@ -42,11 +38,7 @@ export type ProjectThreadItem =
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
 
 interface BuildThreadNodeArgs {
-  ancestorThreadIds: ReadonlySet<string>;
-  childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
-  depth: number;
   thread: ThreadListEntry;
-  visitedThreadIds: Set<string>;
 }
 
 interface BucketWorktreeEnvironmentGroupsResult {
@@ -121,27 +113,10 @@ function compareProjectThreadItems(
   );
 }
 
-function getNodeAndDescendantThreads(
-  node: ProjectThreadNode,
-): ThreadListEntry[] {
-  return [node.thread, ...getItemThreadDescendants(node.children)];
-}
-
-function getItemThreadDescendants(
-  items: readonly ProjectThreadItem[],
-): ThreadListEntry[] {
-  return items.flatMap((item) =>
-    item.kind === "thread"
-      ? getNodeAndDescendantThreads(item.node)
-      : item.group.nodes.flatMap(getNodeAndDescendantThreads),
-  );
-}
-
 function buildStatsForHiddenThreads(
   threads: readonly ThreadListEntry[],
-): ProjectThreadNodeStats {
+): EnvironmentThreadGroupStats {
   return {
-    childCount: threads.length,
     childActivity: getCollapsedChildActivity(threads),
   };
 }
@@ -150,7 +125,7 @@ function buildEnvironmentThreadGroup(
   environmentId: string,
   nodes: EnvironmentThreadGroupNodes,
 ): EnvironmentThreadGroup {
-  const hiddenThreads = nodes.flatMap(getNodeAndDescendantThreads);
+  const hiddenThreads = nodes.map((node) => node.thread);
   return {
     environmentId,
     nodes,
@@ -180,105 +155,23 @@ function buildSortedItems(nodes: ProjectThreadNode[]): ProjectThreadItem[] {
 }
 
 function buildThreadNode({
-  ancestorThreadIds,
-  childrenByParentId,
-  depth,
   thread,
-  visitedThreadIds,
 }: BuildThreadNodeArgs): ProjectThreadNode {
-  visitedThreadIds.add(thread.id);
-  const nextAncestorThreadIds = new Set(ancestorThreadIds);
-  nextAncestorThreadIds.add(thread.id);
-  const childNodes: ProjectThreadNode[] = [];
-
-  for (const childThread of childrenByParentId.get(thread.id) ?? []) {
-    if (nextAncestorThreadIds.has(childThread.id)) continue;
-    if (visitedThreadIds.has(childThread.id)) continue;
-
-    childNodes.push(
-      buildThreadNode({
-        ancestorThreadIds: nextAncestorThreadIds,
-        childrenByParentId,
-        depth: depth + 1,
-        thread: childThread,
-        visitedThreadIds,
-      }),
-    );
-  }
-
-  const children = buildSortedItems(childNodes);
   return {
     thread,
-    children,
-    depth,
-    stats: buildStatsForHiddenThreads(getItemThreadDescendants(children)),
   };
-}
-
-function isRootThread(
-  thread: ThreadListEntry,
-  projectThreadIds: ReadonlySet<string>,
-): boolean {
-  return (
-    thread.parentThreadId === null || !projectThreadIds.has(thread.parentThreadId)
-  );
 }
 
 export function buildProjectThreadGroups(
   projectThreads: readonly ThreadListEntry[],
 ): ProjectThreadItem[] {
-  const projectThreadIds = new Set(
-    projectThreads.map((thread) => thread.id),
-  );
-  const childrenByParentId = new Map<string, ThreadListEntry[]>();
+  const threadNodes: ProjectThreadNode[] = [];
 
   for (const thread of projectThreads) {
-    if (thread.parentThreadId === null) continue;
-    if (!projectThreadIds.has(thread.parentThreadId)) continue;
-
-    const children = childrenByParentId.get(thread.parentThreadId);
-    if (children) {
-      children.push(thread);
-    } else {
-      childrenByParentId.set(thread.parentThreadId, [thread]);
-    }
+    threadNodes.push(buildThreadNode({ thread }));
   }
 
-  const visitedThreadIds = new Set<string>();
-  const rootNodes: ProjectThreadNode[] = [];
-
-  for (const thread of projectThreads) {
-    if (!isRootThread(thread, projectThreadIds)) continue;
-    if (visitedThreadIds.has(thread.id)) continue;
-
-    rootNodes.push(
-      buildThreadNode({
-        ancestorThreadIds: new Set(),
-        childrenByParentId,
-        depth: 0,
-        thread,
-        visitedThreadIds,
-      }),
-    );
-  }
-
-  // Cycles have no natural root. Render any remaining cycle member once at the
-  // project root and cut the back-edge when the walk reaches an ancestor.
-  for (const thread of projectThreads) {
-    if (visitedThreadIds.has(thread.id)) continue;
-
-    rootNodes.push(
-      buildThreadNode({
-        ancestorThreadIds: new Set(),
-        childrenByParentId,
-        depth: 0,
-        thread,
-        visitedThreadIds,
-      }),
-    );
-  }
-
-  return buildSortedItems(rootNodes);
+  return buildSortedItems(threadNodes);
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group

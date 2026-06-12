@@ -6,8 +6,6 @@ import {
 
 export interface ThreadDeleteDialogTarget {
   thread: Thread;
-  /** Present iff the thread has one or more non-deleted children. */
-  childThreadCount?: number;
 }
 
 interface ThreadDeleteDialogProps {
@@ -51,15 +49,11 @@ export function ThreadDeleteDialogContent({
   onDelete,
 }: ThreadDeleteDialogContentProps) {
   const label = "thread";
-  const sentences = [
-    target.childThreadCount ? "Child threads will be deleted." : null,
-    "This action cannot be undone.",
-  ].filter((part): part is string => part !== null);
 
   return (
     <ConfirmDeleteDialogContent
       title={`Delete ${label}?`}
-      description={sentences.join(" ")}
+      description="This action cannot be undone."
       confirmLabel={`Delete ${label}`}
       pending={pending}
       onConfirm={() => onDelete(target)}

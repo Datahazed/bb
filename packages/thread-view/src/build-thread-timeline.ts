@@ -3,10 +3,8 @@ import type {
   TimelineActivityIntent,
   TimelineConversationAttachments,
   TimelineFileChange,
-  TimelineParentChange,
   TimelineRow,
   TimelineRowBase,
-  TimelineRowStatus,
   TimelineSourceRow,
   TimelineSystemOperationKind,
   TimelineSystemRow,
@@ -167,13 +165,7 @@ interface BuildTimelineRowsOptions {
 interface BuildGenericOperationSystemRowArgs {
   base: TimelineRowBase;
   message: TimelineOperationMessage;
-  operationKind: TimelineGenericSystemOperationKind;
-}
-
-interface BuildParentChangeSystemRowArgs {
-  base: TimelineRowBase;
-  parentChange: TimelineParentChange;
-  message: TimelineOperationMessage;
+  operationKind: TimelineSystemOperationKind;
 }
 
 const ROOT_TIMELINE_ROW_ID_PREFIX = "";
@@ -182,14 +174,9 @@ type TimelineOperationMessage = Extract<
   EventProjectionMessage,
   { kind: "operation" }
 >;
-type TimelineGenericSystemOperationKind = Exclude<
-  TimelineSystemOperationKind,
-  "parent-change"
->;
 
 function operationKindForMessage(
   message: TimelineOperationMessage,
-  parentChange: TimelineParentChange | null,
 ): TimelineSystemOperationKind {
   switch (message.opType) {
     case "compaction":
@@ -200,40 +187,9 @@ function operationKindForMessage(
     case "deprecation":
       return message.opType;
     case "operation":
-      return parentChange !== null ? "parent-change" : "generic";
+      return "generic";
     default:
       return assertNever(message.opType);
-  }
-}
-
-function parentChangeForMessage(
-  message: TimelineOperationMessage,
-): TimelineParentChange | null {
-  if (
-    message.opType !== "operation" ||
-    message.threadOperation?.operation !== "ownership_change"
-  ) {
-    return null;
-  }
-
-  const metadata = message.threadOperation.metadata;
-  if (metadata === null) {
-    return null;
-  }
-  const action = metadata.action;
-  switch (action) {
-    case "assign":
-    case "release":
-    case "transfer":
-      return {
-        action,
-        previousParentThreadId: metadata.previousParentThreadId,
-        previousParentThreadTitle: metadata.previousParentThreadTitle,
-        nextParentThreadId: metadata.nextParentThreadId,
-        nextParentThreadTitle: metadata.nextParentThreadTitle,
-      };
-    default:
-      return assertNever(action);
   }
 }
 
@@ -250,28 +206,6 @@ function buildGenericOperationSystemRow({
     title: message.title,
     detail: buildTimelineOperationDetail(message),
     status: message.status ?? null,
-    completedAt: message.completedAt,
-  };
-}
-
-function buildParentChangeSystemRow({
-  base,
-  parentChange,
-  message,
-}: BuildParentChangeSystemRowArgs): TimelineSystemRow {
-  if (message.status === undefined) {
-    throw new Error("Parent change operation message requires a status");
-  }
-  const status: TimelineRowStatus = message.status;
-  return {
-    ...base,
-    kind: "system",
-    systemKind: "operation",
-    operationKind: "parent-change",
-    parentChange,
-    title: message.title,
-    detail: buildTimelineOperationDetail(message),
-    status,
     completedAt: message.completedAt,
   };
 }
@@ -672,26 +606,8 @@ function convertMessage(
         },
       ];
     case "operation": {
-      const parentChange = parentChangeForMessage(message);
-      const operationKind = operationKindForMessage(message, parentChange);
+      const operationKind = operationKindForMessage(message);
       const base = buildTimelineRowBase(message, options.rowIdPrefix);
-      if (operationKind === "parent-change") {
-        return parentChange !== null
-          ? [
-              buildParentChangeSystemRow({
-                base,
-                parentChange,
-                message,
-              }),
-            ]
-          : [
-              buildGenericOperationSystemRow({
-                base,
-                message,
-                operationKind: "generic",
-              }),
-            ];
-      }
       return [
         buildGenericOperationSystemRow({
           base,

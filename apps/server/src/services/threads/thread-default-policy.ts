@@ -10,12 +10,6 @@ import type {
   ServiceTier,
   Thread,
 } from "@bb/domain";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { EnvironmentArgs } from "@bb/server-contract";
-import {
-  isLiveParentThread,
-  type ParentThread,
-} from "./thread-parent.js";
 
 export const DEFAULT_SERVICE_TIER: ServiceTier = "default";
 export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
@@ -49,85 +43,20 @@ export interface CreateThreadExecutionDefaultsResolved {
   providerId: string;
 }
 
-export interface IsManagedChildThreadArgs {
-  parentThread?: ParentThread | null;
-  thread: Pick<Thread, "parentThreadId" | "projectId">;
-}
-
 export interface ResolveThreadDefaultPermissionModeArgs {
   thread: Pick<Thread, "providerId">;
 }
 
 export interface ResolveThreadExecutionPermissionModeArgs {
   lastExecutionPermissionMode?: PermissionMode;
-  parentThread?: ParentThread | null;
-  parentThreadExecutionPermissionMode?: PermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
-  thread: Pick<Thread, "parentThreadId" | "projectId" | "providerId">;
-}
-
-export interface ResolveCreateThreadEnvironmentArgs {
-  parentThread?: ParentThread | null;
-  projectId: string;
-  requestedEnvironment: EnvironmentArgs;
+  thread: Pick<Thread, "providerId">;
 }
 
 export interface ResolveSupportedPermissionModeArgs {
   preferredPermissionMode: PermissionMode;
   providerId?: string;
-}
-
-type ImplicitHostDefaultEnvironment = Extract<
-  EnvironmentArgs,
-  { type: "host" }
-> & {
-  workspace: { path: null; type: "unmanaged" };
-};
-
-type PersonalHostDefaultEnvironment = Extract<
-  EnvironmentArgs,
-  { type: "host" }
-> & {
-  workspace: { type: "personal" };
-};
-
-function isImplicitHostDefaultEnvironment(
-  environment: EnvironmentArgs,
-): environment is ImplicitHostDefaultEnvironment {
-  return (
-    environment.type === "host" &&
-    environment.workspace.type === "unmanaged" &&
-    environment.workspace.path === null
-  );
-}
-
-function isPersonalHostDefaultEnvironment(
-  environment: EnvironmentArgs,
-): environment is PersonalHostDefaultEnvironment {
-  return (
-    environment.type === "host" && environment.workspace.type === "personal"
-  );
-}
-
-function requireHostEnvironmentId(
-  environment: Extract<EnvironmentArgs, { type: "host" }>,
-): string {
-  if (environment.hostId !== undefined) {
-    return environment.hostId;
-  }
-  throw new Error("Host environment is missing hostId");
-}
-
-function isManagedChildThread(args: IsManagedChildThreadArgs): boolean {
-  if (args.thread.parentThreadId === null) {
-    return false;
-  }
-
-  return isLiveParentThread({
-    parentThread: args.parentThread ?? null,
-    projectId: args.thread.projectId,
-  });
 }
 
 function resolveSupportedPermissionMode(
@@ -191,43 +120,6 @@ export function buildInitialProjectExecutionDefaults(): ProjectExecutionDefaults
   };
 }
 
-export function resolveCreateThreadEnvironment(
-  args: ResolveCreateThreadEnvironmentArgs,
-): EnvironmentArgs {
-  if (
-    args.projectId === PERSONAL_PROJECT_ID &&
-    isLiveParentThread({
-      parentThread: args.parentThread ?? null,
-      projectId: args.projectId,
-    }) &&
-    isPersonalHostDefaultEnvironment(args.requestedEnvironment)
-  ) {
-    if (!args.parentThread?.environmentId) {
-      throw new Error("Personal parent thread is missing an environment");
-    }
-    return {
-      type: "reuse",
-      environmentId: args.parentThread.environmentId,
-    };
-  }
-
-  if (
-    isLiveParentThread({
-      parentThread: args.parentThread ?? null,
-      projectId: args.projectId,
-    }) &&
-    isImplicitHostDefaultEnvironment(args.requestedEnvironment)
-  ) {
-    return {
-      type: "host",
-      hostId: requireHostEnvironmentId(args.requestedEnvironment),
-      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
-    };
-  }
-
-  return args.requestedEnvironment;
-}
-
 export function resolveThreadDefaultPermissionMode(
   args: ResolveThreadDefaultPermissionModeArgs,
 ): PermissionMode {
@@ -245,16 +137,6 @@ export function resolveThreadExecutionPermissionMode(
   }
   if (args.lastExecutionPermissionMode) {
     return args.lastExecutionPermissionMode;
-  }
-
-  if (
-    isManagedChildThread(args) &&
-    args.parentThreadExecutionPermissionMode !== undefined
-  ) {
-    return resolveSupportedPermissionMode({
-      providerId: args.thread.providerId,
-      preferredPermissionMode: args.parentThreadExecutionPermissionMode,
-    });
   }
 
   const defaultPermissionMode = resolveThreadDefaultPermissionMode({

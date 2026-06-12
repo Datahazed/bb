@@ -8,7 +8,7 @@ import {
 
 export interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
-  rootNodes: ProjectThreadNode[];
+  threadNodes: ProjectThreadNode[];
 }
 
 interface BuildPinnedSidebarStateArgs {
@@ -32,7 +32,7 @@ function compareByPinnedFallback(
   return compareCodepoint(left.id, right.id);
 }
 
-function comparePinnedRoots(
+function comparePinnedThreads(
   left: ThreadListEntry,
   right: ThreadListEntry,
 ): number {
@@ -46,34 +46,7 @@ function comparePinnedRoots(
   return compareByPinnedFallback(left, right);
 }
 
-function addDescendantThreadIds({
-  childrenByParentId,
-  effectivePinnedThreadIds,
-  parentThreadId,
-  visitedThreadIds,
-}: AddDescendantThreadIdsArgs): void {
-  if (visitedThreadIds.has(parentThreadId)) return;
-
-  visitedThreadIds.add(parentThreadId);
-  for (const child of childrenByParentId.get(parentThreadId) ?? []) {
-    effectivePinnedThreadIds.add(child.id);
-    addDescendantThreadIds({
-      childrenByParentId,
-      effectivePinnedThreadIds,
-      parentThreadId: child.id,
-      visitedThreadIds,
-    });
-  }
-}
-
-interface AddDescendantThreadIdsArgs {
-  childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
-  effectivePinnedThreadIds: Set<string>;
-  parentThreadId: string;
-  visitedThreadIds: Set<string>;
-}
-
-function collectRootNodes(
+function collectThreadNodes(
   items: readonly ProjectThreadItem[],
 ): ProjectThreadNode[] {
   return items.flatMap((item) =>
@@ -87,40 +60,18 @@ export function buildPinnedSidebarState({
   const explicitlyPinnedThreads = threads.filter(
     (thread) => thread.pinnedAt !== null,
   );
-  const childrenByParentId = new Map<string, ThreadListEntry[]>();
-
-  for (const thread of threads) {
-    if (thread.parentThreadId === null) continue;
-
-    const children = childrenByParentId.get(thread.parentThreadId);
-    if (children) {
-      children.push(thread);
-    } else {
-      childrenByParentId.set(thread.parentThreadId, [thread]);
-    }
-  }
 
   const effectivePinnedThreadIds = new Set(
     explicitlyPinnedThreads.map((thread) => thread.id),
   );
-  for (const thread of explicitlyPinnedThreads) {
-    addDescendantThreadIds({
-      childrenByParentId,
-      effectivePinnedThreadIds,
-      parentThreadId: thread.id,
-      visitedThreadIds: new Set(),
-    });
-  }
-
-  const effectivePinnedThreads = threads.filter((thread) =>
-    effectivePinnedThreadIds.has(thread.id),
+  const groupedPinnedItems = buildProjectThreadGroups(explicitlyPinnedThreads);
+  const threadNodes = collectThreadNodes(groupedPinnedItems);
+  threadNodes.sort((left, right) =>
+    comparePinnedThreads(left.thread, right.thread),
   );
-  const rootItems = buildProjectThreadGroups(effectivePinnedThreads);
-  const rootNodes = collectRootNodes(rootItems);
-  rootNodes.sort((left, right) => comparePinnedRoots(left.thread, right.thread));
 
   return {
     effectivePinnedThreadIds,
-    rootNodes,
+    threadNodes,
   };
 }

@@ -14,8 +14,6 @@ import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
   type ThreadPromptContextBannerExpandedSection,
-  type ThreadPromptParentThreadSection,
-  type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   WorkspaceChangedFileSelection,
@@ -111,10 +109,6 @@ interface ThreadDetailPromptAreaProps {
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   /** Latest TODO snapshot from the timeline projection. Null on older pages or when no candidate observed. */
   pendingTodos: ThreadTimelinePendingTodos | null;
-  /** Parent reference for child threads. Null for root threads. */
-  parentThreadSection: ThreadPromptParentThreadSection | null;
-  /** Active child threads for parent threads. Null otherwise. */
-  childThreadsSection: ThreadPromptChildThreadsSection | null;
   sendMessage: SendMessageMutationLike;
   thread: ThreadWithRuntime;
 }
@@ -147,8 +141,6 @@ export function ThreadDetailPromptArea({
   workspaceStatusPending,
   contextBannerMergeBase,
   pendingTodos,
-  parentThreadSection,
-  childThreadsSection,
   sendMessage,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -857,8 +849,6 @@ export function ThreadDetailPromptArea({
               ? { archivedAt: thread.archivedAt }
               : null
           }
-          parentThreadSection={parentThreadSection}
-          childThreadsSection={childThreadsSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -903,8 +893,6 @@ export function ThreadDetailPromptArea({
       handleToggleBannerSection,
       isFollowUpSubmitting,
       isQueueMutationPending,
-      parentThreadSection,
-      childThreadsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,

@@ -24,16 +24,12 @@ interface RankedThreadMentionSuggestion {
 }
 
 interface ThreadMentionContext {
-  currentParentThreadId: string | null;
   currentProjectId?: string;
-  currentThreadId?: string;
 }
 
 const THREAD_RELATION_RANK = {
-  directParentOrChild: 0,
-  sameParent: 1,
-  sameProject: 2,
-  unrelated: 3,
+  sameProject: 0,
+  unrelated: 1,
 };
 
 function getThreadDisplayTitle(thread: Thread): string | undefined {
@@ -99,9 +95,7 @@ function getThreadMentionContext(
     : undefined;
 
   return {
-    currentParentThreadId: currentThread?.parentThreadId ?? null,
     currentProjectId: args.currentProjectId ?? currentThread?.projectId,
-    currentThreadId: args.currentThreadId,
   };
 }
 
@@ -109,24 +103,6 @@ function getThreadRelationRank(
   thread: Thread,
   context: ThreadMentionContext,
 ): number {
-  if (
-    context.currentThreadId !== undefined &&
-    thread.parentThreadId === context.currentThreadId
-  ) {
-    return THREAD_RELATION_RANK.directParentOrChild;
-  }
-  if (
-    context.currentParentThreadId !== null &&
-    thread.id === context.currentParentThreadId
-  ) {
-    return THREAD_RELATION_RANK.directParentOrChild;
-  }
-  if (
-    context.currentParentThreadId !== null &&
-    thread.parentThreadId === context.currentParentThreadId
-  ) {
-    return THREAD_RELATION_RANK.sameParent;
-  }
   if (
     context.currentProjectId !== undefined &&
     thread.projectId === context.currentProjectId

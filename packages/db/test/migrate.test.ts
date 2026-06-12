@@ -75,11 +75,6 @@ interface MigratedManagerCleanupDefaultRow {
   serviceTier: string;
 }
 
-interface MigratedManagerCleanupThreadRow {
-  id: string;
-  parentThreadId: string | null;
-}
-
 interface MigratedThreadScheduleRow {
   createdAt: number;
   cron: string;
@@ -739,7 +734,6 @@ describe("migrate", () => {
           project_id,
           provider_id,
           type,
-          parent_thread_id,
           title,
           status,
           latest_attention_at,
@@ -751,7 +745,6 @@ describe("migrate", () => {
           'proj_manager_cleanup',
           'codex',
           'standard',
-          'thr_former_manager',
           'Former child',
           'idle',
           3000,
@@ -838,6 +831,7 @@ describe("migrate", () => {
         .map((row) => row.name);
       expect(threadColumns).not.toContain("type");
       expect(threadColumns).not.toContain("sort_key");
+      expect(threadColumns).not.toContain("parent_thread_id");
 
       const defaultsColumns = db.$client
         .prepare<[], TableInfoRow>(
@@ -849,9 +843,9 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], MigratedManagerCleanupThreadRow>(
+          .prepare<[], { id: string }>(
             `
-              SELECT id, parent_thread_id AS parentThreadId
+              SELECT id
               FROM threads
               WHERE id IN ('thr_former_manager', 'thr_former_child')
               ORDER BY id
@@ -859,14 +853,8 @@ describe("migrate", () => {
           )
           .all(),
       ).toEqual([
-        {
-          id: "thr_former_child",
-          parentThreadId: "thr_former_manager",
-        },
-        {
-          id: "thr_former_manager",
-          parentThreadId: null,
-        },
+        { id: "thr_former_child" },
+        { id: "thr_former_manager" },
       ]);
 
       expect(

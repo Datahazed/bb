@@ -4,7 +4,6 @@ import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@/components/ui/coar
 import { Icon } from "@/components/ui/icon.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import { SplitButton } from "@/components/ui/split-button.js";
-import { Pill } from "@/components/ui/pill.js";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -28,7 +27,6 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
-  isChildThread: boolean;
   isSecondaryPanelOpen: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
@@ -40,7 +38,6 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
-  isChildThread,
   isSecondaryPanelOpen,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
@@ -60,7 +57,6 @@ export function ThreadDetailHeader({
   const center = (
     <>
       <p className="min-w-0 truncate text-sm font-semibold">{threadTitle}</p>
-      {isChildThread ? <Pill variant="outline">child</Pill> : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region
         (AppPageHeader only exempts the actions slot), so the interactive

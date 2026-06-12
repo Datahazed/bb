@@ -3,7 +3,7 @@ import {
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
-  listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
+  listActiveVisiblePinnedThreadsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
   reorderQueuedThreadMessage,
@@ -59,7 +59,6 @@ import {
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
 import {
-  archiveThreadAndChildren,
   archiveThreadWithLifecycleEffects,
 } from "../../services/threads/thread-archive.js";
 import {
@@ -97,11 +96,11 @@ function toQueuedMessageOrderResponse(
   }
 }
 
-function buildActivePinnedThreadRootListResponse(
+function buildActivePinnedThreadListResponse(
   deps: AppDeps,
 ): ThreadListResponse {
   return toThreadListEntryResponses(deps, {
-    threads: listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
+    threads: listActiveVisiblePinnedThreadsWithPendingInteractionState(
       deps.db,
     ),
   });
@@ -351,7 +350,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
           nextThreadId: payload.nextThreadId,
         }),
       );
-      return context.json(buildActivePinnedThreadRootListResponse(deps));
+      return context.json(buildActivePinnedThreadListResponse(deps));
     },
   );
 
@@ -387,17 +386,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       });
     }
     return context.json({ ok: true });
-  });
-
-  post("/threads/:id/archive-all", (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const archivedThreadIds = archiveThreadAndChildren(deps, {
-      parentThread: thread,
-    });
-    return context.json({
-      ok: true,
-      archivedThreadIds,
-    });
   });
 
   post("/threads/:id/unarchive", (context) => {

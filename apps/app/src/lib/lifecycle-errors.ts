@@ -75,11 +75,6 @@ interface ProjectUnavailableDescriptionArgs {
   operation?: LifecycleErrorOperation | undefined;
 }
 
-interface ParentThreadInvalidDescriptionArgs {
-  error: Extract<LifecycleApiError, { code: "parent_thread_invalid" }>;
-  operation?: LifecycleErrorOperation | undefined;
-}
-
 function operationTitle(operation: LifecycleErrorOperation): string {
   switch (operation) {
     case "archive_thread":
@@ -352,69 +347,6 @@ function describeProjectUnavailable({
   }
 }
 
-function describeParentThreadInvalid({
-  error,
-  operation,
-}: ParentThreadInvalidDescriptionArgs): LifecycleErrorDescription {
-  const isSenderThread = error.details.subject === "sender";
-  const title = isSenderThread
-    ? "Sender thread unavailable"
-    : "Parent thread unavailable";
-
-  switch (error.details.reason) {
-    case "not_found":
-      return errorDescription({
-        operation,
-        title,
-        body: isSenderThread
-          ? "The sender thread no longer exists."
-          : "That parent thread no longer exists.",
-      });
-    case "archived":
-      return warning({
-        operation,
-        title,
-        body: isSenderThread
-          ? "The sender thread is archived."
-          : "Unarchive the parent thread first or choose another parent.",
-      });
-    case "deleted":
-      return errorDescription({
-        operation,
-        title,
-        body: isSenderThread
-          ? "The sender thread was deleted."
-          : "That parent thread was deleted.",
-      });
-    case "wrong_project":
-      return errorDescription({
-        operation,
-        title,
-        body: "Choose a parent thread from this project.",
-      });
-    case "self":
-      return errorDescription({
-        operation,
-        title,
-        body: "A thread cannot be its own parent.",
-      });
-    case "cycle":
-      return errorDescription({
-        operation,
-        title,
-        body: "Choose a thread that is not a child of this thread.",
-      });
-    case "too_deep":
-      return errorDescription({
-        operation,
-        title,
-        body: "Thread nesting is limited to 4 levels.",
-      });
-    default:
-      return assertNever(error.details.reason);
-  }
-}
-
 export function parseLifecycleError(
   error: unknown,
 ): LifecycleApiError | null {
@@ -458,11 +390,6 @@ export function describeLifecycleError({
       return describeHostUnavailable({ error: lifecycleError, operation });
     case "project_unavailable":
       return describeProjectUnavailable({
-        error: lifecycleError,
-        operation,
-      });
-    case "parent_thread_invalid":
-      return describeParentThreadInvalid({
         error: lifecycleError,
         operation,
       });

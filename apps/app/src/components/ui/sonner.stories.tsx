@@ -307,28 +307,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
       tone: "success",
       title: (
         <ArchivedThreadToastTitle
-          archivedThreadCount={1}
           threadTitle="Audit recurring permission failures"
-          onOpenThread={() => undefined}
-        />
-      ),
-    },
-  },
-  {
-    id: "archive-thread-children",
-    group: "Thread actions",
-    label: "archive with children",
-    source: "ThreadActionsProvider",
-    usage: [
-      "Archive includes child threads",
-      "Long titles truncate to one line",
-    ],
-    current: {
-      tone: "success",
-      title: (
-        <ArchivedThreadToastTitle
-          archivedThreadCount={3}
-          threadTitle="Investigate intermittent provider CLI health check timeouts on managed environments"
           onOpenThread={() => undefined}
         />
       ),

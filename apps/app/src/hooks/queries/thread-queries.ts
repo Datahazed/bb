@@ -4,7 +4,6 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
 import type { PendingInteraction } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
@@ -59,7 +58,6 @@ import {
   threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  type ArchivedThreadsKindFilter,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
@@ -96,34 +94,11 @@ export interface UseThreadsFilters extends Omit<
   projectId?: string;
 }
 
-export interface ProjectThreadSubsetFilters {
-  hasParent?: ThreadListFilters["hasParent"];
-  parentThreadId?: string;
-}
-
-export interface UseProjectThreadSubsetArgs {
-  enabled?: boolean;
-  filters: ProjectThreadSubsetFilters;
-  projectId: string | undefined;
-}
-
-export interface UseProjectThreadSubsetResult {
-  data: ThreadListResponse | undefined;
-  isError: boolean;
-  isFetching: boolean;
-  isLoading: boolean;
-}
-
 export interface UseThreadMentionCandidatesResult {
   data: ThreadListResponse | undefined;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
-}
-
-interface BuildThreadSubsetListFiltersArgs {
-  filters: ProjectThreadSubsetFilters;
-  projectId: string | undefined;
 }
 
 export interface UseThreadMentionCandidatesArgs {
@@ -144,55 +119,6 @@ const THREAD_MENTION_CANDIDATE_FILTERS = {
 
 function requireThreadId(id: string, hookName: string): string {
   return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
-}
-
-function buildThreadSubsetListFilters({
-  filters,
-  projectId,
-}: BuildThreadSubsetListFiltersArgs): UseThreadsFilters {
-  const listFilters: UseThreadsFilters = {
-    archived: false,
-  };
-
-  if (projectId !== undefined) {
-    listFilters.projectId = projectId;
-  }
-  if (filters.parentThreadId !== undefined) {
-    listFilters.parentThreadId = filters.parentThreadId;
-  }
-  if (filters.hasParent !== undefined) {
-    listFilters.hasParent = filters.hasParent;
-  }
-
-  return listFilters;
-}
-
-function threadMatchesProjectThreadSubset(
-  thread: ThreadListItem,
-  filters: ProjectThreadSubsetFilters,
-): boolean {
-  if (
-    filters.parentThreadId !== undefined &&
-    thread.parentThreadId !== filters.parentThreadId
-  ) {
-    return false;
-  }
-  if (
-    filters.hasParent !== undefined &&
-    (thread.parentThreadId !== null) !== filters.hasParent
-  ) {
-    return false;
-  }
-  return true;
-}
-
-function filterProjectThreadSubset(
-  threads: ThreadListResponse,
-  filters: ProjectThreadSubsetFilters,
-): ThreadListResponse {
-  return threads.filter((thread) =>
-    threadMatchesProjectThreadSubset(thread, filters),
-  );
 }
 
 function addThreadMentionCandidate(
@@ -229,28 +155,14 @@ function getThreadMentionCandidatePlaceholder({
 
 export interface UseArchivedThreadsFilters {
   projectId: string | undefined;
-  kind: ArchivedThreadsKindFilter;
-}
-
-interface ArchivedThreadsApiFilters {
-  hasParent?: ThreadListFilters["hasParent"];
-}
-
-function archivedThreadsKindToApiFilters(
-  kind: ArchivedThreadsKindFilter,
-): ArchivedThreadsApiFilters {
-  if (kind === "root") return { hasParent: false };
-  if (kind === "child") return { hasParent: true };
-  return {};
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, kind } = filters;
+  const { projectId } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
-  const apiFilters = archivedThreadsKindToApiFilters(kind);
 
   return useInfiniteQuery<
     ThreadListResponse,
@@ -261,14 +173,12 @@ export function useArchivedThreads(
   >({
     queryKey: archivedThreadsListQueryKey({
       projectId: projectId ?? "",
-      kind,
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
           archived: true,
-          ...apiFilters,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,
         },
@@ -307,72 +217,6 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
     enabled,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
-}
-
-export function useProjectThreadSubset({
-  enabled: enabledOption,
-  filters,
-  projectId,
-}: UseProjectThreadSubsetArgs): UseProjectThreadSubsetResult {
-  const queryClient = useQueryClient();
-  const enabled = (enabledOption ?? true) && Boolean(projectId);
-  const { hasParent, parentThreadId } = filters;
-  const activeProjectThreadListQueryKey =
-    enabled && projectId
-      ? threadListQueryKey({ archived: false, projectId })
-      : disabledThreadListQueryKey(
-          projectId ? { archived: false, projectId } : { archived: false },
-        );
-  const activeProjectThreadListIsCached =
-    enabled &&
-    projectId !== undefined &&
-    queryClient.getQueryData<ThreadListResponse>(
-      threadListQueryKey({ archived: false, projectId }),
-    ) !== undefined;
-  const activeProjectThreadsQuery = useQuery<ThreadListResponse>({
-    queryKey: activeProjectThreadListQueryKey,
-    queryFn: ({ signal }) =>
-      api.listThreads(
-        {
-          archived: false,
-          projectId: requireThreadId(projectId ?? "", "useProjectThreadSubset"),
-        },
-        signal,
-      ),
-    enabled: enabled && activeProjectThreadListIsCached,
-    staleTime: THREAD_LIST_STALE_TIME_MS,
-  });
-  const hasActiveProjectThreadList =
-    activeProjectThreadsQuery.data !== undefined;
-  const targetedThreadsQuery = useThreads(
-    buildThreadSubsetListFilters({ filters, projectId }),
-    {
-      enabled: enabled && !hasActiveProjectThreadList,
-    },
-  );
-  const derivedThreads = useMemo(
-    () =>
-      activeProjectThreadsQuery.data
-        ? filterProjectThreadSubset(activeProjectThreadsQuery.data, {
-            hasParent,
-            parentThreadId,
-          })
-        : undefined,
-    [activeProjectThreadsQuery.data, hasParent, parentThreadId],
-  );
-
-  return {
-    data: derivedThreads ?? targetedThreadsQuery.data,
-    isError: hasActiveProjectThreadList
-      ? activeProjectThreadsQuery.isError
-      : targetedThreadsQuery.isError,
-    isFetching: hasActiveProjectThreadList
-      ? activeProjectThreadsQuery.isFetching
-      : targetedThreadsQuery.isFetching,
-    isLoading: hasActiveProjectThreadList
-      ? activeProjectThreadsQuery.isLoading
-      : targetedThreadsQuery.isLoading,
-  };
 }
 
 export function useThreadMentionCandidates({

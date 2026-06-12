@@ -3,7 +3,6 @@ import type {
   SystemThreadProvisioningStatus,
   SystemThreadInterruptedReason,
 } from "@bb/domain";
-import { ownershipChangeOperationMetadataSchema } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { getCompactionKey } from "./compaction-lifecycle.js";
 import type { EventMeta } from "./event-decode.js";
@@ -18,9 +17,7 @@ import type {
   EventProjectionUserQuestionLifecycle,
   EventProjectionUserQuestionLifecycleMessage,
   EventProjectionOperationMessage,
-  EventProjectionOwnershipChangeThreadOperationMetadata,
   EventProjectionThreadOperationMetadata,
-  EventProjectionThreadOperationKind,
   EventProjectionThreadOperationStatus,
 } from "./event-projection-types.js";
 
@@ -51,13 +48,6 @@ function providerDisplayName(providerId: string): string {
   }
 }
 
-function normalizeThreadOperationKind(
-  rawOperation: string,
-): EventProjectionThreadOperationKind {
-  if (rawOperation === "ownership_change") return "ownership_change";
-  return "other";
-}
-
 function normalizeThreadOperationStatus(
   rawStatus: string,
 ): EventProjectionThreadOperationStatus {
@@ -78,26 +68,11 @@ function normalizeThreadOperationStatus(
 function createThreadOperationMetadata(
   decoded: Extract<ThreadEvent, { type: "system/operation" }>,
 ): EventProjectionThreadOperationMetadata {
-  const operation = normalizeThreadOperationKind(decoded.operation);
-  const base = {
+  return {
     rawOperation: decoded.operation,
     status: normalizeThreadOperationStatus(decoded.status),
     rawStatus: decoded.status,
     operationId: decoded.operationId,
-  };
-  if (operation === "ownership_change") {
-    const parsedMetadata = decoded.metadata
-      ? ownershipChangeOperationMetadataSchema.safeParse(decoded.metadata)
-      : null;
-    return {
-      ...base,
-      operation,
-      metadata: parsedMetadata?.success ? parsedMetadata.data : null,
-    };
-  }
-  return {
-    ...base,
-    operation,
     ...(decoded.metadata ? { metadata: decoded.metadata } : {}),
   };
 }
@@ -116,47 +91,13 @@ function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
   }
 }
 
-function ownershipChangeOperationTitle(
-  meta: EventProjectionOwnershipChangeThreadOperationMetadata,
-): string {
-  switch (meta.status) {
-    case "completed": {
-      const action = meta.metadata?.action;
-      switch (action) {
-        case "assign":
-          return "Thread assigned to parent";
-        case "release":
-          return "Thread released from parent";
-        case "transfer":
-          return "Thread transferred to new parent";
-        case undefined:
-          return "Ownership change completed";
-        default:
-          return assertNever(action);
-      }
-    }
-    case "failed":
-      return "Ownership change failed";
-    default:
-      return `Ownership change ${meta.rawStatus}`;
-  }
-}
-
 export function threadOperationTitle(
   meta: EventProjectionThreadOperationMetadata | null,
 ): string {
   if (!meta) return "Operation update";
-
-  switch (meta.operation) {
-    case "ownership_change":
-      return ownershipChangeOperationTitle(meta);
-    case "other":
-      return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
-        meta.rawStatus
-      }`;
-    default:
-      return assertNever(meta);
-  }
+  return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
+    meta.rawStatus
+  }`;
 }
 
 export function threadOperationStatus(

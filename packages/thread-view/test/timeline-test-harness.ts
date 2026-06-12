@@ -813,7 +813,7 @@ export function createTimelineEventFactory(
         ...base,
         type: "system/operation",
         data: {
-          operation: args.operation ?? "ownership_change",
+          operation: args.operation ?? "operation_update",
           operationId: args.operationId ?? "op-test",
           status: args.status ?? "running",
           message: args.message,

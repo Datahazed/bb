@@ -169,7 +169,6 @@ export function createThreadRecord(
     providerId: args.request.providerId,
     title: args.request.title ?? null,
     titleFallback: deriveTitleFallback(args.request.input),
-    parentThreadId: args.request.parentThreadId ?? null,
     status: args.status ?? "created",
   });
 }

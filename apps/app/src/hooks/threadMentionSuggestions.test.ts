@@ -4,7 +4,6 @@ import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 
 interface ThreadFixtureOptions {
   id: string;
-  parentThreadId?: string | null;
   projectId?: string;
   title: string | null;
   titleFallback?: string | null;
@@ -28,7 +27,6 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     title: options.title,
     titleFallback: options.titleFallback ?? null,
     status: "idle",
-    parentThreadId: options.parentThreadId ?? null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,
@@ -142,11 +140,10 @@ describe("buildThreadMentionSuggestions", () => {
     ).toEqual(["thr_earlier", "thr_later"]);
   });
 
-  it("ranks directly related, same-parent, and same-project thread matches together", () => {
+  it("ranks same-project thread matches before other projects", () => {
     const threads = [
       makeThread({
         id: "thr_current",
-        parentThreadId: "thr_parent",
         title: "Shared context",
       }),
       makeThread({
@@ -159,12 +156,7 @@ describe("buildThreadMentionSuggestions", () => {
         title: "Shared context",
       }),
       makeThread({
-        id: "thr_sibling",
-        parentThreadId: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_parent",
+        id: "thr_same_project_other",
         title: "Shared context",
       }),
     ];
@@ -177,45 +169,8 @@ describe("buildThreadMentionSuggestions", () => {
         currentThreadId: "thr_current",
       }),
     ).toEqual([
-      "thr_parent",
-      "thr_sibling",
       "thr_same_project",
-      "thr_other_project_parent",
-    ]);
-  });
-
-  it("ranks children of the current parent as directly related", () => {
-    const threads = [
-      makeThread({
-        id: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_same_project_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_child",
-        parentThreadId: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_other_project_parent",
-        projectId: "proj-2",
-        title: "Shared context",
-      }),
-    ];
-
-    expect(
-      getSuggestionThreadIds({
-        threads,
-        query: "shared",
-        currentProjectId: "proj-1",
-        currentThreadId: "thr_parent",
-      }),
-    ).toEqual([
-      "thr_child",
-      "thr_same_project_parent",
+      "thr_same_project_other",
       "thr_other_project_parent",
     ]);
   });

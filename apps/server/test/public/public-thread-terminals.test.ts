@@ -589,7 +589,7 @@ describe("public thread terminal routes", () => {
       {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ childThreadsConfirmed: false }),
+        body: JSON.stringify({}),
       },
     );
 

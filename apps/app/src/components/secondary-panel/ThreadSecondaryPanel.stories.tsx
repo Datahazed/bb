@@ -364,8 +364,8 @@ export function Overview() {
         <ShellRow initialPanel="thread-info" />
       </StoryRow>
       <StoryRow
-        label="parent thread, info tab"
-        hint="no Diff for this parent thread; workspace tree is rendered inside the info tab body"
+        label="info tab only"
+        hint="no Diff tab; workspace tree is rendered inside the info tab body"
       >
         <ShellRow initialPanel="thread-info" showGitDiffTab={false} />
       </StoryRow>
