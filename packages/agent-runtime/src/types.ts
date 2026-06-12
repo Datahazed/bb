@@ -111,8 +111,13 @@ export interface AgentRuntimeOptions {
 // ---------------------------------------------------------------------------
 
 export interface EnsureProviderArgs {
-  providerId: string;
+  /**
+   * Providers with thread-scoped processes use this to start the process for a
+   * specific bb thread. Omit it for provider-scoped maintenance work such as
+   * model listing.
+   */
   forThreadId?: string;
+  providerId: string;
 }
 
 export interface StartThreadArgs {

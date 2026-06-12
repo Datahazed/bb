@@ -1148,6 +1148,7 @@ export class RuntimeManager {
           }
           const current = this.entries.get(args.environmentId);
           if (
+            !info.expected &&
             current?.runtime === runtime &&
             runtime?.listRunningProviders().length === 0
           ) {

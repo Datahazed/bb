@@ -69,6 +69,17 @@ interface ProviderExecutionLane {
   sessionKey: string;
 }
 
+interface ProviderProcessLaneKeyArgs {
+  environmentId: string;
+  processSessionId: string;
+  providerId: string | null;
+}
+
+interface CreateProviderExecutionLaneArgs extends ProviderProcessLaneKeyArgs {
+  processMode: EnvironmentLaneMode;
+  sessionId: string;
+}
+
 interface ThreadProviderLaneIdentity {
   environmentId: string;
   providerId: string | null;
@@ -101,6 +112,7 @@ export interface CommandRouterOptions {
 }
 
 const HOST_COMMAND_LIFECYCLE_LOG_THRESHOLD_MS = 1_000;
+const CODEX_PROVIDER_ID = "codex";
 
 function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
@@ -209,11 +221,8 @@ export class CommandRouter {
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
     const task = this.runAfterThreadUnarchiveBarrier(command, () =>
-      this.runInExecutionLanes(
-        command,
-        environmentLaneMode,
-        providerLane,
-        () => this.executeLiveDaemonCommandBody(command),
+      this.runInExecutionLanes(command, environmentLaneMode, providerLane, () =>
+        this.executeLiveDaemonCommandBody(command),
       ),
     );
     this.registerThreadUnarchiveBarrier(command, task);
@@ -465,14 +474,15 @@ export class CommandRouter {
     });
   }
 
-  private getProviderProcessLaneKey(
-    environmentId: string,
-    providerId: string | null,
-  ): string {
+  private getProviderProcessLaneKey(args: ProviderProcessLaneKeyArgs): string {
     // Legacy or thread.stop paths can lack provider ownership. Bucket them
     // together per environment so unknown ownership stays conservative without
     // serializing unrelated environments.
-    return `${environmentId}\0${providerId ?? "unknown-provider"}`;
+    const providerKey = args.providerId ?? "unknown-provider";
+    if (providerKey !== CODEX_PROVIDER_ID) {
+      return `${args.environmentId}\0${providerKey}`;
+    }
+    return `${args.environmentId}\0${providerKey}\0${args.processSessionId}`;
   }
 
   private getProviderSessionLaneKey(
@@ -482,16 +492,14 @@ export class CommandRouter {
     return `${processKey}\0${sessionId}`;
   }
 
-  private createProviderExecutionLane(args: {
-    environmentId: string;
-    processMode: EnvironmentLaneMode;
-    providerId: string | null;
-    sessionId: string;
-  }): ProviderExecutionLane {
-    const processKey = this.getProviderProcessLaneKey(
-      args.environmentId,
-      args.providerId,
-    );
+  private createProviderExecutionLane(
+    args: CreateProviderExecutionLaneArgs,
+  ): ProviderExecutionLane {
+    const processKey = this.getProviderProcessLaneKey({
+      environmentId: args.environmentId,
+      processSessionId: args.processSessionId,
+      providerId: args.providerId,
+    });
     return {
       processKey,
       processMode: args.processMode,
@@ -515,6 +523,7 @@ export class CommandRouter {
         : `provider-thread:${identity.providerThreadId}`;
     return this.createProviderExecutionLane({
       environmentId: identity.environmentId,
+      processSessionId: `thread:${identity.threadId}`,
       processMode,
       providerId: identity.providerId,
       sessionId,
@@ -600,6 +609,7 @@ export class CommandRouter {
       case "thread.start":
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
+          processSessionId: `thread:${command.threadId}`,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `thread:${command.threadId}`,
@@ -607,6 +617,7 @@ export class CommandRouter {
       case "turn.submit":
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
+          processSessionId: `thread:${command.threadId}`,
           processMode: "read",
           providerId: command.resumeContext.providerId,
           sessionId: `provider-thread:${command.resumeContext.providerThreadId}`,
@@ -614,6 +625,7 @@ export class CommandRouter {
       case "thread.archive":
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
+          processSessionId: `thread:${command.threadId}`,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,
@@ -621,6 +633,7 @@ export class CommandRouter {
       case "interactive.resolve":
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
+          processSessionId: `thread:${command.threadId}`,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,

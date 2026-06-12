@@ -3,7 +3,12 @@ import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
-import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
+import type {
+  DynamicTool,
+  InstructionMode,
+  ProviderErrorCategory,
+  ThreadEvent,
+} from "@bb/domain";
 import type {
   AdapterCommand,
   ProviderAdapterFactory,
@@ -62,6 +67,22 @@ interface ReconfigureThreadIfNeededArgs {
   threadId: string;
 }
 
+interface RestartCodexThreadForNextTurnArgs {
+  instructions: string | undefined;
+  options: AgentRuntimeExecutionOptions;
+  threadId: string;
+}
+
+interface ResolveProviderProcessKeyArgs {
+  providerId: string;
+  threadId?: string;
+}
+
+interface RequireProviderProcessArgs {
+  processKey: string;
+  providerId: string;
+}
+
 interface ArchiveOrUnarchiveThreadArgs {
   commandType: "thread/archive" | "thread/unarchive";
   providerId: string;
@@ -95,6 +116,7 @@ interface ThreadRuntimeConfig {
   instructionMode: InstructionMode;
   instructions?: string;
   options: AgentRuntimeExecutionOptions;
+  processKey: string;
   projectId?: string;
   providerId: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
@@ -128,6 +150,18 @@ interface RequireProviderRequestPlanArgs {
   plan: ProviderCommandPlan;
   providerId: string;
 }
+
+const CODEX_PROVIDER_ID = "codex";
+const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
+const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
+  new Set<ProviderErrorCategory>([
+    "billing",
+    "budget-exceeded",
+    "rate-limit",
+    "unauthorized",
+  ]);
+const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
+  /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
 
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
@@ -165,6 +199,7 @@ function createAgentRuntimeInternal(
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
+  const codexThreadsRequiringAccountRestart = new Set<string>();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
 
@@ -194,8 +229,7 @@ function createAgentRuntimeInternal(
       // background tasks) before the thread's identity mappings are cleared —
       // the synthesized events still need provider-thread stamping.
       const detachEvents =
-        providerProcess.adapter.buildThreadDetachedEvents?.({ threadId }) ??
-        [];
+        providerProcess.adapter.buildThreadDetachedEvents?.({ threadId }) ?? [];
       if (detachEvents.length > 0) {
         emitTranslatedEvents({
           events: detachEvents,
@@ -212,8 +246,47 @@ function createAgentRuntimeInternal(
     skillRoots,
     workspacePath: options.workspacePath,
   });
-  function requireProviderProcess(providerId: string): ProviderProcess {
-    return providerProcesses.requireProviderProcess(providerId);
+
+  function resolveProviderProcessKey(
+    args: ResolveProviderProcessKeyArgs,
+  ): string {
+    if (args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined) {
+      return args.providerId;
+    }
+    return `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+  }
+
+  function requireProviderProcess(
+    args: RequireProviderProcessArgs,
+  ): ProviderProcess {
+    return providerProcesses.requireProviderProcess(args);
+  }
+
+  function requireProviderProcessForThread(threadId: string): ProviderProcess {
+    const providerId = resolveProviderForThread(threadId);
+    const processKey =
+      threadRuntimeConfigs.get(threadId)?.processKey ??
+      resolveProviderProcessKey({ providerId });
+    return requireProviderProcess({ processKey, providerId });
+  }
+
+  function isThreadScopedCodexProcess(proc: ProviderProcess): boolean {
+    return (
+      proc.providerId === CODEX_PROVIDER_ID &&
+      proc.processKey.startsWith(CODEX_THREAD_PROCESS_KEY_PREFIX)
+    );
+  }
+
+  async function shutdownThreadScopedCodexProcessIfIdle(
+    proc: ProviderProcess,
+  ): Promise<void> {
+    if (!isThreadScopedCodexProcess(proc) || proc.identity.threadIds.size > 0) {
+      return;
+    }
+    await providerProcesses.shutdownProvider({
+      processKey: proc.processKey,
+      providerId: proc.providerId,
+    });
   }
 
   function sendCommand<TResult>(args: {
@@ -301,10 +374,12 @@ function createAgentRuntimeInternal(
     threadId: string,
     config: ThreadRuntimeConfig,
   ): void {
+    codexThreadsRequiringAccountRestart.delete(threadId);
     threadRuntimeConfigs.set(threadId, config);
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
+    codexThreadsRequiringAccountRestart.delete(threadId);
     threadRuntimeConfigs.delete(threadId);
   }
 
@@ -359,6 +434,89 @@ function createAgentRuntimeInternal(
     return providerThreadId;
   }
 
+  function shouldRestartCodexThreadAfterEvent(
+    event: ThreadEvent,
+    proc: ProviderProcess,
+  ): boolean {
+    if (
+      proc.providerId !== CODEX_PROVIDER_ID ||
+      event.type !== "provider/error" ||
+      event.willRetry === true
+    ) {
+      return false;
+    }
+
+    if (
+      event.errorInfo !== undefined &&
+      CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES.has(
+        event.errorInfo.category,
+      )
+    ) {
+      return true;
+    }
+
+    const errorText = [event.message, event.detail]
+      .filter((part) => part !== undefined)
+      .join("\n");
+    return CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN.test(errorText);
+  }
+
+  async function restartCodexThreadForNextTurnIfNeeded(
+    args: RestartCodexThreadForNextTurnArgs,
+  ): Promise<void> {
+    if (!codexThreadsRequiringAccountRestart.has(args.threadId)) {
+      return;
+    }
+
+    const currentConfig = threadRuntimeConfigs.get(args.threadId);
+    if (!currentConfig || currentConfig.providerId !== CODEX_PROVIDER_ID) {
+      codexThreadsRequiringAccountRestart.delete(args.threadId);
+      return;
+    }
+
+    if (turnState.getActiveTurnId(args.threadId) !== null) {
+      return;
+    }
+
+    const providerThreadId = requireProviderThreadId(args.threadId);
+    const proc = requireProviderProcess({
+      processKey: currentConfig.processKey,
+      providerId: currentConfig.providerId,
+    });
+    if (!isThreadScopedCodexProcess(proc)) {
+      codexThreadsRequiringAccountRestart.delete(args.threadId);
+      return;
+    }
+
+    codexThreadsRequiringAccountRestart.delete(args.threadId);
+    await providerProcesses.shutdownProvider({
+      processKey: proc.processKey,
+      providerId: proc.providerId,
+    });
+
+    const resumeInstructions = args.instructions ?? currentConfig.instructions;
+    await runtime.resumeThread({
+      environmentId: currentConfig.environmentId,
+      threadId: args.threadId,
+      ...(currentConfig.projectId !== undefined
+        ? { projectId: currentConfig.projectId }
+        : {}),
+      providerThreadId,
+      providerId: currentConfig.providerId,
+      options: args.options,
+      ...(resumeInstructions !== undefined
+        ? { instructions: resumeInstructions }
+        : {}),
+      ...(currentConfig.dynamicTools !== undefined
+        ? { dynamicTools: currentConfig.dynamicTools }
+        : {}),
+      ...(currentConfig.disallowedTools !== undefined
+        ? { disallowedTools: currentConfig.disallowedTools }
+        : {}),
+      instructionMode: currentConfig.instructionMode,
+    });
+  }
+
   function isAcceptedThreadArchiveError(
     commandType: "thread/archive" | "thread/unarchive",
     message: string,
@@ -373,8 +531,11 @@ function createAgentRuntimeInternal(
     args: ArchiveOrUnarchiveThreadArgs,
   ): Promise<void> {
     const { commandType, providerId, providerThreadId, threadId } = args;
-    await runtime.ensureProvider({ providerId });
-    const proc = requireProviderProcess(providerId);
+    const processKey =
+      threadRuntimeConfigs.get(threadId)?.processKey ??
+      resolveProviderProcessKey({ providerId, threadId });
+    await providerProcesses.ensureProvider({ processKey, providerId });
+    const proc = requireProviderProcess({ processKey, providerId });
     if (!proc.adapter.capabilities.supportsArchive) {
       throw new Error(
         `Provider "${providerId}" does not support thread archive.`,
@@ -419,6 +580,7 @@ function createAgentRuntimeInternal(
       // must resume it (after unarchive) instead of reusing stale state.
       forgetThreadRuntimeState(proc, threadId);
     }
+    await shutdownThreadScopedCodexProcessIfIdle(proc);
   }
 
   async function reconfigureThreadIfNeeded(
@@ -442,7 +604,10 @@ function createAgentRuntimeInternal(
       return;
     }
 
-    const proc = requireProviderProcess(currentConfig.providerId);
+    const proc = requireProviderProcess({
+      processKey: currentConfig.processKey,
+      providerId: currentConfig.providerId,
+    });
     const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
       baseShellEnv: options.shellEnv,
@@ -569,6 +734,9 @@ function createAgentRuntimeInternal(
         replayResult.event,
       );
       turnState.observe(normalizedEvent);
+      if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
+        codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
+      }
       options.onEvent(normalizedEvent);
     }
   }
@@ -657,8 +825,14 @@ function createAgentRuntimeInternal(
   // -------------------------------------------------------------------------
 
   const runtime: AgentRuntime = {
-    async ensureProvider({ providerId }) {
-      await providerProcesses.ensureProvider({ providerId });
+    async ensureProvider({ providerId, forThreadId }) {
+      await providerProcesses.ensureProvider({
+        processKey: resolveProviderProcessKey({
+          providerId,
+          ...(forThreadId !== undefined ? { threadId: forThreadId } : {}),
+        }),
+        providerId,
+      });
     },
 
     async startThread({
@@ -674,9 +848,10 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      await runtime.ensureProvider({ providerId });
+      const processKey = resolveProviderProcessKey({ providerId, threadId });
+      await runtime.ensureProvider({ providerId, forThreadId: threadId });
 
-      const proc = requireProviderProcess(providerId);
+      const proc = requireProviderProcess({ processKey, providerId });
       const providerSkillRoots = skillRootsForProvider(providerId);
       assertProviderSupportsExecutionOptions({
         adapter: proc.adapter,
@@ -696,6 +871,7 @@ function createAgentRuntimeInternal(
         instructionMode,
         instructions,
         options: execOpts,
+        processKey,
         projectId,
         providerId,
         skillRoots: providerSkillRoots,
@@ -793,9 +969,10 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      await runtime.ensureProvider({ providerId });
+      const processKey = resolveProviderProcessKey({ providerId, threadId });
+      await runtime.ensureProvider({ providerId, forThreadId: threadId });
 
-      const proc = requireProviderProcess(providerId);
+      const proc = requireProviderProcess({ processKey, providerId });
       const providerSkillRoots = skillRootsForProvider(providerId);
       assertProviderSupportsExecutionOptions({
         adapter: proc.adapter,
@@ -815,6 +992,7 @@ function createAgentRuntimeInternal(
         instructionMode,
         instructions,
         options: execOpts,
+        processKey,
         projectId,
         providerId,
         skillRoots: providerSkillRoots,
@@ -895,8 +1073,13 @@ function createAgentRuntimeInternal(
       options: execOpts,
       instructions,
     }) {
+      await restartCodexThreadForNextTurnIfNeeded({
+        threadId,
+        options: execOpts,
+        instructions,
+      });
       const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcess(pid);
+      const proc = requireProviderProcessForThread(threadId);
       assertProviderSupportsExecutionOptions({
         adapter: proc.adapter,
         options: execOpts,
@@ -952,7 +1135,7 @@ function createAgentRuntimeInternal(
       instructions,
     }) {
       const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcess(pid);
+      const proc = requireProviderProcessForThread(threadId);
       assertProviderSupportsExecutionOptions({
         adapter: proc.adapter,
         options: execOpts,
@@ -970,6 +1153,11 @@ function createAgentRuntimeInternal(
         };
       }
 
+      await restartCodexThreadForNextTurnIfNeeded({
+        threadId,
+        options: execOpts,
+        instructions,
+      });
       await reconfigureThreadIfNeeded({
         threadId,
         options: execOpts,
@@ -1009,7 +1197,7 @@ function createAgentRuntimeInternal(
 
     async stopThread({ threadId }) {
       const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcess(pid);
+      const proc = requireProviderProcessForThread(threadId);
       const providerThreadId = requireProviderThreadId(threadId);
       const activeTurnId = turnState.getActiveTurnId(threadId);
       const adapterCommand: AdapterCommand = {
@@ -1027,6 +1215,7 @@ function createAgentRuntimeInternal(
           );
         }
         forgetThreadRuntimeState(proc, threadId);
+        await shutdownThreadScopedCodexProcessIfIdle(proc);
         return;
       }
 
@@ -1041,11 +1230,12 @@ function createAgentRuntimeInternal(
         sourceThreadId: threadId,
       });
       forgetThreadRuntimeState(proc, threadId);
+      await shutdownThreadScopedCodexProcessIfIdle(proc);
     },
 
     async renameThread({ threadId, title }) {
       const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcess(pid);
+      const proc = requireProviderProcessForThread(threadId);
       if (!proc.adapter.capabilities.supportsRename) {
         throw new Error(`Provider "${pid}" does not support thread rename.`);
       }
@@ -1093,7 +1283,10 @@ function createAgentRuntimeInternal(
 
     async listModels({ providerId }) {
       await runtime.ensureProvider({ providerId });
-      const proc = requireProviderProcess(providerId);
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({ providerId }),
+        providerId,
+      });
       const command = requireProviderRequestPlan({
         commandType: "model/list",
         plan: proc.adapter.buildCommandPlan({ type: "model/list" }),

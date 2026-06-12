@@ -2013,6 +2013,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(emittedEvents).toEqual([]);
+    expect(manager.get("env-expected-exit")).toBeDefined();
   });
 
   it("shuts down all tracked environments", async () => {

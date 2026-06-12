@@ -10,10 +10,7 @@ import {
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
-import {
-  defaultListModels,
-  shutdownDefaultListModelsRuntimes,
-} from "./command-dispatch-support.js";
+import { defaultListModels } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -549,7 +546,6 @@ export async function createHostDaemonApp(
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
-      await shutdownDefaultListModelsRuntimes();
       await connection.shutdown();
     },
     onStart: async () => {
