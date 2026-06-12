@@ -1,13 +1,13 @@
 import {
   ThreadMetadataContent,
   type ThreadMetadataContentProps,
-} from "../secondary-panel/ThreadMetadataContent";
+} from "./ThreadMetadataContent";
 import {
   PanelStage,
   baseProps,
   makeThread,
   makeThreadSchedule,
-} from "../secondary-panel/ThreadMetadataContent.fixtures";
+} from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {

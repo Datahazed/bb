@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { DetailCard } from "@/components/ui/detail-card.js";
-import { ThreadStorageRow } from "../secondary-panel/ThreadMetadataContent";
-import { useThreadStorageBrowser } from "../secondary-panel/useThreadStorageBrowser";
+import { ThreadStorageRow } from "./ThreadMetadataContent";
+import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {

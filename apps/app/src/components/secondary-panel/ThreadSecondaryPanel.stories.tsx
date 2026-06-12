@@ -8,7 +8,7 @@ import {
 import {
   ThreadSecondaryPanel,
   type SecondaryPanelFileTab,
-} from "../secondary-panel/ThreadSecondaryPanel";
+} from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -19,7 +19,7 @@ import {
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { resolveRightPanelFileVisual } from "../secondary-panel/rightPanelFileVisuals";
+import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 
 export default {
   title: "right-panel/Tabbed shell",

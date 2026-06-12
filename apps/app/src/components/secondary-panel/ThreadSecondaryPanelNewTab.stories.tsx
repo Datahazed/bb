@@ -12,15 +12,15 @@ import {
   environmentPathsQueryKey,
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
-import { ThreadSecondaryPanel } from "../secondary-panel/ThreadSecondaryPanel";
-import type { SecondaryPanelFileTab } from "../secondary-panel/ThreadSecondaryPanel";
-import { NewTabPage } from "../secondary-panel/NewTabPage";
-import type { FileSearchSelection } from "../secondary-panel/useThreadFileTabs";
+import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
+import type { SecondaryPanelFileTab } from "./ThreadSecondaryPanel";
+import { NewTabPage } from "./NewTabPage";
+import type { FileSearchSelection } from "./useThreadFileTabs";
 import { Icon } from "@/components/ui/icon.js";
 import {
   getThreadRecentItemsStorageKey,
   type ThreadRecentItem,
-} from "../secondary-panel/threadRecentItems";
+} from "./threadRecentItems";
 import {
   createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -29,7 +29,7 @@ import {
 import {
   getFileNameFromPath,
   resolveRightPanelFileVisual,
-} from "../secondary-panel/rightPanelFileVisuals";
+} from "./rightPanelFileVisuals";
 
 export default {
   title: "right-panel/New tab",

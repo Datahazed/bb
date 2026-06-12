@@ -6,7 +6,7 @@ import {
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
-import { BrowserTabDeck } from "../secondary-panel/BrowserTabDeck";
+import { BrowserTabDeck } from "./BrowserTabDeck";
 
 export default {
   title: "right-panel/Browser tab",

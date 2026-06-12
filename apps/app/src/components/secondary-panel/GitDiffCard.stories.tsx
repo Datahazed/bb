@@ -10,7 +10,7 @@ import {
   GitDiffToolbar,
   type GitDiffDisplayMode,
   type GitDiffSelectionOption,
-} from "../secondary-panel/GitDiffToolbar";
+} from "./GitDiffToolbar";
 import {
   parseGitDiffFiles,
   summarizeGitDiff,
