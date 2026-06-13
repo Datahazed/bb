@@ -13,6 +13,7 @@ export interface RouteResponseDescriptor<
 > {
   status: Status;
   format: Format;
+  schema?: ZodType<Output>;
   readonly output?: Output;
 }
 
@@ -170,11 +171,11 @@ export function jsonResponse<Output, const Status extends ContentfulStatusCode>(
     | DefaultRouteResponseOptions<Output>
     | RouteResponseOptions<Output, Status>,
 ): RouteResponseDescriptor<Output, 200 | Status, "json"> {
-  void options?.schema;
   const status = options && "status" in options ? options.status : 200;
   return {
     status,
     format: "json",
+    schema: options?.schema,
   };
 }
 

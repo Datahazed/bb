@@ -26,7 +26,9 @@ const testRoutes = {
     request: optionalQueryRequest<Record<never, never>, { q: string }>(
       z.object({ q: z.string().min(1) }),
     ),
-    response: jsonResponse<{ q: string }>(),
+    response: jsonResponse<{ q: string }>({
+      schema: z.object({ q: z.string() }),
+    }),
   }),
 };
 
@@ -88,5 +90,37 @@ describe("typedRoutes", () => {
     const missingQuery = await app.request("/search", { method: "GET" });
     expect(missingQuery.status).toBe(400);
     expect(await missingQuery.json()).toEqual({ message: "Required" });
+  });
+
+  it("validates descriptor JSON responses when enabled", async () => {
+    const app = createApp();
+    const { get } = typedRoutes<DescriptorTestSchema>(app, {
+      onValidationError: (message) => new Error(message),
+      validateResponses: true,
+    });
+    const invalidResponse: { q: string } = JSON.parse('{"q":123}');
+
+    get(testRoutes.search, (context) => context.json(invalidResponse));
+
+    const response = await app.request("/search?q=needle");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      message:
+        "Invalid response for status 200: Invalid input: expected string, received number",
+    });
+  });
+
+  it("does not validate descriptor JSON responses by default", async () => {
+    const app = createApp();
+    const { get } = typedRoutes<DescriptorTestSchema>(app, {
+      onValidationError: (message) => new Error(message),
+    });
+    const invalidResponse: { q: string } = JSON.parse('{"q":123}');
+
+    get(testRoutes.search, (context) => context.json(invalidResponse));
+
+    const response = await app.request("/search?q=needle");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ q: 123 });
   });
 });
