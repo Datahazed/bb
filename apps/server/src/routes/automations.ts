@@ -12,6 +12,7 @@ import {
 import type { Project } from "@bb/domain";
 import {
   automationsOverviewResponseSchema,
+  createAutomationRequestSchema,
   publicApiRoutes,
   type AutomationAction,
   type AutomationsOverviewAutomation,
@@ -63,11 +64,11 @@ interface BuildAutomationEnabledUpdateInputArgs {
 }
 
 interface CreateAutomationValues {
-  action: CreateAutomationRequest["action"];
+  action: AutomationAction;
   autoArchive: boolean;
   enabled: boolean;
   name: string;
-  trigger: CreateAutomationRequest["trigger"];
+  trigger: AutomationScheduleTrigger;
 }
 
 interface ValidateAutomationActionProjectScopeArgs {
@@ -145,12 +146,13 @@ function computeScheduledNextRunAt(trigger: AutomationScheduleTrigger) {
 function resolveCreateAutomationValues(
   payload: CreateAutomationRequest,
 ): CreateAutomationValues {
+  const parsed = createAutomationRequestSchema.parse(payload);
   return {
-    name: payload.name,
-    enabled: payload.enabled ?? true,
-    trigger: payload.trigger,
-    action: payload.action,
-    autoArchive: payload.autoArchive ?? false,
+    name: parsed.name,
+    enabled: parsed.enabled,
+    trigger: parsed.trigger,
+    action: parsed.action,
+    autoArchive: parsed.autoArchive,
   };
 }
 

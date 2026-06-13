@@ -162,13 +162,13 @@ export type AutomationsOverviewResponse = z.infer<
 export const createThreadScheduleRequestSchema = z
   .object({
     name: scheduleNameSchema,
-    enabled: z.boolean().optional(),
+    enabled: z.boolean().default(true),
     cron: scheduleCronSchema,
     timezone: scheduleTimezoneSchema,
     prompt: threadSchedulePromptSchema,
   })
   .strict();
-export type CreateThreadScheduleRequest = z.infer<
+export type CreateThreadScheduleRequest = z.input<
   typeof createThreadScheduleRequestSchema
 >;
 
@@ -212,12 +212,12 @@ export type UpdateThreadScheduleRequest = z.infer<
 
 export const createAutomationRequestSchema = z.object({
   name: automationNameSchema,
-  enabled: z.boolean().optional(),
+  enabled: z.boolean().default(true),
   trigger: automationTriggerSchema,
   action: automationActionSchema,
-  autoArchive: z.boolean().optional(),
+  autoArchive: z.boolean().default(false),
 });
-export type CreateAutomationRequest = z.infer<
+export type CreateAutomationRequest = z.input<
   typeof createAutomationRequestSchema
 >;
 

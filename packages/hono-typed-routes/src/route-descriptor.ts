@@ -1,5 +1,6 @@
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { ZodType } from "zod";
+import type * as z from "zod";
 import type { EmptyInput, Endpoint } from "./endpoint.js";
 
 export type RouteMethod = "get" | "post" | "patch" | "delete" | "put";
@@ -25,14 +26,14 @@ export interface NoRouteRequest<Input> {
 
 export interface QueryRouteRequest<Input, ParsedInput> {
   source: "query";
-  schema: ZodType<ParsedInput>;
+  schema: ZodType;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
 
 export interface JsonRouteRequest<Input, ParsedInput> {
   source: "json";
-  schema: ZodType<ParsedInput>;
+  schema: ZodType;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
@@ -191,21 +192,36 @@ export function noRequest<Input = EmptyInput>(): NoRouteRequest<Input> {
   return { source: "none" };
 }
 
-export function queryRequest<InputPrefix, QueryInput>(
-  schema: ZodType<QueryInput>,
-): QueryRouteRequest<InputPrefix & { query: QueryInput }, QueryInput> {
+export function queryRequest<
+  InputPrefix,
+  QueryInput,
+  Schema extends ZodType = ZodType<QueryInput>,
+>(
+  schema: Schema,
+): QueryRouteRequest<InputPrefix & { query: QueryInput }, z.output<Schema>> {
   return { source: "query", schema };
 }
 
-export function optionalQueryRequest<InputPrefix, QueryInput>(
-  schema: ZodType<QueryInput>,
-): QueryRouteRequest<InputPrefix & { query?: QueryInput }, QueryInput> {
+export function optionalQueryRequest<
+  InputPrefix,
+  QueryInput,
+  Schema extends ZodType = ZodType<QueryInput>,
+>(
+  schema: Schema,
+): QueryRouteRequest<
+  InputPrefix & { query?: QueryInput },
+  z.output<Schema>
+> {
   return { source: "query", schema };
 }
 
-export function jsonRequest<InputPrefix, BodyInput>(
-  schema: ZodType<BodyInput>,
-): JsonRouteRequest<InputPrefix & { json: BodyInput }, BodyInput> {
+export function jsonRequest<
+  InputPrefix,
+  BodyInput,
+  Schema extends ZodType = ZodType<BodyInput>,
+>(
+  schema: Schema,
+): JsonRouteRequest<InputPrefix & { json: BodyInput }, z.output<Schema>> {
   return { source: "json", schema };
 }
 
