@@ -96,10 +96,14 @@ import type {
   ThreadSchedule,
   ThreadWithIncludesResponse,
   ThreadTerminalListResponse,
-  ThreadTimelineQuery,
-  ThreadTimelineResponse,
+  ThreadTimelineFeedQuery,
+  ThreadTimelineFeedResponse,
+  TimelineRowDetailQuery,
+  TimelineRowDetailResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
+  TimelineWorkOutputDetailQuery,
+  TimelineWorkOutputDetailResponse,
   UpdateAutomationRequest,
   UpdateEnvironmentRequest,
   UpdateProjectRequest,
@@ -575,11 +579,18 @@ export type PublicApiSchema = {
       TerminalSession
     >;
   };
-  "/threads/:id/timeline": {
-    /** Get thread timeline for UI rendering. Events transformed via `@bb/thread-view`. */
+  "/threads/:id/timeline/feed": {
+    /** Get bounded thread timeline feed rows. Full row bodies are loaded through row detail routes. */
     $get: Endpoint<
-      PathId & { query?: ThreadTimelineQuery },
-      ThreadTimelineResponse
+      PathId & { query?: ThreadTimelineFeedQuery },
+      ThreadTimelineFeedResponse
+    >;
+  };
+  "/threads/:id/timeline/rows/:rowKey/detail": {
+    /** Get full detail parts for a timeline feed row. */
+    $get: Endpoint<
+      { param: { id: string; rowKey: string }; query: TimelineRowDetailQuery },
+      TimelineRowDetailResponse
     >;
   };
   "/threads/:id/timeline/turn-summary-details": {
@@ -587,6 +598,13 @@ export type PublicApiSchema = {
     $get: Endpoint<
       PathId & { query: TimelineTurnSummaryDetailsQuery },
       TimelineTurnSummaryDetailsResponse
+    >;
+  };
+  "/threads/:id/timeline/work-output": {
+    /** Get full command/tool output for a timeline row whose default payload contains only a preview. */
+    $get: Endpoint<
+      PathId & { query: TimelineWorkOutputDetailQuery },
+      TimelineWorkOutputDetailResponse
     >;
   };
   "/threads/:id/output": {

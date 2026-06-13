@@ -16,8 +16,8 @@ import type {
   ThreadGetQuery,
   ThreadListQuery,
   ThreadResponse,
-  ThreadTimelineQuery,
-  ThreadTimelineResponse,
+  ThreadTimelineFeedQuery,
+  ThreadTimelineFeedResponse,
   ThreadWithIncludesResponse,
   UpdateThreadScheduleConfigRequest,
   UpdateThreadScheduleEnabledRequest,
@@ -70,7 +70,7 @@ export interface ThreadEventWaitArgs {
   waitMs: string;
 }
 
-export interface ThreadTimelineArgs extends ThreadTimelineQuery {
+export interface ThreadTimelineFeedArgs extends ThreadTimelineFeedQuery {
   threadId: string;
 }
 
@@ -90,14 +90,12 @@ export interface ThreadScheduleCreateArgs extends CreateThreadScheduleRequest {
   threadId: string;
 }
 
-export interface ThreadScheduleConfigUpdateArgs
-  extends UpdateThreadScheduleConfigRequest {
+export interface ThreadScheduleConfigUpdateArgs extends UpdateThreadScheduleConfigRequest {
   scheduleId: string;
   threadId: string;
 }
 
-export interface ThreadScheduleEnabledUpdateArgs
-  extends UpdateThreadScheduleEnabledRequest {
+export interface ThreadScheduleEnabledUpdateArgs extends UpdateThreadScheduleEnabledRequest {
   scheduleId: string;
   threadId: string;
 }
@@ -126,8 +124,7 @@ export interface ThreadInteractionGetArgs extends ThreadInteractionListArgs {
   interactionId: string;
 }
 
-export interface ThreadInteractionResolveArgs
-  extends ThreadInteractionGetArgs {
+export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
   resolution: PendingInteractionResolution;
 }
 
@@ -155,7 +152,9 @@ export interface ThreadsArea {
   send(args: ThreadSendArgs): Promise<OkResponse>;
   spawn(args: ThreadSpawnArgs): Promise<Thread>;
   stop(args: ThreadStatusArgs): Promise<OkResponse>;
-  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResponse>;
+  timelineFeed(
+    args: ThreadTimelineFeedArgs,
+  ): Promise<ThreadTimelineFeedResponse>;
   unarchive(args: ThreadStatusArgs): Promise<OkResponse>;
   unpin(args: ThreadStatusArgs): Promise<Thread>;
   update(args: ThreadUpdateArgs): Promise<Thread>;
@@ -199,7 +198,9 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     ...(args.senderThreadId !== undefined
       ? { senderThreadId: args.senderThreadId }
       : {}),
-    ...(args.serviceTier !== undefined ? { serviceTier: args.serviceTier } : {}),
+    ...(args.serviceTier !== undefined
+      ? { serviceTier: args.serviceTier }
+      : {}),
     ...(args.executionInputSources !== undefined
       ? { executionInputSources: args.executionInputSources }
       : {}),
@@ -246,13 +247,14 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   };
 }
 
-function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
+function timelineFeedQuery(
+  args: ThreadTimelineFeedArgs,
+): ThreadTimelineFeedQuery {
   return {
-    ...(args.includeNestedRows !== undefined
-      ? { includeNestedRows: args.includeNestedRows }
-      : {}),
     ...(args.summaryOnly !== undefined ? { summaryOnly: args.summaryOnly } : {}),
-    ...(args.segmentLimit !== undefined ? { segmentLimit: args.segmentLimit } : {}),
+    ...(args.segmentLimit !== undefined
+      ? { segmentLimit: args.segmentLimit }
+      : {}),
     ...(args.beforeAnchorSeq !== undefined
       ? { beforeAnchorSeq: args.beforeAnchorSeq }
       : {}),
@@ -435,11 +437,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
-    async timeline(input) {
+    async timelineFeed(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].timeline.$get({
+        transport.api.v1.threads[":id"].timeline.feed.$get({
           param: { id: input.threadId },
-          query: timelineQuery(input),
+          query: timelineFeedQuery(input),
         }),
       );
     },
