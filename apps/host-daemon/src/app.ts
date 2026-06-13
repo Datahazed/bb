@@ -47,6 +47,17 @@ interface SessionState {
 }
 
 const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
+const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
+const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
+
+interface IdleProviderSessionReaper {
+  stop(): void;
+}
+
+interface StartIdleProviderSessionReaperArgs {
+  logger: HostDaemonLogger;
+  runtimeManager: RuntimeManager;
+}
 
 export interface CreateHostDaemonAppOptions {
   dataDir: string;
@@ -86,6 +97,57 @@ interface PendingInteractiveInterruptRequest {
   providerId: string;
   reason: string;
   threadIds: readonly string[];
+}
+
+function startIdleProviderSessionReaper(
+  args: StartIdleProviderSessionReaperArgs,
+): IdleProviderSessionReaper {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) {
+      return;
+    }
+    running = true;
+    void args.runtimeManager
+      .reapIdleProviderSessions({
+        idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
+        nowMs: Date.now(),
+      })
+      .then((result) => {
+        if (result.reapedSessions.length === 0) {
+          return;
+        }
+        args.logger.info(
+          {
+            count: result.reapedSessions.length,
+            sessions: result.reapedSessions.map((session) => ({
+              environmentId: session.environmentId,
+              idleForMs: session.idleForMs,
+              providerId: session.providerId,
+              threadId: session.threadId,
+            })),
+          },
+          "Reaped idle provider sessions",
+        );
+      })
+      .catch((error) => {
+        args.logger.warn(
+          {
+            ...runtimeErrorLogFields(error),
+          },
+          "Idle provider session reaper failed",
+        );
+      })
+      .finally(() => {
+        running = false;
+      });
+  }, IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS);
+  timer.unref?.();
+  return {
+    stop() {
+      clearInterval(timer);
+    },
+  };
 }
 
 export async function createHostDaemonApp(
@@ -426,6 +488,10 @@ export async function createHostDaemonApp(
     },
     threadStorageRootPath,
   });
+  const idleProviderSessionReaper = startIdleProviderSessionReaper({
+    logger: options.logger,
+    runtimeManager,
+  });
   let sendTerminalMessage: TerminalManagerOptions["sendMessage"] = (message) =>
     sendServerMessage(message);
   const terminalManager = new TerminalManager({
@@ -540,6 +606,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
     },
     shutdownRuntimes: async () => {
+      idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
       await localApi?.close();
       await terminalManager.shutdownAll();

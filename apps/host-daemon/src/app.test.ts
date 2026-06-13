@@ -206,6 +206,9 @@ function createFakeRuntime(): AgentRuntime {
     getProviderSession() {
       return null;
     },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
     hasThread() {
       return false;
     },

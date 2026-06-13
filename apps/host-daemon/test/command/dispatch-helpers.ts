@@ -360,6 +360,9 @@ export function createFakeRuntime() {
     getProviderSession(threadId) {
       return providerSessionsByThreadId.get(threadId) ?? null;
     },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
     hasThread(threadId) {
       return providerSessionsByThreadId.has(threadId);
     },

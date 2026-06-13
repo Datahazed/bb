@@ -53,6 +53,7 @@ import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
+  ReapedIdleProviderSession,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
@@ -70,6 +71,24 @@ interface ReconfigureThreadIfNeededArgs {
 interface RestartCodexThreadForNextTurnArgs {
   instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
+  threadId: string;
+}
+
+interface RunThreadOperationArgs<TResult> {
+  threadId: string;
+  work: () => Promise<TResult>;
+}
+
+interface ReapIdleProviderSessionCandidate {
+  idleSinceMs: number;
+  providerThreadId: string;
+  threadId: string;
+  runtimeConfig: ThreadRuntimeConfig;
+}
+
+interface FindReapableIdleProviderSessionArgs {
+  idleForMs: number;
+  nowMs: number;
   threadId: string;
 }
 
@@ -200,6 +219,9 @@ function createAgentRuntimeInternal(
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const codexThreadsRequiringAccountRestart = new Set<string>();
+  const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
+  const pendingTurnStartThreadIds = new Set<string>();
+  const threadOperationCounts = new Map<string, number>();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
 
@@ -380,7 +402,40 @@ function createAgentRuntimeInternal(
 
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
+    idleProviderSessionSinceMsByThreadId.delete(threadId);
+    pendingTurnStartThreadIds.delete(threadId);
     threadRuntimeConfigs.delete(threadId);
+  }
+
+  function beginThreadOperation(threadId: string): void {
+    threadOperationCounts.set(
+      threadId,
+      (threadOperationCounts.get(threadId) ?? 0) + 1,
+    );
+  }
+
+  function finishThreadOperation(threadId: string): void {
+    const current = threadOperationCounts.get(threadId);
+    if (current === undefined || current <= 1) {
+      threadOperationCounts.delete(threadId);
+      return;
+    }
+    threadOperationCounts.set(threadId, current - 1);
+  }
+
+  function threadHasInFlightOperation(threadId: string): boolean {
+    return threadOperationCounts.has(threadId);
+  }
+
+  async function runThreadOperation<TResult>(
+    args: RunThreadOperationArgs<TResult>,
+  ): Promise<TResult> {
+    beginThreadOperation(args.threadId);
+    try {
+      return await args.work();
+    } finally {
+      finishThreadOperation(args.threadId);
+    }
   }
 
   function recordProviderThreadIdentity(
@@ -423,6 +478,83 @@ function createAgentRuntimeInternal(
     clearThreadRuntimeConfig(threadId);
     turnState.clearThread(threadId);
     turnReplayFilter.clearThread(threadId);
+  }
+
+  function markProviderSessionNotIdle(threadId: string): void {
+    idleProviderSessionSinceMsByThreadId.delete(threadId);
+  }
+
+  function markHostedProviderSessionIdle(threadId: string): void {
+    if (
+      threadIdentityRegistry.getProviderSession(threadId) === null ||
+      turnState.getActiveTurnId(threadId) !== null ||
+      pendingTurnStartThreadIds.has(threadId)
+    ) {
+      return;
+    }
+    if (!idleProviderSessionSinceMsByThreadId.has(threadId)) {
+      idleProviderSessionSinceMsByThreadId.set(threadId, Date.now());
+    }
+  }
+
+  function observeProviderSessionIdleState(event: ThreadEvent): void {
+    if (event.type === "turn/started") {
+      pendingTurnStartThreadIds.delete(event.threadId);
+      markProviderSessionNotIdle(event.threadId);
+      return;
+    }
+
+    if (event.type === "turn/completed") {
+      pendingTurnStartThreadIds.delete(event.threadId);
+      markHostedProviderSessionIdle(event.threadId);
+      return;
+    }
+
+    if (event.type === "provider/error" && event.willRetry !== true) {
+      pendingTurnStartThreadIds.delete(event.threadId);
+      markHostedProviderSessionIdle(event.threadId);
+    }
+  }
+
+  function findReapableIdleProviderSession(
+    args: FindReapableIdleProviderSessionArgs,
+  ): ReapIdleProviderSessionCandidate | null {
+    if (
+      threadHasInFlightOperation(args.threadId) ||
+      pendingTurnStartThreadIds.has(args.threadId) ||
+      turnState.getActiveTurnId(args.threadId) !== null
+    ) {
+      return null;
+    }
+
+    const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
+    if (runtimeConfig?.providerId !== CODEX_PROVIDER_ID) {
+      return null;
+    }
+
+    const providerThreadId = threadIdentityRegistry.getProviderThreadId(
+      args.threadId,
+    );
+    if (!providerThreadId) {
+      return null;
+    }
+
+    const idleSinceMs = idleProviderSessionSinceMsByThreadId.get(args.threadId);
+    if (idleSinceMs === undefined) {
+      idleProviderSessionSinceMsByThreadId.set(args.threadId, args.nowMs);
+      return null;
+    }
+
+    if (args.nowMs - idleSinceMs < args.idleForMs) {
+      return null;
+    }
+
+    return {
+      idleSinceMs,
+      providerThreadId,
+      runtimeConfig,
+      threadId: args.threadId,
+    };
   }
 
   function requireProviderThreadId(threadId: string): string {
@@ -734,6 +866,7 @@ function createAgentRuntimeInternal(
         replayResult.event,
       );
       turnState.observe(normalizedEvent);
+      observeProviderSessionIdleState(normalizedEvent);
       if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
         codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
       }
@@ -848,113 +981,122 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      const processKey = resolveProviderProcessKey({ providerId, threadId });
-      await runtime.ensureProvider({ providerId, forThreadId: threadId });
-
-      const proc = requireProviderProcess({ processKey, providerId });
-      const providerSkillRoots = skillRootsForProvider(providerId);
-      assertProviderSupportsExecutionOptions({
-        adapter: proc.adapter,
-        options: execOpts,
-        providerId,
-      });
-      threadIdentityRegistry.registerThreadProvider({
-        providerId,
-        providerState: proc.identity,
-        shouldWaitForProviderIdentity: true,
+      return runThreadOperation({
         threadId,
-      });
-      setThreadRuntimeConfig(threadId, {
-        dynamicTools,
-        disallowedTools,
-        environmentId,
-        instructionMode,
-        instructions,
-        options: execOpts,
-        processKey,
-        projectId,
-        providerId,
-        skillRoots: providerSkillRoots,
-        workspacePath: options.workspacePath,
-      });
+        work: async () => {
+          const processKey = resolveProviderProcessKey({
+            providerId,
+            threadId,
+          });
+          await runtime.ensureProvider({ providerId, forThreadId: threadId });
 
-      const envVars = buildThreadShellEnvironment({
-        baseShellEnv: options.shellEnv,
-        environmentId,
-        projectId,
-        threadStoragePath: resolveThreadStoragePath({
-          options,
-          threadId,
-        }),
-        threadId,
-      });
+          const proc = requireProviderProcess({ processKey, providerId });
+          const providerSkillRoots = skillRootsForProvider(providerId);
+          assertProviderSupportsExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+            providerId,
+          });
+          threadIdentityRegistry.registerThreadProvider({
+            providerId,
+            providerState: proc.identity,
+            shouldWaitForProviderIdentity: true,
+            threadId,
+          });
+          setThreadRuntimeConfig(threadId, {
+            dynamicTools,
+            disallowedTools,
+            environmentId,
+            instructionMode,
+            instructions,
+            options: execOpts,
+            processKey,
+            projectId,
+            providerId,
+            skillRoots: providerSkillRoots,
+            workspacePath: options.workspacePath,
+          });
 
-      const adapterCommand: AdapterCommand = {
-        type: "thread/start",
-        threadId,
-        cwd: options.workspacePath,
-        options: toProviderExecutionContext({
-          envVars,
-          execOpts,
-          instructions,
-          skillRoots: providerSkillRoots,
-        }),
-        dynamicTools,
-        disallowedTools,
-        instructionMode,
-      };
-      const cmd = requireProviderRequestPlan({
-        commandType: adapterCommand.type,
-        plan: proc.adapter.buildCommandPlan(adapterCommand),
-        providerId,
-      });
+          const envVars = buildThreadShellEnvironment({
+            baseShellEnv: options.shellEnv,
+            environmentId,
+            projectId,
+            threadStoragePath: resolveThreadStoragePath({
+              options,
+              threadId,
+            }),
+            threadId,
+          });
 
-      const result = await sendCommand({
-        proc,
-        message: cmd,
-        resultSchema: threadIdentityResultSchema,
-      });
-      const providerThreadId = resolveThreadIdentityResult({
-        result,
-        threadId,
-      });
-      if (providerThreadId) {
-        recordProviderThreadIdentity(proc, threadId, providerThreadId);
-      }
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-        sourceThreadId: threadId,
-      });
+          const adapterCommand: AdapterCommand = {
+            type: "thread/start",
+            threadId,
+            cwd: options.workspacePath,
+            options: toProviderExecutionContext({
+              envVars,
+              execOpts,
+              instructions,
+              skillRoots: providerSkillRoots,
+            }),
+            dynamicTools,
+            disallowedTools,
+            instructionMode,
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId,
+          });
 
-      const resolved = await waitForProviderThreadIdentity(
-        proc,
-        threadId,
-        5000,
-      );
-      if (!resolved) {
-        throw new Error(
-          `Provider "${providerId}" did not return a providerThreadId for thread "${threadId}" within 5 seconds`,
-        );
-      }
+          const result = await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: threadIdentityResultSchema,
+          });
+          const providerThreadId = resolveThreadIdentityResult({
+            result,
+            threadId,
+          });
+          if (providerThreadId) {
+            recordProviderThreadIdentity(proc, threadId, providerThreadId);
+          }
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            ...(providerThreadId !== undefined ? { providerThreadId } : {}),
+            sourceThreadId: threadId,
+          });
 
-      if (input && input.length > 0) {
-        if (clientRequestId === undefined) {
-          throw new Error(
-            `Thread start with input requires a client request id for ${threadId}`,
+          const resolved = await waitForProviderThreadIdentity(
+            proc,
+            threadId,
+            5000,
           );
-        }
-        await runtime.runTurn({
-          threadId,
-          input,
-          clientRequestId,
-          options: execOpts,
-          instructions,
-        });
-      }
+          if (!resolved) {
+            throw new Error(
+              `Provider "${providerId}" did not return a providerThreadId for thread "${threadId}" within 5 seconds`,
+            );
+          }
 
-      return { providerThreadId: resolved };
+          if (input && input.length > 0) {
+            if (clientRequestId === undefined) {
+              throw new Error(
+                `Thread start with input requires a client request id for ${threadId}`,
+              );
+            }
+            await runtime.runTurn({
+              threadId,
+              input,
+              clientRequestId,
+              options: execOpts,
+              instructions,
+            });
+          }
+
+          markHostedProviderSessionIdle(threadId);
+          return { providerThreadId: resolved };
+        },
+      });
     },
 
     async resumeThread({
@@ -969,101 +1111,113 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      const processKey = resolveProviderProcessKey({ providerId, threadId });
-      await runtime.ensureProvider({ providerId, forThreadId: threadId });
-
-      const proc = requireProviderProcess({ processKey, providerId });
-      const providerSkillRoots = skillRootsForProvider(providerId);
-      assertProviderSupportsExecutionOptions({
-        adapter: proc.adapter,
-        options: execOpts,
-        providerId,
-      });
-      threadIdentityRegistry.registerThreadProvider({
-        providerId,
-        providerState: proc.identity,
-        shouldWaitForProviderIdentity: providerThreadId === undefined,
+      return runThreadOperation({
         threadId,
-      });
-      setThreadRuntimeConfig(threadId, {
-        dynamicTools,
-        disallowedTools,
-        environmentId,
-        instructionMode,
-        instructions,
-        options: execOpts,
-        processKey,
-        projectId,
-        providerId,
-        skillRoots: providerSkillRoots,
-        workspacePath: options.workspacePath,
-      });
+        work: async () => {
+          const processKey = resolveProviderProcessKey({
+            providerId,
+            threadId,
+          });
+          await runtime.ensureProvider({ providerId, forThreadId: threadId });
 
-      if (providerThreadId) {
-        recordProviderThreadIdentity(proc, threadId, providerThreadId);
-      }
+          const proc = requireProviderProcess({ processKey, providerId });
+          const providerSkillRoots = skillRootsForProvider(providerId);
+          assertProviderSupportsExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+            providerId,
+          });
+          threadIdentityRegistry.registerThreadProvider({
+            providerId,
+            providerState: proc.identity,
+            shouldWaitForProviderIdentity: providerThreadId === undefined,
+            threadId,
+          });
+          setThreadRuntimeConfig(threadId, {
+            dynamicTools,
+            disallowedTools,
+            environmentId,
+            instructionMode,
+            instructions,
+            options: execOpts,
+            processKey,
+            projectId,
+            providerId,
+            skillRoots: providerSkillRoots,
+            workspacePath: options.workspacePath,
+          });
 
-      const envVars = buildThreadShellEnvironment({
-        baseShellEnv: options.shellEnv,
-        environmentId,
-        projectId,
-        threadStoragePath: resolveThreadStoragePath({
-          options,
-          threadId,
-        }),
-        threadId,
+          if (providerThreadId) {
+            recordProviderThreadIdentity(proc, threadId, providerThreadId);
+          }
+
+          const envVars = buildThreadShellEnvironment({
+            baseShellEnv: options.shellEnv,
+            environmentId,
+            projectId,
+            threadStoragePath: resolveThreadStoragePath({
+              options,
+              threadId,
+            }),
+            threadId,
+          });
+
+          const adapterCommand: AdapterCommand = {
+            type: "thread/resume",
+            threadId,
+            cwd: options.workspacePath,
+            providerThreadId:
+              providerThreadId ?? requireProviderThreadId(threadId),
+            options: toProviderExecutionContext({
+              envVars,
+              execOpts,
+              instructions,
+              skillRoots: providerSkillRoots,
+            }),
+            dynamicTools,
+            disallowedTools,
+            instructionMode,
+          };
+          const plan = proc.adapter.buildCommandPlan(adapterCommand);
+          if (plan.kind === "noop") {
+            const currentProviderThreadId =
+              providerThreadId ??
+              threadIdentityRegistry.getProviderThreadId(threadId);
+            if (!currentProviderThreadId) {
+              throw new Error(
+                `No provider thread id available for ${threadId}`,
+              );
+            }
+            return { providerThreadId: currentProviderThreadId };
+          }
+          const cmd = plan;
+
+          const result = await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: threadIdentityResultSchema,
+          });
+          const resolvedId =
+            resolveThreadIdentityResult({ result, threadId }) ??
+            providerThreadId ??
+            threadIdentityRegistry.getProviderThreadId(threadId);
+          if (!resolvedId) {
+            throw new Error(
+              `Provider resume did not return a thread id for ${threadId}`,
+            );
+          }
+          recordProviderThreadIdentity(proc, threadId, resolvedId);
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            providerThreadId: resolvedId,
+            sourceThreadId: threadId,
+          });
+
+          markHostedProviderSessionIdle(threadId);
+          return { providerThreadId: resolvedId };
+        },
       });
-
-      const adapterCommand: AdapterCommand = {
-        type: "thread/resume",
-        threadId,
-        cwd: options.workspacePath,
-        providerThreadId: providerThreadId ?? requireProviderThreadId(threadId),
-        options: toProviderExecutionContext({
-          envVars,
-          execOpts,
-          instructions,
-          skillRoots: providerSkillRoots,
-        }),
-        dynamicTools,
-        disallowedTools,
-        instructionMode,
-      };
-      const plan = proc.adapter.buildCommandPlan(adapterCommand);
-      if (plan.kind === "noop") {
-        const currentProviderThreadId =
-          providerThreadId ??
-          threadIdentityRegistry.getProviderThreadId(threadId);
-        if (!currentProviderThreadId) {
-          throw new Error(`No provider thread id available for ${threadId}`);
-        }
-        return { providerThreadId: currentProviderThreadId };
-      }
-      const cmd = plan;
-
-      const result = await sendCommand({
-        proc,
-        message: cmd,
-        resultSchema: threadIdentityResultSchema,
-      });
-      const resolvedId =
-        resolveThreadIdentityResult({ result, threadId }) ??
-        providerThreadId ??
-        threadIdentityRegistry.getProviderThreadId(threadId);
-      if (!resolvedId) {
-        throw new Error(
-          `Provider resume did not return a thread id for ${threadId}`,
-        );
-      }
-      recordProviderThreadIdentity(proc, threadId, resolvedId);
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        providerThreadId: resolvedId,
-        sourceThreadId: threadId,
-      });
-
-      return { providerThreadId: resolvedId };
     },
 
     async runTurn({
@@ -1073,56 +1227,66 @@ function createAgentRuntimeInternal(
       options: execOpts,
       instructions,
     }) {
-      await restartCodexThreadForNextTurnIfNeeded({
+      return runThreadOperation({
         threadId,
-        options: execOpts,
-        instructions,
-      });
-      const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcessForThread(threadId);
-      assertProviderSupportsExecutionOptions({
-        adapter: proc.adapter,
-        options: execOpts,
-        providerId: pid,
-      });
-      await reconfigureThreadIfNeeded({
-        threadId,
-        options: execOpts,
-        instructions,
-      });
+        work: async () => {
+          await restartCodexThreadForNextTurnIfNeeded({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          assertProviderSupportsExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+            providerId: pid,
+          });
+          await reconfigureThreadIfNeeded({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
 
-      const adapterCommand: AdapterCommand = {
-        type: "turn/start",
-        threadId,
-        providerThreadId: requireProviderThreadId(threadId),
-        input,
-        clientRequestId,
-        options: toProviderExecutionContext({
-          envVars: {},
-          execOpts,
-          instructions,
-        }),
-      };
-      const cmd = requireProviderRequestPlan({
-        commandType: adapterCommand.type,
-        plan: proc.adapter.buildCommandPlan(adapterCommand),
-        providerId: pid,
-      });
-      const preparedTurnStart = proc.adapter.prepareTurnStart(adapterCommand);
-      try {
-        await sendCommand({
-          proc,
-          message: cmd,
-          resultSchema: ignoredJsonRpcResultSchema,
-        });
-      } catch (error) {
-        preparedTurnStart?.rollback();
-        throw error;
-      }
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        sourceThreadId: threadId,
+          const adapterCommand: AdapterCommand = {
+            type: "turn/start",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+            input,
+            clientRequestId,
+            options: toProviderExecutionContext({
+              envVars: {},
+              execOpts,
+              instructions,
+            }),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          const preparedTurnStart =
+            proc.adapter.prepareTurnStart(adapterCommand);
+          pendingTurnStartThreadIds.add(threadId);
+          markProviderSessionNotIdle(threadId);
+          try {
+            await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: ignoredJsonRpcResultSchema,
+            });
+          } catch (error) {
+            pendingTurnStartThreadIds.delete(threadId);
+            markHostedProviderSessionIdle(threadId);
+            preparedTurnStart?.rollback();
+            throw error;
+          }
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            sourceThreadId: threadId,
+          });
+        },
       });
     },
 
@@ -1134,150 +1298,177 @@ function createAgentRuntimeInternal(
       options: execOpts,
       instructions,
     }) {
-      const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcessForThread(threadId);
-      assertProviderSupportsExecutionOptions({
-        adapter: proc.adapter,
-        options: execOpts,
-        providerId: pid,
-      });
-
-      const activeTurnId = turnState.getActiveTurnId(threadId);
-      if (activeTurnId !== expectedTurnId) {
-        options.onStderr?.(
-          `Ignoring stale steer for thread "${threadId}" on turn "${expectedTurnId}"; active turn is ${activeTurnId ?? "none"}.`,
-        );
-        return {
-          status: "stale",
-          activeTurnId,
-        };
-      }
-
-      await restartCodexThreadForNextTurnIfNeeded({
+      return runThreadOperation({
         threadId,
-        options: execOpts,
-        instructions,
-      });
-      await reconfigureThreadIfNeeded({
-        threadId,
-        options: execOpts,
-        instructions,
-      });
+        work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          assertProviderSupportsExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+            providerId: pid,
+          });
 
-      const adapterCommand: AdapterCommand = {
-        type: "turn/steer",
-        threadId,
-        providerThreadId: requireProviderThreadId(threadId),
-        expectedTurnId,
-        input,
-        clientRequestId,
-        options: toProviderExecutionContext({
-          envVars: {},
-          execOpts,
-          instructions,
-        }),
-      };
-      const cmd = requireProviderRequestPlan({
-        commandType: adapterCommand.type,
-        plan: proc.adapter.buildCommandPlan(adapterCommand),
-        providerId: pid,
+          const activeTurnId = turnState.getActiveTurnId(threadId);
+          if (activeTurnId !== expectedTurnId) {
+            options.onStderr?.(
+              `Ignoring stale steer for thread "${threadId}" on turn "${expectedTurnId}"; active turn is ${activeTurnId ?? "none"}.`,
+            );
+            return {
+              status: "stale",
+              activeTurnId,
+            };
+          }
+
+          await restartCodexThreadForNextTurnIfNeeded({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
+          await reconfigureThreadIfNeeded({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
+
+          const adapterCommand: AdapterCommand = {
+            type: "turn/steer",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+            expectedTurnId,
+            input,
+            clientRequestId,
+            options: toProviderExecutionContext({
+              envVars: {},
+              execOpts,
+              instructions,
+            }),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+          });
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            sourceThreadId: threadId,
+          });
+          return { status: "steered" };
+        },
       });
-      await sendCommand({
-        proc,
-        message: cmd,
-        resultSchema: ignoredJsonRpcResultSchema,
-      });
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        sourceThreadId: threadId,
-      });
-      return { status: "steered" };
     },
 
     async stopThread({ threadId }) {
-      const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcessForThread(threadId);
-      const providerThreadId = requireProviderThreadId(threadId);
-      const activeTurnId = turnState.getActiveTurnId(threadId);
-      const adapterCommand: AdapterCommand = {
-        type: "thread/stop",
+      return runThreadOperation({
         threadId,
-        providerThreadId,
-        activeTurnId,
-      };
-      const cmd = proc.adapter.buildCommandPlan(adapterCommand);
+        work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          const providerThreadId = requireProviderThreadId(threadId);
+          const activeTurnId = turnState.getActiveTurnId(threadId);
+          const adapterCommand: AdapterCommand = {
+            type: "thread/stop",
+            threadId,
+            providerThreadId,
+            activeTurnId,
+          };
+          const cmd = proc.adapter.buildCommandPlan(adapterCommand);
 
-      if (cmd.kind === "noop") {
-        if (activeTurnId) {
-          throw new Error(
-            `Adapter "${pid}" returned no provider request for thread/stop with active turn: ${cmd.reason}`,
-          );
-        }
-        forgetThreadRuntimeState(proc, threadId);
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
-        return;
-      }
+          if (cmd.kind === "noop") {
+            if (activeTurnId) {
+              throw new Error(
+                `Adapter "${pid}" returned no provider request for thread/stop with active turn: ${cmd.reason}`,
+              );
+            }
+            forgetThreadRuntimeState(proc, threadId);
+            await shutdownThreadScopedCodexProcessIfIdle(proc);
+            return;
+          }
 
-      await sendCommand({
-        proc,
-        message: cmd,
-        resultSchema: ignoredJsonRpcResultSchema,
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+          });
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            sourceThreadId: threadId,
+          });
+          forgetThreadRuntimeState(proc, threadId);
+          await shutdownThreadScopedCodexProcessIfIdle(proc);
+        },
       });
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        sourceThreadId: threadId,
-      });
-      forgetThreadRuntimeState(proc, threadId);
-      await shutdownThreadScopedCodexProcessIfIdle(proc);
     },
 
     async renameThread({ threadId, title }) {
-      const pid = resolveProviderForThread(threadId);
-      const proc = requireProviderProcessForThread(threadId);
-      if (!proc.adapter.capabilities.supportsRename) {
-        throw new Error(`Provider "${pid}" does not support thread rename.`);
-      }
-
-      const adapterCommand: AdapterCommand = {
-        type: "thread/name/set",
+      return runThreadOperation({
         threadId,
-        providerThreadId: requireProviderThreadId(threadId),
-        title: toProviderExternalThreadName(title),
-      };
-      const cmd = requireProviderRequestPlan({
-        commandType: adapterCommand.type,
-        plan: proc.adapter.buildCommandPlan(adapterCommand),
-        providerId: pid,
-      });
-      await sendCommand({
-        proc,
-        message: cmd,
-        resultSchema: ignoredJsonRpcResultSchema,
-      });
-      emitAcceptedCommandEvents({
-        command: adapterCommand,
-        proc,
-        sourceThreadId: threadId,
+        work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          if (!proc.adapter.capabilities.supportsRename) {
+            throw new Error(
+              `Provider "${pid}" does not support thread rename.`,
+            );
+          }
+
+          const adapterCommand: AdapterCommand = {
+            type: "thread/name/set",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+            title: toProviderExternalThreadName(title),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+          });
+          emitAcceptedCommandEvents({
+            command: adapterCommand,
+            proc,
+            sourceThreadId: threadId,
+          });
+        },
       });
     },
 
     async archiveThread({ threadId, providerId, providerThreadId }) {
-      await archiveOrUnarchiveThread({
-        commandType: "thread/archive",
-        providerId,
-        providerThreadId,
+      return runThreadOperation({
         threadId,
+        work: async () => {
+          await archiveOrUnarchiveThread({
+            commandType: "thread/archive",
+            providerId,
+            providerThreadId,
+            threadId,
+          });
+        },
       });
     },
 
     async unarchiveThread({ threadId, providerId, providerThreadId }) {
-      await archiveOrUnarchiveThread({
-        commandType: "thread/unarchive",
-        providerId,
-        providerThreadId,
+      return runThreadOperation({
         threadId,
+        work: async () => {
+          await archiveOrUnarchiveThread({
+            commandType: "thread/unarchive",
+            providerId,
+            providerThreadId,
+            threadId,
+          });
+        },
       });
     },
 
@@ -1319,6 +1510,44 @@ function createAgentRuntimeInternal(
       return threadIdentityRegistry.getProviderSession(threadId);
     },
 
+    async reapIdleProviderSessions({ idleForMs, nowMs }) {
+      const reapedSessions: ReapedIdleProviderSession[] = [];
+      for (const threadId of [...threadRuntimeConfigs.keys()]) {
+        const candidate = findReapableIdleProviderSession({
+          idleForMs,
+          nowMs,
+          threadId,
+        });
+        if (!candidate) {
+          continue;
+        }
+
+        let proc: ProviderProcess;
+        try {
+          proc = requireProviderProcess({
+            processKey: candidate.runtimeConfig.processKey,
+            providerId: candidate.runtimeConfig.providerId,
+          });
+        } catch {
+          continue;
+        }
+        if (!isThreadScopedCodexProcess(proc)) {
+          continue;
+        }
+
+        forgetThreadRuntimeState(proc, candidate.threadId);
+        await shutdownThreadScopedCodexProcessIfIdle(proc);
+        reapedSessions.push({
+          idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
+          providerId: candidate.runtimeConfig.providerId,
+          providerThreadId: candidate.providerThreadId,
+          threadId: candidate.threadId,
+        });
+      }
+
+      return { reapedSessions };
+    },
+
     hasThread(threadId) {
       return threadIdentityRegistry.getProviderSession(threadId) !== null;
     },
@@ -1328,6 +1557,9 @@ function createAgentRuntimeInternal(
     },
 
     async shutdown() {
+      idleProviderSessionSinceMsByThreadId.clear();
+      pendingTurnStartThreadIds.clear();
+      threadOperationCounts.clear();
       turnState.clear();
       turnReplayFilter.clear();
       await providerProcesses.shutdown();

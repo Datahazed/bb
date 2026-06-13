@@ -286,6 +286,9 @@ rl.on("line", (line) => {
     });
     const inputText = textInput(messageParams.input);
     fs.appendFileSync(logPath, "turn-start:" + processId + ":" + threadId + ":" + inputText + "\\n");
+    if (inputText.includes("hold_turn")) {
+      return;
+    }
     if (inputText.includes("account_error")) {
       send({
         jsonrpc: "2.0",
@@ -717,6 +720,192 @@ rl.on("line", (line) => {
       const accountErrorProcessId = accountErrorTurn.split(":")[1];
       const afterReauthProcessId = afterReauthTurn.split(":")[1];
       expect(afterReauthProcessId).not.toBe(accountErrorProcessId);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("reaps an idle codex thread process and resumes it later", async () => {
+    const events: ThreadEvent[] = [];
+    const processLogPath = join(tmpDir, "idle-reaper-provider.log");
+    const threadScopedProviderScript = join(tmpDir, "idle-reaper-provider.cjs");
+    writeThreadScopedProviderScript({
+      logPath: processLogPath,
+      scriptPath: threadScopedProviderScript,
+    });
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(threadScopedProviderScript);
+        return {
+          ...adapter,
+          displayName: "Codex",
+          id: "codex",
+        };
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      const initialSession = runtime.getProviderSession("t1");
+      if (!initialSession) {
+        throw new Error("Expected initial provider session");
+      }
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222255",
+        threadId: "t1",
+        input: [promptTextInput({ text: "before reap" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "codex",
+        runtime,
+        text: "before reap",
+        threadId: "t1",
+      });
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 30 * 60 * 1000,
+        nowMs: Date.now() + 31 * 60 * 1000,
+      });
+      const reapedSession = result.reapedSessions[0];
+      if (!reapedSession) {
+        throw new Error("Expected one reaped provider session");
+      }
+      expect(result.reapedSessions).toHaveLength(1);
+      expect(reapedSession).toMatchObject({
+        providerId: "codex",
+        providerThreadId: initialSession.providerThreadId,
+        threadId: "t1",
+      });
+      expect(reapedSession.idleForMs).toBeGreaterThanOrEqual(30 * 60 * 1000);
+      await waitForRuntimeState({
+        label: "idle codex provider process exited",
+        predicate: () =>
+          readLogLines(processLogPath).filter((line) =>
+            line.startsWith("exit:"),
+          ).length === 1,
+        runtime,
+      });
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.getProviderSession("t1")).toBeNull();
+
+      events.splice(0, events.length);
+      await runtime.resumeThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerThreadId: initialSession.providerThreadId,
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222256",
+        threadId: "t1",
+        input: [promptTextInput({ text: "after reap" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "codex",
+        runtime,
+        text: "after reap",
+        threadId: "t1",
+      });
+
+      const logLines = readLogLines(processLogPath);
+      expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
+        2,
+      );
+      expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
+        1,
+      );
+      expect(
+        logLines.filter(
+          (line) =>
+            line.startsWith("thread-resume:") &&
+            line.endsWith(`:t1:${initialSession.providerThreadId}`),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("does not reap a codex thread process while a turn is active", async () => {
+    const processLogPath = join(tmpDir, "active-turn-reaper-provider.log");
+    const threadScopedProviderScript = join(
+      tmpDir,
+      "active-turn-reaper-provider.cjs",
+    );
+    writeThreadScopedProviderScript({
+      logPath: processLogPath,
+      scriptPath: threadScopedProviderScript,
+    });
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(threadScopedProviderScript);
+        return {
+          ...adapter,
+          displayName: "Codex",
+          id: "codex",
+        };
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222257",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hold_turn" })],
+        options: fullRuntimeOptions,
+      });
+      const activeTurnId = await runtime.waitForActiveTurn("t1", {
+        timeoutMs: 1_000,
+      });
+      expect(activeTurnId).not.toBeNull();
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 60 * 60 * 1000,
+      });
+
+      expect(result.reapedSessions).toEqual([]);
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(
+        readLogLines(processLogPath).filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(0);
+      await runtime.stopThread({ threadId: "t1" });
     } finally {
       await runtime.shutdown();
     }

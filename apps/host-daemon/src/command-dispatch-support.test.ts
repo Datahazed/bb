@@ -70,6 +70,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     getProviderSession() {
       return null;
     },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
     hasThread() {
       return false;
     },
