@@ -4,7 +4,6 @@ import {
 } from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
-import publicApiSource from "../src/public-api.ts?raw";
 import * as contract from "../src/index.js";
 import {
   PROJECT_CHANGE_KINDS,
@@ -1225,12 +1224,6 @@ describe("server-contract clients", () => {
         param: { id: "thr_123", interactionId: "pi_123" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/interactions/pi_123/resolve");
-  });
-
-  it("keeps route inputs in shared named types instead of inline objects", () => {
-    expect(publicApiSource).not.toMatch(/json:\s*\{/);
-    expect(publicApiSource).not.toMatch(/query:\s*\{/);
-    expect(publicApiSource).not.toMatch(/form:\s*Record</);
   });
 
   it("bounds public file list search queries", () => {

@@ -151,6 +151,15 @@ export interface RouteResponseOptions<
 }
 
 export function jsonResponse<Output>(
+  options: RouteResponseOptions<Output, 201>,
+): RouteResponseDescriptor<Output, 201, "json">;
+export function jsonResponse<Output>(
+  options: RouteResponseOptions<Output, 404>,
+): RouteResponseDescriptor<Output, 404, "json">;
+export function jsonResponse<Output>(
+  options: RouteResponseOptions<Output, 409>,
+): RouteResponseDescriptor<Output, 409, "json">;
+export function jsonResponse<Output>(
   options?: DefaultRouteResponseOptions<Output>,
 ): RouteResponseDescriptor<Output, 200, "json">;
 export function jsonResponse<Output, const Status extends ContentfulStatusCode>(
@@ -205,8 +214,13 @@ export function formRequest<InputPrefix, FormInput>(): FormRouteRequest<
   return { source: "form" };
 }
 
-export function defineRoute<const Definition extends RouteDefinition>(
-  definition: Definition,
-): Definition {
+export function defineRoute<
+  const Path extends string,
+  const Method extends RouteMethod,
+  const Request extends AnyRouteRequestDescriptor,
+  const Response extends RouteResponseDefinition,
+>(
+  definition: RouteDefinition<Path, Method, Request, Response>,
+): RouteDefinition<Path, Method, Request, Response> {
   return definition;
 }
