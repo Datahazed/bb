@@ -211,12 +211,6 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-const threadDeletedCommandSchema = hostDaemonThreadTargetSchema
-  .extend({
-    type: z.literal("thread.deleted"),
-  })
-  .strict();
-
 const interactiveResolveCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("interactive.resolve"),
@@ -806,16 +800,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: null,
-  }),
-  "thread.deleted": defineHostDaemonCommandDescriptor({
-    type: "thread.deleted",
-    schema: threadDeletedCommandSchema,
-    resultSchema: emptyCommandResultSchema,
-    transport: "settled",
-    retryable: false,
-    flushEventsBeforeResult: false,
-    envLane: null,
     providerLane: null,
   }),
   "interactive.resolve": defineHostDaemonCommandDescriptor({

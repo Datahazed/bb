@@ -281,7 +281,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.rename"),
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
-    commandRpcResponseSuccessSchemaFor("thread.deleted"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
     commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
     commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),

@@ -34,7 +34,6 @@ import {
 } from "./codex-chatgpt-client.js";
 import {
   ensureThreadRuntime,
-  handleThreadDeleted,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
@@ -214,7 +213,6 @@ const commandHandlers: CommandHandlerMap = {
     });
     return {};
   },
-  "thread.deleted": handleThreadDeleted,
   "interactive.resolve": resolveInteractiveRequest,
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
