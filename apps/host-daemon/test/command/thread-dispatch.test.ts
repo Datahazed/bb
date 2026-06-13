@@ -1,9 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  listAvailableProviders,
-  type AgentRuntimeOptions,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
@@ -1549,20 +1546,6 @@ describe("thread command dispatch", () => {
     expect(createRuntimeCalls).toBe(2);
     expect(replacementFake.state.resumedThreadId).toBe("thread-1");
     expect(replacementFake.state.ranTurnText).toBe("after exit");
-  });
-
-  it("covers provider.list", async () => {
-    const harness = createHarness();
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "provider.list",
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result).toEqual({ providers: listAvailableProviders() });
-    expect(result.providers.length).toBeGreaterThan(0);
   });
 
   it("covers provider.list_models", async () => {

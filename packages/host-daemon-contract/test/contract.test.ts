@@ -193,22 +193,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     mimeType: "image/png",
     sizeBytes: 8,
   },
-  "provider.list": {
-    providers: [
-      {
-        id: "codex",
-        displayName: "Codex",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
-          supportsServiceTier: true,
-          supportsUserQuestion: true,
-          supportedPermissionModes: ["workspace-write"],
-        },
-        available: true,
-      },
-    ],
-  },
   "provider.list_models": {
     models: [
       {
@@ -285,16 +269,15 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "provider.list command with a provider-model result",
-    commandType: "provider.list",
+    name: "provider.list_models command with a provider-list result",
+    commandType: "provider.list_models",
     result: {
-      models: [],
-      selectedOnlyModels: [],
+      providers: [],
     },
   },
   {
-    name: "provider.list command with unrelated collection result",
-    commandType: "provider.list",
+    name: "provider.list_models command with unrelated collection result",
+    commandType: "provider.list_models",
     result: {
       captures: [],
     },
@@ -864,7 +847,6 @@ describe("host-daemon command schemas", () => {
         path: "README.md",
         dotfiles: "deny",
       },
-      { type: "provider.list" },
       { type: "provider.list_models", providerId: "codex" },
       {
         type: "environment.cleanup_preflight",
@@ -2138,34 +2120,6 @@ describe("host-daemon session schemas", () => {
     ).toThrow();
 
     expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      }),
-    ).toEqual({
-      type: "host-rpc.request",
-      requestId: "rpc-1",
-      command: { type: "provider.list" },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "provider.list",
-      ok: true,
-      result: { providers: [] },
-    });
-
-    expect(
       hostDaemonDaemonWsMessageSchema.parse({
         type: "host-rpc.response",
         requestId: "rpc-1",
@@ -2229,9 +2183,9 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { providers: [] },
       }).success,
     ).toBe(false);
   });

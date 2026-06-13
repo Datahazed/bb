@@ -8,7 +8,6 @@ import {
   projectSourceCheckoutSchema,
   threadGitDiffResponseSchema,
   workspaceProvisionTypeSchema,
-  providerInfoSchema,
   runtimeThreadExecutionOptionsSchema,
   provisioningTranscriptEntrySchema,
   workspaceDiffTargetSchema,
@@ -391,10 +390,6 @@ const hostListBranchesCommandSchema = z.object({
   limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
 });
 
-const providerListCommandSchema = z.object({
-  type: z.literal("provider.list"),
-});
-
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
@@ -665,10 +660,6 @@ const pathListResultSchema = z.object({
 // full raw set across all roots and the server owns de-dup/sort/limit.
 const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
-});
-
-const providerListResultSchema = z.object({
-  providers: z.array(providerInfoSchema),
 });
 
 const providerListModelsResultSchema = z.object({
@@ -971,16 +962,6 @@ export const hostDaemonCommandRegistry = {
     type: "host.read_file_relative",
     schema: hostReadFileRelativeCommandSchema,
     resultSchema: fileReadResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-    providerLane: null,
-  }),
-  "provider.list": defineHostDaemonCommandDescriptor({
-    type: "provider.list",
-    schema: providerListCommandSchema,
-    resultSchema: providerListResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

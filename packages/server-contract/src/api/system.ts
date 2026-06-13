@@ -55,14 +55,6 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
-export const systemProvidersQuerySchema = z
-  .object({
-    hostId: z.string().min(1),
-    environmentId: z.string().min(1),
-  })
-  .partial();
-export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
-
 export interface SystemVoiceTranscriptionForm {
   [key: string]: string | Blob;
 }

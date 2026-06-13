@@ -1,4 +1,5 @@
 import { getExperiments, setExperiments } from "@bb/db";
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -6,15 +7,12 @@ import {
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { ServerAppDeps } from "../types.js";
-import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
 import { resolveSystemExecutionOptions } from "../services/system/execution-options.js";
-import { resolveSystemLookupHostId } from "../services/system/host-lookup.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
@@ -51,15 +49,9 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     return context.json({ ok: true });
   });
 
-  get(routes.providers, async (context, query) => {
-    const hostId = resolveSystemLookupHostId(deps, query);
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "provider.list" },
-    });
-    return context.json(result.providers);
-  });
+  get(routes.providers, (context) =>
+    context.json(listBuiltInAgentProviderInfos()),
+  );
 
   get(routes.executionOptions, async (context, query) =>
     context.json(await resolveSystemExecutionOptions(deps, query)),

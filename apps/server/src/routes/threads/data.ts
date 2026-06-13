@@ -92,7 +92,7 @@ async function buildThreadComposerBootstrapResponse(
     ? thread.environmentId
     : null;
   // Null when we deliberately skip resolution (archived / environment-less
-  // threads). Resolving hits the host via live provider.list + list_models
+  // threads). Resolving hits the host via live provider.list_models
   // RPCs, so we only pay that cost when the thread has a live environment whose
   // composer can actually use the list. Null (not an empty object) keeps
   // "not resolved" distinct from "resolved to nothing".

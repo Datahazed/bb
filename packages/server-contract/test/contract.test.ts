@@ -176,10 +176,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "System execution option lookup may target a specific host directly.",
   "systemExecutionOptionsQuerySchema.providerId":
     "System execution option lookup may omit provider id to use the chosen host's default provider.",
-  "systemProvidersQuerySchema.environmentId":
-    "System provider lookup may target a host indirectly through an environment id.",
-  "systemProvidersQuerySchema.hostId":
-    "System provider lookup may target a specific host directly.",
   "threadEventsQuerySchema.afterSeq":
     "Thread event listing may omit afterSeq to start from the beginning.",
   "threadEventsQuerySchema.limit":
@@ -1345,7 +1341,6 @@ describe("server-contract clients", () => {
       squashMergeActionResponseSchema: contract.squashMergeActionResponseSchema,
       systemExecutionOptionsQuerySchema:
         contract.systemExecutionOptionsQuerySchema,
-      systemProvidersQuerySchema: contract.systemProvidersQuerySchema,
       threadEventsQuerySchema: contract.threadEventsQuerySchema,
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:

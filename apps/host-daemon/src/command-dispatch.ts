@@ -7,7 +7,6 @@ import type {
   HostDaemonSettledCommandType,
   WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
-import { listAvailableProviders } from "@bb/agent-runtime";
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
@@ -270,9 +269,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
-  "provider.list": async () => ({
-    providers: listAvailableProviders(),
-  }),
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,

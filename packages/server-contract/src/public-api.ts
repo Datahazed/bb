@@ -86,7 +86,6 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
-  SystemProvidersQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
@@ -158,7 +157,6 @@ import {
   sendMessageRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
-  systemProvidersQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -831,9 +829,7 @@ export const publicApiRoutes = {
     providers: defineRoute({
       path: "/system/providers",
       method: "get",
-      request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
-        systemProvidersQuerySchema,
-      ),
+      request: noRequest(),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
     voiceTranscription: defineRoute({

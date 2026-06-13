@@ -1,10 +1,5 @@
-import type {
-  SystemExecutionOptionsQuery,
-  SystemProvidersQuery,
-} from "@bb/server-contract";
+import type { SystemExecutionOptionsQuery } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
-
-export interface ProviderListArgs extends SystemProvidersQuery {}
 
 export interface ProviderModelsArgs extends SystemExecutionOptionsQuery {}
 
@@ -15,19 +10,15 @@ export type ProviderModelsResult = PublicApiOutput<
 >;
 
 export interface ProvidersArea {
-  list(args?: ProviderListArgs): Promise<ProviderListResult>;
+  list(): Promise<ProviderListResult>;
   models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
 }
 
 export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
   const { transport } = args;
   return {
-    async list(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system.providers.$get({
-          query: input,
-        }),
-      );
+    async list() {
+      return transport.readJson(transport.api.v1.system.providers.$get());
     },
     async models(input = {}) {
       return transport.readJson(
