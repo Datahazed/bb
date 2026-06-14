@@ -17,6 +17,8 @@ import type { HostDaemonLogger } from "./logger.js";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import {
   RuntimeManager,
+  type RuntimeManagerReapIdleProviderSessionsArgs,
+  type RuntimeManagerReapIdleProviderSessionsResult,
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
 import {
@@ -50,13 +52,31 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 
+interface IdleProviderSessionReaperTimer {
+  clear(): void;
+  unref(): void;
+}
+
+type IdleProviderSessionReaperIntervalFn = (
+  callback: () => void,
+  intervalMs: number,
+) => IdleProviderSessionReaperTimer;
+
 interface IdleProviderSessionReaper {
   stop(): void;
 }
 
+interface IdleProviderSessionReaperRuntimeManager {
+  reapIdleProviderSessions(
+    args: RuntimeManagerReapIdleProviderSessionsArgs,
+  ): Promise<RuntimeManagerReapIdleProviderSessionsResult>;
+}
+
 interface StartIdleProviderSessionReaperArgs {
   logger: HostDaemonLogger;
-  runtimeManager: RuntimeManager;
+  nowMs: () => number;
+  runtimeManager: IdleProviderSessionReaperRuntimeManager;
+  setIntervalFn: IdleProviderSessionReaperIntervalFn;
 }
 
 export interface CreateHostDaemonAppOptions {
@@ -99,11 +119,11 @@ interface PendingInteractiveInterruptRequest {
   threadIds: readonly string[];
 }
 
-function startIdleProviderSessionReaper(
+export function startIdleProviderSessionReaper(
   args: StartIdleProviderSessionReaperArgs,
 ): IdleProviderSessionReaper {
   let running = false;
-  const timer = setInterval(() => {
+  const timer = args.setIntervalFn(() => {
     if (running) {
       return;
     }
@@ -111,7 +131,7 @@ function startIdleProviderSessionReaper(
     void args.runtimeManager
       .reapIdleProviderSessions({
         idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
-        nowMs: Date.now(),
+        nowMs: args.nowMs(),
       })
       .then((result) => {
         if (result.reapedSessions.length === 0) {
@@ -142,10 +162,10 @@ function startIdleProviderSessionReaper(
         running = false;
       });
   }, IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS);
-  timer.unref?.();
+  timer.unref();
   return {
     stop() {
-      clearInterval(timer);
+      timer.clear();
     },
   };
 }
@@ -490,7 +510,19 @@ export async function createHostDaemonApp(
   });
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
+    nowMs: Date.now,
     runtimeManager,
+    setIntervalFn: (callback, intervalMs) => {
+      const timer = setInterval(callback, intervalMs);
+      return {
+        clear() {
+          clearInterval(timer);
+        },
+        unref() {
+          timer.unref();
+        },
+      };
+    },
   });
   let sendTerminalMessage: TerminalManagerOptions["sendMessage"] = (message) =>
     sendServerMessage(message);

@@ -173,12 +173,7 @@ interface RequireProviderRequestPlanArgs {
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
-  new Set<ProviderErrorCategory>([
-    "billing",
-    "budget-exceeded",
-    "rate-limit",
-    "unauthorized",
-  ]);
+  new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
   /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
 
@@ -541,7 +536,6 @@ function createAgentRuntimeInternal(
 
     const idleSinceMs = idleProviderSessionSinceMsByThreadId.get(args.threadId);
     if (idleSinceMs === undefined) {
-      idleProviderSessionSinceMsByThreadId.set(args.threadId, args.nowMs);
       return null;
     }
 

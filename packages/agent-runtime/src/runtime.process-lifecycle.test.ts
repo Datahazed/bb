@@ -278,14 +278,22 @@ rl.on("line", (line) => {
       return;
     }
     const turnId = "turn-" + nextTurnId++;
+    const inputText = textInput(messageParams.input);
     send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+    fs.appendFileSync(logPath, "turn-start:" + processId + ":" + threadId + ":" + inputText + "\\n");
+    if (inputText.includes("prestart_account_error")) {
+      send({
+        jsonrpc: "2.0",
+        method: "provider/account_error",
+        params: { threadId, providerThreadId, turnId },
+      });
+      return;
+    }
     send({
       jsonrpc: "2.0",
       method: "turn/started",
       params: { threadId, providerThreadId, turnId },
     });
-    const inputText = textInput(messageParams.input);
-    fs.appendFileSync(logPath, "turn-start:" + processId + ":" + threadId + ":" + inputText + "\\n");
     if (inputText.includes("hold_turn")) {
       return;
     }
@@ -725,6 +733,87 @@ rl.on("line", (line) => {
     }
   });
 
+  it("reaps a codex thread process after a terminal provider error before turn start", async () => {
+    const events: ThreadEvent[] = [];
+    const processLogPath = join(tmpDir, "prestart-error-reaper-provider.log");
+    const threadScopedProviderScript = join(
+      tmpDir,
+      "prestart-error-reaper-provider.cjs",
+    );
+    writeThreadScopedProviderScript({
+      logPath: processLogPath,
+      scriptPath: threadScopedProviderScript,
+    });
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () =>
+        createCodexAccountErrorAdapter(threadScopedProviderScript),
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      const initialSession = runtime.getProviderSession("t1");
+      if (!initialSession) {
+        throw new Error("Expected initial provider session");
+      }
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222255",
+        threadId: "t1",
+        input: [promptTextInput({ text: "prestart_account_error" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForRuntimeState({
+        label: "pre-start terminal codex account error",
+        predicate: () =>
+          events.some(
+            (event) =>
+              event.type === "provider/error" &&
+              event.threadId === "t1" &&
+              event.willRetry === false,
+          ),
+        runtime,
+      });
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+      });
+
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({
+          providerId: "codex",
+          providerThreadId: initialSession.providerThreadId,
+          threadId: "t1",
+        }),
+      ]);
+      await waitForRuntimeState({
+        label: "pre-start error codex provider process exited",
+        predicate: () =>
+          readLogLines(processLogPath).filter((line) =>
+            line.startsWith("exit:"),
+          ).length === 1,
+        runtime,
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("reaps an idle codex thread process and resumes it later", async () => {
     const events: ThreadEvent[] = [];
     const processLogPath = join(tmpDir, "idle-reaper-provider.log");
@@ -779,6 +868,16 @@ rl.on("line", (line) => {
         text: "before reap",
         threadId: "t1",
       });
+
+      const belowThresholdResult = await runtime.reapIdleProviderSessions({
+        idleForMs: 30 * 60 * 1000,
+        nowMs: Date.now() + 29 * 60 * 1000,
+      });
+      expect(belowThresholdResult.reapedSessions).toEqual([]);
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(
+        readLogLines(processLogPath).filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(0);
 
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
