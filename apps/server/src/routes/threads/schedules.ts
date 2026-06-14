@@ -11,8 +11,8 @@ import {
 import {
   publicApiRoutes,
   typedRoutes,
-  type CreateThreadScheduleRequest,
   type PublicApiSchema,
+  type ResolvedCreateThreadScheduleRequest,
   type UpdateThreadScheduleConfigRequest,
   type UpdateThreadScheduleEnabledRequest,
   type UpdateThreadScheduleRequest,
@@ -65,11 +65,11 @@ function computeNextFireAt(values: ScheduleTimingValues): number {
 }
 
 function resolveCreateThreadScheduleValues(
-  payload: CreateThreadScheduleRequest,
+  payload: ResolvedCreateThreadScheduleRequest,
 ): CreateThreadScheduleValues {
   return {
     name: payload.name,
-    enabled: payload.enabled ?? true,
+    enabled: payload.enabled,
     cron: payload.cron,
     timezone: payload.timezone,
     prompt: payload.prompt,

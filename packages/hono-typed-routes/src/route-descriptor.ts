@@ -5,7 +5,6 @@ import type { EmptyInput, Endpoint } from "./endpoint.js";
 
 export type RouteMethod = "get" | "post" | "patch" | "delete" | "put";
 export type RouteResponseFormat = "json" | "text" | "binary";
-export type RouteRequestSource = "none" | "query" | "json" | "form";
 
 export interface RouteResponseDescriptor<
   Output,

@@ -171,6 +171,9 @@ export const createThreadScheduleRequestSchema = z
 export type CreateThreadScheduleRequest = z.input<
   typeof createThreadScheduleRequestSchema
 >;
+export type ResolvedCreateThreadScheduleRequest = z.output<
+  typeof createThreadScheduleRequestSchema
+>;
 
 export const updateThreadScheduleEnabledRequestSchema = z
   .object({
@@ -218,6 +221,9 @@ export const createAutomationRequestSchema = z.object({
   autoArchive: z.boolean().default(false),
 });
 export type CreateAutomationRequest = z.input<
+  typeof createAutomationRequestSchema
+>;
+export type ResolvedCreateAutomationRequest = z.output<
   typeof createAutomationRequestSchema
 >;
 

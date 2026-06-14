@@ -12,15 +12,14 @@ import {
 import type { Project } from "@bb/domain";
 import {
   automationsOverviewResponseSchema,
-  createAutomationRequestSchema,
   publicApiRoutes,
   type AutomationAction,
   type AutomationsOverviewAutomation,
   type AutomationsOverviewThreadSchedule,
   type AutomationScheduleTrigger,
   typedRoutes,
-  type CreateAutomationRequest,
   type PublicApiSchema,
+  type ResolvedCreateAutomationRequest,
   type UpdateAutomationConfigRequest,
   type UpdateAutomationEnabledRequest,
   type UpdateAutomationRequest,
@@ -144,15 +143,14 @@ function computeScheduledNextRunAt(trigger: AutomationScheduleTrigger) {
 }
 
 function resolveCreateAutomationValues(
-  payload: CreateAutomationRequest,
+  payload: ResolvedCreateAutomationRequest,
 ): CreateAutomationValues {
-  const parsed = createAutomationRequestSchema.parse(payload);
   return {
-    name: parsed.name,
-    enabled: parsed.enabled,
-    trigger: parsed.trigger,
-    action: parsed.action,
-    autoArchive: parsed.autoArchive,
+    name: payload.name,
+    enabled: payload.enabled,
+    trigger: payload.trigger,
+    action: payload.action,
+    autoArchive: payload.autoArchive,
   };
 }
 

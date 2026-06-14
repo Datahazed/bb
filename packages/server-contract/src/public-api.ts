@@ -293,9 +293,11 @@ export const publicApiRoutes = {
     createAutomation: defineRoute({
       path: "/projects/:id/automations",
       method: "post",
-      request: jsonRequest<PathProjectId, CreateAutomationRequest>(
-        createAutomationRequestSchema,
-      ),
+      request: jsonRequest<
+        PathProjectId,
+        CreateAutomationRequest,
+        typeof createAutomationRequestSchema
+      >(createAutomationRequestSchema),
       response: jsonResponse<Automation>({ status: 201 }),
     }),
     updateAutomation: defineRoute({
@@ -439,6 +441,10 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<WorkspacePathListResponse>(),
     }),
+    /**
+     * Execute an environment action such as commit or squash_merge.
+     * Returns 409 when the action is blocked by environment state.
+     */
     actions: defineRoute({
       path: "/environments/:id/actions",
       method: "post",
@@ -515,9 +521,11 @@ export const publicApiRoutes = {
     createSchedule: defineRoute({
       path: "/threads/:id/schedules",
       method: "post",
-      request: jsonRequest<PathId, CreateThreadScheduleRequest>(
-        createThreadScheduleRequestSchema,
-      ),
+      request: jsonRequest<
+        PathId,
+        CreateThreadScheduleRequest,
+        typeof createThreadScheduleRequestSchema
+      >(createThreadScheduleRequestSchema),
       response: jsonResponse<ThreadSchedule>({ status: 201 }),
     }),
     updateSchedule: defineRoute({
@@ -534,6 +542,13 @@ export const publicApiRoutes = {
       request: noRequest<PathThreadScheduleId>(),
       response: jsonResponse<{ ok: true }>(),
     }),
+    /**
+     * Send a message to a thread.
+     * mode=queue-if-active queues when the thread is active; otherwise it
+     * starts a turn. mode=steer-if-active steers when the thread is active;
+     * otherwise it starts a turn. Legacy mode=auto starts idle threads and
+     * uses the provider's auto target for active turns.
+     */
     send: defineRoute({
       path: "/threads/:id/send",
       method: "post",
@@ -554,6 +569,10 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
+    /**
+     * Create a queued message; senderThreadId preserves agent-to-agent context
+     * until send time.
+     */
     createQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "post",
@@ -562,6 +581,10 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
     }),
+    /**
+     * Send a previously queued message in the requested mode, then delete the
+     * queued message.
+     */
     sendQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId/send",
       method: "post",

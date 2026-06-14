@@ -10,7 +10,6 @@ export type {
   RouteParsedInput,
   RouteRequestDescriptor,
   RouteRequestInput,
-  RouteRequestSource,
   RouteResponseDescriptor,
   RouteResponseFormat,
 } from "./route-descriptor.js";
