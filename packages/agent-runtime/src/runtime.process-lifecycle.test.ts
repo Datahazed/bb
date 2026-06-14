@@ -895,12 +895,17 @@ rl.on("line", (line) => {
       });
       expect(activeTurnId).not.toBeNull();
 
-      const result = await runtime.reapIdleProviderSessions({
+      const firstResult = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 60 * 60 * 1000,
+      });
+      const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
       });
 
-      expect(result.reapedSessions).toEqual([]);
+      expect(firstResult.reapedSessions).toEqual([]);
+      expect(secondResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
       expect(
         readLogLines(processLogPath).filter((line) => line.startsWith("exit:")),
