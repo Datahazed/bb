@@ -37,12 +37,10 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ZodError, type ZodType } from "zod";
 import type { Endpoint } from "./endpoint.js";
 import type {
-  AnyRouteResponseDescriptor,
   EndpointFromRouteDescriptor,
   RouteDefinition,
   RouteMethod,
   RouteParsedInput,
-  RouteResponseDefinition,
 } from "./route-descriptor.js";
 
 // ---------------------------------------------------------------------------
@@ -171,8 +169,6 @@ type TypedRegisterWithDescriptor<
 interface TypedRoutesOptions {
   /** Factory for validation errors. Receives the Zod issue message. */
   onValidationError?: (message: string) => Error;
-  /** Validate descriptor-backed JSON responses against response schemas. */
-  validateResponses?: boolean;
 }
 
 type ValidationMessageFromZodError = (error: ZodError) => string;
@@ -197,68 +193,6 @@ const validationMessageFromZodError: ValidationMessageFromZodError = (
   }
   return issue.message;
 };
-
-function routeResponseDescriptors(
-  response: RouteResponseDefinition,
-): readonly AnyRouteResponseDescriptor[] {
-  return "format" in response ? [response] : response;
-}
-
-function responseStatusFromJsonArgs(args: unknown[]): number {
-  const statusOrInit = args[1];
-  if (typeof statusOrInit === "number") {
-    return statusOrInit;
-  }
-  if (
-    statusOrInit !== null &&
-    typeof statusOrInit === "object" &&
-    "status" in statusOrInit &&
-    typeof statusOrInit.status === "number"
-  ) {
-    return statusOrInit.status;
-  }
-  return 200;
-}
-
-function wrapContextWithResponseValidation(
-  context: Context,
-  response: RouteResponseDefinition,
-) {
-  const descriptors = routeResponseDescriptors(response);
-  const originalJson: Function = context.json.bind(context);
-  return Object.assign(Object.create(context), {
-    json(...args: unknown[]) {
-      const status = responseStatusFromJsonArgs(args);
-      const descriptor = descriptors.find(
-        (candidate) =>
-          candidate.format === "json" && candidate.status === status,
-      );
-      const schema = descriptor?.schema;
-      if (!schema) {
-        return originalJson(args[0], args[1], args[2]);
-      }
-      try {
-        args[0] = schema.parse(args[0]);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw new Error(
-            `Invalid response for status ${status}: ${validationMessageFromZodError(error)}`,
-          );
-        }
-        throw error;
-      }
-      return originalJson(args[0], args[1], args[2]);
-    },
-  });
-}
-
-function wrapHandlerWithResponseValidation(
-  response: RouteResponseDefinition,
-  handler: Function,
-): Function {
-  return (context: Context, ...args: unknown[]) =>
-    handler(wrapContextWithResponseValidation(context, response), ...args);
-}
 
 export function typedRoutes<Schema>(
   app: Hono<any, any, any>,
@@ -313,9 +247,6 @@ export function typedRoutes<Schema>(
     descriptor: RouteDefinition,
     handler: Function,
   ): void {
-    const routeHandler = options?.validateResponses
-      ? wrapHandlerWithResponseValidation(descriptor.response, handler)
-      : handler;
     if (
       descriptor.request.source === "query" ||
       descriptor.request.source === "json"
@@ -325,11 +256,11 @@ export function typedRoutes<Schema>(
         descriptor.request.source,
         descriptor.path,
         descriptor.request.schema,
-        routeHandler,
+        handler,
       );
       return;
     }
-    register(method, descriptor.request.source, descriptor.path, routeHandler);
+    register(method, descriptor.request.source, descriptor.path, handler);
   }
 
   function registerFromArgs(

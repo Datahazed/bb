@@ -693,11 +693,6 @@ const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
 
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
-export type HostDaemonCommandProviderLane =
-  | "thread-start"
-  | "turn-submit"
-  | "provider-thread"
-  | "thread-stop";
 type HostDaemonFlushEventsBeforeResult = boolean | "when-initiated";
 
 interface HostDaemonCommandDescriptor<
@@ -714,7 +709,6 @@ interface HostDaemonCommandDescriptor<
   retryable: Retryable;
   flushEventsBeforeResult: HostDaemonFlushEventsBeforeResult;
   envLane: HostDaemonCommandEnvironmentLane | null;
-  providerLane: HostDaemonCommandProviderLane | null;
 }
 
 function defineHostDaemonCommandDescriptor<
@@ -750,7 +744,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: "read",
-    providerLane: "thread-start",
   }),
   "turn.submit": defineHostDaemonCommandDescriptor({
     type: "turn.submit",
@@ -760,7 +753,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: "read",
-    providerLane: "turn-submit",
   }),
   "thread.stop": defineHostDaemonCommandDescriptor({
     type: "thread.stop",
@@ -770,7 +762,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
-    providerLane: "thread-stop",
   }),
   "thread.rename": defineHostDaemonCommandDescriptor({
     type: "thread.rename",
@@ -780,7 +771,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "thread.archive": defineHostDaemonCommandDescriptor({
     type: "thread.archive",
@@ -790,7 +780,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: "provider-thread",
   }),
   "thread.unarchive": defineHostDaemonCommandDescriptor({
     type: "thread.unarchive",
@@ -800,7 +789,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: null,
   }),
   "interactive.resolve": defineHostDaemonCommandDescriptor({
     type: "interactive.resolve",
@@ -810,7 +798,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
-    providerLane: "provider-thread",
   }),
   "codex.inference.complete": defineHostDaemonCommandDescriptor({
     type: "codex.inference.complete",
@@ -820,7 +807,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "codex.voice.transcribe": defineHostDaemonCommandDescriptor({
     type: "codex.voice.transcribe",
@@ -830,7 +816,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "environment.provision": defineHostDaemonCommandDescriptor({
     type: "environment.provision",
@@ -840,7 +825,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: "when-initiated",
     envLane: "write",
-    providerLane: null,
   }),
   "environment.provision.cancel": defineHostDaemonCommandDescriptor({
     type: "environment.provision.cancel",
@@ -850,7 +834,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
-    providerLane: null,
   }),
   "environment.destroy": defineHostDaemonCommandDescriptor({
     type: "environment.destroy",
@@ -860,7 +843,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: null,
   }),
   "workspace.commit": defineHostDaemonCommandDescriptor({
     type: "workspace.commit",
@@ -870,7 +852,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: null,
   }),
   "workspace.squash_merge": defineHostDaemonCommandDescriptor({
     type: "workspace.squash_merge",
@@ -880,7 +861,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
-    providerLane: null,
   }),
   "host.list_files": defineHostDaemonCommandDescriptor({
     type: "host.list_files",
@@ -890,7 +870,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.list_paths": defineHostDaemonCommandDescriptor({
     type: "host.list_paths",
@@ -900,7 +879,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.list_commands": defineHostDaemonCommandDescriptor({
     type: "host.list_commands",
@@ -910,7 +888,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.list_branches": defineHostDaemonCommandDescriptor({
     type: "host.list_branches",
@@ -920,7 +897,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.file_metadata": defineHostDaemonCommandDescriptor({
     type: "host.file_metadata",
@@ -930,7 +906,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.read_file": defineHostDaemonCommandDescriptor({
     type: "host.read_file",
@@ -940,7 +915,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "host.read_file_relative": defineHostDaemonCommandDescriptor({
     type: "host.read_file_relative",
@@ -950,7 +924,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "provider.list_models": defineHostDaemonCommandDescriptor({
     type: "provider.list_models",
@@ -960,7 +933,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
   "environment.cleanup_preflight": defineHostDaemonCommandDescriptor({
     type: "environment.cleanup_preflight",
@@ -970,7 +942,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: "read",
-    providerLane: null,
   }),
   "workspace.status": defineHostDaemonCommandDescriptor({
     type: "workspace.status",
@@ -980,7 +951,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: "read",
-    providerLane: null,
   }),
   "workspace.diff": defineHostDaemonCommandDescriptor({
     type: "workspace.diff",
@@ -990,7 +960,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: "read",
-    providerLane: null,
   }),
   "workspace.pull_request": defineHostDaemonCommandDescriptor({
     type: "workspace.pull_request",
@@ -1000,7 +969,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-    providerLane: null,
   }),
 };
 
@@ -1214,12 +1182,6 @@ export function hostDaemonEnvironmentLaneForCommand(
   command: HostDaemonRpcCommand,
 ): HostDaemonCommandEnvironmentLane | null {
   return hostDaemonCommandRegistry[command.type].envLane;
-}
-
-export function hostDaemonProviderLaneForCommand(
-  command: HostDaemonCommand,
-): HostDaemonCommandProviderLane | null {
-  return hostDaemonCommandRegistry[command.type].providerLane;
 }
 
 export function shouldFlushEventsBeforeReportingCommandResult(

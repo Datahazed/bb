@@ -14,7 +14,6 @@ export interface RouteResponseDescriptor<
 > {
   status: Status;
   format: Format;
-  schema?: ZodType<Output>;
   readonly output?: Output;
 }
 
@@ -140,43 +139,32 @@ export type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
 export type ApiSchemaFromRouteDescriptors<Descriptors> =
   ApiSchemaFromRouteUnion<RouteDescriptorUnion<Descriptors>>;
 
-export interface DefaultRouteResponseOptions<Output> {
-  schema?: ZodType<Output>;
-}
-
-export interface RouteResponseOptions<
-  Output,
-  Status extends ContentfulStatusCode,
-> {
+export interface RouteResponseOptions<Status extends ContentfulStatusCode> {
   status: Status;
-  schema?: ZodType<Output>;
 }
 
 export function jsonResponse<Output>(
-  options: RouteResponseOptions<Output, 201>,
+  options: RouteResponseOptions<201>,
 ): RouteResponseDescriptor<Output, 201, "json">;
 export function jsonResponse<Output>(
-  options: RouteResponseOptions<Output, 404>,
+  options: RouteResponseOptions<404>,
 ): RouteResponseDescriptor<Output, 404, "json">;
 export function jsonResponse<Output>(
-  options: RouteResponseOptions<Output, 409>,
+  options: RouteResponseOptions<409>,
 ): RouteResponseDescriptor<Output, 409, "json">;
 export function jsonResponse<Output>(
-  options?: DefaultRouteResponseOptions<Output>,
+  options?: undefined,
 ): RouteResponseDescriptor<Output, 200, "json">;
 export function jsonResponse<Output, const Status extends ContentfulStatusCode>(
-  options: RouteResponseOptions<Output, Status>,
+  options: RouteResponseOptions<Status>,
 ): RouteResponseDescriptor<Output, Status, "json">;
 export function jsonResponse<Output, const Status extends ContentfulStatusCode>(
-  options?:
-    | DefaultRouteResponseOptions<Output>
-    | RouteResponseOptions<Output, Status>,
+  options?: RouteResponseOptions<Status>,
 ): RouteResponseDescriptor<Output, 200 | Status, "json"> {
   const status = options && "status" in options ? options.status : 200;
   return {
     status,
     format: "json",
-    schema: options?.schema,
   };
 }
 
