@@ -5,6 +5,7 @@ import {
   fileNameFromPath,
   getTimelineFeedDetail,
   hasTimelineFeedDetailPart,
+  type TimelineFeedViewMetadata,
   type TimelineImageViewViewWorkRow,
   type TimelineViewWorkflowWorkRow,
   type TimelineViewWorkRow,
@@ -49,6 +50,11 @@ type TimelineOutputWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "command" | "tool" }
 >;
+type TimelineFileChangeWorkViewRow = Extract<
+  TimelineViewWorkRow,
+  { workKind: "file-change" }
+> &
+  Partial<TimelineFeedViewMetadata>;
 
 interface CommandWorkRowBodyProps {
   row: Extract<TimelineOutputWorkRow, { workKind: "command" }>;
@@ -59,9 +65,15 @@ interface ToolWorkRowBodyProps {
 }
 
 interface FileChangeWorkRowBodyProps {
-  row: Extract<TimelineViewWorkRow, { workKind: "file-change" }>;
+  row: TimelineFileChangeWorkViewRow;
   themeType: ThreadTimelineTheme;
   workspaceRootPath: string | undefined;
+}
+
+interface TimelineFileDiffLoadingStateArgs {
+  detailError: boolean;
+  detailLoaded: boolean;
+  row: TimelineFileChangeWorkViewRow;
 }
 
 interface TimelineFeedRowDetailQueryArgs {
@@ -110,6 +122,23 @@ function useTimelineFeedRowDetail({
   });
 }
 
+export function shouldShowTimelineFileDiffLoading({
+  detailError,
+  detailLoaded,
+  row,
+}: TimelineFileDiffLoadingStateArgs): boolean {
+  if (
+    detailLoaded ||
+    detailError ||
+    !hasTimelineFeedDetailPart(row, "file-diff")
+  ) {
+    return false;
+  }
+
+  const previewDiff = row.change.diff;
+  return previewDiff === null || previewDiff.trim().length === 0;
+}
+
 function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
   const output = useTimelineWorkOutput(row);
   return (
@@ -146,11 +175,11 @@ function FileChangeWorkRowBody({
     row,
     parts: ["file-diff", "stderr", "stdout"],
   });
-  const hasPendingDiff =
-    row.change.diff === null &&
-    hasTimelineFeedDetailPart(row, "file-diff") &&
-    !detailQuery.data &&
-    !detailQuery.isError;
+  const hasPendingDiff = shouldShowTimelineFileDiffLoading({
+    detailError: detailQuery.isError,
+    detailLoaded: detailQuery.data !== undefined,
+    row,
+  });
   const diff = detailQuery.data
     ? detailQuery.data.parts.fileDiff
     : row.change.diff;
