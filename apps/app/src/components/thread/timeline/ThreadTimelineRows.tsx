@@ -37,6 +37,7 @@ import {
   type BuildTimelineViewRowsOptions,
   type ThreadTimelineViewRow,
   type TimelineFeedSummaryViewRow,
+  type TimelineFeedViewMetadata,
   type TimelineFeedViewRowsCache,
   type TimelineActivityIntentTitle,
   type TimelineTitle,
@@ -249,10 +250,15 @@ interface TurnRowBodyProps {
 }
 
 type LazyTurnRowBodyProps = TurnRowBodyProps;
+type TimelineDelegationViewWorkRow = Extract<
+  TimelineViewWorkRow,
+  { workKind: "delegation" }
+> &
+  Partial<TimelineFeedViewMetadata>;
 
 interface DelegationRowBodyProps {
   compactActivityIntents: boolean;
-  row: Extract<TimelineViewWorkRow, { workKind: "delegation" }>;
+  row: TimelineDelegationViewWorkRow;
 }
 
 interface TimelineSystemDetailBlockProps {
@@ -272,6 +278,12 @@ interface TimelineFeedRowDetailQueryArgs {
 interface TimelineRowDetailRetryProps {
   label: string;
   onRetry: () => void;
+}
+
+interface DelegationDetailsLoadingStateArgs {
+  detailError: boolean;
+  detailLoaded: boolean;
+  row: TimelineDelegationViewWorkRow;
 }
 
 interface BuildTimelineRowsListItemsArgs {
@@ -399,6 +411,21 @@ function useTimelineFeedRowDetail({
     parts,
     threadId: row.threadId,
   });
+}
+
+export function shouldShowDelegationDetailsLoading({
+  detailError,
+  detailLoaded,
+  row,
+}: DelegationDetailsLoadingStateArgs): boolean {
+  return (
+    !detailLoaded &&
+    !detailError &&
+    row.childRows.length === 0 &&
+    row.output.trim().length === 0 &&
+    (hasTimelineFeedDetailPart(row, "children") ||
+      hasTimelineFeedDetailPart(row, "output"))
+  );
 }
 
 function timelineRowTitleRenderStateKey({
@@ -1162,6 +1189,11 @@ function DelegationRowBody({
     void detailQuery.refetch();
   }, [detailQuery]);
   const delegationActive = row.status === "pending";
+  const detailsLoading = shouldShowDelegationDetailsLoading({
+    detailError: detailQuery.isError,
+    detailLoaded: detailQuery.data !== undefined,
+    row,
+  });
 
   if (detailQuery.isError && childRows.length === 0 && output.length === 0) {
     return (
@@ -1169,6 +1201,13 @@ function DelegationRowBody({
         label="Failed to load subagent details."
         onRetry={handleRetry}
       />
+    );
+  }
+  if (detailsLoading) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        Loading subagent details...
+      </div>
     );
   }
 

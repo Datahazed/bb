@@ -10,6 +10,7 @@ export interface TerminalOutputBlockProps {
   commandLine?: string;
   exitCode?: number | null;
   metadataLines?: readonly string[];
+  outputLoading?: boolean;
   /**
    * Whether the producing row is still pending. Drives sticky-bottom for the
    * output scroll so newly streamed bytes land visible unless the user has
@@ -114,6 +115,7 @@ export function TerminalOutputBlock({
   exitCode = null,
   metadataLines = [],
   output,
+  outputLoading = false,
   streaming = false,
 }: TerminalOutputBlockProps) {
   const renderedOutputHtml = useMemo(
@@ -165,6 +167,15 @@ export function TerminalOutputBlock({
           >
             <div dangerouslySetInnerHTML={{ __html: renderedOutputHtml }} />
           </TimelineDetailScroll>
+        ) : outputLoading ? (
+          <div
+            className={cn(
+              commandLine || metadataLines.length > 0 ? "mt-1.5" : null,
+              "text-muted-foreground",
+            )}
+          >
+            Loading output...
+          </div>
         ) : null}
         {showExitCode ? (
           <div

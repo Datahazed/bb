@@ -76,6 +76,17 @@ interface TimelineFileDiffLoadingStateArgs {
   row: TimelineFileChangeWorkViewRow;
 }
 
+interface TimelineWorkOutputLoadingStateArgs {
+  detailError: boolean;
+  detailLoaded: boolean;
+  row: TimelineOutputWorkRow;
+}
+
+interface TimelineWorkOutputState {
+  loading: boolean;
+  output: string;
+}
+
 interface TimelineFeedRowDetailQueryArgs {
   parts: readonly TimelineFeedDetailPart[];
   row: TimelineViewWorkRow;
@@ -95,7 +106,9 @@ function compactDetailLines(lines: readonly DetailLine[]): string[] {
   return compactedLines;
 }
 
-function useTimelineWorkOutput(row: TimelineOutputWorkRow): string {
+function useTimelineWorkOutput(
+  row: TimelineOutputWorkRow,
+): TimelineWorkOutputState {
   const outputDetailQuery = useThreadTimelineWorkOutputDetail(
     {
       callId: row.callId,
@@ -108,7 +121,14 @@ function useTimelineWorkOutput(row: TimelineOutputWorkRow): string {
       enabled: row.outputDetail !== undefined,
     },
   );
-  return outputDetailQuery.data?.output ?? row.output;
+  return {
+    loading: shouldShowTimelineWorkOutputLoading({
+      detailError: outputDetailQuery.isError,
+      detailLoaded: outputDetailQuery.data !== undefined,
+      row,
+    }),
+    output: outputDetailQuery.data?.output ?? row.output,
+  };
 }
 
 function useTimelineFeedRowDetail({
@@ -139,15 +159,29 @@ export function shouldShowTimelineFileDiffLoading({
   return previewDiff === null || previewDiff.trim().length === 0;
 }
 
+export function shouldShowTimelineWorkOutputLoading({
+  detailError,
+  detailLoaded,
+  row,
+}: TimelineWorkOutputLoadingStateArgs): boolean {
+  return (
+    !detailLoaded &&
+    !detailError &&
+    row.outputDetail !== undefined &&
+    row.output.trim().length === 0
+  );
+}
+
 function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
-  const output = useTimelineWorkOutput(row);
+  const outputState = useTimelineWorkOutput(row);
   return (
     <TerminalOutputBlock
       commandLine={`$ ${row.command}`}
       metadataLines={compactDetailLines([
         row.source ? `source: ${row.source}` : null,
       ])}
-      output={output}
+      output={outputState.output}
+      outputLoading={outputState.loading}
       exitCode={row.exitCode}
       streaming={row.status === "pending"}
     />
@@ -155,14 +189,26 @@ function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
 }
 
 function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
-  const output = useTimelineWorkOutput(row);
-  return (
+  const outputState = useTimelineWorkOutput(row);
+  const detailBlock = (
     <ToolCallDetailBlock
       toolName={row.toolName}
       args={row.toolArgs}
-      output={output}
+      output={outputState.output}
       streaming={row.status === "pending"}
     />
+  );
+
+  if (!outputState.loading) {
+    return detailBlock;
+  }
+  return (
+    <div className="space-y-2">
+      {detailBlock}
+      <div className="rounded-md border border-border bg-surface-raised px-2 py-1.5 text-xs text-muted-foreground">
+        Loading output...
+      </div>
+    </div>
   );
 }
 
