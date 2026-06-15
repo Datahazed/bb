@@ -1,7 +1,5 @@
 import { resolveEnvironmentMergeBaseBranch } from "@bb/domain";
 import type {
-  TimelineFeedDetailPart,
-  TimelineFeedRow,
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
@@ -13,7 +11,6 @@ import {
 import { useThreadComposerBootstrap } from "@/hooks/queries/thread-composer-bootstrap-query";
 import {
   useThreadPendingInteractions,
-  useThreadTimelineRowDetail,
   useThreadSchedules,
   useThreadStorageFiles,
   useThreadTimelineFeed,
@@ -24,7 +21,6 @@ import { DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS } from "@/lib/thread-storage-f
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 
 const THREAD_DETAIL_DATA_OWNER_STALE_TIME_MS = 10_000;
-const EMPTY_TIMELINE_DETAIL_PARTS: readonly TimelineFeedDetailPart[] = [];
 
 interface ThreadDetailDataOwnerProps {
   bootstrapThread?: ThreadWithIncludesResponse;
@@ -33,63 +29,6 @@ interface ThreadDetailDataOwnerProps {
   hasThreadDetailBootstrapSettled: boolean;
   projectId?: string;
   threadId?: string;
-}
-
-interface ThreadTimelineRowDetailDataOwnerProps {
-  row: TimelineFeedRow;
-  threadId: string;
-}
-
-function initialTimelineRowDetailParts(
-  row: TimelineFeedRow,
-): readonly TimelineFeedDetailPart[] {
-  if (row.detail === null) {
-    return EMPTY_TIMELINE_DETAIL_PARTS;
-  }
-
-  const availableParts = new Set(row.detail.parts);
-  const parts: TimelineFeedDetailPart[] = [];
-  const includePart = (part: TimelineFeedDetailPart): void => {
-    if (availableParts.has(part)) {
-      parts.push(part);
-    }
-  };
-
-  switch (row.kind) {
-    case "conversation":
-      includePart("text");
-      break;
-    case "bundle-summary":
-    case "step-summary":
-      includePart("children");
-      break;
-    case "system":
-      includePart("system-detail");
-      break;
-    case "work":
-      if (row.workKind === "delegation") {
-        includePart("children");
-        includePart("output");
-      }
-      break;
-    case "turn":
-      break;
-  }
-
-  return parts.length > 0 ? parts : EMPTY_TIMELINE_DETAIL_PARTS;
-}
-
-function ThreadTimelineRowDetailDataOwner({
-  row,
-  threadId,
-}: ThreadTimelineRowDetailDataOwnerProps) {
-  useThreadTimelineRowDetail({
-    detail: row.detail,
-    parts: initialTimelineRowDetailParts(row),
-    threadId,
-  });
-
-  return null;
 }
 
 export function ThreadDetailDataOwner({
@@ -148,7 +87,7 @@ export function ThreadDetailDataOwner({
       enabled: canLoadThreadData && Boolean(activeProjectId),
     },
   );
-  const timelineFeedQuery = useThreadTimelineFeed(activeThreadId, {
+  useThreadTimelineFeed(activeThreadId, {
     enabled: canLoadThreadData,
     staleTime: Infinity,
   });
@@ -181,15 +120,5 @@ export function ThreadDetailDataOwner({
     enabled: canUseGitUi && environment !== undefined,
   });
 
-  return (
-    <>
-      {timelineFeedQuery.data?.rows.map((row) => (
-        <ThreadTimelineRowDetailDataOwner
-          key={row.key}
-          row={row}
-          threadId={activeThreadId}
-        />
-      ))}
-    </>
-  );
+  return null;
 }
