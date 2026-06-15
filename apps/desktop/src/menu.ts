@@ -1,6 +1,7 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
 export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+export const RELOAD_ACCELERATOR = "Command+R";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
@@ -72,7 +73,7 @@ export function buildApplicationMenuTemplate(
     {
       label: "View",
       submenu: [
-        { role: "reload" },
+        { accelerator: RELOAD_ACCELERATOR, role: "reload" },
         { role: "forceReload" },
         {
           accelerator: TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,

@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import {
+  RELOAD_ACCELERATOR,
   SERVER_DAEMON_LOGS_MENU_LABEL,
   TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,
   TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,
@@ -25,6 +26,12 @@ interface FindSubmenuItemArgs {
   template: MenuItemConstructorOptions[];
 }
 
+interface FindSubmenuRoleArgs {
+  itemRole: MenuItemConstructorOptions["role"];
+  parentLabel: string;
+  template: MenuItemConstructorOptions[];
+}
+
 function findSubmenuItem(
   args: FindSubmenuItemArgs,
 ): MenuItemConstructorOptions | null {
@@ -42,7 +49,40 @@ function findSubmenuItem(
   );
 }
 
+function findSubmenuRole(
+  args: FindSubmenuRoleArgs,
+): MenuItemConstructorOptions | null {
+  const parentItem = args.template.find(
+    (templateItem) => templateItem.label === args.parentLabel,
+  );
+  if (parentItem === undefined || !Array.isArray(parentItem.submenu)) {
+    return null;
+  }
+
+  return (
+    parentItem.submenu.find((submenuItem) => submenuItem.role === args.itemRole) ??
+    null
+  );
+}
+
 describe("application menu", () => {
+  it("uses Command+R for reload so Ctrl+R can reach focused terminals", () => {
+    const template = buildApplicationMenuTemplate({
+      createNewWindow() {},
+      openServerDaemonLogs() {},
+      serverDaemonLogsMenuEnabled: true,
+    });
+
+    const menuItem = findSubmenuRole({
+      itemRole: "reload",
+      parentLabel: "View",
+      template,
+    });
+
+    expect(menuItem).not.toBeNull();
+    expect(menuItem?.accelerator).toBe(RELOAD_ACCELERATOR);
+  });
+
   it("shows a developer tools toggle in the view menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
