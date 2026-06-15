@@ -741,19 +741,17 @@ export function ThreadDetailView() {
       return;
     }
     const newTab = createNewTabFixedPanelTab();
-    createTerminal.mutate(
-      {
+    void createTerminal
+      .mutateAsync({
         threadId,
         cols: DEFAULT_TERMINAL_COLS,
         rows: DEFAULT_TERMINAL_ROWS,
-      },
-      {
-        onSuccess: (session) => {
-          closeTab(newTab.id);
-          setActiveFixedTerminal(session.id);
-        },
-      },
-    );
+      })
+      .then((session) => {
+        closeTab(newTab.id);
+        setActiveFixedTerminal(session.id);
+      })
+      .catch(() => undefined);
   }, [
     canCreateTerminal,
     closeTab,
