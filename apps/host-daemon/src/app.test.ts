@@ -99,7 +99,6 @@ function createFetchRecorder(
           sessionId: "session-app-test",
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
-          trackedThreadTargets: [],
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },

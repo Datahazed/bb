@@ -43,14 +43,6 @@ export type HostDaemonLoadedEnvironment = z.infer<
   typeof hostDaemonLoadedEnvironmentSchema
 >;
 
-export const hostDaemonTrackedThreadTargetSchema = z.object({
-  environmentId: z.string().min(1),
-  threadId: z.string().min(1),
-});
-export type HostDaemonTrackedThreadTarget = z.infer<
-  typeof hostDaemonTrackedThreadTargetSchema
->;
-
 export const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
@@ -142,7 +134,6 @@ export const hostDaemonSessionOpenResponseSchema = z
     sessionId: z.string().min(1),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
-    trackedThreadTargets: z.array(hostDaemonTrackedThreadTargetSchema),
     watchSet: hostDaemonWatchSetSchema.default({
       generation: 0,
       workspaceTargets: [],

@@ -100,7 +100,6 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           sessionId: session.id,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
-          trackedThreadTargets: [],
           watchSet: deps.watchInterests.reconcileWatchSetForHost(
             daemon.hostId,
           ),

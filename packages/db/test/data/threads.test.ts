@@ -15,7 +15,6 @@ import {
   listStopRequestedThreads,
   listActiveVisiblePinnedThreadRoots,
   listThreadEnvironmentAssignmentsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   listThreads,
   listThreadsWithPendingInteractionState,
   updateThread,
@@ -1041,7 +1040,7 @@ describe("threads", () => {
     ).toBe(false);
   });
 
-  it("tracks storage targets only for live threads on non-destroyed environments", () => {
+  it("lists every host thread id including archived, deleted, and destroyed-environment threads", () => {
     const { db, project, host } = setup();
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
@@ -1080,12 +1079,7 @@ describe("threads", () => {
     archiveThread(db, noopNotifier, archivedThread.id);
     markThreadDeleted(db, noopNotifier, { threadId: deletedThread.id });
 
-    expect(
-      listTrackedThreadStorageTargetsOnHost(db, { hostId: host.id }),
-    ).toEqual([{ threadId: activeThread.id, environmentId: environment.id }]);
-    expect(
-      [...listHostThreadIds(db, { hostId: host.id })].sort(),
-    ).toEqual(
+    expect([...listHostThreadIds(db, { hostId: host.id })].sort()).toEqual(
       [
         activeThread.id,
         archivedThread.id,

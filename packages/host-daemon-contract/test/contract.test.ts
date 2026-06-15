@@ -1833,22 +1833,15 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [
-          {
-            environmentId: "env_123",
-            threadId: "thr_123",
-          },
-        ],
       }),
     ).toMatchObject({
       sessionId: "session_123",
       retiredEnvironmentIds: [],
-      trackedThreadTargets: [
-        {
-          environmentId: "env_123",
-          threadId: "thr_123",
-        },
-      ],
+      watchSet: {
+        generation: 0,
+        workspaceTargets: [],
+        threadStorageTargets: [],
+      },
     });
 
     expect(() =>
@@ -1856,7 +1849,6 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [],
         threadHighWaterMarks: { thr_123: 10 },
       }),
     ).toThrow();
