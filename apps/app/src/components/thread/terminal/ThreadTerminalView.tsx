@@ -397,7 +397,6 @@ export function ThreadTerminalView({
         handleTerminalKeyEvent({
           event,
           input: sendActiveInput,
-          platform: navigator.platform,
         });
       };
       containerElement.addEventListener("keydown", terminalKeyDownListener, {

@@ -1,14 +1,18 @@
 export const TERMINAL_REVERSE_SEARCH_INPUT = "\x12";
+const TERMINAL_REVERSE_SEARCH_KEY_CODE = 82;
 
 export interface TerminalKeyboardEvent {
   altKey: boolean;
+  code?: string;
   ctrlKey: boolean;
   key: string;
+  keyCode?: number;
   metaKey: boolean;
   preventDefault(): void;
   stopImmediatePropagation(): void;
   stopPropagation(): void;
   type: string;
+  which?: number;
 }
 
 export interface TerminalInputSender {
@@ -18,35 +22,37 @@ export interface TerminalInputSender {
 export interface HandleTerminalKeyEventArgs {
   event: TerminalKeyboardEvent;
   input: TerminalInputSender;
-  platform: string;
 }
 
-interface IsMacTerminalReverseSearchKeyEventArgs {
+interface IsTerminalReverseSearchKeyEventArgs {
   event: TerminalKeyboardEvent;
-  platform: string;
 }
 
-export function isMacPlatform(platform: string): boolean {
-  return platform.toLowerCase().startsWith("mac");
+function isReverseSearchRKey(event: TerminalKeyboardEvent): boolean {
+  return (
+    event.key.toLowerCase() === "r" ||
+    event.code === "KeyR" ||
+    event.keyCode === TERMINAL_REVERSE_SEARCH_KEY_CODE ||
+    event.which === TERMINAL_REVERSE_SEARCH_KEY_CODE
+  );
 }
 
-export function isMacTerminalReverseSearchKeyEvent(
-  args: IsMacTerminalReverseSearchKeyEventArgs,
+export function isTerminalReverseSearchKeyEvent(
+  args: IsTerminalReverseSearchKeyEventArgs,
 ): boolean {
   return (
-    isMacPlatform(args.platform) &&
     args.event.type === "keydown" &&
     args.event.ctrlKey &&
     !args.event.altKey &&
     !args.event.metaKey &&
-    args.event.key.toLowerCase() === "r"
+    isReverseSearchRKey(args.event)
   );
 }
 
 export function handleTerminalKeyEvent(
   args: HandleTerminalKeyEventArgs,
 ): boolean {
-  if (!isMacTerminalReverseSearchKeyEvent(args)) {
+  if (!isTerminalReverseSearchKeyEvent(args)) {
     return true;
   }
 
