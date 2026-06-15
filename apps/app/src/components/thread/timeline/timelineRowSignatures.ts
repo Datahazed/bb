@@ -1,6 +1,7 @@
 import type { TimelineActivityIntent } from "@bb/server-contract";
 import {
   assertNever,
+  getTimelineFeedDetail,
   isTimelineFeedSummaryViewRow,
   type ThreadTimelineViewRow,
   type TimelineViewWorkRow,
@@ -77,6 +78,7 @@ function timelineRowBaseSignature(row: ThreadTimelineViewRow): string {
   // sourceSeqEnd guards high-mutation fields omitted from signatures below,
   // including output, text, and diffs. In-place row content mutations must
   // advance the source sequence to avoid stale memoized UI.
+  const feedDetail = getTimelineFeedDetail(row);
   return joinSignatureParts([
     row.kind,
     row.id,
@@ -86,6 +88,10 @@ function timelineRowBaseSignature(row: ThreadTimelineViewRow): string {
     row.sourceSeqEnd,
     row.startedAt,
     row.createdAt,
+    feedDetail?.rowKey,
+    feedDetail?.source.start,
+    feedDetail?.source.end,
+    feedDetail?.parts.join(","),
   ]);
 }
 
@@ -130,6 +136,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.change.kind,
         row.change.path,
         row.change.movePath,
+        row.change.diff === null ? null : row.change.diff.length,
         row.change.diffStats.added,
         row.change.diffStats.removed,
       ]);
