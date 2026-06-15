@@ -44,7 +44,6 @@ export interface TerminalPtyProcess {
 }
 
 export interface SpawnTerminalPtyArgs {
-  args: string[];
   cols: number;
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -159,7 +158,7 @@ interface TerminalOperationCompletion {
 export const nodePtyAdapter: TerminalPtyAdapter = {
   spawn(args) {
     ensureNodePtySpawnHelperExecutable(args.logger);
-    const pty = spawnPty(args.file, args.args, {
+    const pty = spawnPty(args.file, [], {
       cols: args.cols,
       cwd: args.cwd,
       env: args.env,
@@ -318,23 +317,6 @@ function terminalTitleFromShell(shell: string): string {
   return path.basename(shell) || "Terminal";
 }
 
-interface BuildTerminalShellArgsArgs {
-  platform: NodeJS.Platform;
-  shell: string;
-}
-
-export function buildTerminalShellArgs(
-  args: BuildTerminalShellArgsArgs,
-): string[] {
-  if (args.platform !== "darwin") {
-    return [];
-  }
-  if (path.basename(args.shell) !== "zsh") {
-    return [];
-  }
-  return ["-l"];
-}
-
 function createTerminalOperationCompletion(): TerminalOperationCompletion {
   let resolveCompletion: () => void = () => {
     throw new Error("Terminal operation completion resolver was not set");
@@ -481,10 +463,6 @@ export class TerminalManager {
       });
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
-        args: buildTerminalShellArgs({
-          platform: this.platform,
-          shell,
-        }),
         cols: message.cols,
         cwd: entry.path,
         env: buildTerminalEnv({

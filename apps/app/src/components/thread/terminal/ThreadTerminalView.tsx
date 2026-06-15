@@ -6,6 +6,7 @@ import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import { handleTerminalKeyEvent } from "./terminal-keyboard";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -360,6 +361,13 @@ export function ThreadTerminalView({
           });
         }
       };
+      activeTerminal.attachCustomKeyEventHandler((event) =>
+        handleTerminalKeyEvent({
+          event,
+          input: (data) => activeTerminal.input(data),
+          platform: navigator.platform,
+        }),
+      );
       activeTerminal.onData((data) => {
         if (replayWriteState.suppressedWriteCount > 0) {
           return;

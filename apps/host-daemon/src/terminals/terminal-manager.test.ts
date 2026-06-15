@@ -9,11 +9,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
 import {
-  buildTerminalShellArgs,
   ensureNodePtySpawnHelpersExecutableInPackage,
   resolveNodePtySpawnHelperPaths,
   TerminalManager,
-  type TerminalManagerOptions,
   type ResolveTerminalShell,
   type SpawnTerminalPtyArgs,
   type TerminalPtyAdapter,
@@ -57,7 +55,6 @@ type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
 
 interface CreateHarnessOptions {
   onSendMessage: TerminalMessageObserver;
-  platform?: NodeJS.Platform;
   resolveShell: ResolveTerminalShell;
 }
 
@@ -302,7 +299,7 @@ function createHarnessWithOptions(
       BB_BASE_ENV: "1",
     },
   });
-  const managerOptions: TerminalManagerOptions = {
+  const manager = new TerminalManager({
     logger: createFakeLogger(),
     ptyAdapter: adapter,
     resolveShell: args.resolveShell,
@@ -312,11 +309,7 @@ function createHarnessWithOptions(
       args.onSendMessage(message);
       return true;
     },
-  };
-  if (args.platform !== undefined) {
-    managerOptions.platform = args.platform;
-  }
-  const manager = new TerminalManager(managerOptions);
+  });
 
   return {
     adapter,
@@ -389,7 +382,6 @@ describe("TerminalManager", () => {
 
     expect(harness.adapter.spawned).toHaveLength(1);
     expect(harness.adapter.spawned[0]?.args).toMatchObject({
-      args: [],
       cols: 100,
       cwd: "/tmp/terminal-workspace",
       file: "/bin/zsh",
@@ -414,30 +406,6 @@ describe("TerminalManager", () => {
     await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
       [],
     );
-  });
-
-  it("opens zsh as a login shell on macOS", async () => {
-    const harness = createHarnessWithOptions({
-      onSendMessage: () => undefined,
-      platform: "darwin",
-      resolveShell: async () => "/bin/zsh",
-    });
-
-    await openTerminal(harness);
-
-    expect(harness.adapter.spawned[0]?.args).toMatchObject({
-      args: ["-l"],
-      file: "/bin/zsh",
-    });
-  });
-
-  it("leaves non-zsh shell args unchanged on macOS", () => {
-    expect(
-      buildTerminalShellArgs({
-        platform: "darwin",
-        shell: "/bin/bash",
-      }),
-    ).toEqual([]);
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
