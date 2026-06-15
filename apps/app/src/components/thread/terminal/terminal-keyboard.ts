@@ -6,13 +6,18 @@ export interface TerminalKeyboardEvent {
   key: string;
   metaKey: boolean;
   preventDefault(): void;
+  stopImmediatePropagation(): void;
   stopPropagation(): void;
   type: string;
 }
 
+export interface TerminalInputSender {
+  (data: string): boolean;
+}
+
 export interface HandleTerminalKeyEventArgs {
   event: TerminalKeyboardEvent;
-  input(data: string): void;
+  input: TerminalInputSender;
   platform: string;
 }
 
@@ -46,6 +51,7 @@ export function handleTerminalKeyEvent(
   }
 
   args.event.preventDefault();
+  args.event.stopImmediatePropagation();
   args.event.stopPropagation();
   args.input(TERMINAL_REVERSE_SEARCH_INPUT);
   return false;

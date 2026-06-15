@@ -401,6 +401,9 @@ function refreshApplicationMenu(): void {
     openServerDaemonLogs() {
       void openServerDaemonLogs();
     },
+    reloadFocusedWindow() {
+      BrowserWindow.getFocusedWindow()?.webContents.reload();
+    },
     serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
   });
 }

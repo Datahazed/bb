@@ -19,6 +19,7 @@ class FakeTerminalKeyboardEvent implements TerminalKeyboardEvent {
   public defaultPrevented = false;
   public readonly key: string;
   public readonly metaKey: boolean;
+  public immediatePropagationStopped = false;
   public propagationStopped = false;
   public readonly type: string;
 
@@ -32,6 +33,10 @@ class FakeTerminalKeyboardEvent implements TerminalKeyboardEvent {
 
   preventDefault(): void {
     this.defaultPrevented = true;
+  }
+
+  stopImmediatePropagation(): void {
+    this.immediatePropagationStopped = true;
   }
 
   stopPropagation(): void {
@@ -60,12 +65,14 @@ describe("terminal keyboard handling", () => {
       event,
       input(data) {
         input.push(data);
+        return true;
       },
       platform: "MacIntel",
     });
 
     expect(shouldProcess).toBe(false);
     expect(event.defaultPrevented).toBe(true);
+    expect(event.immediatePropagationStopped).toBe(true);
     expect(event.propagationStopped).toBe(true);
     expect(input).toEqual([TERMINAL_REVERSE_SEARCH_INPUT]);
   });
@@ -84,12 +91,14 @@ describe("terminal keyboard handling", () => {
       event,
       input(data) {
         input.push(data);
+        return true;
       },
       platform: "MacIntel",
     });
 
     expect(shouldProcess).toBe(true);
     expect(event.defaultPrevented).toBe(false);
+    expect(event.immediatePropagationStopped).toBe(false);
     expect(event.propagationStopped).toBe(false);
     expect(input).toEqual([]);
   });
@@ -108,12 +117,14 @@ describe("terminal keyboard handling", () => {
       event,
       input(data) {
         input.push(data);
+        return true;
       },
       platform: "Win32",
     });
 
     expect(shouldProcess).toBe(true);
     expect(event.defaultPrevented).toBe(false);
+    expect(event.immediatePropagationStopped).toBe(false);
     expect(event.propagationStopped).toBe(false);
     expect(input).toEqual([]);
   });

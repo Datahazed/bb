@@ -6,7 +6,10 @@ import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
-import { handleTerminalKeyEvent } from "./terminal-keyboard";
+import {
+  handleTerminalKeyEvent,
+  type TerminalInputSender,
+} from "./terminal-keyboard";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -85,6 +88,11 @@ interface SendTerminalResizeArgs {
   terminal: XTermTerminal;
 }
 
+interface SendTerminalInputArgs {
+  data: string;
+  socket: WebSocket;
+}
+
 interface WriteTerminalStatusArgs {
   terminal: XTermTerminal;
   text: string;
@@ -141,6 +149,19 @@ function sendTerminalResize({
       rows: terminal.rows,
     }),
   );
+}
+
+function sendTerminalInput({ data, socket }: SendTerminalInputArgs): boolean {
+  if (socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  socket.send(
+    JSON.stringify({
+      type: "input",
+      dataBase64: encodeUtf8Base64(data),
+    }),
+  );
+  return true;
 }
 
 function hasVisibleTerminalSize({
@@ -255,6 +276,7 @@ export function ThreadTerminalView({
     };
     let resizeAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let terminalKeyDownListener: ((event: KeyboardEvent) => void) | null = null;
 
     async function mountTerminal(containerElement: HTMLDivElement): Promise<void> {
       const [
@@ -361,27 +383,31 @@ export function ThreadTerminalView({
           });
         }
       };
-      activeTerminal.attachCustomKeyEventHandler((event) =>
+      const sendActiveInput: TerminalInputSender = (data) => {
+        const sent = sendTerminalInput({
+          data,
+          socket: activeSocket,
+        });
+        if (sent) {
+          onUserInputRef.current?.();
+        }
+        return sent;
+      };
+      terminalKeyDownListener = (event) => {
         handleTerminalKeyEvent({
           event,
-          input: (data) => activeTerminal.input(data),
+          input: sendActiveInput,
           platform: navigator.platform,
-        }),
-      );
+        });
+      };
+      containerElement.addEventListener("keydown", terminalKeyDownListener, {
+        capture: true,
+      });
       activeTerminal.onData((data) => {
         if (replayWriteState.suppressedWriteCount > 0) {
           return;
         }
-        if (activeSocket.readyState !== WebSocket.OPEN) {
-          return;
-        }
-        onUserInputRef.current?.();
-        activeSocket.send(
-          JSON.stringify({
-            type: "input",
-            dataBase64: encodeUtf8Base64(data),
-          }),
-        );
+        sendActiveInput(data);
       });
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
@@ -412,6 +438,11 @@ export function ThreadTerminalView({
         window.cancelAnimationFrame(resizeAnimationFrame);
       }
       resizeObserver?.disconnect();
+      if (terminalKeyDownListener !== null) {
+        container.removeEventListener("keydown", terminalKeyDownListener, {
+          capture: true,
+        });
+      }
       socket?.close();
       terminal?.dispose();
       terminalRef.current = null;

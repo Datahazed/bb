@@ -2,12 +2,14 @@ import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
 export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
 export const RELOAD_ACCELERATOR = "Command+R";
+export const RELOAD_MENU_LABEL = "Reload";
 export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 
 export interface InstallApplicationMenuArgs {
   createNewWindow(): void;
   openServerDaemonLogs(): void;
+  reloadFocusedWindow(): void;
   serverDaemonLogsMenuEnabled: boolean;
 }
 
@@ -73,7 +75,13 @@ export function buildApplicationMenuTemplate(
     {
       label: "View",
       submenu: [
-        { accelerator: RELOAD_ACCELERATOR, role: "reload" },
+        {
+          accelerator: RELOAD_ACCELERATOR,
+          click() {
+            args.reloadFocusedWindow();
+          },
+          label: RELOAD_MENU_LABEL,
+        },
         { role: "forceReload" },
         {
           accelerator: TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,

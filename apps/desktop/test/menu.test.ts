@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import {
   RELOAD_ACCELERATOR,
+  RELOAD_MENU_LABEL,
   SERVER_DAEMON_LOGS_MENU_LABEL,
   TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,
   TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,
@@ -70,10 +71,16 @@ describe("application menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
       openServerDaemonLogs() {},
+      reloadFocusedWindow() {},
       serverDaemonLogsMenuEnabled: true,
     });
 
-    const menuItem = findSubmenuRole({
+    const menuItem = findSubmenuItem({
+      itemLabel: RELOAD_MENU_LABEL,
+      parentLabel: "View",
+      template,
+    });
+    const reloadRoleItem = findSubmenuRole({
       itemRole: "reload",
       parentLabel: "View",
       template,
@@ -81,12 +88,15 @@ describe("application menu", () => {
 
     expect(menuItem).not.toBeNull();
     expect(menuItem?.accelerator).toBe(RELOAD_ACCELERATOR);
+    expect(menuItem?.role).toBeUndefined();
+    expect(reloadRoleItem).toBeNull();
   });
 
   it("shows a developer tools toggle in the view menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
       openServerDaemonLogs() {},
+      reloadFocusedWindow() {},
       serverDaemonLogsMenuEnabled: true,
     });
 
@@ -105,6 +115,7 @@ describe("application menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
       openServerDaemonLogs() {},
+      reloadFocusedWindow() {},
       serverDaemonLogsMenuEnabled: true,
     });
 
@@ -122,6 +133,7 @@ describe("application menu", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
       openServerDaemonLogs() {},
+      reloadFocusedWindow() {},
       serverDaemonLogsMenuEnabled: false,
     });
 
