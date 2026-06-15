@@ -610,6 +610,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadTimelinePages({
     threadId: threadId ?? "",
   });
+  const hasInitialTimelineLoadSettled =
+    !timelineLoading || timelineRows.length > 0;
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const markThreadRead = useMarkThreadRead();
@@ -1028,7 +1030,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     thread?.environmentId,
     requestedMergeBaseBranch,
     {
-      enabled: canUseGitUi && environment !== undefined,
+      enabled:
+        canUseGitUi &&
+        environment !== undefined &&
+        hasInitialTimelineLoadSettled,
       refetchOnMount: props.surface === "page" ? true : "always",
       staleTime:
         props.surface === "page" ? THREAD_DETAIL_ADJUNCT_STALE_TIME_MS : 0,
@@ -1047,7 +1052,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       ? workStatusResponse.failure
       : undefined;
   const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
+    enabled:
+      canUseGitUi && environment !== undefined && hasInitialTimelineLoadSettled,
   });
   const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
   const workspaceBranch = workspaceStatus?.branch;

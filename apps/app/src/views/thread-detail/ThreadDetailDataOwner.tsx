@@ -1,13 +1,8 @@
-import { resolveEnvironmentMergeBaseBranch } from "@bb/domain";
 import type {
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import {
-  useEnvironment,
-  useEnvironmentPullRequest,
-  useEnvironmentWorkStatus,
-} from "@/hooks/queries/environment-queries";
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadComposerBootstrap } from "@/hooks/queries/thread-composer-bootstrap-query";
 import {
   useThreadPendingInteractions,
@@ -51,15 +46,10 @@ export function ThreadDetailDataOwner({
   const canLoadThreadData =
     enabled && hasThreadDetailBootstrapSettled && Boolean(activeThreadId);
 
-  const environmentQuery = useEnvironment(environmentId, {
+  useEnvironment(environmentId, {
     enabled: canLoadThreadData && Boolean(environmentId),
     staleTime: THREAD_DETAIL_DATA_OWNER_STALE_TIME_MS,
   });
-  const environment =
-    environmentQuery.data ?? bootstrapThreadForRoute?.environment;
-  const canUseGitUi = canLoadThreadData && environment?.isGitRepo === true;
-  const environmentMergeBaseBranch =
-    resolveEnvironmentMergeBaseBranch(environment);
 
   const threadComposerBootstrapQuery = useThreadComposerBootstrap(
     activeThreadId,
@@ -113,12 +103,5 @@ export function ThreadDetailDataOwner({
       ? THREAD_DETAIL_DATA_OWNER_STALE_TIME_MS
       : undefined,
   });
-  useEnvironmentWorkStatus(environmentId, environmentMergeBaseBranch, {
-    enabled: canUseGitUi && environment !== undefined,
-  });
-  useEnvironmentPullRequest(environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
-  });
-
   return null;
 }
