@@ -29,9 +29,7 @@ import { requireEnabledQueryArg } from "./query-helpers";
 
 interface QueryOptions {
   enabled?: boolean;
-}
-
-interface EnvironmentQueryOptions extends QueryOptions {
+  refetchOnMount?: boolean | "always";
   staleTime?: number;
 }
 
@@ -62,7 +60,7 @@ function requireEnvironmentId(
 
 export function useEnvironment(
   environmentId: string | null | undefined,
-  options?: EnvironmentQueryOptions,
+  options?: QueryOptions,
 ) {
   const enabled = (options?.enabled ?? true) && Boolean(environmentId);
   useEnvironmentDetailRealtimeSubscription(environmentId, { enabled });
@@ -98,9 +96,9 @@ export function useEnvironmentWorkStatus(
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
-    refetchOnMount: "always",
+    refetchOnMount: options?.refetchOnMount ?? "always",
     refetchOnWindowFocus: false,
-    staleTime: 0,
+    staleTime: options?.staleTime ?? 0,
     placeholderData: (previousData, previousQuery) =>
       environmentId
         ? resolveEnvironmentWorkStatusPlaceholder(

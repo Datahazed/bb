@@ -182,6 +182,7 @@ const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
+const THREAD_DETAIL_ADJUNCT_STALE_TIME_MS = 10_000;
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
@@ -473,6 +474,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const { data: threadSchedules = [] } = useThreadSchedules(thread?.id ?? "", {
     enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
+    staleTime: THREAD_DETAIL_ADJUNCT_STALE_TIME_MS,
   });
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
@@ -493,10 +495,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadStorageViewer({
     activePath: null,
     fileListEnabled: shouldLoadThreadStorageFiles,
+    fileListRefetchOnMount: props.surface === "page" ? true : "always",
+    fileListStaleTime: THREAD_DETAIL_ADJUNCT_STALE_TIME_MS,
     filePreviewEnabled: false,
     threadId,
   });
-  const terminalsListQuery = useThreadTerminals(threadId ?? "");
+  const terminalsListQuery = useThreadTerminals(threadId ?? "", {
+    staleTime: THREAD_DETAIL_ADJUNCT_STALE_TIME_MS,
+  });
   const {
     activeBrowserTab,
     activeHostFileLineRange,
@@ -1023,6 +1029,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     requestedMergeBaseBranch,
     {
       enabled: canUseGitUi && environment !== undefined,
+      refetchOnMount: props.surface === "page" ? true : "always",
+      staleTime:
+        props.surface === "page" ? THREAD_DETAIL_ADJUNCT_STALE_TIME_MS : 0,
     },
   );
   const workspaceStatusError = workStatusQuery.error;

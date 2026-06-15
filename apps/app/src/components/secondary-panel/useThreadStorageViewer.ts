@@ -11,6 +11,8 @@ interface UseThreadStorageViewerParams {
   activePath: string | null;
   fileListEnabled?: boolean;
   fileListOptions?: ThreadStorageFileListOptions;
+  fileListRefetchOnMount?: boolean | "always";
+  fileListStaleTime?: number;
   filePreviewEnabled?: boolean;
   threadId?: string;
 }
@@ -19,6 +21,8 @@ export function useThreadStorageViewer({
   activePath,
   fileListEnabled = true,
   fileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
+  fileListRefetchOnMount,
+  fileListStaleTime,
   filePreviewEnabled = true,
   threadId,
 }: UseThreadStorageViewerParams) {
@@ -30,6 +34,8 @@ export function useThreadStorageViewer({
     refetch: refetchThreadStorageFiles,
   } = useThreadStorageFiles(threadId ?? "", fileListOptions, {
     enabled: hasThread && fileListEnabled,
+    refetchOnMount: fileListRefetchOnMount,
+    staleTime: fileListStaleTime,
   });
   const {
     data: threadStorageFilePreview,

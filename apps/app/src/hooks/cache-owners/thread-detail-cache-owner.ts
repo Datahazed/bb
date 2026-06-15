@@ -4,18 +4,12 @@ import type {
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
 import { getCachedThreadListPlaceholder } from "./query-cache";
-import {
-  fetchAndHydrateThreadComposerBootstrap,
-  threadComposerBootstrapQueryKey,
-} from "../queries/thread-composer-bootstrap-query";
 import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
   threadQueryKey,
-  threadTimelineFeedQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -32,10 +26,8 @@ interface CachedThreadProjectIdArgs {
 }
 
 export interface ThreadDetailBootstrapIngestionArgs {
-  composerBootstrapPrefetch: boolean;
   queryClient: QueryClient;
   thread: ThreadWithIncludesResponse;
-  timelinePrefetch: boolean;
 }
 
 function stripThreadIncludes(
@@ -63,10 +55,8 @@ function upsertHostList({ host, hosts }: UpsertHostListArgs): HostList {
 }
 
 export function ingestThreadDetailBootstrap({
-  composerBootstrapPrefetch,
   queryClient,
   thread,
-  timelinePrefetch,
 }: ThreadDetailBootstrapIngestionArgs): void {
   queryClient.setQueryData(
     threadQueryKey(thread.id),
@@ -88,29 +78,6 @@ export function ingestThreadDetailBootstrap({
     );
   }
 
-  if (timelinePrefetch) {
-    void queryClient.prefetchQuery({
-      queryKey: threadTimelineFeedQueryKey(thread.id),
-      queryFn: () =>
-        api.getThreadTimelineFeed({
-          id: thread.id,
-        }),
-    });
-  }
-
-  if (composerBootstrapPrefetch) {
-    const environmentId = thread.environmentId ?? null;
-    void queryClient.prefetchQuery({
-      queryKey: threadComposerBootstrapQueryKey(thread.id, environmentId),
-      queryFn: () =>
-        fetchAndHydrateThreadComposerBootstrap({
-          environmentId,
-          providerId: thread.providerId,
-          queryClient,
-          threadId: thread.id,
-        }),
-    });
-  }
 }
 
 export function getCachedThreadProjectId({

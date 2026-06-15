@@ -86,11 +86,6 @@ interface QueryOptions {
 const THREAD_LIST_STALE_TIME_MS = 10_000;
 export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
 
-interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
-  composerBootstrapPrefetch?: boolean;
-  timelinePrefetch?: boolean;
-}
-
 type ThreadTimelineFeedQueryOptions = QueryOptions;
 
 type ThreadTimelineRowDetailQueryOptions = QueryOptions;
@@ -486,7 +481,7 @@ export function useThread(id: string, options?: QueryOptions) {
 
 export function useThreadDetailBootstrap(
   id: string,
-  options?: ThreadDetailBootstrapQueryOptions,
+  options?: QueryOptions,
 ) {
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
@@ -499,10 +494,8 @@ export function useThreadDetailBootstrap(
         requireThreadId(id, "useThreadDetailBootstrap"),
       );
       ingestThreadDetailBootstrap({
-        composerBootstrapPrefetch: options?.composerBootstrapPrefetch ?? false,
         queryClient,
         thread,
-        timelinePrefetch: options?.timelinePrefetch ?? false,
       });
       return thread;
     },
@@ -591,8 +584,9 @@ export function useThreadStorageFiles(
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
-    refetchOnMount: "always",
+    refetchOnMount: options?.refetchOnMount ?? "always",
     refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
   });
 }
 

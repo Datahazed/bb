@@ -16,6 +16,7 @@ import { requireEnabledQueryArg } from "./query-helpers";
 
 interface QueryOptions {
   enabled?: boolean;
+  staleTime?: number;
 }
 
 interface CreateThreadTerminalMutationRequest
@@ -49,6 +50,7 @@ export function useThreadTerminals(id: string, options?: QueryOptions) {
       ),
     enabled: (options?.enabled ?? true) && Boolean(id),
     refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
   });
 }
 

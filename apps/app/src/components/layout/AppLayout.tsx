@@ -55,6 +55,7 @@ import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
+import { ThreadDetailDataOwner } from "@/views/thread-detail/ThreadDetailDataOwner";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -389,9 +390,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     ];
   }, [sidebarNavigationQuery.data]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
-    composerBootstrapPrefetch: isThreadView && Boolean(threadId),
     enabled: isThreadView && Boolean(threadId),
-    timelinePrefetch: isThreadView && Boolean(threadId),
   });
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
@@ -574,6 +573,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
+        <ThreadDetailDataOwner
+          bootstrapThread={threadDetailBootstrapQuery.data}
+          cachedThread={thread}
+          enabled={isThreadView && Boolean(threadId)}
+          hasThreadDetailBootstrapSettled={hasThreadDetailBootstrapSettled}
+          projectId={projectId}
+          threadId={threadId}
+        />
         <IframeDragGuardOverlay active={isSidebarResizing} />
         <SidebarStateBridge
           providerRef={providerRef}
