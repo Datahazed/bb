@@ -134,7 +134,7 @@ export function buildOmittedTimelineFeedTextPreview(
 ): TimelineTextPreview {
   const fullLength = outputDetail?.fullLength ?? text.length;
   return {
-    complete: fullLength <= text.length,
+    complete: fullLength === 0,
     fullLength,
     text: "",
   };

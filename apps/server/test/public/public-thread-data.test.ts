@@ -898,6 +898,115 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("keeps small bundled file diffs lazy-loadable from summary details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "provider-thread-small-bundled-diffs";
+      const turnId = "turn-small-bundled-diffs";
+      const firstDiff = "@@ -1 +1 @@\n-before\n+after\n";
+      const secondDiff = "@@ -1 +1 @@\n-old\n+new\n";
+
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Apply bundled patches",
+        providerThreadId,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 3,
+        type: "turn/started",
+        data: { providerThreadId },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "fileChange",
+            id: "file-small-bundled-diffs",
+            status: "completed",
+            approvalStatus: null,
+            changes: [
+              {
+                path: "/repo/src/first.ts",
+                kind: "update",
+                diff: firstDiff,
+              },
+              {
+                path: "/repo/src/second.ts",
+                kind: "update",
+                diff: secondDiff,
+              },
+            ],
+          },
+        },
+      });
+
+      const feedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/feed`,
+      );
+      expect(feedResponse.status).toBe(200);
+      const feed = threadTimelineFeedResponseSchema.parse(
+        await readJson(feedResponse),
+      );
+      const summaryRow = feed.rows.find(
+        (row): row is TimelineFeedWorkSummaryRow =>
+          row.kind === "bundle-summary" || row.kind === "step-summary",
+      );
+      expect(summaryRow).toBeDefined();
+      if (!summaryRow) {
+        throw new Error("Expected bundled file-change summary row");
+      }
+
+      const summaryDetailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${summaryRow.key}/detail?parts=children&sourceSeqStart=${summaryRow.source.start}&sourceSeqEnd=${summaryRow.source.end}`,
+      );
+      expect(summaryDetailResponse.status).toBe(200);
+      const summaryDetail = timelineRowDetailResponseSchema.parse(
+        await readJson(summaryDetailResponse),
+      );
+      const fileRows = (summaryDetail.parts.children ?? []).filter(
+        (row): row is TimelineFeedFileChangeRow =>
+          row.kind === "work" && row.workKind === "file-change",
+      );
+      expect(fileRows).toHaveLength(2);
+      for (const fileRow of fileRows) {
+        expect(fileRow.change.diffPreview).toMatchObject({
+          complete: false,
+          text: "",
+        });
+        expect(fileRow.detail?.parts).toContain("file-diff");
+      }
+
+      const firstRow = fileRows.find(
+        (row) => row.change.path.endsWith("src/first.ts"),
+      );
+      expect(firstRow).toBeDefined();
+      if (!firstRow) {
+        throw new Error("Expected first file-change row");
+      }
+      const firstDetailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${firstRow.key}/detail?parts=file-diff&sourceSeqStart=${firstRow.source.start}&sourceSeqEnd=${firstRow.source.end}`,
+      );
+      expect(firstDetailResponse.status).toBe(200);
+      const firstDetail = timelineRowDetailResponseSchema.parse(
+        await readJson(firstDetailResponse),
+      );
+      expect(firstDetail.parts.fileDiff).toBe(firstDiff);
+    });
+  });
+
   it("collapses large active work bursts in the timeline feed", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness, {
