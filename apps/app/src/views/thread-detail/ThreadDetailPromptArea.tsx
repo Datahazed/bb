@@ -27,6 +27,7 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -77,7 +78,7 @@ interface ThreadDetailPromptAreaProps {
   composerQueriesEnabled: boolean;
   composerQueriesStaleTime?: number;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
-  environmentBranchName?: string;
+  environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
@@ -129,7 +130,7 @@ export function ThreadDetailPromptArea({
   composerQueriesEnabled,
   composerQueriesStaleTime,
   contextWindowUsage,
-  environmentBranchName,
+  environmentCheckout,
   environmentCompactLabel,
   environmentIcon,
   environmentLabel,
@@ -820,12 +821,12 @@ export function ThreadDetailPromptArea({
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
-          environmentBranchName={environmentBranchName}
+          environmentCheckout={environmentCheckout}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
         />
       ) : null,
     [
-      environmentBranchName,
+      environmentCheckout,
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
