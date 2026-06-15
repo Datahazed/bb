@@ -108,6 +108,7 @@ interface PartitionAcceptedInputRowsByRequestedTurnResult {
 interface FilterExactEventRowsForRequestedTurnArgs {
   acceptedClientRequestIdsForOtherTurns: ReadonlySet<ClientTurnRequestId>;
   exactEventRows: readonly StoredEventRow[];
+  turnId: string;
 }
 
 interface FilterExactEventRowsForRequestedTurnResult {
@@ -211,6 +212,12 @@ interface FormatStoredTimelineToolOutputArgs {
   sequence: number;
   threadId: string;
   value: string;
+}
+
+interface TimelineFeedRowKeyParts {
+  digest: string;
+  prefix: string;
+  sourceSeqStart: number;
 }
 
 interface CachedTimelineParsedEvent {
@@ -648,16 +655,13 @@ function partitionAcceptedInputRowsByRequestedTurn(
 function filterExactEventRowsForRequestedTurn(
   args: FilterExactEventRowsForRequestedTurnArgs,
 ): FilterExactEventRowsForRequestedTurnResult {
-  if (args.acceptedClientRequestIdsForOtherTurns.size === 0) {
-    return {
-      removedRows: false,
-      rows: args.exactEventRows,
-    };
-  }
-
   const rows: StoredEventRow[] = [];
   let removedRows = false;
   for (const row of args.exactEventRows) {
+    if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
+      removedRows = true;
+      continue;
+    }
     const requestId = tryReadClientTurnRequestedRequestId(row);
     if (
       requestId !== null &&
@@ -1043,16 +1047,51 @@ function timelineFeedRowKindPrefix(row: TimelineFeedKeyRow): string {
   }
 }
 
-function timelineFeedRowKey(row: TimelineFeedKeyRow): string {
-  const digest = createHash("sha256")
+function timelineFeedRowDigest(row: TimelineFeedKeyRow): string {
+  return createHash("sha256")
     .update(row.id)
     .digest("base64url")
     .slice(0, 10);
+}
+
+function timelineFeedRowKey(row: TimelineFeedKeyRow): string {
+  const digest = timelineFeedRowDigest(row);
   return `${timelineFeedRowKindPrefix(row)}_${row.sourceSeqStart}_${digest}`;
 }
 
 const TIMELINE_FILE_CHANGE_DIFF_JSON_PATH_PATTERN =
   /^\$\.item\.changes\[(\d+)\]\.diff$/u;
+const TIMELINE_FEED_ROW_KEY_PATTERN = /^([^_]+)_(\d+)_(.+)$/u;
+
+function parseTimelineFeedRowKey(rowKey: string): TimelineFeedRowKeyParts | null {
+  const match = TIMELINE_FEED_ROW_KEY_PATTERN.exec(rowKey);
+  if (!match) {
+    return null;
+  }
+  const prefix = match[1];
+  const sourceSeqStartText = match[2];
+  const digest = match[3];
+  if (
+    prefix === undefined ||
+    sourceSeqStartText === undefined ||
+    digest === undefined
+  ) {
+    return null;
+  }
+  const sourceSeqStart = Number(sourceSeqStartText);
+  if (!Number.isSafeInteger(sourceSeqStart)) {
+    return null;
+  }
+  return {
+    digest,
+    prefix,
+    sourceSeqStart,
+  };
+}
+
+function isSummaryTimelineFeedRowKeyPrefix(prefix: string): boolean {
+  return prefix === "b" || prefix === "p";
+}
 
 function timelineFileChangeIndexFromJsonPath(jsonPath: string): number | null {
   const match = TIMELINE_FILE_CHANGE_DIFF_JSON_PATH_PATTERN.exec(jsonPath);
@@ -1679,20 +1718,83 @@ function timelineDetailRowCanUseSourceFallback(
   return row.kind === "bundle-summary" || row.kind === "step-summary";
 }
 
+function timelineDetailSummaryRowMatchesRequest(
+  row: ThreadTimelineViewRow,
+  options: BuildTimelineRowDetailOptions,
+): boolean {
+  if (!timelineDetailRowCanUseSourceFallback(row)) {
+    return false;
+  }
+  const requestedKey = parseTimelineFeedRowKey(options.rowKey);
+  if (
+    requestedKey === null ||
+    requestedKey.sourceSeqStart !== options.sourceSeqStart ||
+    requestedKey.sourceSeqStart !== row.sourceSeqStart
+  ) {
+    return false;
+  }
+
+  const rowPrefix = timelineFeedRowKindPrefix(row);
+  const prefixMatches =
+    requestedKey.prefix === rowPrefix ||
+    (isSummaryTimelineFeedRowKeyPrefix(requestedKey.prefix) &&
+      isSummaryTimelineFeedRowKeyPrefix(rowPrefix));
+  return prefixMatches && requestedKey.digest === timelineFeedRowDigest(row);
+}
+
+function timelineDetailRequestIsForSummaryRow(
+  options: BuildTimelineRowDetailOptions,
+): boolean {
+  const requestedKey = parseTimelineFeedRowKey(options.rowKey);
+  return (
+    requestedKey !== null &&
+    requestedKey.sourceSeqStart === options.sourceSeqStart &&
+    isSummaryTimelineFeedRowKeyPrefix(requestedKey.prefix)
+  );
+}
+
+function resolveSummaryTimelineDetailSourceSeqEnd(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineRowDetailOptions,
+): number | null {
+  if (!timelineDetailRequestIsForSummaryRow(options)) {
+    return null;
+  }
+  const nextSegmentAnchorSequence = findTimelineSegmentAnchorSequenceAfter(db, {
+    sequence: options.sourceSeqStart,
+    threadId: thread.id,
+  });
+  const sourceSeqEnd =
+    nextSegmentAnchorSequence === undefined
+      ? getThreadEventRevision(db, { threadId: thread.id }).maxSequence
+      : nextSegmentAnchorSequence - 1;
+  return sourceSeqEnd > options.sourceSeqEnd ? sourceSeqEnd : null;
+}
+
 function timelineDetailRowMatchesRequest(
   row: ThreadTimelineViewRow,
   options: BuildTimelineRowDetailOptions,
 ): boolean {
-  if (!timelineDetailRowSourceMatches(row, options)) {
-    return false;
-  }
-  if (timelineFeedRowKey(row) === options.rowKey) {
+  if (
+    timelineDetailRowSourceMatches(row, options) &&
+    timelineFeedRowKey(row) === options.rowKey
+  ) {
     return true;
   }
+  return timelineDetailSummaryRowMatchesRequest(row, options);
+}
+
+function findTimelineDetailRowInSourceRows(
+  rows: readonly TimelineRow[],
+  options: BuildTimelineRowDetailOptions,
+): ThreadTimelineViewRow | null {
+  const viewRows = buildTimelineViewRows(rows);
   return (
-    timelineDetailRowCanUseSourceFallback(row) &&
-    options.rowKey.startsWith(
-      `${timelineFeedRowKindPrefix(row)}_${options.sourceSeqStart}_`,
+    findTimelineDetailRow(viewRows, options) ??
+    findTimelineDetailRow(
+      buildTimelineViewRows(rows, { closedScope: true }),
+      options,
     )
   );
 }
@@ -1718,13 +1820,24 @@ export function buildTimelineRowDetail(
     sourceSeqEnd: options.sourceSeqEnd,
     sourceSeqStart: options.sourceSeqStart,
   });
-  const viewRows = buildTimelineViewRows(rows);
-  const matchingRow =
-    findTimelineDetailRow(viewRows, options) ??
-    findTimelineDetailRow(
-      buildTimelineViewRows(rows, { closedScope: true }),
+  let matchingRow = findTimelineDetailRowInSourceRows(rows, options);
+  if (!matchingRow) {
+    const expandedSourceSeqEnd = resolveSummaryTimelineDetailSourceSeqEnd(
+      db,
+      thread,
       options,
     );
+    if (expandedSourceSeqEnd !== null) {
+      matchingRow = findTimelineDetailRowInSourceRows(
+        buildTimelineRowsForDetail(db, thread, {
+          isDevelopment: options.isDevelopment,
+          sourceSeqEnd: expandedSourceSeqEnd,
+          sourceSeqStart: options.sourceSeqStart,
+        }),
+        options,
+      );
+    }
+  }
   if (!matchingRow) {
     throw new ApiError(404, "invalid_request", "Timeline row not found");
   }
@@ -2017,6 +2130,7 @@ export function buildTimelineTurnSummaryDetails(
     acceptedClientRequestIdsForOtherTurns:
       acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
     exactEventRows,
+    turnId: options.turnId,
   });
   const eventRows = [
     ...exactEventRowsForRequestedTurn.rows,
@@ -2087,6 +2201,7 @@ export function buildTimelineTurnSummaryDetails(
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: sourceRange.sourceSeqStart,
       threadStatus: thread.status,
+      turnId: options.turnId,
       workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
     },
   });

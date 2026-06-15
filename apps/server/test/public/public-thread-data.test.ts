@@ -453,6 +453,193 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("lazy-loads stale live summary row details after same-segment work appends", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "provider-thread-stale-summary-detail";
+      const turnId = "turn-stale-summary-detail";
+
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Inspect several files",
+        providerThreadId,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 3,
+        type: "turn/started",
+        data: { providerThreadId },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          providerThreadId,
+          item: {
+            type: "agentMessage",
+            id: "assistant-before-work",
+            text: "I will inspect the relevant files.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 5,
+        type: "item/started",
+        data: {
+          providerThreadId,
+          item: {
+            type: "commandExecution",
+            id: "stale-summary-command-1",
+            command: "sed -n '1,80p' a.ts",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 6,
+        type: "item/completed",
+        data: {
+          providerThreadId,
+          item: {
+            type: "commandExecution",
+            id: "stale-summary-command-1",
+            command: "sed -n '1,80p' a.ts",
+            cwd: "/repo",
+            aggregatedOutput: "",
+            exitCode: 0,
+            status: "completed",
+            approvalStatus: null,
+            truncation: {
+              aggregatedOutput: {
+                originalLength: 3_048,
+                retainedHeadLength: 0,
+                retainedTailLength: 0,
+                truncatedAt: 1_781_545_287_453,
+              },
+            },
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 7,
+        type: "item/started",
+        data: {
+          providerThreadId,
+          item: {
+            type: "commandExecution",
+            id: "stale-summary-command-2",
+            command: "sed -n '1,120p' b.ts",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        },
+      });
+
+      const staleFeedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/feed`,
+      );
+      expect(staleFeedResponse.status).toBe(200);
+      const staleFeed = threadTimelineFeedResponseSchema.parse(
+        await readJson(staleFeedResponse),
+      );
+      const staleSummaryRow = staleFeed.rows.find(
+        (row): row is TimelineFeedWorkSummaryRow =>
+          row.kind === "bundle-summary" &&
+          row.detail?.parts.includes("children") === true,
+      );
+      expect(staleSummaryRow).toBeDefined();
+      if (!staleSummaryRow) {
+        throw new Error("Expected bundle summary feed row");
+      }
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 8,
+        type: "item/completed",
+        data: {
+          providerThreadId,
+          item: {
+            type: "commandExecution",
+            id: "stale-summary-command-2",
+            command: "sed -n '1,120p' b.ts",
+            cwd: "/repo",
+            aggregatedOutput: "",
+            exitCode: 0,
+            status: "completed",
+            approvalStatus: null,
+            truncation: {
+              aggregatedOutput: {
+                originalLength: 5_241,
+                retainedHeadLength: 0,
+                retainedTailLength: 0,
+                truncatedAt: 1_781_545_287_460,
+              },
+            },
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope(turnId),
+        sequence: 9,
+        type: "item/started",
+        data: {
+          providerThreadId,
+          item: {
+            type: "commandExecution",
+            id: "stale-summary-command-3",
+            command: "sed -n '1,160p' c.ts",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        },
+      });
+
+      const detailResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/rows/${encodeURIComponent(
+          staleSummaryRow.key,
+        )}/detail?parts=children&sourceSeqStart=${staleSummaryRow.source.start}&sourceSeqEnd=${staleSummaryRow.source.end}`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = timelineRowDetailResponseSchema.parse(
+        await readJson(detailResponse),
+      );
+      expect(detail.parts.children?.length).toBeGreaterThan(0);
+    });
+  });
+
   it("previews large command output and lazy-loads full timeline work output", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness, {
@@ -1168,6 +1355,171 @@ describe("public thread data routes", () => {
       if (detailRow?.kind === "work" && detailRow.workKind === "tool") {
         expect(detailRow.workKind).toBe("tool");
         expect(detailRow.callId).toBe("tool-1");
+      }
+    });
+  });
+
+  it("hydrates stale turn-summary details after source bounds shift", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-1",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "assistant-1",
+            text: "Done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 4,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=1&sourceSeqEnd=4`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      const workRows = details.rows.filter((row) => row.kind === "work");
+      expect(workRows).toHaveLength(1);
+      expect(workRows[0]?.kind).toBe("work");
+      if (workRows[0]?.kind === "work" && workRows[0].workKind === "tool") {
+        expect(workRows[0].callId).toBe("tool-1");
+      }
+    });
+  });
+
+  it("ignores stray rows from another turn when hydrating turn-summary details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-1",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "assistant-1",
+            text: "Done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-2"),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-2",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm lint" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 5,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=4`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      const workRows = details.rows.filter((row) => row.kind === "work");
+      expect(workRows).toHaveLength(1);
+      expect(workRows[0]?.kind).toBe("work");
+      if (workRows[0]?.kind === "work" && workRows[0].workKind === "tool") {
+        expect(workRows[0].callId).toBe("tool-1");
       }
     });
   });

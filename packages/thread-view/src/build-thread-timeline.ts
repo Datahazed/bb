@@ -148,6 +148,7 @@ export interface ThreadTimelineSourceSeqRange {
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   threadStatus: Thread["status"];
+  turnId: string;
   /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
   workspaceRoot: string | null;
 }
@@ -859,18 +860,44 @@ function buildTurnRows({
 
 type TimelineTurnSummaryRow = Extract<TimelineRow, { kind: "turn" }>;
 
+interface TimelineTurnSummaryMatch {
+  overlapSize: number;
+  row: TimelineTurnSummaryRow;
+}
+
+function timelineRangeOverlapSize(
+  left: ThreadTimelineSourceSeqRange,
+  right: ThreadTimelineSourceSeqRange,
+): number {
+  const start = Math.max(left.sourceSeqStart, right.sourceSeqStart);
+  const end = Math.min(left.sourceSeqEnd, right.sourceSeqEnd);
+  return Math.max(0, end - start + 1);
+}
+
 function findMatchingTurnSummaryRow(
   rows: TimelineRow[],
-  range: ThreadTimelineSourceSeqRange,
+  options: BuildThreadTimelineTurnDetailsFromEventsOptions,
 ): TimelineTurnSummaryRow | null {
-  return (
-    rows.find(
-      (row): row is TimelineTurnSummaryRow =>
-        row.kind === "turn" &&
-        row.sourceSeqStart === range.sourceSeqStart &&
-        row.sourceSeqEnd === range.sourceSeqEnd,
-    ) ?? null
-  );
+  let bestOverlap: TimelineTurnSummaryMatch | null = null;
+  for (const row of rows) {
+    if (row.kind !== "turn" || row.turnId !== options.turnId) {
+      continue;
+    }
+    if (
+      row.sourceSeqStart === options.sourceSeqStart &&
+      row.sourceSeqEnd === options.sourceSeqEnd
+    ) {
+      return row;
+    }
+    const overlapSize = timelineRangeOverlapSize(row, options);
+    if (
+      overlapSize > 0 &&
+      (bestOverlap === null || overlapSize > bestOverlap.overlapSize)
+    ) {
+      bestOverlap = { overlapSize, row };
+    }
+  }
+  return bestOverlap?.row ?? null;
 }
 
 function hasTurnSummaryRows(rows: TimelineRow[]): boolean {
