@@ -182,6 +182,7 @@ export function ProjectActionsProvider({
         pending={addLocalSource.isPending}
         platform={addLocalSourcePicker.platform}
         hostName={addLocalSourcePicker.hostName}
+        listGitDirectories={addLocalSourcePicker.listGitDirectories}
         onOpenChange={addLocalSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={addLocalSourcePicker.submitProjectPath}
       />

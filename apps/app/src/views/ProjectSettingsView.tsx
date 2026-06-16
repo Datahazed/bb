@@ -189,6 +189,7 @@ export function ProjectSettingsView() {
         pending={localSourcePickerPending}
         platform={localSourcePicker.platform}
         hostName={localSourcePicker.hostName}
+        listGitDirectories={localSourcePicker.listGitDirectories}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}
       />

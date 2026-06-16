@@ -32,6 +32,9 @@ export interface QuickCreateProjectDialogState {
 export interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
+  listGitDirectories: ReturnType<
+    typeof useLocalPathPicker
+  >["listGitDirectories"];
   openCreateDialog: () => void;
   platform: HostPlatform | null;
   hostName: string | null;
@@ -87,6 +90,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
+      listGitDirectories: controller.listGitDirectories,
       openCreateDialog,
       platform: controller.platform,
       hostName: controller.hostName,

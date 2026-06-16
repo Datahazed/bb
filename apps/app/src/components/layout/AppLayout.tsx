@@ -614,6 +614,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           pending={quickCreateProject.isCreating}
           platform={quickCreateProject.platform}
           hostName={quickCreateProject.hostName}
+          listGitDirectories={quickCreateProject.listGitDirectories}
           onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
           onSubmit={quickCreateProject.submitProjectPath}
         />

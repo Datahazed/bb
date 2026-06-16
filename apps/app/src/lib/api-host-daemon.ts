@@ -3,8 +3,11 @@ import {
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
   providerCliInstallEventSchema,
   providerCliStatusResponseSchema,
+  gitDirectorySuggestionsResponseSchema,
   workspaceOpenTargetIdSchema,
   workspaceOpenTargetsResponseSchema,
+  type GitDirectorySuggestionsRequest,
+  type GitDirectorySuggestionsResponse,
   type OpenInTargetRequest,
   type ProviderCliInstallEvent,
   type ProviderCliInstallRequest,
@@ -330,4 +333,18 @@ export async function checkPathsExist(
   }
   const body = await res.json();
   return body.existence;
+}
+
+export async function listGitDirectories(
+  port: number,
+  request: GitDirectorySuggestionsRequest,
+): Promise<GitDirectorySuggestionsResponse> {
+  const daemon = getHostDaemonClient(port);
+  const res = await daemon.paths["git-directories"].$post({
+    json: request,
+  });
+  if (!res.ok) {
+    throw new Error(`Git directory suggestions failed: HTTP ${res.status}`);
+  }
+  return gitDirectorySuggestionsResponseSchema.parse(await res.json());
 }

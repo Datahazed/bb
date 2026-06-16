@@ -6,7 +6,10 @@ import {
   localHostIdAtom,
   localHostStatusAtom,
 } from "@/lib/system-config-atoms";
-import { pickFolder as daemonPickFolder } from "@/lib/api-host-daemon";
+import {
+  listGitDirectories as daemonListGitDirectories,
+  pickFolder as daemonPickFolder,
+} from "@/lib/api-host-daemon";
 import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 
 /**
@@ -49,6 +52,13 @@ export function useHostDaemon() {
     return () => daemonPickFolder(port);
   }, [hasDaemon, daemonPort, supportsNativeFolderPicker]);
 
+  const listGitDirectories = useMemo(() => {
+    if (!hasDaemon || !daemonPort || supportsNativeFolderPicker) return null;
+    const port = daemonPort;
+    return (request: Parameters<typeof daemonListGitDirectories>[1]) =>
+      daemonListGitDirectories(port, request);
+  }, [daemonPort, hasDaemon, supportsNativeFolderPicker]);
+
   return {
     localDaemonHostId,
     localHostId,
@@ -57,5 +67,6 @@ export function useHostDaemon() {
     platform,
     isLocalDaemonHost,
     pickFolder,
+    listGitDirectories,
   };
 }

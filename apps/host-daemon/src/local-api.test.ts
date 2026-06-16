@@ -227,6 +227,93 @@ describe("local API server", () => {
     }
   });
 
+  it("suggests git directories from an on-demand known-root index", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-git-dirs-"));
+    const projectsDir = path.join(root, "Projects");
+    const repoDir = path.join(projectsDir, "bb");
+    const otherRepoDir = path.join(projectsDir, "bb-tools");
+    const nonRepoDir = path.join(projectsDir, "bb-not-repo");
+    const hiddenRepoDir = path.join(root, ".hidden", "bb-hidden");
+    const packageRepoDir = path.join(root, "node_modules", "bb-package");
+
+    try {
+      server = await startLocalApiServer({
+        hostId: "host-1",
+        localApiConfig: createLocalApiConfig(),
+        serverUrl: "http://server.test",
+        serverPort: 3334,
+        devAppPort: 5173,
+        getConnected: () => true,
+        gitDirectorySuggestionRoots: [root],
+      });
+      await mkdir(path.join(repoDir, ".git"), { recursive: true });
+      await mkdir(otherRepoDir, { recursive: true });
+      await writeFile(
+        path.join(otherRepoDir, ".git"),
+        "gitdir: ../.git/worktrees/bb-tools\n",
+      );
+      await mkdir(nonRepoDir, { recursive: true });
+      await mkdir(path.join(hiddenRepoDir, ".git"), { recursive: true });
+      await mkdir(path.join(packageRepoDir, ".git"), { recursive: true });
+
+      const client = createHostDaemonLocalClient(
+        `http://localhost:${server.port}`,
+      );
+
+      const response = await client.paths["git-directories"].$post({
+        json: { mode: "known-roots", query: "bb", limit: 10 },
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toEqual({
+        directories: [
+          { path: repoDir, name: "bb" },
+          { path: otherRepoDir, name: "bb-tools" },
+        ],
+        truncated: false,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("suggests direct git directory children for absolute path completion", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-git-dir-children-"));
+    const repoDir = path.join(root, "bb");
+    const otherRepoDir = path.join(root, "bb-tools");
+    const nonRepoDir = path.join(root, "bb-not-repo");
+    await mkdir(path.join(repoDir, ".git"), { recursive: true });
+    await mkdir(path.join(otherRepoDir, ".git"), { recursive: true });
+    await mkdir(nonRepoDir);
+
+    try {
+      server = await startLocalApiServer({
+        hostId: "host-1",
+        localApiConfig: createLocalApiConfig(),
+        serverUrl: "http://server.test",
+        serverPort: 3334,
+        devAppPort: 5173,
+        getConnected: () => true,
+        gitDirectorySuggestionRoots: [path.join(root, "unused")],
+      });
+      const client = createHostDaemonLocalClient(
+        `http://localhost:${server.port}`,
+      );
+
+      const response = await client.paths["git-directories"].$post({
+        json: { mode: "children", parentPath: root, query: "tools", limit: 10 },
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toEqual({
+        directories: [{ path: otherRepoDir, name: "bb-tools" }],
+        truncated: false,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("lists workspace open targets and delegates target-aware open requests", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const targets: WorkspaceOpenTarget[] = [

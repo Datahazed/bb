@@ -82,6 +82,65 @@ export const pathsExistResponseSchema = z.object({
 });
 export type PathsExistResponse = z.infer<typeof pathsExistResponseSchema>;
 
+export const GIT_DIRECTORY_SUGGESTION_LIMIT_MAX = 20;
+export const GIT_DIRECTORY_SUGGESTION_QUERY_MAX_LENGTH = 120;
+
+export const gitDirectorySuggestionSchema = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1),
+});
+export type GitDirectorySuggestion = z.infer<
+  typeof gitDirectorySuggestionSchema
+>;
+
+const gitDirectorySuggestionLimitSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(GIT_DIRECTORY_SUGGESTION_LIMIT_MAX);
+
+const gitDirectorySuggestionQuerySchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(GIT_DIRECTORY_SUGGESTION_QUERY_MAX_LENGTH);
+
+export const gitDirectorySuggestionsRequestSchema = z.discriminatedUnion(
+  "mode",
+  [
+    z
+      .object({
+        mode: z.literal("children"),
+        parentPath: z.string().min(1),
+        query: z
+          .string()
+          .trim()
+          .max(GIT_DIRECTORY_SUGGESTION_QUERY_MAX_LENGTH)
+          .optional(),
+        limit: gitDirectorySuggestionLimitSchema,
+      })
+      .strict(),
+    z
+      .object({
+        mode: z.literal("known-roots"),
+        query: gitDirectorySuggestionQuerySchema,
+        limit: gitDirectorySuggestionLimitSchema,
+      })
+      .strict(),
+  ],
+);
+export type GitDirectorySuggestionsRequest = z.infer<
+  typeof gitDirectorySuggestionsRequestSchema
+>;
+
+export const gitDirectorySuggestionsResponseSchema = z.object({
+  directories: z.array(gitDirectorySuggestionSchema),
+  truncated: z.boolean(),
+});
+export type GitDirectorySuggestionsResponse = z.infer<
+  typeof gitDirectorySuggestionsResponseSchema
+>;
+
 export const hostPlatformSchema = z.enum(["darwin", "linux", "wsl", "unknown"]);
 export type HostPlatform = z.infer<typeof hostPlatformSchema>;
 
@@ -240,6 +299,12 @@ export type HostDaemonLocalSchema = {
   };
   "/paths/exist": {
     $post: Endpoint<{ json: PathsExistRequest }, PathsExistResponse>;
+  };
+  "/paths/git-directories": {
+    $post: Endpoint<
+      { json: GitDirectorySuggestionsRequest },
+      GitDirectorySuggestionsResponse
+    >;
   };
   "/status": {
     $get: Endpoint<EmptyInput, StatusResponse>;

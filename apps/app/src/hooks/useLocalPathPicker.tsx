@@ -25,6 +25,7 @@ export interface LocalPathPickerController {
   isAvailable: boolean;
   hostId: string | null;
   hostName: string | null;
+  listGitDirectories: ReturnType<typeof useHostDaemon>["listGitDirectories"];
   openPicker: (target: ProjectPathDialogTarget) => void;
   platform: HostPlatform | null;
   projectPathDialog: ReturnType<typeof useDialogState<ProjectPathDialogTarget>>;
@@ -60,7 +61,7 @@ export function useLocalPathPicker({
   isPending,
   submit,
 }: UseLocalPathPickerOptions): LocalPathPickerController {
-  const { pickFolder, platform } = useHostDaemon();
+  const { listGitDirectories, pickFolder, platform } = useHostDaemon();
   const { hostId, hostName } = usePathPickerHost();
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();
   const closeDialog = projectPathDialog.onClose;
@@ -102,6 +103,7 @@ export function useLocalPathPicker({
     isAvailable: hostId != null,
     hostId,
     hostName,
+    listGitDirectories,
     openPicker,
     platform,
     projectPathDialog,

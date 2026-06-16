@@ -587,6 +587,69 @@ describe("host-daemon local schemas", () => {
       }),
     ).toThrow();
   });
+
+  it("parses git directory suggestion routes", () => {
+    expect(
+      contract.gitDirectorySuggestionsRequestSchema.parse({
+        mode: "known-roots",
+        query: "bb",
+        limit: 10,
+      }),
+    ).toEqual({
+      mode: "known-roots",
+      query: "bb",
+      limit: 10,
+    });
+
+    expect(
+      contract.gitDirectorySuggestionsRequestSchema.parse({
+        mode: "children",
+        parentPath: "/root/Projects",
+        query: "bb",
+        limit: 10,
+      }),
+    ).toEqual({
+      mode: "children",
+      parentPath: "/root/Projects",
+      query: "bb",
+      limit: 10,
+    });
+
+    expect(
+      contract.gitDirectorySuggestionsResponseSchema.parse({
+        directories: [{ path: "/root/Projects/bb", name: "bb" }],
+        truncated: false,
+      }),
+    ).toEqual({
+      directories: [{ path: "/root/Projects/bb", name: "bb" }],
+      truncated: false,
+    });
+  });
+
+  it("rejects malformed git directory suggestion payloads", () => {
+    expect(() =>
+      contract.gitDirectorySuggestionsRequestSchema.parse({
+        mode: "known-roots",
+        query: "b",
+        limit: 10,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      contract.gitDirectorySuggestionsRequestSchema.parse({
+        mode: "children",
+        parentPath: "/root/Projects",
+        limit: contract.GIT_DIRECTORY_SUGGESTION_LIMIT_MAX + 1,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      contract.gitDirectorySuggestionsResponseSchema.parse({
+        directories: [{ path: "", name: "bb" }],
+        truncated: false,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("host-daemon command schemas", () => {

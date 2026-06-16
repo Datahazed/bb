@@ -10,6 +10,7 @@ import { assignIfDefined } from "@bb/config/objects";
 import {
   healthResponseSchema,
   HOST_DAEMON_PROTOCOL_VERSION,
+  gitDirectorySuggestionsRequestSchema,
   openInTargetRequestSchema,
   pathsExistRequestSchema,
   providerCliInstallRequestSchema,
@@ -35,6 +36,7 @@ import {
   ProviderCliInstallInProgressError,
   streamProviderCliInstall,
 } from "./provider-cli-health.js";
+import { createGitDirectorySuggestionService } from "./git-directory-suggestions.js";
 
 const execFileAsync = promisify(execFile);
 export type WorkspaceOpenTargetListHandler = () => Promise<
@@ -61,6 +63,7 @@ export interface StartLocalApiServerOptions {
   listWorkspaceOpenTargets?: WorkspaceOpenTargetListHandler;
   openInTarget?: OpenInTargetHandler;
   pickFolder?: () => Promise<string | null>;
+  gitDirectorySuggestionRoots?: readonly string[];
 }
 
 export interface LocalApiServer {
@@ -145,6 +148,11 @@ export async function startLocalApiServer(
   const nativeFolderPicker = resolveNativeFolderPicker({
     pickFolder: options.pickFolder,
   });
+  const gitDirectorySuggestionService = createGitDirectorySuggestionService({
+    ...(options.gitDirectorySuggestionRoots
+      ? { searchRoots: options.gitDirectorySuggestionRoots }
+      : {}),
+  });
   const platform = resolveHostPlatform();
 
   get("/status", (c) =>
@@ -204,6 +212,12 @@ export async function startLocalApiServer(
     );
     return c.json({ existence: Object.fromEntries(entries) });
   });
+
+  post(
+    "/paths/git-directories",
+    gitDirectorySuggestionsRequestSchema,
+    async (c, payload) => c.json(await gitDirectorySuggestionService.suggest(payload)),
+  );
 
   get("/workspace-open-targets", async (c) =>
     c.json({
