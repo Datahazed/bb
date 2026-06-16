@@ -138,11 +138,14 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.isBrowserTabActive === next.isBrowserTabActive &&
   previous.isOpen === next.isOpen &&
   previous.showGitDiffTab === next.showGitDiffTab &&
+  previous.tabs === next.tabs &&
+  previous.threadId === next.threadId &&
   previous.onPanelFocus === next.onPanelFocus &&
   previous.onPanelChange === next.onPanelChange &&
   previous.onCollapse === next.onCollapse &&
   previous.onClose === next.onClose &&
   previous.onOpenNewTab === next.onOpenNewTab &&
+  previous.renderTabContent === next.renderTabContent &&
   previous.onFileTabReorder === next.onFileTabReorder &&
   previous.onOpenFileInEditor === next.onOpenFileInEditor &&
   previous.onOpenFilePreview === next.onOpenFilePreview;

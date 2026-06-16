@@ -156,7 +156,10 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createNewTabFixedPanelTab,
+  type FixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import {
   buildParentSelectorOptions,
   isRootThread,
@@ -633,10 +636,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [terminalSessions],
   );
   const terminalsById = useMemo(
-    () =>
-      new Map(
-        terminalSessions.map((session) => [session.id, session]),
-      ),
+    () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
   const syncedOrderedSecondaryFileTabs = useMemo(
@@ -1616,11 +1616,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       thread={thread}
     />
   );
-  const activeTerminalId =
-    findActiveTerminalIdInSecondaryFileTabs({
-      activeTabId: activeFixedSecondaryTabId,
-      tabs: syncedOrderedSecondaryFileTabs,
-    });
+  const activeTerminalId = findActiveTerminalIdInSecondaryFileTabs({
+    activeTabId: activeFixedSecondaryTabId,
+    tabs: syncedOrderedSecondaryFileTabs,
+  });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
@@ -1669,6 +1668,138 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       threadId={thread.id}
     />
   ) : undefined;
+  const renderDockTabContent = useCallback(
+    (tab: FixedPanelTab) => {
+      switch (tab.kind) {
+        case "new-tab":
+          return (
+            <NewTabPage
+              projectId={projectId ?? undefined}
+              environmentId={thread.environmentId ?? null}
+              currentThreadId={thread.id}
+              focusRequest={newTabFocusRequest}
+              onSelect={selectFileSearchResult}
+              onOpenBrowser={handleOpenBrowser}
+              onStartTerminal={
+                canCreateTerminal ? handleStartTerminal : undefined
+              }
+            />
+          );
+        case "workspace-file-preview": {
+          const copyPath = resolveAbsoluteFilePath({
+            path: tab.path,
+            rootPath: workspacePreviewRootPath,
+          });
+          const baseDir =
+            copyPath === null
+              ? undefined
+              : getAbsoluteDirname({ path: copyPath });
+          return (
+            <WorkspaceFilePreviewTabContent
+              activePath={tab.path}
+              copyPath={copyPath}
+              environmentId={thread.environmentId}
+              lineRange={tab.lineRange}
+              markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+                baseDir,
+                onOpenLink: handleOpenTimelineLink,
+                onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+                rootPath: workspacePreviewRootPath,
+              })}
+              onOpenInEditor={handleOpenFileInEditor}
+              source={tab.source}
+              statusLabel={tab.statusLabel}
+              threadId={thread.id}
+            />
+          );
+        }
+        case "host-file-preview": {
+          const baseDir = getAbsoluteDirname({ path: tab.path });
+          const rootPath = resolveHostFilePreviewLinkRootPath({
+            baseDir,
+            threadStorageRootPath,
+            workspaceRootPath: workspacePreviewRootPath,
+          });
+          const onOpenHostTabInEditor: OpenInEditorHandler | undefined =
+            threadEnvironmentIsLocal && canOpenPreferredFileTarget
+              ? (path) => {
+                  void openPathInPreferredFileTarget({
+                    lineNumber: getFilePreviewLineRangeStart({
+                      lineRange: tab.lineRange,
+                    }),
+                    path,
+                  });
+                }
+              : undefined;
+          return (
+            <HostFilePreviewTabContent
+              activePath={tab.path}
+              copyPath={tab.path}
+              environmentId={thread.environmentId}
+              lineRange={tab.lineRange}
+              markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+                baseDir,
+                onOpenLink: handleOpenTimelineLink,
+                onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+                rootPath,
+              })}
+              onOpenInEditor={onOpenHostTabInEditor}
+              threadId={thread.id}
+            />
+          );
+        }
+        case "thread-storage-file-preview": {
+          const copyPath = resolveAbsoluteFilePath({
+            path: tab.path,
+            rootPath: threadStorageRootPath,
+          });
+          const baseDir =
+            copyPath === null
+              ? undefined
+              : getAbsoluteDirname({ path: copyPath });
+          return (
+            <ThreadStorageFilePreviewTabContent
+              activePath={tab.path}
+              copyPath={copyPath}
+              lineRange={tab.lineRange}
+              markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+                baseDir,
+                onOpenLink: handleOpenTimelineLink,
+                onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+                rootPath: threadStorageRootPath,
+              })}
+              onOpenInEditor={handleOpenStorageFileInEditor}
+              threadId={thread.id}
+            />
+          );
+        }
+        case "thread-info":
+        case "git-diff":
+        case "browser":
+        case "terminal":
+          return null;
+      }
+    },
+    [
+      canCreateTerminal,
+      canOpenPreferredFileTarget,
+      handleOpenBrowser,
+      handleOpenFileInEditor,
+      handleOpenStorageFileInEditor,
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      handleStartTerminal,
+      newTabFocusRequest,
+      openPathInPreferredFileTarget,
+      projectId,
+      selectFileSearchResult,
+      thread.environmentId,
+      thread.id,
+      threadEnvironmentIsLocal,
+      threadStorageRootPath,
+      workspacePreviewRootPath,
+    ],
+  );
   // Browser tabs are not rendered through the single `fileTabContent` slot:
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
@@ -1742,7 +1873,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           onOpenFilePreview: handleOpenFilePreview,
           onPanelFocus: handleSecondaryPanelFocus,
           onPanelChange: handleSecondaryPanelChange,
+          renderTabContent: renderDockTabContent,
           showGitDiffTab: canUseGitUi,
+          tabs: fixedPanelTabsState.secondary.tabs,
+          threadId: thread.id,
         }}
         timeline={{
           activeThinking,
