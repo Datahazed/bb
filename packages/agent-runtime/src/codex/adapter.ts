@@ -81,11 +81,6 @@ interface CodexThreadPermissionSettings {
 
 type BbThreadStartParams = ThreadStartParams & {
   experimentalRawEvents?: boolean;
-  persistExtendedHistory?: boolean;
-};
-
-type BbThreadResumeParams = ThreadResumeParams & {
-  persistExtendedHistory?: boolean;
 };
 
 interface ToCodexPermissionSettingsArgs {
@@ -1374,10 +1369,12 @@ export function createCodexProviderAdapter(
             ...resolveCodexInstructionOverrides(command),
             model: command.options?.model ?? undefined,
             serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            // bb reaps idle thread-scoped Codex processes and later resumes by
+            // provider thread id, so Codex must materialize a rollout on disk.
+            ephemeral: false,
             config: preparedGitRoots.config ?? undefined,
             // Codex only exposes raw Responses items as a thread/start opt-in.
             experimentalRawEvents: true,
-            persistExtendedHistory: false,
             ...(dynamicTools && dynamicTools.length > 0
               ? { dynamicTools }
               : {}),
@@ -1391,7 +1388,7 @@ export function createCodexProviderAdapter(
         case "thread/resume": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: BbThreadResumeParams = {
+          const params: ThreadResumeParams = {
             threadId: command.providerThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
@@ -1400,7 +1397,6 @@ export function createCodexProviderAdapter(
             model: command.options?.model ?? undefined,
             serviceTier: toCodexServiceTier(command.options?.serviceTier),
             config: preparedGitRoots.config ?? undefined,
-            persistExtendedHistory: false,
             ...(dynamicTools && dynamicTools.length > 0
               ? { dynamicTools }
               : {}),
