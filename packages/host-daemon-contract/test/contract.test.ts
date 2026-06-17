@@ -2403,10 +2403,26 @@ describe("host-daemon session schemas", () => {
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
+        target: {
+          kind: "workspace",
+          environmentId: "env_123",
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+        cols: TERMINAL_COLS_MAX,
+        rows: TERMINAL_ROWS_MAX,
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.open",
+        requestId: "request-1",
+        terminalId: "term_123",
+        target: {
+          kind: "host_path",
+          cwd: "/tmp/workspace",
         },
         cols: TERMINAL_COLS_MAX,
         rows: TERMINAL_ROWS_MAX,

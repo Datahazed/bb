@@ -112,7 +112,9 @@ class FakeTerminalPty implements TerminalPtyProcess {
   private readonly dataListeners: ((data: string) => void)[];
   private readonly exitListeners: ((event: TerminalPtyExit) => void)[];
   private readonly registeredDataListeners: ((data: string) => void)[];
-  private readonly registeredExitListeners: ((event: TerminalPtyExit) => void)[];
+  private readonly registeredExitListeners: ((
+    event: TerminalPtyExit,
+  ) => void)[];
 
   constructor() {
     this.killCalls = [];
@@ -363,10 +365,13 @@ async function openTerminal(
     requestId: "open-1",
     terminalId: "term-1",
     threadId: "thr-1",
-    environmentId: "env-1",
-    workspaceContext: {
-      workspacePath: "/tmp/terminal-workspace",
-      workspaceProvisionType: "unmanaged",
+    target: {
+      kind: "workspace",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
     },
     cols: 100,
     rows: 30,
@@ -411,9 +416,43 @@ describe("TerminalManager", () => {
         title: "zsh",
       }),
     );
-    await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
-      [],
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual([]);
+  });
+
+  it("opens a PTY in a host path without an environment", async () => {
+    const cwd = await makeTempDir("bb-terminal-host-path-");
+    const harness = createHarness();
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-host-path",
+      terminalId: "term-host-path",
+      target: {
+        kind: "host_path",
+        cwd,
+      },
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      cols: 80,
+      cwd,
+      rows: 24,
+    });
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-host-path",
+        initialCwd: cwd,
+      }),
     );
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual([]);
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
@@ -431,10 +470,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -490,10 +532,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -545,10 +590,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -591,10 +639,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -606,10 +657,13 @@ describe("TerminalManager", () => {
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -657,10 +711,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -672,10 +729,13 @@ describe("TerminalManager", () => {
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -729,10 +789,13 @@ describe("TerminalManager", () => {
       requestId: "open-stale",
       terminalId: "term-stale",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/stale-terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/stale-terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -975,9 +1038,9 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
-      ["env-1"],
-    );
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual(["env-1"]);
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
@@ -1063,10 +1126,13 @@ describe("TerminalManager", () => {
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
-      environmentId: "env-1",
-      workspaceContext: {
-        workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
       cols: 100,
       rows: 30,
@@ -1084,74 +1150,73 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it(
-    "runs commands in one persistent shell from the workspace cwd",
-    async () => {
-      if (process.platform === "win32") {
-        return;
-      }
+  it("runs commands in one persistent shell from the workspace cwd", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
 
-      const workspacePath = await makeTempDir("bb-terminal-manager-real-");
-      const targetPath = await makeTempDir("bb-terminal-manager-target-");
-      const expectedWorkspacePath = await fs.realpath(workspacePath);
-      const expectedTargetPath = await fs.realpath(targetPath);
-      const messages: HostDaemonDaemonWsMessage[] = [];
-      const runtimeManager = new RuntimeManager({
-        createRuntime: () => createFakeRuntime(),
-        provisionWorkspace: async () => createFakeWorkspace(workspacePath),
-      });
-      const manager = new TerminalManager({
-        logger: {
-          debug: vi.fn(),
-          error: vi.fn(),
-          info: vi.fn(),
-          warn: vi.fn(),
-        },
-        resolveShell: async () => "/bin/sh",
-        runtimeManager,
-        sendMessage: (message) => {
-          messages.push(message);
-          return true;
-        },
-      });
+    const workspacePath = await makeTempDir("bb-terminal-manager-real-");
+    const targetPath = await makeTempDir("bb-terminal-manager-target-");
+    const expectedWorkspacePath = await fs.realpath(workspacePath);
+    const expectedTargetPath = await fs.realpath(targetPath);
+    const messages: HostDaemonDaemonWsMessage[] = [];
+    const runtimeManager = new RuntimeManager({
+      createRuntime: () => createFakeRuntime(),
+      provisionWorkspace: async () => createFakeWorkspace(workspacePath),
+    });
+    const manager = new TerminalManager({
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      },
+      resolveShell: async () => "/bin/sh",
+      runtimeManager,
+      sendMessage: (message) => {
+        messages.push(message);
+        return true;
+      },
+    });
 
-      await manager.handleMessage({
-        type: "terminal.open",
-        requestId: "open-real",
-        terminalId: "term-real",
-        threadId: "thr-real",
+    await manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-real",
+      terminalId: "term-real",
+      threadId: "thr-real",
+      target: {
+        kind: "workspace",
         environmentId: "env-real",
         workspaceContext: {
           workspacePath,
           workspaceProvisionType: "unmanaged",
         },
-        cols: 100,
-        rows: 30,
-      });
-      await manager.handleMessage({
-        type: "terminal.input",
-        terminalId: "term-real",
-        dataBase64: Buffer.from(
-          [
-            'printf "__PWD1:%s\\n" "$(pwd -P)"',
-            `cd ${shellQuote(targetPath)}`,
-            'printf "__PWD2:%s\\n" "$(pwd -P)"',
-            "",
-          ].join("\n"),
-          "utf8",
-        ).toString("base64"),
-      });
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await manager.handleMessage({
+      type: "terminal.input",
+      terminalId: "term-real",
+      dataBase64: Buffer.from(
+        [
+          'printf "__PWD1:%s\\n" "$(pwd -P)"',
+          `cd ${shellQuote(targetPath)}`,
+          'printf "__PWD2:%s\\n" "$(pwd -P)"',
+          "",
+        ].join("\n"),
+        "utf8",
+      ).toString("base64"),
+    });
 
-      await waitForOutputContaining({
-        messages,
-        text: `__PWD1:${expectedWorkspacePath}`,
-      });
-      await waitForOutputContaining({
-        messages,
-        text: `__PWD2:${expectedTargetPath}`,
-      });
-      await manager.shutdownAll();
-    },
-    10_000,
-  );
+    await waitForOutputContaining({
+      messages,
+      text: `__PWD1:${expectedWorkspacePath}`,
+    });
+    await waitForOutputContaining({
+      messages,
+      text: `__PWD2:${expectedTargetPath}`,
+    });
+    await manager.shutdownAll();
+  }, 10_000);
 });

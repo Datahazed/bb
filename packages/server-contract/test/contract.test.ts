@@ -12,6 +12,7 @@ import {
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
+  createTerminalRequestSchema,
   createThreadTerminalRequestSchema,
   createQueuedMessageRequestSchema,
   createProjectSourceRequestSchema,
@@ -27,6 +28,7 @@ import {
   sendMessageRequestSchema,
   terminalClientMessageSchema,
   terminalOutputChunkSchema,
+  terminalSessionSchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -483,7 +485,49 @@ describe("git branch name contract", () => {
 });
 
 describe("public terminal contracts", () => {
+  it("allows terminal session responses without thread or environment ownership", () => {
+    expect(
+      terminalSessionSchema.safeParse({
+        id: "term_1",
+        threadId: null,
+        environmentId: null,
+        hostId: "host_1",
+        title: "Terminal 1",
+        initialCwd: "/tmp/workspace",
+        cols: 80,
+        rows: 24,
+        status: "running",
+        exitCode: null,
+        closeReason: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastUserInputAt: null,
+      }).success,
+    ).toBe(true);
+  });
+
   it("bounds terminal dimensions", () => {
+    expect(
+      createTerminalRequestSchema.safeParse({
+        cols: TERMINAL_COLS_MAX,
+        rows: TERMINAL_ROWS_MAX,
+        target: {
+          kind: "environment",
+          environmentId: "env_1",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      createTerminalRequestSchema.safeParse({
+        cols: TERMINAL_COLS_MAX,
+        rows: TERMINAL_ROWS_MAX,
+        target: {
+          kind: "host_path",
+          hostId: "host_1",
+          cwd: "/tmp/workspace",
+        },
+      }).success,
+    ).toBe(true);
     expect(
       createThreadTerminalRequestSchema.safeParse({
         cols: TERMINAL_COLS_MAX,

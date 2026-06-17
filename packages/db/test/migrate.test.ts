@@ -73,8 +73,8 @@ interface MigratedThreadProvenanceRow {
 
 interface MigratedTerminalSessionRow {
   id: string;
-  threadId: string;
-  environmentId: string;
+  threadId: string | null;
+  environmentId: string | null;
   hostId: string;
   daemonSessionId: string | null;
   title: string;
@@ -186,7 +186,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const latestMigrationWhen = Math.max(
   ...(
     JSON.parse(
-      readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+      readFileSync(
+        resolve(__dirname, "../drizzle/meta/_journal.json"),
+        "utf-8",
+      ),
     ) as { entries: { when: number }[] }
   ).entries.map((entry) => entry.when),
 );
@@ -230,10 +233,12 @@ const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const eventLargeValuesMigrationWhen = 1781403656069;
+const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const cleanupModeDropMigrationWhen = 1781557300000;
 const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
+const threadlessTerminalSessionsMigrationWhen = 1781660000004;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -2746,11 +2751,22 @@ describe("migrate", () => {
 
       const terminalSessionColumns = db.$client
         .prepare<[], TableInfoRow>("PRAGMA table_info(terminal_sessions)")
-        .all()
-        .map((column) => column.name);
-      expect(terminalSessionColumns).not.toContain("current_cwd");
-      expect(terminalSessionColumns).not.toContain("last_connected_at");
-      expect(terminalSessionColumns).not.toContain("exited_at");
+        .all();
+      const terminalSessionColumnNames = terminalSessionColumns.map(
+        (column) => column.name,
+      );
+      expect(terminalSessionColumnNames).not.toContain("current_cwd");
+      expect(terminalSessionColumnNames).not.toContain("last_connected_at");
+      expect(terminalSessionColumnNames).not.toContain("exited_at");
+      expect(
+        terminalSessionColumns.find((column) => column.name === "thread_id")
+          ?.notnull,
+      ).toBe(0);
+      expect(
+        terminalSessionColumns.find(
+          (column) => column.name === "environment_id",
+        )?.notnull,
+      ).toBe(0);
 
       const hostDaemonSessionColumns = db.$client
         .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
@@ -2855,8 +2871,28 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
+      const reappliedMigrationCreatedAts = db.$client
+        .prepare<[number, number], MigrationCreatedAtRow>(
+          `
+            SELECT created_at AS createdAt
+            FROM __drizzle_migrations
+            WHERE created_at IN (?, ?)
+            ORDER BY created_at
+          `,
+        )
+        .all(
+          eventLargeValuesRestoreMigrationWhen,
+          threadlessTerminalSessionsMigrationWhen,
+        )
+        .map((row) => row.createdAt);
+      expect(reappliedMigrationCreatedAts).toContain(
+        eventLargeValuesRestoreMigrationWhen,
+      );
+      expect(reappliedMigrationCreatedAts).toContain(
+        threadlessTerminalSessionsMigrationWhen,
+      );
       // The restore migration and every migration after it re-apply, so the
-      // latest applied migration is the most recent in the journal (0041).
+      // latest applied migration is the most recent in the journal.
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
 

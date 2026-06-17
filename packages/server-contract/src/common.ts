@@ -16,6 +16,12 @@ export type PathThreadAndFilePath = {
 export type PathThreadAndTerminal = {
   param: { id: string; terminalId: string };
 };
+export type PathEnvironmentAndTerminal = {
+  param: { id: string; terminalId: string };
+};
+export type PathTerminal = {
+  param: { terminalId: string };
+};
 export type PathProjectAutomationId = {
   param: { id: string; automationId: string };
 };

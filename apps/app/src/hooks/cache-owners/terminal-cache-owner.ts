@@ -58,6 +58,9 @@ export function applyThreadTerminalSessionUpsert({
   queryClient,
   session,
 }: TerminalSessionCacheArgs): void {
+  if (session.threadId === null) {
+    return;
+  }
   queryClient.setQueryData<ThreadTerminalListResponse>(
     threadTerminalsQueryKey(session.threadId),
     (current) => upsertTerminalSession(current, session),
@@ -72,6 +75,9 @@ export function applyThreadTerminalSessionClose({
   session,
   terminalId,
 }: CloseTerminalSessionCacheArgs): void {
+  if (session.threadId === null) {
+    return;
+  }
   queryClient.setQueryData<ThreadTerminalListResponse>(
     threadTerminalsQueryKey(session.threadId),
     (current) =>

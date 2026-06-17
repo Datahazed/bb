@@ -5,6 +5,14 @@ interface BuildTerminalWebSocketUrlArgs {
   threadId: string;
 }
 
+interface BuildThreadlessTerminalWebSocketUrlArgs {
+  terminalId: string;
+}
+
+interface BuildTerminalSessionWebSocketUrlArgs {
+  terminalId: string;
+}
+
 function buildTerminalWebSocketPath({
   terminalId,
   threadId,
@@ -14,10 +22,13 @@ function buildTerminalWebSocketPath({
   )}`;
 }
 
-export function buildTerminalWebSocketUrl(
-  args: BuildTerminalWebSocketUrlArgs,
-): string {
-  const path = buildTerminalWebSocketPath(args);
+function buildThreadlessTerminalWebSocketPath({
+  terminalId,
+}: BuildThreadlessTerminalWebSocketUrlArgs): string {
+  return `/ws/terminals/${encodeURIComponent(terminalId)}`;
+}
+
+function buildWebSocketUrl(path: string): string {
   const devWebSocketUrl = buildDevWebSocketUrl({ path });
   if (devWebSocketUrl !== undefined) {
     return devWebSocketUrl;
@@ -25,4 +36,22 @@ export function buildTerminalWebSocketUrl(
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}${path}`;
+}
+
+export function buildTerminalWebSocketUrl(
+  args: BuildTerminalWebSocketUrlArgs,
+): string {
+  return buildWebSocketUrl(buildTerminalWebSocketPath(args));
+}
+
+export function buildThreadlessTerminalWebSocketUrl(
+  args: BuildThreadlessTerminalWebSocketUrlArgs,
+): string {
+  return buildWebSocketUrl(buildThreadlessTerminalWebSocketPath(args));
+}
+
+export function buildTerminalSessionWebSocketUrl(
+  args: BuildTerminalSessionWebSocketUrlArgs,
+): string {
+  return buildWebSocketUrl(buildThreadlessTerminalWebSocketPath(args));
 }

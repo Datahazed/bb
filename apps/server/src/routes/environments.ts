@@ -211,6 +211,39 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     return context.json(updated);
   });
 
+  get(routes.terminals, (context) => {
+    const sessions = deps.terminalSessions.listEnvironmentTerminals(
+      context.req.param("id"),
+    );
+    return context.json({ sessions });
+  });
+
+  post(routes.createTerminal, async (context, payload) => {
+    const session = await deps.terminalSessions.createEnvironmentTerminal({
+      payload,
+      environmentId: context.req.param("id"),
+    });
+    return context.json(session, 201);
+  });
+
+  patch(routes.updateTerminal, (context, payload) => {
+    const session = deps.terminalSessions.renameEnvironmentTerminal({
+      payload,
+      environmentId: context.req.param("id"),
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session);
+  });
+
+  post(routes.closeTerminal, (context, payload) => {
+    const session = deps.terminalSessions.closeEnvironmentTerminal({
+      payload,
+      environmentId: context.req.param("id"),
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session);
+  });
+
   post(routes.archiveThreads, (context) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
     if (!isWorktreeEnvironment(environment)) {
@@ -327,10 +360,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.diffFiles, async (context, query) => {
-    const target = resolveGitDiffWorkspaceTarget(
-      deps,
-      context.req.param("id"),
-    );
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
     if (target === null) {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
@@ -391,10 +421,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.diffPatch, async (context, payload) => {
-    const target = resolveGitDiffWorkspaceTarget(
-      deps,
-      context.req.param("id"),
-    );
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
     if (target === null) {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }

@@ -1,5 +1,5 @@
 import { accessSync, chmodSync, constants, existsSync } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { spawn as spawnPty } from "node-pty";
@@ -90,7 +90,7 @@ interface TerminalSession {
   closeReason: TerminalSessionCloseReason | null;
   cols: number;
   disposables: TerminalPtyDisposable[];
-  environmentId: string;
+  environmentId: string | null;
   nextSeq: number;
   pty: TerminalPtyProcess;
   rows: number;
@@ -130,6 +130,11 @@ interface ResizeTerminalArgs {
   cols: number;
   rows: number;
   terminalId: string;
+}
+
+interface ResolvedTerminalOpenTarget {
+  cwd: string;
+  environmentId: string | null;
 }
 
 interface FinishTerminalSessionArgs {
@@ -317,6 +322,25 @@ function terminalTitleFromShell(shell: string): string {
   return path.basename(shell) || "Terminal";
 }
 
+function terminalEnvironmentIdFromOpenMessage(
+  message: TerminalOpenMessage,
+): string | null {
+  return message.target.kind === "workspace"
+    ? message.target.environmentId
+    : null;
+}
+
+async function requireTerminalCwd(cwd: string): Promise<string> {
+  if (!path.isAbsolute(cwd)) {
+    throw new Error("Terminal cwd must be an absolute path");
+  }
+  const info = await stat(cwd);
+  if (!info.isDirectory()) {
+    throw new Error(`Terminal cwd is not a directory: ${cwd}`);
+  }
+  return cwd;
+}
+
 function createTerminalOperationCompletion(): TerminalOperationCompletion {
   let resolveCompletion: () => void = () => {
     throw new Error("Terminal operation completion resolver was not set");
@@ -334,7 +358,10 @@ export class TerminalManager {
   private readonly scrollbackMaxBytes: number;
   private readonly scrollbackMaxChunks: number;
   private readonly terminalOperations = new Map<string, Promise<void>>();
-  private readonly openingTerminalEnvironmentIds = new Map<string, string>();
+  private readonly openingTerminalEnvironmentIds = new Map<
+    string,
+    string | null
+  >();
   private readonly sessions = new Map<string, TerminalSession>();
 
   constructor(private readonly options: TerminalManagerOptions) {
@@ -450,21 +477,17 @@ export class TerminalManager {
       return;
     }
 
+    const openingEnvironmentId = terminalEnvironmentIdFromOpenMessage(message);
     this.openingTerminalEnvironmentIds.set(
       message.terminalId,
-      message.environmentId,
+      openingEnvironmentId,
     );
     try {
-      const entry = await requireResolvedWorkspaceForCommand({
-        dataDir: this.options.dataDir,
-        environmentId: message.environmentId,
-        runtimeManager: this.options.runtimeManager,
-        workspaceContext: message.workspaceContext,
-      });
+      const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
         cols: message.cols,
-        cwd: entry.path,
+        cwd: target.cwd,
         env: buildTerminalEnv({
           shellEnv: this.options.runtimeManager.getShellEnv(),
           terminalId: message.terminalId,
@@ -477,7 +500,7 @@ export class TerminalManager {
         closeReason: null,
         cols: message.cols,
         disposables: [],
-        environmentId: message.environmentId,
+        environmentId: target.environmentId,
         nextSeq: 0,
         pty,
         rows: message.rows,
@@ -486,10 +509,12 @@ export class TerminalManager {
         terminalId: message.terminalId,
       };
       this.sessions.set(message.terminalId, session);
-      this.options.runtimeManager.markTerminalActive(
-        message.environmentId,
-        message.terminalId,
-      );
+      if (target.environmentId !== null) {
+        this.options.runtimeManager.markTerminalActive(
+          target.environmentId,
+          message.terminalId,
+        );
+      }
       session.disposables.push(
         pty.onData((data) => this.handleTerminalOutput(session, data)),
         pty.onExit((event) => {
@@ -518,7 +543,7 @@ export class TerminalManager {
         terminalId: message.terminalId,
         shell,
         title: terminalTitleFromShell(shell),
-        initialCwd: entry.path,
+        initialCwd: target.cwd,
         cols: message.cols,
         rows: message.rows,
       });
@@ -537,10 +562,34 @@ export class TerminalManager {
     } finally {
       if (
         this.openingTerminalEnvironmentIds.get(message.terminalId) ===
-        message.environmentId
+        openingEnvironmentId
       ) {
         this.openingTerminalEnvironmentIds.delete(message.terminalId);
       }
+    }
+  }
+
+  private async resolveTerminalOpenTarget(
+    message: TerminalOpenMessage,
+  ): Promise<ResolvedTerminalOpenTarget> {
+    switch (message.target.kind) {
+      case "workspace": {
+        const entry = await requireResolvedWorkspaceForCommand({
+          dataDir: this.options.dataDir,
+          environmentId: message.target.environmentId,
+          runtimeManager: this.options.runtimeManager,
+          workspaceContext: message.target.workspaceContext,
+        });
+        return {
+          cwd: entry.path,
+          environmentId: message.target.environmentId,
+        };
+      }
+      case "host_path":
+        return {
+          cwd: await requireTerminalCwd(message.target.cwd),
+          environmentId: null,
+        };
     }
   }
 
@@ -689,10 +738,12 @@ export class TerminalManager {
       return;
     }
     this.sessions.delete(args.session.terminalId);
-    this.options.runtimeManager.markTerminalInactive(
-      args.session.environmentId,
-      args.session.terminalId,
-    );
+    if (args.session.environmentId !== null) {
+      this.options.runtimeManager.markTerminalInactive(
+        args.session.environmentId,
+        args.session.terminalId,
+      );
+    }
     for (const disposable of args.session.disposables) {
       disposable.dispose();
     }
