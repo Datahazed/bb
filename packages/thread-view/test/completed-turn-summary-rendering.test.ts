@@ -256,6 +256,72 @@ describe("completed turn summary rendering", () => {
     ).toEqual([["work:command"], ["work:command"]]);
   });
 
+  it("splits background parent turn summaries at later user turn boundaries", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const reviewRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "$ottonomous:review",
+    });
+    const events: TimelineFixtureEvent[] = [
+      reviewRequest,
+      event.turnStarted({ turnId: "parent-review" }),
+      event.inputAccepted({
+        clientRequestId: reviewRequest.data.requestId,
+        turnId: "parent-review",
+      }),
+      event.commandCompleted({
+        command: "pnpm exec turbo run test --filter=@bb/thread-view",
+        itemId: "parent-before-user",
+        turnId: "parent-review",
+      }),
+      event.turnStarted({ turnId: "background-worker" }),
+      event.commandCompleted({
+        command: "rg timeline packages/thread-view",
+        itemId: "worker-command",
+        turnId: "background-worker",
+      }),
+      event.assistantCompleted({
+        itemId: "worker-terminal",
+        text: "Worker finished.",
+        turnId: "background-worker",
+      }),
+      event.turnCompleted({ turnId: "background-worker" }),
+    ];
+    const followUpRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "one more change",
+    });
+    events.push(
+      followUpRequest,
+      event.commandCompleted({
+        command: "rg links apps packages",
+        itemId: "parent-after-user",
+        turnId: "parent-review",
+      }),
+      event.assistantCompleted({
+        itemId: "parent-terminal",
+        text: "I will handle the follow-up.",
+        turnId: "parent-review",
+      }),
+      event.turnCompleted({ turnId: "parent-review" }),
+    );
+
+    const timeline = renderCompletedTimeline({ events });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-4",
+      "turn:5-8",
+      "conversation:assistant",
+      "conversation:user",
+      "turn:10-10",
+      "conversation:assistant",
+    ]);
+    expect(
+      turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
+    ).toEqual([["work:command"], ["work:command"], ["work:command"]]);
+  });
+
   it("does not split completed turn summaries around accepted assistant steers", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [

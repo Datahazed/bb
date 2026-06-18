@@ -1064,6 +1064,19 @@ function hasTurnSummaryRows(rows: TimelineRow[]): boolean {
   return rows.some((row) => row.kind === "turn");
 }
 
+function compareTimelineRowsBySource(
+  left: TimelineRow,
+  right: TimelineRow,
+): number {
+  if (left.sourceSeqStart !== right.sourceSeqStart) {
+    return left.sourceSeqStart - right.sourceSeqStart;
+  }
+  if (left.sourceSeqEnd !== right.sourceSeqEnd) {
+    return left.sourceSeqEnd - right.sourceSeqEnd;
+  }
+  return 0;
+}
+
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
@@ -1092,7 +1105,7 @@ function buildTimelineRows(
     }
   }
 
-  return rows;
+  return rows.sort(compareTimelineRowsBySource);
 }
 
 export function buildThreadTimelineFromEvents(
