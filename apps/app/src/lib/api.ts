@@ -1264,6 +1264,12 @@ export async function unarchiveThread(id: string): Promise<void> {
   );
 }
 
+export async function restoreThreadEnvironment(id: string): Promise<void> {
+  await requestVoid(
+    apiClient.threads[":id"]["restore-environment"].$post({ param: { id } }),
+  );
+}
+
 export async function deleteThread(
   id: string,
   opts: DeleteThreadRequest,

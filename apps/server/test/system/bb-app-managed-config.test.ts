@@ -58,6 +58,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     hostDaemonPort: 38887,
     inferenceModel: "openai/gpt-4o-mini",
     isDevelopment: false,
+    managedEnvironmentRetireGraceMs: 10_000,
     openAiApiKey: "ambient-openai-key",
     serverPort: 38886,
     threadStorageRootPath: "/tmp/bb-test/thread-storage",

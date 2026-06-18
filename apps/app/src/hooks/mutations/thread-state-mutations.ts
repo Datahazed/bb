@@ -6,6 +6,7 @@ import type {
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
+import { appToast } from "@/components/ui/app-toast";
 import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
 import {
   applyReorderPinnedThreadResult,
@@ -37,6 +38,14 @@ import {
 interface ThreadMutationRequest {
   id: string;
 }
+
+/**
+ * How long the "Thread archived — Undo" toast stays up. Matches the server's
+ * archive grace window (`MANAGED_ENVIRONMENT_RETIRE_GRACE_MS`), within which an
+ * Undo revives the environment losslessly (its worktree has not been destroyed
+ * yet). After it elapses the durable Unarchive in the read-only banner remains.
+ */
+const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 
 type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
 type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
@@ -216,6 +225,22 @@ export function useArchiveThread() {
         transaction: context,
       });
     },
+    onSuccess: (_data, { id }) => {
+      // Offer a quick, lossless Undo while the environment is still inside its
+      // grace window: un-archiving revives a retiring environment in place
+      // (retire.cancelled), so the worktree and uncommitted work are preserved.
+      appToast.message("Thread archived", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            void api.unarchiveThread(id).then(() => {
+              settleThreadListMembershipMutation({ queryClient, threadId: id });
+            });
+          },
+        },
+        duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+      });
+    },
     onSettled: (_data, _error, variables) => {
       settleThreadListMembershipMutation({
         queryClient,
@@ -279,6 +304,19 @@ export function useUnarchiveThread() {
         threadId: variables.id,
       });
     },
+  });
+}
+
+export function useRestoreThreadEnvironment() {
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to restore environment.",
+    },
+    mutationFn: ({ id }: ThreadMutationRequest) =>
+      api.restoreThreadEnvironment(id),
+    // The server reprovisions a fresh environment and re-seeds the thread; the
+    // resulting thread/environment changes arrive over the realtime channel, so
+    // no optimistic cache mutation is needed here.
   });
 }
 

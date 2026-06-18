@@ -54,7 +54,10 @@ import {
   useSendThreadQueuedMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
+import {
+  useRestoreThreadEnvironment,
+  useUnarchiveThread,
+} from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
   useThreadQueuedMessages,
@@ -277,6 +280,7 @@ export function ThreadDetailPromptArea({
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
+  const restoreEnvironment = useRestoreThreadEnvironment();
   const uploadPromptAttachment = useUploadPromptAttachment();
   // The personal project isn't a meaningful label in the footer, so skip it.
   const projectName = useProjectDisplayName(
@@ -798,6 +802,12 @@ export function ThreadDetailPromptArea({
   const handleUnarchiveCurrentThread = useCallback(() => {
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
+  const isRestoreEnvironmentPending =
+    restoreEnvironment.isPending &&
+    restoreEnvironment.variables?.id === thread.id;
+  const handleRestoreEnvironment = useCallback(() => {
+    restoreEnvironment.mutate({ id: thread.id });
+  }, [thread.id, restoreEnvironment]);
 
   const attachmentsConfig = useMemo(
     () => ({
@@ -1017,7 +1027,11 @@ export function ThreadDetailPromptArea({
           environmentGoneSection={
             environmentGoneStatus === null
               ? null
-              : { status: environmentGoneStatus }
+              : {
+                  status: environmentGoneStatus,
+                  onRestore: handleRestoreEnvironment,
+                  restorePending: isRestoreEnvironmentPending,
+                }
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
@@ -1070,9 +1084,11 @@ export function ThreadDetailPromptArea({
       handleSendQueuedImmediately,
       handleToggleBannerSection,
       handleUnarchiveCurrentThread,
+      handleRestoreEnvironment,
       environmentGoneStatus,
       isFollowUpSubmitting,
       isUnarchiveCurrentThreadPending,
+      isRestoreEnvironmentPending,
       isQueueMutationPending,
       goal,
       isGoalExpanded,

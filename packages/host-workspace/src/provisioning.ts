@@ -232,6 +232,18 @@ function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
   }
 }
 
+async function localBranchExists(args: {
+  sourcePath: string;
+  branchName: string;
+  signal: AbortSignal | undefined;
+}): Promise<boolean> {
+  const result = await runGit(
+    ["show-ref", "--verify", "--quiet", `refs/heads/${args.branchName}`],
+    { cwd: args.sourcePath, allowFailure: true, signal: args.signal },
+  );
+  return result.exitCode === 0;
+}
+
 export async function createWorktree(
   args: CreateWorkspaceArgs,
 ): Promise<{ path: string }> {
@@ -252,14 +264,21 @@ export async function createWorktree(
       `Cannot resolve default branch for source: ${args.sourcePath}`,
     );
   }
-  const gitArgs = [
-    "worktree",
-    "add",
-    "-B",
-    args.branchName,
-    args.targetPath,
-    baseBranch,
-  ];
+  // If the branch already exists in the source repo, check it out as-is so its
+  // commits are preserved. This matters for restoring an environment whose
+  // worktree was removed: `git worktree remove` deletes the worktree but never
+  // the branch, so committed work survives in the shared object store, and
+  // `-B <branch> <baseBranch>` would reset the branch back to the base and
+  // orphan it. A brand-new thread's branch never pre-exists, so it still takes
+  // the create-from-base path.
+  const branchAlreadyExists = await localBranchExists({
+    sourcePath: args.sourcePath,
+    branchName: args.branchName,
+    signal: args.signal,
+  });
+  const gitArgs = branchAlreadyExists
+    ? ["worktree", "add", args.targetPath, args.branchName]
+    : ["worktree", "add", "-B", args.branchName, args.targetPath, baseBranch];
   const worktreeStartedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,

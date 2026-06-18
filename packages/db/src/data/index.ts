@@ -101,6 +101,7 @@ export {
   setThreadExecutionOverride,
   hasNonTerminalThreadInEnvironment,
   hasPendingThreadShutdownInEnvironment,
+  hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
