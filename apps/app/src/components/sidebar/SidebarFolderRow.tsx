@@ -110,7 +110,7 @@ function SidebarFolderRowComponent({
         aria-hidden="true"
       >
         <Icon
-          name="FolderTree"
+          name={isCollapsed ? "Folder" : "FolderOpen"}
           className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
         />
