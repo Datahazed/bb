@@ -32,6 +32,7 @@ import {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
@@ -2824,6 +2825,25 @@ describe("events", () => {
     expect(JSON.parse(rows[0]!.data)).toMatchObject({
       item: { taskStatus: "paused" },
     });
+    expect(
+      listOpenBackgroundTaskStateRowsForThread(db, { threadId: thread.id }).map(
+        (row) => ({
+          data: JSON.parse(row.data),
+          itemId: row.itemId,
+          sequence: row.sequence,
+          type: row.type,
+        }),
+      ),
+    ).toEqual([
+      {
+        data: expect.objectContaining({
+          item: expect.objectContaining({ taskStatus: "paused" }),
+        }),
+        itemId: "task:wf-open",
+        sequence: 3,
+        type: "item/backgroundTask/progress",
+      },
+    ]);
 
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",

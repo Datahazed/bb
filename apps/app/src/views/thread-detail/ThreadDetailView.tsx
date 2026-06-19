@@ -693,6 +693,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadTimelineController({
     threadId: threadId ?? "",
   });
+  const hasActiveBackgroundTask =
+    activeWorkflow !== null || activeBackgroundCommands.length > 0;
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
@@ -1838,6 +1840,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       </PageShell>
     );
   }
+  const isRuntimeOngoing = isRunningThreadRuntimeDisplayStatus(
+    thread.runtime.displayStatus,
+  );
   const hasAssignableParent = parentSelectorOptions.some(
     (option) => option.value !== "none",
   );
@@ -2176,11 +2181,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             // own inline shimmer row, so the bottom indicator would just
             // duplicate it.
             !hasPendingInteraction &&
-            isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
+            (isRuntimeOngoing || hasActiveBackgroundTask) &&
             !isThreadTimelinePending,
           ongoingIndicatorLabel:
             thread.runtime.displayStatus === "host-reconnecting"
               ? "Waiting for reconnection"
+              : hasActiveBackgroundTask && !isRuntimeOngoing
+                ? "Background work running"
               : undefined,
           timelineRows,
           isStopping: thread.status === "stopping",

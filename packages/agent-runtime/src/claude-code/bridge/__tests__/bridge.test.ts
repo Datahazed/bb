@@ -1793,6 +1793,57 @@ describe("bridge", () => {
     }
   });
 
+  it("keeps a live session open when thread/resume targets the same provider thread", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-idempotent-resume";
+      const providerThreadId = "provider-thread-idempotent-resume";
+      bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        providerThreadId,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "thread/resume", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        providerThreadId,
+        threadId,
+      });
+      const resumeResponse = await bridge.waitForResponse(2);
+
+      expect(getProviderThreadIdFromResult(resumeResponse)).toBe(
+        providerThreadId,
+      );
+      expect(queries).toHaveLength(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("resumes a Claude session when follow-up arrives after an SDK stream error", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

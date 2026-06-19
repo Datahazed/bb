@@ -21,6 +21,7 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsInRange,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
@@ -540,6 +541,39 @@ function ensureTimelineWindowBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
+function ensureLatestTimelineOpenBackgroundTaskStateRows(
+  db: DbConnection,
+  args: TimelineWindowRowsArgs & { page: ThreadTimelinePageRequest },
+): StoredEventRow[] {
+  if (args.page.kind !== "latest") {
+    return [...args.rows];
+  }
+
+  const openTaskRows = listOpenBackgroundTaskStateRowsForThread(db, {
+    threadId: args.threadId,
+  });
+  if (openTaskRows.length === 0) {
+    return [...args.rows];
+  }
+
+  const selectedRowIds = new Set(args.rows.map((row) => row.id));
+  const projectedOpenTaskRows = openTaskRows.map((row) =>
+    selectedRowIds.has(row.id)
+      ? row
+      : {
+          ...row,
+          // Injected open-task rows feed active cards, not exact transcript
+          // replay. A task whose latest state is only item/started remains
+          // turn-scoped in storage, so replay it as the thread-scoped progress
+          // snapshot that background-task projections already accept.
+          type: "item/backgroundTask/progress" as const,
+          scopeKind: "thread" as const,
+          turnId: null,
+        },
+  );
+  return mergeStoredEventRowsById([...projectedOpenTaskRows, ...args.rows]);
+}
+
 interface ResolveTimelineSegmentWindowArgs {
   page: ThreadTimelinePageRequest;
   threadId: string;
@@ -636,15 +670,19 @@ function selectStandardTimelineEventRows(
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
-  const selectedRows = ensureTimelineWindowBackgroundTaskStateRows(db, {
+  const selectedRows = ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
+    page,
     threadId: thread.id,
-    rows: ensureTimelineWindowTurnStartedRows(db, {
+    rows: ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
-      rows: listStoredTimelineWindowEventRows(db, {
-        beforeSequence,
-        excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-        sequenceStart,
+      rows: ensureTimelineWindowTurnStartedRows(db, {
         threadId: thread.id,
+        rows: listStoredTimelineWindowEventRows(db, {
+          beforeSequence,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          sequenceStart,
+          threadId: thread.id,
+        }),
       }),
     }),
   });

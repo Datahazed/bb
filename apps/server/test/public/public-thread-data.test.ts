@@ -207,6 +207,173 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("surfaces active background tasks outside the latest timeline window", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const clientTurnRequestData = (value: number, text: string) => ({
+        direction: "outbound" as const,
+        requestId: encodeClientTurnRequestIdNumber({ value }),
+        source: "tell" as const,
+        initiator: "user" as const,
+        senderThreadId: null,
+        input: [{ type: "text" as const, text }],
+        target: { kind: "new-turn" as const },
+        request: {
+          method: "turn/start" as const,
+          params: {},
+        },
+        execution: {
+          model: "gpt-4o-mini",
+          reasoningLevel: "medium",
+          permissionMode: "full" as const,
+          serviceTier: "default" as const,
+          source: "client/turn/requested" as const,
+        },
+      });
+      const agentMessageData = (id: string, text: string) => ({
+        item: {
+          type: "agentMessage" as const,
+          id,
+          text,
+        },
+      });
+      const workflowTaskData = {
+        item: {
+          type: "backgroundTask" as const,
+          id: "task:wf-window",
+          taskType: "local_workflow",
+          description: "windowed workflow",
+          status: "pending" as const,
+          taskStatus: "running" as const,
+          skipTranscript: false,
+          workflowName: "fixture-window",
+        },
+      };
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: clientTurnRequestData(1, "Start workflow"),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 3,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        data: workflowTaskData,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 4,
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        data: { status: "completed" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 5,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: clientTurnRequestData(2, "Middle turn"),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 6,
+        type: "turn/started",
+        scope: turnScope("turn-2"),
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 7,
+        type: "item/completed",
+        scope: turnScope("turn-2"),
+        data: agentMessageData("assistant-2", "Middle done."),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 8,
+        type: "turn/completed",
+        scope: turnScope("turn-2"),
+        data: { status: "completed" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 9,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: clientTurnRequestData(3, "Latest turn"),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 10,
+        type: "turn/started",
+        scope: turnScope("turn-3"),
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 11,
+        type: "item/completed",
+        scope: turnScope("turn-3"),
+        data: agentMessageData("assistant-3", "Latest done."),
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 12,
+        type: "turn/completed",
+        scope: turnScope("turn-3"),
+        data: { status: "completed" },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline?segmentLimit=1`,
+      );
+      const timelineBody = await timelineResponse.text();
+      expect(timelineResponse.status, timelineBody).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        JSON.parse(timelineBody),
+      );
+
+      expect(timeline.activeWorkflow).toMatchObject({
+        itemId: "task:wf-window",
+        status: "pending",
+        taskStatus: "running",
+        workflowName: "fixture-window",
+      });
+    });
+  });
+
   it("uses uploaded project attachments for localFile prompt input and timeline metadata", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

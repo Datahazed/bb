@@ -1216,6 +1216,22 @@ async function handleThreadResume(
 
   const existing = sessions.get(threadId);
   if (existing) {
+    const existingProviderThreadId =
+      existing.providerThreadId ?? existing.session.getSessionId();
+    if (
+      existingProviderThreadId !== undefined &&
+      requestedProviderThreadId !== undefined &&
+      requestedProviderThreadId === existingProviderThreadId &&
+      !existing.closing &&
+      !existing.streamEnded
+    ) {
+      sendResult(id, {
+        threadId,
+        providerThreadId: existingProviderThreadId,
+      });
+      sendThreadIdentity(threadId, existingProviderThreadId);
+      return;
+    }
     await closeThreadSession({
       graceful: false,
       message: "Thread session replaced while awaiting permission approval",

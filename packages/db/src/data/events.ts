@@ -840,6 +840,10 @@ export interface ListOpenBackgroundTaskItemRowsForHostArgs {
   hostId: string;
 }
 
+export interface ListOpenBackgroundTaskStateRowsForThreadArgs {
+  threadId: string;
+}
+
 export interface OpenBackgroundTaskItemRow {
   /** Raw data JSON of the latest lifecycle row; carries the item payload. */
   data: string;
@@ -1947,6 +1951,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
           SELECT MAX(latest.sequence)
           FROM events latest
           WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_kind = 'backgroundTask'
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,
@@ -1958,6 +1963,57 @@ export function listOpenBackgroundTaskItemRowsForHost(
   return rows.flatMap((row) =>
     row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],
   );
+}
+
+/**
+ * Latest lifecycle row per open backgroundTask item on one thread. Used by the
+ * latest timeline response so active workflow/background-command cards do not
+ * depend on the open task's start/progress rows still being inside the selected
+ * timeline window.
+ */
+export function listOpenBackgroundTaskStateRowsForThread(
+  db: DbQueryConnection,
+  args: ListOpenBackgroundTaskStateRowsForThreadArgs,
+): StoredEventRow[] {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const settled = alias(events, "settled_background_task");
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.itemKind, "backgroundTask"),
+        inArray(events.type, [startedType, progressType]),
+        isNotNull(events.itemId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(settled)
+            .where(
+              and(
+                eq(settled.threadId, events.threadId),
+                eq(settled.itemId, events.itemId),
+                eq(settled.type, completedType),
+              ),
+            ),
+        ),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_id = ${events.itemId}
+            AND latest.type IN (${startedType}, ${progressType})
+        )`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
 }
 
 /**
