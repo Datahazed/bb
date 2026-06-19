@@ -975,7 +975,7 @@ function EnvironmentThreadGroupHeaderActions({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end">
           {onCreateNewThread ? (
             <DropdownMenuItem onSelect={onCreateNewThread}>
               New thread
@@ -2013,7 +2013,7 @@ function ProjectRowComponent({
                       event.stopPropagation();
                       onProjectSelect?.();
                     }}
-                    aria-label="Project folder not found"
+                    aria-label="Project path not found"
                     className={cn(
                       "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
                       COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -2026,7 +2026,7 @@ function ProjectRowComponent({
                   </NavLink>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  Open project settings to fix
+                  Open project settings
                 </TooltipContent>
               </Tooltip>
             ) : null}

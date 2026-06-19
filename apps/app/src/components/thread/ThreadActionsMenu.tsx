@@ -190,7 +190,7 @@ export function ThreadActionsMenu({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="w-44">
+      <DropdownMenuContent align={align}>
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}

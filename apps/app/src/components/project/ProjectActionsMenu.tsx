@@ -201,7 +201,7 @@ export function ProjectActionsMenu({
         </TooltipTrigger>
         <TooltipContent side="bottom">Project actions</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align={align} className="w-44">
+      <DropdownMenuContent align={align}>
         <ProjectActionsMenuItems project={project} surface="dropdown" />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -216,10 +216,7 @@ export function ProjectActionsContextMenu({
   return (
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={`${project.name} actions`}
-        className="w-44"
-      >
+      <ContextMenuContent aria-label={`${project.name} actions`}>
         <ProjectActionsMenuItems project={project} surface="context" />
       </ContextMenuContent>
     </ContextMenu>

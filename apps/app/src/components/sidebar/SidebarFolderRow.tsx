@@ -188,49 +188,73 @@ function SidebarFolderRowComponent({
           )}
           onClick={stopActionsClick}
         >
-          <DropdownMenu onOpenChange={setIsActionsOpen}>
+          {onRename || onRemove ? (
+            <DropdownMenu onOpenChange={setIsActionsOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${pathLabel} folder actions`}
+                      title={undefined}
+                      className={cn(
+                        "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                      )}
+                    >
+                      <Icon
+                        name="MoreHorizontal"
+                        className={COARSE_POINTER_ICON_SIZE_CLASS}
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Folder actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                {onRename ? (
+                  <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
+                ) : null}
+                {onRemove ? (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={onRemove}
+                  >
+                    Remove
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          {onCreateThread ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${pathLabel} folder actions`}
-                    title={undefined}
-                    className={cn(
-                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="MoreHorizontal"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Folder actions</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="w-44">
-              {onCreateThread ? (
-                <DropdownMenuItem onSelect={onCreateThread}>
-                  New thread
-                </DropdownMenuItem>
-              ) : null}
-              {onRename ? (
-                <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
-              ) : null}
-              {onRemove ? (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onSelect={onRemove}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`New thread in ${pathLabel}`}
+                  title={undefined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCreateThread();
+                  }}
+                  className={cn(
+                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  )}
                 >
-                  Remove
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <Icon
+                    name="MessageSquarePlus"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">New thread</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
       ) : null}
     </>

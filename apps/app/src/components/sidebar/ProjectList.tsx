@@ -729,7 +729,6 @@ export function SidebarOrganizeOptionsMenu({
       />
       <DropdownMenuContent
         align="end"
-        className="w-52"
         mobileTitle="Organize sidebar"
       >
         <DropdownMenuLabel>Organize by</DropdownMenuLabel>
@@ -787,7 +786,7 @@ export function SidebarSortOptionsMenu({
         iconName="ArrowUpDown"
         tooltip="Sort"
       />
-      <DropdownMenuContent align="end" className="w-56" mobileTitle="Sort">
+      <DropdownMenuContent align="end" mobileTitle="Sort">
         <DropdownMenuLabel>Sort by</DropdownMenuLabel>
         <SidebarSortMenuOption
           label="Updated at"
@@ -852,7 +851,6 @@ function SidebarThreadActionsMenu({
       </Tooltip>
       <DropdownMenuContent
         align="end"
-        className="w-44"
         mobileTitle="Threads actions"
       >
         <DropdownMenuItem onSelect={onOpenArchivedThreads}>
