@@ -5,8 +5,10 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
+import { useAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import { defaultExperiments, type Thread } from "@bb/domain";
@@ -32,17 +34,24 @@ import {
   ThreadRenameDialog,
   type ThreadRenameDialogTarget,
 } from "@/components/dialogs/ThreadRenameDialog";
+import { FolderOnboardingDialog } from "@/components/dialogs/FolderOnboardingDialog";
 import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
 import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
-import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import {
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+  formatFolderPathLabel,
+  parseThreadFolderPath,
+  titleCreatesFolder,
+} from "@/components/sidebar/folderPath";
+import {
+  folderOnboardingSeenAtom,
+  sidebarGroupByAtom,
+} from "@/components/sidebar/sidebarCollapsedAtoms";
+import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi, getDesktopPopoutApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -85,6 +94,11 @@ interface ThreadActionContext {
   childThreadCount: number;
 }
 
+function folderPreviewSegments(title: string): string[] {
+  const { folders, leaf } = parseThreadFolderPath(title);
+  return [...folders, leaf];
+}
+
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
@@ -100,6 +114,14 @@ export function ThreadActionsProvider({
   const deleteThread = useDeleteThread();
   const updateThread = useUpdateThread();
   const systemConfigQuery = useSystemConfig();
+  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
+  const [folderOnboardingSeen, setFolderOnboardingSeen] = useAtom(
+    folderOnboardingSeenAtom,
+  );
+  const [pendingFolderRename, setPendingFolderRename] = useState<{
+    threadId: string;
+    title: string;
+  } | null>(null);
   const threadActionContextAbortRef = useRef<AbortController | null>(null);
   // Destructure `.mutate` so useCallback deps see stable references across
   // renders. Depending on the full mutation objects would churn callback
@@ -152,16 +174,70 @@ export function ThreadActionsProvider({
 
   const submitRename = useCallback(
     (threadId: string, title: string) => {
+      if (titleCreatesFolder(title) && !folderOnboardingSeen) {
+        setPendingFolderRename({ threadId, title });
+        closeRenameDialog();
+        return;
+      }
       updateMutate(
         { id: threadId, title },
         {
           onSuccess: () => {
+            if (groupBy === "none" && titleCreatesFolder(title)) {
+              setGroupBy("folder");
+            }
             closeRenameDialog();
           },
         },
       );
     },
-    [closeRenameDialog, updateMutate],
+    [
+      closeRenameDialog,
+      folderOnboardingSeen,
+      groupBy,
+      setGroupBy,
+      updateMutate,
+    ],
+  );
+
+  const confirmFolderOnboarding = useCallback(() => {
+    if (!pendingFolderRename) return;
+    updateMutate(
+      { id: pendingFolderRename.threadId, title: pendingFolderRename.title },
+      {
+        onSuccess: () => {
+          setFolderOnboardingSeen(true);
+          if (groupBy === "none") {
+            setGroupBy("folder");
+          }
+          setPendingFolderRename(null);
+        },
+      },
+    );
+  }, [
+    groupBy,
+    pendingFolderRename,
+    setFolderOnboardingSeen,
+    setGroupBy,
+    updateMutate,
+  ]);
+
+  const cancelFolderOnboarding = useCallback(() => {
+    if (!pendingFolderRename) return;
+    openRenameDialog({
+      id: pendingFolderRename.threadId,
+      currentTitle: pendingFolderRename.title,
+    });
+    setPendingFolderRename(null);
+  }, [openRenameDialog, pendingFolderRename]);
+
+  const handleFolderOnboardingOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        cancelFolderOnboarding();
+      }
+    },
+    [cancelFolderOnboarding],
   );
 
   // Fetches the delete dialog context. Returns null when the caller's request
@@ -366,7 +442,9 @@ export function ThreadActionsProvider({
 
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const desktopPopout = getDesktopPopoutApi();
-  const sendToPopout = useMemo<ThreadActionsContextValue["sendToPopout"]>(() => {
+  const sendToPopout = useMemo<
+    ThreadActionsContextValue["sendToPopout"]
+  >(() => {
     if (!experiments.popoutChat || desktopPopout === null) {
       return null;
     }
@@ -407,6 +485,21 @@ export function ThreadActionsProvider({
         pending={updateThread.isPending}
         onOpenChange={renameDialog.onOpenChange}
         onRename={submitRename}
+      />
+      <FolderOnboardingDialog
+        open={pendingFolderRename !== null}
+        pathLabel={
+          pendingFolderRename
+            ? formatFolderPathLabel(
+                folderPreviewSegments(pendingFolderRename.title),
+              )
+            : ""
+        }
+        showGroupingHint={groupBy === "none"}
+        pending={updateThread.isPending}
+        onConfirm={confirmFolderOnboarding}
+        onCancel={cancelFolderOnboarding}
+        onOpenChange={handleFolderOnboardingOpenChange}
       />
       <ThreadDeleteDialog
         target={deleteDialog.target}
