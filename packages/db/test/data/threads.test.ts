@@ -623,9 +623,14 @@ describe("threads", () => {
     });
 
     expect(updated?.folderPath).toBe("Work/Q3");
-    expect(listThreadFolders(db).map((folder) => folder.path)).toEqual([
-      "Work",
-      "Work/Q3",
+    expect(
+      listThreadFolders(db).map((folder) => ({
+        path: folder.path,
+        projectId: folder.projectId,
+      })),
+    ).toEqual([
+      { path: "Work", projectId: project.id },
+      { path: "Work/Q3", projectId: project.id },
     ]);
     expect(spy.notifyThread).toHaveBeenCalledWith(
       thread.id,
@@ -646,6 +651,42 @@ describe("threads", () => {
       "Work",
       "Work/Q3",
     ]);
+    expect(folder.projectId).toBeNull();
+  });
+
+  it("scopes explicit thread folders by project", () => {
+    const { db, host, project } = setup();
+    const { project: otherProject } = createProject(db, noopNotifier, {
+      name: "other-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
+    });
+
+    const first = createThreadFolder(db, noopNotifier, {
+      path: "Work",
+      projectId: project.id,
+    });
+    const second = createThreadFolder(db, noopNotifier, {
+      path: "Work",
+      projectId: otherProject.id,
+    });
+
+    expect(first.projectId).toBe(project.id);
+    expect(second.projectId).toBe(otherProject.id);
+    const folders = listThreadFolders(db)
+      .map((entry) => ({
+        path: entry.path,
+        projectId: entry.projectId,
+      }))
+      .sort((left, right) =>
+        (left.projectId ?? "").localeCompare(right.projectId ?? ""),
+      );
+    const expectedFolders = [
+      { path: "Work", projectId: project.id },
+      { path: "Work", projectId: otherProject.id },
+    ].sort((left, right) =>
+      (left.projectId ?? "").localeCompare(right.projectId ?? ""),
+    );
+    expect(folders).toEqual(expectedFolders);
   });
 
   it("notifies when a thread parent changes", () => {

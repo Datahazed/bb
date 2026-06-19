@@ -576,7 +576,10 @@ describe("folder bucketing", () => {
     );
 
     expect(summarizeItems(items)).toEqual([
-      { folder: "proj_1::Work", items: [{ folder: "proj_1::Work/Q3", items: [] }] },
+      {
+        folder: "proj_1::Work",
+        items: [{ folder: "proj_1::Work/Q3", items: [] }],
+      },
       "a",
     ]);
   });
@@ -733,6 +736,37 @@ describe("folder bucketing", () => {
     expect(summarizeItems(items)).toEqual([
       { folder: "chronological::Work", items: ["a"] },
       { folder: "chronological::Personal", items: ["b"] },
+    ]);
+  });
+
+  it("combines same-named folders across projects in the chronological list", () => {
+    const items = buildChronologicalThreadList(
+      [
+        createThread({
+          id: "a",
+          projectId: "proj_1",
+          title: "One",
+          folderPath: "Work",
+          createdAt: 20,
+        }),
+        createThread({
+          id: "b",
+          projectId: "proj_2",
+          title: "Two",
+          folderPath: "Work",
+          createdAt: 10,
+        }),
+      ],
+      compareByCreatedAtDescending,
+      {
+        groupBy: "folder",
+        containerId: "chronological",
+        folderPaths: ["Work", "Work"],
+      },
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      { folder: "chronological::Work", items: ["a", "b"] },
     ]);
   });
 

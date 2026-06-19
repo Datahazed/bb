@@ -17,7 +17,10 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { ProjectResponse } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  ThreadFolderResponse,
+} from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
@@ -173,7 +176,7 @@ interface ProjectListProjectsSectionActionsProps {
 
 interface ProjectListThreadsSectionActionsProps {
   isCreatingFolder: boolean;
-  onNewFolder: () => void;
+  onNewFolder?: () => void;
   onNewThread: () => void;
 }
 
@@ -339,7 +342,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 };
 
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
-const EMPTY_FOLDER_PATHS: readonly string[] = [];
+const EMPTY_FOLDER_DEFINITIONS: readonly ThreadFolderResponse[] = [];
 
 function getProjectId(project: ProjectResponse): string {
   return project.id;
@@ -390,6 +393,39 @@ function normalizeCollapsedSidebarSectionIds(
     normalized.push(sectionId);
   }
   return normalized;
+}
+
+function uniqueFolderPaths(
+  folders: readonly ThreadFolderResponse[],
+): readonly string[] {
+  const paths = new Set<string>();
+  for (const folder of folders) {
+    paths.add(folder.path);
+  }
+  return Array.from(paths).sort((left, right) => left.localeCompare(right));
+}
+
+function groupFolderPathsByProjectId(
+  folders: readonly ThreadFolderResponse[],
+): ReadonlyMap<string, readonly string[]> {
+  const pathsByProjectId = new Map<string, string[]>();
+  for (const folder of folders) {
+    if (folder.projectId === null) {
+      continue;
+    }
+    const paths = pathsByProjectId.get(folder.projectId);
+    if (paths) {
+      paths.push(folder.path);
+    } else {
+      pathsByProjectId.set(folder.projectId, [folder.path]);
+    }
+  }
+
+  for (const paths of pathsByProjectId.values()) {
+    paths.sort((left, right) => left.localeCompare(right));
+  }
+
+  return pathsByProjectId;
 }
 
 function ProjectListSectionIconButton({
@@ -445,13 +481,15 @@ function ProjectListThreadsSectionActions({
 }: ProjectListThreadsSectionActionsProps) {
   return (
     <>
-      <ProjectListSectionIconButton
-        ariaLabel="New folder"
-        title="New folder"
-        disabled={isCreatingFolder}
-        iconName="FolderPlus"
-        onClick={onNewFolder}
-      />
+      {onNewFolder ? (
+        <ProjectListSectionIconButton
+          ariaLabel="New folder"
+          title="New folder"
+          disabled={isCreatingFolder}
+          iconName="FolderPlus"
+          onClick={onNewFolder}
+        />
+      ) : null}
       <ProjectListSectionIconButton
         ariaLabel="New thread"
         title="New thread"
@@ -973,11 +1011,14 @@ function ProjectListComponent({
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
-  const folderPaths = useMemo(
-    () =>
-      sidebarNavigation?.folders.map((folder) => folder.path) ??
-      EMPTY_FOLDER_PATHS,
-    [sidebarNavigation],
+  const folders = sidebarNavigation?.folders ?? EMPTY_FOLDER_DEFINITIONS;
+  const folderPathsByProjectId = useMemo(
+    () => groupFolderPathsByProjectId(folders),
+    [folders],
+  );
+  const chronologicalFolderPaths = useMemo(
+    () => uniqueFolderPaths(folders),
+    [folders],
   );
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
@@ -1131,24 +1172,34 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
-  const [isFolderCreateDialogOpen, setIsFolderCreateDialogOpen] =
-    useState(false);
-  const handleOpenCreateFolderDialog = useCallback(() => {
-    setIsFolderCreateDialogOpen(true);
+  const [folderCreateProjectId, setFolderCreateProjectId] = useState<
+    string | null
+  >(null);
+  const isFolderCreateDialogOpen = folderCreateProjectId !== null;
+  const handleOpenCreateProjectFolderDialog = useCallback(
+    (projectId: string) => {
+      setFolderCreateProjectId(projectId);
+    },
+    [],
+  );
+  const handleOpenCreateProjectlessFolderDialog = useCallback(() => {
+    setFolderCreateProjectId(PERSONAL_PROJECT_ID);
   }, []);
   const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
-    setIsFolderCreateDialogOpen(open);
+    if (!open) {
+      setFolderCreateProjectId(null);
+    }
   }, []);
   const handleCreateThreadFolder = useCallback(
     (path: string) => {
       createThreadFolderMutate(
-        { path },
+        { path, projectId: folderCreateProjectId },
         {
-          onSuccess: () => setIsFolderCreateDialogOpen(false),
+          onSuccess: () => setFolderCreateProjectId(null),
         },
       );
     },
-    [createThreadFolderMutate],
+    [createThreadFolderMutate, folderCreateProjectId],
   );
   const handleOpenProjectlessArchivedThreads = useCallback(() => {
     onProjectSelect?.();
@@ -1574,7 +1625,8 @@ function ProjectListComponent({
       compareThreads={sidebarThreadComparator}
       onProjectSelect={onProjectSelect}
       onCreateProjectThread={handleCreateProjectThread}
-      folderPaths={folderPaths}
+      onCreateProjectFolder={handleOpenCreateProjectFolderDialog}
+      folderPathsByProjectId={folderPathsByProjectId}
       onToggleProjectCollapsed={toggleProjectCollapsed}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
@@ -1589,7 +1641,7 @@ function ProjectListComponent({
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       compareThreads={sidebarThreadComparator}
-      folderPaths={folderPaths}
+      folderPaths={folderPathsByProjectId.get(PERSONAL_PROJECT_ID)}
       variant="section"
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
@@ -1600,7 +1652,7 @@ function ProjectListComponent({
     <ChronologicalThreadTree
       threadListState={allThreadsListState}
       compareThreads={sidebarThreadComparator}
-      folderPaths={folderPaths}
+      folderPaths={chronologicalFolderPaths}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1641,7 +1693,11 @@ function ProjectListComponent({
       />
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreateThreadFolderPending}
-        onNewFolder={handleOpenCreateFolderDialog}
+        onNewFolder={
+          organizationMode === "chronological"
+            ? undefined
+            : handleOpenCreateProjectlessFolderDialog
+        }
         onNewThread={handleCreateProjectlessThread}
       />
     </>

@@ -136,6 +136,7 @@ export interface ProjectRowProps {
   isLocalPathInvalid: boolean;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
+  onCreateProjectFolder?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -1287,6 +1288,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         activity={folder.activity}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
+        isDropTargetActive={dragBindings?.isOver === true}
         isCollapsed={isCollapsed}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
@@ -1657,6 +1659,7 @@ function ProjectRowComponent({
   isLocalPathInvalid,
   onProjectSelect,
   onCreateProjectThread,
+  onCreateProjectFolder,
   onToggleProjectCollapsed,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
@@ -1685,6 +1688,9 @@ function ProjectRowComponent({
   const handleCreateThread = useCallback(() => {
     onCreateProjectThread?.(project.id);
   }, [onCreateProjectThread, project.id]);
+  const handleCreateFolder = useCallback(() => {
+    onCreateProjectFolder?.(project.id);
+  }, [onCreateProjectFolder, project.id]);
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -1786,6 +1792,27 @@ function ProjectRowComponent({
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`New folder in ${project.name}`}
+                title="New folder"
+                disabled={!onCreateProjectFolder}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleCreateFolder();
+                }}
+                className={cn(
+                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                )}
+              >
+                <Icon
+                  name="FolderPlus"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -1916,6 +1943,7 @@ function areProjectRowPropsEqual(
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||
+    prev.onCreateProjectFolder !== next.onCreateProjectFolder ||
     prev.onToggleProjectCollapsed !== next.onToggleProjectCollapsed ||
     prev.onToggleThreadCollapsed !== next.onToggleThreadCollapsed ||
     prev.onToggleEnvironmentCollapsed !== next.onToggleEnvironmentCollapsed ||

@@ -43,6 +43,7 @@ interface SidebarFolderRowProps {
   stickyLevel?: number;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
+  isDropTargetActive?: boolean;
 }
 
 // The "Work › Q3" disclosure header for a folder. Not a thread: clicking
@@ -55,6 +56,7 @@ function SidebarFolderRowComponent({
   activity,
   consumeClickSuppression,
   dragBindings,
+  isDropTargetActive = false,
   isCollapsed,
   onToggleCollapsed,
   stickyLevel,
@@ -73,6 +75,8 @@ function SidebarFolderRowComponent({
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     "cursor-pointer",
     dragBindings && !dragBindings.disabled && "select-none",
+    isDropTargetActive &&
+      "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-sidebar-ring",
   );
   const style: CSSProperties = {
     paddingLeft: getSidebarThreadRowPaddingLeft(depth),
@@ -106,7 +110,7 @@ function SidebarFolderRowComponent({
         aria-hidden="true"
       >
         <Icon
-          name={isCollapsed ? "Folder" : "FolderOpen"}
+          name="FolderTree"
           className={COARSE_POINTER_ICON_SIZE_CLASS}
           aria-hidden="true"
         />
@@ -128,7 +132,11 @@ function SidebarFolderRowComponent({
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        {showRollupGlyph ? (
+        {isDropTargetActive ? (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-end pr-1 text-xs font-medium text-sidebar-accent-foreground">
+            Drop inside
+          </span>
+        ) : showRollupGlyph ? (
           <span
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,

@@ -19,6 +19,7 @@ const SIDEBAR_SORTABLE_TRANSITION = {
 export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;
   disabled: boolean;
+  isOver: boolean;
   listeners: DraggableSyntheticListeners;
   setActivatorNodeRef: (element: HTMLDivElement | null) => void;
 }
@@ -46,6 +47,7 @@ export function useSidebarSortable({
   const {
     attributes,
     isDragging,
+    isOver,
     listeners,
     setActivatorNodeRef,
     setNodeRef,
@@ -68,8 +70,14 @@ export function useSidebarSortable({
     [isDragging, transform, transition],
   );
   const dragBindings = useMemo<SidebarSortableDragBindings>(
-    () => ({ attributes, disabled, listeners, setActivatorNodeRef }),
-    [attributes, disabled, listeners, setActivatorNodeRef],
+    () => ({
+      attributes,
+      disabled,
+      isOver,
+      listeners,
+      setActivatorNodeRef,
+    }),
+    [attributes, disabled, isOver, listeners, setActivatorNodeRef],
   );
 
   return { dragBindings, setNodeRef, style };
