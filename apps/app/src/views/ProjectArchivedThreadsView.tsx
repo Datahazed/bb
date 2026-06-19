@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
@@ -23,7 +23,12 @@ function getArchivedThreadPillLabel(
 
 export function ProjectArchivedThreadsView() {
   const { projectId } = useRouteState();
-  const archivedThreadsQuery = useArchivedThreads({ projectId });
+  const [searchParams] = useSearchParams();
+  const folderPath = searchParams.get("folder") ?? undefined;
+  const archivedThreadsQuery = useArchivedThreads({
+    projectId,
+    ...(folderPath ? { folderPath } : {}),
+  });
   const unarchiveThread = useUnarchiveThread();
 
   const archivedThreads = useMemo(() => {
@@ -50,13 +55,20 @@ export function ProjectArchivedThreadsView() {
     <PageShell contentClassName="pt-0">
       <div className="mx-auto w-full max-w-3xl">
         <div className="space-y-3 pt-4 md:pt-5">
+          {folderPath ? (
+            <h1 className="text-sm font-medium text-foreground">
+              Archived threads in {folderPath}
+            </h1>
+          ) : null}
           {isInitialLoading ? (
             <p className="text-sm text-muted-foreground">
               Loading archived threads…
             </p>
           ) : showEmptyState ? (
             <EmptyStatePanel className="py-4 text-left">
-              No archived threads yet.
+              {folderPath
+                ? "No archived threads in this folder yet."
+                : "No archived threads yet."}
             </EmptyStatePanel>
           ) : (
             <div className="space-y-1">

@@ -857,6 +857,8 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
+  /** Restrict to threads filed directly under this folder path. */
+  folderPath?: string;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;
@@ -892,6 +894,7 @@ export async function listThreads(
           ...(filters.sourceThreadId
             ? { sourceThreadId: filters.sourceThreadId }
             : {}),
+          ...(filters.folderPath ? { folderPath: filters.folderPath } : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),

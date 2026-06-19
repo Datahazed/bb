@@ -428,6 +428,8 @@ export const threadListQuerySchema = z.object({
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
+  /** Restrict to threads filed directly under this folder path. */
+  folderPath: z.string().min(1).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
   /** Restrict to threads spawned with this origin (fork or side-chat). */

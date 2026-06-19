@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -61,6 +62,7 @@ interface SidebarFolderRowProps {
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
   onCreateThread?: () => void;
+  onViewArchivedThreads?: () => void;
   onRename?: () => void;
   onRemove?: () => void;
 }
@@ -79,12 +81,16 @@ function SidebarFolderRowComponent({
   isCollapsed,
   onToggleCollapsed,
   onCreateThread,
+  onViewArchivedThreads,
   onRename,
   onRemove,
   stickyLevel,
 }: SidebarFolderRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const hasActions = Boolean(onCreateThread || onRename || onRemove);
+  const hasMenuActions = Boolean(
+    onViewArchivedThreads || onRename || onRemove,
+  );
+  const hasActions = Boolean(onCreateThread || hasMenuActions);
   // Collapsed: the header speaks for its hidden descendants through one glyph
   // (pending > working > unread). Expanded: descendants show their own glyphs.
   const showRollupGlyph =
@@ -188,7 +194,7 @@ function SidebarFolderRowComponent({
           )}
           onClick={stopActionsClick}
         >
-          {onRename || onRemove ? (
+          {hasMenuActions ? (
             <DropdownMenu onOpenChange={setIsActionsOpen}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -214,6 +220,14 @@ function SidebarFolderRowComponent({
                 <TooltipContent side="bottom">Folder actions</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end">
+                {onViewArchivedThreads ? (
+                  <DropdownMenuItem onSelect={onViewArchivedThreads}>
+                    View archived threads
+                  </DropdownMenuItem>
+                ) : null}
+                {onViewArchivedThreads && (onRename || onRemove) ? (
+                  <DropdownMenuSeparator />
+                ) : null}
                 {onRename ? (
                   <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
                 ) : null}

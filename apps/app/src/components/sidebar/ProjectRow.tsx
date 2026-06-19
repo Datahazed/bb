@@ -173,6 +173,7 @@ export interface ChronologicalThreadTreeProps {
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderPath: string) => void;
+  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
   onRenameFolder?: (folderPath: string) => void;
   onRemoveFolder?: (folderPath: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
@@ -233,6 +234,7 @@ interface ThreadTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderPath: string) => void;
+  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
   onRenameFolder?: (folderPath: string) => void;
   onRemoveFolder?: (folderPath: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
@@ -254,6 +256,7 @@ interface FolderTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInFolder?: (folderPath: string) => void;
+  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
   onRenameFolder?: (folderPath: string) => void;
   onRemoveFolder?: (folderPath: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
@@ -1264,6 +1267,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInFolder,
+  onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
   onToggleThreadCollapsed,
@@ -1286,6 +1290,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         variant={variant}
         onProjectSelect={onProjectSelect}
         onCreateThreadInFolder={onCreateThreadInFolder}
+        onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
         onRenameFolder={onRenameFolder}
         onRemoveFolder={onRemoveFolder}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
@@ -1353,6 +1358,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInFolder,
+  onViewArchivedThreadsInFolder,
   onRenameFolder,
   onRemoveFolder,
   onToggleThreadCollapsed,
@@ -1405,6 +1411,11 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
             ? () => onCreateThreadInFolder(folderPath)
             : undefined
         }
+        onViewArchivedThreads={
+          onViewArchivedThreadsInFolder
+            ? () => onViewArchivedThreadsInFolder(folderPath)
+            : undefined
+        }
         onRename={onRenameFolder ? () => onRenameFolder(folderPath) : undefined}
         onRemove={onRemoveFolder ? () => onRemoveFolder(folderPath) : undefined}
         onToggleCollapsed={handleToggleCollapsed}
@@ -1427,6 +1438,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
                 variant={variant}
                 onProjectSelect={onProjectSelect}
                 onCreateThreadInFolder={onCreateThreadInFolder}
+                onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
                 onRenameFolder={onRenameFolder}
                 onRemoveFolder={onRemoveFolder}
                 onToggleThreadCollapsed={onToggleThreadCollapsed}
@@ -1776,6 +1788,7 @@ export const ChronologicalFolderThreadSections = memo(
     collapsedEnvironmentIds,
     onProjectSelect,
     onCreateThreadInFolder,
+    onViewArchivedThreadsInFolder,
     onRenameFolder,
     onRemoveFolder,
     onToggleThreadCollapsed,
@@ -1822,6 +1835,7 @@ export const ChronologicalFolderThreadSections = memo(
             variant="section"
             onProjectSelect={onProjectSelect}
             onCreateThreadInFolder={onCreateThreadInFolder}
+            onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
             onRenameFolder={onRenameFolder}
             onRemoveFolder={onRemoveFolder}
             onToggleThreadCollapsed={onToggleThreadCollapsed}

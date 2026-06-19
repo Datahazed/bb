@@ -47,6 +47,7 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
+  getFolderArchivedRoutePath,
   getProjectlessArchivedRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
@@ -1369,6 +1370,13 @@ function ProjectListComponent({
     },
     [openRootComposeForProject],
   );
+  const handleViewArchivedThreadsInFolder = useCallback(
+    (folderPath: string) => {
+      onProjectSelect?.();
+      navigate(getFolderArchivedRoutePath(folderPath));
+    },
+    [navigate, onProjectSelect],
+  );
   const [folderCreateTarget, setFolderCreateTarget] = useState<{
     projectId: string | null;
   } | null>(null);
@@ -1953,6 +1961,7 @@ function ProjectListComponent({
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       onProjectSelect={onProjectSelect}
       onCreateThreadInFolder={handleCreateThreadInFolder}
+      onViewArchivedThreadsInFolder={handleViewArchivedThreadsInFolder}
       onRenameFolder={handleOpenRenameThreadFolder}
       onRemoveFolder={handleRemoveThreadFolder}
       onToggleThreadCollapsed={toggleThreadCollapsed}

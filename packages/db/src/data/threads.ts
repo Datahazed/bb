@@ -318,6 +318,8 @@ export function getThread(db: ThreadWriteConnection, id: string) {
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
+  /** Restrict to threads filed directly under this folder path. */
+  folderPath?: string;
   parentThreadId?: string;
   /** When true, restrict to child threads. When false, restrict to root threads. */
   hasParent?: boolean;
@@ -617,6 +619,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
+    options.folderPath ? eq(threads.folderPath, options.folderPath) : undefined,
     isNull(threads.deletedAt),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)

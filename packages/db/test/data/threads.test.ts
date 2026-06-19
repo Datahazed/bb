@@ -313,6 +313,51 @@ describe("threads", () => {
     expect(listThreads(db, { projectId: project.id })).toHaveLength(2);
   });
 
+  it("filters archived threads by folder path", () => {
+    const { db, project } = setup();
+    const archivedInWork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "work",
+    });
+    const otherArchivedInWork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "work",
+    });
+    const archivedInPlay = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "play",
+    });
+    // Active (non-archived) thread in the same folder must be excluded.
+    createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "work",
+    });
+    archiveThread(db, noopNotifier, archivedInWork.id);
+    archiveThread(db, noopNotifier, otherArchivedInWork.id);
+    archiveThread(db, noopNotifier, archivedInPlay.id);
+
+    const workArchived = listThreads(db, {
+      projectId: project.id,
+      archived: true,
+      folderPath: "work",
+    });
+    expect(workArchived.map((thread) => thread.id).sort()).toEqual(
+      [archivedInWork.id, otherArchivedInWork.id].sort(),
+    );
+
+    expect(
+      listThreads(db, {
+        projectId: project.id,
+        archived: true,
+        folderPath: "play",
+      }),
+    ).toHaveLength(1);
+  });
+
   it("isolates threads by project", () => {
     const { db, host, project } = setup();
     const { project: otherProject } = createProject(db, noopNotifier, {
