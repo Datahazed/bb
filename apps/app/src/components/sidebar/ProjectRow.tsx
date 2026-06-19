@@ -2026,7 +2026,7 @@ function ProjectRowComponent({
                   </NavLink>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  Open project settings to fix folder
+                  Open project settings to fix
                 </TooltipContent>
               </Tooltip>
             ) : null}
