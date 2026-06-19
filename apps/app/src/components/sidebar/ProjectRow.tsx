@@ -2,13 +2,20 @@ import {
   memo,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type MouseEventHandler,
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { DndContext, useDroppable, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  useDroppable,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -269,12 +276,21 @@ interface FolderTreeItemRowProps {
   sortableStyle?: CSSProperties;
 }
 
+// While a thread is dragged over a folder, the folder renders an optimistic
+// preview row for that thread (and is auto-expanded) so it reads as the drop
+// target before the move is committed.
+interface FolderDragPreview {
+  thread: ThreadListEntry;
+  overFolderKey: string;
+}
+
 interface ManualThreadTreeDndState {
   consumeClickSuppression: ConsumeDragClickSuppression;
   dndContextProps: SidebarReorderDndContextProps;
   enabled: boolean;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
+  dragPreview: FolderDragPreview | null;
 }
 
 interface UseManualThreadTreeDndArgs {
@@ -374,6 +390,40 @@ function hasFolderItems(items: readonly ProjectThreadItem[]): boolean {
   );
 }
 
+// Resolve where a dragged thread would land. Shared by drag-over (preview +
+// auto-expand) and drag-end (the move) so they never disagree. `toParentKey`
+// is the destination folder key, or the container id for the loose root.
+function resolveThreadDropTarget(
+  lookup: ManualThreadTreeLookup,
+  active: DragEndEvent["active"],
+  over: DragEndEvent["over"],
+): { activeId: string; fromParentKey: string; toParentKey: string } | null {
+  if (!over || typeof active.id !== "string" || typeof over.id !== "string") {
+    return null;
+  }
+  const activeId = active.id;
+  const overId = over.id;
+  if (activeId === overId) return null;
+
+  const activeKind = lookup.itemKindById.get(activeId);
+  const overKind = lookup.itemKindById.get(overId);
+  const fromParentKey = lookup.parentKeyByItemId.get(activeId);
+  if (activeKind !== "thread" || !fromParentKey) return null;
+
+  let toParentKey = overKind
+    ? lookup.parentKeyByItemId.get(overId)
+    : undefined;
+  if (!overKind && lookup.folderPathByParentKey.has(overId)) {
+    // Dropping on a folder's child area (the droppable parent).
+    toParentKey = overId;
+  } else if (overKind === "folder") {
+    // Dropping on a folder header means "move into this folder".
+    toParentKey = overId;
+  }
+  if (!toParentKey || fromParentKey === toParentKey) return null;
+  return { activeId, fromParentKey, toParentKey };
+}
+
 function useManualThreadTreeDnd({
   containerId,
   enabled,
@@ -384,63 +434,86 @@ function useManualThreadTreeDnd({
     [containerId, rootItems],
   );
   const updateThread = useUpdateThread();
+  const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
+  const activeThreadRef = useRef<ThreadListEntry | null>(null);
+  const [dragPreview, setDragPreview] = useState<FolderDragPreview | null>(null);
+
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const activeId = event.active.id;
+      activeThreadRef.current =
+        typeof activeId === "string"
+          ? (lookup.threadByItemId.get(activeId) ?? null)
+          : null;
+      setDragPreview(null);
+    },
+    [lookup],
+  );
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      if (!enabled) return;
+      const thread = activeThreadRef.current;
+      if (!thread) return;
+      const drop = resolveThreadDropTarget(lookup, event.active, event.over);
+      // Only a real folder (not the loose root) gets a preview + auto-expand.
+      if (!drop || drop.toParentKey === containerId) {
+        setDragPreview((current) => (current ? null : current));
+        return;
+      }
+      const overFolderKey = drop.toParentKey;
+      // Expand a collapsed target so its contents — and the preview row —
+      // are visible to drop into. No-op if already expanded.
+      setCollapsedFolders((current) =>
+        current.includes(overFolderKey)
+          ? current.filter((key) => key !== overFolderKey)
+          : current,
+      );
+      setDragPreview((current) =>
+        current?.overFolderKey === overFolderKey &&
+        current.thread.id === thread.id
+          ? current
+          : { thread, overFolderKey },
+      );
+    },
+    [containerId, enabled, lookup, setCollapsedFolders],
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      activeThreadRef.current = null;
+      setDragPreview(null);
       if (!enabled) return;
 
-      const { active, over } = event;
-      if (
-        !over ||
-        typeof active.id !== "string" ||
-        typeof over.id !== "string"
-      ) {
-        return;
-      }
+      const drop = resolveThreadDropTarget(lookup, event.active, event.over);
+      if (!drop) return;
 
-      const activeId = active.id;
-      const overId = over.id;
-      if (activeId === overId) return;
-
-      const activeKind = lookup.itemKindById.get(activeId);
-      const overKind = lookup.itemKindById.get(overId);
-      const fromParentKey = lookup.parentKeyByItemId.get(activeId);
-
-      if (!activeKind || !fromParentKey) {
-        return;
-      }
-
-      let toParentKey = overKind
-        ? lookup.parentKeyByItemId.get(overId)
-        : undefined;
-      if (!overKind && lookup.folderPathByParentKey.has(overId)) {
-        toParentKey = overId;
-      } else if (activeKind === "thread" && overKind === "folder") {
-        // Dropping a thread on a folder header means "move into this folder".
-        toParentKey = overId;
-      }
-
-      if (!toParentKey) {
-        return;
-      }
-
-      if (activeKind !== "thread" || fromParentKey === toParentKey) {
-        return;
-      }
-
-      const thread = lookup.threadByItemId.get(activeId);
+      const thread = lookup.threadByItemId.get(drop.activeId);
       if (!thread) return;
 
       const destinationFolderPath = normalizeFolderPath(
-        (lookup.folderPathByParentKey.get(toParentKey) ?? []).join("/"),
+        (lookup.folderPathByParentKey.get(drop.toParentKey) ?? []).join("/"),
       );
-      updateThread.mutate({ id: activeId, folderPath: destinationFolderPath });
+      updateThread.mutate({
+        id: drop.activeId,
+        folderPath: destinationFolderPath,
+      });
     },
     [enabled, lookup, updateThread],
   );
 
+  const handleDragCancel = useCallback(() => {
+    activeThreadRef.current = null;
+    setDragPreview(null);
+  }, []);
+
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
-    useSidebarReorderDnd({ onDragEnd: handleDragEnd });
+    useSidebarReorderDnd({
+      onDragEnd: handleDragEnd,
+      onDragStart: handleDragStart,
+      onDragOver: handleDragOver,
+      onDragCancel: handleDragCancel,
+    });
 
   if (!enabled) {
     return null;
@@ -452,6 +525,7 @@ function useManualThreadTreeDnd({
     enabled,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
+    dragPreview,
   };
 }
 
@@ -1349,6 +1423,31 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
 // in sidebarCollapsedFoldersAtom — read here rather than threaded so the rest of
 // the tree's prop wiring and memo equality stay untouched. Children render one
 // depth deeper and, when threads, show their leaf via insideFolder.
+// Non-interactive placeholder for the thread being dragged into a folder,
+// rendered inside the (auto-expanded) folder so it reads as the drop target.
+function FolderDropPreviewRow({
+  depth,
+  title,
+}: {
+  depth: number;
+  title: string;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      data-sidebar-folder-drop-preview="true"
+      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
+      className={cn(
+        SIDEBAR_ROW_BASE_CLASS,
+        COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+        "pointer-events-none border border-dashed border-sidebar-border bg-sidebar-accent/40 text-sidebar-accent-foreground",
+      )}
+    >
+      <span className="min-w-0 truncate opacity-80">{title}</span>
+    </div>
+  );
+}
+
 const FolderTreeItemRow = memo(function FolderTreeItemRow({
   folder,
   depthOffset,
@@ -1386,6 +1485,13 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const folderPath = folder.path.join("/");
+  const dragPreview = manualSort?.dragPreview ?? null;
+  const previewThread =
+    dragPreview?.overFolderKey === folderKey ? dragPreview.thread : null;
+  const showChildren = !isCollapsed && folder.items.length > 0;
+  // Force the children area open while a thread is dragged over this folder so
+  // the optimistic drop-preview row is visible even when empty/collapsed.
+  const showChildrenArea = showChildren || previewThread !== null;
 
   return (
     <SidebarStickyGroup
@@ -1421,32 +1527,44 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
-      {!isCollapsed && folder.items.length > 0 ? (
+      {showChildrenArea ? (
         <div className="relative space-y-px">
           <ThreadTreeGroupLine parentRowDepth={headerDepth} />
-          <ManualSortableList manualSort={manualSort} parentKey={folder.key}>
-            {folder.items.map((item) => (
-              <ManualSortableThreadTreeItemRow
-                key={getItemKey(item)}
-                projectId={getItemProjectId(item)}
-                item={item}
-                depthOffset={depthOffset + 1}
-                insideFolder
-                selectedThreadId={selectedThreadId}
-                collapsedThreadIds={collapsedThreadIds}
-                collapsedEnvironmentIds={collapsedEnvironmentIds}
-                variant={variant}
-                onProjectSelect={onProjectSelect}
-                onCreateThreadInFolder={onCreateThreadInFolder}
-                onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
-                onRenameFolder={onRenameFolder}
-                onRemoveFolder={onRemoveFolder}
-                onToggleThreadCollapsed={onToggleThreadCollapsed}
-                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-                manualSort={manualSort}
-              />
-            ))}
-          </ManualSortableList>
+          {showChildren ? (
+            <ManualSortableList manualSort={manualSort} parentKey={folder.key}>
+              {folder.items.map((item) => (
+                <ManualSortableThreadTreeItemRow
+                  key={getItemKey(item)}
+                  projectId={getItemProjectId(item)}
+                  item={item}
+                  depthOffset={depthOffset + 1}
+                  insideFolder
+                  selectedThreadId={selectedThreadId}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  variant={variant}
+                  onProjectSelect={onProjectSelect}
+                  onCreateThreadInFolder={onCreateThreadInFolder}
+                  onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
+                  onRenameFolder={onRenameFolder}
+                  onRemoveFolder={onRemoveFolder}
+                  onToggleThreadCollapsed={onToggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+                  manualSort={manualSort}
+                />
+              ))}
+            </ManualSortableList>
+          ) : null}
+          {previewThread ? (
+            <FolderDropPreviewRow
+              depth={getThreadRowDepth({
+                depthOffset: depthOffset + 1,
+                nodeDepth: 0,
+                variant,
+              })}
+              title={getThreadDisplayTitle(previewThread)}
+            />
+          ) : null}
         </div>
       ) : null}
     </SidebarStickyGroup>

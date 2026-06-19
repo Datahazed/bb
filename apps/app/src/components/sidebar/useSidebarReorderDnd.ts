@@ -10,6 +10,7 @@ import {
   type CollisionDetection,
   type DndContextProps,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
@@ -47,6 +48,12 @@ export interface UseSidebarReorderDndArgs {
    * suppression timer before invoking it, so callers only own the reorder.
    */
   onDragEnd: (event: DragEndEvent) => void;
+  /** Runs alongside the internal drag-click suppression on drag start. */
+  onDragStart?: (event: DragStartEvent) => void;
+  /** Live drag-over tracking (e.g. to preview/expand a hovered folder). */
+  onDragOver?: (event: DragOverEvent) => void;
+  /** Runs alongside the internal suppression reset when a drag is cancelled. */
+  onDragCancel?: () => void;
 }
 
 export type SidebarReorderDndContextProps = Pick<
@@ -54,6 +61,7 @@ export type SidebarReorderDndContextProps = Pick<
   | "sensors"
   | "collisionDetection"
   | "onDragStart"
+  | "onDragOver"
   | "onDragCancel"
   | "onDragEnd"
   | "modifiers"
@@ -79,6 +87,9 @@ export interface UseSidebarReorderDndResult {
  */
 export function useSidebarReorderDnd({
   onDragEnd,
+  onDragStart,
+  onDragOver,
+  onDragCancel,
 }: UseSidebarReorderDndArgs): UseSidebarReorderDndResult {
   const {
     beginDragClickSuppression,
@@ -95,14 +106,16 @@ export function useSidebarReorderDnd({
     }),
   );
   const handleDragStart = useCallback(
-    (_event: DragStartEvent) => {
+    (event: DragStartEvent) => {
       beginDragClickSuppression();
+      onDragStart?.(event);
     },
-    [beginDragClickSuppression],
+    [beginDragClickSuppression, onDragStart],
   );
   const handleDragCancel = useCallback(() => {
     clearDragClickSuppressionSoon();
-  }, [clearDragClickSuppressionSoon]);
+    onDragCancel?.();
+  }, [clearDragClickSuppressionSoon, onDragCancel]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       clearDragClickSuppressionSoon();
@@ -126,10 +139,11 @@ export function useSidebarReorderDnd({
       collisionDetection: sidebarReorderCollisionDetection,
       modifiers: SIDEBAR_REORDER_MODIFIERS,
       onDragStart: handleDragStart,
+      onDragOver,
       onDragCancel: handleDragCancel,
       onDragEnd: handleDragEnd,
     }),
-    [handleDragCancel, handleDragEnd, handleDragStart, sensors],
+    [handleDragCancel, handleDragEnd, handleDragStart, onDragOver, sensors],
   );
 
   return {
