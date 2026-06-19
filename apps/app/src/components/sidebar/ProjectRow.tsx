@@ -136,7 +136,6 @@ export interface ProjectRowProps {
   isLocalPathInvalid: boolean;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
-  onCreateProjectFolder?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -271,8 +270,8 @@ interface ManualThreadTreeLookup {
 }
 
 // Render key + routing projectId for any item kind. Folders derive from their
-// first nested item, so a folder spanning projects (chronological) still routes
-// each contained thread to its own project.
+// first nested item, so a folder spanning projects in the Folders view still
+// routes each contained thread to its own project.
 export function getItemKey(item: ProjectThreadItem): string {
   switch (item.kind) {
     case "thread":
@@ -1459,7 +1458,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
-  const groupBy = "folder" as const;
+  const groupBy = "none" as const;
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
@@ -1548,11 +1547,11 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   );
 });
 
-// Flat "All Threads" bucket for chronological mode: one top-level row per
-// non-pinned thread across all projects, globally ordered by the chosen
-// comparator (no parent/child nesting or worktree grouping, so nothing hides
-// behind a collapsed parent). Derives projectId per row from its own thread so
-// cross-project rows still route correctly.
+// Flat Folders bucket: one top-level row per non-pinned thread across all
+// projects, globally ordered by the chosen comparator before folder bucketing.
+// It intentionally drops parent/child nesting and worktree grouping so nothing
+// hides behind a collapsed parent. Derives projectId per row from its own
+// thread so cross-project rows still route correctly.
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,
@@ -1659,7 +1658,6 @@ function ProjectRowComponent({
   isLocalPathInvalid,
   onProjectSelect,
   onCreateProjectThread,
-  onCreateProjectFolder,
   onToggleProjectCollapsed,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
@@ -1688,9 +1686,6 @@ function ProjectRowComponent({
   const handleCreateThread = useCallback(() => {
     onCreateProjectThread?.(project.id);
   }, [onCreateProjectThread, project.id]);
-  const handleCreateFolder = useCallback(() => {
-    onCreateProjectFolder?.(project.id);
-  }, [onCreateProjectFolder, project.id]);
   return (
     <SidebarStickyGroup asChild data-sidebar-sticky-project-item="">
       <SidebarMenuItem
@@ -1792,27 +1787,6 @@ function ProjectRowComponent({
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`New folder in ${project.name}`}
-                title="New folder"
-                disabled={!onCreateProjectFolder}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleCreateFolder();
-                }}
-                className={cn(
-                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                )}
-              >
-                <Icon
-                  name="FolderPlus"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -1943,7 +1917,6 @@ function areProjectRowPropsEqual(
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||
-    prev.onCreateProjectFolder !== next.onCreateProjectFolder ||
     prev.onToggleProjectCollapsed !== next.onToggleProjectCollapsed ||
     prev.onToggleThreadCollapsed !== next.onToggleThreadCollapsed ||
     prev.onToggleEnvironmentCollapsed !== next.onToggleEnvironmentCollapsed ||

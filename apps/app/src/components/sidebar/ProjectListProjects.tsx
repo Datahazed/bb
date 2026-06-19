@@ -51,10 +51,8 @@ export interface ProjectListProjectsProps {
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   compareThreads: ThreadComparator;
-  folderPathsByProjectId?: ReadonlyMap<string, readonly string[]>;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
-  onCreateProjectFolder?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -64,8 +62,6 @@ export interface ProjectListProjectsProps {
 interface SortableProjectRowProps extends ProjectRowProps {
   reorderDisabled: boolean;
 }
-
-const EMPTY_FOLDER_PATHS: readonly string[] = [];
 
 const SortableProjectRow = memo(function SortableProjectRow({
   project,
@@ -103,10 +99,8 @@ export function ProjectListProjects({
   collapsedThreadIds,
   collapsedEnvironmentIds,
   compareThreads,
-  folderPathsByProjectId,
   onProjectSelect,
   onCreateProjectThread,
-  onCreateProjectFolder,
   onToggleProjectCollapsed,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
@@ -115,8 +109,6 @@ export function ProjectListProjects({
   const sharedRowProps = (row: ProjectListRowModel) => ({
     project: row.project,
     threadListState: row.threadListState,
-    folderPaths:
-      folderPathsByProjectId?.get(row.project.id) ?? EMPTY_FOLDER_PATHS,
     selectedThreadId,
     isActive: row.isActive,
     isCollapsed: collapsedProjectIds.has(row.project.id),
@@ -126,7 +118,6 @@ export function ProjectListProjects({
     isLocalPathInvalid: row.isLocalPathInvalid,
     onProjectSelect,
     onCreateProjectThread,
-    onCreateProjectFolder,
     onToggleProjectCollapsed,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,

@@ -15,8 +15,8 @@ const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 export type SidebarSectionId = "pinned" | "projects" | "threads";
 export type CollapsibleSidebarSectionId = "projects" | "threads";
 
-// "project" keeps the per-project grouping; "chronological" flattens every
-// non-pinned thread into a single All Threads bucket.
+// "project" keeps the per-project grouping; "chronological" is the persisted
+// value for the cross-project Folders view that replaced the old None view.
 export type SidebarOrganizationMode = "project" | "chronological";
 // Controls thread ordering in both grouped and ungrouped sidebar views.
 // "updated" reuses the status-aware activity heuristic; "created" sorts by
@@ -91,7 +91,7 @@ export const sidebarChronologicalSortAtom =
   );
 
 // Story/test control for the low-level folder grouping path. Runtime sidebar
-// trees pass "folder" directly so stored folderPath metadata always renders.
+// trees enable "folder" only in the Folders organization mode.
 export const sidebarGroupByAtom = atomWithStorage<SidebarGroupBy>(
   GROUP_BY_STORAGE_KEY,
   "none",

@@ -405,29 +405,6 @@ function uniqueFolderPaths(
   return Array.from(paths).sort((left, right) => left.localeCompare(right));
 }
 
-function groupFolderPathsByProjectId(
-  folders: readonly ThreadFolderResponse[],
-): ReadonlyMap<string, readonly string[]> {
-  const pathsByProjectId = new Map<string, string[]>();
-  for (const folder of folders) {
-    if (folder.projectId === null) {
-      continue;
-    }
-    const paths = pathsByProjectId.get(folder.projectId);
-    if (paths) {
-      paths.push(folder.path);
-    } else {
-      pathsByProjectId.set(folder.projectId, [folder.path]);
-    }
-  }
-
-  for (const paths of pathsByProjectId.values()) {
-    paths.sort((left, right) => left.localeCompare(right));
-  }
-
-  return pathsByProjectId;
-}
-
 function ProjectListSectionIconButton({
   ariaLabel,
   disabled = false,
@@ -603,7 +580,7 @@ export function SidebarViewOptionsMenu({
           }}
         />
         <SidebarOrganizeMenuOption
-          label="None"
+          label="Folders"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
@@ -1012,10 +989,6 @@ function ProjectListComponent({
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
   const folders = sidebarNavigation?.folders ?? EMPTY_FOLDER_DEFINITIONS;
-  const folderPathsByProjectId = useMemo(
-    () => groupFolderPathsByProjectId(folders),
-    [folders],
-  );
   const chronologicalFolderPaths = useMemo(
     () => uniqueFolderPaths(folders),
     [folders],
@@ -1172,34 +1145,28 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
-  const [folderCreateProjectId, setFolderCreateProjectId] = useState<
-    string | null
-  >(null);
-  const isFolderCreateDialogOpen = folderCreateProjectId !== null;
-  const handleOpenCreateProjectFolderDialog = useCallback(
-    (projectId: string) => {
-      setFolderCreateProjectId(projectId);
-    },
-    [],
-  );
-  const handleOpenCreateProjectlessFolderDialog = useCallback(() => {
-    setFolderCreateProjectId(PERSONAL_PROJECT_ID);
+  const [folderCreateTarget, setFolderCreateTarget] = useState<{
+    projectId: string | null;
+  } | null>(null);
+  const isFolderCreateDialogOpen = folderCreateTarget !== null;
+  const handleOpenCreateFolderDialog = useCallback(() => {
+    setFolderCreateTarget({ projectId: null });
   }, []);
   const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
-      setFolderCreateProjectId(null);
+      setFolderCreateTarget(null);
     }
   }, []);
   const handleCreateThreadFolder = useCallback(
     (path: string) => {
       createThreadFolderMutate(
-        { path, projectId: folderCreateProjectId },
+        { path, projectId: folderCreateTarget?.projectId ?? null },
         {
-          onSuccess: () => setFolderCreateProjectId(null),
+          onSuccess: () => setFolderCreateTarget(null),
         },
       );
     },
-    [createThreadFolderMutate, folderCreateProjectId],
+    [createThreadFolderMutate, folderCreateTarget],
   );
   const handleOpenProjectlessArchivedThreads = useCallback(() => {
     onProjectSelect?.();
@@ -1266,7 +1233,10 @@ function ProjectListComponent({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const groupBy = "folder" as const;
+  const isFolderOrganizationMode = organizationMode === "chronological";
+  const groupBy = isFolderOrganizationMode
+    ? ("folder" as const)
+    : ("none" as const);
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
@@ -1385,26 +1355,22 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
-    // Also un-collapse folder ancestors hiding the selected thread. In
-    // project/pinned mode use the top-level ancestor the walk above ended on;
-    // in the flat chronological list the selected thread is itself top-level.
+    // Also un-collapse folder ancestors hiding the selected thread in the
+    // cross-project Folders view.
     const isPinned =
       pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-    const isChronological = !isPinned && organizationMode === "chronological";
-    const topLevelAncestor = currentThread ?? selectedThread;
-    const folderSource = isChronological ? selectedThread : topLevelAncestor;
-    const folderContainerId = isPinned
-      ? PINNED_CONTAINER_ID
-      : isChronological
-        ? CHRONOLOGICAL_CONTAINER_ID
-        : selectedThread.projectId;
-    const folderKeysToExpand = new Set(
-      folderAncestorKeys(folderContainerId, folderSource.folderPath),
-    );
-    if (folderKeysToExpand.size > 0) {
-      setCollapsedFolderList((current) =>
-        removeCollapsedIds(current, folderKeysToExpand),
+    if (isFolderOrganizationMode) {
+      const folderContainerId = isPinned
+        ? PINNED_CONTAINER_ID
+        : CHRONOLOGICAL_CONTAINER_ID;
+      const folderKeysToExpand = new Set(
+        folderAncestorKeys(folderContainerId, selectedThread.folderPath),
       );
+      if (folderKeysToExpand.size > 0) {
+        setCollapsedFolderList((current) =>
+          removeCollapsedIds(current, folderKeysToExpand),
+        );
+      }
     }
 
     if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
@@ -1425,7 +1391,7 @@ function ProjectListComponent({
       removeCollapsedIds(current, new Set(["projects"])),
     );
   }, [
-    organizationMode,
+    isFolderOrganizationMode,
     pinnedSidebarState.effectivePinnedThreadIds,
     selectedThreadId,
     setCollapsedEnvironmentIdList,
@@ -1585,9 +1551,9 @@ function ProjectListComponent({
     threads: threadsByProject.get(PERSONAL_PROJECT_ID),
   });
 
-  // Chronological mode flattens every non-pinned thread (across all projects)
-  // into a single bucket. Pinned threads and their descendants stay in the
-  // Pinned section, matching how project mode excludes them.
+  // Folders mode flattens every non-pinned thread across projects into one
+  // folder-aware bucket. Pinned threads and descendants stay in Pinned,
+  // matching how project mode excludes them.
   const nonPinnedThreads = useMemo(
     () =>
       threads.filter(
@@ -1625,8 +1591,6 @@ function ProjectListComponent({
       compareThreads={sidebarThreadComparator}
       onProjectSelect={onProjectSelect}
       onCreateProjectThread={handleCreateProjectThread}
-      onCreateProjectFolder={handleOpenCreateProjectFolderDialog}
-      folderPathsByProjectId={folderPathsByProjectId}
       onToggleProjectCollapsed={toggleProjectCollapsed}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
@@ -1641,7 +1605,6 @@ function ProjectListComponent({
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       compareThreads={sidebarThreadComparator}
-      folderPaths={folderPathsByProjectId.get(PERSONAL_PROJECT_ID)}
       variant="section"
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
@@ -1694,9 +1657,7 @@ function ProjectListComponent({
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreateThreadFolderPending}
         onNewFolder={
-          organizationMode === "chronological"
-            ? undefined
-            : handleOpenCreateProjectlessFolderDialog
+          isFolderOrganizationMode ? handleOpenCreateFolderDialog : undefined
         }
         onNewThread={handleCreateProjectlessThread}
       />
@@ -1736,7 +1697,7 @@ function ProjectListComponent({
     );
   }
 
-  if (organizationMode === "chronological") {
+  if (isFolderOrganizationMode) {
     return (
       <ProjectListShell>
         <div className="space-y-4">
@@ -1746,7 +1707,7 @@ function ProjectListComponent({
             </TopLevelSidebarSection>
           ) : null}
           <TopLevelSidebarSection
-            label="All Threads"
+            label="Folders"
             actions={threadsSectionActions}
             actionsOpen={
               isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen

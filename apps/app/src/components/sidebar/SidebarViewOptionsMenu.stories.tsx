@@ -41,7 +41,7 @@ export function Overview() {
       <StoryRow label="project" hint="organize by project">
         <MenuStory sort="updated" organizationMode="project" />
       </StoryRow>
-      <StoryRow label="none" hint="cross-project chronological view">
+      <StoryRow label="folders" hint="cross-project folder view">
         <MenuStory sort="created" organizationMode="chronological" />
       </StoryRow>
     </StoryCard>
