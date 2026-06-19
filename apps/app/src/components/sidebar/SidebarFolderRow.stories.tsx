@@ -38,7 +38,6 @@ export function Overview() {
             name="Work"
             pathLabel="Work"
             depth={0}
-            threadCount={3}
             activity={activity()}
             isCollapsed={false}
             onToggleCollapsed={noop}
@@ -51,7 +50,6 @@ export function Overview() {
             name="Q3"
             pathLabel="Work / Q3"
             depth={1}
-            threadCount={2}
             activity={activity({ unread: true })}
             isCollapsed
             onToggleCollapsed={noop}
@@ -64,7 +62,6 @@ export function Overview() {
             name="Build"
             pathLabel="Work / Build"
             depth={2}
-            threadCount={4}
             activity={activity({ working: true })}
             isCollapsed
             onToggleCollapsed={noop}
@@ -77,7 +74,6 @@ export function Overview() {
             name="Reviews"
             pathLabel="Work / Reviews"
             depth={3}
-            threadCount={6}
             activity={activity({ pending: true, unread: true })}
             isCollapsed
             onToggleCollapsed={noop}
@@ -90,7 +86,6 @@ export function Overview() {
             name="Very long customer migration and rollout folder"
             pathLabel="Clients / Very long customer migration and rollout folder"
             depth={1}
-            threadCount={12}
             activity={activity()}
             isCollapsed={false}
             onToggleCollapsed={noop}
@@ -103,7 +98,6 @@ export function Overview() {
             name="Fifth level"
             pathLabel="A / B / C / D / Fifth level"
             depth={5}
-            threadCount={1}
             activity={activity()}
             isCollapsed={false}
             onToggleCollapsed={noop}

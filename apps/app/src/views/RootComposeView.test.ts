@@ -57,6 +57,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     providerId: "codex",
     title: args.id,
     titleFallback: args.id,
+    folderPath: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

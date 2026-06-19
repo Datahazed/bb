@@ -60,6 +60,7 @@ function createThreadListEntry({
     status: "idle",
     title,
     titleFallback: null,
+    folderPath: null,
     updatedAt: 1000,
   };
 }

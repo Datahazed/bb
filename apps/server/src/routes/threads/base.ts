@@ -79,6 +79,18 @@ interface BuildThreadSearchResponseArgs {
   archived: DbThreadSearchResultGroup;
 }
 
+function normalizeThreadFolderPath(folderPath: string | null): string | null {
+  if (folderPath === null) {
+    return null;
+  }
+  const normalized = folderPath
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join("/");
+  return normalized.length > 0 ? normalized : null;
+}
+
 function resolveIncludedThreadEnvironment(
   deps: Pick<AppDeps, "db">,
   thread: Thread,
@@ -294,6 +306,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const metadataUpdate: UpdateThreadInput = {};
     if ("title" in payload) {
       metadataUpdate.title = payload.title;
+    }
+    if ("folderPath" in payload) {
+      metadataUpdate.folderPath = normalizeThreadFolderPath(
+        payload.folderPath ?? null,
+      );
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;

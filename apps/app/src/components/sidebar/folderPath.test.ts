@@ -1,73 +1,63 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFolderKey,
-  buildThreadTitleForFolderPath,
   folderAncestorKeys,
-  normalizeThreadTitle,
-  parseThreadFolderPath,
+  normalizeFolderPath,
+  parseThreadFolderShortcut,
+  splitFolderPath,
   titleCreatesFolder,
 } from "./folderPath";
 
-describe("parseThreadFolderPath", () => {
+describe("splitFolderPath", () => {
   it("splits on '/', trims segments, and drops empties", () => {
-    expect(parseThreadFolderPath("Work/Q3/Plan")).toEqual({
-      folders: ["Work", "Q3"],
-      leaf: "Plan",
-    });
+    expect(splitFolderPath("Work/Q3")).toEqual(["Work", "Q3"]);
+    expect(splitFolderPath("/Work//Q3/")).toEqual(["Work", "Q3"]);
+    expect(splitFolderPath(" Work / Q3 ")).toEqual(["Work", "Q3"]);
   });
 
-  it("treats a single segment as a leaf with no folder", () => {
-    expect(parseThreadFolderPath("Standalone")).toEqual({
-      folders: [],
-      leaf: "Standalone",
-    });
-  });
-
-  it("collapses leading, trailing, and doubled slashes", () => {
-    expect(parseThreadFolderPath("/Work//Q3/")).toEqual({
-      folders: ["Work"],
-      leaf: "Q3",
-    });
-  });
-
-  it("trims whitespace around each segment", () => {
-    expect(parseThreadFolderPath("Work / Q3 ")).toEqual({
-      folders: ["Work"],
-      leaf: "Q3",
-    });
-  });
-
-  it("yields an empty path for an all-slashes or empty title", () => {
-    expect(parseThreadFolderPath("///")).toEqual({ folders: [], leaf: "" });
-    expect(parseThreadFolderPath("")).toEqual({ folders: [], leaf: "" });
+  it("returns an empty path for nullish or empty values", () => {
+    expect(splitFolderPath(null)).toEqual([]);
+    expect(splitFolderPath(undefined)).toEqual([]);
+    expect(splitFolderPath("///")).toEqual([]);
+    expect(splitFolderPath("")).toEqual([]);
   });
 });
 
-describe("normalizeThreadTitle", () => {
-  it("re-joins normalized segments with '/'", () => {
-    expect(normalizeThreadTitle("Work/Q3/Plan")).toBe("Work/Q3/Plan");
+describe("normalizeFolderPath", () => {
+  it("normalizes paths to slash-separated segments", () => {
+    expect(normalizeFolderPath("Work / Q3 ")).toBe("Work/Q3");
   });
 
-  it("collapses leading, trailing, and doubled slashes", () => {
-    expect(normalizeThreadTitle("/Work//Q3/")).toBe("Work/Q3");
+  it("normalizes empty paths to null", () => {
+    expect(normalizeFolderPath("///")).toBeNull();
+    expect(normalizeFolderPath(null)).toBeNull();
+  });
+});
+
+describe("parseThreadFolderShortcut", () => {
+  it("splits an explicit slash rename into folderPath and title", () => {
+    expect(parseThreadFolderShortcut("Work/Q3/Plan")).toEqual({
+      folderPath: "Work/Q3",
+      title: "Plan",
+    });
   });
 
-  it("trims whitespace around each segment", () => {
-    expect(normalizeThreadTitle("Work / Q3 ")).toBe("Work/Q3");
+  it("keeps slashy titles literal when they do not define a folder and leaf", () => {
+    expect(parseThreadFolderShortcut("Standalone")).toEqual({
+      folderPath: null,
+      title: "Standalone",
+    });
+    expect(parseThreadFolderShortcut("Work/")).toEqual({
+      folderPath: null,
+      title: "Work/",
+    });
   });
 
-  it("leaves a single segment unchanged (after trimming)", () => {
-    expect(normalizeThreadTitle(" Standalone ")).toBe("Standalone");
-  });
-
-  it("normalizes an all-slashes or empty title to an empty string", () => {
-    expect(normalizeThreadTitle("///")).toBe("");
-    expect(normalizeThreadTitle("")).toBe("");
-  });
-
-  it("is idempotent on already-normalized titles", () => {
-    const normalized = normalizeThreadTitle("/Work//Q3/");
-    expect(normalizeThreadTitle(normalized)).toBe(normalized);
+  it("collapses leading, trailing, and doubled slashes in explicit paths", () => {
+    expect(parseThreadFolderShortcut("/Work//Q3/Plan/")).toEqual({
+      folderPath: "Work/Q3",
+      title: "Plan",
+    });
   });
 });
 
@@ -110,44 +100,21 @@ describe("buildFolderKey", () => {
   });
 });
 
-describe("buildThreadTitleForFolderPath", () => {
-  it("keeps the leaf and rewrites the folder prefix", () => {
-    expect(buildThreadTitleForFolderPath("Work/Q3/Plan", ["Personal"])).toBe(
-      "Personal/Plan",
-    );
-  });
-
-  it("strips the folder prefix for a top-level destination", () => {
-    expect(buildThreadTitleForFolderPath("Work/Q3/Plan", [])).toBe("Plan");
-  });
-
-  it("normalizes destination segments", () => {
-    expect(
-      buildThreadTitleForFolderPath(" Work / Q3 / Plan ", [" Personal "]),
-    ).toBe("Personal/Plan");
-  });
-});
-
 describe("folderAncestorKeys", () => {
   it("returns every ancestor folder key, outermost first", () => {
-    expect(folderAncestorKeys("proj_1", "Work/Q3/Plan")).toEqual([
+    expect(folderAncestorKeys("proj_1", "Work/Q3")).toEqual([
       "proj_1::Work",
       "proj_1::Work/Q3",
     ]);
   });
 
-  it("returns no keys for a title with no folder", () => {
-    expect(folderAncestorKeys("proj_1", "Standalone")).toEqual([]);
-    expect(folderAncestorKeys("proj_1", "Work/")).toEqual([]);
-  });
-
-  it("excludes the leaf — only the folders that contain the thread", () => {
-    // "A/B" lives in folder "A"; "B" is the thread, not a folder.
-    expect(folderAncestorKeys("pinned", "A/B")).toEqual(["pinned::A"]);
+  it("returns no keys for no folder path", () => {
+    expect(folderAncestorKeys("proj_1", null)).toEqual([]);
+    expect(folderAncestorKeys("proj_1", "")).toEqual([]);
   });
 
   it("namespaces by container, including the global sentinels", () => {
-    expect(folderAncestorKeys("pinned", "A/B/C")).toEqual([
+    expect(folderAncestorKeys("pinned", "A/B")).toEqual([
       "pinned::A",
       "pinned::A/B",
     ]);

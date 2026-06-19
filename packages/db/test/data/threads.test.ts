@@ -600,6 +600,32 @@ describe("threads", () => {
     expect(updated?.title).toBe("New title");
   });
 
+  it("updates thread folder path", () => {
+    const { db, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    const updated = updateThread(db, spy, thread.id, {
+      folderPath: "Work/Q3",
+    });
+
+    expect(updated?.folderPath).toBe("Work/Q3");
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      thread.id,
+      ["title-changed"],
+      { projectId: project.id },
+    );
+  });
+
   it("notifies when a thread parent changes", () => {
     const { db, project } = setup();
     const spy: DbNotifier = {

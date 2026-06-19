@@ -57,6 +57,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     status: "idle",
     title: null,
     titleFallback: "Fallback fork title",
+    folderPath: null,
     updatedAt: 1,
   };
   return { ...base, ...overrides };
@@ -97,9 +98,9 @@ describe("useForkThreadFromMessage", () => {
     const navigateState = mocks.navigate.mock.calls[0]?.[1]?.state as
       | Record<string, unknown>
       | undefined;
-    const seed = navigateState?.[
-      FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY
-    ] as ForkThreadCreateSeed | undefined;
+    const seed = navigateState?.[FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY] as
+      | ForkThreadCreateSeed
+      | undefined;
     expect(seed).toMatchObject({
       environmentId: "env_source",
       model: "gpt-5",

@@ -243,6 +243,7 @@ export interface CreateThreadInput {
   providerId: string;
   title?: string | null;
   titleFallback?: string | null;
+  folderPath?: string | null;
   status?: ThreadStatus;
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
@@ -270,6 +271,7 @@ export function createThread(
           providerId: input.providerId,
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
+          folderPath: input.folderPath ?? null,
           status: input.status ?? "starting",
           parentThreadId:
             originKind === null ? input.parentThreadId ?? null : null,
@@ -1507,6 +1509,7 @@ export function reorderPinnedThread({
 
 export interface UpdateThreadInput {
   environmentId?: string | null;
+  folderPath?: string | null;
   lastReadAt?: number | null;
   parentThreadId?: string | null;
   title?: string | null;
@@ -1525,7 +1528,7 @@ export function updateThread(
   }
 
   const changes: ThreadChangeKind[] = [];
-  if ("title" in input) changes.push("title-changed");
+  if ("title" in input || "folderPath" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");
   if (
     "parentThreadId" in input &&
@@ -1542,6 +1545,7 @@ export function updateThread(
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
+  if ("folderPath" in input) set.folderPath = input.folderPath;
   if ("environmentId" in input) set.environmentId = input.environmentId;
   if ("lastReadAt" in input) {
     set.lastReadAt = input.lastReadAt;

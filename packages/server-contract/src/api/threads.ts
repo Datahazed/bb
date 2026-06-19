@@ -311,6 +311,7 @@ export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
 export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
+    folderPath: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
@@ -322,6 +323,7 @@ export const updateThreadRequestSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
+      value.folderPath !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined,

@@ -36,7 +36,6 @@ interface SidebarFolderRowProps {
   pathLabel: string;
   // Render depth (folder nesting + section offset); drives indentation.
   depth: number;
-  threadCount: number;
   activity: CollapsedChildActivity;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
@@ -46,15 +45,13 @@ interface SidebarFolderRowProps {
   dragBindings?: SidebarSortableDragBindings;
 }
 
-// The "Work › Q3 (2)" disclosure header for a derived folder. Not a thread:
-// clicking toggles collapse, there is no navigation. Mirrors the parent-thread
-// and worktree-header chrome (leading icon, truncating name, chevron, and a
-// rolled-up activity glyph while collapsed).
+// The "Work › Q3" disclosure header for a folder. Not a thread: clicking
+// toggles collapse, there is no navigation. It stays visually quieter than a
+// project row while still mirroring parent-thread disclosure behavior.
 function SidebarFolderRowComponent({
   name,
   pathLabel,
   depth,
-  threadCount,
   activity,
   consumeClickSuppression,
   dragBindings,
@@ -115,10 +112,7 @@ function SidebarFolderRowComponent({
         />
       </span>
       <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-        <span className="min-w-0 truncate font-medium">{name}</span>
-        <span className="shrink-0 text-xs tabular-nums text-subtle-foreground/70">
-          {threadCount}
-        </span>
+        <span className="min-w-0 truncate">{name}</span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${pathLabel} folder`}

@@ -7,7 +7,7 @@ import {
   getCollapsedChildActivity,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
-import { buildFolderKey, parseThreadFolderPath } from "./folderPath";
+import { buildFolderKey, splitFolderPath } from "./folderPath";
 import type {
   SidebarGroupBy,
   SidebarManualOrder,
@@ -37,8 +37,7 @@ export interface EnvironmentThreadGroup {
   stats: ProjectThreadNodeStats;
 }
 
-// A derived folder node (Group by: Folder). Folders are a pure rendering layer
-// folded out of "/"-separated thread titles by bucketIntoFolders — never stored.
+// A folder node folded out of stored thread.folderPath metadata.
 // A folder holds further items (threads, env groups, and nested folders) and
 // rolls up its descendants' count + activity so a collapsed header can speak for
 // them, mirroring a collapsed parent thread.
@@ -60,10 +59,10 @@ export type ProjectThreadItem =
   | { kind: "environment"; group: EnvironmentThreadGroup }
   | { kind: "folder"; group: SidebarFolderGroup };
 
-// Opt-in folder grouping, threaded into the three assembly sites. `containerId`
-// scopes folder identity to its section (a `proj_*` id, or the sentinels
-// below). When groupBy is "none" each site early-returns its current output
-// untouched — no folder logic runs.
+// Folder grouping, threaded into the three assembly sites. `containerId` scopes
+// folder identity to its section (a `proj_*` id, or the sentinels below). When
+// groupBy is "none" each site early-returns its current output untouched — no
+// folder logic runs.
 export interface SidebarFolderOptions {
   groupBy: SidebarGroupBy;
   containerId: string;
@@ -355,8 +354,8 @@ export function buildProjectThreadGroups(
   }
 
   const rootItems = buildSortedItems(rootNodes, compareThreads);
-  // Group by: None — return today's output untouched unless Sort: None has
-  // explicitly supplied a manual order for this section.
+  // Group by: None — return today's output untouched unless an internal test
+  // path explicitly supplied a manual order for this section.
   if (folderOptions?.groupBy !== "folder") {
     if (folderOptions?.manualOrder) {
       return orderSiblingItems(
@@ -481,16 +480,14 @@ function hasAtLeastTwoThreadNodes(
 }
 
 // ---------------------------------------------------------------------------
-// Folder bucketing (Group by: Folder)
+// Folder bucketing
 //
-// A pure, opt-in layer that folds an already-built top-level item list into a
-// nested folder tree derived from each top-level thread's "/"-separated title.
-// Only top-level items form folders; a thread's own children and env groups
-// keep nesting under its leaf exactly as today (a child's "/" is ignored). The
-// active comparator still drives order — folders render as a block above loose
-// items, and folders, their contents, and the loose block are each sorted
-// recursively by the same comparator (folders by their representative
-// descendant — the descendant that sorts first).
+// A pure layer that folds an already-built top-level item list into a nested
+// folder tree derived from each top-level thread's stored folderPath. Only
+// top-level items form folders; a thread's own children and env groups keep
+// nesting under it exactly as today. The active comparator still drives order:
+// folders render as a block above loose items, and folders, their contents, and
+// the loose block are each sorted recursively by the same comparator.
 // ---------------------------------------------------------------------------
 
 interface FolderBucket {
@@ -506,8 +503,8 @@ function createFolderBucket(): FolderBucket {
   return { subfolders: new Map(), items: [] };
 }
 
-// The thread that orders an item among its siblings, and whose title decides
-// its folder path: a thread/env item keeps today's representative; a folder
+// The thread that orders an item among its siblings, and whose folderPath
+// decides its folder path: a thread/env item keeps today's representative; a folder
 // uses the descendant thread that sorts first under the active comparator.
 function getItemOrderingThread(
   item: ProjectThreadItem,
@@ -589,10 +586,9 @@ function orderItemsByManualOrder(
   return [...unorderedItems, ...orderedItems];
 }
 
-// The one sibling-ordering hook. Today it orders folders-first, each block by
-// the active comparator. Under Sort: None it instead applies the stored
-// per-parent manual order; missing child keys stay at the top in fallback order
-// until the first drag writes a complete order for that parent.
+// The one sibling-ordering hook. It orders folders-first, each block by the
+// active comparator. Internal manual-order tests can still supply a stored
+// per-parent order; missing child keys stay at the top in fallback order.
 function orderSiblingItems(
   items: readonly ProjectThreadItem[],
   parentKey: string,
@@ -674,9 +670,9 @@ function buildFolderLevelItems(
 }
 
 // Fold a top-level item list into a nested folder tree. Items whose
-// representative thread's title has no folder segment stay loose at the top
-// level; the rest nest into the deepest folder of their path. No empty folders:
-// a folder node exists only because >=1 item resolved into it.
+// representative thread has no folderPath stay loose at the top level; the rest
+// nest into the deepest folder of their path. No empty folders: a folder node
+// exists only because >=1 item resolved into it.
 export function bucketIntoFolders(
   items: readonly ProjectThreadItem[],
   containerId: string,
@@ -686,7 +682,7 @@ export function bucketIntoFolders(
   const root = createFolderBucket();
   for (const item of items) {
     const orderingThread = getItemOrderingThread(item, compareThreads);
-    const { folders } = parseThreadFolderPath(orderingThread.title ?? "");
+    const folders = splitFolderPath(orderingThread.folderPath);
     let bucket = root;
     for (const segment of folders) {
       let next = bucket.subfolders.get(segment);

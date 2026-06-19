@@ -70,7 +70,6 @@ import type { ProjectThreadListState } from "./ProjectRow";
 import {
   compareByCreatedAtDescending,
   compareStandardThreads,
-  isSidebarProjectThread,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import {
@@ -91,15 +90,13 @@ import {
   DEFAULT_SIDEBAR_SECTION_ORDER,
   sidebarChronologicalSortAtom,
   sidebarCollapsedFoldersAtom,
-  sidebarFolderGroupingAutoEnabledAtom,
-  sidebarGroupByAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { folderAncestorKeys, titleCreatesFolder } from "./folderPath";
+import { folderAncestorKeys } from "./folderPath";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
   PINNED_CONTAINER_ID,
@@ -177,7 +174,6 @@ interface ProjectListThreadsSectionActionsProps {
 }
 
 interface SidebarViewOptionsMenuProps {
-  folderGroupingAvailable?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
@@ -506,7 +502,6 @@ function SidebarOrganizeMenuOption({
 // headers. The organization mode is global, so either header's menu drives the
 // whole sidebar.
 export function SidebarViewOptionsMenu({
-  folderGroupingAvailable = true,
   open,
   onOpenChange,
   onOrganizationModeSelect,
@@ -516,10 +511,6 @@ export function SidebarViewOptionsMenu({
   );
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
-  );
-  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
-  const setFolderGroupingAutoEnabled = useSetAtom(
-    sidebarFolderGroupingAutoEnabledAtom,
   );
 
   return (
@@ -550,42 +541,19 @@ export function SidebarViewOptionsMenu({
         </SidebarOrganizeMenuSectionLabel>
         <SidebarOrganizeMenuOption
           label="Project"
-          selected={organizationMode === "project" && groupBy === "none"}
+          selected={organizationMode === "project"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("project");
-            setGroupBy("none");
-            if (folderGroupingAvailable) {
-              setFolderGroupingAutoEnabled(true);
-            }
             onOrganizationModeSelect?.("project");
           }}
         />
         <SidebarOrganizeMenuOption
-          label="Folder"
-          disabled={!folderGroupingAvailable}
-          selected={groupBy === "folder"}
-          onSelect={(event) => {
-            event.preventDefault();
-            if (!folderGroupingAvailable) {
-              return;
-            }
-            setOrganizationMode("chronological");
-            setGroupBy("folder");
-            setFolderGroupingAutoEnabled(true);
-            onOrganizationModeSelect?.("chronological");
-          }}
-        />
-        <SidebarOrganizeMenuOption
           label="None"
-          selected={organizationMode === "chronological" && groupBy === "none"}
+          selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("chronological");
-            setGroupBy("none");
-            if (folderGroupingAvailable) {
-              setFolderGroupingAutoEnabled(true);
-            }
             onOrganizationModeSelect?.("chronological");
           }}
         />
@@ -607,14 +575,6 @@ export function SidebarViewOptionsMenu({
           onSelect={(event) => {
             event.preventDefault();
             setChronologicalSort("created");
-          }}
-        />
-        <SidebarOrganizeMenuOption
-          label="None"
-          selected={chronologicalSort === "none"}
-          onSelect={(event) => {
-            event.preventDefault();
-            setChronologicalSort("none");
           }}
         />
       </DropdownMenuContent>
@@ -1030,15 +990,6 @@ function ProjectListComponent({
     }
     return map;
   }, [threads]);
-  const folderGroupingAvailable = useMemo(
-    () =>
-      threads.some(
-        (thread) =>
-          isSidebarProjectThread(thread) &&
-          titleCreatesFolder(thread.title ?? ""),
-      ),
-    [threads],
-  );
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -1215,14 +1166,11 @@ function ProjectListComponent({
     },
     [],
   );
-  const [organizationMode, setOrganizationMode] = useAtom(
-    sidebarOrganizationModeAtom,
+  const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
+  const [chronologicalSort, setChronologicalSort] = useAtom(
+    sidebarChronologicalSortAtom,
   );
-  const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
-  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
-  const [folderGroupingAutoEnabled, setFolderGroupingAutoEnabled] = useAtom(
-    sidebarFolderGroupingAutoEnabledAtom,
-  );
+  const groupBy = "folder" as const;
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
@@ -1280,34 +1228,11 @@ function ProjectListComponent({
     normalizedCollapsedSidebarSectionIds,
     setCollapsedSidebarSectionIdList,
   ]);
-  // Existing slash-titled threads may predate folder grouping. Auto-enable once
-  // so refreshes render those titles as folders, then mark it handled so a
-  // later explicit "None" choice sticks.
   useEffect(() => {
-    if (!folderGroupingAvailable || folderGroupingAutoEnabled) {
-      return;
+    if (chronologicalSort === "none") {
+      setChronologicalSort("updated");
     }
-    if (groupBy === "folder") {
-      if (organizationMode !== "chronological") {
-        setOrganizationMode("chronological");
-      }
-      setFolderGroupingAutoEnabled(true);
-      return;
-    }
-    if (organizationMode !== "chronological") {
-      setOrganizationMode("chronological");
-    }
-    setGroupBy("folder");
-    setFolderGroupingAutoEnabled(true);
-  }, [
-    folderGroupingAutoEnabled,
-    folderGroupingAvailable,
-    groupBy,
-    organizationMode,
-    setFolderGroupingAutoEnabled,
-    setGroupBy,
-    setOrganizationMode,
-  ]);
+  }, [chronologicalSort, setChronologicalSort]);
   const pinnedSidebarState = useMemo(
     () => buildPinnedSidebarState({ threads, groupBy }),
     [threads, groupBy],
@@ -1364,30 +1289,26 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
-    // Under Group by: Folder, also un-collapse the folder ancestors hiding the
-    // selected thread. Folders derive from the TOP-LEVEL bucketed thread's
-    // title, not the selected child's own (a child's "/" is ignored) — so in
+    // Also un-collapse folder ancestors hiding the selected thread. In
     // project/pinned mode use the top-level ancestor the walk above ended on;
     // in the flat chronological list the selected thread is itself top-level.
-    if (groupBy === "folder") {
-      const isPinned =
-        pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-      const isChronological = !isPinned && organizationMode === "chronological";
-      const topLevelAncestor = currentThread ?? selectedThread;
-      const folderSource = isChronological ? selectedThread : topLevelAncestor;
-      const folderContainerId = isPinned
-        ? PINNED_CONTAINER_ID
-        : isChronological
-          ? CHRONOLOGICAL_CONTAINER_ID
-          : selectedThread.projectId;
-      const folderKeysToExpand = new Set(
-        folderAncestorKeys(folderContainerId, folderSource.title ?? ""),
+    const isPinned =
+      pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
+    const isChronological = !isPinned && organizationMode === "chronological";
+    const topLevelAncestor = currentThread ?? selectedThread;
+    const folderSource = isChronological ? selectedThread : topLevelAncestor;
+    const folderContainerId = isPinned
+      ? PINNED_CONTAINER_ID
+      : isChronological
+        ? CHRONOLOGICAL_CONTAINER_ID
+        : selectedThread.projectId;
+    const folderKeysToExpand = new Set(
+      folderAncestorKeys(folderContainerId, folderSource.folderPath),
+    );
+    if (folderKeysToExpand.size > 0) {
+      setCollapsedFolderList((current) =>
+        removeCollapsedIds(current, folderKeysToExpand),
       );
-      if (folderKeysToExpand.size > 0) {
-        setCollapsedFolderList((current) =>
-          removeCollapsedIds(current, folderKeysToExpand),
-        );
-      }
     }
 
     if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
@@ -1408,7 +1329,6 @@ function ProjectListComponent({
       removeCollapsedIds(current, new Set(["projects"])),
     );
   }, [
-    groupBy,
     organizationMode,
     pinnedSidebarState.effectivePinnedThreadIds,
     selectedThreadId,
@@ -1644,7 +1564,6 @@ function ProjectListComponent({
   const projectsSectionActions = (
     <>
       <SidebarViewOptionsMenu
-        folderGroupingAvailable={folderGroupingAvailable}
         open={isProjectsViewOptionsMenuOpen}
         onOpenChange={handleProjectsViewOptionsMenuOpenChange}
         onOrganizationModeSelect={
@@ -1669,7 +1588,6 @@ function ProjectListComponent({
         onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
       <SidebarViewOptionsMenu
-        folderGroupingAvailable={folderGroupingAvailable}
         open={isThreadsViewOptionsMenuOpen}
         onOpenChange={handleThreadsViewOptionsMenuOpenChange}
       />
@@ -1704,7 +1622,7 @@ function ProjectListComponent({
     );
   }
 
-  if (organizationMode === "chronological" || groupBy === "folder") {
+  if (organizationMode === "chronological") {
     return (
       <ProjectListShell>
         <div className="space-y-4">
@@ -1714,7 +1632,7 @@ function ProjectListComponent({
             </TopLevelSidebarSection>
           ) : null}
           <TopLevelSidebarSection
-            label={groupBy === "folder" ? "Folders" : "All Threads"}
+            label="All Threads"
             actions={threadsSectionActions}
             actionsOpen={
               isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen

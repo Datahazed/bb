@@ -10,7 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
-import { titleCreatesFolder } from "@/components/sidebar/folderPath";
+import {
+  parseThreadFolderShortcut,
+  titleCreatesFolder,
+} from "@/components/sidebar/folderPath";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
@@ -19,11 +22,16 @@ export interface ThreadRenameDialogTarget {
   currentTitle: string;
 }
 
+export interface ThreadRenameDialogPayload {
+  title: string;
+  folderPath?: string | null;
+}
+
 interface ThreadRenameDialogProps {
   target: ThreadRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
 }
 
 export function ThreadRenameDialog({
@@ -53,7 +61,7 @@ export function ThreadRenameDialog({
 export interface ThreadRenameDialogContentProps {
   target: ThreadRenameDialogTarget;
   pending: boolean;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -78,7 +86,11 @@ export function ThreadRenameDialogContent({
     const trimmedTitle = validate(nextTitle);
     if (trimmedTitle === null) return;
 
-    onRename(target.id, trimmedTitle);
+    const folderShortcut = parseThreadFolderShortcut(trimmedTitle);
+    onRename(
+      target.id,
+      folderShortcut.folderPath ? folderShortcut : { title: trimmedTitle },
+    );
   };
 
   return (

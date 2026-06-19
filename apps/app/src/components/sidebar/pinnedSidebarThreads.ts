@@ -13,7 +13,7 @@ export interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
   rootNodes: ProjectThreadNode[];
   // Folder-aware render list: flat thread items under Group by: None, folded
-  // into folders (ordered by comparePinnedRoots) under Group by: Folder.
+  // by stored folderPath (ordered by comparePinnedRoots) under Group by: Folder.
   rootItems: ProjectThreadItem[];
 }
 
@@ -134,7 +134,9 @@ export function buildPinnedSidebarState({
   );
   const projectItems = buildProjectThreadGroups(effectivePinnedThreads);
   const rootNodes = collectRootNodes(projectItems);
-  rootNodes.sort((left, right) => comparePinnedRoots(left.thread, right.thread));
+  rootNodes.sort((left, right) =>
+    comparePinnedRoots(left.thread, right.thread),
+  );
 
   // Pinned has its own root order (pinSortKey via comparePinnedRoots), never the
   // sidebar sort. Fold into folders using that same comparator so folders order

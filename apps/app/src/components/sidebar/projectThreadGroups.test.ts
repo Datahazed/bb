@@ -28,6 +28,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
+    folderPath: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -484,8 +485,18 @@ describe("manual order (Sort by: None)", () => {
   it("lets manual folder mode interleave folders and loose threads by parent", () => {
     const items = buildProjectThreadGroups(
       [
-        createThread({ id: "a", title: "Work/A", latestAttentionAt: 30 }),
-        createThread({ id: "b", title: "Work/B", latestAttentionAt: 20 }),
+        createThread({
+          id: "a",
+          title: "A",
+          folderPath: "Work",
+          latestAttentionAt: 30,
+        }),
+        createThread({
+          id: "b",
+          title: "B",
+          folderPath: "Work",
+          latestAttentionAt: 20,
+        }),
         createThread({ id: "loose", title: "Loose", latestAttentionAt: 10 }),
       ],
       compareStandardThreads,
@@ -517,13 +528,13 @@ describe("manual order (Sort by: None)", () => {
 
 const FOLDER_OPTIONS = { groupBy: "folder", containerId: "proj_1" } as const;
 
-describe("folder bucketing (Group by: Folder)", () => {
-  it("nests threads into folders derived from their titles, folders above loose threads", () => {
+describe("folder bucketing", () => {
+  it("nests threads into folders derived from folderPath, folders above loose threads", () => {
     const items = buildProjectThreadGroups(
       [
-        createThread({ id: "a", title: "Work/Q3/Plan" }),
-        createThread({ id: "b", title: "Work/Q3/Notes" }),
-        createThread({ id: "c", title: "Work/Q4" }),
+        createThread({ id: "a", title: "Plan", folderPath: "Work/Q3" }),
+        createThread({ id: "b", title: "Notes", folderPath: "Work/Q3" }),
+        createThread({ id: "c", title: "Q4", folderPath: "Work" }),
         createThread({ id: "d", title: "Standalone" }),
       ],
       compareStandardThreads,
@@ -541,14 +552,28 @@ describe("folder bucketing (Group by: Folder)", () => {
     ]);
   });
 
+  it("does not derive folders from slashes in titles", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({ id: "a", title: "Work/Q3/Plan" }),
+        createThread({ id: "b", title: "Work/Notes" }),
+      ],
+      compareStandardThreads,
+      FOLDER_OPTIONS,
+    );
+
+    expect(summarizeItems(items)).toEqual(["a", "b"]);
+  });
+
   it("keeps a folder thread's own children nested under it and ignores their slashes", () => {
     const items = buildProjectThreadGroups(
       [
-        createThread({ id: "parent", title: "Work/Project" }),
+        createThread({ id: "parent", title: "Project", folderPath: "Work" }),
         createThread({
           id: "child",
           parentThreadId: "parent",
-          title: "Ignored/Child/Path",
+          title: "Path",
+          folderPath: "Ignored/Child",
         }),
       ],
       compareStandardThreads,
@@ -556,7 +581,7 @@ describe("folder bucketing (Group by: Folder)", () => {
     );
 
     // Only the top-level "parent" forms a folder; the child stays nested under
-    // it and its own "/" does not create a folder.
+    // it and its own folderPath does not create a second folder branch.
     expect(summarizeItems(items)).toEqual([
       {
         folder: "proj_1::Work",
@@ -570,13 +595,15 @@ describe("folder bucketing (Group by: Folder)", () => {
       [
         createThread({
           id: "w1",
-          title: "Work/Alpha",
+          title: "Alpha",
+          folderPath: "Work",
           environmentId: "env_shared",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
         createThread({
           id: "w2",
-          title: "Work/Beta",
+          title: "Beta",
+          folderPath: "Work",
           environmentId: "env_shared",
           environmentWorkspaceDisplayKind: "managed-worktree",
         }),
@@ -597,7 +624,8 @@ describe("folder bucketing (Group by: Folder)", () => {
     const threads = [
       createThread({
         id: "old-active",
-        title: "FolderA/x",
+        title: "x",
+        folderPath: "FolderA",
         status: "active",
         createdAt: 10,
         latestAttentionAt: 5,
@@ -605,7 +633,8 @@ describe("folder bucketing (Group by: Folder)", () => {
       }),
       createThread({
         id: "new-idle",
-        title: "FolderB/y",
+        title: "y",
+        folderPath: "FolderB",
         status: "idle",
         createdAt: 50,
         latestAttentionAt: 5,
@@ -646,10 +675,11 @@ describe("folder bucketing (Group by: Folder)", () => {
       buildProjectThreadGroups([
         createThread({
           id: "busy",
-          title: "Work/Busy",
+          title: "Busy",
+          folderPath: "Work",
           hasPendingInteraction: true,
         }),
-        createThread({ id: "quiet", title: "Work/Quiet" }),
+        createThread({ id: "quiet", title: "Quiet", folderPath: "Work" }),
       ]),
       "proj_1",
       compareStandardThreads,
@@ -667,8 +697,18 @@ describe("folder bucketing (Group by: Folder)", () => {
   it("folds the chronological list into folders too", () => {
     const items = buildChronologicalThreadList(
       [
-        createThread({ id: "a", title: "Work/One", createdAt: 20 }),
-        createThread({ id: "b", title: "Personal/Two", createdAt: 10 }),
+        createThread({
+          id: "a",
+          title: "One",
+          folderPath: "Work",
+          createdAt: 20,
+        }),
+        createThread({
+          id: "b",
+          title: "Two",
+          folderPath: "Personal",
+          createdAt: 10,
+        }),
       ],
       compareByCreatedAtDescending,
       { groupBy: "folder", containerId: "chronological" },

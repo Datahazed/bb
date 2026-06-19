@@ -84,17 +84,11 @@ import {
 } from "./projectThreadGroups";
 import { SidebarFolderRow } from "./SidebarFolderRow";
 import {
-  buildThreadTitleForFolderPath,
   formatFolderPathLabel,
-  parseThreadFolderPath,
+  normalizeFolderPath,
+  splitFolderPath,
 } from "./folderPath";
-import {
-  sidebarChronologicalSortAtom,
-  sidebarCollapsedFoldersAtom,
-  sidebarGroupByAtom,
-  sidebarManualOrderAtom,
-  type SidebarManualOrder,
-} from "./sidebarCollapsedAtoms";
+import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
@@ -339,37 +333,14 @@ function collectManualThreadTreeLookup(
   return lookup;
 }
 
-function moveIdBefore({
-  activeId,
-  itemIds,
-  overId,
-}: {
-  activeId: string;
-  itemIds: readonly string[];
-  overId: string | null;
-}): string[] {
-  const withoutActive = itemIds.filter((id) => id !== activeId);
-  const insertIndex =
-    overId === null ? withoutActive.length : withoutActive.indexOf(overId);
-  if (insertIndex === -1) {
-    return [...itemIds];
-  }
-  return [
-    ...withoutActive.slice(0, insertIndex),
-    activeId,
-    ...withoutActive.slice(insertIndex),
-  ];
-}
-
-function writeManualOrderLists(
-  current: SidebarManualOrder,
-  updates: ReadonlyMap<string, readonly string[]>,
-): SidebarManualOrder {
-  const next = { ...current };
-  for (const [parentKey, itemIds] of updates) {
-    next[parentKey] = [...itemIds];
-  }
-  return next;
+function hasFolderItems(items: readonly ProjectThreadItem[]): boolean {
+  return items.some(
+    (item) =>
+      item.kind === "folder" ||
+      (item.kind === "thread" && hasFolderItems(item.node.children)) ||
+      (item.kind === "environment" &&
+        item.group.nodes.some((node) => hasFolderItems(node.children))),
+  );
 }
 
 function useManualThreadTreeDnd({
@@ -381,7 +352,6 @@ function useManualThreadTreeDnd({
     () => collectManualThreadTreeLookup(rootItems, containerId),
     [containerId, rootItems],
   );
-  const setManualOrder = useSetAtom(sidebarManualOrderAtom);
   const updateThread = useUpdateThread();
 
   const handleDragEnd = useCallback(
@@ -405,7 +375,6 @@ function useManualThreadTreeDnd({
       const overKind = lookup.itemKindById.get(overId);
       const fromParentKey = lookup.parentKeyByItemId.get(activeId);
       let toParentKey = lookup.parentKeyByItemId.get(overId);
-      let destinationOverId: string | null = overId;
 
       if (!activeKind || !overKind || !fromParentKey || !toParentKey) {
         return;
@@ -414,47 +383,7 @@ function useManualThreadTreeDnd({
       // Dropping a thread on a folder header means "move into this folder".
       if (activeKind === "thread" && overKind === "folder") {
         toParentKey = overId;
-        destinationOverId = null;
       }
-
-      // Folders can be reordered among siblings, but they are not folder
-      // entities and cannot be re-filed into other folders.
-      if (activeKind === "folder" && fromParentKey !== toParentKey) {
-        return;
-      }
-
-      const sourceIds = lookup.itemIdsByParentKey.get(fromParentKey);
-      const destinationIds = lookup.itemIdsByParentKey.get(toParentKey);
-      if (!sourceIds || !destinationIds) {
-        return;
-      }
-
-      const updates = new Map<string, readonly string[]>();
-      if (fromParentKey === toParentKey) {
-        updates.set(
-          fromParentKey,
-          moveIdBefore({
-            activeId,
-            itemIds: sourceIds,
-            overId: destinationOverId,
-          }),
-        );
-      } else {
-        updates.set(
-          fromParentKey,
-          sourceIds.filter((id) => id !== activeId),
-        );
-        updates.set(
-          toParentKey,
-          moveIdBefore({
-            activeId,
-            itemIds: destinationIds,
-            overId: destinationOverId,
-          }),
-        );
-      }
-
-      setManualOrder((current) => writeManualOrderLists(current, updates));
 
       if (activeKind !== "thread" || fromParentKey === toParentKey) {
         return;
@@ -463,15 +392,12 @@ function useManualThreadTreeDnd({
       const thread = lookup.threadByItemId.get(activeId);
       if (!thread) return;
 
-      const destinationFolders =
-        lookup.folderPathByParentKey.get(toParentKey) ?? [];
-      const title = buildThreadTitleForFolderPath(
-        thread.title ?? getThreadDisplayTitle(thread),
-        destinationFolders,
+      const destinationFolderPath = normalizeFolderPath(
+        (lookup.folderPathByParentKey.get(toParentKey) ?? []).join("/"),
       );
-      updateThread.mutate({ id: activeId, title });
+      updateThread.mutate({ id: activeId, folderPath: destinationFolderPath });
     },
-    [enabled, lookup, setManualOrder, updateThread],
+    [enabled, lookup, updateThread],
   );
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
@@ -1351,7 +1277,6 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         name={folder.name}
         pathLabel={formatFolderPathLabel(folder.path)}
         depth={headerDepth}
-        threadCount={folder.threadCount}
         activity={folder.activity}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
@@ -1456,12 +1381,14 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     if (!insideFolder) {
       return undefined;
     }
-    const { folders, leaf } = parseThreadFolderPath(node.thread.title ?? "");
+    const title = getThreadDisplayTitle(node.thread);
+    const folders = splitFolderPath(node.thread.folderPath);
     return {
-      displayTitle: leaf || undefined,
-      accessibleTitle: formatFolderPathLabel([...folders, leaf]) || undefined,
+      displayTitle: title,
+      accessibleTitle:
+        folders.length > 0 ? formatFolderPathLabel([...folders, title]) : title,
     };
-  }, [insideFolder, node.thread.title]);
+  }, [insideFolder, node.thread]);
   const row = (
     <ThreadRow
       projectId={projectId}
@@ -1522,9 +1449,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
-  const groupBy = useAtomValue(sidebarGroupByAtom);
-  const chronologicalSort = useAtomValue(sidebarChronologicalSortAtom);
-  const manualOrder = useAtomValue(sidebarManualOrderAtom);
+  const groupBy = "folder" as const;
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
@@ -1534,20 +1459,12 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(projectThreads, compareThreads, {
         groupBy,
         containerId: projectId,
-        manualOrder: chronologicalSort === "none" ? manualOrder : undefined,
       }),
-    [
-      chronologicalSort,
-      compareThreads,
-      projectThreads,
-      groupBy,
-      manualOrder,
-      projectId,
-    ],
+    [compareThreads, projectThreads, groupBy, projectId],
   );
   const manualSort = useManualThreadTreeDnd({
     containerId: projectId,
-    enabled: chronologicalSort === "none",
+    enabled: hasFolderItems(rootItems),
     rootItems,
   });
 
@@ -1635,9 +1552,7 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ChronologicalThreadTreeProps) {
-  const groupBy = useAtomValue(sidebarGroupByAtom);
-  const chronologicalSort = useAtomValue(sidebarChronologicalSortAtom);
-  const manualOrder = useAtomValue(sidebarManualOrderAtom);
+  const groupBy = "folder" as const;
   const threads =
     threadListState.status === "ready"
       ? threadListState.threads
@@ -1647,13 +1562,12 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       buildChronologicalThreadList(threads, compareThreads, {
         groupBy,
         containerId: CHRONOLOGICAL_CONTAINER_ID,
-        manualOrder: chronologicalSort === "none" ? manualOrder : undefined,
       }),
-    [chronologicalSort, threads, compareThreads, groupBy, manualOrder],
+    [threads, compareThreads, groupBy],
   );
   const manualSort = useManualThreadTreeDnd({
     containerId: CHRONOLOGICAL_CONTAINER_ID,
-    enabled: chronologicalSort === "none",
+    enabled: hasFolderItems(rootItems),
     rootItems,
   });
 

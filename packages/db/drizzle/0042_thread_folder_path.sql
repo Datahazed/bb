@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `folder_path` text;

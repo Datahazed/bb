@@ -10,8 +10,6 @@ const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
-const FOLDER_GROUPING_AUTO_ENABLED_STORAGE_KEY =
-  "bb.sidebar.folderGroupingAutoEnabled";
 const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
@@ -22,11 +20,12 @@ export type CollapsibleSidebarSectionId = "projects" | "threads";
 export type SidebarOrganizationMode = "project" | "chronological";
 // Controls thread ordering in both grouped and ungrouped sidebar views.
 // "updated" reuses the status-aware activity heuristic; "created" sorts by
-// the literal createdAt field; "none" applies the user's local manual order.
+// the literal createdAt field. "none" is a legacy/internal value that the
+// runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "none";
-// Whether "/" in a thread title renders as nested folders. Orthogonal to the
-// organization mode and sort: "none" keeps today's flat behavior (literal
-// titles), "folder" buckets top-level threads into derived folders.
+// Low-level folder grouping switch used by folder helpers and tests. The app
+// runtime always renders stored folderPath metadata; "none" remains for
+// regression coverage.
 export type SidebarGroupBy = "none" | "folder";
 // Per-parent manual order for Sort: None. Keys are section/folder parent keys;
 // values are child thread ids and child folder keys.
@@ -91,7 +90,8 @@ export const sidebarChronologicalSortAtom =
     { getOnInit: true },
   );
 
-// Opt-in folder grouping. Default "none" keeps the current sidebar layout.
+// Story/test control for the low-level folder grouping path. Runtime sidebar
+// trees pass "folder" directly so stored folderPath metadata always renders.
 export const sidebarGroupByAtom = atomWithStorage<SidebarGroupBy>(
   GROUP_BY_STORAGE_KEY,
   "none",
@@ -105,15 +105,6 @@ export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   COLLAPSED_FOLDERS_STORAGE_KEY,
   [],
   createJsonLocalStorage<string[]>(),
-  { getOnInit: true },
-);
-
-// Whether slash-titled threads have already auto-enabled folder grouping. Once
-// true, a later explicit Group by: None choice should stick across refreshes.
-export const sidebarFolderGroupingAutoEnabledAtom = atomWithStorage<boolean>(
-  FOLDER_GROUPING_AUTO_ENABLED_STORAGE_KEY,
-  false,
-  createJsonLocalStorage<boolean>(),
   { getOnInit: true },
 );
 

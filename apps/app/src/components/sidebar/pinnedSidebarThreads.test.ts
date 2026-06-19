@@ -14,6 +14,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
+    folderPath: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -187,18 +188,20 @@ describe("buildPinnedSidebarState", () => {
   it("folds pinned roots into folders ordered by the pinned comparator", () => {
     const state = buildPinnedSidebarState({
       threads: [
-        // FolderA's pinned thread sorts after FolderB's by pinSortKey, so
-        // FolderB's folder must render first under the pinned (not sidebar)
+        // Work's pinned thread sorts after Personal's by pinSortKey, so
+        // Personal's folder must render first under the pinned (not sidebar)
         // ordering.
         createThread({
           id: "a",
-          title: "Work/Alpha",
+          title: "Alpha",
+          folderPath: "Work",
           pinnedAt: 1_000,
           pinSortKey: "b",
         }),
         createThread({
           id: "b",
-          title: "Personal/Beta",
+          title: "Beta",
+          folderPath: "Personal",
           pinnedAt: 1_000,
           pinSortKey: "a",
         }),
@@ -216,7 +219,13 @@ describe("buildPinnedSidebarState", () => {
   it("keeps a flat thread list under Group by: None", () => {
     const state = buildPinnedSidebarState({
       threads: [
-        createThread({ id: "a", title: "Work/Alpha", pinnedAt: 1_000, pinSortKey: "a" }),
+        createThread({
+          id: "a",
+          title: "Alpha",
+          folderPath: "Work",
+          pinnedAt: 1_000,
+          pinSortKey: "a",
+        }),
       ],
       groupBy: "none",
     });

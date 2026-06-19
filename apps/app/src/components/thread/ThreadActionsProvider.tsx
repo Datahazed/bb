@@ -7,7 +7,6 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import { defaultExperiments, type Thread } from "@bb/domain";
@@ -31,6 +30,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadRenameDialog,
+  type ThreadRenameDialogPayload,
   type ThreadRenameDialogTarget,
 } from "@/components/dialogs/ThreadRenameDialog";
 import {
@@ -39,12 +39,6 @@ import {
 } from "@/components/dialogs/ThreadDeleteDialog";
 import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
-import { titleCreatesFolder } from "@/components/sidebar/folderPath";
-import {
-  sidebarFolderGroupingAutoEnabledAtom,
-  sidebarGroupByAtom,
-  sidebarOrganizationModeAtom,
-} from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi, getDesktopPopoutApi } from "@/lib/bb-desktop";
@@ -104,11 +98,6 @@ export function ThreadActionsProvider({
   const deleteThread = useDeleteThread();
   const updateThread = useUpdateThread();
   const systemConfigQuery = useSystemConfig();
-  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
-  const [, setOrganizationMode] = useAtom(sidebarOrganizationModeAtom);
-  const [, setFolderGroupingAutoEnabled] = useAtom(
-    sidebarFolderGroupingAutoEnabledAtom,
-  );
   const threadActionContextAbortRef = useRef<AbortController | null>(null);
   // Destructure `.mutate` so useCallback deps see stable references across
   // renders. Depending on the full mutation objects would churn callback
@@ -160,31 +149,17 @@ export function ThreadActionsProvider({
   );
 
   const submitRename = useCallback(
-    (threadId: string, title: string) => {
+    (threadId: string, payload: ThreadRenameDialogPayload) => {
       updateMutate(
-        { id: threadId, title },
+        { id: threadId, ...payload },
         {
           onSuccess: () => {
-            if (titleCreatesFolder(title)) {
-              setFolderGroupingAutoEnabled(true);
-              setOrganizationMode("chronological");
-              if (groupBy === "none") {
-                setGroupBy("folder");
-              }
-            }
             closeRenameDialog();
           },
         },
       );
     },
-    [
-      closeRenameDialog,
-      groupBy,
-      setFolderGroupingAutoEnabled,
-      setGroupBy,
-      setOrganizationMode,
-      updateMutate,
-    ],
+    [closeRenameDialog, updateMutate],
   );
 
   // Fetches the delete dialog context. Returns null when the caller's request

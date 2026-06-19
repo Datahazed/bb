@@ -249,6 +249,7 @@ export const threads = sqliteTable(
     ).$type<ReasoningLevel>(),
     title: text("title"),
     titleFallback: text("title_fallback"),
+    folderPath: text("folder_path"),
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
