@@ -185,38 +185,7 @@ describe("buildPinnedSidebarState", () => {
     expect(state.rootNodes[0]?.stats.childCount).toBe(1);
   });
 
-  it("folds pinned roots into folders ordered by the pinned comparator", () => {
-    const state = buildPinnedSidebarState({
-      threads: [
-        // Work's pinned thread sorts after Personal's by pinSortKey, so
-        // Personal's folder must render first under the pinned (not sidebar)
-        // ordering.
-        createThread({
-          id: "a",
-          title: "Alpha",
-          folderPath: "Work",
-          pinnedAt: 1_000,
-          pinSortKey: "b",
-        }),
-        createThread({
-          id: "b",
-          title: "Beta",
-          folderPath: "Personal",
-          pinnedAt: 1_000,
-          pinSortKey: "a",
-        }),
-      ],
-      groupBy: "folder",
-    });
-
-    expect(
-      state.rootItems.map((item) =>
-        item.kind === "folder" ? item.group.key : "thread",
-      ),
-    ).toEqual(["pinned::Personal", "pinned::Work"]);
-  });
-
-  it("keeps a flat thread list under Group by: None", () => {
+  it("keeps pinned roots flat even when they have folder paths", () => {
     const state = buildPinnedSidebarState({
       threads: [
         createThread({
@@ -227,9 +196,8 @@ describe("buildPinnedSidebarState", () => {
           pinSortKey: "a",
         }),
       ],
-      groupBy: "none",
     });
 
-    expect(state.rootItems.every((item) => item.kind === "thread")).toBe(true);
+    expect(rootIds(state)).toEqual(["a"]);
   });
 });

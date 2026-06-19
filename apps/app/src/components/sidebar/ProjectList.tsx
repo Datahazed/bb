@@ -102,10 +102,7 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { folderAncestorKeys } from "./folderPath";
-import {
-  CHRONOLOGICAL_CONTAINER_ID,
-  PINNED_CONTAINER_ID,
-} from "./projectThreadGroups";
+import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1234,9 +1231,6 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const isFolderOrganizationMode = organizationMode === "chronological";
-  const groupBy = isFolderOrganizationMode
-    ? ("folder" as const)
-    : ("none" as const);
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
@@ -1300,8 +1294,8 @@ function ProjectListComponent({
     }
   }, [chronologicalSort, setChronologicalSort]);
   const pinnedSidebarState = useMemo(
-    () => buildPinnedSidebarState({ threads, groupBy }),
-    [threads, groupBy],
+    () => buildPinnedSidebarState({ threads }),
+    [threads],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
   const visibleSidebarSectionOrder = useMemo(
@@ -1359,12 +1353,12 @@ function ProjectListComponent({
     // cross-project Folders view.
     const isPinned =
       pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-    if (isFolderOrganizationMode) {
-      const folderContainerId = isPinned
-        ? PINNED_CONTAINER_ID
-        : CHRONOLOGICAL_CONTAINER_ID;
+    if (isFolderOrganizationMode && !isPinned) {
       const folderKeysToExpand = new Set(
-        folderAncestorKeys(folderContainerId, selectedThread.folderPath),
+        folderAncestorKeys(
+          CHRONOLOGICAL_CONTAINER_ID,
+          selectedThread.folderPath,
+        ),
       );
       if (folderKeysToExpand.size > 0) {
         setCollapsedFolderList((current) =>
@@ -1569,7 +1563,6 @@ function ProjectListComponent({
   const pinnedSectionContent = (
     <PinnedThreadTree
       rootNodes={pinnedSidebarState.rootNodes}
-      rootItems={pinnedSidebarState.rootItems}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}

@@ -5,18 +5,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
-import {
-  getItemKey,
-  getItemProjectId,
-  ThreadTreeItemRow,
-  ThreadTreeNodeRow,
-} from "./ProjectRow";
+import { ThreadTreeNodeRow } from "./ProjectRow";
 import { useSidebarSortable } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
-import type {
-  ProjectThreadItem,
-  ProjectThreadNode,
-} from "./projectThreadGroups";
+import type { ProjectThreadNode } from "./projectThreadGroups";
 import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
@@ -28,10 +20,6 @@ export interface PinnedThreadRootReorderCallbacks {
 
 export interface PinnedThreadTreeProps {
   rootNodes: readonly ProjectThreadNode[];
-  // Folder-aware render list. When it contains folders (Group by: Folder), the
-  // pinned section renders them as a static tree; otherwise it keeps the
-  // existing sortable flat list (pinned reorder via pinSortKey).
-  rootItems: readonly ProjectThreadItem[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -56,8 +44,10 @@ interface SortablePinnedRootItemProps {
   selectedThreadId?: string;
 }
 
-interface PinnedRootItemProps
-  extends Omit<SortablePinnedRootItemProps, "disabled"> {
+interface PinnedRootItemProps extends Omit<
+  SortablePinnedRootItemProps,
+  "disabled"
+> {
   consumeClickSuppression?: () => boolean;
 }
 
@@ -130,7 +120,6 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
 
 export const PinnedThreadTree = memo(function PinnedThreadTree({
   rootNodes,
-  rootItems,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -140,9 +129,6 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   isPinnedReorderPending = false,
   onReorderPinnedRoot,
 }: PinnedThreadTreeProps) {
-  // Drag-reorder (pinSortKey) and derived folders don't compose — a folder has
-  // no sort key — so when folders are actually present we render a static tree.
-  const hasFolders = rootItems.some((item) => item.kind === "folder");
   const handleReorderPinnedRoot = useCallback<
     UseNeighborReorderSortableArgs<ProjectThreadNode>["onReorder"]
   >(
@@ -165,31 +151,6 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   });
   const { dndContextProps, consumeClickSuppression, onClickCapture } =
     useSidebarReorderDnd({ onDragEnd: handleSortableDragEnd });
-
-  if (hasFolders) {
-    return (
-      <div
-        data-sidebar-sticky-section=""
-        className="relative space-y-0.5 group-data-[collapsible=icon]:hidden"
-      >
-        {rootItems.map((item) => (
-          <ThreadTreeItemRow
-            key={getItemKey(item)}
-            projectId={getItemProjectId(item)}
-            item={item}
-            depthOffset={0}
-            selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            variant="section"
-            onProjectSelect={onProjectSelect}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-          />
-        ))}
-      </div>
-    );
-  }
 
   if (renderedRootNodes.length === 0) {
     return null;
