@@ -1772,7 +1772,7 @@ function ProjectRowComponent({
                     />
                   </NavLink>
                 </TooltipTrigger>
-                <TooltipContent side="top">
+                <TooltipContent side="bottom">
                   Open project settings to fix folder
                 </TooltipContent>
               </Tooltip>
@@ -1844,7 +1844,7 @@ function ProjectRowComponent({
                     </span>
                   )}
                 </TooltipTrigger>
-                <TooltipContent side="top">New thread</TooltipContent>
+                <TooltipContent side="bottom">New thread</TooltipContent>
               </Tooltip>
             </span>
           </SidebarStickyTier>

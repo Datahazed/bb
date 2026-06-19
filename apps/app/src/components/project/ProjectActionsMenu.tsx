@@ -199,7 +199,7 @@ export function ProjectActionsMenu({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="top">Project actions</TooltipContent>
+        <TooltipContent side="bottom">Project actions</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align={align} className="w-44">
         <ProjectActionsMenuItems project={project} surface="dropdown" />

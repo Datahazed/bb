@@ -442,7 +442,7 @@ function ProjectListSectionIconButton({
       <TooltipTrigger asChild>
         {disabled ? <span className="inline-flex">{button}</span> : button}
       </TooltipTrigger>
-      <TooltipContent side="top">{title}</TooltipContent>
+      <TooltipContent side="bottom">{title}</TooltipContent>
     </Tooltip>
   );
 }
@@ -576,7 +576,7 @@ export function SidebarViewOptionsMenu({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="top">Sidebar display options</TooltipContent>
+        <TooltipContent side="bottom">Sidebar display options</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"
@@ -662,7 +662,7 @@ function SidebarThreadActionsMenu({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="top">Threads actions</TooltipContent>
+        <TooltipContent side="bottom">Threads actions</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"
@@ -827,7 +827,7 @@ function TopLevelSidebarSection({
                   />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">
+              <TooltipContent side="bottom">
                 {collapseControl.isCollapsed
                   ? `Expand ${label}`
                   : `Collapse ${label}`}
