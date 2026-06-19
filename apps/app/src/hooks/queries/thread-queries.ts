@@ -271,13 +271,15 @@ export interface UseArchivedThreadsFilters {
   projectId: string | undefined;
   /** Restrict to threads filed directly under this folder path. */
   folderPath?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, folderPath } = filters;
+  const { projectId, folderPath, unfiled } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
 
@@ -291,12 +293,14 @@ export function useArchivedThreads(
     queryKey: archivedThreadsListQueryKey({
       projectId: projectId ?? "",
       ...(folderPath ? { folderPath } : {}),
+      ...(unfiled ? { unfiled: true } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
           ...(folderPath ? { folderPath } : {}),
+          ...(unfiled ? { unfiled: true } : {}),
           archived: true,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,

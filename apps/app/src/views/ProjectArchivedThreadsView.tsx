@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -25,9 +25,13 @@ export function ProjectArchivedThreadsView() {
   const { projectId } = useRouteState();
   const [searchParams] = useSearchParams();
   const folderPath = searchParams.get("folder") ?? undefined;
+  // The personal section's archived list shows loose threads only; threads
+  // filed in a folder live in that folder's archived list instead.
+  const restrictToLoose = !folderPath && projectId === PERSONAL_PROJECT_ID;
   const archivedThreadsQuery = useArchivedThreads({
     projectId,
     ...(folderPath ? { folderPath } : {}),
+    ...(restrictToLoose ? { unfiled: true } : {}),
   });
   const unarchiveThread = useUnarchiveThread();
 

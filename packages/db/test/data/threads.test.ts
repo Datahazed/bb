@@ -358,6 +358,30 @@ describe("threads", () => {
     ).toHaveLength(1);
   });
 
+  it("filters archived threads to loose (unfiled) only", () => {
+    const { db, project } = setup();
+    const looseArchived = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const foldered = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "work",
+    });
+    archiveThread(db, noopNotifier, looseArchived.id);
+    archiveThread(db, noopNotifier, foldered.id);
+
+    const unfiledArchived = listThreads(db, {
+      projectId: project.id,
+      archived: true,
+      unfiled: true,
+    });
+    expect(unfiledArchived.map((thread) => thread.id)).toEqual([
+      looseArchived.id,
+    ]);
+  });
+
   it("isolates threads by project", () => {
     const { db, host, project } = setup();
     const { project: otherProject } = createProject(db, noopNotifier, {
