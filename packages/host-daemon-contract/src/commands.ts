@@ -395,6 +395,77 @@ const hostListCommandsCommandSchema = z.object({
 });
 
 /**
+ * Which scan root a discovered skill came from, as raw root identity — not a
+ * product scope. The server maps `(providerId, rootKind)` to the user-facing
+ * scope (e.g. `provider-user` under `claude-code` → `claude-user`, under
+ * `codex` → `codex`) and decides `manageable`. Kept here, not derived on the
+ * daemon, because only the server knows which provider it queried.
+ */
+export const skillRootKindSchema = z.enum([
+  "bb-project",
+  "bb-data-dir",
+  "bb-builtin",
+  "provider-project",
+  "provider-user",
+  "plugin",
+]);
+export type SkillRootKind = z.infer<typeof skillRootKindSchema>;
+
+/**
+ * A discovered skill for the Skills management page. Unlike
+ * `hostProviderCommandSchema` (typeahead) this carries the absolute `filePath`
+ * (backs View / Delete) and the originating `rootKind`. Skill-only — legacy
+ * `command`-source entries are not surfaced here.
+ */
+export const discoveredSkillSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  filePath: z.string(),
+  rootKind: skillRootKindSchema,
+});
+export type DiscoveredSkill = z.infer<typeof discoveredSkillSchema>;
+
+/**
+ * List discoverable skills (not legacy commands) for a provider, classified by
+ * originating root. Same root-resolution rules as `host.list_commands`:
+ * `cwd: null` skips the project roots and returns only user-home/bb scopes.
+ */
+const hostListSkillsCommandSchema = z.object({
+  type: z.literal("host.list_skills"),
+  providerId: z.string().min(1),
+  cwd: z.string().min(1).nullable(),
+  builtinSkillsRootPath: z.string().min(1),
+});
+
+/** Only bb-owned skill scopes are deletable; provider skills are read-only. */
+export const deletableSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
+
+/**
+ * Delete a bb skill directory. The daemon owns the host-local mutation: it
+ * builds `<root>/<name>` from `scope` (never a client-supplied path),
+ * realpath-confines the target inside the allowed bb root after symlink
+ * resolution, and refuses anything outside. `bb-project` requires a `cwd`.
+ */
+const hostDeleteSkillCommandSchema = z
+  .object({
+    type: z.literal("host.delete_skill"),
+    scope: deletableSkillScopeSchema,
+    name: z.string().min(1),
+    cwd: z.string().min(1).nullable(),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.scope === "bb-project" && command.cwd === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["cwd"],
+        message: "cwd is required to delete a bb-project skill",
+      });
+    }
+  });
+
+/**
  * List a bounded page of git branches at an absolute host path. Path-only
  * sibling of `host.list_files`. Does not require an environment row, does not
  * provision anything, and does not create daemon-side workspace state.
@@ -744,6 +815,16 @@ const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
 });
 
+// Like `commandListResultSchema`: the daemon returns the full raw set across
+// all roots; the server owns scope-mapping, de-dup, and sort.
+const skillListResultSchema = z.object({
+  skills: z.array(discoveredSkillSchema),
+});
+
+const deleteSkillResultSchema = z.object({
+  deletedPath: z.string(),
+});
+
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
@@ -1001,6 +1082,27 @@ export const hostDaemonCommandRegistry = {
     resultSchema: commandListResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_skills": defineHostDaemonCommandDescriptor({
+    type: "host.list_skills",
+    schema: hostListSkillsCommandSchema,
+    resultSchema: skillListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Destructive host-local FS write (the second after `host.run_script`). Not
+  // env-scoped, so `envLane: null`; non-retryable so a transient failure never
+  // silently re-issues a delete.
+  "host.delete_skill": defineHostDaemonCommandDescriptor({
+    type: "host.delete_skill",
+    schema: hostDeleteSkillCommandSchema,
+    resultSchema: deleteSkillResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),
