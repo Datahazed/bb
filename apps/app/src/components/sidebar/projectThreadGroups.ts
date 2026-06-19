@@ -79,10 +79,17 @@ export const PINNED_CONTAINER_ID = "pinned";
 // Orders sibling threads. The default keeps active rows pinned to createdAt and
 // inactive rows on attention recency; chronological mode can swap in a literal
 // createdAt comparator instead.
-export type ThreadComparator = (
+export type ThreadItemComparator = (
+  left: ProjectThreadItem,
+  right: ProjectThreadItem,
+) => number;
+
+export type ThreadComparator = ((
   left: ThreadListEntry,
   right: ThreadListEntry,
-) => number;
+) => number) & {
+  compareItems?: ThreadItemComparator;
+};
 
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
 type SidebarProjectThreadShape = Pick<
@@ -523,8 +530,8 @@ function getItemOrderingThread(
       if (descendants.length === 0) {
         return null;
       }
-      return descendants.reduce(
-        (first, thread) => (compareThreads(thread, first) < 0 ? thread : first),
+      return descendants.reduce((first, thread) =>
+        compareThreads(thread, first) < 0 ? thread : first,
       );
     }
   }
@@ -580,9 +587,7 @@ function orderItemsByManualOrder(
   const orderedKeys = new Set(prunedOrder);
   const unorderedItems = items
     .filter((item) => !orderedKeys.has(getManualOrderItemKey(item)))
-    .sort((left, right) =>
-      compareSiblingItems(left, right, compareThreads),
-    );
+    .sort((left, right) => compareSiblingItems(left, right, compareThreads));
   const orderedItems = prunedOrder.flatMap((key) => {
     const item = itemsByKey.get(key);
     return item ? [item] : [];
@@ -638,6 +643,10 @@ function compareSiblingItems(
   right: ProjectThreadItem,
   compareThreads: ThreadComparator,
 ): number {
+  if (compareThreads.compareItems) {
+    return compareThreads.compareItems(left, right);
+  }
+
   const leftThread = getItemOrderingThread(left, compareThreads);
   const rightThread = getItemOrderingThread(right, compareThreads);
   if (leftThread && rightThread) {

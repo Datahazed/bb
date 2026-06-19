@@ -8,6 +8,7 @@ const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
+const SORT_DIRECTION_STORAGE_KEY = "bb.sidebar.sortDirection";
 const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
@@ -20,9 +21,10 @@ export type CollapsibleSidebarSectionId = "projects" | "threads";
 export type SidebarOrganizationMode = "project" | "chronological";
 // Controls thread ordering in both grouped and ungrouped sidebar views.
 // "updated" reuses the status-aware activity heuristic; "created" sorts by
-// the literal createdAt field. "none" is a legacy/internal value that the
-// runtime normalizes back to "updated".
-export type SidebarChronologicalSort = "updated" | "created" | "none";
+// the literal createdAt field; "alpha" sorts by display title. "none" is a
+// legacy/internal value that the runtime normalizes back to "updated".
+export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
+export type SidebarSortDirection = "asc" | "desc";
 // Low-level folder grouping switch used by folder helpers and tests. The app
 // runtime always renders stored folderPath metadata; "none" remains for
 // regression coverage.
@@ -89,6 +91,13 @@ export const sidebarChronologicalSortAtom =
     createJsonLocalStorage<SidebarChronologicalSort>(),
     { getOnInit: true },
   );
+
+export const sidebarSortDirectionAtom = atomWithStorage<SidebarSortDirection>(
+  SORT_DIRECTION_STORAGE_KEY,
+  "desc",
+  createJsonLocalStorage<SidebarSortDirection>(),
+  { getOnInit: true },
+);
 
 // Story/test control for the low-level folder grouping path. Runtime sidebar
 // trees enable "folder" only in the Folders organization mode.

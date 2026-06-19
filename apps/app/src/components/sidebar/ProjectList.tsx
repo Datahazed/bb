@@ -50,6 +50,7 @@ import {
   getProjectlessArchivedRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -87,6 +88,7 @@ import type { ProjectThreadListState } from "./ProjectRow";
 import {
   compareByCreatedAtDescending,
   compareStandardThreads,
+  type ProjectThreadItem,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import {
@@ -109,9 +111,12 @@ import {
   sidebarCollapsedFoldersAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
+  sidebarSortDirectionAtom,
+  type SidebarChronologicalSort,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
+  type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
 import { folderAncestorKeys } from "./folderPath";
 import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
@@ -120,7 +125,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -194,10 +198,15 @@ interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-interface SidebarViewOptionsMenuProps {
+interface SidebarOrganizeOptionsMenuProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
+}
+
+interface SidebarSortOptionsMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface SidebarThreadActionsMenuProps {
@@ -263,6 +272,7 @@ type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
+type SidebarDisplayOptionsMenuKind = "organize" | "sort";
 
 interface TopLevelSidebarSectionProps {
   label: string;
@@ -419,6 +429,97 @@ function uniqueFolderPaths(
   return Array.from(paths).sort((left, right) => left.localeCompare(right));
 }
 
+function compareByTitleAscending(
+  left: ThreadListEntry,
+  right: ThreadListEntry,
+): number {
+  const titleDelta = getThreadDisplayTitle(left).localeCompare(
+    getThreadDisplayTitle(right),
+  );
+  if (titleDelta !== 0) {
+    return titleDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function getProjectThreadItemAlphaLabel(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return getThreadDisplayTitle(item.node.thread);
+    case "environment":
+      return getThreadDisplayTitle(item.group.nodes[0].thread);
+    case "folder":
+      return item.group.path.join("/");
+  }
+}
+
+function compareProjectThreadItemsByTitleAscending(
+  left: ProjectThreadItem,
+  right: ProjectThreadItem,
+): number {
+  const labelDelta = getProjectThreadItemAlphaLabel(left).localeCompare(
+    getProjectThreadItemAlphaLabel(right),
+  );
+  if (labelDelta !== 0) {
+    return labelDelta;
+  }
+
+  const kindDelta = left.kind.localeCompare(right.kind);
+  if (kindDelta !== 0) {
+    return kindDelta;
+  }
+
+  return left.kind === "folder" && right.kind === "folder"
+    ? left.group.key.localeCompare(right.group.key)
+    : 0;
+}
+
+function invertNumber(value: number): number {
+  return value === 0 ? 0 : -value;
+}
+
+function invertThreadComparator(
+  compareThreads: ThreadComparator,
+): ThreadComparator {
+  return (left, right) => {
+    const result = compareThreads(left, right);
+    return invertNumber(result);
+  };
+}
+
+function getSidebarThreadComparator({
+  direction,
+  sort,
+}: {
+  direction: SidebarSortDirection;
+  sort: SidebarChronologicalSort;
+}): ThreadComparator {
+  const normalizedSort = sort === "none" ? "updated" : sort;
+  const baseComparator: ThreadComparator =
+    normalizedSort === "created"
+      ? compareByCreatedAtDescending
+      : normalizedSort === "alpha"
+        ? compareByTitleAscending
+        : compareStandardThreads;
+  const compareItems =
+    normalizedSort === "alpha"
+      ? compareProjectThreadItemsByTitleAscending
+      : undefined;
+  const comparator: ThreadComparator =
+    direction === "asc"
+      ? invertThreadComparator(baseComparator)
+      : baseComparator;
+  if (compareItems) {
+    comparator.compareItems =
+      direction === "asc"
+        ? compareItems
+        : (left, right) => invertNumber(compareItems(left, right));
+  }
+
+  return comparator;
+}
+
 function ProjectListSectionIconButton({
   ariaLabel,
   disabled = false,
@@ -552,50 +653,156 @@ function SidebarOrganizeMenuOption({
   );
 }
 
-// Shared display menu rendered on both the Projects and Threads section
+interface SidebarSortMenuOptionProps {
+  direction: SidebarSortDirection;
+  label: string;
+  selected: boolean;
+  sort: SidebarChronologicalSort;
+  onDirectionSelect: (
+    sort: SidebarChronologicalSort,
+    direction: SidebarSortDirection,
+  ) => void;
+  onSortSelect: (sort: SidebarChronologicalSort) => void;
+}
+
+function SidebarDisplayMenuTrigger({
+  ariaLabel,
+  iconName,
+  tooltip,
+}: {
+  ariaLabel: string;
+  iconName: IconName;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={ariaLabel}
+            title={undefined}
+            className={cn(
+              "rounded-md p-0 text-muted-foreground",
+              "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            )}
+          >
+            <Icon name={iconName} className={COARSE_POINTER_ICON_SIZE_CLASS} />
+          </Button>
+        </DropdownMenuTrigger>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="px-2 py-1">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarSortDirectionButton({
+  active,
+  ariaLabel,
+  direction,
+  onClick,
+}: {
+  active: boolean;
+  ariaLabel: string;
+  direction: SidebarSortDirection;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      aria-pressed={active}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+        active && "bg-sidebar-accent text-sidebar-foreground",
+      )}
+    >
+      <Icon
+        name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+        className="size-3"
+      />
+    </button>
+  );
+}
+
+function SidebarSortMenuOption({
+  direction,
+  label,
+  selected,
+  sort,
+  onDirectionSelect,
+  onSortSelect,
+}: SidebarSortMenuOptionProps) {
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.preventDefault();
+        onSortSelect(sort);
+      }}
+      className="flex items-center gap-2"
+    >
+      <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+      <Icon
+        name="Check"
+        className={cn(
+          COARSE_POINTER_ICON_SIZE_CLASS,
+          selected ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <span className="flex shrink-0 items-center gap-0.5">
+        <SidebarSortDirectionButton
+          active={selected && direction === "asc"}
+          ariaLabel={`Sort ${label} ascending`}
+          direction="asc"
+          onClick={() => onDirectionSelect(sort, "asc")}
+        />
+        <SidebarSortDirectionButton
+          active={selected && direction === "desc"}
+          ariaLabel={`Sort ${label} descending`}
+          direction="desc"
+          onClick={() => onDirectionSelect(sort, "desc")}
+        />
+      </span>
+    </DropdownMenuItem>
+  );
+}
+
+// Shared organization menu rendered on both the Projects and Threads section
 // headers. The organization mode is global, so either header's menu drives the
 // whole sidebar.
-export function SidebarViewOptionsMenu({
+export function SidebarOrganizeOptionsMenu({
   open,
   onOpenChange,
   onOrganizationModeSelect,
-}: SidebarViewOptionsMenuProps) {
+}: SidebarOrganizeOptionsMenuProps) {
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
-  );
-  const [chronologicalSort, setChronologicalSort] = useAtom(
-    sidebarChronologicalSortAtom,
   );
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Sidebar display options"
-              title={undefined}
-              className={cn(
-                "rounded-md p-0 text-muted-foreground",
-                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              )}
-            >
-              <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="px-2 py-1">
-          Display
-        </TooltipContent>
-      </Tooltip>
+      <SidebarDisplayMenuTrigger
+        ariaLabel="Sidebar organization options"
+        iconName="GridView"
+        tooltip="Organize"
+      />
       <DropdownMenuContent
         align="end"
         className="w-52"
-        mobileTitle="Sidebar display options"
+        mobileTitle="Organize sidebar"
       >
         <SidebarOrganizeMenuSectionLabel className="pt-1.5">
           Organize by
@@ -618,25 +825,69 @@ export function SidebarViewOptionsMenu({
             onOrganizationModeSelect?.("chronological");
           }}
         />
-        <DropdownMenuSeparator />
-        <SidebarOrganizeMenuSectionLabel className="pt-2">
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function SidebarSortOptionsMenu({
+  open,
+  onOpenChange,
+}: SidebarSortOptionsMenuProps) {
+  const [chronologicalSort, setChronologicalSort] = useAtom(
+    sidebarChronologicalSortAtom,
+  );
+  const [sortDirection, setSortDirection] = useAtom(sidebarSortDirectionAtom);
+  const selectedSort: SidebarChronologicalSort =
+    chronologicalSort === "none" ? "updated" : chronologicalSort;
+  const handleSortSelect = useCallback(
+    (sort: SidebarChronologicalSort) => {
+      setChronologicalSort(sort);
+    },
+    [setChronologicalSort],
+  );
+  const handleDirectionSelect = useCallback(
+    (sort: SidebarChronologicalSort, direction: SidebarSortDirection) => {
+      setChronologicalSort(sort);
+      setSortDirection(direction);
+    },
+    [setChronologicalSort, setSortDirection],
+  );
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <SidebarDisplayMenuTrigger
+        ariaLabel="Sidebar sort options"
+        iconName="Sort"
+        tooltip="Sort"
+      />
+      <DropdownMenuContent align="end" className="w-56" mobileTitle="Sort">
+        <SidebarOrganizeMenuSectionLabel className="pt-1.5">
           Sort by
         </SidebarOrganizeMenuSectionLabel>
-        <SidebarOrganizeMenuOption
+        <SidebarSortMenuOption
           label="Updated at"
-          selected={chronologicalSort === "updated"}
-          onSelect={(event) => {
-            event.preventDefault();
-            setChronologicalSort("updated");
-          }}
+          sort="updated"
+          selected={selectedSort === "updated"}
+          direction={sortDirection}
+          onSortSelect={handleSortSelect}
+          onDirectionSelect={handleDirectionSelect}
         />
-        <SidebarOrganizeMenuOption
+        <SidebarSortMenuOption
           label="Created at"
-          selected={chronologicalSort === "created"}
-          onSelect={(event) => {
-            event.preventDefault();
-            setChronologicalSort("created");
-          }}
+          sort="created"
+          selected={selectedSort === "created"}
+          direction={sortDirection}
+          onSortSelect={handleSortSelect}
+          onDirectionSelect={handleDirectionSelect}
+        />
+        <SidebarSortMenuOption
+          label="Alphabetical"
+          sort="alpha"
+          selected={selectedSort === "alpha"}
+          direction={sortDirection}
+          onSortSelect={handleSortSelect}
+          onDirectionSelect={handleDirectionSelect}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1263,18 +1514,18 @@ function ProjectListComponent({
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
-  const [isProjectsViewOptionsMenuOpen, setIsProjectsViewOptionsMenuOpen] =
-    useState(false);
+  const [projectsDisplayOptionsMenuOpen, setProjectsDisplayOptionsMenuOpen] =
+    useState<SidebarDisplayOptionsMenuKind | null>(null);
   const [isThreadsActionsMenuOpen, setIsThreadsActionsMenuOpen] =
     useState(false);
-  const [isThreadsViewOptionsMenuOpen, setIsThreadsViewOptionsMenuOpen] =
-    useState(false);
-  const handleProjectsViewOptionsMenuOpenChange = useCallback(
-    (open: boolean) => {
-      setIsProjectsViewOptionsMenuOpen(open);
+  const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
+    useState<SidebarDisplayOptionsMenuKind | null>(null);
+  const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
+    (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
+      setProjectsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setIsThreadsActionsMenuOpen(false);
-        setIsThreadsViewOptionsMenuOpen(false);
+        setThreadsDisplayOptionsMenuOpen(null);
       }
     },
     [],
@@ -1282,15 +1533,15 @@ function ProjectListComponent({
   const handleThreadsActionsMenuOpenChange = useCallback((open: boolean) => {
     setIsThreadsActionsMenuOpen(open);
     if (open) {
-      setIsProjectsViewOptionsMenuOpen(false);
-      setIsThreadsViewOptionsMenuOpen(false);
+      setProjectsDisplayOptionsMenuOpen(null);
+      setThreadsDisplayOptionsMenuOpen(null);
     }
   }, []);
-  const handleThreadsViewOptionsMenuOpenChange = useCallback(
-    (open: boolean) => {
-      setIsThreadsViewOptionsMenuOpen(open);
+  const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
+    (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
+      setThreadsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
-        setIsProjectsViewOptionsMenuOpen(false);
+        setProjectsDisplayOptionsMenuOpen(null);
         setIsThreadsActionsMenuOpen(false);
       }
     },
@@ -1299,9 +1550,9 @@ function ProjectListComponent({
   const handleProjectsViewOptionsOrganizationModeSelect = useCallback(
     (mode: SidebarOrganizationMode) => {
       if (mode === "chronological") {
-        setIsProjectsViewOptionsMenuOpen(false);
+        setProjectsDisplayOptionsMenuOpen(null);
         setIsThreadsActionsMenuOpen(false);
-        setIsThreadsViewOptionsMenuOpen(true);
+        setThreadsDisplayOptionsMenuOpen("organize");
       }
     },
     [],
@@ -1310,14 +1561,16 @@ function ProjectListComponent({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
+  const [sortDirection] = useAtom(sidebarSortDirectionAtom);
   const isFolderOrganizationMode = organizationMode === "chronological";
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
-      chronologicalSort === "created"
-        ? compareByCreatedAtDescending
-        : compareStandardThreads,
-    [chronologicalSort],
+      getSidebarThreadComparator({
+        direction: sortDirection,
+        sort: chronologicalSort,
+      }),
+    [chronologicalSort, sortDirection],
   );
   const collapsedProjectIds = useMemo(
     () => new Set(collapsedProjectIdList),
@@ -1686,11 +1939,19 @@ function ProjectListComponent({
   );
   const projectsSectionActions = (
     <>
-      <SidebarViewOptionsMenu
-        open={isProjectsViewOptionsMenuOpen}
-        onOpenChange={handleProjectsViewOptionsMenuOpenChange}
+      <SidebarOrganizeOptionsMenu
+        open={projectsDisplayOptionsMenuOpen === "organize"}
+        onOpenChange={(open) =>
+          handleProjectsDisplayOptionsMenuOpenChange("organize", open)
+        }
         onOrganizationModeSelect={
           handleProjectsViewOptionsOrganizationModeSelect
+        }
+      />
+      <SidebarSortOptionsMenu
+        open={projectsDisplayOptionsMenuOpen === "sort"}
+        onOpenChange={(open) =>
+          handleProjectsDisplayOptionsMenuOpenChange("sort", open)
         }
       />
       {onNewProject ? (
@@ -1705,9 +1966,17 @@ function ProjectListComponent({
     projectsState.status === "ready" && renderedProjects.length === 0;
   const folderSectionActions = (
     <>
-      <SidebarViewOptionsMenu
-        open={isThreadsViewOptionsMenuOpen}
-        onOpenChange={handleThreadsViewOptionsMenuOpenChange}
+      <SidebarOrganizeOptionsMenu
+        open={threadsDisplayOptionsMenuOpen === "organize"}
+        onOpenChange={(open) =>
+          handleThreadsDisplayOptionsMenuOpenChange("organize", open)
+        }
+      />
+      <SidebarSortOptionsMenu
+        open={threadsDisplayOptionsMenuOpen === "sort"}
+        onOpenChange={(open) =>
+          handleThreadsDisplayOptionsMenuOpenChange("sort", open)
+        }
       />
       <ProjectListSectionIconButton
         ariaLabel="New folder"
@@ -1738,9 +2007,17 @@ function ProjectListComponent({
         onOpenChange={handleThreadsActionsMenuOpenChange}
         onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
-      <SidebarViewOptionsMenu
-        open={isThreadsViewOptionsMenuOpen}
-        onOpenChange={handleThreadsViewOptionsMenuOpenChange}
+      <SidebarOrganizeOptionsMenu
+        open={threadsDisplayOptionsMenuOpen === "organize"}
+        onOpenChange={(open) =>
+          handleThreadsDisplayOptionsMenuOpenChange("organize", open)
+        }
+      />
+      <SidebarSortOptionsMenu
+        open={threadsDisplayOptionsMenuOpen === "sort"}
+        onOpenChange={(open) =>
+          handleThreadsDisplayOptionsMenuOpenChange("sort", open)
+        }
       />
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreateThreadFolderPending}
@@ -1766,7 +2043,7 @@ function ProjectListComponent({
         <TopLevelSidebarSection
           label="Folders"
           actions={folderSectionActions}
-          actionsOpen={isThreadsViewOptionsMenuOpen}
+          actionsOpen={threadsDisplayOptionsMenuOpen !== null}
           actionsMobileAlways
         >
           {content}
@@ -1875,7 +2152,7 @@ function ProjectListComponent({
                   label="Projects"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
-                  actionsOpen={isProjectsViewOptionsMenuOpen}
+                  actionsOpen={projectsDisplayOptionsMenuOpen !== null}
                   actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
@@ -1896,7 +2173,8 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
                   actionsOpen={
-                    isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen
+                    isThreadsActionsMenuOpen ||
+                    threadsDisplayOptionsMenuOpen !== null
                   }
                   actionsMobileAlways
                   collapseControl={{
