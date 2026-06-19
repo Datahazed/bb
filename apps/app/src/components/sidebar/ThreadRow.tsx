@@ -9,7 +9,6 @@ import {
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -96,14 +95,10 @@ type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 interface ThreadRowContainerArgs {
   children: ReactNode;
   className: string;
+  dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
   stickyLevel?: number;
   style: CSSProperties;
-}
-
-interface ThreadDragHandleProps {
-  dragBindings: SidebarSortableDragBindings;
-  label: string;
 }
 
 function ThreadDraftIndicator() {
@@ -125,6 +120,7 @@ function getThreadRowStyle(depth: number): CSSProperties {
 function renderThreadRowContainer({
   children,
   className,
+  dragBindings,
   onClickCapture,
   stickyLevel,
   style,
@@ -132,10 +128,13 @@ function renderThreadRowContainer({
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
+        ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
         className={className}
         style={style}
+        {...dragBindings?.attributes}
+        {...(dragBindings?.listeners ?? {})}
         onClickCapture={onClickCapture}
       >
         {children}
@@ -144,48 +143,16 @@ function renderThreadRowContainer({
   }
 
   return (
-    <div className={className} style={style} onClickCapture={onClickCapture}>
+    <div
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+      {...dragBindings?.attributes}
+      {...(dragBindings?.listeners ?? {})}
+      onClickCapture={onClickCapture}
+    >
       {children}
     </div>
-  );
-}
-
-function ThreadDragHandle({ dragBindings, label }: ThreadDragHandleProps) {
-  const handleClick = useCallback<MouseEventHandler<HTMLButtonElement>>(
-    (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
-  );
-
-  return (
-    <Button
-      ref={dragBindings.setActivatorNodeRef}
-      type="button"
-      variant="ghost"
-      size="icon"
-      aria-label={label}
-      title={undefined}
-      disabled={dragBindings.disabled}
-      className={cn(
-        "relative z-10 -ml-1.5 -mr-2 h-7 w-5 shrink-0 rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-foreground max-md:pointer-coarse:-ml-1 max-md:pointer-coarse:-mr-1 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-7",
-        !dragBindings.disabled && "cursor-grab active:cursor-grabbing",
-      )}
-      {...dragBindings.attributes}
-      {...dragBindings.listeners}
-      onClick={handleClick}
-    >
-      <Icon
-        name="DragDropVertical"
-        className={cn(
-          "size-3.5 shrink-0 opacity-0 transition-opacity",
-          !dragBindings.disabled &&
-            "group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100",
-        )}
-        aria-hidden="true"
-      />
-    </Button>
   );
 }
 
@@ -335,7 +302,6 @@ function ThreadRowComponent({
     : `Open ${labelTitle}`;
   const linkTitle = linkLabel;
   const rowDragBindings = options.dragBindings;
-  const showDragHandle = Boolean(rowDragBindings && !rowDragBindings.disabled);
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -376,12 +342,6 @@ function ThreadRowComponent({
         title={linkTitle}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      {showDragHandle && rowDragBindings ? (
-        <ThreadDragHandle
-          dragBindings={rowDragBindings}
-          label={`Move ${labelTitle}`}
-        />
-      ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate">{visibleTitle}</span>
         {parentOptions && hasChildren ? (
@@ -445,6 +405,7 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
+    dragBindings: rowDragBindings,
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
