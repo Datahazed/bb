@@ -239,6 +239,7 @@ interface ThreadTreeItemRowProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
+  isDropTargetActive?: boolean;
   manualSort?: ManualThreadTreeDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
@@ -259,6 +260,7 @@ interface FolderTreeItemRowProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
+  isDropTargetActive?: boolean;
   manualSort?: ManualThreadTreeDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
@@ -778,21 +780,32 @@ const ManualSortableThreadTreeItemRow = memo(
     manualSort,
     ...props
   }: ThreadTreeItemRowProps) {
-    const itemId = getManualOrderItemKey(props.item);
-    const sortableDisabled =
-      !manualSort?.enabled || props.item.kind === "environment"
-        ? true
-        : props.item.kind === "folder"
-          ? { draggable: true }
-          : false;
-    const { dragBindings, setNodeRef, style } = useSidebarSortable({
-      id: itemId,
-      disabled: sortableDisabled,
-    });
-
     if (!manualSort?.enabled || props.item.kind === "environment") {
       return <ThreadTreeItemRow manualSort={manualSort} {...props} />;
     }
+
+    if (props.item.kind === "folder") {
+      return (
+        <ManualDroppableFolderTreeItemRow {...props} manualSort={manualSort} />
+      );
+    }
+
+    return (
+      <ManualDraggableThreadTreeItemRow {...props} manualSort={manualSort} />
+    );
+  },
+);
+
+const ManualDraggableThreadTreeItemRow = memo(
+  function ManualDraggableThreadTreeItemRow({
+    manualSort,
+    ...props
+  }: ThreadTreeItemRowProps & { manualSort: ManualThreadTreeDndState }) {
+    const itemId = getManualOrderItemKey(props.item);
+    const { dragBindings, setNodeRef, style } = useSidebarSortable({
+      id: itemId,
+      disabled: false,
+    });
 
     return (
       <ThreadTreeItemRow
@@ -802,6 +815,26 @@ const ManualSortableThreadTreeItemRow = memo(
         manualSort={manualSort}
         sortableRef={setNodeRef}
         sortableStyle={style}
+      />
+    );
+  },
+);
+
+const ManualDroppableFolderTreeItemRow = memo(
+  function ManualDroppableFolderTreeItemRow({
+    manualSort,
+    ...props
+  }: ThreadTreeItemRowProps & { manualSort: ManualThreadTreeDndState }) {
+    const itemId = getManualOrderItemKey(props.item);
+    const { isOver, setNodeRef } = useDroppable({ id: itemId });
+
+    return (
+      <ThreadTreeItemRow
+        {...props}
+        consumeClickSuppression={manualSort.consumeClickSuppression}
+        isDropTargetActive={isOver}
+        manualSort={manualSort}
+        sortableRef={setNodeRef}
       />
     );
   },
@@ -1239,6 +1272,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
   dragBindings,
+  isDropTargetActive,
   manualSort,
   sortableRef,
   sortableStyle,
@@ -1260,6 +1294,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
+        isDropTargetActive={isDropTargetActive}
         manualSort={manualSort}
         sortableRef={sortableRef}
         sortableStyle={sortableStyle}
@@ -1326,6 +1361,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
   dragBindings,
+  isDropTargetActive = false,
   manualSort,
   sortableRef,
   sortableStyle,
@@ -1346,7 +1382,6 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const folderPath = folder.path.join("/");
-  const isDropTargetActive = dragBindings?.isOver === true;
 
   return (
     <SidebarStickyGroup
