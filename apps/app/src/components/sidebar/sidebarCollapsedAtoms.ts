@@ -11,26 +11,25 @@ const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const FOLDER_ONBOARDING_SEEN_STORAGE_KEY = "bb.sidebar.folderOnboardingSeen";
+const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 
-export type SidebarSectionId =
-  | "pinned"
-  | "projects"
-  | "threads";
-export type CollapsibleSidebarSectionId =
-  | "projects"
-  | "threads";
+export type SidebarSectionId = "pinned" | "projects" | "threads";
+export type CollapsibleSidebarSectionId = "projects" | "threads";
 
 // "project" keeps the per-project grouping; "chronological" flattens every
 // non-pinned thread into a single All Threads bucket.
 export type SidebarOrganizationMode = "project" | "chronological";
 // Controls thread ordering in both grouped and ungrouped sidebar views.
 // "updated" reuses the status-aware activity heuristic; "created" sorts by
-// the literal createdAt field.
-export type SidebarChronologicalSort = "updated" | "created";
+// the literal createdAt field; "none" applies the user's local manual order.
+export type SidebarChronologicalSort = "updated" | "created" | "none";
 // Whether "/" in a thread title renders as nested folders. Orthogonal to the
 // organization mode and sort: "none" keeps today's flat behavior (literal
 // titles), "folder" buckets top-level threads into derived folders.
 export type SidebarGroupBy = "none" | "folder";
+// Per-parent manual order for Sort: None. Keys are section/folder parent keys;
+// values are child thread ids and child folder keys.
+export type SidebarManualOrder = Record<string, string[]>;
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
@@ -114,5 +113,12 @@ export const folderOnboardingSeenAtom = atomWithStorage<boolean>(
   FOLDER_ONBOARDING_SEEN_STORAGE_KEY,
   false,
   createJsonLocalStorage<boolean>(),
+  { getOnInit: true },
+);
+
+export const sidebarManualOrderAtom = atomWithStorage<SidebarManualOrder>(
+  MANUAL_ORDER_STORAGE_KEY,
+  {},
+  createJsonLocalStorage<SidebarManualOrder>(),
   { getOnInit: true },
 );

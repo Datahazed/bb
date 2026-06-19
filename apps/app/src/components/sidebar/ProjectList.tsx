@@ -576,6 +576,14 @@ function SidebarViewOptionsMenu({
             setChronologicalSort("created");
           }}
         />
+        <SidebarOrganizeMenuOption
+          label="None"
+          selected={chronologicalSort === "none"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setChronologicalSort("none");
+          }}
+        />
         <DropdownMenuSeparator />
         <SidebarOrganizeMenuSectionLabel className="pt-2">
           Group by
@@ -708,12 +716,11 @@ function TopLevelSidebarSection({
     },
     [collapseControl],
   );
-  const handleSectionLabelClick = useCallback<MouseEventHandler<HTMLDivElement>>(
-    () => {
-      collapseControl?.onToggleCollapsed();
-    },
-    [collapseControl],
-  );
+  const handleSectionLabelClick = useCallback<
+    MouseEventHandler<HTMLDivElement>
+  >(() => {
+    collapseControl?.onToggleCollapsed();
+  }, [collapseControl]);
   const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
     (event) => {
       event.stopPropagation();
@@ -804,9 +811,7 @@ function TopLevelSidebarSection({
             onClick={stopActionsClick}
           >
             <span
-              data-sidebar-hover-actions-open={
-                actionsOpen ? "true" : undefined
-              }
+              data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
               data-sidebar-hover-actions-mobile={
                 actionsMobileAlways
                   ? SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -1312,8 +1317,7 @@ function ProjectListComponent({
     if (groupBy === "folder") {
       const isPinned =
         pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-      const isChronological =
-        !isPinned && organizationMode === "chronological";
+      const isChronological = !isPinned && organizationMode === "chronological";
       const topLevelAncestor = currentThread ?? selectedThread;
       const folderSource = isChronological ? selectedThread : topLevelAncestor;
       const folderContainerId = isPinned
@@ -1516,8 +1520,7 @@ function ProjectListComponent({
   const nonPinnedThreads = useMemo(
     () =>
       threads.filter(
-        (thread) =>
-          !pinnedSidebarState.effectivePinnedThreadIds.has(thread.id),
+        (thread) => !pinnedSidebarState.effectivePinnedThreadIds.has(thread.id),
       ),
     [pinnedSidebarState.effectivePinnedThreadIds, threads],
   );

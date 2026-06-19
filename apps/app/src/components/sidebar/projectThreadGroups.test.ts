@@ -6,6 +6,7 @@ import {
   buildProjectThreadGroups,
   compareByCreatedAtDescending,
   compareStandardThreads,
+  pruneManualOrderForChildren,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
@@ -459,6 +460,61 @@ describe("buildProjectThreadGroups", () => {
   });
 });
 
+describe("manual order (Sort by: None)", () => {
+  it("orders a flat project section by stored manual order with new items at the top", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({ id: "new", latestAttentionAt: 30 }),
+        createThread({ id: "stored-b", latestAttentionAt: 20 }),
+        createThread({ id: "stored-a", latestAttentionAt: 10 }),
+      ],
+      compareStandardThreads,
+      {
+        groupBy: "none",
+        containerId: "proj_1",
+        manualOrder: {
+          proj_1: ["stored-a", "stored-b"],
+        },
+      },
+    );
+
+    expect(summarizeItems(items)).toEqual(["new", "stored-a", "stored-b"]);
+  });
+
+  it("lets manual folder mode interleave folders and loose threads by parent", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({ id: "a", title: "Work/A", latestAttentionAt: 30 }),
+        createThread({ id: "b", title: "Work/B", latestAttentionAt: 20 }),
+        createThread({ id: "loose", title: "Loose", latestAttentionAt: 10 }),
+      ],
+      compareStandardThreads,
+      {
+        groupBy: "folder",
+        containerId: "proj_1",
+        manualOrder: {
+          proj_1: ["loose", "proj_1::Work"],
+          "proj_1::Work": ["b", "a"],
+        },
+      },
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      "loose",
+      { folder: "proj_1::Work", items: ["b", "a"] },
+    ]);
+  });
+
+  it("prunes stale and duplicate stored ids on read", () => {
+    expect(
+      pruneManualOrderForChildren(
+        ["missing", "b", "b", "a"],
+        new Set(["a", "b"]),
+      ),
+    ).toEqual(["b", "a"]);
+  });
+});
+
 const FOLDER_OPTIONS = { groupBy: "folder", containerId: "proj_1" } as const;
 
 describe("folder bucketing (Group by: Folder)", () => {
@@ -479,10 +535,7 @@ describe("folder bucketing (Group by: Folder)", () => {
     expect(summarizeItems(items)).toEqual([
       {
         folder: "proj_1::Work",
-        items: [
-          { folder: "proj_1::Work/Q3", items: ["a", "b"] },
-          "c",
-        ],
+        items: [{ folder: "proj_1::Work/Q3", items: ["a", "b"] }, "c"],
       },
       "d",
     ]);
@@ -562,7 +615,11 @@ describe("folder bucketing (Group by: Folder)", () => {
     // Standard comparator pins the active folder's representative first.
     expect(
       summarizeItems(
-        buildProjectThreadGroups(threads, compareStandardThreads, FOLDER_OPTIONS),
+        buildProjectThreadGroups(
+          threads,
+          compareStandardThreads,
+          FOLDER_OPTIONS,
+        ),
       ),
     ).toEqual([
       { folder: "proj_1::FolderA", items: ["old-active"] },
@@ -587,7 +644,11 @@ describe("folder bucketing (Group by: Folder)", () => {
   it("rolls descendant count + activity up onto the folder group", () => {
     const items = bucketIntoFolders(
       buildProjectThreadGroups([
-        createThread({ id: "busy", title: "Work/Busy", hasPendingInteraction: true }),
+        createThread({
+          id: "busy",
+          title: "Work/Busy",
+          hasPendingInteraction: true,
+        }),
         createThread({ id: "quiet", title: "Work/Quiet" }),
       ]),
       "proj_1",

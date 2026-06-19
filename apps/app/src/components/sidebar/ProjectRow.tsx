@@ -76,13 +76,12 @@ import {
   type ThreadComparator,
 } from "./projectThreadGroups";
 import { SidebarFolderRow } from "./SidebarFolderRow";
+import { formatFolderPathLabel, parseThreadFolderPath } from "./folderPath";
 import {
-  formatFolderPathLabel,
-  parseThreadFolderPath,
-} from "./folderPath";
-import {
+  sidebarChronologicalSortAtom,
   sidebarCollapsedFoldersAtom,
   sidebarGroupByAtom,
+  sidebarManualOrderAtom,
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
@@ -1200,6 +1199,8 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
   const groupBy = useAtomValue(sidebarGroupByAtom);
+  const chronologicalSort = useAtomValue(sidebarChronologicalSortAtom);
+  const manualOrder = useAtomValue(sidebarManualOrderAtom);
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
@@ -1209,8 +1210,16 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(projectThreads, compareThreads, {
         groupBy,
         containerId: projectId,
+        manualOrder: chronologicalSort === "none" ? manualOrder : undefined,
       }),
-    [compareThreads, projectThreads, groupBy, projectId],
+    [
+      chronologicalSort,
+      compareThreads,
+      projectThreads,
+      groupBy,
+      manualOrder,
+      projectId,
+    ],
   );
 
   if (threadListState.status === "loading") {
@@ -1286,6 +1295,8 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   onToggleEnvironmentCollapsed,
 }: ChronologicalThreadTreeProps) {
   const groupBy = useAtomValue(sidebarGroupByAtom);
+  const chronologicalSort = useAtomValue(sidebarChronologicalSortAtom);
+  const manualOrder = useAtomValue(sidebarManualOrderAtom);
   const threads =
     threadListState.status === "ready"
       ? threadListState.threads
@@ -1295,8 +1306,9 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       buildChronologicalThreadList(threads, compareThreads, {
         groupBy,
         containerId: CHRONOLOGICAL_CONTAINER_ID,
+        manualOrder: chronologicalSort === "none" ? manualOrder : undefined,
       }),
-    [threads, compareThreads, groupBy],
+    [chronologicalSort, threads, compareThreads, groupBy, manualOrder],
   );
 
   if (threadListState.status === "loading") {
