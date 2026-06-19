@@ -962,17 +962,18 @@ export function ProjectListActionButtons({
         <div className="flex min-w-0 items-center gap-1">
           <Button
             type="button"
-            size="sm"
+            size="icon"
             variant="ghost"
-            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
+            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
+            aria-label={newChatTitle}
             title={newChatTitle}
           >
-            <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 flex-1 truncate text-left">
-              New thread
-            </span>
+            <Icon
+              name="MessageSquarePlus"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
           </Button>
           {threadSearch ? (
             <Button
