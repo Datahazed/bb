@@ -8,6 +8,9 @@ const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
+const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
+const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
+const FOLDER_ONBOARDING_SEEN_STORAGE_KEY = "bb.sidebar.folderOnboardingSeen";
 
 export type SidebarSectionId =
   | "pinned"
@@ -24,6 +27,10 @@ export type SidebarOrganizationMode = "project" | "chronological";
 // "updated" reuses the status-aware activity heuristic; "created" sorts by
 // the literal createdAt field.
 export type SidebarChronologicalSort = "updated" | "created";
+// Whether "/" in a thread title renders as nested folders. Orthogonal to the
+// organization mode and sort: "none" keeps today's flat behavior (literal
+// titles), "folder" buckets top-level threads into derived folders.
+export type SidebarGroupBy = "none" | "folder";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
@@ -83,3 +90,29 @@ export const sidebarChronologicalSortAtom =
     createJsonLocalStorage<SidebarChronologicalSort>(),
     { getOnInit: true },
   );
+
+// Opt-in folder grouping. Default "none" keeps the current sidebar layout.
+export const sidebarGroupByAtom = atomWithStorage<SidebarGroupBy>(
+  GROUP_BY_STORAGE_KEY,
+  "none",
+  createJsonLocalStorage<SidebarGroupBy>(),
+  { getOnInit: true },
+);
+
+// Collapsed folder keys (see buildFolderKey in folderPath.ts). A plain
+// string[], matching collapsedThreadIds / collapsedProjectIds.
+export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
+  COLLAPSED_FOLDERS_STORAGE_KEY,
+  [],
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+// Whether the first-folder onboarding modal has been accepted. Set on accept
+// (not on open), so a declined modal still teaches on a later attempt.
+export const folderOnboardingSeenAtom = atomWithStorage<boolean>(
+  FOLDER_ONBOARDING_SEEN_STORAGE_KEY,
+  false,
+  createJsonLocalStorage<boolean>(),
+  { getOnInit: true },
+);
