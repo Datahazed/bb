@@ -10,7 +10,8 @@ const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
-const FOLDER_ONBOARDING_SEEN_STORAGE_KEY = "bb.sidebar.folderOnboardingSeen";
+const FOLDER_GROUPING_AUTO_ENABLED_STORAGE_KEY =
+  "bb.sidebar.folderGroupingAutoEnabled";
 const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
@@ -107,10 +108,10 @@ export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
-// Whether the first-folder onboarding modal has been accepted. Set on accept
-// (not on open), so a declined modal still teaches on a later attempt.
-export const folderOnboardingSeenAtom = atomWithStorage<boolean>(
-  FOLDER_ONBOARDING_SEEN_STORAGE_KEY,
+// Whether slash-titled threads have already auto-enabled folder grouping. Once
+// true, a later explicit Group by: None choice should stick across refreshes.
+export const sidebarFolderGroupingAutoEnabledAtom = atomWithStorage<boolean>(
+  FOLDER_GROUPING_AUTO_ENABLED_STORAGE_KEY,
   false,
   createJsonLocalStorage<boolean>(),
   { getOnInit: true },

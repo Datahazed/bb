@@ -89,9 +89,9 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
-  folderOnboardingSeenAtom,
   sidebarChronologicalSortAtom,
   sidebarCollapsedFoldersAtom,
+  sidebarFolderGroupingAutoEnabledAtom,
   sidebarGroupByAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
@@ -1216,8 +1216,8 @@ function ProjectListComponent({
   const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
   const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
   const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
-  const [folderOnboardingSeen, setFolderOnboardingSeen] = useAtom(
-    folderOnboardingSeenAtom,
+  const [folderGroupingAutoEnabled, setFolderGroupingAutoEnabled] = useAtom(
+    sidebarFolderGroupingAutoEnabledAtom,
   );
   const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
@@ -1276,24 +1276,24 @@ function ProjectListComponent({
     normalizedCollapsedSidebarSectionIds,
     setCollapsedSidebarSectionIdList,
   ]);
-  // Existing slash-titled threads may predate the first-folder confirmation
-  // flow. Auto-enable grouping once so refreshes render those titles as folders,
-  // then mark the migration handled so a later explicit "None" choice sticks.
+  // Existing slash-titled threads may predate folder grouping. Auto-enable once
+  // so refreshes render those titles as folders, then mark it handled so a
+  // later explicit "None" choice sticks.
   useEffect(() => {
-    if (
-      !folderGroupingAvailable ||
-      folderOnboardingSeen ||
-      groupBy !== "none"
-    ) {
+    if (!folderGroupingAvailable || folderGroupingAutoEnabled) {
+      return;
+    }
+    if (groupBy === "folder") {
+      setFolderGroupingAutoEnabled(true);
       return;
     }
     setGroupBy("folder");
-    setFolderOnboardingSeen(true);
+    setFolderGroupingAutoEnabled(true);
   }, [
+    folderGroupingAutoEnabled,
     folderGroupingAvailable,
-    folderOnboardingSeen,
     groupBy,
-    setFolderOnboardingSeen,
+    setFolderGroupingAutoEnabled,
     setGroupBy,
   ]);
   const pinnedSidebarState = useMemo(

@@ -22,6 +22,11 @@ const parentTarget: ThreadRenameDialogTarget = {
   currentTitle: "Frontend Parent",
 };
 
+const folderTarget: ThreadRenameDialogTarget = {
+  id: "thr_folder",
+  currentTitle: "test/say hi",
+};
+
 const longTitleTarget: ThreadRenameDialogTarget = {
   id: "thr_long",
   currentTitle:
@@ -49,6 +54,16 @@ export function Overview() {
         <DialogStage>
           <ThreadRenameDialogContent
             target={parentTarget}
+            pending={false}
+            onRename={noop}
+            inputRef={inputRef}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow label="folder path" hint="slash title creates a folder">
+        <DialogStage>
+          <ThreadRenameDialogContent
+            target={folderTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}

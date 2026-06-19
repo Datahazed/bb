@@ -1,8 +1,16 @@
 import { capitalize } from "@bb/thread-view";
 import { useId, useState, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
+import { titleCreatesFolder } from "@/components/sidebar/folderPath";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
@@ -61,6 +69,7 @@ export function ThreadRenameDialogContent({
   const { validationMessage, validate, clearMessage } = useNameValidation({
     emptyMessage: `${capitalize(label)} name cannot be empty.`,
   });
+  const createsFolder = titleCreatesFolder(nextTitle);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -99,10 +108,15 @@ export function ThreadRenameDialogContent({
           {validationMessage ? (
             <p className="text-sm text-destructive">{validationMessage}</p>
           ) : null}
+          {createsFolder ? (
+            <p className="text-sm text-muted-foreground">
+              Using “/” groups this thread into a folder
+            </p>
+          ) : null}
         </div>
         <DialogFooter>
           <Button type="submit" disabled={pending}>
-            Rename {label}
+            {createsFolder ? "Create folder & rename" : `Rename ${label}`}
           </Button>
         </DialogFooter>
       </form>
