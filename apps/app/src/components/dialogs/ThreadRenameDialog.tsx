@@ -10,10 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
-import {
-  parseThreadFolderShortcut,
-  titleCreatesFolder,
-} from "@/components/sidebar/folderPath";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
@@ -24,7 +20,6 @@ export interface ThreadRenameDialogTarget {
 
 export interface ThreadRenameDialogPayload {
   title: string;
-  folderPath?: string | null;
 }
 
 interface ThreadRenameDialogProps {
@@ -77,7 +72,6 @@ export function ThreadRenameDialogContent({
   const { validationMessage, validate, clearMessage } = useNameValidation({
     emptyMessage: `${capitalize(label)} name cannot be empty.`,
   });
-  const createsFolder = titleCreatesFolder(nextTitle);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -86,11 +80,7 @@ export function ThreadRenameDialogContent({
     const trimmedTitle = validate(nextTitle);
     if (trimmedTitle === null) return;
 
-    const folderShortcut = parseThreadFolderShortcut(trimmedTitle);
-    onRename(
-      target.id,
-      folderShortcut.folderPath ? folderShortcut : { title: trimmedTitle },
-    );
+    onRename(target.id, { title: trimmedTitle });
   };
 
   return (
@@ -120,15 +110,10 @@ export function ThreadRenameDialogContent({
           {validationMessage ? (
             <p className="text-sm text-destructive">{validationMessage}</p>
           ) : null}
-          {createsFolder ? (
-            <p className="text-sm text-muted-foreground">
-              Using “/” groups this thread into a folder
-            </p>
-          ) : null}
         </div>
         <DialogFooter>
           <Button type="submit" disabled={pending}>
-            {createsFolder ? "Create folder & rename" : `Rename ${label}`}
+            Rename {label}
           </Button>
         </DialogFooter>
       </form>

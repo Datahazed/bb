@@ -1,13 +1,5 @@
 // Pure helpers for sidebar folders. Thread titles are display text; folder
-// membership lives in `thread.folderPath`. Slash parsing is only used by
-// explicit UI affordances that choose to write folder metadata.
-
-export interface ThreadFolderShortcut {
-  /** Normalized folder path written to thread.folderPath, or null for none. */
-  folderPath: string | null;
-  /** Thread title written separately from the folder path. */
-  title: string;
-}
+// membership lives in `thread.folderPath`.
 
 function splitPathSegments(value: string): string[] {
   return value
@@ -30,21 +22,6 @@ export function normalizeFolderPath(
 ): string | null {
   const normalized = splitFolderPath(folderPath).join("/");
   return normalized.length > 0 ? normalized : null;
-}
-
-export function parseThreadFolderShortcut(value: string): ThreadFolderShortcut {
-  const segments = splitPathSegments(value);
-  if (segments.length <= 1) {
-    return { folderPath: null, title: value.trim() };
-  }
-  return {
-    folderPath: segments.slice(0, -1).join("/"),
-    title: segments[segments.length - 1],
-  };
-}
-
-export function titleCreatesFolder(value: string): boolean {
-  return parseThreadFolderShortcut(value).folderPath !== null;
 }
 
 // Every ancestor folder key for a stored folder path, outermost first — e.g.

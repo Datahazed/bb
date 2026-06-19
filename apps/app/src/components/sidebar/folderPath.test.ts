@@ -3,9 +3,7 @@ import {
   buildFolderKey,
   folderAncestorKeys,
   normalizeFolderPath,
-  parseThreadFolderShortcut,
   splitFolderPath,
-  titleCreatesFolder,
 } from "./folderPath";
 
 describe("splitFolderPath", () => {
@@ -31,53 +29,6 @@ describe("normalizeFolderPath", () => {
   it("normalizes empty paths to null", () => {
     expect(normalizeFolderPath("///")).toBeNull();
     expect(normalizeFolderPath(null)).toBeNull();
-  });
-});
-
-describe("parseThreadFolderShortcut", () => {
-  it("splits an explicit slash rename into folderPath and title", () => {
-    expect(parseThreadFolderShortcut("Work/Q3/Plan")).toEqual({
-      folderPath: "Work/Q3",
-      title: "Plan",
-    });
-  });
-
-  it("keeps slashy titles literal when they do not define a folder and leaf", () => {
-    expect(parseThreadFolderShortcut("Standalone")).toEqual({
-      folderPath: null,
-      title: "Standalone",
-    });
-    expect(parseThreadFolderShortcut("Work/")).toEqual({
-      folderPath: null,
-      title: "Work/",
-    });
-  });
-
-  it("collapses leading, trailing, and doubled slashes in explicit paths", () => {
-    expect(parseThreadFolderShortcut("/Work//Q3/Plan/")).toEqual({
-      folderPath: "Work/Q3",
-      title: "Plan",
-    });
-  });
-});
-
-describe("titleCreatesFolder", () => {
-  it("is false for a single segment", () => {
-    expect(titleCreatesFolder("Standalone")).toBe(false);
-  });
-
-  it("is false when a trailing slash leaves a single segment", () => {
-    expect(titleCreatesFolder("Work/")).toBe(false);
-  });
-
-  it("is false for an all-slashes title", () => {
-    expect(titleCreatesFolder("///")).toBe(false);
-  });
-
-  it("is true once two or more segments survive normalization", () => {
-    expect(titleCreatesFolder("Work/Q3")).toBe(true);
-    expect(titleCreatesFolder("Work/Q3/")).toBe(true);
-    expect(titleCreatesFolder("Clients/Acme/Onboarding")).toBe(true);
   });
 });
 

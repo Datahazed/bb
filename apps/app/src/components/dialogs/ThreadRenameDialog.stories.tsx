@@ -22,7 +22,7 @@ const parentTarget: ThreadRenameDialogTarget = {
   currentTitle: "Frontend Parent",
 };
 
-const folderTarget: ThreadRenameDialogTarget = {
+const slashTitleTarget: ThreadRenameDialogTarget = {
   id: "thr_folder",
   currentTitle: "test/say hi",
 };
@@ -60,10 +60,10 @@ export function Overview() {
           />
         </DialogStage>
       </StoryRow>
-      <StoryRow label="folder path" hint="slash title creates a folder">
+      <StoryRow label="slash title" hint="slashes stay part of the title">
         <DialogStage>
           <ThreadRenameDialogContent
-            target={folderTarget}
+            target={slashTitleTarget}
             pending={false}
             onRename={noop}
             inputRef={inputRef}
