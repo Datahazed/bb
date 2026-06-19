@@ -854,7 +854,7 @@ function SidebarThreadActionsMenu({
         mobileTitle="Threads actions"
       >
         <DropdownMenuItem onSelect={onOpenArchivedThreads}>
-          Archived threads
+          View archived threads
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

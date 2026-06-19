@@ -123,7 +123,7 @@ function ProjectActionsMenuItems({
           navigate(getProjectArchivedRoutePath(project.id));
         }}
       >
-        Archived threads
+        View archived threads
       </ProjectActionMenuItem>
       <ProjectActionMenuSeparator surface={surface} />
       <ProjectActionMenuItem
