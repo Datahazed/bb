@@ -70,6 +70,7 @@ import type { ProjectThreadListState } from "./ProjectRow";
 import {
   compareByCreatedAtDescending,
   compareStandardThreads,
+  isSidebarProjectThread,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import {
@@ -97,7 +98,7 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { folderAncestorKeys } from "./folderPath";
+import { folderAncestorKeys, titleCreatesFolder } from "./folderPath";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
   PINNED_CONTAINER_ID,
@@ -175,6 +176,7 @@ interface ProjectListThreadsSectionActionsProps {
 }
 
 interface SidebarViewOptionsMenuProps {
+  folderGroupingAvailable?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
@@ -469,18 +471,21 @@ function SidebarOrganizeMenuSectionLabel({
 }
 
 interface SidebarOrganizeMenuOptionProps {
+  disabled?: boolean;
   label: string;
   selected: boolean;
   onSelect: (event: Event) => void;
 }
 
 function SidebarOrganizeMenuOption({
+  disabled = false,
   label,
   selected,
   onSelect,
 }: SidebarOrganizeMenuOptionProps) {
   return (
     <DropdownMenuItem
+      disabled={disabled}
       onSelect={onSelect}
       className="flex items-center justify-between gap-3"
     >
@@ -500,6 +505,7 @@ function SidebarOrganizeMenuOption({
 // headers. The organization mode is global, so either header's menu drives the
 // whole sidebar.
 export function SidebarViewOptionsMenu({
+  folderGroupingAvailable = true,
   open,
   onOpenChange,
   onOrganizationModeSelect,
@@ -598,9 +604,13 @@ export function SidebarViewOptionsMenu({
         />
         <SidebarOrganizeMenuOption
           label="Folder"
+          disabled={!folderGroupingAvailable}
           selected={groupBy === "folder"}
           onSelect={(event) => {
             event.preventDefault();
+            if (!folderGroupingAvailable) {
+              return;
+            }
             setGroupBy("folder");
           }}
         />
@@ -1017,6 +1027,15 @@ function ProjectListComponent({
     }
     return map;
   }, [threads]);
+  const folderGroupingAvailable = useMemo(
+    () =>
+      threads.some(
+        (thread) =>
+          isSidebarProjectThread(thread) &&
+          titleCreatesFolder(thread.title ?? ""),
+      ),
+    [threads],
+  );
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -1589,6 +1608,7 @@ function ProjectListComponent({
   const projectsSectionActions = (
     <>
       <SidebarViewOptionsMenu
+        folderGroupingAvailable={folderGroupingAvailable}
         open={isProjectsViewOptionsMenuOpen}
         onOpenChange={handleProjectsViewOptionsMenuOpenChange}
         onOrganizationModeSelect={
@@ -1613,6 +1633,7 @@ function ProjectListComponent({
         onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
       <SidebarViewOptionsMenu
+        folderGroupingAvailable={folderGroupingAvailable}
         open={isThreadsViewOptionsMenuOpen}
         onOpenChange={handleThreadsViewOptionsMenuOpenChange}
       />

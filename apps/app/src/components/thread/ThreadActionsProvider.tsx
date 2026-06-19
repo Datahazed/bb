@@ -5,10 +5,8 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
-import { useAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import { defaultExperiments, type Thread } from "@bb/domain";
@@ -34,17 +32,6 @@ import {
   ThreadRenameDialog,
   type ThreadRenameDialogTarget,
 } from "@/components/dialogs/ThreadRenameDialog";
-import { FolderOnboardingDialog } from "@/components/dialogs/FolderOnboardingDialog";
-import {
-  formatFolderPathLabel,
-  normalizeThreadTitle,
-  parseThreadFolderPath,
-  titleCreatesFolder,
-} from "@/components/sidebar/folderPath";
-import {
-  folderOnboardingSeenAtom,
-  sidebarGroupByAtom,
-} from "@/components/sidebar/sidebarCollapsedAtoms";
 import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
@@ -98,13 +85,6 @@ interface ThreadActionContext {
   childThreadCount: number;
 }
 
-// Full breadcrumb segments for the first-folder modal preview
-// ("Work › Q3 › Planning"): the folder ancestors plus the leaf.
-function folderPreviewSegments(title: string): string[] {
-  const { folders, leaf } = parseThreadFolderPath(title);
-  return [...folders, leaf];
-}
-
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
@@ -141,23 +121,6 @@ export function ThreadActionsProvider({
   const { onClose: closeRenameDialog, onOpen: openRenameDialog } = renameDialog;
   const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
 
-  // The rename draft is lifted here (not local to the dialog) so it survives a
-  // rename → first-folder modal → rename round trip.
-  const [renameDraft, setRenameDraft] = useState("");
-  const [renameValidationError, setRenameValidationError] = useState<
-    string | null
-  >(null);
-  // Stashed rename awaiting first-folder confirmation; null when the modal is
-  // closed. Holds the raw draft so a decline can reopen rename unchanged.
-  const [pendingFolderRename, setPendingFolderRename] = useState<{
-    threadId: string;
-    draft: string;
-  } | null>(null);
-  const [folderOnboardingSeen, setFolderOnboardingSeen] = useAtom(
-    folderOnboardingSeenAtom,
-  );
-  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
-
   useEffect(() => {
     return () => {
       threadActionContextAbortRef.current?.abort();
@@ -179,88 +142,26 @@ export function ThreadActionsProvider({
 
   const requestRename = useCallback(
     (thread: Thread) => {
-      // Seed from the raw stored title (not the display fallback) so an
-      // untitled thread never parses "Thread xxxx" as a folder path.
-      setRenameDraft(thread.title ?? "");
-      setRenameValidationError(null);
-      openRenameDialog({ id: thread.id });
+      openRenameDialog({
+        id: thread.id,
+        currentTitle: getThreadDisplayTitle(thread),
+      });
     },
     [openRenameDialog],
   );
 
-  const handleRenameDraftChange = useCallback((value: string) => {
-    setRenameDraft(value);
-    setRenameValidationError(null);
-  }, []);
-
-  const submitRename = useCallback(() => {
-    const target = renameDialog.target;
-    if (!target) return;
-    const normalized = normalizeThreadTitle(renameDraft);
-    if (!normalized) {
-      setRenameValidationError("Thread name cannot be empty.");
-      return;
-    }
-    // First time a rename creates a folder: stash and teach via the modal
-    // before submitting. Afterwards (seen === true) slash renames submit directly.
-    if (titleCreatesFolder(normalized) && !folderOnboardingSeen) {
-      setPendingFolderRename({ threadId: target.id, draft: renameDraft });
-      closeRenameDialog();
-      return;
-    }
-    updateMutate(
-      { id: target.id, title: normalized },
-      { onSuccess: () => closeRenameDialog() },
-    );
-  }, [
-    closeRenameDialog,
-    folderOnboardingSeen,
-    renameDialog.target,
-    renameDraft,
-    updateMutate,
-  ]);
-
-  const handleFolderOnboardingConfirm = useCallback(() => {
-    if (!pendingFolderRename) return;
-    const { threadId, draft } = pendingFolderRename;
-    updateMutate(
-      { id: threadId, title: normalizeThreadTitle(draft) },
-      {
-        onSuccess: () => {
-          setFolderOnboardingSeen(true);
-          // Auto-enable folder grouping once, so the new folder is visible.
-          if (groupBy === "none") {
-            setGroupBy("folder");
-          }
-          setPendingFolderRename(null);
+  const submitRename = useCallback(
+    (threadId: string, title: string) => {
+      updateMutate(
+        { id: threadId, title },
+        {
+          onSuccess: () => {
+            closeRenameDialog();
+          },
         },
-      },
-    );
-  }, [
-    groupBy,
-    pendingFolderRename,
-    setFolderOnboardingSeen,
-    setGroupBy,
-    updateMutate,
-  ]);
-
-  const handleFolderOnboardingCancel = useCallback(() => {
-    if (!pendingFolderRename) return;
-    // Reopen rename seeded from the stashed draft; seen stays false so the
-    // modal still teaches on a later attempt.
-    setRenameDraft(pendingFolderRename.draft);
-    setRenameValidationError(null);
-    openRenameDialog({ id: pendingFolderRename.threadId });
-    setPendingFolderRename(null);
-  }, [openRenameDialog, pendingFolderRename]);
-
-  const handleFolderOnboardingOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        handleFolderOnboardingCancel();
-      }
+      );
     },
-    [handleFolderOnboardingCancel],
+    [closeRenameDialog, updateMutate],
   );
 
   // Fetches the delete dialog context. Returns null when the caller's request
@@ -503,27 +404,9 @@ export function ThreadActionsProvider({
       {children}
       <ThreadRenameDialog
         target={renameDialog.target}
-        draft={renameDraft}
-        validationMessage={renameValidationError}
         pending={updateThread.isPending}
-        onDraftChange={handleRenameDraftChange}
-        onSubmit={submitRename}
         onOpenChange={renameDialog.onOpenChange}
-      />
-      <FolderOnboardingDialog
-        open={pendingFolderRename !== null}
-        pathLabel={
-          pendingFolderRename
-            ? formatFolderPathLabel(
-                folderPreviewSegments(pendingFolderRename.draft),
-              )
-            : ""
-        }
-        showGroupingHint={groupBy === "none"}
-        pending={updateThread.isPending}
-        onConfirm={handleFolderOnboardingConfirm}
-        onCancel={handleFolderOnboardingCancel}
-        onOpenChange={handleFolderOnboardingOpenChange}
+        onRename={submitRename}
       />
       <ThreadDeleteDialog
         target={deleteDialog.target}

@@ -12,9 +12,11 @@ export default {
 };
 
 function MenuStory({
+  folderGroupingAvailable = true,
   groupBy,
   sort,
 }: {
+  folderGroupingAvailable?: boolean;
   groupBy: "none" | "folder";
   sort: "updated" | "created" | "none";
 }) {
@@ -28,7 +30,10 @@ function MenuStory({
   return (
     <JotaiProvider store={store}>
       <div className="relative flex h-72 w-80 items-start justify-end rounded-md bg-sidebar p-4 text-sidebar-foreground">
-        <SidebarViewOptionsMenu open />
+        <SidebarViewOptionsMenu
+          folderGroupingAvailable={folderGroupingAvailable}
+          open
+        />
       </div>
     </JotaiProvider>
   );
@@ -42,6 +47,13 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="manual folders" hint="Sort by None + Group by Folder">
         <MenuStory sort="none" groupBy="folder" />
+      </StoryRow>
+      <StoryRow label="no folders" hint="Folder option disabled">
+        <MenuStory
+          folderGroupingAvailable={false}
+          sort="updated"
+          groupBy="none"
+        />
       </StoryRow>
     </StoryCard>
   );

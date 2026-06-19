@@ -10,7 +10,6 @@ const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const GROUP_BY_STORAGE_KEY = "bb.sidebar.groupBy";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
-const FOLDER_ONBOARDING_SEEN_STORAGE_KEY = "bb.sidebar.folderOnboardingSeen";
 const MANUAL_ORDER_STORAGE_KEY = "bb.sidebar.manualOrder";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
@@ -104,15 +103,6 @@ export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   COLLAPSED_FOLDERS_STORAGE_KEY,
   [],
   createJsonLocalStorage<string[]>(),
-  { getOnInit: true },
-);
-
-// Whether the first-folder onboarding modal has been accepted. Set on accept
-// (not on open), so a declined modal still teaches on a later attempt.
-export const folderOnboardingSeenAtom = atomWithStorage<boolean>(
-  FOLDER_ONBOARDING_SEEN_STORAGE_KEY,
-  false,
-  createJsonLocalStorage<boolean>(),
   { getOnInit: true },
 );
 
