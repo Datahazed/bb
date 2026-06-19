@@ -151,7 +151,10 @@ const SidebarProvider = React.forwardRef<
 
     return (
       <SidebarContext.Provider value={contextValue}>
-        <TooltipProvider delayDuration={0}>
+        {/* Match the agent message action bar's tooltip timing (300ms open
+            delay + Radix's default skip window) so sidebar icon tooltips feel
+            the same instead of flashing instantly on hover. */}
+        <TooltipProvider delayDuration={300}>
           <div
             style={
               {
