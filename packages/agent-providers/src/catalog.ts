@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   ProviderCapabilities,
+  ProviderComposerAction,
   ProviderInfo,
   ReasoningLevel,
 } from "@bb/domain";
@@ -101,6 +102,29 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["full"],
 };
 
+const CODEX_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+  },
+];
+
+const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+  },
+];
+
+const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
+const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
+
 // Shared by all ACP (Agent Client Protocol) providers: the external agent owns
 // its own model selection, tool execution, and session naming, so BB-side
 // capabilities stay minimal. Permission modes are enforced cooperatively by
@@ -156,9 +180,11 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *      `info.displayName` / `info.available`.
  *   2. `info.capabilities` (wire-facing `ProviderCapabilities`): archive,
  *      rename, service tier, user question, supported permission modes.
- *   3. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
+ *   3. `info.composerActions` (wire-facing composer affordances): skills,
+ *      plan, goal, or an explicit empty array.
+ *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
  *      workflows, execution override, host-daemon AI services, reasoning ladder.
- *   4. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
+ *   5. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout
  * (`injected-skills.ts`), both keyed by this `info.id`.
@@ -168,6 +194,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
     info: {
       available: true,
       capabilities: CODEX_CAPABILITIES,
+      composerActions: CODEX_COMPOSER_ACTIONS,
       displayName: "Codex",
       id: "codex",
     },
@@ -177,6 +204,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
     info: {
       available: true,
       capabilities: CLAUDE_CAPABILITIES,
+      composerActions: CLAUDE_COMPOSER_ACTIONS,
       displayName: "Claude Code",
       id: "claude-code",
     },
@@ -186,6 +214,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
     info: {
       available: true,
       capabilities: PI_CAPABILITIES,
+      composerActions: PI_COMPOSER_ACTIONS,
       displayName: "Pi",
       id: "pi",
     },
@@ -195,6 +224,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
     info: {
       available: true,
       capabilities: ACP_CAPABILITIES,
+      composerActions: ACP_COMPOSER_ACTIONS,
       displayName: "Cursor",
       id: "acp-cursor",
     },
@@ -240,12 +270,26 @@ function cloneCapabilities(
   };
 }
 
+function cloneComposerAction(
+  action: ProviderComposerAction,
+): ProviderComposerAction {
+  switch (action.kind) {
+    case "skills":
+      return { kind: "skills", trigger: action.trigger };
+    case "plan":
+      return { kind: "plan", command: { ...action.command } };
+    case "goal":
+      return { kind: "goal", command: { ...action.command } };
+  }
+}
+
 function cloneBuiltInAgentProviderInfo(
   info: BuiltInAgentProviderInfo,
 ): BuiltInAgentProviderInfo {
   return {
     available: info.available,
     capabilities: cloneCapabilities(info.capabilities),
+    composerActions: info.composerActions.map(cloneComposerAction),
     displayName: info.displayName,
     id: info.id,
   };

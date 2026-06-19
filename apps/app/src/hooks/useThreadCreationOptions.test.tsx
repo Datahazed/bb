@@ -27,6 +27,13 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         id: GLOBAL_PROVIDER_ID,
         displayName: "Global Provider",
         available: true,
+        composerActions: [
+          { kind: "skills", trigger: "/" },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+        ],
         capabilities: {
           supportsArchive: true,
           supportsRename: true,
@@ -40,6 +47,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         id: PROJECT_PROVIDER_ID,
         displayName: "Project Provider",
         available: true,
+        composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsArchive: true,
           supportsRename: true,
@@ -152,6 +160,13 @@ describe("useThreadCreationOptions", () => {
         }),
       );
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedProviderComposerActions).toEqual([
+        { kind: "skills", trigger: "/" },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+      ]);
       expect(result.current.selectedModel).toBe("global-model");
       expect(result.current.serviceTier).toBe("default");
       expect(result.current.reasoningLevel).toBe("high");
@@ -159,6 +174,42 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.environmentSelectionValue).toBe(
         "host:global-host:worktree",
       );
+    });
+  });
+
+  it("loads provider composer actions for environmentless component-local threads", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          environmentId: undefined,
+          resetKey: "thr_environmentless",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialServiceTier: "default",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "workspace-write",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          providerId: GLOBAL_PROVIDER_ID,
+        }),
+      );
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedProviderComposerActions).toEqual([
+        { kind: "skills", trigger: "/" },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+      ]);
     });
   });
 });

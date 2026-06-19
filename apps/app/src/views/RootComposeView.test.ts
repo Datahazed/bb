@@ -13,6 +13,7 @@ import {
   buildMobileRecentThreads,
   readInitialPromptFromLocationState,
   resolveRootComposeEffectiveEnvironmentValue,
+  shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 
 interface MakeThreadArgs {
@@ -150,9 +151,9 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({
         focusPrompt: true,
-        initialPrompt: "Create a new bb automation to ",
+        initialPrompt: "Create a new bb loop to ",
       }),
-    ).toBe("Create a new bb automation to ");
+    ).toBe("Create a new bb loop to ");
   });
 
   it("returns null when no usable initialPrompt is present", () => {
@@ -164,6 +165,32 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({ initialPrompt: 42 }),
     ).toBeNull();
+  });
+});
+
+describe("shouldNavigateAfterThreadCreate", () => {
+  it("follows the preference for ordinary new threads", () => {
+    expect(
+      shouldNavigateAfterThreadCreate({
+        isForkDraft: false,
+        navigateToThreadAfterCreate: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldNavigateAfterThreadCreate({
+        isForkDraft: false,
+        navigateToThreadAfterCreate: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("always navigates for submitted fork drafts", () => {
+    expect(
+      shouldNavigateAfterThreadCreate({
+        isForkDraft: true,
+        navigateToThreadAfterCreate: false,
+      }),
+    ).toBe(true);
   });
 });
 

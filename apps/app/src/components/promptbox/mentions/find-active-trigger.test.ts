@@ -50,7 +50,7 @@ describe("findActiveTrigger", () => {
     });
   });
 
-  it("does not treat the legacy dollar prefix as an active command trigger", () => {
+  it("does not treat dollar as an active command trigger", () => {
     expect(
       findActiveTrigger(editorWithText("$openai-docs"), [
         { char: "@", kind: "mention" },

@@ -8,11 +8,16 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import type { PromptTextMention, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type {
+  PromptTextMention,
+  ThreadRuntimeDisplayStatus,
+  ThreadTimelineActivePromptMode,
+} from "@bb/domain";
 import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
+  type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
@@ -27,6 +32,12 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import {
+  permissionDisplayForActivePromptMode,
+  permissionDisplayForPromptMode,
+  shouldDisablePermissionPickerForActivePromptMode,
+  shouldDisablePermissionPickerForPromptMode,
+} from "./effective-prompt-mode";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBoxInternal> & {
   scrollToBottomOnSubmit?: boolean;
@@ -135,6 +146,7 @@ export interface FollowUpPromptBoxProps {
    * and passes it as a single element. Pass null to hide the stack entirely.
    */
   stack: ReactNode | null;
+  activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
@@ -161,6 +173,7 @@ export interface FollowUpPromptBoxProps {
    */
   readOnly?: boolean;
   typeahead: TypeaheadConfig;
+  promptActions?: readonly PromptBoxAction[];
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -194,6 +207,7 @@ function FollowUpPromptBoxWithComposer({
   id,
   attachments,
   stack,
+  activePromptMode,
   composer,
   environmentSummary,
   contextWindowUsage,
@@ -201,6 +215,7 @@ function FollowUpPromptBoxWithComposer({
   permission,
   readOnly,
   typeahead,
+  promptActions,
   zenModeResetKey,
   focusEndKey,
 }: FollowUpPromptBoxWithComposerProps) {
@@ -230,9 +245,32 @@ function FollowUpPromptBoxWithComposer({
     () => <ExecutionControls {...execution} disabled={readOnly} />,
     [execution, readOnly],
   );
-  // The side chat renders the SAME permission picker as the main thread, just
-  // disabled (read-only) — identical label and position. No static-label
-  // special-casing: `readOnly` flows to the picker's `disabled`.
+  const promptModeInput = useMemo(
+    () => ({
+      providerId: execution.provider.selectedId,
+      value: composer.message,
+      mentionRanges: composer.mentionRanges,
+    }),
+    [
+      composer.mentionRanges,
+      composer.message,
+      execution.provider.selectedId,
+    ],
+  );
+  const permissionDisplayOverride = useMemo(
+    () =>
+      permissionDisplayForActivePromptMode(activePromptMode) ??
+      permissionDisplayForPromptMode(promptModeInput),
+    [activePromptMode, promptModeInput],
+  );
+  const permissionPickerDisabledByPlanMode =
+    shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
+    shouldDisablePermissionPickerForPromptMode(promptModeInput);
+  const permissionPickerDisabled =
+    readOnly || permissionPickerDisabledByPlanMode;
+  // Side chat and active plan mode render the same permission picker as the
+  // main thread, but non-interactive so the displayed effective mode cannot
+  // diverge from the provider mode driving the current turn.
   const permissionControl = useMemo(
     () => (
       <PermissionModePicker
@@ -240,7 +278,9 @@ function FollowUpPromptBoxWithComposer({
         options={permission.options}
         onChange={permission.onChange}
         supported={permission.supported}
-        disabled={readOnly}
+        disabled={permissionPickerDisabled}
+        showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
+        displayOverride={permissionDisplayOverride}
         className="h-6"
       />
     ),
@@ -249,7 +289,9 @@ function FollowUpPromptBoxWithComposer({
       permission.options,
       permission.supported,
       permission.value,
-      readOnly,
+      permissionDisplayOverride,
+      permissionPickerDisabledByPlanMode,
+      permissionPickerDisabled,
     ],
   );
   const stackRef = useRef<HTMLDivElement>(null);
@@ -337,6 +379,7 @@ function FollowUpPromptBoxWithComposer({
           }}
           typeahead={typeahead}
           attachments={attachments}
+          promptActions={promptActions}
           zenMode={{
             layout: "thread",
             storageKey: null,

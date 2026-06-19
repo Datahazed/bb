@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type {
   Environment,
   PermissionMode,
+  PromptMentionResource,
   PromptTextMention,
   ThreadQueuedMessage,
   WorkspaceStatus,
@@ -23,8 +24,10 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
+  type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
@@ -38,6 +41,8 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  STORY_CLAUDE_CODE_MODELS,
+  STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
   STORY_PROVIDER_OPTIONS,
 } from "../../../.ladle/story-fixtures";
@@ -63,6 +68,33 @@ const baseExecution = makeExecutionControlsProps({
     displayName: "Codex",
   },
 });
+const claudePlanExecution = makeExecutionControlsProps({
+  provider: {
+    options: STORY_PROVIDER_OPTIONS,
+    selectedId: "claude-code",
+    hasMultiple: true,
+    displayName: "Claude Code",
+  },
+  model: {
+    active: { model: "claude-sonnet-4-6" },
+    selected: "claude-sonnet-4-6",
+    options: STORY_CLAUDE_CODE_MODELS,
+    moreOptions: [],
+    isLoading: false,
+    loadFailed: false,
+    onChange: noop,
+  },
+  serviceTier: {
+    value: undefined,
+    onChange: noop,
+    supported: false,
+  },
+  reasoning: {
+    value: "medium",
+    options: STORY_CLAUDE_REASONING,
+    onChange: noop,
+  },
+});
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
@@ -80,6 +112,21 @@ const basePermission: ExecutionPermissionConfig = {
   onChange: noop,
   supported: true,
 };
+
+const promptActions: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
+  { kind: "loop", text: CREATE_LOOP_PROMPT },
+];
 
 // Read-only footer (side chat): the side chat inherits its parent thread's
 // provider/model and is always read-only. It renders the SAME model/reasoning
@@ -279,6 +326,75 @@ const historyEntries = [
   },
 ];
 
+interface StoryMentionSpec {
+  token: string;
+  resource: PromptMentionResource;
+}
+
+function storyMention(
+  text: string,
+  { token, resource }: StoryMentionSpec,
+): PromptTextMention {
+  const start = text.indexOf(token);
+  if (start < 0) {
+    throw new Error(`Missing story mention token: ${token}`);
+  }
+  return {
+    start,
+    end: start + token.length,
+    resource,
+  };
+}
+
+function buildStoryMentions(
+  text: string,
+  mentionSpecs: readonly StoryMentionSpec[],
+): PromptTextMention[] {
+  return mentionSpecs.map((spec) => storyMention(text, spec));
+}
+
+const stackedCardsWithPillsMessage = [
+  "Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+  "with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
+].join(" ");
+
+const stackedCardsWithPillsMentions = buildStoryMentions(
+  stackedCardsWithPillsMessage,
+  [
+    {
+      token: "@apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+        label: "FollowUpPromptBox.tsx",
+      },
+    },
+    {
+      token: "@thread:thr_prompt_pills",
+      resource: {
+        kind: "thread",
+        projectId: "proj_promptbox",
+        threadId: "thr_prompt_pills",
+        label: "Prompt pills QA",
+      },
+    },
+    {
+      token: "/github:gh-fix-ci",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "github:gh-fix-ci",
+        source: "skill",
+        origin: "user",
+        label: "github:gh-fix-ci",
+        argumentHint: null,
+      },
+    },
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Stack slot fixtures — ThreadPromptContextBanner + QueuedMessagesList stack
 // above the prompt input. The caller composes them as a single ReactNode.
@@ -433,6 +549,7 @@ type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
   initialMessage?: string;
+  initialMentions?: PromptTextMention[];
   submitMode: FollowUpSubmitMode;
   isFollowUpSubmitting?: boolean;
   threadRuntimeDisplayStatus?: FollowUpComposerRuntimeStatus;
@@ -446,6 +563,8 @@ interface RowConfig {
   execution?: ExecutionControlsProps;
   /** Defaults to the editable permission picker; override to show the read-only permission config. */
   permission?: RowPermission;
+  /** Active provider prompt mode banner state; used to lock plan-mode controls. */
+  activePromptMode?: Parameters<typeof FollowUpPromptBox>[0]["activePromptMode"];
   /** Render the footer pickers disabled (side chat). The same controls, non-interactive. */
   readOnly?: boolean;
 }
@@ -463,6 +582,7 @@ function PromptStage({ children }: { children: React.ReactNode }) {
 
 function Row({
   initialMessage = "",
+  initialMentions = [],
   submitMode,
   isFollowUpSubmitting = false,
   threadRuntimeDisplayStatus = "idle",
@@ -478,10 +598,12 @@ function Row({
   hideComposer = false,
   execution = baseExecution,
   permission = basePermission,
+  activePromptMode = null,
   readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
-  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const [mentionRanges, setMentionRanges] =
+    useState<PromptTextMention[]>(initialMentions);
   const handleChangeMessage = (
     nextMessage: string,
     nextMentions: PromptTextMention[],
@@ -526,11 +648,31 @@ function Row({
         contextWindowUsage={contextWindowUsage}
         execution={execution}
         permission={permission}
+        activePromptMode={activePromptMode}
+        promptActions={promptActions}
         readOnly={readOnly}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
     </PromptStage>
+  );
+}
+
+function StackedCardsWithPillsRow() {
+  return (
+    <Row
+      submitMode={{ kind: "queue", onStop: noop }}
+      threadRuntimeDisplayStatus="active"
+      initialMessage={stackedCardsWithPillsMessage}
+      initialMentions={stackedCardsWithPillsMentions}
+      stack={
+        <>
+          {contextBannerElement}
+          {queuedMessagesElement}
+        </>
+      }
+      contextWindowUsage={usage}
+    />
   );
 }
 
@@ -657,6 +799,22 @@ export function Overview() {
         <Row submitMode={{ kind: "ready" }} stack={contextBannerElement} />
       </StoryRow>
       <StoryRow
+        label="plan mode: permission locked"
+        hint="active Claude Code plan mode shows Plan Mode and disables the dropdown"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          execution={claudePlanExecution}
+          permission={{ ...basePermission, value: "full" }}
+          activePromptMode={{
+            mode: "plan",
+            providerId: "claude-code",
+            prompt: "inspect the failing command before making changes",
+          }}
+        />
+      </StoryRow>
+      <StoryRow
         label="archived: composer hidden"
         hint="read-only banner remains; prompt input and footer controls are collapsed"
       >
@@ -692,6 +850,12 @@ export function Overview() {
           contextWindowUsage={usage}
         />
       </StoryRow>
+      <StoryRow
+        label="stacked cards with pills"
+        hint="banner + queued messages above a composer seeded with mention pills"
+      >
+        <StackedCardsWithPillsRow />
+      </StoryRow>
       <StoryRow label="env: worktree" hint="managed worktree label + icon">
         <Row
           submitMode={{ kind: "ready" }}
@@ -720,6 +884,19 @@ export function Overview() {
           permission={readOnlyPermission}
           readOnly
         />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function StackedCardsWithPills() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="stacked cards with pills"
+        hint="banner + queued messages above a composer seeded with mention pills"
+      >
+        <StackedCardsWithPillsRow />
       </StoryRow>
     </StoryCard>
   );

@@ -14,6 +14,8 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
@@ -116,6 +118,11 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
+interface ShouldNavigateAfterThreadCreateArgs {
+  isForkDraft: boolean;
+  navigateToThreadAfterCreate: boolean;
+}
+
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
 function readReuseEnvironmentIdFromLocationState(
@@ -126,6 +133,13 @@ function readReuseEnvironmentIdFromLocationState(
     .reuseEnvironmentId;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return null;
+}
+
+export function shouldNavigateAfterThreadCreate({
+  isForkDraft,
+  navigateToThreadAfterCreate,
+}: ShouldNavigateAfterThreadCreateArgs): boolean {
+  return isForkDraft || navigateToThreadAfterCreate;
 }
 
 function readForkThreadCreateSeedFromLocationState(
@@ -476,6 +490,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     setSelectedProviderId,
     providerOptions,
     hasMultipleProviders,
+    selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
     serviceTier,
@@ -826,6 +841,10 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
 
     try {
+      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+        isForkDraft: forkSeed !== null,
+        navigateToThreadAfterCreate,
+      });
       const request =
         forkSeed !== null
           ? buildForkThreadRequest({
@@ -866,7 +885,7 @@ export function RootComposeView(props: RootComposeViewProps) {
           projectId: thread.projectId,
           threadId: thread.id,
         });
-      } else if (navigateToThreadAfterCreate) {
+      } else if (shouldNavigateToCreatedThread) {
         navigate(
           getThreadRoutePath({
             projectId: thread.projectId,
@@ -963,6 +982,16 @@ export function RootComposeView(props: RootComposeViewProps) {
   // projectless compose, the server resolves the personal project to user-home
   // command discovery with cwd: null.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const providerPromptActions = useMemo(
+    () => buildProviderPromptActionProps(selectedProviderComposerActions),
+    [selectedProviderComposerActions],
+  );
+  const providerPromptActionProps = useMemo(
+    () => ({
+      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
+    }),
+    [providerPromptActions.promptActions],
+  );
   const reuseEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
@@ -970,6 +999,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
     environmentId: reuseEnvironmentId,
     query: commandQuery,
   });
@@ -1257,6 +1287,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       history={historyConfig}
       typeahead={typeaheadConfig}
       attachments={attachmentsConfig}
+      {...providerPromptActionProps}
       modeConfig={{
         environment: environmentConfig,
         branch: branchConfig,

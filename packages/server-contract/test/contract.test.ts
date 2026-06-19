@@ -27,6 +27,7 @@ import {
   sendMessageRequestSchema,
   terminalClientMessageSchema,
   terminalOutputChunkSchema,
+  terminalOutputResponseSchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -553,6 +554,22 @@ describe("public terminal contracts", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("requires output responses to signal truncation", () => {
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+        truncated: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("server-contract canonical schemas", () => {
@@ -1076,6 +1093,26 @@ describe("server-contract canonical schemas", () => {
         },
       }),
     ).toThrow("input must contain at least one entry");
+  });
+
+  it("rejects empty input for a fork", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        originKind: "fork",
+        sourceSeqEnd: 12,
+        sourceThreadId: "thr_source",
+        startedOnBehalfOf: null,
+      }),
+    ).toThrow("fork input must contain at least one entry");
   });
 
   it("accepts empty input for a source-derived side chat preload", () => {

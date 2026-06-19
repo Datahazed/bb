@@ -22,8 +22,10 @@ vi.mock("./api-server", () => ({
 function makeTimelineResponse(): ThreadTimelineResponse {
   return {
     rows: [],
+    activePromptMode: null,
     activeThinking: null,
     activeWorkflow: null,
+    activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
     maxSeq: 0,

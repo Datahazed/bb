@@ -18,6 +18,7 @@ import {
   readTerminalOutputLines,
   type ActiveThinking,
   type Thread,
+  type ThreadTimelineActivePromptMode,
   type ThreadTimelineGoal,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
@@ -53,6 +54,7 @@ import {
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
+import { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
@@ -64,11 +66,16 @@ interface ThreadTimelineFromEventsBaseOptions {
   includeProviderUnhandledOperations: boolean;
   /**
    * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
-   * these snapshots describe current head state, not historical state. Caller
+   * this snapshot describes current head state, not historical state. Caller
    * passes false on older-page requests so projections can skip extraction work
    * entirely instead of computing it and discarding.
    */
   isLatestPage: boolean;
+  /**
+   * Current thread provider. Needed for provider-specific prompt modes that are
+   * encoded in command pills on the accepted request.
+   */
+  providerId?: string;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -96,8 +103,10 @@ export interface BuildThreadTimelineFromEventsArgs {
 }
 
 export interface ThreadTimelineFromEventsResult {
+  activePromptMode: ThreadTimelineActivePromptMode | null;
   activeThinking: ActiveThinking | null;
   activeWorkflow: TimelineWorkflowWorkRow | null;
+  activeBackgroundCommands: TimelineWorkflowWorkRow[];
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -322,6 +331,7 @@ function buildWorkflowWorkRow(
     workKind: "workflow",
     status: message.status,
     itemId: message.itemId,
+    taskType: message.taskType,
     workflowName: message.workflowName,
     description: message.description,
     taskStatus: message.taskStatus,
@@ -1121,6 +1131,13 @@ export function buildThreadTimelineFromEvents(
   ];
 
   return {
+    activePromptMode: !args.options.isLatestPage
+      ? null
+      : extractThreadTimelineActivePromptMode({
+          events: args.events,
+          providerId: args.options.providerId,
+          threadStatus: args.options.threadStatus,
+        }),
     activeThinking: projection.state.activeThinking,
     activeWorkflow: projection.state.activeWorkflow
       ? buildWorkflowWorkRow(
@@ -1128,6 +1145,12 @@ export function buildThreadTimelineFromEvents(
           ROOT_TIMELINE_ROW_ID_PREFIX,
         )
       : null,
+    activeBackgroundCommands: projection.state.activeBackgroundCommands.flatMap(
+      (message) => {
+        const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
+        return row ? [row] : [];
+      },
+    ),
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
     ),

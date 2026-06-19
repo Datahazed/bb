@@ -34,6 +34,7 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
   type QueuedMessageProcessingAction,
@@ -42,6 +43,7 @@ import type {
   ExecutionControlsProps,
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
+import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -379,9 +381,21 @@ export function SideChatTabContent({
     environmentId: promptContextEnvironmentId,
   });
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const providerPromptActions = useMemo(
+    () =>
+      buildProviderPromptActionProps(
+        threadCreationOptions.selectedProviderComposerActions ?? [],
+      ),
+    [threadCreationOptions.selectedProviderComposerActions],
+  );
+  const promptActions = useMemo(
+    () => withLoopPromptAction(providerPromptActions.promptActions),
+    [providerPromptActions.promptActions],
+  );
   const commandSuggestions = useCommandSuggestions({
     projectId: sourceThread.projectId,
     providerId: sourceThread.providerId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
     environmentId: promptContextEnvironmentId,
     query: commandQuery,
   });
@@ -1236,6 +1250,7 @@ export function SideChatTabContent({
           permission={permissionConfig}
           readOnly
           typeahead={typeaheadConfig}
+          promptActions={promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
         />

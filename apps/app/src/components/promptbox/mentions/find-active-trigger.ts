@@ -31,9 +31,16 @@ interface ActiveTriggerEditor {
  * - command triggers (`/`) capture the whole token up to whitespace
  *   (`\S*`), so a namespaced name like `frontend:component` is captured whole.
  */
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
 function triggerPattern(char: TypeaheadTrigger["char"]): RegExp {
   const queryClass = char === "@" ? "[^\\s@]*" : "\\S*";
-  return new RegExp(`(^|[\\s([{])${char}(${queryClass})$`, "u");
+  return new RegExp(
+    `(^|[\\s([{])${escapeRegexLiteral(char)}(${queryClass})$`,
+    "u",
+  );
 }
 
 /**

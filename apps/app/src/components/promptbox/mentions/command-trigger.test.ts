@@ -1,28 +1,63 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildProviderPromptActionProps,
   commandPillDismissedRangeEnd,
-  commandTriggerForProvider,
+  commandTriggerForComposerActions,
 } from "./command-trigger";
 
-describe("commandTriggerForProvider", () => {
-  it("maps claude-code to the slash trigger", () => {
-    expect(commandTriggerForProvider("claude-code")).toBe("/");
+describe("commandTriggerForComposerActions", () => {
+  it("uses the provider-declared skills trigger", () => {
+    expect(
+      commandTriggerForComposerActions([{ kind: "skills", trigger: "/" }]),
+    ).toBe("/");
   });
 
-  it("maps codex to the slash trigger", () => {
-    expect(commandTriggerForProvider("codex")).toBe("/");
+  it("returns null when the provider has no skills action", () => {
+    expect(
+      commandTriggerForComposerActions([
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
+      ]),
+    ).toBeNull();
   });
+});
 
-  it("does not expose the legacy dollar trigger for codex", () => {
-    expect(commandTriggerForProvider("codex")).not.toBe("$");
-  });
-
-  it("returns null for providers with no command surface", () => {
-    expect(commandTriggerForProvider("pi")).toBeNull();
-  });
-
-  it("returns null for unknown provider ids", () => {
-    expect(commandTriggerForProvider("totally-unknown")).toBeNull();
+describe("buildProviderPromptActionProps", () => {
+  it("maps skills and insertion composer actions into prompt action props", () => {
+    expect(
+      buildProviderPromptActionProps([
+        { kind: "skills", trigger: "/" },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
+      ]),
+    ).toEqual({
+      skillsTrigger: "/",
+      promptActions: [
+        { kind: "skills", text: "/" },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+          text: "/plan ",
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+          text: "/goal ",
+        },
+      ],
+    });
   });
 });
 

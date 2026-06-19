@@ -22,6 +22,17 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
+        composerActions: [
+          { kind: "skills", trigger: "/" },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+          {
+            kind: "goal",
+            command: { trigger: "/", name: "goal", trailingText: " " },
+          },
+        ],
         available: true,
       },
       {
@@ -35,6 +46,13 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
+        composerActions: [
+          { kind: "skills", trigger: "/" },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+        ],
         available: true,
       },
       {
@@ -48,6 +66,7 @@ describe("agent provider catalog", () => {
           supportsFork: true,
           supportedPermissionModes: ["full"],
         },
+        composerActions: [],
         available: true,
       },
       {
@@ -61,6 +80,7 @@ describe("agent provider catalog", () => {
           supportsFork: false,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
+        composerActions: [],
         available: true,
       },
     ]);
@@ -103,8 +123,36 @@ describe("agent provider catalog", () => {
   it("returns cloned catalog entries", () => {
     const provider = getBuiltInAgentProviderInfo("codex");
     provider.displayName = "Mutated";
+    provider.capabilities.supportedPermissionModes.push("full");
+    provider.composerActions.push({
+      kind: "goal",
+      command: { trigger: "/", name: "mutated", trailingText: " " },
+    });
+    const skillsAction = provider.composerActions.find(
+      (action) => action.kind === "skills",
+    );
+    if (!skillsAction) {
+      throw new Error("Expected codex to declare a skills action");
+    }
+    skillsAction.trigger = "/";
 
-    expect(getBuiltInAgentProviderInfo("codex").displayName).toBe("Codex");
+    expect(getBuiltInAgentProviderInfo("codex")).toMatchObject({
+      displayName: "Codex",
+      capabilities: {
+        supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      },
+      composerActions: [
+        { kind: "skills", trigger: "/" },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
+      ],
+    });
   });
 
   it("exposes pi default model declarations", () => {

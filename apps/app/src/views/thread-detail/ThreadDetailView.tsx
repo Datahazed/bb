@@ -143,6 +143,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
@@ -584,6 +585,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
+  useThreadOpenFileSignal({
+    threadId,
+    environmentId: thread?.environmentId,
+    openTab,
+  });
   const browserDeckThreadId = thread?.id ?? null;
   const browserDeckEnvironmentId = thread?.environmentId ?? null;
   // Browser tabs are not rendered through the single `fileTabContent` slot:
@@ -678,8 +684,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [parentThreadSubsetQuery.data, shouldLoadParentThreads],
   );
   const {
+    activePromptMode,
     activeThinking,
     activeWorkflow,
+    activeBackgroundCommands,
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
@@ -2000,8 +2008,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}
+      activePromptMode={activePromptMode}
       goal={goal}
       activeWorkflow={activeWorkflow}
+      activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       pullRequest={pullRequest}

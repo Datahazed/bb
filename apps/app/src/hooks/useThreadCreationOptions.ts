@@ -9,6 +9,7 @@ import {
 import type {
   AvailableModel,
   PermissionMode,
+  ProviderComposerAction,
   ProviderInfo,
   ReasoningLevel,
   ServiceTier,
@@ -49,6 +50,7 @@ import {
 export { formatModelLabel, resolvePermissionModeSelection };
 
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
+const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 
 const REASONING_LABELS: Record<ReasoningLevel, string> = {
   low: "Low",
@@ -97,6 +99,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   providerOptions: PickerOption<string>[];
   hasMultipleProviders: boolean;
   selectedProviderDisplayName: string;
+  selectedProviderComposerActions: readonly ProviderComposerAction[];
   selectedModel: string;
   setSelectedModel: StringSelectionSetter;
   serviceTier: ServiceTier | undefined;
@@ -255,8 +258,7 @@ export function useThreadCreationOptions(
       : renderedThreadSelections.environmentSelectionValue;
 
   // --- Provider selection ---
-  const executionOptionsQueryEnabled =
-    enabled && (scope !== "component-local" || environmentId !== undefined);
+  const executionOptionsQueryEnabled = enabled;
   const executionOptionsEnvironmentId =
     scope === "component-local" && executionOptionsQueryEnabled
       ? environmentId
@@ -306,6 +308,8 @@ export function useThreadCreationOptions(
   );
 
   const activeProviderCapabilities = selectedProviderInfo?.capabilities;
+  const selectedProviderComposerActions =
+    selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
 
   const supportsServiceTier =
     activeProviderCapabilities?.supportsServiceTier ?? false;
@@ -624,6 +628,7 @@ export function useThreadCreationOptions(
     hasMultipleProviders,
     selectedProviderDisplayName:
       selectedProviderInfo?.displayName ?? effectiveProviderId,
+    selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
     serviceTier,

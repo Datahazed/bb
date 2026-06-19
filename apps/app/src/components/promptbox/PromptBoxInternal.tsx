@@ -1,10 +1,8 @@
 import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
-import type { PromptTextMention } from "@bb/domain";
-import Placeholder from "@tiptap/extension-placeholder";
+import type { PromptMentionCommandTrigger, PromptTextMention } from "@bb/domain";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import {
   useCallback,
   useEffect,
@@ -41,6 +39,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
@@ -50,15 +49,20 @@ import {
 import { cn } from "@/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import {
+  PromptBoxActionsMenu,
+  type PromptBoxAction,
+} from "./PromptBoxActionsMenu";
+import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
-import { PromptMentionExtension } from "./editor/prompt-mention-extension";
+import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
+  parsePromptEditorMentionAttrs,
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
@@ -66,6 +70,9 @@ import {
   exitTrailingBlockquoteBreak,
   insertParagraphBeforeBlockquote,
 } from "./editor/prompt-editor-blockquote";
+import { exitHeading } from "./editor/prompt-editor-heading";
+import { applyPromptListNewline } from "./editor/prompt-editor-list";
+import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
@@ -174,7 +181,7 @@ export interface TypeaheadMentionConfig {
 
 /**
  * The command-typeahead half of {@link TypeaheadConfig}. `trigger` is the
- * provider's command char (`/`) or `null` when the provider has no command
+ * provider's command char or `null` when the provider has no command
  * surface — in which case the composer never activates a command trigger and
  * the rest of this config is inert.
  *
@@ -183,7 +190,7 @@ export interface TypeaheadMentionConfig {
  * after the trigger (`null` when no command trigger is active).
  */
 export interface TypeaheadCommandConfig {
-  trigger: "/" | null;
+  trigger: PromptMentionCommandTrigger | null;
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -264,6 +271,8 @@ export interface PromptBoxHandle {
   getTextBeforeCursor: () => string | undefined;
 }
 
+export type { PromptBoxAction } from "./PromptBoxActionsMenu";
+
 export type MentionMenuPlacement = "top" | "bottom";
 
 export interface PromptBoxInternalProps {
@@ -296,6 +305,7 @@ export interface PromptBoxInternalProps {
    */
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
+  promptActions?: readonly PromptBoxAction[];
   zenMode?: PromptBoxZenModeConfig;
   history?: HistoryConfig;
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
@@ -340,6 +350,18 @@ type ZenModeUpdate =
 
 type PromptBoxMouseDownEvent = ReactMouseEvent<HTMLFormElement>;
 
+interface PromptActionInsertionRange {
+  from: number;
+  to: number;
+}
+
+interface PromptActionCommand {
+  serializedText: string;
+  trailingText: string;
+  trigger: PromptMentionCommandTrigger;
+  suggestion: ProviderCommandSuggestion;
+}
+
 const PROMPTBOX_INTERACTIVE_TARGET_SELECTOR = [
   "a[href]",
   "button",
@@ -376,8 +398,105 @@ function normalizePastedPlainText(text: string): string {
   return text.replace(/\r\n?/gu, "\n");
 }
 
-function promptEditorValueFromPlainText(text: string): PromptEditorValue {
-  return { text: normalizePastedPlainText(text), mentions: [] };
+function promptActionCommandMentionsFromText(
+  text: string,
+  actions: readonly PromptBoxAction[] | undefined,
+): PromptTextMention[] {
+  const mentions: PromptTextMention[] = [];
+
+  for (const action of actions ?? []) {
+    const commandAction = promptActionCommandFromAction(action);
+    if (commandAction === null) {
+      continue;
+    }
+
+    let searchStart = 0;
+    while (searchStart < text.length) {
+      const start = text.indexOf(commandAction.serializedText, searchStart);
+      if (start === -1) {
+        break;
+      }
+
+      const end = start + commandAction.serializedText.length;
+      const before = start === 0 ? "" : text[start - 1]!;
+      const after = end >= text.length ? "" : text[end]!;
+      const hasTokenBoundaryBefore = before === "" || /\s/u.test(before);
+      const hasTokenBoundaryAfter = after === "" || /\s/u.test(after);
+
+      if (hasTokenBoundaryBefore && hasTokenBoundaryAfter) {
+        mentions.push({
+          start,
+          end,
+          resource: promptCommandResourceFromSuggestion({
+            suggestion: commandAction.suggestion,
+            trigger: commandAction.trigger,
+          }),
+        });
+      }
+
+      searchStart = end;
+    }
+  }
+
+  return mentions.sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+}
+
+function mergePromptTextMentions(
+  baseMentions: readonly PromptTextMention[],
+  additionalMentions: readonly PromptTextMention[],
+): PromptTextMention[] {
+  const merged = [...baseMentions].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+
+  for (const additionalMention of additionalMentions) {
+    const overlapsExisting = merged.some(
+      (mention) =>
+        additionalMention.start < mention.end &&
+        additionalMention.end > mention.start,
+    );
+    if (!overlapsExisting) {
+      merged.push(additionalMention);
+    }
+  }
+
+  return merged.sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+}
+
+function withPromptActionCommandMentions(
+  value: PromptEditorValue,
+  promptActions: readonly PromptBoxAction[] | undefined,
+): PromptEditorValue {
+  const promptActionMentions = promptActionCommandMentionsFromText(
+    value.text,
+    promptActions,
+  );
+  if (promptActionMentions.length === 0) {
+    return value;
+  }
+
+  return {
+    ...value,
+    mentions: mergePromptTextMentions(value.mentions, promptActionMentions),
+  };
+}
+
+function promptEditorValueFromPlainText(
+  text: string,
+  promptActions?: readonly PromptBoxAction[],
+): PromptEditorValue {
+  const normalizedText = normalizePastedPlainText(text);
+  return withPromptActionCommandMentions(
+    {
+      text: normalizedText,
+      mentions: [],
+    },
+    promptActions,
+  );
 }
 
 function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
@@ -510,19 +629,20 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 
 function promptEditorValueFromClipboardPaste(
   clipboardData: DataTransfer | null,
+  promptActions?: readonly PromptBoxAction[],
 ): PromptEditorValue | null {
   const html = clipboardData?.getData("text/html") ?? "";
   const hasHtml = html.trim().length > 0;
   if (hasHtml) {
     const richValue = promptEditorValueFromRichHtml(html);
     if (richValue.hasMentions) {
-      return richValue.value;
+      return withPromptActionCommandMentions(richValue.value, promptActions);
     }
   }
 
   const plainText = clipboardData?.getData("text/plain") ?? "";
   if (plainText.length > 0) {
-    return promptEditorValueFromPlainText(plainText);
+    return promptEditorValueFromPlainText(plainText, promptActions);
   }
 
   if (!hasHtml) {
@@ -573,6 +693,224 @@ function isPromptBoxChromeTarget(target: EventTarget | null): boolean {
   return target.closest(PROMPTBOX_INTERACTIVE_TARGET_SELECTOR) === null;
 }
 
+function promptActionTextImmediatelyBeforeCursor(
+  editor: Editor,
+  actionText: string,
+): boolean {
+  if (!editor.state.selection.empty) {
+    return false;
+  }
+
+  const before = editor.state.doc.textBetween(
+    0,
+    editor.state.selection.from,
+    "\n",
+    "\n",
+  );
+  return before.endsWith(actionText);
+}
+
+function promptActionCommandSerializedText(action: PromptBoxAction): string {
+  if (!action.command) {
+    return action.text;
+  }
+  return `${action.command.trigger}${action.command.name}`;
+}
+
+function isPromptActionCommandMention(
+  node: ProseMirrorNode,
+  actions: readonly PromptBoxAction[],
+): boolean {
+  if (node.type.name !== "mention") {
+    return false;
+  }
+  const attrs = parsePromptEditorMentionAttrs(node.attrs);
+  if (!attrs || attrs.resource.kind !== "command") {
+    return false;
+  }
+  const resource = attrs.resource;
+  return actions.some((action) => {
+    const command = action.command;
+    if (!command) {
+      return false;
+    }
+    return (
+      resource.trigger === command.trigger &&
+      resource.name === command.name &&
+      attrs.serializedText === promptActionCommandSerializedText(action)
+    );
+  });
+}
+
+function findPromptActionTextSuffix(
+  text: string,
+  actions: readonly PromptBoxAction[],
+): PromptBoxAction | null {
+  return (
+    actions.find(
+      (action) =>
+        !action.command &&
+        action.text.length > 0 &&
+        text.endsWith(action.text),
+    ) ?? null
+  );
+}
+
+function getPromptActionRangeImmediatelyBeforeCursor({
+  editor,
+  actions,
+}: {
+  editor: Editor;
+  actions: readonly PromptBoxAction[];
+}): PromptActionInsertionRange | null {
+  const selection = editor.state.selection;
+  if (!selection.empty) {
+    return null;
+  }
+
+  const { $from } = selection;
+  const cursorOffset = $from.parentOffset;
+  const parentStart = $from.start();
+  let searchOffset = cursorOffset;
+
+  while (searchOffset > 0) {
+    const previous = $from.parent.childBefore(searchOffset);
+    const node = previous.node;
+    if (!node) {
+      return null;
+    }
+    const sizeBeforeSearchOffset = searchOffset - previous.offset;
+    if (node.isText) {
+      const textBeforeCursor = (node.text ?? "").slice(
+        0,
+        sizeBeforeSearchOffset,
+      );
+      const textAction = findPromptActionTextSuffix(textBeforeCursor, actions);
+      if (textAction) {
+        return {
+          from:
+            parentStart +
+            previous.offset +
+            textBeforeCursor.length -
+            textAction.text.length,
+          to: selection.from,
+        };
+      }
+      if (/\S/u.test(textBeforeCursor)) {
+        return null;
+      }
+      searchOffset = previous.offset;
+      continue;
+    }
+    if (
+      sizeBeforeSearchOffset === node.nodeSize &&
+      isPromptActionCommandMention(node, actions)
+    ) {
+      return {
+        from: parentStart + previous.offset,
+        to: selection.from,
+      };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+function getPromptActionInsertionRange({
+  editor,
+  action,
+  actions,
+  triggers,
+}: {
+  editor: Editor;
+  action: PromptBoxAction;
+  actions: readonly PromptBoxAction[];
+  triggers: readonly TypeaheadTrigger[];
+}): PromptActionInsertionRange | null {
+  const selection = editor.state.selection;
+  if (!selection.empty) {
+    return { from: selection.from, to: selection.to };
+  }
+
+  const previousPromptActionRange = getPromptActionRangeImmediatelyBeforeCursor({
+    editor,
+    actions,
+  });
+  if (previousPromptActionRange !== null) {
+    return previousPromptActionRange;
+  }
+
+  const activeCommandTrigger = findActiveTrigger(editor, triggers);
+  const isActiveCommand =
+    activeCommandTrigger !== null && activeCommandTrigger.kind === "command";
+
+  if (action.kind === "skills") {
+    if (
+      isActiveCommand &&
+      activeCommandTrigger.char === action.text &&
+      activeCommandTrigger.to === selection.from
+    ) {
+      return null;
+    }
+    return { from: selection.from, to: selection.to };
+  }
+
+  if (isActiveCommand && activeCommandTrigger.to === selection.from) {
+    return {
+      from: activeCommandTrigger.from,
+      to: activeCommandTrigger.to,
+    };
+  }
+
+  return { from: selection.from, to: selection.to };
+}
+
+function promptActionCommandFromAction(
+  action: PromptBoxAction,
+): PromptActionCommand | null {
+  if (action.kind === "skills" || !action.command) {
+    return null;
+  }
+
+  const { trigger, name, trailingText } = action.command;
+  const serializedText = `${trigger}${name}`;
+  return {
+    serializedText,
+    trailingText,
+    trigger,
+    suggestion: {
+      kind: "command",
+      name,
+      source: "command",
+      origin: "user",
+      description: null,
+      argumentHint: null,
+    },
+  };
+}
+
+function promptActionTriggers(
+  triggers: readonly TypeaheadTrigger[],
+  commandAction: PromptActionCommand | null,
+): readonly TypeaheadTrigger[] {
+  if (commandAction === null) {
+    return triggers;
+  }
+  if (
+    triggers.some(
+      (trigger) =>
+        trigger.kind === "command" && trigger.char === commandAction.trigger,
+    )
+  ) {
+    return triggers;
+  }
+  return [
+    ...triggers,
+    { kind: "command", char: commandAction.trigger },
+  ] satisfies TypeaheadTrigger[];
+}
+
 export function suppressPromptEditorAnchorActivation(event: Event): boolean {
   if (!(event.target instanceof Element)) return false;
   if (event.target.closest("a[href]") === null) return false;
@@ -597,6 +935,7 @@ export function PromptBoxInternal({
   typeahead,
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
+  promptActions,
   zenMode = {},
   history,
   voice,
@@ -649,6 +988,7 @@ export function PromptBoxInternal({
   const editorRef = useRef<Editor | null>(null);
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
+  const promptActionFocusFrameRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef(value);
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
@@ -744,6 +1084,13 @@ export function PromptBoxInternal({
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (promptActionFocusFrameRef.current === null) return;
+      cancelAnimationFrame(promptActionFocusFrameRef.current);
+    };
+  }, []);
+
   // Active trigger set: `@` is always watched; the provider's command trigger
   // joins it when present. A thread is bound to one provider, so this is at
   // most two entries with distinct lead chars — never any trigger ambiguity.
@@ -825,28 +1172,22 @@ export function PromptBoxInternal({
     syncTriggerStateRef.current = syncTriggerState;
   }, [syncTriggerState]);
 
+  // Markdown rich-text formatting (headings/lists/marks + their live input
+  // rules) is opt-in; the default-OFF preference keeps the prompt box plain
+  // text. Toggling rebuilds the editor (see the `[richTextEditing]` deps below)
+  // so the schema and input rules switch immediately.
+  const [richTextEditing] = useRichTextEditingPreference();
+  const editorExtensions = useMemo(
+    () =>
+      promptEditorExtensions({
+        richTextEditing,
+        getPlaceholder: () => placeholderRef.current,
+      }),
+    [richTextEditing],
+  );
+
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        blockquote: {},
-        bold: false,
-        bulletList: false,
-        code: false,
-        codeBlock: false,
-        dropcursor: false,
-        gapcursor: false,
-        heading: false,
-        horizontalRule: false,
-        italic: false,
-        listItem: false,
-        orderedList: false,
-        strike: false,
-      }),
-      Placeholder.configure({
-        placeholder: () => placeholderRef.current,
-      }),
-      PromptMentionExtension,
-    ],
+    extensions: editorExtensions,
     content: promptEditorContentFromValue({
       text: value,
       mentions: mentionRanges,
@@ -912,6 +1253,7 @@ export function PromptBoxInternal({
 
         const pastedValue = promptEditorValueFromClipboardPaste(
           event.clipboardData ?? null,
+          promptActions,
         );
         if (pastedValue === null) return false;
 
@@ -945,7 +1287,10 @@ export function PromptBoxInternal({
       syncTriggerStateRef.current(updatedEditor);
       scheduleRevealEditorSelection();
     },
-  });
+    // Rebuild the editor when the rich-text preference toggles so the schema
+    // and input rules switch. The editor is otherwise created once; its
+    // handlers route through refs (above) to stay current without rebuilding.
+  }, [richTextEditing]);
 
   useEffect(() => {
     editorRef.current = editor;
@@ -982,7 +1327,7 @@ export function PromptBoxInternal({
     valueRef.current = value;
   }, [value]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     const nextValue = {
       text: value,
@@ -1012,11 +1357,9 @@ export function PromptBoxInternal({
 
   // An explicit draft-restore action (e.g. editing a queued message) bumps
   // `focusEndKey` so the caret lands at the END of the restored text. It is a
-  // passive effect defined AFTER the content-sync effect above, so React's
-  // definition-order guarantee runs it once that effect has applied
-  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
-  // an effect ordered before content-sync, would focus("end") against the
-  // pre-edit content and setContent would then map the caret to the start.)
+  // passive effect defined AFTER the layout content-sync effect above, so the
+  // editor has already applied `setContent` for the new draft in the same
+  // commit.
   // Not gated by the coarse-pointer guard since it follows a deliberate click.
   const lastFocusEndKeyRef = useRef(focusEndKey);
   useEffect(() => {
@@ -1404,6 +1747,133 @@ export function PromptBoxInternal({
     [scheduleRevealEditorSelection],
   );
 
+  const focusAfterPromptAction = useCallback(
+    (currentEditor: Editor) => {
+      const focusEditor = () => {
+        promptActionFocusFrameRef.current = null;
+        if (currentEditor.isDestroyed) return;
+        currentEditor.commands.focus();
+        syncTriggerState(currentEditor);
+        scheduleRevealEditorSelection();
+      };
+
+      if (typeof requestAnimationFrame !== "function") {
+        focusEditor();
+        return;
+      }
+
+      if (promptActionFocusFrameRef.current !== null) {
+        cancelAnimationFrame(promptActionFocusFrameRef.current);
+      }
+      promptActionFocusFrameRef.current = requestAnimationFrame(focusEditor);
+    },
+    [scheduleRevealEditorSelection, syncTriggerState],
+  );
+
+  const applyPromptAction = useCallback(
+    (action: PromptBoxAction) => {
+      if (action.text.length === 0) return;
+      const commandAction = promptActionCommandFromAction(action);
+
+      const currentEditor = editorRef.current;
+      if (!currentEditor || currentEditor.isDestroyed) {
+        const currentValue = valueRef.current;
+        if (currentValue.endsWith(action.text)) return;
+        if (commandAction) {
+          const start = currentValue.length;
+          const nextValue = `${currentValue}${commandAction.serializedText}${commandAction.trailingText}`;
+          onChangeRef.current(nextValue, [
+            ...mentionRangesRef.current,
+            {
+              start,
+              end: start + commandAction.serializedText.length,
+              resource: promptCommandResourceFromSuggestion({
+                suggestion: commandAction.suggestion,
+                trigger: commandAction.trigger,
+              }),
+            },
+          ]);
+        } else {
+          onChangeRef.current(`${currentValue}${action.text}`, [
+            ...mentionRangesRef.current,
+          ]);
+        }
+        return;
+      }
+
+      if (promptActionTextImmediatelyBeforeCursor(currentEditor, action.text)) {
+        focusAfterPromptAction(currentEditor);
+        return;
+      }
+
+      const insertionRange = getPromptActionInsertionRange({
+        editor: currentEditor,
+        action,
+        actions: promptActions ?? [],
+        triggers: promptActionTriggers(triggers, commandAction),
+      });
+      if (insertionRange === null) {
+        focusAfterPromptAction(currentEditor);
+        return;
+      }
+
+      if (commandAction) {
+        triggerKeyRef.current = "";
+        dismissedTriggerRef.current = null;
+        isRestoringAppliedMentionRef.current = true;
+        setActiveTrigger(null);
+        setSelectedIndex(0);
+        onCommandQueryChange(null);
+
+        try {
+          skipEditorChangeRef.current = true;
+          currentEditor
+            .chain()
+            .focus()
+            .deleteRange({ from: insertionRange.from, to: insertionRange.to })
+            .insertContent([
+              {
+                type: "mention",
+                attrs: {
+                  resource: promptCommandResourceFromSuggestion({
+                    suggestion: commandAction.suggestion,
+                    trigger: commandAction.trigger,
+                  }),
+                  serializedText: commandAction.serializedText,
+                },
+              },
+              ...(commandAction.trailingText
+                ? [{ type: "text", text: commandAction.trailingText }]
+                : []),
+            ])
+            .run();
+        } finally {
+          skipEditorChangeRef.current = false;
+        }
+        finishApply(currentEditor);
+        return;
+      }
+
+      triggerKeyRef.current = "";
+      dismissedTriggerRef.current = null;
+      setSelectedIndex(0);
+      currentEditor
+        .chain()
+        .focus()
+        .deleteRange({ from: insertionRange.from, to: insertionRange.to })
+        .insertContent(action.text)
+        .run();
+      finishApply(currentEditor);
+    },
+    [
+      finishApply,
+      focusAfterPromptAction,
+      onCommandQueryChange,
+      promptActions,
+      triggers,
+    ],
+  );
+
   const getTextBeforeCursor = useCallback((): string | undefined => {
     const currentValue = valueRef.current;
     const currentEditor = editorRef.current;
@@ -1702,8 +2172,37 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
+        applyPromptListNewline(currentEditor)
+      ) {
+        event.preventDefault();
+        return true;
+      }
+
+      if (
+        isBlockquoteExitKey &&
+        currentEditor &&
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
+      ) {
+        event.preventDefault();
+        return true;
+      }
+
+      const isPromptNewlineKey =
+        event.key === "Enter" &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        (event.shiftKey || isZenMode || !canSubmitWithEnterKey);
+      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
+        event.preventDefault();
+        return true;
+      }
+
+      if (
+        isPromptNewlineKey &&
+        currentEditor &&
+        applyPromptParagraphNewline(currentEditor)
       ) {
         event.preventDefault();
         return true;
@@ -1845,6 +2344,15 @@ export function PromptBoxInternal({
                 "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
                 "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
+                // Markdown formatting styles (mirrors what the timeline renders).
+                "[&_.ProseMirror_h1]:my-1 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold",
+                "[&_.ProseMirror_h2]:my-1 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold",
+                "[&_.ProseMirror_h3]:my-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold",
+                "[&_.ProseMirror_h4]:my-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h5]:font-semibold [&_.ProseMirror_h6]:font-semibold",
+                "[&_.ProseMirror_ul]:my-1 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
+                "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
+                "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
+                "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
@@ -1907,6 +2415,10 @@ export function PromptBoxInternal({
           className="flex min-w-0 flex-1 flex-row items-center gap-1"
           aria-live="polite"
         >
+          <PromptBoxActionsMenu
+            actions={promptActions}
+            onAction={applyPromptAction}
+          />
           {footerStart}
         </div>
         <div className="flex shrink-0 flex-row items-center gap-1">

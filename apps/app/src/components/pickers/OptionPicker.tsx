@@ -66,12 +66,25 @@ interface OptionPickerProps<T extends string> {
   /** How the menu aligns to the trigger. Defaults to "start". */
   align?: "start" | "end" | "center";
   /**
+   * Display a temporary effective state for the selected value without
+   * changing the actual picker value or menu options.
+   */
+  displayOverride?: {
+    label: string;
+    compactLabel?: string;
+    description?: string;
+    title?: string;
+    tone?: "default" | "warning";
+  };
+  /**
    * Render the trigger as a non-interactive, dimmed label showing the same
    * selected value — the menu never opens. Used by read-only surfaces (e.g. the
    * side chat) so they render the identical control as their interactive
    * counterpart, just disabled.
    */
   disabled?: boolean;
+  /** Keep the chevron visible even when disabled, for effective modes that explain why the menu is locked. */
+  showChevronWhenDisabled?: boolean;
 }
 
 export function OptionDisplay({
@@ -133,15 +146,25 @@ export function OptionPicker<T extends string>({
   defaultOpen,
   modal,
   align = "start",
+  displayOverride,
   disabled,
+  showChevronWhenDisabled,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
-  const selectedIsWarning = selectedOption?.tone === "warning";
+  const selectedTone = displayOverride
+    ? (displayOverride.tone ?? "default")
+    : selectedOption?.tone;
+  const selectedIsWarning = selectedTone === "warning";
   const SelectedIcon = selectedOption?.icon;
-  const selectedLabel = selectedOption?.label ?? value;
-  const selectedCompactLabel = selectedOption?.compactLabel;
-  const selectedTitle = selectedOption?.description
-    ? `${label}: ${selectedLabel} - ${selectedOption.description}`
+  const selectedLabel = displayOverride?.label ?? selectedOption?.label ?? value;
+  const selectedCompactLabel =
+    displayOverride?.compactLabel ?? selectedOption?.compactLabel;
+  const selectedDescription =
+    displayOverride?.description ?? selectedOption?.description;
+  const selectedTitle = displayOverride?.title
+    ? displayOverride.title
+    : selectedDescription
+      ? `${label}: ${selectedLabel} - ${selectedDescription}`
     : `${label}: ${selectedLabel}`;
 
   // The trigger renders identically whether interactive or disabled — the only
@@ -188,8 +211,7 @@ export function OptionPicker<T extends string>({
           <span className="min-w-0 truncate">{selectedLabel}</span>
         )}
       </span>
-      {/* Disabled triggers drop the chevron entirely — there is no menu to open. */}
-      {disabled ? null : (
+      {disabled && !showChevronWhenDisabled ? null : (
         <Icon
           name="ChevronDown"
           className={cn(

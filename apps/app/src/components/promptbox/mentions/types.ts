@@ -3,6 +3,7 @@ import type {
   ProviderCommandOrigin,
   ProviderCommandSource,
 } from "@bb/server-contract";
+import type { PromptMentionCommandTrigger } from "@bb/domain";
 
 export type PromptPathMentionSource = "workspace" | "thread-storage";
 export type PromptPathMentionEntryKind = "file" | "directory";
@@ -69,11 +70,11 @@ export function toProviderCommandSuggestion(
 
 /**
  * A typeahead trigger the composer watches for. `@` opens the mention menu and
- * `/` opens the provider command menu. A thread is bound to one provider, so at
- * most one command trigger is ever active in a composer.
+ * the provider-owned command trigger opens the command menu. A thread is bound
+ * to one provider, so at most one command trigger is ever active in a composer.
  */
 export interface TypeaheadTrigger {
-  char: "@" | "/";
+  char: "@" | PromptMentionCommandTrigger;
   kind: "mention" | "command";
 }
 

@@ -9,9 +9,11 @@ import type {
 import {
   PromptBoxInternal,
   type HistoryConfig,
+  type PromptBoxAction,
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -26,6 +28,20 @@ export default {
 const noop = () => {};
 
 const mockExecution = makeExecutionControlsProps();
+const promptActions: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
+  { kind: "loop", text: CREATE_LOOP_PROMPT },
+];
 
 // ---------------------------------------------------------------------------
 // Voice fixtures — story-only PromptVoiceConfig values for the recording UX.
@@ -579,6 +595,36 @@ const projectCommandArgumentHintFixture = buildPromptPillsFixture(
   ],
 );
 
+const planGoalCommandPillsFixture = buildPromptPillsFixture(
+  "/plan clean up unused worktrees and /goal keep the review focused.",
+  [
+    {
+      token: "/plan",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "plan",
+        source: "command",
+        origin: "user",
+        label: "plan",
+        argumentHint: null,
+      },
+    },
+    {
+      token: "/goal",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "goal",
+        source: "command",
+        origin: "user",
+        label: "goal",
+        argumentHint: null,
+      },
+    },
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Story rows. Each row is its own controlled instance.
 // ---------------------------------------------------------------------------
@@ -758,6 +804,27 @@ function WithLiveSkillsRow() {
   );
 }
 
+function WithPromptActionsRow() {
+  const { value, mentionRanges, onChange } = useControlledValue("");
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder="Use the prompt actions button"
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      promptActions={promptActions}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function WithLiveMentionsRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   const [query, setQuery] = useState<string | null>(null);
@@ -913,6 +980,28 @@ export function AllPromptPills() {
   );
 }
 
+export function PromptActions() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="action menu"
+        hint="click the + button at the far-left of the prompt controls"
+      >
+        <WithPromptActionsRow />
+      </StoryRow>
+      <StoryRow
+        label="plan and goal pills"
+        hint="/plan and /goal render as command pills after insertion"
+      >
+        <PromptBoxStoryInstance
+          fixture={planGoalCommandPillsFixture}
+          placeholder="Plan or goal command pill"
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function Overview() {
   return (
     <StoryCard>
@@ -945,9 +1034,15 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="live skills"
-        hint="type $ then select a skill; argument hints stay out of the prompt text"
+        hint="type / then select a skill; argument hints stay out of the prompt text"
       >
         <WithLiveSkillsRow />
+      </StoryRow>
+      <StoryRow
+        label="prompt actions"
+        hint="the + action menu sits at the far-left of the prompt controls"
+      >
+        <WithPromptActionsRow />
       </StoryRow>
       <StoryRow
         label="live mentions"

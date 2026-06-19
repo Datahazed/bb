@@ -20,6 +20,7 @@ const EXISTING_EXECUTION_OPTIONS: SystemExecutionOptionsResponse = {
       id: "codex",
       displayName: "Codex",
       available: true,
+      composerActions: [{ kind: "skills", trigger: "/" }],
       capabilities: {
         supportsArchive: true,
         supportsRename: true,

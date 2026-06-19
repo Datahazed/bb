@@ -3,6 +3,7 @@ import type {
   ApprovalPendingInteractionResolution,
   JsonObject,
   OwnershipChangeOperationAction,
+  PromptInput,
   ProviderErrorInfo,
   ThreadEventFileChange,
   ThreadEventItemStatus,
@@ -61,6 +62,40 @@ interface ImageViewItemEventArgs {
   path?: string;
   seq: number;
   type: "item/completed" | "item/started";
+}
+
+interface PlanItemEventArgs {
+  itemId?: string;
+  seq: number;
+  text: string;
+}
+
+const planPromptInput: PromptInput[] = [
+  {
+    type: "text",
+    text: "/plan inspect the failing command",
+    mentions: [
+      {
+        start: 0,
+        end: 5,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ],
+  },
+];
+
+interface PlanDeltaEventArgs {
+  itemId?: string;
+  seq: number;
+  text: string;
 }
 
 interface TurnStartedEventArgs {
@@ -130,6 +165,7 @@ interface UserQuestionLifecycleEventArgs {
 }
 
 type BuildTimelineRowsThreadStatus = "active" | "idle";
+type TimelineConversationRow = Extract<TimelineRow, { kind: "conversation" }>;
 
 interface OwnershipOperationCase {
   action: OwnershipChangeOperationAction;
@@ -275,6 +311,53 @@ function imageViewItemEvent({
         type: "imageView",
         id: itemId,
         path,
+      },
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function planDeltaEvent({
+  itemId = "plan-1",
+  seq,
+  text,
+}: PlanDeltaEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/plan/delta",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      itemId,
+      delta: text,
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function planItemCompletedEvent({
+  itemId = "plan-1",
+  seq,
+  text,
+}: PlanItemEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/completed",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "plan",
+        id: itemId,
+        text,
       },
     },
     meta: {
@@ -689,6 +772,26 @@ function collectImageViewRows(
   return imageViewRows;
 }
 
+function collectConversationRows(
+  rows: readonly TimelineRow[],
+): TimelineConversationRow[] {
+  const conversationRows: TimelineConversationRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "conversation") {
+      conversationRows.push(row);
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      conversationRows.push(...collectConversationRows(row.children));
+      continue;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      conversationRows.push(...collectConversationRows(row.childRows));
+    }
+  }
+  return conversationRows;
+}
+
 function collectSystemRows(rows: readonly TimelineRow[]): TimelineSystemRow[] {
   const systemRows: TimelineSystemRow[] = [];
   for (const row of rows) {
@@ -718,6 +821,142 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("projects active Claude plan mode from an accepted plan command pill", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: planPromptInput,
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "active",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toEqual({
+      mode: "plan",
+      providerId: "claude-code",
+      prompt: "inspect the failing command",
+    });
+  });
+
+  it("projects active Codex plan mode from an accepted plan command pill", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: planPromptInput,
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "codex",
+        threadStatus: "active",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toEqual({
+      mode: "plan",
+      providerId: "codex",
+      prompt: "inspect the failing command",
+    });
+  });
+
+  it("does not project active plan mode from plain text", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "active",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toBeNull();
+  });
+
+  it("clears active Claude plan mode when the turn completes", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows([
+        event.clientTurnRequested({
+          requestId,
+          text: "/plan inspect the failing command",
+          input: planPromptInput,
+        }),
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: requestId }),
+        event.turnCompleted(),
+      ]),
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "idle",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activePromptMode).toBeNull();
+  });
+
   it("does not project thread-start provider-session markers as provisioning rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const providerSessionMarker = event.threadProvisioning({
@@ -998,6 +1237,29 @@ describe("buildThreadTimelineFromEvents", () => {
         status: "accepted",
       },
     });
+  });
+
+  it("renders completed provider plan items as assistant conversation text", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 0 }),
+      planDeltaEvent({ seq: 1, text: "Draft plan text" }),
+      planItemCompletedEvent({
+        seq: 2,
+        text: "Final plan text",
+      }),
+      turnCompletedEvent({ seq: 3 }),
+    ]);
+
+    const assistantRows = collectConversationRows(rows).filter(
+      (row) => row.role === "assistant",
+    );
+    expect(assistantRows).toEqual([
+      expect.objectContaining({
+        text: "Final plan text",
+        sourceSeqStart: 1,
+        sourceSeqEnd: 2,
+      }),
+    ]);
   });
 
   it.each(ownershipOperationCases)(

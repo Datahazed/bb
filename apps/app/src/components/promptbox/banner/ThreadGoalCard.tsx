@@ -52,6 +52,8 @@ export function ThreadGoalCard({
   if (!goal || goal.status !== "active") {
     return null;
   }
+  const objective = goal.objective.trim();
+  const hasObjective = objective.length > 0;
   return (
     <PromptStackCard
       ariaLabel="Goal"
@@ -64,7 +66,7 @@ export function ThreadGoalCard({
           id={TOGGLE_ID}
           aria-expanded={isExpanded}
           aria-controls={BODY_ID}
-          aria-label={`Goal: ${goal.objective}`}
+          aria-label="Goal"
           onClick={onToggle}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
         >
@@ -73,12 +75,21 @@ export function ThreadGoalCard({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
-          <span
-            className="min-w-0 flex-1 truncate text-left"
-            title={goal.objective}
-          >
-            {goal.objective}
-          </span>
+          {hasObjective ? (
+            <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+              <span className="shrink-0 text-muted-foreground">Goal:</span>
+              <span
+                className="min-w-0 truncate font-medium text-foreground opacity-70"
+                title={objective}
+              >
+                {objective}
+              </span>
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-left font-medium opacity-70">
+              Goal
+            </span>
+          )}
           <Icon
             name="ChevronDown"
             className={cn(

@@ -37,11 +37,20 @@ export interface PermissionModePickerProps {
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction. Defaults to Radix's true; pass false in stories. */
   modal?: boolean;
+  /** Temporary effective mode display; does not change the stored permission value. */
+  displayOverride?: {
+    label: string;
+    compactLabel?: string;
+    description?: string;
+    title?: string;
+  };
   /**
    * Render the picker as a non-interactive, dimmed label (read-only surfaces,
    * e.g. the side chat). The selected mode still shows; the menu never opens.
    */
   disabled?: boolean;
+  /** Keep the chevron visible while disabled, used for plan-mode permission locks. */
+  showChevronWhenDisabled?: boolean;
 }
 
 /**
@@ -60,7 +69,9 @@ export function PermissionModePicker({
   muted = true,
   defaultOpen,
   modal,
+  displayOverride,
   disabled,
+  showChevronWhenDisabled,
 }: PermissionModePickerProps) {
   const compactOptions = useMemo(
     () => addPermissionModeCompactLabels(options),
@@ -81,7 +92,9 @@ export function PermissionModePicker({
       defaultOpen={defaultOpen}
       modal={modal}
       align="end"
+      displayOverride={displayOverride}
       disabled={disabled}
+      showChevronWhenDisabled={showChevronWhenDisabled}
     />
   );
 }

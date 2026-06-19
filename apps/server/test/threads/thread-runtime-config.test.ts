@@ -15,6 +15,7 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
+import { TERMINAL_TOOL_NAMES } from "../../src/services/terminals/terminal-tools.js";
 import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
@@ -30,6 +31,15 @@ interface WriteRuntimeSkillArgs {
   name: string;
   rootPath: string;
 }
+
+const TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER = [
+  TERMINAL_TOOL_NAMES.list,
+  TERMINAL_TOOL_NAMES.start,
+  TERMINAL_TOOL_NAMES.output,
+  TERMINAL_TOOL_NAMES.send,
+  TERMINAL_TOOL_NAMES.resize,
+  TERMINAL_TOOL_NAMES.stop,
+];
 
 async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
   const sourceRootPath = path.join(args.rootPath, args.name);
@@ -486,6 +496,69 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("sets Claude Code native plan mode when the prompt starts from a plan command pill", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-claude-plan",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+      const input = [
+        {
+          type: "text" as const,
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command" as const,
+                trigger: "/" as const,
+                name: "plan",
+                source: "command" as const,
+                origin: "user" as const,
+                label: "plan",
+                argumentHint: null,
+              },
+            },
+          ],
+        },
+      ];
+
+      const command = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution: {
+          model: "claude-sonnet-4-6",
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        fork: null,
+        permissionEscalation: "ask",
+        input,
+        projectId: project.id,
+        providerId: "claude-code",
+        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+
+      expect(command.input).toEqual(input);
+      expect(command.options.claudeCodePermissionMode).toBe("plan");
+    });
+  });
+
   it("consumes the sticky thread execution override across turns without a request value", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -637,7 +710,9 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "You are working inside bb, an agentic IDE",
       );
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.dynamicTools.map((tool) => tool.name)).toEqual(
+        TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER,
+      );
     });
   });
 
@@ -679,7 +754,9 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.dynamicTools.map((tool) => tool.name)).toEqual(
+        TERMINAL_TOOL_NAMES_IN_RUNTIME_ORDER,
+      );
       expect(runtimeConfig.instructions).not.toContain(
         "bb_send_to_main_thread",
       );
