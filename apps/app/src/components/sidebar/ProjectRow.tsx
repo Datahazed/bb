@@ -410,9 +410,7 @@ function resolveThreadDropTarget(
   const fromParentKey = lookup.parentKeyByItemId.get(activeId);
   if (activeKind !== "thread" || !fromParentKey) return null;
 
-  let toParentKey = overKind
-    ? lookup.parentKeyByItemId.get(overId)
-    : undefined;
+  let toParentKey = overKind ? lookup.parentKeyByItemId.get(overId) : undefined;
   if (!overKind && lookup.folderPathByParentKey.has(overId)) {
     // Dropping on a folder's child area (the droppable parent).
     toParentKey = overId;
@@ -436,7 +434,9 @@ function useManualThreadTreeDnd({
   const updateThread = useUpdateThread();
   const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
   const activeThreadRef = useRef<ThreadListEntry | null>(null);
-  const [dragPreview, setDragPreview] = useState<FolderDragPreview | null>(null);
+  const [dragPreview, setDragPreview] = useState<FolderDragPreview | null>(
+    null,
+  );
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -2161,61 +2161,42 @@ function ProjectRowComponent({
                   Open project settings
                 </TooltipContent>
               </Tooltip>
-            ) : null}
-            <span
-              data-sidebar-hover-actions-open={
-                isActionsOpen ? "true" : undefined
-              }
-              data-sidebar-hover-actions-mobile={
-                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-              }
-              className={cn(
-                SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-10 inline-flex shrink-0 items-center",
-                SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-              )}
-            >
-              <ProjectActionsMenu
-                project={project}
-                onOpenChange={setIsDropdownActionsOpen}
-                triggerClassName={cn(
-                  "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+            ) : (
+              <span
+                data-sidebar-hover-actions-open={
+                  isActionsOpen ? "true" : undefined
+                }
+                data-sidebar-hover-actions-mobile={
+                  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+                }
+                className={cn(
+                  SIDEBAR_HOVER_ACTIONS_CLASS,
+                  "relative z-10 inline-flex shrink-0 items-center",
+                  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                 )}
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {onCreateProjectThread ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`New thread in ${project.name}`}
-                      title={undefined}
-                      disabled={!onCreateProjectThread}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleCreateThread();
-                      }}
-                      className={cn(
-                        "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                      )}
-                    >
-                      <Icon
-                        name="MessageSquarePlus"
-                        className={COARSE_POINTER_ICON_SIZE_CLASS}
-                      />
-                    </Button>
-                  ) : (
-                    <span className="inline-flex">
+              >
+                <ProjectActionsMenu
+                  project={project}
+                  onOpenChange={setIsDropdownActionsOpen}
+                  triggerClassName={cn(
+                    "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  )}
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {onCreateProjectThread ? (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         aria-label={`New thread in ${project.name}`}
                         title={undefined}
-                        disabled
+                        disabled={!onCreateProjectThread}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCreateThread();
+                        }}
                         className={cn(
                           "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -2226,12 +2207,32 @@ function ProjectRowComponent({
                           className={COARSE_POINTER_ICON_SIZE_CLASS}
                         />
                       </Button>
-                    </span>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent side="bottom">New thread</TooltipContent>
-              </Tooltip>
-            </span>
+                    ) : (
+                      <span className="inline-flex">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`New thread in ${project.name}`}
+                          title={undefined}
+                          disabled
+                          className={cn(
+                            "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                          )}
+                        >
+                          <Icon
+                            name="MessageSquarePlus"
+                            className={COARSE_POINTER_ICON_SIZE_CLASS}
+                          />
+                        </Button>
+                      </span>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">New thread</TooltipContent>
+                </Tooltip>
+              </span>
+            )}
           </SidebarStickyTier>
         </ProjectActionsContextMenu>
 
