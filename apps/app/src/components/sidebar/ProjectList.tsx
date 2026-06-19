@@ -499,7 +499,7 @@ function SidebarOrganizeMenuOption({
 // Shared display menu rendered on both the Projects and Threads section
 // headers. The organization mode is global, so either header's menu drives the
 // whole sidebar.
-function SidebarViewOptionsMenu({
+export function SidebarViewOptionsMenu({
   open,
   onOpenChange,
   onOrganizationModeSelect,
