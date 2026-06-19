@@ -20,6 +20,7 @@ import type {
   CreateProjectRequest,
   CreateThreadFolderRequest,
   CreateQueuedMessageRequest,
+  DeleteThreadFolderRequest,
   DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
   EnvironmentActionRequest,
@@ -51,6 +52,7 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadFolderMutationResponse,
   ThreadFolderResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
@@ -72,6 +74,7 @@ import type {
   CloseThreadTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
+  UpdateThreadFolderRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
   UpdateThreadTerminalRequest,
@@ -487,6 +490,22 @@ export async function createThreadFolder(
 ): Promise<ThreadFolderResponse> {
   return request<ThreadFolderResponse>(
     apiClient["thread-folders"].$post({ json: req }),
+  );
+}
+
+export async function updateThreadFolder(
+  req: UpdateThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$patch({ json: req }),
+  );
+}
+
+export async function deleteThreadFolder(
+  req: DeleteThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$delete({ json: req }),
   );
 }
 

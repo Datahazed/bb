@@ -1,4 +1,9 @@
-import { createThreadFolder, normalizeThreadFolderPath } from "@bb/db";
+import {
+  createThreadFolder,
+  deleteThreadFolder,
+  normalizeThreadFolderPath,
+  renameThreadFolder,
+} from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -10,7 +15,7 @@ import { ApiError } from "../errors.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 export function registerThreadFolderRoutes(app: Hono, deps: AppDeps): void {
-  const { post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threadFolders;
@@ -31,5 +36,30 @@ export function registerThreadFolderRoutes(app: Hono, deps: AppDeps): void {
       }),
       201,
     );
+  });
+
+  patch(routes.update, (context, payload) => {
+    const path = normalizeThreadFolderPath(payload.path);
+    const newPath = normalizeThreadFolderPath(payload.newPath);
+    if (!path || !newPath) {
+      throw new ApiError(400, "invalid_request", "Folder name cannot be empty");
+    }
+    const result = renameThreadFolder(deps.db, deps.hub, { path, newPath });
+    if (!result) {
+      throw new ApiError(404, "folder_not_found", "Folder not found");
+    }
+    return context.json(result);
+  });
+
+  del(routes.delete, (context, payload) => {
+    const path = normalizeThreadFolderPath(payload.path);
+    if (!path) {
+      throw new ApiError(400, "invalid_request", "Folder name cannot be empty");
+    }
+    const result = deleteThreadFolder(deps.db, deps.hub, { path });
+    if (!result) {
+      throw new ApiError(404, "folder_not_found", "Folder not found");
+    }
+    return context.json(result);
   });
 }

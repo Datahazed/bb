@@ -21,13 +21,18 @@ export type {
 
 export {
   createThreadFolder,
+  deleteThreadFolder,
   ensureThreadFolderPath,
   getThreadFolderByPath,
   listThreadFolders,
   normalizeThreadFolderPath,
+  renameThreadFolder,
 } from "./thread-folders.js";
 export type {
   CreateThreadFolderInput,
+  DeleteThreadFolderInput,
+  RenameThreadFolderInput,
+  ThreadFolderMutationResult,
   ThreadFolderRow,
 } from "./thread-folders.js";
 

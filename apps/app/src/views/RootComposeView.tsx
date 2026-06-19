@@ -82,6 +82,17 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
+function readFolderPathFromLocationState(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+  if (!("folderPath" in state) || typeof state.folderPath !== "string") {
+    return null;
+  }
+  const folderPath = state.folderPath.trim();
+  return folderPath.length > 0 ? folderPath : null;
+}
+
 type RootComposeViewProps =
   | {
       surface: "page";
@@ -352,6 +363,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
+  const [rootComposeFolderPath, setRootComposeFolderPath] = useState<
+    string | null
+  >(() => readFolderPathFromLocationState(location.state));
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const quickCreateProject = useQuickCreateProjectController();
   const sidebarNavigationQuery = useSidebarNavigation();
@@ -387,6 +401,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
+  useEffect(() => {
+    setRootComposeFolderPath(readFolderPathFromLocationState(location.state));
+  }, [location.key, location.state]);
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
@@ -825,6 +842,9 @@ export function RootComposeView(props: RootComposeViewProps) {
                 projectId,
                 providerId: selectedProviderId,
                 model: selectedThreadModel,
+                ...(rootComposeFolderPath
+                  ? { folderPath: rootComposeFolderPath }
+                  : {}),
                 ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
                 reasoningLevel,
                 permissionMode,
@@ -839,6 +859,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
       setForkSeed(null);
+      setRootComposeFolderPath(null);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (props.surface === "popout") {
         props.onThreadCreated({
@@ -868,6 +889,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     props,
     promptDraft,
     reasoningLevel,
+    rootComposeFolderPath,
     selectedEnvironment,
     selectedProviderId,
     selectedThreadModel,

@@ -1,7 +1,21 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CreateThreadFolderRequest } from "@bb/server-contract";
+import type {
+  CreateThreadFolderRequest,
+  DeleteThreadFolderRequest,
+  UpdateThreadFolderRequest,
+} from "@bb/server-contract";
 import * as api from "@/lib/api";
-import { invalidateProjectListQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  invalidateProjectListQueries,
+  invalidateThreadListQueries,
+} from "../cache-owners/mutation-cache-effects";
+
+function invalidateThreadFolderQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  invalidateProjectListQueries({ queryClient });
+  invalidateThreadListQueries({ queryClient });
+}
 
 export function useCreateThreadFolder() {
   const queryClient = useQueryClient();
@@ -13,7 +27,37 @@ export function useCreateThreadFolder() {
     mutationFn: (request: CreateThreadFolderRequest) =>
       api.createThreadFolder(request),
     onSuccess: () => {
-      invalidateProjectListQueries({ queryClient });
+      invalidateThreadFolderQueries(queryClient);
+    },
+  });
+}
+
+export function useUpdateThreadFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to rename folder.",
+    },
+    mutationFn: (request: UpdateThreadFolderRequest) =>
+      api.updateThreadFolder(request),
+    onSuccess: () => {
+      invalidateThreadFolderQueries(queryClient);
+    },
+  });
+}
+
+export function useDeleteThreadFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to remove folder.",
+    },
+    mutationFn: (request: DeleteThreadFolderRequest) =>
+      api.deleteThreadFolder(request),
+    onSuccess: () => {
+      invalidateThreadFolderQueries(queryClient);
     },
   });
 }

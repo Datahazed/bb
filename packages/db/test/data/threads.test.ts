@@ -30,7 +30,9 @@ import {
 } from "../../src/data/threads.js";
 import {
   createThreadFolder,
+  deleteThreadFolder,
   listThreadFolders,
+  renameThreadFolder,
 } from "../../src/data/thread-folders.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -687,6 +689,91 @@ describe("threads", () => {
       (left.projectId ?? "").localeCompare(right.projectId ?? ""),
     );
     expect(folders).toEqual(expectedFolders);
+  });
+
+  it("renames thread folders and moves descendant threads", () => {
+    const { db, host, project } = setup();
+    const { project: otherProject } = createProject(db, noopNotifier, {
+      name: "other-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
+    });
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const firstThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    const secondThread = createThread(db, noopNotifier, {
+      projectId: otherProject.id,
+      providerId: "codex",
+      folderPath: "Work",
+    });
+    createThreadFolder(db, noopNotifier, { path: "Work/Empty" });
+
+    const result = renameThreadFolder(db, spy, {
+      path: "Work",
+      newPath: "Archive",
+    });
+
+    expect(result).toEqual({ path: "Archive", updatedThreadCount: 2 });
+    expect(getThread(db, firstThread.id)?.folderPath).toBe("Archive/Q3");
+    expect(getThread(db, secondThread.id)?.folderPath).toBe("Archive");
+    expect(
+      listThreadFolders(db)
+        .map((folder) => ({
+          path: folder.path,
+          projectId: folder.projectId,
+        }))
+        .sort((left, right) =>
+          `${left.projectId ?? ""}:${left.path}`.localeCompare(
+            `${right.projectId ?? ""}:${right.path}`,
+          ),
+        ),
+    ).toEqual(
+      [
+        { path: "Archive", projectId: null },
+        { path: "Archive/Empty", projectId: null },
+        { path: "Archive", projectId: project.id },
+        { path: "Archive/Q3", projectId: project.id },
+        { path: "Archive", projectId: otherProject.id },
+      ].sort((left, right) =>
+        `${left.projectId ?? ""}:${left.path}`.localeCompare(
+          `${right.projectId ?? ""}:${right.path}`,
+        ),
+      ),
+    );
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      firstThread.id,
+      ["title-changed"],
+      { projectId: project.id },
+    );
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      secondThread.id,
+      ["title-changed"],
+      { projectId: otherProject.id },
+    );
+  });
+
+  it("removes thread folders and clears descendant thread folder paths", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    createThreadFolder(db, noopNotifier, { path: "Work/Empty" });
+
+    const result = deleteThreadFolder(db, noopNotifier, { path: "Work" });
+
+    expect(result).toEqual({ path: "Work", updatedThreadCount: 1 });
+    expect(getThread(db, thread.id)?.folderPath).toBeNull();
+    expect(listThreadFolders(db)).toEqual([]);
   });
 
   it("notifies when a thread parent changes", () => {

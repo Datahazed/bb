@@ -1,11 +1,24 @@
 import {
   memo,
   useCallback,
+  useState,
   type CSSProperties,
   type MouseEventHandler,
 } from "react";
+import { Button } from "@/components/ui/button.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -13,7 +26,10 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import {
+  SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@/lib/utils";
@@ -44,6 +60,9 @@ interface SidebarFolderRowProps {
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
+  onCreateThread?: () => void;
+  onRename?: () => void;
+  onRemove?: () => void;
 }
 
 // The "Work › Q3" disclosure header for a folder. Not a thread: clicking
@@ -59,8 +78,13 @@ function SidebarFolderRowComponent({
   isDropTargetActive = false,
   isCollapsed,
   onToggleCollapsed,
+  onCreateThread,
+  onRename,
+  onRemove,
   stickyLevel,
 }: SidebarFolderRowProps) {
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const hasActions = Boolean(onCreateThread || onRename || onRemove);
   // Collapsed: the header speaks for its hidden descendants through one glyph
   // (pending > working > unread). Expanded: descendants show their own glyphs.
   const showRollupGlyph =
@@ -75,8 +99,7 @@ function SidebarFolderRowComponent({
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     "cursor-pointer",
     dragBindings && !dragBindings.disabled && "select-none",
-    isDropTargetActive &&
-      "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-sidebar-ring",
+    isDropTargetActive && "bg-sidebar-accent text-sidebar-accent-foreground",
   );
   const style: CSSProperties = {
     paddingLeft: getSidebarThreadRowPaddingLeft(depth),
@@ -90,6 +113,12 @@ function SidebarFolderRowComponent({
       event.stopPropagation();
     },
     [consumeClickSuppression],
+  );
+  const stopActionsClick = useCallback<MouseEventHandler<HTMLElement>>(
+    (event) => {
+      event.stopPropagation();
+    },
+    [],
   );
   const content = (
     <>
@@ -132,11 +161,7 @@ function SidebarFolderRowComponent({
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        {isDropTargetActive ? (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-end pr-1 text-xs font-medium text-sidebar-accent-foreground">
-            Drop inside
-          </span>
-        ) : showRollupGlyph ? (
+        {showRollupGlyph ? (
           <span
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -152,6 +177,64 @@ function SidebarFolderRowComponent({
           </span>
         ) : null}
       </span>
+      {hasActions ? (
+        <span
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
+          className={cn(
+            SIDEBAR_HOVER_ACTIONS_CLASS,
+            "relative z-10 inline-flex shrink-0 items-center",
+            SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+          )}
+          onClick={stopActionsClick}
+        >
+          <DropdownMenu onOpenChange={setIsActionsOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`${pathLabel} folder actions`}
+                    title={undefined}
+                    className={cn(
+                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                    )}
+                  >
+                    <Icon
+                      name="MoreHorizontal"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Folder actions</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end" className="w-44">
+              {onCreateThread ? (
+                <DropdownMenuItem onSelect={onCreateThread}>
+                  New thread
+                </DropdownMenuItem>
+              ) : null}
+              {onRename ? (
+                <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
+              ) : null}
+              {onRemove ? (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={onRemove}
+                >
+                  Remove
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+      ) : null}
     </>
   );
 

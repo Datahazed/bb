@@ -75,6 +75,35 @@ export type CreateThreadFolderRequest = z.infer<
   typeof createThreadFolderRequestSchema
 >;
 
+export const updateThreadFolderRequestSchema = z
+  .object({
+    path: z.string().min(1),
+    newPath: z.string().min(1),
+  })
+  .strict();
+export type UpdateThreadFolderRequest = z.infer<
+  typeof updateThreadFolderRequestSchema
+>;
+
+export const deleteThreadFolderRequestSchema = z
+  .object({
+    path: z.string().min(1),
+  })
+  .strict();
+export type DeleteThreadFolderRequest = z.infer<
+  typeof deleteThreadFolderRequestSchema
+>;
+
+export const threadFolderMutationResponseSchema = z
+  .object({
+    path: z.string().min(1),
+    updatedThreadCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadFolderMutationResponse = z.infer<
+  typeof threadFolderMutationResponseSchema
+>;
+
 export const reorderProjectRequestSchema = z.object({
   previousProjectId: z.string().min(1).nullable(),
   nextProjectId: z.string().min(1).nullable(),
