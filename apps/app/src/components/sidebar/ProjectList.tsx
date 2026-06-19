@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -89,12 +89,19 @@ import {
   collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
   sidebarChronologicalSortAtom,
+  sidebarCollapsedFoldersAtom,
+  sidebarGroupByAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
+import { buildFolderKey, parseThreadFolderPath } from "./folderPath";
+import {
+  CHRONOLOGICAL_CONTAINER_ID,
+  PINNED_CONTAINER_ID,
+} from "./projectThreadGroups";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -503,6 +510,7 @@ function SidebarViewOptionsMenu({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
+  const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -528,7 +536,7 @@ function SidebarViewOptionsMenu({
         mobileTitle="Sidebar display options"
       >
         <SidebarOrganizeMenuSectionLabel className="pt-1.5">
-          Group by
+          Organize by
         </SidebarOrganizeMenuSectionLabel>
         <SidebarOrganizeMenuOption
           label="Project"
@@ -566,6 +574,26 @@ function SidebarViewOptionsMenu({
           onSelect={(event) => {
             event.preventDefault();
             setChronologicalSort("created");
+          }}
+        />
+        <DropdownMenuSeparator />
+        <SidebarOrganizeMenuSectionLabel className="pt-2">
+          Group by
+        </SidebarOrganizeMenuSectionLabel>
+        <SidebarOrganizeMenuOption
+          label="None"
+          selected={groupBy === "none"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setGroupBy("none");
+          }}
+        />
+        <SidebarOrganizeMenuOption
+          label="Folder"
+          selected={groupBy === "folder"}
+          onSelect={(event) => {
+            event.preventDefault();
+            setGroupBy("folder");
           }}
         />
       </DropdownMenuContent>
@@ -1162,6 +1190,8 @@ function ProjectListComponent({
   );
   const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
   const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
+  const [groupBy] = useAtom(sidebarGroupByAtom);
+  const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       chronologicalSort === "created"
@@ -1219,8 +1249,8 @@ function ProjectListComponent({
     setCollapsedSidebarSectionIdList,
   ]);
   const pinnedSidebarState = useMemo(
-    () => buildPinnedSidebarState({ threads }),
-    [threads],
+    () => buildPinnedSidebarState({ threads, groupBy }),
+    [threads, groupBy],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
   const visibleSidebarSectionOrder = useMemo(
@@ -1274,6 +1304,32 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
+    // Under Group by: Folder, also un-collapse the selected thread's folder
+    // ancestors so it can't hide behind a collapsed folder. The folder key is
+    // scoped to whichever section renders the thread (pinned / chronological /
+    // its project), matching how the assembly sites namespace folder keys.
+    if (groupBy === "folder") {
+      const { folders } = parseThreadFolderPath(selectedThread.title ?? "");
+      if (folders.length > 0) {
+        const folderContainerId = pinnedSidebarState.effectivePinnedThreadIds.has(
+          selectedThreadId,
+        )
+          ? PINNED_CONTAINER_ID
+          : organizationMode === "chronological"
+            ? CHRONOLOGICAL_CONTAINER_ID
+            : selectedThread.projectId;
+        const folderKeysToExpand = new Set<string>();
+        for (let depth = 1; depth <= folders.length; depth += 1) {
+          folderKeysToExpand.add(
+            buildFolderKey(folderContainerId, folders.slice(0, depth)),
+          );
+        }
+        setCollapsedFolderList((current) =>
+          removeCollapsedIds(current, folderKeysToExpand),
+        );
+      }
+    }
+
     if (pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId)) {
       return;
     }
@@ -1292,9 +1348,12 @@ function ProjectListComponent({
       removeCollapsedIds(current, new Set(["projects"])),
     );
   }, [
+    groupBy,
+    organizationMode,
     pinnedSidebarState.effectivePinnedThreadIds,
     selectedThreadId,
     setCollapsedEnvironmentIdList,
+    setCollapsedFolderList,
     setCollapsedProjectIdList,
     setCollapsedSidebarSectionIdList,
     setCollapsedThreadIdList,
@@ -1469,6 +1528,7 @@ function ProjectListComponent({
   const pinnedSectionContent = (
     <PinnedThreadTree
       rootNodes={pinnedSidebarState.rootNodes}
+      rootItems={pinnedSidebarState.rootItems}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}

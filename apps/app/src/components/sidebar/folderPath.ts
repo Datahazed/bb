@@ -52,6 +52,15 @@ export function titleCreatesFolder(title: string): boolean {
   return parseThreadFolderPath(title).folders.length > 0;
 }
 
+// Human-readable folder path, used for tooltips, accessible names, and the
+// rename preview ("Work › Q3 › Planning"). The visible separator differs from
+// the stored "/" so a path reads as breadcrumbs, not a literal title.
+export const FOLDER_PATH_SEPARATOR = " › ";
+
+export function formatFolderPathLabel(segments: readonly string[]): string {
+  return segments.join(FOLDER_PATH_SEPARATOR);
+}
+
 // Stable identity for a folder within a section. `containerId` is the owner of
 // the section — a `proj_*` id for project sections, or a fixed sentinel for the
 // global sections — so "Work" in project A never collides with "Work" in

@@ -1,18 +1,25 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { compareCodepoint } from "@/lib/codepoint-compare";
 import {
+  bucketIntoFolders,
   buildProjectThreadGroups,
+  PINNED_CONTAINER_ID,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
+import type { SidebarGroupBy } from "./sidebarCollapsedAtoms";
 
 export interface PinnedSidebarState {
   effectivePinnedThreadIds: Set<string>;
   rootNodes: ProjectThreadNode[];
+  // Folder-aware render list: flat thread items under Group by: None, folded
+  // into folders (ordered by comparePinnedRoots) under Group by: Folder.
+  rootItems: ProjectThreadItem[];
 }
 
 interface BuildPinnedSidebarStateArgs {
   threads: readonly ThreadListEntry[];
+  groupBy?: SidebarGroupBy;
 }
 
 function compareByPinnedFallback(
@@ -76,13 +83,23 @@ interface AddDescendantThreadIdsArgs {
 function collectRootNodes(
   items: readonly ProjectThreadItem[],
 ): ProjectThreadNode[] {
-  return items.flatMap((item) =>
-    item.kind === "thread" ? [item.node] : item.group.nodes,
-  );
+  return items.flatMap((item) => {
+    switch (item.kind) {
+      case "thread":
+        return [item.node];
+      case "environment":
+        return item.group.nodes;
+      case "folder":
+        // Pinned flattens before folding, so folders never reach here; recurse
+        // to keep the function total.
+        return collectRootNodes(item.group.items);
+    }
+  });
 }
 
 export function buildPinnedSidebarState({
   threads,
+  groupBy,
 }: BuildPinnedSidebarStateArgs): PinnedSidebarState {
   const explicitlyPinnedThreads = threads.filter(
     (thread) => thread.pinnedAt !== null,
@@ -115,12 +132,28 @@ export function buildPinnedSidebarState({
   const effectivePinnedThreads = threads.filter((thread) =>
     effectivePinnedThreadIds.has(thread.id),
   );
-  const rootItems = buildProjectThreadGroups(effectivePinnedThreads);
-  const rootNodes = collectRootNodes(rootItems);
+  const projectItems = buildProjectThreadGroups(effectivePinnedThreads);
+  const rootNodes = collectRootNodes(projectItems);
   rootNodes.sort((left, right) => comparePinnedRoots(left.thread, right.thread));
+
+  // Pinned has its own root order (pinSortKey via comparePinnedRoots), never the
+  // sidebar sort. Fold into folders using that same comparator so folders order
+  // by their representative pinned descendant; Group by: None keeps the flat list.
+  const sortedThreadItems = rootNodes.map(
+    (node): ProjectThreadItem => ({ kind: "thread", node }),
+  );
+  const rootItems =
+    groupBy === "folder"
+      ? bucketIntoFolders(
+          sortedThreadItems,
+          PINNED_CONTAINER_ID,
+          (left, right) => comparePinnedRoots(left, right),
+        )
+      : sortedThreadItems;
 
   return {
     effectivePinnedThreadIds,
     rootNodes,
+    rootItems,
   };
 }

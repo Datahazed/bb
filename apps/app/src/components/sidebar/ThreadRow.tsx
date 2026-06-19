@@ -80,6 +80,14 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
+  // Visible row text. Inside a folder this is the leaf ("Planning"); otherwise
+  // it is the full title (default). The folder path is hidden visually but kept
+  // in `accessibleTitle`.
+  displayTitle?: string;
+  // Accessible name + hover tooltip. Inside a folder this is the full path
+  // ("Work › Q3 › Planning") so two same-leaf threads stay distinguishable;
+  // otherwise it defaults to the full title.
+  accessibleTitle?: string;
 }
 
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
@@ -239,6 +247,8 @@ function ThreadRowComponent({
   hasComposerDraft,
   onProjectSelect,
   options,
+  displayTitle,
+  accessibleTitle,
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
@@ -252,6 +262,9 @@ function ThreadRowComponent({
   const unreadBadgeTone: SidebarUnreadDotTone =
     showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
+  // Inside a folder the row shows the leaf but keeps the full path for a11y.
+  const visibleTitle = displayTitle ?? threadTitle;
+  const labelTitle = accessibleTitle ?? threadTitle;
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
@@ -275,8 +288,8 @@ function ThreadRowComponent({
   const trailingUnreadBadgeTone: SidebarUnreadDotTone =
     hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
   const linkLabel = hasComposerDraft
-    ? `Open ${threadTitle} (unsubmitted draft)`
-    : `Open ${threadTitle}`;
+    ? `Open ${labelTitle} (unsubmitted draft)`
+    : `Open ${labelTitle}`;
   const linkTitle = linkLabel;
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
@@ -320,7 +333,7 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate">{threadTitle}</span>
+        <span className="min-w-0 truncate">{visibleTitle}</span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}

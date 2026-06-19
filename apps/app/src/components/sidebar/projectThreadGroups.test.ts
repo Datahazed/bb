@@ -1,9 +1,11 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  bucketIntoFolders,
   buildChronologicalThreadList,
   buildProjectThreadGroups,
   compareByCreatedAtDescending,
+  compareStandardThreads,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
@@ -12,7 +14,8 @@ type ThreadListEntryOverrides = Partial<ThreadListEntry>;
 type TreeSummary =
   | string
   | { id: string; children: TreeSummary[] }
-  | { env: string; threads: TreeSummary[] };
+  | { env: string; threads: TreeSummary[] }
+  | { folder: string; items: TreeSummary[] };
 
 function createThread(
   overrides: ThreadListEntryOverrides = {},
@@ -62,14 +65,22 @@ function summarizeNode(node: ProjectThreadNode): TreeSummary {
 }
 
 function summarizeItems(items: readonly ProjectThreadItem[]): TreeSummary[] {
-  return items.map((item) =>
-    item.kind === "thread"
-      ? summarizeNode(item.node)
-      : {
+  return items.map((item) => {
+    switch (item.kind) {
+      case "thread":
+        return summarizeNode(item.node);
+      case "environment":
+        return {
           env: item.group.environmentId,
           threads: item.group.nodes.map(summarizeNode),
-        },
-  );
+        };
+      case "folder":
+        return {
+          folder: item.group.key,
+          items: summarizeItems(item.group.items),
+        };
+    }
+  });
 }
 
 function findNode(
@@ -77,6 +88,13 @@ function findNode(
   threadId: string,
 ): ProjectThreadNode | null {
   for (const item of items) {
+    if (item.kind === "folder") {
+      const folderNode = findNode(item.group.items, threadId);
+      if (folderNode) {
+        return folderNode;
+      }
+      continue;
+    }
     const nodes = item.kind === "thread" ? [item.node] : item.group.nodes;
     for (const node of nodes) {
       if (node.thread.id === threadId) {
@@ -438,5 +456,194 @@ describe("buildProjectThreadGroups", () => {
       "manager-new",
       "manager-old",
     ]);
+  });
+});
+
+const FOLDER_OPTIONS = { groupBy: "folder", containerId: "proj_1" } as const;
+
+describe("folder bucketing (Group by: Folder)", () => {
+  it("nests threads into folders derived from their titles, folders above loose threads", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({ id: "a", title: "Work/Q3/Plan" }),
+        createThread({ id: "b", title: "Work/Q3/Notes" }),
+        createThread({ id: "c", title: "Work/Q4" }),
+        createThread({ id: "d", title: "Standalone" }),
+      ],
+      compareStandardThreads,
+      FOLDER_OPTIONS,
+    );
+
+    // Same idle/attention threads tie-break on codepoint id; folders render as a
+    // block above the loose "Standalone" thread.
+    expect(summarizeItems(items)).toEqual([
+      {
+        folder: "proj_1::Work",
+        items: [
+          { folder: "proj_1::Work/Q3", items: ["a", "b"] },
+          "c",
+        ],
+      },
+      "d",
+    ]);
+  });
+
+  it("keeps a folder thread's own children nested under it and ignores their slashes", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({ id: "parent", title: "Work/Project" }),
+        createThread({
+          id: "child",
+          parentThreadId: "parent",
+          title: "Ignored/Child/Path",
+        }),
+      ],
+      compareStandardThreads,
+      FOLDER_OPTIONS,
+    );
+
+    // Only the top-level "parent" forms a folder; the child stays nested under
+    // it and its own "/" does not create a folder.
+    expect(summarizeItems(items)).toEqual([
+      {
+        folder: "proj_1::Work",
+        items: [{ id: "parent", children: ["child"] }],
+      },
+    ]);
+  });
+
+  it("places a worktree environment group inside a folder by its representative", () => {
+    const items = buildProjectThreadGroups(
+      [
+        createThread({
+          id: "w1",
+          title: "Work/Alpha",
+          environmentId: "env_shared",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+        createThread({
+          id: "w2",
+          title: "Work/Beta",
+          environmentId: "env_shared",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+      ],
+      compareStandardThreads,
+      FOLDER_OPTIONS,
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      {
+        folder: "proj_1::Work",
+        items: [{ env: "env_shared", threads: ["w1", "w2"] }],
+      },
+    ]);
+  });
+
+  it("orders folders by their representative descendant under both comparators", () => {
+    const threads = [
+      createThread({
+        id: "old-active",
+        title: "FolderA/x",
+        status: "active",
+        createdAt: 10,
+        latestAttentionAt: 5,
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      }),
+      createThread({
+        id: "new-idle",
+        title: "FolderB/y",
+        status: "idle",
+        createdAt: 50,
+        latestAttentionAt: 5,
+      }),
+    ];
+
+    // Standard comparator pins the active folder's representative first.
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups(threads, compareStandardThreads, FOLDER_OPTIONS),
+      ),
+    ).toEqual([
+      { folder: "proj_1::FolderA", items: ["old-active"] },
+      { folder: "proj_1::FolderB", items: ["new-idle"] },
+    ]);
+
+    // Created comparator ignores status and ranks the newer createdAt first.
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups(
+          threads,
+          compareByCreatedAtDescending,
+          FOLDER_OPTIONS,
+        ),
+      ),
+    ).toEqual([
+      { folder: "proj_1::FolderB", items: ["new-idle"] },
+      { folder: "proj_1::FolderA", items: ["old-active"] },
+    ]);
+  });
+
+  it("rolls descendant count + activity up onto the folder group", () => {
+    const items = bucketIntoFolders(
+      buildProjectThreadGroups([
+        createThread({ id: "busy", title: "Work/Busy", hasPendingInteraction: true }),
+        createThread({ id: "quiet", title: "Work/Quiet" }),
+      ]),
+      "proj_1",
+      compareStandardThreads,
+    );
+
+    expect(items).toHaveLength(1);
+    const folder = items[0];
+    if (folder.kind !== "folder") {
+      throw new Error("expected a folder item");
+    }
+    expect(folder.group.threadCount).toBe(2);
+    expect(folder.group.activity.pending).toBe(true);
+  });
+
+  it("folds the chronological list into folders too", () => {
+    const items = buildChronologicalThreadList(
+      [
+        createThread({ id: "a", title: "Work/One", createdAt: 20 }),
+        createThread({ id: "b", title: "Personal/Two", createdAt: 10 }),
+      ],
+      compareByCreatedAtDescending,
+      { groupBy: "folder", containerId: "chronological" },
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      { folder: "chronological::Work", items: ["a"] },
+      { folder: "chronological::Personal", items: ["b"] },
+    ]);
+  });
+
+  describe("regression: Group by: None is unchanged", () => {
+    const slashFixture = [
+      createThread({ id: "a", title: "Work/Q3/Plan", createdAt: 30 }),
+      createThread({ id: "b", title: "Work/Notes", createdAt: 20 }),
+      createThread({ id: "c", title: "Standalone", createdAt: 10 }),
+    ];
+
+    it("returns output deep-equal to the pre-change builder for '/'-titled threads", () => {
+      const baseline = buildProjectThreadGroups(slashFixture);
+      const withNone = buildProjectThreadGroups(
+        slashFixture,
+        compareStandardThreads,
+        { groupBy: "none", containerId: "proj_1" },
+      );
+      expect(withNone).toEqual(baseline);
+    });
+
+    it("never enters the folder branch (no folder items even with slashes)", () => {
+      const withNone = buildProjectThreadGroups(
+        slashFixture,
+        compareStandardThreads,
+        { groupBy: "none", containerId: "proj_1" },
+      );
+      expect(withNone.some((item) => item.kind === "folder")).toBe(false);
+      expect(summarizeItems(withNone)).toEqual(["a", "b", "c"]);
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -67,11 +68,22 @@ import {
 import {
   buildChronologicalThreadList,
   buildProjectThreadGroups,
+  CHRONOLOGICAL_CONTAINER_ID,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
+  type SidebarFolderGroup,
   type ThreadComparator,
 } from "./projectThreadGroups";
+import { SidebarFolderRow } from "./SidebarFolderRow";
+import {
+  formatFolderPathLabel,
+  parseThreadFolderPath,
+} from "./folderPath";
+import {
+  sidebarCollapsedFoldersAtom,
+  sidebarGroupByAtom,
+} from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
@@ -177,11 +189,28 @@ interface ThreadTreeNodeRowProps {
   dragBindings?: SidebarSortableDragBindings;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
+  // True when this row is a direct member of a folder: show the leaf, keep the
+  // full path for a11y. Its own child threads stay full-titled.
+  insideFolder?: boolean;
 }
 
 interface ThreadTreeItemRowProps {
   projectId: string;
   item: ProjectThreadItem;
+  depthOffset: number;
+  // True for the direct members of a folder, so thread rows show the leaf.
+  insideFolder?: boolean;
+  selectedThreadId?: string;
+  collapsedThreadIds: Set<string>;
+  collapsedEnvironmentIds: Set<string>;
+  variant: ProjectThreadTreeVariant;
+  onProjectSelect?: () => void;
+  onToggleThreadCollapsed: (threadId: string) => void;
+  onToggleEnvironmentCollapsed: (environmentId: string) => void;
+}
+
+interface FolderTreeItemRowProps {
+  folder: SidebarFolderGroup;
   depthOffset: number;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
@@ -190,6 +219,31 @@ interface ThreadTreeItemRowProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+}
+
+// Render key + routing projectId for any item kind. Folders derive from their
+// first nested item, so a folder spanning projects (chronological) still routes
+// each contained thread to its own project.
+export function getItemKey(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return `thread:${item.node.thread.id}`;
+    case "environment":
+      return `env:${item.group.environmentId}`;
+    case "folder":
+      return `folder:${item.group.key}`;
+  }
+}
+
+export function getItemProjectId(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.projectId;
+    case "environment":
+      return item.group.nodes[0].thread.projectId;
+    case "folder":
+      return getItemProjectId(item.group.items[0]);
+  }
 }
 
 interface EnvironmentThreadGroupRowProps {
@@ -877,10 +931,11 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   );
 });
 
-const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
+export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   projectId,
   item,
   depthOffset,
+  insideFolder = false,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -889,6 +944,22 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ThreadTreeItemRowProps) {
+  if (item.kind === "folder") {
+    return (
+      <FolderTreeItemRow
+        folder={item.group}
+        depthOffset={depthOffset}
+        selectedThreadId={selectedThreadId}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        variant={variant}
+        onProjectSelect={onProjectSelect}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      />
+    );
+  }
+
   if (item.kind === "thread") {
     return (
       <ThreadTreeNodeRow
@@ -896,6 +967,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         node={item.node}
         depthOffset={depthOffset}
         isEnvGrouped={false}
+        insideFolder={insideFolder}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -924,6 +996,74 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   );
 });
 
+// A derived folder and its (recursively rendered) contents. Collapse state lives
+// in sidebarCollapsedFoldersAtom — read here rather than threaded so the rest of
+// the tree's prop wiring and memo equality stay untouched. Children render one
+// depth deeper and, when threads, show their leaf via insideFolder.
+const FolderTreeItemRow = memo(function FolderTreeItemRow({
+  folder,
+  depthOffset,
+  selectedThreadId,
+  collapsedThreadIds,
+  collapsedEnvironmentIds,
+  variant,
+  onProjectSelect,
+  onToggleThreadCollapsed,
+  onToggleEnvironmentCollapsed,
+}: FolderTreeItemRowProps) {
+  const collapsedFolders = useAtomValue(sidebarCollapsedFoldersAtom);
+  const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
+  const folderKey = folder.key;
+  const isCollapsed = collapsedFolders.includes(folderKey);
+  const handleToggleCollapsed = useCallback(() => {
+    setCollapsedFolders((current) =>
+      current.includes(folderKey)
+        ? current.filter((key) => key !== folderKey)
+        : [...current, folderKey],
+    );
+  }, [folderKey, setCollapsedFolders]);
+
+  const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
+  const stickyLevel =
+    depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
+
+  return (
+    <SidebarStickyGroup className="space-y-0.5">
+      <SidebarFolderRow
+        name={folder.name}
+        pathLabel={formatFolderPathLabel(folder.path)}
+        depth={headerDepth}
+        threadCount={folder.threadCount}
+        activity={folder.activity}
+        isCollapsed={isCollapsed}
+        onToggleCollapsed={handleToggleCollapsed}
+        stickyLevel={stickyLevel}
+      />
+      {!isCollapsed ? (
+        <div className="relative space-y-px">
+          <ThreadTreeGroupLine parentRowDepth={headerDepth} />
+          {folder.items.map((item) => (
+            <ThreadTreeItemRow
+              key={getItemKey(item)}
+              projectId={getItemProjectId(item)}
+              item={item}
+              depthOffset={depthOffset + 1}
+              insideFolder
+              selectedThreadId={selectedThreadId}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              variant={variant}
+              onProjectSelect={onProjectSelect}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
+          ))}
+        </div>
+      ) : null}
+    </SidebarStickyGroup>
+  );
+});
+
 export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   projectId,
   node,
@@ -940,6 +1080,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   dragBindings,
   sortableRef,
   sortableStyle,
+  insideFolder = false,
 }: ThreadTreeNodeRowProps) {
   const isCollapsed = collapsedThreadIds.has(node.thread.id);
   const hasChildren = node.children.length > 0;
@@ -986,6 +1127,18 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     projectId,
     threadId: node.thread.id,
   });
+  // Inside a folder the row shows its leaf but keeps the full path for a11y;
+  // outside a folder (or for this node's own children) it shows the full title.
+  const folderTitles = useMemo(() => {
+    if (!insideFolder) {
+      return undefined;
+    }
+    const { folders, leaf } = parseThreadFolderPath(node.thread.title ?? "");
+    return {
+      displayTitle: leaf || undefined,
+      accessibleTitle: formatFolderPathLabel([...folders, leaf]) || undefined,
+    };
+  }, [insideFolder, node.thread.title]);
   const row = (
     <ThreadRow
       projectId={projectId}
@@ -994,6 +1147,8 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       hasComposerDraft={hasComposerDraft}
       onProjectSelect={onProjectSelect}
       options={options}
+      displayTitle={folderTitles?.displayTitle}
+      accessibleTitle={folderTitles?.accessibleTitle}
     />
   );
 
@@ -1013,11 +1168,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
           <ThreadTreeGroupLine parentRowDepth={parentRowDepth} />
           {node.children.map((item) => (
             <ThreadTreeItemRow
-              key={
-                item.kind === "thread"
-                  ? `thread:${item.node.thread.id}`
-                  : `env:${item.group.environmentId}`
-              }
+              key={getItemKey(item)}
               projectId={projectId}
               item={item}
               depthOffset={depthOffset}
@@ -1048,13 +1199,18 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ProjectThreadTreeProps) {
+  const groupBy = useAtomValue(sidebarGroupByAtom);
   const projectThreads =
     threadListState.status === "ready"
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () => buildProjectThreadGroups(projectThreads, compareThreads),
-    [compareThreads, projectThreads],
+    () =>
+      buildProjectThreadGroups(projectThreads, compareThreads, {
+        groupBy,
+        containerId: projectId,
+      }),
+    [compareThreads, projectThreads, groupBy, projectId],
   );
 
   if (threadListState.status === "loading") {
@@ -1097,11 +1253,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     <ProjectThreadTreeGroup variant={variant}>
       {rootItems.map((item) => (
         <ThreadTreeItemRow
-          key={
-            item.kind === "thread"
-              ? `thread:${item.node.thread.id}`
-              : `env:${item.group.environmentId}`
-          }
+          key={getItemKey(item)}
           projectId={projectId}
           item={item}
           depthOffset={0}
@@ -1118,12 +1270,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   );
 });
 
-function getChronologicalItemProjectId(item: ProjectThreadItem): string {
-  return item.kind === "thread"
-    ? item.node.thread.projectId
-    : item.group.nodes[0].thread.projectId;
-}
-
 // Flat "All Threads" bucket for chronological mode: one top-level row per
 // non-pinned thread across all projects, globally ordered by the chosen
 // comparator (no parent/child nesting or worktree grouping, so nothing hides
@@ -1139,13 +1285,18 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: ChronologicalThreadTreeProps) {
+  const groupBy = useAtomValue(sidebarGroupByAtom);
   const threads =
     threadListState.status === "ready"
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const rootItems = useMemo(
-    () => buildChronologicalThreadList(threads, compareThreads),
-    [threads, compareThreads],
+    () =>
+      buildChronologicalThreadList(threads, compareThreads, {
+        groupBy,
+        containerId: CHRONOLOGICAL_CONTAINER_ID,
+      }),
+    [threads, compareThreads, groupBy],
   );
 
   if (threadListState.status === "loading") {
@@ -1178,12 +1329,8 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
     <ProjectThreadTreeGroup variant="section">
       {rootItems.map((item) => (
         <ThreadTreeItemRow
-          key={
-            item.kind === "thread"
-              ? `thread:${item.node.thread.id}`
-              : `env:${item.group.environmentId}`
-          }
-          projectId={getChronologicalItemProjectId(item)}
+          key={getItemKey(item)}
+          projectId={getItemProjectId(item)}
           item={item}
           depthOffset={0}
           selectedThreadId={selectedThreadId}

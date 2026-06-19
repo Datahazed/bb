@@ -183,4 +183,44 @@ describe("buildPinnedSidebarState", () => {
     });
     expect(state.rootNodes[0]?.stats.childCount).toBe(1);
   });
+
+  it("folds pinned roots into folders ordered by the pinned comparator", () => {
+    const state = buildPinnedSidebarState({
+      threads: [
+        // FolderA's pinned thread sorts after FolderB's by pinSortKey, so
+        // FolderB's folder must render first under the pinned (not sidebar)
+        // ordering.
+        createThread({
+          id: "a",
+          title: "Work/Alpha",
+          pinnedAt: 1_000,
+          pinSortKey: "b",
+        }),
+        createThread({
+          id: "b",
+          title: "Personal/Beta",
+          pinnedAt: 1_000,
+          pinSortKey: "a",
+        }),
+      ],
+      groupBy: "folder",
+    });
+
+    expect(
+      state.rootItems.map((item) =>
+        item.kind === "folder" ? item.group.key : "thread",
+      ),
+    ).toEqual(["pinned::Personal", "pinned::Work"]);
+  });
+
+  it("keeps a flat thread list under Group by: None", () => {
+    const state = buildPinnedSidebarState({
+      threads: [
+        createThread({ id: "a", title: "Work/Alpha", pinnedAt: 1_000, pinSortKey: "a" }),
+      ],
+      groupBy: "none",
+    });
+
+    expect(state.rootItems.every((item) => item.kind === "thread")).toBe(true);
+  });
 });
