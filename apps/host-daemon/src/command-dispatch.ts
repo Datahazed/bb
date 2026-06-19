@@ -19,6 +19,10 @@ import {
 import { listHostBranches } from "./command-handlers/host-branches.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
+  deleteHostSkill,
+  listHostSkills,
+} from "./command-handlers/list-skills.js";
+import {
   listHostFiles,
   listHostPaths,
   readHostFile,
@@ -223,6 +227,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.list_commands": listHostCommands,
+  "host.list_skills": listHostSkills,
+  "host.delete_skill": deleteHostSkill,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
