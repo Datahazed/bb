@@ -1,28 +1,44 @@
-import { capitalize } from "@bb/thread-view";
-import { useId, useState, type FormEvent, type RefObject } from "react";
+import { useId, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
-import { useNameValidation } from "./useNameValidation.js";
+import {
+  formatFolderPathLabel,
+  parseThreadFolderPath,
+} from "@/components/sidebar/folderPath";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
 export interface ThreadRenameDialogTarget {
   id: string;
-  currentTitle: string;
 }
 
 interface ThreadRenameDialogProps {
   target: ThreadRenameDialogTarget | null;
+  // The draft is lifted into the provider so it survives a rename → first-folder
+  // modal → rename round trip; the dialog renders it as a controlled input.
+  draft: string;
+  validationMessage: string | null;
   pending?: boolean;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
   onOpenChange: (open: boolean) => void;
-  onRename: (threadId: string, title: string) => void;
 }
 
 export function ThreadRenameDialog({
   target,
+  draft,
+  validationMessage,
   pending = false,
+  onDraftChange,
+  onSubmit,
   onOpenChange,
-  onRename,
 }: ThreadRenameDialogProps) {
   const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
@@ -30,10 +46,11 @@ export function ThreadRenameDialog({
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         {target ? (
           <ThreadRenameDialogContent
-            key={target.id}
-            target={target}
+            draft={draft}
+            validationMessage={validationMessage}
             pending={pending}
-            onRename={onRename}
+            onDraftChange={onDraftChange}
+            onSubmit={onSubmit}
             inputRef={inputRef}
           />
         ) : null}
@@ -43,66 +60,74 @@ export function ThreadRenameDialog({
 }
 
 export interface ThreadRenameDialogContentProps {
-  target: ThreadRenameDialogTarget;
+  draft: string;
+  validationMessage: string | null;
   pending: boolean;
-  onRename: (threadId: string, title: string) => void;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
+// Reveals the folder the row normally hides: parses the current draft and shows
+// the resulting folder ancestors + leaf, or "No folder" for a single segment.
+function RenameFolderPreview({ draft }: { draft: string }) {
+  const { folders, leaf } = parseThreadFolderPath(draft);
+  if (folders.length === 0) {
+    return <p className="text-sm text-muted-foreground">No folder</p>;
+  }
+  return (
+    <p className="text-sm text-muted-foreground">
+      Folder:{" "}
+      <span className="text-foreground">{formatFolderPathLabel(folders)}</span>
+      {" · "}
+      Thread: <span className="text-foreground">{leaf}</span>
+    </p>
+  );
+}
+
 export function ThreadRenameDialogContent({
-  target,
+  draft,
+  validationMessage,
   pending,
-  onRename,
+  onDraftChange,
+  onSubmit,
   inputRef,
 }: ThreadRenameDialogContentProps) {
   const inputId = useId();
-  const [nextTitle, setNextTitle] = useState(target.currentTitle);
-  const label = "thread";
-  const { validationMessage, validate, clearMessage } = useNameValidation({
-    emptyMessage: `${capitalize(label)} name cannot be empty.`,
-  });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
-
-    const trimmedTitle = validate(nextTitle);
-    if (trimmedTitle === null) return;
-
-    onRename(target.id, trimmedTitle);
+    onSubmit();
   };
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Rename {label}</DialogTitle>
-        <DialogDescription>
-          Choose a new name for this {label}.
-        </DialogDescription>
+        <DialogTitle>Rename thread</DialogTitle>
+        <DialogDescription>Choose a new name for this thread.</DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Input
             ref={inputRef}
             id={inputId}
-            aria-label={`${capitalize(label)} name`}
-            value={nextTitle}
+            aria-label="Thread name"
+            value={draft}
             autoCapitalize="sentences"
             autoCorrect="off"
             spellCheck={false}
             disabled={pending}
-            onChange={(event) => {
-              setNextTitle(event.target.value);
-              clearMessage();
-            }}
+            onChange={(event) => onDraftChange(event.target.value)}
           />
+          <RenameFolderPreview draft={draft} />
           {validationMessage ? (
             <p className="text-sm text-destructive">{validationMessage}</p>
           ) : null}
         </div>
         <DialogFooter>
           <Button type="submit" disabled={pending}>
-            Rename {label}
+            Rename thread
           </Button>
         </DialogFooter>
       </form>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFolderKey,
+  folderAncestorKeys,
   normalizeThreadTitle,
   parseThreadFolderPath,
   titleCreatesFolder,
@@ -107,5 +108,31 @@ describe("buildFolderKey", () => {
     expect(buildFolderKey("chronological", ["Work"])).toBe(
       "chronological::Work",
     );
+  });
+});
+
+describe("folderAncestorKeys", () => {
+  it("returns every ancestor folder key, outermost first", () => {
+    expect(folderAncestorKeys("proj_1", "Work/Q3/Plan")).toEqual([
+      "proj_1::Work",
+      "proj_1::Work/Q3",
+    ]);
+  });
+
+  it("returns no keys for a title with no folder", () => {
+    expect(folderAncestorKeys("proj_1", "Standalone")).toEqual([]);
+    expect(folderAncestorKeys("proj_1", "Work/")).toEqual([]);
+  });
+
+  it("excludes the leaf — only the folders that contain the thread", () => {
+    // "A/B" lives in folder "A"; "B" is the thread, not a folder.
+    expect(folderAncestorKeys("pinned", "A/B")).toEqual(["pinned::A"]);
+  });
+
+  it("namespaces by container, including the global sentinels", () => {
+    expect(folderAncestorKeys("pinned", "A/B/C")).toEqual([
+      "pinned::A",
+      "pinned::A/B",
+    ]);
   });
 });

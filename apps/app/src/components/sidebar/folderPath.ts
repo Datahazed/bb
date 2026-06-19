@@ -52,6 +52,22 @@ export function titleCreatesFolder(title: string): boolean {
   return parseThreadFolderPath(title).folders.length > 0;
 }
 
+// Every ancestor folder key for a title, outermost first — e.g. "Work/Q3/Plan"
+// in container "p" → ["p::Work", "p::Work/Q3"]. Used to un-collapse the folders
+// hiding a selected thread. Derive `title` from the thread that is actually
+// bucketed (a section's top-level thread), since a nested child's "/" is ignored.
+export function folderAncestorKeys(
+  containerId: string,
+  title: string,
+): string[] {
+  const { folders } = parseThreadFolderPath(title);
+  const keys: string[] = [];
+  for (let depth = 1; depth <= folders.length; depth += 1) {
+    keys.push(buildFolderKey(containerId, folders.slice(0, depth)));
+  }
+  return keys;
+}
+
 // Human-readable folder path, used for tooltips, accessible names, and the
 // rename preview ("Work › Q3 › Planning"). The visible separator differs from
 // the stored "/" so a path reads as breadcrumbs, not a literal title.

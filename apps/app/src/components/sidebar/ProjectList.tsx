@@ -97,7 +97,7 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { buildFolderKey, parseThreadFolderPath } from "./folderPath";
+import { folderAncestorKeys } from "./folderPath";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
   PINNED_CONTAINER_ID,
@@ -1304,26 +1304,27 @@ function ProjectListComponent({
       removeCollapsedIds(current, environmentIdsToExpand),
     );
 
-    // Under Group by: Folder, also un-collapse the selected thread's folder
-    // ancestors so it can't hide behind a collapsed folder. The folder key is
-    // scoped to whichever section renders the thread (pinned / chronological /
-    // its project), matching how the assembly sites namespace folder keys.
+    // Under Group by: Folder, also un-collapse the folder ancestors hiding the
+    // selected thread. Folders derive from the TOP-LEVEL bucketed thread's
+    // title, not the selected child's own (a child's "/" is ignored) — so in
+    // project/pinned mode use the top-level ancestor the walk above ended on;
+    // in the flat chronological list the selected thread is itself top-level.
     if (groupBy === "folder") {
-      const { folders } = parseThreadFolderPath(selectedThread.title ?? "");
-      if (folders.length > 0) {
-        const folderContainerId = pinnedSidebarState.effectivePinnedThreadIds.has(
-          selectedThreadId,
-        )
-          ? PINNED_CONTAINER_ID
-          : organizationMode === "chronological"
-            ? CHRONOLOGICAL_CONTAINER_ID
-            : selectedThread.projectId;
-        const folderKeysToExpand = new Set<string>();
-        for (let depth = 1; depth <= folders.length; depth += 1) {
-          folderKeysToExpand.add(
-            buildFolderKey(folderContainerId, folders.slice(0, depth)),
-          );
-        }
+      const isPinned =
+        pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
+      const isChronological =
+        !isPinned && organizationMode === "chronological";
+      const topLevelAncestor = currentThread ?? selectedThread;
+      const folderSource = isChronological ? selectedThread : topLevelAncestor;
+      const folderContainerId = isPinned
+        ? PINNED_CONTAINER_ID
+        : isChronological
+          ? CHRONOLOGICAL_CONTAINER_ID
+          : selectedThread.projectId;
+      const folderKeysToExpand = new Set(
+        folderAncestorKeys(folderContainerId, folderSource.title ?? ""),
+      );
+      if (folderKeysToExpand.size > 0) {
         setCollapsedFolderList((current) =>
           removeCollapsedIds(current, folderKeysToExpand),
         );
