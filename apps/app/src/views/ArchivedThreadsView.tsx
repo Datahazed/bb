@@ -21,7 +21,13 @@ function getArchivedThreadPillLabel(
   return null;
 }
 
-export function ProjectArchivedThreadsView() {
+// One archived-threads page for every scope. The route + `?folder=` param
+// decide which threads are listed; the scope is shown in the AppLayout header
+// breadcrumb (project name / "Threads" / folder), so the body stays identical:
+//   - project:        all archived threads in a project
+//   - personal/loose: archived threads not filed under any folder (unfiled)
+//   - folder:         archived threads filed directly under one folder
+export function ArchivedThreadsView() {
   const { projectId } = useRouteState();
   const [searchParams] = useSearchParams();
   const folderPath = searchParams.get("folder") ?? undefined;
@@ -59,20 +65,13 @@ export function ProjectArchivedThreadsView() {
     <PageShell contentClassName="pt-0">
       <div className="mx-auto w-full max-w-3xl">
         <div className="space-y-3 pt-4 md:pt-5">
-          {folderPath ? (
-            <h1 className="text-sm font-medium text-foreground">
-              Archived threads in {folderPath}
-            </h1>
-          ) : null}
           {isInitialLoading ? (
             <p className="text-sm text-muted-foreground">
               Loading archived threads…
             </p>
           ) : showEmptyState ? (
             <EmptyStatePanel className="py-4 text-left">
-              {folderPath
-                ? "No archived threads in this folder yet."
-                : "No archived threads yet."}
+              No archived threads yet.
             </EmptyStatePanel>
           ) : (
             <div className="space-y-1">
