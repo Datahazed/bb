@@ -11,6 +11,7 @@ import {
   type DndContextProps,
   type DragEndEvent,
   type DragStartEvent,
+  type Modifier,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
@@ -31,6 +32,15 @@ const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
 
+const restrictSidebarDragToVerticalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
+
+const SIDEBAR_REORDER_MODIFIERS: Modifier[] = [
+  restrictSidebarDragToVerticalAxis,
+];
+
 export interface UseSidebarReorderDndArgs {
   /**
    * Performs the reorder once a drag settles. The hook clears the drag-click
@@ -46,6 +56,7 @@ export type SidebarReorderDndContextProps = Pick<
   | "onDragStart"
   | "onDragCancel"
   | "onDragEnd"
+  | "modifiers"
 >;
 
 export interface UseSidebarReorderDndResult {
@@ -113,6 +124,7 @@ export function useSidebarReorderDnd({
     () => ({
       sensors,
       collisionDetection: sidebarReorderCollisionDetection,
+      modifiers: SIDEBAR_REORDER_MODIFIERS,
       onDragStart: handleDragStart,
       onDragCancel: handleDragCancel,
       onDragEnd: handleDragEnd,
