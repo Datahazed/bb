@@ -601,27 +601,6 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-interface SidebarOrganizeMenuSectionLabelProps {
-  children: ReactNode;
-  className?: string;
-}
-
-function SidebarOrganizeMenuSectionLabel({
-  children,
-  className,
-}: SidebarOrganizeMenuSectionLabelProps) {
-  return (
-    <DropdownMenuLabel
-      className={cn(
-        "px-2 pb-0.5 text-xs font-semibold text-muted-foreground",
-        className,
-      )}
-    >
-      {children}
-    </DropdownMenuLabel>
-  );
-}
-
 interface SidebarOrganizeMenuOptionProps {
   disabled?: boolean;
   label: string;
@@ -658,11 +637,9 @@ interface SidebarSortMenuOptionProps {
   label: string;
   selected: boolean;
   sort: SidebarChronologicalSort;
-  onDirectionSelect: (
-    sort: SidebarChronologicalSort,
-    direction: SidebarSortDirection,
-  ) => void;
-  onSortSelect: (sort: SidebarChronologicalSort) => void;
+  // Selecting an inactive field activates it descending; selecting the active
+  // field flips its direction.
+  onToggle: (sort: SidebarChronologicalSort) => void;
 }
 
 function SidebarDisplayMenuTrigger({
@@ -701,81 +678,32 @@ function SidebarDisplayMenuTrigger({
   );
 }
 
-function SidebarSortDirectionButton({
-  active,
-  ariaLabel,
-  direction,
-  onClick,
-}: {
-  active: boolean;
-  ariaLabel: string;
-  direction: SidebarSortDirection;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      aria-pressed={active}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClick();
-      }}
-      className={cn(
-        "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
-        active && "bg-sidebar-accent text-sidebar-foreground",
-      )}
-    >
-      <Icon
-        name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
-        className="size-3"
-      />
-    </button>
-  );
-}
-
 function SidebarSortMenuOption({
   direction,
   label,
   selected,
   sort,
-  onDirectionSelect,
-  onSortSelect,
+  onToggle,
 }: SidebarSortMenuOptionProps) {
   return (
     <DropdownMenuItem
       onSelect={(event) => {
         event.preventDefault();
-        onSortSelect(sort);
+        onToggle(sort);
       }}
-      className="flex items-center gap-2"
+      className="flex items-center justify-between gap-3"
     >
-      <span className="min-w-0 flex-1 truncate text-xs">{label}</span>
+      <span className="truncate text-xs">{label}</span>
+      {/* No sort field shows no glyph; the active field shows a single arrow
+          that points down for descending and up for ascending. */}
       <Icon
-        name="Check"
+        name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+        aria-hidden="true"
         className={cn(
           COARSE_POINTER_ICON_SIZE_CLASS,
           selected ? "opacity-100" : "opacity-0",
         )}
       />
-      <span className="flex shrink-0 items-center gap-0.5">
-        <SidebarSortDirectionButton
-          active={selected && direction === "asc"}
-          ariaLabel={`Sort ${label} ascending`}
-          direction="asc"
-          onClick={() => onDirectionSelect(sort, "asc")}
-        />
-        <SidebarSortDirectionButton
-          active={selected && direction === "desc"}
-          ariaLabel={`Sort ${label} descending`}
-          direction="desc"
-          onClick={() => onDirectionSelect(sort, "desc")}
-        />
-      </span>
     </DropdownMenuItem>
   );
 }
@@ -796,7 +724,7 @@ export function SidebarOrganizeOptionsMenu({
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
         ariaLabel="Sidebar organization options"
-        iconName="GridView"
+        iconName="Layers"
         tooltip="Organize"
       />
       <DropdownMenuContent
@@ -804,9 +732,7 @@ export function SidebarOrganizeOptionsMenu({
         className="w-52"
         mobileTitle="Organize sidebar"
       >
-        <SidebarOrganizeMenuSectionLabel className="pt-1.5">
-          Organize by
-        </SidebarOrganizeMenuSectionLabel>
+        <DropdownMenuLabel>Organize by</DropdownMenuLabel>
         <SidebarOrganizeMenuOption
           label="Project"
           selected={organizationMode === "project"}
@@ -840,54 +766,49 @@ export function SidebarSortOptionsMenu({
   const [sortDirection, setSortDirection] = useAtom(sidebarSortDirectionAtom);
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
-  const handleSortSelect = useCallback(
+  const handleSortToggle = useCallback(
     (sort: SidebarChronologicalSort) => {
+      if (selectedSort === sort) {
+        // Re-selecting the active field flips its direction.
+        setSortDirection((current) => (current === "desc" ? "asc" : "desc"));
+        return;
+      }
+      // A newly selected field starts descending.
       setChronologicalSort(sort);
+      setSortDirection("desc");
     },
-    [setChronologicalSort],
-  );
-  const handleDirectionSelect = useCallback(
-    (sort: SidebarChronologicalSort, direction: SidebarSortDirection) => {
-      setChronologicalSort(sort);
-      setSortDirection(direction);
-    },
-    [setChronologicalSort, setSortDirection],
+    [selectedSort, setChronologicalSort, setSortDirection],
   );
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
         ariaLabel="Sidebar sort options"
-        iconName="Sort"
+        iconName="ArrowUpDown"
         tooltip="Sort"
       />
       <DropdownMenuContent align="end" className="w-56" mobileTitle="Sort">
-        <SidebarOrganizeMenuSectionLabel className="pt-1.5">
-          Sort by
-        </SidebarOrganizeMenuSectionLabel>
+        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
         <SidebarSortMenuOption
           label="Updated at"
           sort="updated"
           selected={selectedSort === "updated"}
           direction={sortDirection}
-          onSortSelect={handleSortSelect}
-          onDirectionSelect={handleDirectionSelect}
+          onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
           label="Created at"
           sort="created"
           selected={selectedSort === "created"}
           direction={sortDirection}
-          onSortSelect={handleSortSelect}
-          onDirectionSelect={handleDirectionSelect}
+          onToggle={handleSortToggle}
         />
         <SidebarSortMenuOption
           label="Alphabetical"
           sort="alpha"
           selected={selectedSort === "alpha"}
           direction={sortDirection}
-          onSortSelect={handleSortSelect}
-          onDirectionSelect={handleDirectionSelect}
+          onToggle={handleSortToggle}
         />
       </DropdownMenuContent>
     </DropdownMenu>
