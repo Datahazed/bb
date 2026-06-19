@@ -112,6 +112,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
+import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
@@ -417,12 +422,12 @@ function ProjectListSectionIconButton({
     [onClick],
   );
 
-  return (
+  const button = (
     <Button
       type="button"
       size="icon"
       variant="ghost"
-      title={title}
+      title={undefined}
       aria-label={ariaLabel}
       disabled={disabled}
       className={PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS}
@@ -430,6 +435,15 @@ function ProjectListSectionIconButton({
     >
       <Icon name={iconName} className={COARSE_POINTER_ICON_SIZE_CLASS} />
     </Button>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabled ? <span className="inline-flex">{button}</span> : button}
+      </TooltipTrigger>
+      <TooltipContent side="top">{title}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -543,22 +557,27 @@ export function SidebarViewOptionsMenu({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Sidebar display options"
-          title="Sidebar display options"
-          className={cn(
-            "rounded-md p-0 text-muted-foreground",
-            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          )}
-        >
-          <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Sidebar display options"
+              title={undefined}
+              className={cn(
+                "rounded-md p-0 text-muted-foreground",
+                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              )}
+            >
+              <Icon name="Sort" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">Sidebar display options</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="end"
         className="w-52"
@@ -621,25 +640,30 @@ function SidebarThreadActionsMenu({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Threads actions"
-          title="Threads actions"
-          className={cn(
-            "rounded-md p-0 text-muted-foreground",
-            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          )}
-        >
-          <Icon
-            name="MoreHorizontal"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Threads actions"
+              title={undefined}
+              className={cn(
+                "rounded-md p-0 text-muted-foreground",
+                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              )}
+            >
+              <Icon
+                name="MoreHorizontal"
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">Threads actions</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="end"
         className="w-44"
@@ -774,36 +798,41 @@ function TopLevelSidebarSection({
           {/* Reserve room for up to four section action buttons on the right;
               coarse pointers need a little more. */}
           {collapseControl ? (
-            <button
-              type="button"
-              aria-expanded={!collapseControl.isCollapsed}
-              aria-label={
-                collapseControl.isCollapsed
-                  ? `Expand ${label} section`
-                  : `Collapse ${label} section`
-              }
-              title={
-                collapseControl.isCollapsed
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-expanded={!collapseControl.isCollapsed}
+                  aria-label={
+                    collapseControl.isCollapsed
+                      ? `Expand ${label} section`
+                      : `Collapse ${label} section`
+                  }
+                  title={undefined}
+                  className={cn(
+                    !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
+                    "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
+                  )}
+                  onClick={handleCollapseControlClick}
+                  onPointerDown={stopCollapseControlPointerDown}
+                  onKeyDown={stopCollapseControlKeyDown}
+                >
+                  <Icon
+                    name="ChevronRight"
+                    className={cn(
+                      "size-3 transition-transform duration-150",
+                      !collapseControl.isCollapsed && "rotate-90",
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {collapseControl.isCollapsed
                   ? `Expand ${label}`
-                  : `Collapse ${label}`
-              }
-              className={cn(
-                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
-              )}
-              onClick={handleCollapseControlClick}
-              onPointerDown={stopCollapseControlPointerDown}
-              onKeyDown={stopCollapseControlKeyDown}
-            >
-              <Icon
-                name="ChevronRight"
-                className={cn(
-                  "size-3 transition-transform duration-150",
-                  !collapseControl.isCollapsed && "rotate-90",
-                )}
-                aria-hidden="true"
-              />
-            </button>
+                  : `Collapse ${label}`}
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </span>
         {actions ? (

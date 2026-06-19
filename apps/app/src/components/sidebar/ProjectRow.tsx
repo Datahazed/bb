@@ -40,6 +40,11 @@ import {
   SidebarStickyTier,
 } from "@/components/ui/sidebar.js";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
+import {
   ProjectActionsContextMenu,
   ProjectActionsMenu,
 } from "@/components/project/ProjectActionsMenu";
@@ -1747,24 +1752,30 @@ function ProjectRowComponent({
               />
             </span>
             {isLocalPathInvalid ? (
-              <NavLink
-                to={getProjectSettingsRoutePath(project.id)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onProjectSelect?.();
-                }}
-                title="Project folder not found. Open project settings to fix."
-                aria-label="Project folder not found"
-                className={cn(
-                  "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                )}
-              >
-                <Icon
-                  name="AlertTriangle"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </NavLink>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <NavLink
+                    to={getProjectSettingsRoutePath(project.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onProjectSelect?.();
+                    }}
+                    aria-label="Project folder not found"
+                    className={cn(
+                      "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
+                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                    )}
+                  >
+                    <Icon
+                      name="AlertTriangle"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </NavLink>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Open project settings to fix folder
+                </TooltipContent>
+              </Tooltip>
             ) : null}
             <span
               data-sidebar-hover-actions-open={
@@ -1787,27 +1798,54 @@ function ProjectRowComponent({
                   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
                 )}
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`New thread in ${project.name}`}
-                title="New thread"
-                disabled={!onCreateProjectThread}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleCreateThread();
-                }}
-                className={cn(
-                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                )}
-              >
-                <Icon
-                  name="MessageSquarePlus"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {onCreateProjectThread ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`New thread in ${project.name}`}
+                      title={undefined}
+                      disabled={!onCreateProjectThread}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCreateThread();
+                      }}
+                      className={cn(
+                        "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                      )}
+                    >
+                      <Icon
+                        name="MessageSquarePlus"
+                        className={COARSE_POINTER_ICON_SIZE_CLASS}
+                      />
+                    </Button>
+                  ) : (
+                    <span className="inline-flex">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`New thread in ${project.name}`}
+                        title={undefined}
+                        disabled
+                        className={cn(
+                          "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                        )}
+                      >
+                        <Icon
+                          name="MessageSquarePlus"
+                          className={COARSE_POINTER_ICON_SIZE_CLASS}
+                        />
+                      </Button>
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="top">New thread</TooltipContent>
+              </Tooltip>
             </span>
           </SidebarStickyTier>
         </ProjectActionsContextMenu>

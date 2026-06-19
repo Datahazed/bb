@@ -19,6 +19,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import {
   getProjectArchivedRoutePath,
@@ -169,25 +174,33 @@ export function ProjectActionsMenu({
 }: ProjectActionsMenuProps) {
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "rounded-md p-0 text-muted-foreground",
-            triggerClassName,
-            "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-          )}
-          aria-label={`${project.name} actions`}
-          title={`${project.name} actions`}
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-        >
-          <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "rounded-md p-0 text-muted-foreground",
+                triggerClassName,
+                "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+              )}
+              aria-label={`${project.name} actions`}
+              title={undefined}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <Icon
+                name="MoreHorizontal"
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">Project actions</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align={align} className="w-44">
         <ProjectActionsMenuItems project={project} surface="dropdown" />
       </DropdownMenuContent>
