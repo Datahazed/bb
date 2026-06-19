@@ -518,6 +518,9 @@ export function SidebarViewOptionsMenu({
     sidebarChronologicalSortAtom,
   );
   const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
+  const setFolderGroupingAutoEnabled = useSetAtom(
+    sidebarFolderGroupingAutoEnabledAtom,
+  );
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -547,19 +550,42 @@ export function SidebarViewOptionsMenu({
         </SidebarOrganizeMenuSectionLabel>
         <SidebarOrganizeMenuOption
           label="Project"
-          selected={organizationMode === "project"}
+          selected={organizationMode === "project" && groupBy === "none"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("project");
+            setGroupBy("none");
+            if (folderGroupingAvailable) {
+              setFolderGroupingAutoEnabled(true);
+            }
             onOrganizationModeSelect?.("project");
           }}
         />
         <SidebarOrganizeMenuOption
+          label="Folder"
+          disabled={!folderGroupingAvailable}
+          selected={groupBy === "folder"}
+          onSelect={(event) => {
+            event.preventDefault();
+            if (!folderGroupingAvailable) {
+              return;
+            }
+            setOrganizationMode("chronological");
+            setGroupBy("folder");
+            setFolderGroupingAutoEnabled(true);
+            onOrganizationModeSelect?.("chronological");
+          }}
+        />
+        <SidebarOrganizeMenuOption
           label="None"
-          selected={organizationMode === "chronological"}
+          selected={organizationMode === "chronological" && groupBy === "none"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("chronological");
+            setGroupBy("none");
+            if (folderGroupingAvailable) {
+              setFolderGroupingAutoEnabled(true);
+            }
             onOrganizationModeSelect?.("chronological");
           }}
         />
@@ -589,30 +615,6 @@ export function SidebarViewOptionsMenu({
           onSelect={(event) => {
             event.preventDefault();
             setChronologicalSort("none");
-          }}
-        />
-        <DropdownMenuSeparator />
-        <SidebarOrganizeMenuSectionLabel className="pt-2">
-          Group by
-        </SidebarOrganizeMenuSectionLabel>
-        <SidebarOrganizeMenuOption
-          label="None"
-          selected={groupBy === "none"}
-          onSelect={(event) => {
-            event.preventDefault();
-            setGroupBy("none");
-          }}
-        />
-        <SidebarOrganizeMenuOption
-          label="Folder"
-          disabled={!folderGroupingAvailable}
-          selected={groupBy === "folder"}
-          onSelect={(event) => {
-            event.preventDefault();
-            if (!folderGroupingAvailable) {
-              return;
-            }
-            setGroupBy("folder");
           }}
         />
       </DropdownMenuContent>
@@ -1213,7 +1215,9 @@ function ProjectListComponent({
     },
     [],
   );
-  const [organizationMode] = useAtom(sidebarOrganizationModeAtom);
+  const [organizationMode, setOrganizationMode] = useAtom(
+    sidebarOrganizationModeAtom,
+  );
   const [chronologicalSort] = useAtom(sidebarChronologicalSortAtom);
   const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
   const [folderGroupingAutoEnabled, setFolderGroupingAutoEnabled] = useAtom(
@@ -1284,8 +1288,14 @@ function ProjectListComponent({
       return;
     }
     if (groupBy === "folder") {
+      if (organizationMode !== "chronological") {
+        setOrganizationMode("chronological");
+      }
       setFolderGroupingAutoEnabled(true);
       return;
+    }
+    if (organizationMode !== "chronological") {
+      setOrganizationMode("chronological");
     }
     setGroupBy("folder");
     setFolderGroupingAutoEnabled(true);
@@ -1293,8 +1303,10 @@ function ProjectListComponent({
     folderGroupingAutoEnabled,
     folderGroupingAvailable,
     groupBy,
+    organizationMode,
     setFolderGroupingAutoEnabled,
     setGroupBy,
+    setOrganizationMode,
   ]);
   const pinnedSidebarState = useMemo(
     () => buildPinnedSidebarState({ threads, groupBy }),
@@ -1692,7 +1704,7 @@ function ProjectListComponent({
     );
   }
 
-  if (organizationMode === "chronological") {
+  if (organizationMode === "chronological" || groupBy === "folder") {
     return (
       <ProjectListShell>
         <div className="space-y-4">
@@ -1702,7 +1714,7 @@ function ProjectListComponent({
             </TopLevelSidebarSection>
           ) : null}
           <TopLevelSidebarSection
-            label="All Threads"
+            label={groupBy === "folder" ? "Folders" : "All Threads"}
             actions={threadsSectionActions}
             actionsOpen={
               isThreadsActionsMenuOpen || isThreadsViewOptionsMenuOpen

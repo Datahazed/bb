@@ -5,6 +5,8 @@ import { SidebarViewOptionsMenu } from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,
   sidebarGroupByAtom,
+  sidebarOrganizationModeAtom,
+  type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
 
 export default {
@@ -14,18 +16,21 @@ export default {
 function MenuStory({
   folderGroupingAvailable = true,
   groupBy,
+  organizationMode,
   sort,
 }: {
   folderGroupingAvailable?: boolean;
   groupBy: "none" | "folder";
+  organizationMode: SidebarOrganizationMode;
   sort: "updated" | "created" | "none";
 }) {
   const store = useMemo(() => {
     const next = createStore();
     next.set(sidebarChronologicalSortAtom, sort);
     next.set(sidebarGroupByAtom, groupBy);
+    next.set(sidebarOrganizationModeAtom, organizationMode);
     return next;
-  }, [groupBy, sort]);
+  }, [groupBy, organizationMode, sort]);
 
   return (
     <JotaiProvider store={store}>
@@ -42,17 +47,22 @@ function MenuStory({
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="default" hint="Updated at + Group by None">
-        <MenuStory sort="updated" groupBy="none" />
+      <StoryRow label="project" hint="organize by project">
+        <MenuStory sort="updated" groupBy="none" organizationMode="project" />
       </StoryRow>
-      <StoryRow label="manual folders" hint="Sort by None + Group by Folder">
-        <MenuStory sort="none" groupBy="folder" />
+      <StoryRow label="folders" hint="cross-project folder organization">
+        <MenuStory
+          sort="none"
+          groupBy="folder"
+          organizationMode="chronological"
+        />
       </StoryRow>
       <StoryRow label="no folders" hint="Folder option disabled">
         <MenuStory
           folderGroupingAvailable={false}
           sort="updated"
           groupBy="none"
+          organizationMode="project"
         />
       </StoryRow>
     </StoryCard>

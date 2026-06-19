@@ -43,6 +43,7 @@ import { titleCreatesFolder } from "@/components/sidebar/folderPath";
 import {
   sidebarFolderGroupingAutoEnabledAtom,
   sidebarGroupByAtom,
+  sidebarOrganizationModeAtom,
 } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -104,6 +105,7 @@ export function ThreadActionsProvider({
   const updateThread = useUpdateThread();
   const systemConfigQuery = useSystemConfig();
   const [groupBy, setGroupBy] = useAtom(sidebarGroupByAtom);
+  const [, setOrganizationMode] = useAtom(sidebarOrganizationModeAtom);
   const [, setFolderGroupingAutoEnabled] = useAtom(
     sidebarFolderGroupingAutoEnabledAtom,
   );
@@ -165,6 +167,7 @@ export function ThreadActionsProvider({
           onSuccess: () => {
             if (titleCreatesFolder(title)) {
               setFolderGroupingAutoEnabled(true);
+              setOrganizationMode("chronological");
               if (groupBy === "none") {
                 setGroupBy("folder");
               }
@@ -179,6 +182,7 @@ export function ThreadActionsProvider({
       groupBy,
       setFolderGroupingAutoEnabled,
       setGroupBy,
+      setOrganizationMode,
       updateMutate,
     ],
   );
