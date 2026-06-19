@@ -150,8 +150,6 @@ function SidebarFolderRowComponent({
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${pathLabel} folder`}
           collapseLabel={`Collapse ${pathLabel} folder`}
-          expandTitle="Expand folder"
-          collapseTitle="Collapse folder"
           onToggle={onToggleCollapsed}
         />
       </span>

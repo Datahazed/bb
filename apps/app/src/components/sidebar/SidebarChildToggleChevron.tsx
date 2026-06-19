@@ -8,8 +8,6 @@ export interface SidebarChildToggleChevronProps {
   isCollapsed: boolean;
   expandLabel: string;
   collapseLabel: string;
-  expandTitle: string;
-  collapseTitle: string;
   onToggle: SidebarChildToggleHandler;
   revealOnHover?: boolean;
 }
@@ -18,8 +16,6 @@ export function SidebarChildToggleChevron({
   isCollapsed,
   expandLabel,
   collapseLabel,
-  expandTitle,
-  collapseTitle,
   onToggle,
   revealOnHover = false,
 }: SidebarChildToggleChevronProps) {
@@ -28,7 +24,6 @@ export function SidebarChildToggleChevron({
       type="button"
       aria-expanded={!isCollapsed}
       aria-label={isCollapsed ? expandLabel : collapseLabel}
-      title={isCollapsed ? expandTitle : collapseTitle}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();

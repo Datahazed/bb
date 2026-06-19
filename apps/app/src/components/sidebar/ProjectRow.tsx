@@ -1076,8 +1076,6 @@ function EnvironmentThreadGroupHeader({
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
-          expandTitle="Expand worktree threads"
-          collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
           revealOnHover
         />
@@ -2002,8 +2000,6 @@ function ProjectRowComponent({
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
                 collapseLabel={`Collapse ${project.name}`}
-                expandTitle="Expand project threads"
-                collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
                 revealOnHover
               />

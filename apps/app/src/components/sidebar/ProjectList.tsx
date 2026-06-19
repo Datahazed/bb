@@ -588,7 +588,9 @@ export function SidebarViewOptionsMenu({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Sidebar display options</TooltipContent>
+        <TooltipContent side="bottom" className="px-2 py-1">
+          Display
+        </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"
