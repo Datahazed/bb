@@ -489,7 +489,7 @@ function invertThreadComparator(
   };
 }
 
-function getSidebarThreadComparator({
+export function getSidebarThreadComparator({
   direction,
   sort,
 }: {
@@ -497,28 +497,33 @@ function getSidebarThreadComparator({
   sort: SidebarChronologicalSort;
 }): ThreadComparator {
   const normalizedSort = sort === "none" ? "updated" : sort;
+
+  if (normalizedSort === "alpha") {
+    // Title sort's base is *ascending* (A→Z), unlike the time sorts whose
+    // bases descend. So here asc keeps the base and desc inverts it — and the
+    // leaf-thread and mixed folder/thread comparators must apply the same
+    // direction, or folders and threads would sort in opposite order.
+    const comparator: ThreadComparator =
+      direction === "asc"
+        ? compareByTitleAscending
+        : invertThreadComparator(compareByTitleAscending);
+    comparator.compareItems =
+      direction === "asc"
+        ? compareProjectThreadItemsByTitleAscending
+        : (left, right) =>
+            invertNumber(compareProjectThreadItemsByTitleAscending(left, right));
+    return comparator;
+  }
+
+  // "created"/"updated" bases list newest / most-recently-active first, so desc
+  // keeps the base and asc inverts it.
   const baseComparator: ThreadComparator =
     normalizedSort === "created"
       ? compareByCreatedAtDescending
-      : normalizedSort === "alpha"
-        ? compareByTitleAscending
-        : compareStandardThreads;
-  const compareItems =
-    normalizedSort === "alpha"
-      ? compareProjectThreadItemsByTitleAscending
-      : undefined;
-  const comparator: ThreadComparator =
-    direction === "asc"
-      ? invertThreadComparator(baseComparator)
-      : baseComparator;
-  if (compareItems) {
-    comparator.compareItems =
-      direction === "asc"
-        ? compareItems
-        : (left, right) => invertNumber(compareItems(left, right));
-  }
-
-  return comparator;
+      : compareStandardThreads;
+  return direction === "asc"
+    ? invertThreadComparator(baseComparator)
+    : baseComparator;
 }
 
 function ProjectListSectionIconButton({
@@ -773,9 +778,10 @@ export function SidebarSortOptionsMenu({
         setSortDirection((current) => (current === "desc" ? "asc" : "desc"));
         return;
       }
-      // A newly selected field starts descending.
+      // A newly selected field starts in its natural direction: time sorts show
+      // newest first (desc); alphabetical starts A→Z (asc).
       setChronologicalSort(sort);
-      setSortDirection("desc");
+      setSortDirection(sort === "alpha" ? "asc" : "desc");
     },
     [selectedSort, setChronologicalSort, setSortDirection],
   );
