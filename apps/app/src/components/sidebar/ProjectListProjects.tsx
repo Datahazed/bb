@@ -51,6 +51,7 @@ export interface ProjectListProjectsProps {
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   compareThreads: ThreadComparator;
+  folderPaths?: readonly string[];
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
@@ -99,6 +100,7 @@ export function ProjectListProjects({
   collapsedThreadIds,
   collapsedEnvironmentIds,
   compareThreads,
+  folderPaths,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
@@ -109,6 +111,7 @@ export function ProjectListProjects({
   const sharedRowProps = (row: ProjectListRowModel) => ({
     project: row.project,
     threadListState: row.threadListState,
+    folderPaths,
     selectedThreadId,
     isActive: row.isActive,
     isCollapsed: collapsedProjectIds.has(row.project.id),

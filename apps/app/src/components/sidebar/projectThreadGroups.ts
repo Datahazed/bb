@@ -66,6 +66,7 @@ export type ProjectThreadItem =
 export interface SidebarFolderOptions {
   groupBy: SidebarGroupBy;
   containerId: string;
+  folderPaths?: readonly string[];
   manualOrder?: SidebarManualOrder;
 }
 
@@ -374,6 +375,7 @@ export function buildProjectThreadGroups(
     folderOptions.containerId,
     compareThreads,
     folderOptions.manualOrder,
+    folderOptions.folderPaths,
   );
 }
 
@@ -422,6 +424,7 @@ export function buildChronologicalThreadList(
     folderOptions.containerId,
     compareThreads,
     folderOptions.manualOrder,
+    folderOptions.folderPaths,
   );
 }
 
@@ -509,16 +512,21 @@ function createFolderBucket(): FolderBucket {
 function getItemOrderingThread(
   item: ProjectThreadItem,
   compareThreads: ThreadComparator,
-): ThreadListEntry {
+): ThreadListEntry | null {
   switch (item.kind) {
     case "thread":
       return item.node.thread;
     case "environment":
       return item.group.nodes[0].thread;
-    case "folder":
-      return getItemThreadDescendants(item.group.items).reduce(
+    case "folder": {
+      const descendants = getItemThreadDescendants(item.group.items);
+      if (descendants.length === 0) {
+        return null;
+      }
+      return descendants.reduce(
         (first, thread) => (compareThreads(thread, first) < 0 ? thread : first),
       );
+    }
   }
 }
 
@@ -573,10 +581,7 @@ function orderItemsByManualOrder(
   const unorderedItems = items
     .filter((item) => !orderedKeys.has(getManualOrderItemKey(item)))
     .sort((left, right) =>
-      compareThreads(
-        getItemOrderingThread(left, compareThreads),
-        getItemOrderingThread(right, compareThreads),
-      ),
+      compareSiblingItems(left, right, compareThreads),
     );
   const orderedItems = prunedOrder.flatMap((key) => {
     const item = itemsByKey.get(key);
@@ -607,15 +612,44 @@ function orderSiblingItems(
   const decorated = items.map((item) => ({
     item,
     isFolder: item.kind === "folder",
-    orderingThread: getItemOrderingThread(item, compareThreads),
   }));
   decorated.sort((left, right) => {
     if (left.isFolder !== right.isFolder) {
       return left.isFolder ? -1 : 1;
     }
-    return compareThreads(left.orderingThread, right.orderingThread);
+    return compareSiblingItems(left.item, right.item, compareThreads);
   });
   return decorated.map((entry) => entry.item);
+}
+
+function getItemFallbackSortLabel(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.id;
+    case "environment":
+      return item.group.environmentId;
+    case "folder":
+      return item.group.path.join("/");
+  }
+}
+
+function compareSiblingItems(
+  left: ProjectThreadItem,
+  right: ProjectThreadItem,
+  compareThreads: ThreadComparator,
+): number {
+  const leftThread = getItemOrderingThread(left, compareThreads);
+  const rightThread = getItemOrderingThread(right, compareThreads);
+  if (leftThread && rightThread) {
+    return compareThreads(leftThread, rightThread);
+  }
+  if (leftThread || rightThread) {
+    return leftThread ? -1 : 1;
+  }
+  return compareCodepoint(
+    getItemFallbackSortLabel(left),
+    getItemFallbackSortLabel(right),
+  );
 }
 
 function buildFolderGroup(
@@ -671,17 +705,33 @@ function buildFolderLevelItems(
 
 // Fold a top-level item list into a nested folder tree. Items whose
 // representative thread has no folderPath stay loose at the top level; the rest
-// nest into the deepest folder of their path. No empty folders: a folder node
-// exists only because >=1 item resolved into it.
+// nest into the deepest folder of their path. Explicit folder paths can create
+// empty folder nodes so new folders exist before their first thread is dropped.
 export function bucketIntoFolders(
   items: readonly ProjectThreadItem[],
   containerId: string,
   compareThreads: ThreadComparator = compareStandardThreads,
   manualOrder?: SidebarManualOrder,
+  folderPaths: readonly string[] = [],
 ): ProjectThreadItem[] {
   const root = createFolderBucket();
+  for (const folderPath of folderPaths) {
+    const folders = splitFolderPath(folderPath);
+    let bucket = root;
+    for (const segment of folders) {
+      let next = bucket.subfolders.get(segment);
+      if (!next) {
+        next = createFolderBucket();
+        bucket.subfolders.set(segment, next);
+      }
+      bucket = next;
+    }
+  }
   for (const item of items) {
     const orderingThread = getItemOrderingThread(item, compareThreads);
+    if (!orderingThread) {
+      continue;
+    }
     const folders = splitFolderPath(orderingThread.folderPath);
     let bucket = root;
     for (const segment of folders) {

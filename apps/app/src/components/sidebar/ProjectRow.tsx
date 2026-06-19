@@ -13,7 +13,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
@@ -126,6 +126,7 @@ export type ProjectThreadListState =
 export interface ProjectRowProps {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
+  folderPaths?: readonly string[];
   selectedThreadId?: string;
   isActive: boolean;
   isCollapsed: boolean;
@@ -148,6 +149,7 @@ export interface ProjectThreadTreeProps {
   projectId: string;
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
+  folderPaths?: readonly string[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -160,6 +162,7 @@ export interface ProjectThreadTreeProps {
 export interface ChronologicalThreadTreeProps {
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
+  folderPaths?: readonly string[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
@@ -174,6 +177,7 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
+const EMPTY_FOLDER_PATHS: readonly string[] = [];
 const PROJECT_ROW_LEADING_SLOT_CLASS =
   "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
 
@@ -286,6 +290,9 @@ export function getItemProjectId(item: ProjectThreadItem): string {
     case "environment":
       return item.group.nodes[0].thread.projectId;
     case "folder":
+      if (item.group.items.length === 0) {
+        return PERSONAL_PROJECT_ID;
+      }
       return getItemProjectId(item.group.items[0]);
   }
 }
@@ -1284,7 +1291,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
-      {!isCollapsed ? (
+      {!isCollapsed && folder.items.length > 0 ? (
         <div className="relative space-y-px">
           <ThreadTreeGroupLine parentRowDepth={headerDepth} />
           <ManualSortableList manualSort={manualSort} parentKey={folder.key}>
@@ -1441,6 +1448,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
   compareThreads,
+  folderPaths = EMPTY_FOLDER_PATHS,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1459,8 +1467,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(projectThreads, compareThreads, {
         groupBy,
         containerId: projectId,
+        folderPaths,
       }),
-    [compareThreads, projectThreads, groupBy, projectId],
+    [compareThreads, projectThreads, groupBy, projectId, folderPaths],
   );
   const manualSort = useManualThreadTreeDnd({
     containerId: projectId,
@@ -1476,7 +1485,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     );
   }
 
-  if (projectThreads.length === 0) {
+  if (rootItems.length === 0) {
     const emptyState = (
       <EmptyState
         message={
@@ -1545,6 +1554,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,
+  folderPaths = EMPTY_FOLDER_PATHS,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
@@ -1562,8 +1572,9 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       buildChronologicalThreadList(threads, compareThreads, {
         groupBy,
         containerId: CHRONOLOGICAL_CONTAINER_ID,
+        folderPaths,
       }),
-    [threads, compareThreads, groupBy],
+    [threads, compareThreads, groupBy, folderPaths],
   );
   const manualSort = useManualThreadTreeDnd({
     containerId: CHRONOLOGICAL_CONTAINER_ID,
@@ -1579,7 +1590,7 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
     );
   }
 
-  if (threads.length === 0) {
+  if (rootItems.length === 0) {
     return (
       <EmptyState
         message={
@@ -1636,6 +1647,7 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
 function ProjectRowComponent({
   project,
   threadListState,
+  folderPaths = EMPTY_FOLDER_PATHS,
   selectedThreadId,
   isActive,
   isCollapsed,
@@ -1803,6 +1815,7 @@ function ProjectRowComponent({
           <ProjectThreadTree
             projectId={project.id}
             threadListState={threadListState}
+            folderPaths={folderPaths}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1896,6 +1909,7 @@ function areProjectRowPropsEqual(
   if (
     prev.project !== next.project ||
     prev.threadListState !== next.threadListState ||
+    prev.folderPaths !== next.folderPaths ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||

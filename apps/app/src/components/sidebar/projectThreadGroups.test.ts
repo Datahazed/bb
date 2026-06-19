@@ -565,6 +565,22 @@ describe("folder bucketing", () => {
     expect(summarizeItems(items)).toEqual(["a", "b"]);
   });
 
+  it("renders explicit empty folders without a thread using that path", () => {
+    const items = buildProjectThreadGroups(
+      [createThread({ id: "a", title: "Standalone" })],
+      compareStandardThreads,
+      {
+        ...FOLDER_OPTIONS,
+        folderPaths: ["Work/Q3"],
+      },
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      { folder: "proj_1::Work", items: [{ folder: "proj_1::Work/Q3", items: [] }] },
+      "a",
+    ]);
+  });
+
   it("keeps a folder thread's own children nested under it and ignores their slashes", () => {
     const items = buildProjectThreadGroups(
       [

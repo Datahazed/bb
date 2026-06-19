@@ -46,6 +46,7 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
+  CreateThreadFolderRequest,
   CreateThreadRequest,
   CreateThreadTerminalRequest,
   DeleteThreadRequest,
@@ -101,6 +102,7 @@ import type {
   ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
+  ThreadFolderResponse,
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
@@ -137,6 +139,7 @@ import {
   runAutomationRequestSchema,
   updateAutomationRequestSchema,
   closeThreadTerminalRequestSchema,
+  createThreadFolderRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
@@ -446,6 +449,17 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentArchiveThreadsResponse>(),
+    }),
+  },
+
+  threadFolders: {
+    create: defineRoute({
+      path: "/thread-folders",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
+        createThreadFolderRequestSchema,
+      ),
+      response: jsonResponse<ThreadFolderResponse>({ status: 201 }),
     }),
   },
 

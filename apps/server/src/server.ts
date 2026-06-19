@@ -14,6 +14,7 @@ import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
+import { registerThreadFolderRoutes } from "./routes/thread-folders.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
@@ -243,6 +244,7 @@ export function createApp(
   });
   const publicApi = new Hono();
   registerProjectRoutes(publicApi, deps);
+  registerThreadFolderRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps);

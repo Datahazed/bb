@@ -99,6 +99,7 @@ function makeProject(args: MakeProjectArgs): ProjectWithThreadsResponse {
 describe("buildMobileRecentThreads", () => {
   it("includes projectless and every project thread", () => {
     const sidebarNavigation: SidebarBootstrapResponse = {
+      folders: [],
       personalProject: makeProject({
         id: PERSONAL_PROJECT_ID,
         kind: "personal",

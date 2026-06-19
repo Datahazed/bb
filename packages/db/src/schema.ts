@@ -307,6 +307,20 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadFolders = sqliteTable(
+  "thread_folders",
+  {
+    id: text("id").primaryKey(),
+    path: text("path").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_folders_path_idx").on(table.path),
+    index("thread_folders_updated_idx").on(table.updatedAt),
+  ],
+);
+
 export const threadSearchSegments = sqliteTable(
   "thread_search_segments",
   {

@@ -63,6 +63,7 @@ function makeSidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
   return {
+    folders: [],
     projects: [
       {
         id: "project-1",

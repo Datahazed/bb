@@ -32,6 +32,7 @@ import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
+import { useCreateThreadFolder } from "@/hooks/mutations/thread-folder-mutations";
 import {
   isLocalPathMissing,
   useLocalPathExistence,
@@ -48,6 +49,7 @@ import {
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
+import { ThreadFolderCreateDialog } from "@/components/dialogs/ThreadFolderCreateDialog";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
@@ -170,6 +172,8 @@ interface ProjectListProjectsSectionActionsProps {
 }
 
 interface ProjectListThreadsSectionActionsProps {
+  isCreatingFolder: boolean;
+  onNewFolder: () => void;
   onNewThread: () => void;
 }
 
@@ -335,6 +339,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 };
 
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
+const EMPTY_FOLDER_PATHS: readonly string[] = [];
 
 function getProjectId(project: ProjectResponse): string {
   return project.id;
@@ -434,15 +439,26 @@ function ProjectListProjectsSectionActions({
 }
 
 function ProjectListThreadsSectionActions({
+  isCreatingFolder,
+  onNewFolder,
   onNewThread,
 }: ProjectListThreadsSectionActionsProps) {
   return (
-    <ProjectListSectionIconButton
-      ariaLabel="New thread"
-      title="New thread"
-      iconName="MessageSquarePlus"
-      onClick={onNewThread}
-    />
+    <>
+      <ProjectListSectionIconButton
+        ariaLabel="New folder"
+        title="New folder"
+        disabled={isCreatingFolder}
+        iconName="FolderPlus"
+        onClick={onNewFolder}
+      />
+      <ProjectListSectionIconButton
+        ariaLabel="New thread"
+        title="New thread"
+        iconName="MessageSquarePlus"
+        onClick={onNewThread}
+      />
+    </>
   );
 }
 
@@ -739,11 +755,11 @@ function TopLevelSidebarSection({
         <span
           className={cn(
             "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
-            actions && "pr-[5.75rem] max-md:pointer-coarse:pr-[7.25rem]",
+            actions && "pr-[7.5rem] max-md:pointer-coarse:pr-[9.75rem]",
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
-          {/* Reserve room for up to three section action buttons on the right;
+          {/* Reserve room for up to four section action buttons on the right;
               coarse pointers need a little more. */}
           {collapseControl ? (
             <button
@@ -957,6 +973,12 @@ function ProjectListComponent({
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
+  const folderPaths = useMemo(
+    () =>
+      sidebarNavigation?.folders.map((folder) => folder.path) ??
+      EMPTY_FOLDER_PATHS,
+    [sidebarNavigation],
+  );
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -1035,6 +1057,10 @@ function ProjectListComponent({
     isPending: isPinnedReorderPending,
     mutate: reorderPinnedThreadMutate,
   } = useReorderPinnedThread();
+  const {
+    isPending: isCreateThreadFolderPending,
+    mutate: createThreadFolderMutate,
+  } = useCreateThreadFolder();
   const projectItems = projects ?? EMPTY_PROJECTS;
   const handleReorderProject = useCallback<
     UseNeighborReorderSortableArgs<ProjectResponse>["onReorder"]
@@ -1105,6 +1131,25 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
+  const [isFolderCreateDialogOpen, setIsFolderCreateDialogOpen] =
+    useState(false);
+  const handleOpenCreateFolderDialog = useCallback(() => {
+    setIsFolderCreateDialogOpen(true);
+  }, []);
+  const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
+    setIsFolderCreateDialogOpen(open);
+  }, []);
+  const handleCreateThreadFolder = useCallback(
+    (path: string) => {
+      createThreadFolderMutate(
+        { path },
+        {
+          onSuccess: () => setIsFolderCreateDialogOpen(false),
+        },
+      );
+    },
+    [createThreadFolderMutate],
+  );
   const handleOpenProjectlessArchivedThreads = useCallback(() => {
     onProjectSelect?.();
     navigate(getProjectlessArchivedRoutePath());
@@ -1529,6 +1574,7 @@ function ProjectListComponent({
       compareThreads={sidebarThreadComparator}
       onProjectSelect={onProjectSelect}
       onCreateProjectThread={handleCreateProjectThread}
+      folderPaths={folderPaths}
       onToggleProjectCollapsed={toggleProjectCollapsed}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
@@ -1543,6 +1589,7 @@ function ProjectListComponent({
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       compareThreads={sidebarThreadComparator}
+      folderPaths={folderPaths}
       variant="section"
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
@@ -1553,6 +1600,7 @@ function ProjectListComponent({
     <ChronologicalThreadTree
       threadListState={allThreadsListState}
       compareThreads={sidebarThreadComparator}
+      folderPaths={folderPaths}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1592,9 +1640,19 @@ function ProjectListComponent({
         onOpenChange={handleThreadsViewOptionsMenuOpenChange}
       />
       <ProjectListThreadsSectionActions
+        isCreatingFolder={isCreateThreadFolderPending}
+        onNewFolder={handleOpenCreateFolderDialog}
         onNewThread={handleCreateProjectlessThread}
       />
     </>
+  );
+  const folderCreateDialog = (
+    <ThreadFolderCreateDialog
+      open={isFolderCreateDialogOpen}
+      pending={isCreateThreadFolderPending}
+      onOpenChange={handleCreateFolderDialogOpenChange}
+      onCreate={handleCreateThreadFolder}
+    />
   );
 
   if (threadSearch?.isActive) {
@@ -1646,6 +1704,7 @@ function ProjectListComponent({
             {allThreadsSectionContent}
           </TopLevelSidebarSection>
         </div>
+        {folderCreateDialog}
       </ProjectListShell>
     );
   }
@@ -1718,6 +1777,7 @@ function ProjectListComponent({
           </div>
         </SortableContext>
       </DndContext>
+      {folderCreateDialog}
     </ProjectListShell>
   );
 }

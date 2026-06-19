@@ -28,6 +28,10 @@ import {
   applyThreadLifecycleEvent,
   requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
+import {
+  createThreadFolder,
+  listThreadFolders,
+} from "../../src/data/thread-folders.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
@@ -619,11 +623,29 @@ describe("threads", () => {
     });
 
     expect(updated?.folderPath).toBe("Work/Q3");
+    expect(listThreadFolders(db).map((folder) => folder.path)).toEqual([
+      "Work",
+      "Work/Q3",
+    ]);
     expect(spy.notifyThread).toHaveBeenCalledWith(
       thread.id,
       ["title-changed"],
       { projectId: project.id },
     );
+  });
+
+  it("creates explicit thread folders with ancestors", () => {
+    const { db } = setup();
+
+    const folder = createThreadFolder(db, noopNotifier, {
+      path: " Work / Q3 ",
+    });
+
+    expect(folder.path).toBe("Work/Q3");
+    expect(listThreadFolders(db).map((entry) => entry.path)).toEqual([
+      "Work",
+      "Work/Q3",
+    ]);
   });
 
   it("notifies when a thread parent changes", () => {

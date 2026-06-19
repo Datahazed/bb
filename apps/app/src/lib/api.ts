@@ -18,6 +18,7 @@ import type {
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
+  CreateThreadFolderRequest,
   CreateQueuedMessageRequest,
   DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
@@ -50,6 +51,7 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadFolderResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -478,6 +480,14 @@ export async function createProject(
   req: CreateProjectRequest,
 ): Promise<ProjectResponse> {
   return request<ProjectResponse>(apiClient.projects.$post({ json: req }));
+}
+
+export async function createThreadFolder(
+  req: CreateThreadFolderRequest,
+): Promise<ThreadFolderResponse> {
+  return request<ThreadFolderResponse>(
+    apiClient["thread-folders"].$post({ json: req }),
+  );
 }
 
 export async function updateProject(

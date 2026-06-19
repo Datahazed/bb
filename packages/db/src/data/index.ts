@@ -20,6 +20,18 @@ export type {
 } from "./projects.js";
 
 export {
+  createThreadFolder,
+  ensureThreadFolderPath,
+  getThreadFolderByPath,
+  listThreadFolders,
+  normalizeThreadFolderPath,
+} from "./thread-folders.js";
+export type {
+  CreateThreadFolderInput,
+  ThreadFolderRow,
+} from "./thread-folders.js";
+
+export {
   createAutomation,
   getAutomation,
   getAutomationForProject,
