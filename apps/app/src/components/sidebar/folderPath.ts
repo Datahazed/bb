@@ -77,6 +77,16 @@ export function formatFolderPathLabel(segments: readonly string[]): string {
   return segments.join(FOLDER_PATH_SEPARATOR);
 }
 
+// Re-file a thread into a destination folder path while keeping its current
+// leaf. An empty destination strips the folder prefix and returns just the leaf.
+export function buildThreadTitleForFolderPath(
+  title: string,
+  destinationFolders: readonly string[],
+): string {
+  const { leaf } = parseThreadFolderPath(title);
+  return normalizeThreadTitle([...destinationFolders, leaf].join("/"));
+}
+
 // Stable identity for a folder within a section. `containerId` is the owner of
 // the section — a `proj_*` id for project sections, or a fixed sentinel for the
 // global sections — so "Work" in project A never collides with "Work" in

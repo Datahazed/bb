@@ -8,6 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -17,6 +22,7 @@ import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
 } from "@/hooks/mutations/environment-mutations";
+import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useDialogState } from "@/hooks/useDialogState";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -69,6 +75,7 @@ import {
   buildChronologicalThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
+  getManualOrderItemKey,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -76,12 +83,17 @@ import {
   type ThreadComparator,
 } from "./projectThreadGroups";
 import { SidebarFolderRow } from "./SidebarFolderRow";
-import { formatFolderPathLabel, parseThreadFolderPath } from "./folderPath";
+import {
+  buildThreadTitleForFolderPath,
+  formatFolderPathLabel,
+  parseThreadFolderPath,
+} from "./folderPath";
 import {
   sidebarChronologicalSortAtom,
   sidebarCollapsedFoldersAtom,
   sidebarGroupByAtom,
   sidebarManualOrderAtom,
+  type SidebarManualOrder,
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
@@ -91,9 +103,14 @@ import {
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
-import { type SidebarSortableDragBindings } from "./sortableMotion";
+import {
+  useSidebarSortable,
+  type SidebarSortableDragBindings,
+} from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
+import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
+import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
 // Pin the project row plus this many parent levels (parent threads,
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
@@ -206,6 +223,11 @@ interface ThreadTreeItemRowProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
+  manualSort?: ManualThreadTreeDndState;
+  sortableRef?: (element: HTMLDivElement | null) => void;
+  sortableStyle?: CSSProperties;
 }
 
 interface FolderTreeItemRowProps {
@@ -218,6 +240,35 @@ interface FolderTreeItemRowProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
+  manualSort?: ManualThreadTreeDndState;
+  sortableRef?: (element: HTMLDivElement | null) => void;
+  sortableStyle?: CSSProperties;
+}
+
+interface ManualThreadTreeDndState {
+  consumeClickSuppression: ConsumeDragClickSuppression;
+  dndContextProps: SidebarReorderDndContextProps;
+  enabled: boolean;
+  itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
+  onClickCapture: MouseEventHandler<HTMLElement>;
+}
+
+interface UseManualThreadTreeDndArgs {
+  containerId: string;
+  enabled: boolean;
+  rootItems: readonly ProjectThreadItem[];
+}
+
+type ManualSortableItemKind = "thread" | "folder" | "environment";
+
+interface ManualThreadTreeLookup {
+  folderPathByParentKey: Map<string, readonly string[]>;
+  itemIdsByParentKey: Map<string, string[]>;
+  itemKindById: Map<string, ManualSortableItemKind>;
+  parentKeyByItemId: Map<string, string>;
+  threadByItemId: Map<string, ThreadListEntry>;
 }
 
 // Render key + routing projectId for any item kind. Folders derive from their
@@ -243,6 +294,200 @@ export function getItemProjectId(item: ProjectThreadItem): string {
     case "folder":
       return getItemProjectId(item.group.items[0]);
   }
+}
+
+function getManualSortableItemKind(
+  item: ProjectThreadItem,
+): ManualSortableItemKind {
+  return item.kind;
+}
+
+function collectManualThreadTreeLookup(
+  items: readonly ProjectThreadItem[],
+  containerId: string,
+): ManualThreadTreeLookup {
+  const lookup: ManualThreadTreeLookup = {
+    folderPathByParentKey: new Map([[containerId, []]]),
+    itemIdsByParentKey: new Map(),
+    itemKindById: new Map(),
+    parentKeyByItemId: new Map(),
+    threadByItemId: new Map(),
+  };
+
+  const walk = (
+    siblingItems: readonly ProjectThreadItem[],
+    parentKey: string,
+  ) => {
+    const itemIds = siblingItems.map(getManualOrderItemKey);
+    lookup.itemIdsByParentKey.set(parentKey, itemIds);
+
+    for (const item of siblingItems) {
+      const itemId = getManualOrderItemKey(item);
+      lookup.itemKindById.set(itemId, getManualSortableItemKind(item));
+      lookup.parentKeyByItemId.set(itemId, parentKey);
+
+      if (item.kind === "thread") {
+        lookup.threadByItemId.set(itemId, item.node.thread);
+      } else if (item.kind === "folder") {
+        lookup.folderPathByParentKey.set(item.group.key, item.group.path);
+        walk(item.group.items, item.group.key);
+      }
+    }
+  };
+
+  walk(items, containerId);
+  return lookup;
+}
+
+function moveIdBefore({
+  activeId,
+  itemIds,
+  overId,
+}: {
+  activeId: string;
+  itemIds: readonly string[];
+  overId: string | null;
+}): string[] {
+  const withoutActive = itemIds.filter((id) => id !== activeId);
+  const insertIndex =
+    overId === null ? withoutActive.length : withoutActive.indexOf(overId);
+  if (insertIndex === -1) {
+    return [...itemIds];
+  }
+  return [
+    ...withoutActive.slice(0, insertIndex),
+    activeId,
+    ...withoutActive.slice(insertIndex),
+  ];
+}
+
+function writeManualOrderLists(
+  current: SidebarManualOrder,
+  updates: ReadonlyMap<string, readonly string[]>,
+): SidebarManualOrder {
+  const next = { ...current };
+  for (const [parentKey, itemIds] of updates) {
+    next[parentKey] = [...itemIds];
+  }
+  return next;
+}
+
+function useManualThreadTreeDnd({
+  containerId,
+  enabled,
+  rootItems,
+}: UseManualThreadTreeDndArgs): ManualThreadTreeDndState | null {
+  const lookup = useMemo(
+    () => collectManualThreadTreeLookup(rootItems, containerId),
+    [containerId, rootItems],
+  );
+  const setManualOrder = useSetAtom(sidebarManualOrderAtom);
+  const updateThread = useUpdateThread();
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!enabled) return;
+
+      const { active, over } = event;
+      if (
+        !over ||
+        typeof active.id !== "string" ||
+        typeof over.id !== "string"
+      ) {
+        return;
+      }
+
+      const activeId = active.id;
+      const overId = over.id;
+      if (activeId === overId) return;
+
+      const activeKind = lookup.itemKindById.get(activeId);
+      const overKind = lookup.itemKindById.get(overId);
+      const fromParentKey = lookup.parentKeyByItemId.get(activeId);
+      let toParentKey = lookup.parentKeyByItemId.get(overId);
+      let destinationOverId: string | null = overId;
+
+      if (!activeKind || !overKind || !fromParentKey || !toParentKey) {
+        return;
+      }
+
+      // Dropping a thread on a folder header means "move into this folder".
+      if (activeKind === "thread" && overKind === "folder") {
+        toParentKey = overId;
+        destinationOverId = null;
+      }
+
+      // Folders can be reordered among siblings, but they are not folder
+      // entities and cannot be re-filed into other folders.
+      if (activeKind === "folder" && fromParentKey !== toParentKey) {
+        return;
+      }
+
+      const sourceIds = lookup.itemIdsByParentKey.get(fromParentKey);
+      const destinationIds = lookup.itemIdsByParentKey.get(toParentKey);
+      if (!sourceIds || !destinationIds) {
+        return;
+      }
+
+      const updates = new Map<string, readonly string[]>();
+      if (fromParentKey === toParentKey) {
+        updates.set(
+          fromParentKey,
+          moveIdBefore({
+            activeId,
+            itemIds: sourceIds,
+            overId: destinationOverId,
+          }),
+        );
+      } else {
+        updates.set(
+          fromParentKey,
+          sourceIds.filter((id) => id !== activeId),
+        );
+        updates.set(
+          toParentKey,
+          moveIdBefore({
+            activeId,
+            itemIds: destinationIds,
+            overId: destinationOverId,
+          }),
+        );
+      }
+
+      setManualOrder((current) => writeManualOrderLists(current, updates));
+
+      if (activeKind !== "thread" || fromParentKey === toParentKey) {
+        return;
+      }
+
+      const thread = lookup.threadByItemId.get(activeId);
+      if (!thread) return;
+
+      const destinationFolders =
+        lookup.folderPathByParentKey.get(toParentKey) ?? [];
+      const title = buildThreadTitleForFolderPath(
+        thread.title ?? getThreadDisplayTitle(thread),
+        destinationFolders,
+      );
+      updateThread.mutate({ id: activeId, title });
+    },
+    [enabled, lookup, setManualOrder, updateThread],
+  );
+
+  const { consumeClickSuppression, dndContextProps, onClickCapture } =
+    useSidebarReorderDnd({ onDragEnd: handleDragEnd });
+
+  if (!enabled) {
+    return null;
+  }
+
+  return {
+    consumeClickSuppression,
+    dndContextProps,
+    enabled,
+    itemIdsByParentKey: lookup.itemIdsByParentKey,
+    onClickCapture,
+  };
 }
 
 interface EnvironmentThreadGroupRowProps {
@@ -419,6 +664,8 @@ function getThreadRowOptions({
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
+    ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
+    ...(dragBindings ? { dragBindings } : {}),
   };
 
   if (!isParent) {
@@ -436,8 +683,6 @@ function getThreadRowOptions({
     childActivity,
     ...(stickyLevel !== undefined ? { stickyLevel } : {}),
     onToggleCollapsed: onToggleThreadCollapsed,
-    ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
-    ...(dragBindings ? { dragBindings } : {}),
   };
 }
 
@@ -514,6 +759,57 @@ function ProjectThreadTreeGroup({
     </div>
   );
 }
+
+function ManualSortableList({
+  children,
+  manualSort,
+  parentKey,
+}: {
+  children: ReactNode;
+  manualSort?: ManualThreadTreeDndState | null;
+  parentKey: string;
+}) {
+  if (!manualSort?.enabled) {
+    return <>{children}</>;
+  }
+
+  return (
+    <SortableContext
+      items={[...(manualSort.itemIdsByParentKey.get(parentKey) ?? [])]}
+      strategy={verticalListSortingStrategy}
+    >
+      {children}
+    </SortableContext>
+  );
+}
+
+const ManualSortableThreadTreeItemRow = memo(
+  function ManualSortableThreadTreeItemRow({
+    manualSort,
+    ...props
+  }: ThreadTreeItemRowProps) {
+    const itemId = getManualOrderItemKey(props.item);
+    const { dragBindings, setNodeRef, style } = useSidebarSortable({
+      id: itemId,
+      disabled: !manualSort?.enabled || props.item.kind === "environment",
+    });
+
+    if (!manualSort?.enabled || props.item.kind === "environment") {
+      return <ThreadTreeItemRow manualSort={manualSort} {...props} />;
+    }
+
+    return (
+      <ThreadTreeItemRow
+        {...props}
+        consumeClickSuppression={manualSort.consumeClickSuppression}
+        dragBindings={dragBindings}
+        manualSort={manualSort}
+        sortableRef={setNodeRef}
+        sortableStyle={style}
+      />
+    );
+  },
+);
 
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
@@ -942,6 +1238,11 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  consumeClickSuppression,
+  dragBindings,
+  manualSort,
+  sortableRef,
+  sortableStyle,
 }: ThreadTreeItemRowProps) {
   if (item.kind === "folder") {
     return (
@@ -955,6 +1256,11 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         onProjectSelect={onProjectSelect}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        consumeClickSuppression={consumeClickSuppression}
+        dragBindings={dragBindings}
+        manualSort={manualSort}
+        sortableRef={sortableRef}
+        sortableStyle={sortableStyle}
       />
     );
   }
@@ -974,6 +1280,10 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         onProjectSelect={onProjectSelect}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        consumeClickSuppression={consumeClickSuppression}
+        dragBindings={dragBindings}
+        sortableRef={sortableRef}
+        sortableStyle={sortableStyle}
       />
     );
   }
@@ -1009,6 +1319,11 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  consumeClickSuppression,
+  dragBindings,
+  manualSort,
+  sortableRef,
+  sortableStyle,
 }: FolderTreeItemRowProps) {
   const collapsedFolders = useAtomValue(sidebarCollapsedFoldersAtom);
   const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
@@ -1027,13 +1342,19 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
 
   return (
-    <SidebarStickyGroup className="space-y-0.5">
+    <SidebarStickyGroup
+      ref={sortableRef}
+      style={sortableStyle}
+      className="space-y-0.5"
+    >
       <SidebarFolderRow
         name={folder.name}
         pathLabel={formatFolderPathLabel(folder.path)}
         depth={headerDepth}
         threadCount={folder.threadCount}
         activity={folder.activity}
+        consumeClickSuppression={consumeClickSuppression}
+        dragBindings={dragBindings}
         isCollapsed={isCollapsed}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
@@ -1041,22 +1362,25 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
       {!isCollapsed ? (
         <div className="relative space-y-px">
           <ThreadTreeGroupLine parentRowDepth={headerDepth} />
-          {folder.items.map((item) => (
-            <ThreadTreeItemRow
-              key={getItemKey(item)}
-              projectId={getItemProjectId(item)}
-              item={item}
-              depthOffset={depthOffset + 1}
-              insideFolder
-              selectedThreadId={selectedThreadId}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              variant={variant}
-              onProjectSelect={onProjectSelect}
-              onToggleThreadCollapsed={onToggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            />
-          ))}
+          <ManualSortableList manualSort={manualSort} parentKey={folder.key}>
+            {folder.items.map((item) => (
+              <ManualSortableThreadTreeItemRow
+                key={getItemKey(item)}
+                projectId={getItemProjectId(item)}
+                item={item}
+                depthOffset={depthOffset + 1}
+                insideFolder
+                selectedThreadId={selectedThreadId}
+                collapsedThreadIds={collapsedThreadIds}
+                collapsedEnvironmentIds={collapsedEnvironmentIds}
+                variant={variant}
+                onProjectSelect={onProjectSelect}
+                onToggleThreadCollapsed={onToggleThreadCollapsed}
+                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+                manualSort={manualSort}
+              />
+            ))}
+          </ManualSortableList>
         </div>
       ) : null}
     </SidebarStickyGroup>
@@ -1221,6 +1545,11 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       projectId,
     ],
   );
+  const manualSort = useManualThreadTreeDnd({
+    containerId: projectId,
+    enabled: chronologicalSort === "none",
+    rootItems,
+  });
 
   if (threadListState.status === "loading") {
     return (
@@ -1258,24 +1587,36 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     );
   }
 
-  return (
-    <ProjectThreadTreeGroup variant={variant}>
-      {rootItems.map((item) => (
-        <ThreadTreeItemRow
-          key={getItemKey(item)}
-          projectId={projectId}
-          item={item}
-          depthOffset={0}
-          selectedThreadId={selectedThreadId}
-          collapsedThreadIds={collapsedThreadIds}
-          collapsedEnvironmentIds={collapsedEnvironmentIds}
-          variant={variant}
-          onProjectSelect={onProjectSelect}
-          onToggleThreadCollapsed={onToggleThreadCollapsed}
-          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        />
-      ))}
+  const tree = (
+    <ProjectThreadTreeGroup
+      variant={variant}
+      onClickCapture={manualSort?.onClickCapture}
+    >
+      <ManualSortableList manualSort={manualSort} parentKey={projectId}>
+        {rootItems.map((item) => (
+          <ManualSortableThreadTreeItemRow
+            key={getItemKey(item)}
+            projectId={projectId}
+            item={item}
+            depthOffset={0}
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            variant={variant}
+            onProjectSelect={onProjectSelect}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            manualSort={manualSort ?? undefined}
+          />
+        ))}
+      </ManualSortableList>
     </ProjectThreadTreeGroup>
+  );
+
+  return manualSort ? (
+    <DndContext {...manualSort.dndContextProps}>{tree}</DndContext>
+  ) : (
+    tree
   );
 });
 
@@ -1310,6 +1651,11 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
       }),
     [chronologicalSort, threads, compareThreads, groupBy, manualOrder],
   );
+  const manualSort = useManualThreadTreeDnd({
+    containerId: CHRONOLOGICAL_CONTAINER_ID,
+    enabled: chronologicalSort === "none",
+    rootItems,
+  });
 
   if (threadListState.status === "loading") {
     return (
@@ -1337,24 +1683,39 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
     );
   }
 
-  return (
-    <ProjectThreadTreeGroup variant="section">
-      {rootItems.map((item) => (
-        <ThreadTreeItemRow
-          key={getItemKey(item)}
-          projectId={getItemProjectId(item)}
-          item={item}
-          depthOffset={0}
-          selectedThreadId={selectedThreadId}
-          collapsedThreadIds={collapsedThreadIds}
-          collapsedEnvironmentIds={collapsedEnvironmentIds}
-          variant="section"
-          onProjectSelect={onProjectSelect}
-          onToggleThreadCollapsed={onToggleThreadCollapsed}
-          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        />
-      ))}
+  const tree = (
+    <ProjectThreadTreeGroup
+      variant="section"
+      onClickCapture={manualSort?.onClickCapture}
+    >
+      <ManualSortableList
+        manualSort={manualSort}
+        parentKey={CHRONOLOGICAL_CONTAINER_ID}
+      >
+        {rootItems.map((item) => (
+          <ManualSortableThreadTreeItemRow
+            key={getItemKey(item)}
+            projectId={getItemProjectId(item)}
+            item={item}
+            depthOffset={0}
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            variant="section"
+            onProjectSelect={onProjectSelect}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            manualSort={manualSort ?? undefined}
+          />
+        ))}
+      </ManualSortableList>
     </ProjectThreadTreeGroup>
+  );
+
+  return manualSort ? (
+    <DndContext {...manualSort.dndContextProps}>{tree}</DndContext>
+  ) : (
+    tree
   );
 });
 

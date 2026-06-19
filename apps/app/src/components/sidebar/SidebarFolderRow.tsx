@@ -1,4 +1,9 @@
-import { memo, type CSSProperties } from "react";
+import {
+  memo,
+  useCallback,
+  type CSSProperties,
+  type MouseEventHandler,
+} from "react";
 import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import {
@@ -20,6 +25,8 @@ import {
 } from "./sidebarRowClasses";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { ThreadStatusGlyph } from "./ThreadRow";
+import type { SidebarSortableDragBindings } from "./sortableMotion";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 
 interface SidebarFolderRowProps {
   // Leaf segment shown on the header ("Q3").
@@ -35,6 +42,8 @@ interface SidebarFolderRowProps {
   onToggleCollapsed: () => void;
   // Pin depth among parent rows when sticky; absent = not pinned (past the cap).
   stickyLevel?: number;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
 }
 
 // The "Work › Q3 (2)" disclosure header for a derived folder. Not a thread:
@@ -47,6 +56,8 @@ function SidebarFolderRowComponent({
   depth,
   threadCount,
   activity,
+  consumeClickSuppression,
+  dragBindings,
   isCollapsed,
   onToggleCollapsed,
   stickyLevel,
@@ -64,10 +75,21 @@ function SidebarFolderRowComponent({
     SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     "cursor-pointer",
+    dragBindings && !dragBindings.disabled && "select-none",
   );
   const style: CSSProperties = {
     paddingLeft: getSidebarThreadRowPaddingLeft(depth),
   };
+  const handleClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
+    (event) => {
+      if (!consumeClickSuppression?.()) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [consumeClickSuppression],
+  );
   const content = (
     <>
       {/* Full-bleed toggle target for pointer users; the chevron owns keyboard
@@ -107,7 +129,10 @@ function SidebarFolderRowComponent({
         />
       </span>
       <span
-        className={cn("relative z-10 shrink-0", COARSE_POINTER_ROW_ACTION_SIZE_CLASS)}
+        className={cn(
+          "relative z-10 shrink-0",
+          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+        )}
       >
         {showRollupGlyph ? (
           <span
@@ -131,11 +156,17 @@ function SidebarFolderRowComponent({
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
+        ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
         className={className}
         style={style}
         title={pathLabel}
+        {...dragBindings?.attributes}
+        {...(dragBindings?.listeners ?? {})}
+        onClickCapture={
+          consumeClickSuppression ? handleClickCapture : undefined
+        }
       >
         {content}
       </SidebarStickyTier>
@@ -143,7 +174,15 @@ function SidebarFolderRowComponent({
   }
 
   return (
-    <div className={className} style={style} title={pathLabel}>
+    <div
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+      title={pathLabel}
+      {...dragBindings?.attributes}
+      {...(dragBindings?.listeners ?? {})}
+      onClickCapture={consumeClickSuppression ? handleClickCapture : undefined}
+    >
       {content}
     </div>
   );

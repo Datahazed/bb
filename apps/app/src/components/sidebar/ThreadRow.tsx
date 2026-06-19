@@ -54,6 +54,8 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
+  consumeClickSuppression?: ConsumeDragClickSuppression;
+  dragBindings?: SidebarSortableDragBindings;
 }
 
 export type ThreadRowOptions =
@@ -69,8 +71,6 @@ export type ThreadRowOptions =
       // (deeper than the sticky cap, or not a sticky parent role).
       stickyLevel?: number;
       onToggleCollapsed: (threadId: string) => void;
-      consumeClickSuppression?: ConsumeDragClickSuppression;
-      dragBindings?: SidebarSortableDragBindings;
     });
 
 interface ThreadRowProps {
@@ -143,7 +143,14 @@ function renderThreadRowContainer({
   }
 
   return (
-    <div className={className} style={style} onClickCapture={onClickCapture}>
+    <div
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+      {...dragBindings?.attributes}
+      {...(dragBindings?.listeners ?? {})}
+      onClickCapture={onClickCapture}
+    >
       {children}
     </div>
   );
@@ -228,7 +235,10 @@ function ThreadTrailingIndicator({
 
   return (
     <span
-      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+      className={cn(
+        SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+        COARSE_POINTER_GLYPH_BOX_CLASS,
+      )}
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
@@ -291,7 +301,7 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const linkTitle = linkLabel;
-  const parentDragBindings = parentOptions?.dragBindings;
+  const rowDragBindings = options.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -303,19 +313,19 @@ function ThreadRowComponent({
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-    parentDragBindings && !parentDragBindings.disabled && "select-none",
+    rowDragBindings && !rowDragBindings.disabled && "select-none",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
-  const handleParentClickCapture = useCallback<ThreadRowClickCaptureHandler>(
+  const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
-      if (!parentOptions?.consumeClickSuppression?.()) {
+      if (!options.consumeClickSuppression?.()) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
     },
-    [parentOptions],
+    [options],
   );
 
   const rowContent = (
@@ -397,8 +407,10 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
-    dragBindings: parentDragBindings,
-    onClickCapture: parentOptions ? handleParentClickCapture : undefined,
+    dragBindings: rowDragBindings,
+    onClickCapture: options.consumeClickSuppression
+      ? handleRowClickCapture
+      : undefined,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });

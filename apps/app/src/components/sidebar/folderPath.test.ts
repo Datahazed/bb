@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFolderKey,
+  buildThreadTitleForFolderPath,
   folderAncestorKeys,
   normalizeThreadTitle,
   parseThreadFolderPath,
@@ -92,9 +93,7 @@ describe("titleCreatesFolder", () => {
 
 describe("buildFolderKey", () => {
   it("namespaces a folder path by its container id", () => {
-    expect(buildFolderKey("proj_bb", ["Work", "Q3"])).toBe(
-      "proj_bb::Work/Q3",
-    );
+    expect(buildFolderKey("proj_bb", ["Work", "Q3"])).toBe("proj_bb::Work/Q3");
   });
 
   it("keeps same-named folders in different containers distinct", () => {
@@ -108,6 +107,24 @@ describe("buildFolderKey", () => {
     expect(buildFolderKey("chronological", ["Work"])).toBe(
       "chronological::Work",
     );
+  });
+});
+
+describe("buildThreadTitleForFolderPath", () => {
+  it("keeps the leaf and rewrites the folder prefix", () => {
+    expect(buildThreadTitleForFolderPath("Work/Q3/Plan", ["Personal"])).toBe(
+      "Personal/Plan",
+    );
+  });
+
+  it("strips the folder prefix for a top-level destination", () => {
+    expect(buildThreadTitleForFolderPath("Work/Q3/Plan", [])).toBe("Plan");
+  });
+
+  it("normalizes destination segments", () => {
+    expect(
+      buildThreadTitleForFolderPath(" Work / Q3 / Plan ", [" Personal "]),
+    ).toBe("Personal/Plan");
   });
 });
 
