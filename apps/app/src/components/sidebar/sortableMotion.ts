@@ -11,6 +11,11 @@ const SIDEBAR_SORTABLE_TRANSITION = {
   easing: "cubic-bezier(0.2, 0, 0, 1)",
 };
 
+type SortableDisabled = {
+  draggable?: boolean;
+  droppable?: boolean;
+};
+
 /**
  * Drag-handle plumbing shared by every sortable sidebar surface (sections,
  * projects, pinned roots, manager roots). Spread `attributes`/`listeners` onto
@@ -18,7 +23,7 @@ const SIDEBAR_SORTABLE_TRANSITION = {
  */
 export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;
-  disabled: boolean;
+  disabled: boolean | SortableDisabled;
   isOver: boolean;
   listeners: DraggableSyntheticListeners;
   setActivatorNodeRef: (element: HTMLDivElement | null) => void;
@@ -26,7 +31,7 @@ export interface SidebarSortableDragBindings {
 
 export interface UseSidebarSortableArgs {
   id: string;
-  disabled: boolean;
+  disabled: boolean | SortableDisabled;
 }
 
 export interface UseSidebarSortableResult {

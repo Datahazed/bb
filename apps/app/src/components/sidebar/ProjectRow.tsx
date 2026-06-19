@@ -779,9 +779,15 @@ const ManualSortableThreadTreeItemRow = memo(
     ...props
   }: ThreadTreeItemRowProps) {
     const itemId = getManualOrderItemKey(props.item);
+    const sortableDisabled =
+      !manualSort?.enabled || props.item.kind === "environment"
+        ? true
+        : props.item.kind === "folder"
+          ? { draggable: true }
+          : false;
     const { dragBindings, setNodeRef, style } = useSidebarSortable({
       id: itemId,
-      disabled: !manualSort?.enabled || props.item.kind === "environment",
+      disabled: sortableDisabled,
     });
 
     if (!manualSort?.enabled || props.item.kind === "environment") {
