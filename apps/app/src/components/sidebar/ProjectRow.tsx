@@ -1696,6 +1696,98 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   );
 });
 
+function ThreadTreeLoadingSkeleton() {
+  return (
+    <div className="group-data-[collapsible=icon]:hidden">
+      <SidebarMenuSkeleton />
+    </div>
+  );
+}
+
+interface ManualThreadTreeItemsProps {
+  items: readonly ProjectThreadItem[];
+  manualSort: ManualThreadTreeDndState | null;
+  variant: ProjectThreadTreeVariant;
+  // Route every row to this project; omit to derive each row's project from its
+  // own thread (the cross-project Folders view).
+  projectId?: string;
+  depthOffset?: number;
+  // Wrap the rows in a SortableContext for this parent. Omit when an outer
+  // SortableList already provides the context (the split Folders/Threads view).
+  sortableParentKey?: string;
+  selectedThreadId?: string;
+  collapsedThreadIds: Set<string>;
+  collapsedEnvironmentIds: Set<string>;
+  onProjectSelect?: () => void;
+  onToggleThreadCollapsed: (threadId: string) => void;
+  onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  onCreateThreadInFolder?: (folderPath: string) => void;
+  onViewArchivedThreadsInFolder?: (folderPath: string) => void;
+  onRenameFolder?: (folderPath: string) => void;
+  onRemoveFolder?: (folderPath: string) => void;
+}
+
+// The one place that maps thread-tree items to rows. Every sidebar view
+// (project, flat chronological, folders) renders through this, so a row-prop
+// change lands once instead of being copied across each view's renderer.
+function ManualThreadTreeItems({
+  items,
+  manualSort,
+  variant,
+  projectId,
+  depthOffset = 0,
+  sortableParentKey,
+  selectedThreadId,
+  collapsedThreadIds,
+  collapsedEnvironmentIds,
+  onProjectSelect,
+  onToggleThreadCollapsed,
+  onToggleEnvironmentCollapsed,
+  onCreateThreadInFolder,
+  onViewArchivedThreadsInFolder,
+  onRenameFolder,
+  onRemoveFolder,
+}: ManualThreadTreeItemsProps) {
+  const rows = items.map((item) => (
+    <ManualSortableThreadTreeItemRow
+      key={getItemKey(item)}
+      projectId={projectId ?? getItemProjectId(item)}
+      item={item}
+      depthOffset={depthOffset}
+      selectedThreadId={selectedThreadId}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      variant={variant}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={onToggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      onCreateThreadInFolder={onCreateThreadInFolder}
+      onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
+      onRenameFolder={onRenameFolder}
+      onRemoveFolder={onRemoveFolder}
+      manualSort={manualSort ?? undefined}
+    />
+  ));
+
+  return (
+    <ProjectThreadTreeGroup
+      variant={variant}
+      onClickCapture={manualSort?.onClickCapture}
+    >
+      {sortableParentKey !== undefined ? (
+        <ManualSortableList
+          manualSort={manualSort}
+          parentKey={sortableParentKey}
+        >
+          {rows}
+        </ManualSortableList>
+      ) : (
+        rows
+      )}
+    </ProjectThreadTreeGroup>
+  );
+}
+
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   threadListState,
@@ -1730,11 +1822,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   });
 
   if (threadListState.status === "loading") {
-    return (
-      <div className="group-data-[collapsible=icon]:hidden">
-        <SidebarMenuSkeleton />
-      </div>
-    );
+    return <ThreadTreeLoadingSkeleton />;
   }
 
   if (rootItems.length === 0) {
@@ -1766,29 +1854,19 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   }
 
   const tree = (
-    <ProjectThreadTreeGroup
+    <ManualThreadTreeItems
+      items={rootItems}
+      manualSort={manualSort}
       variant={variant}
-      onClickCapture={manualSort?.onClickCapture}
-    >
-      <ManualSortableList manualSort={manualSort} parentKey={projectId}>
-        {rootItems.map((item) => (
-          <ManualSortableThreadTreeItemRow
-            key={getItemKey(item)}
-            projectId={projectId}
-            item={item}
-            depthOffset={0}
-            selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            variant={variant}
-            onProjectSelect={onProjectSelect}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            manualSort={manualSort ?? undefined}
-          />
-        ))}
-      </ManualSortableList>
-    </ProjectThreadTreeGroup>
+      projectId={projectId}
+      sortableParentKey={projectId}
+      selectedThreadId={selectedThreadId}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={onToggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+    />
   );
 
   return manualSort ? (
@@ -1835,11 +1913,7 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   });
 
   if (threadListState.status === "loading") {
-    return (
-      <div className="group-data-[collapsible=icon]:hidden">
-        <SidebarMenuSkeleton />
-      </div>
-    );
+    return <ThreadTreeLoadingSkeleton />;
   }
 
   if (rootItems.length === 0) {
@@ -1861,32 +1935,18 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   }
 
   const tree = (
-    <ProjectThreadTreeGroup
+    <ManualThreadTreeItems
+      items={rootItems}
+      manualSort={manualSort}
       variant="section"
-      onClickCapture={manualSort?.onClickCapture}
-    >
-      <ManualSortableList
-        manualSort={manualSort}
-        parentKey={CHRONOLOGICAL_CONTAINER_ID}
-      >
-        {rootItems.map((item) => (
-          <ManualSortableThreadTreeItemRow
-            key={getItemKey(item)}
-            projectId={getItemProjectId(item)}
-            item={item}
-            depthOffset={0}
-            selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            variant="section"
-            onProjectSelect={onProjectSelect}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            manualSort={manualSort ?? undefined}
-          />
-        ))}
-      </ManualSortableList>
-    </ProjectThreadTreeGroup>
+      sortableParentKey={CHRONOLOGICAL_CONTAINER_ID}
+      selectedThreadId={selectedThreadId}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={onToggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+    />
   );
 
   return manualSort ? (
@@ -1936,39 +1996,29 @@ export const ChronologicalFolderThreadSections = memo(
     const folderItems = rootItems.filter((item) => item.kind === "folder");
     const looseItems = rootItems.filter((item) => item.kind !== "folder");
 
+    // No sortableParentKey: the outer ManualSortableList below provides the
+    // SortableContext spanning both the folders and loose-threads sections.
     const renderItems = (items: readonly ProjectThreadItem[]) => (
-      <ProjectThreadTreeGroup
+      <ManualThreadTreeItems
+        items={items}
+        manualSort={manualSort}
         variant="section"
-        onClickCapture={manualSort?.onClickCapture}
-      >
-        {items.map((item) => (
-          <ManualSortableThreadTreeItemRow
-            key={getItemKey(item)}
-            projectId={getItemProjectId(item)}
-            item={item}
-            depthOffset={0}
-            selectedThreadId={selectedThreadId}
-            collapsedThreadIds={collapsedThreadIds}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            variant="section"
-            onProjectSelect={onProjectSelect}
-            onCreateThreadInFolder={onCreateThreadInFolder}
-            onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
-            onRenameFolder={onRenameFolder}
-            onRemoveFolder={onRemoveFolder}
-            onToggleThreadCollapsed={onToggleThreadCollapsed}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            manualSort={manualSort ?? undefined}
-          />
-        ))}
-      </ProjectThreadTreeGroup>
+        selectedThreadId={selectedThreadId}
+        collapsedThreadIds={collapsedThreadIds}
+        collapsedEnvironmentIds={collapsedEnvironmentIds}
+        onProjectSelect={onProjectSelect}
+        onToggleThreadCollapsed={onToggleThreadCollapsed}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        onCreateThreadInFolder={onCreateThreadInFolder}
+        onViewArchivedThreadsInFolder={onViewArchivedThreadsInFolder}
+        onRenameFolder={onRenameFolder}
+        onRemoveFolder={onRemoveFolder}
+      />
     );
 
     const foldersContent =
       threadListState.status === "loading" ? (
-        <div className="group-data-[collapsible=icon]:hidden">
-          <SidebarMenuSkeleton />
-        </div>
+        <ThreadTreeLoadingSkeleton />
       ) : folderItems.length > 0 ? (
         renderItems(folderItems)
       ) : (
@@ -1988,9 +2038,7 @@ export const ChronologicalFolderThreadSections = memo(
       );
     const threadsListContent =
       threadListState.status === "loading" ? (
-        <div className="group-data-[collapsible=icon]:hidden">
-          <SidebarMenuSkeleton />
-        </div>
+        <ThreadTreeLoadingSkeleton />
       ) : looseItems.length > 0 ? (
         renderItems(looseItems)
       ) : (
