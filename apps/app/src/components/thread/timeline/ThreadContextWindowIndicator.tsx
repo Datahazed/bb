@@ -10,14 +10,22 @@ import {
 export interface ThreadContextWindowIndicatorProps {
   usage: ThreadContextWindowUsage;
   className?: string;
+  /** Render with the usage menu open on mount. Story-only escape hatch. */
+  defaultOpen?: boolean;
 }
 
 export function ThreadContextWindowIndicator({
   usage,
   className,
+  defaultOpen,
 }: ThreadContextWindowIndicatorProps) {
-  const { open, triggerHoverProps, contentHoverProps, handleOpenChange } =
-    useHoverPopover();
+  const {
+    open: hoverOpen,
+    triggerHoverProps,
+    contentHoverProps,
+    handleOpenChange,
+  } = useHoverPopover();
+  const open = defaultOpen || hoverOpen;
 
   const usedPercent = calculateContextWindowUsagePercent(usage);
   const leftPercent = Math.max(0, 100 - usedPercent);
@@ -99,9 +107,12 @@ export function ThreadContextWindowIndicator({
               style={{ width: `${visualPercent}%` }}
             />
           </div>
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {usedTokensLabel} / {windowTokensLabel} tokens · {leftPercent}% left
-          </p>
+          <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground">
+            <span>
+              {usedTokensLabel} / {windowTokensLabel} tokens
+            </span>
+            <span>{leftPercent}% left</span>
+          </div>
         </div>
       </PopoverContent>
     </Popover>

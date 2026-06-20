@@ -452,7 +452,7 @@ export function QueuedMessagesList({
           <Icon
             name="ChevronDown"
             className={cn(
-              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+              "ml-auto size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
               isExpanded && "rotate-180",
             )}
             aria-hidden="true"

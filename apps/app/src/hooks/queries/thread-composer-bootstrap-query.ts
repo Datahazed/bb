@@ -38,7 +38,16 @@ interface FetchAndHydrateThreadComposerBootstrapArgs {
 }
 
 const THREAD_COMPOSER_BOOTSTRAP_STALE_TIME_MS = 10_000;
-const THREAD_COMPOSER_BOOTSTRAP_GC_TIME_MS = 30_000;
+// Keep the composer bootstrap cached for the same window React Query retains the
+// data it gates (default gcTime, 5 min). This query is the readiness gate for the
+// composer + queued-message drawer (`hasData → ready`), so when its cache is
+// evicted, switching back to a thread drops the gate (`enabled=false`, the queued
+// query id collapses to "") and the expanded drawer empties and reloads after a
+// fresh round-trip. A short eviction window made rapid thread switching — even
+// returning to a just-visited thread — reload the drawer every time. Realtime
+// cache-owner updates plus the staleTime-driven background refetch keep the
+// retained cache fresh, so holding it longer is safe.
+const THREAD_COMPOSER_BOOTSTRAP_GC_TIME_MS = 5 * 60_000;
 
 function requireThreadId(id: string, hookName: string): string {
   return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
