@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeAutomationRun, createManualRun } from "@bb/db";
+import { closeAutomationRun, createManualRun, listEvents } from "@bb/db";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -140,6 +140,38 @@ describe("automations routes", () => {
       `/api/v1/projects/${projectId}/automations`,
     );
     expect(await afterDelete.json()).toHaveLength(0);
+  });
+
+  function automationCreatedEvents(threadId: string) {
+    return listEvents(harness.db, { threadId })
+      .filter((row) => row.type === "system/operation")
+      .map((row) => JSON.parse(row.data) as { operation: string; metadata?: unknown })
+      .filter((data) => data.operation === "automation_created");
+  }
+
+  it("drops a 'Created loop' notice into the thread whose agent created it", async () => {
+    const thread = seedThread(harness, { projectId });
+    const res = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ createdByThreadId: thread.id }),
+    );
+    expect(res.status).toBe(201);
+    const created = await res.json();
+
+    const events = automationCreatedEvents(thread.id);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.metadata).toEqual({
+      automationId: created.id,
+      projectId,
+      automationName: "Daily digest",
+    });
+  });
+
+  it("emits no notice for a loop created without a source thread", async () => {
+    const thread = seedThread(harness, { projectId });
+    const res = await post(`/projects/${projectId}/automations`, createBody());
+    expect(res.status).toBe(201);
+    expect(automationCreatedEvents(thread.id)).toHaveLength(0);
   });
 
   it("stores an inline script under the data dir and returns scriptFile", async () => {

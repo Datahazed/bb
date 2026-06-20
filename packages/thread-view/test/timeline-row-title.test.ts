@@ -362,6 +362,24 @@ function parentChangeSystemRow({
   };
 }
 
+function automationCreatedSystemRow(): TimelineSystemRow {
+  return {
+    ...baseRow("system-automation"),
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "automation-created",
+    automationCreated: {
+      automationId: "auto_123",
+      projectId: "proj_x",
+      automationName: "Daily digest",
+    },
+    title: "Created loop “Daily digest”",
+    detail: null,
+    status: "completed",
+    completedAt: 1,
+  };
+}
+
 function workSummaryRow(
   children: TimelineViewWorkRow[],
   kind: TimelineWorkSummaryKind = "step-summary",
@@ -795,6 +813,29 @@ describe("buildTimelineRowTitle", () => {
       });
     },
   );
+
+  it("links the created loop name to its automation detail", () => {
+    const title = buildTimelineRowTitle(
+      automationCreatedSystemRow(),
+      DEFAULT_OPTIONS,
+    );
+
+    expect(title.plain).toBe("Created loop Daily digest");
+    expect(title.segments.map((s) => s.text)).toEqual([
+      "Created loop",
+      "Daily digest",
+    ]);
+    // The connector is muted; the loop name is the emphasized, linked target.
+    expect(title.segments[0]?.link).toBeUndefined();
+    expect(title.segments[0]?.accent).toBe("muted");
+    const nameSegment = title.segments[1];
+    expect(nameSegment?.em).toBe(true);
+    expect(nameSegment?.link).toEqual({
+      kind: "automation",
+      projectId: "proj_x",
+      automationId: "auto_123",
+    });
+  });
 
   it("renders the thread name unlinked when the row carries no thread id", () => {
     const title = buildTimelineRowTitle(

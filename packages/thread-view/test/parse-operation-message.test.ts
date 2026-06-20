@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  JsonValue,
   OwnershipChangeOperationAction,
   SystemThreadInterruptedReason,
   SystemThreadProvisioningStatus,
@@ -141,6 +142,55 @@ describe("parseOperationMessage operation titles", () => {
           THREAD_NAME,
         ),
       ).toBe("Fix auth bug assigned to parent");
+    });
+  });
+
+  describe("automation-created", () => {
+    function automationCreatedMessage(metadata: Record<string, JsonValue>) {
+      const row = factory().systemOperation({
+        operation: "automation_created",
+        status: "completed",
+        message: "",
+        metadata,
+      });
+      const { event, meta } = decodeThreadEventRow(row);
+      const message = parseOperationMessage(event, meta, {
+        threadName: THREAD_NAME,
+      });
+      if (message === null || message.kind !== "operation") {
+        throw new Error("expected operation message");
+      }
+      return message;
+    }
+
+    it("titles the row with the created loop's name and parses its ids", () => {
+      const message = automationCreatedMessage({
+        automationId: "auto_123",
+        projectId: "proj_x",
+        automationName: "Daily digest",
+      });
+      expect(message.title).toBe("Created loop “Daily digest”");
+      expect(message.threadOperation).toEqual({
+        operation: "automation_created",
+        rawOperation: "automation_created",
+        status: "completed",
+        rawStatus: "completed",
+        operationId: "op-test",
+        metadata: {
+          automationId: "auto_123",
+          projectId: "proj_x",
+          automationName: "Daily digest",
+        },
+      });
+    });
+
+    it("falls back to a generic title when metadata is malformed", () => {
+      const message = automationCreatedMessage({ automationId: "auto_123" });
+      expect(message.title).toBe("Created a loop");
+      if (message.threadOperation?.operation !== "automation_created") {
+        throw new Error("expected automation_created operation");
+      }
+      expect(message.threadOperation.metadata).toBeNull();
     });
   });
 

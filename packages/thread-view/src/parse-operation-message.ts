@@ -3,7 +3,10 @@ import type {
   SystemThreadProvisioningStatus,
   SystemThreadInterruptedReason,
 } from "@bb/domain";
-import { ownershipChangeOperationMetadataSchema } from "@bb/domain";
+import {
+  automationCreatedOperationMetadataSchema,
+  ownershipChangeOperationMetadataSchema,
+} from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { getCompactionKey } from "./compaction-lifecycle.js";
 import { OWNERSHIP_CHANGE_VERBS } from "./family-a-verbs.js";
@@ -72,6 +75,7 @@ function normalizeThreadOperationKind(
   rawOperation: string,
 ): EventProjectionThreadOperationKind {
   if (rawOperation === "ownership_change") return "ownership_change";
+  if (rawOperation === "automation_created") return "automation_created";
   return "other";
 }
 
@@ -105,6 +109,16 @@ function createThreadOperationMetadata(
   if (operation === "ownership_change") {
     const parsedMetadata = decoded.metadata
       ? ownershipChangeOperationMetadataSchema.safeParse(decoded.metadata)
+      : null;
+    return {
+      ...base,
+      operation,
+      metadata: parsedMetadata?.success ? parsedMetadata.data : null,
+    };
+  }
+  if (operation === "automation_created") {
+    const parsedMetadata = decoded.metadata
+      ? automationCreatedOperationMetadataSchema.safeParse(decoded.metadata)
       : null;
     return {
       ...base,
@@ -199,6 +213,10 @@ export function threadOperationTitle(
   switch (meta.operation) {
     case "ownership_change":
       return ownershipChangeOperationTitle(meta, threadName);
+    case "automation_created": {
+      const name = meta.metadata?.automationName?.trim();
+      return name ? `Created loop “${name}”` : "Created a loop";
+    }
     case "other":
       return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
         meta.rawStatus

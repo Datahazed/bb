@@ -39,6 +39,7 @@ import {
   deleteAutomationScriptDir,
   writeInlineAutomationScript,
 } from "../services/scheduling/automation-scripts.js";
+import { appendAutomationCreatedEvent } from "../services/threads/thread-events.js";
 import { executeAgentRun, executeScriptRun } from "../services/scheduling/automation-run.js";
 import {
   computeNextScheduledTime,
@@ -237,6 +238,21 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
           : null,
       nextRunAt,
     });
+
+    // When an agent created this loop from a thread, drop a "View loop" notice
+    // into that thread's timeline. Best-effort: never fail the create on it.
+    if (payload.createdByThreadId) {
+      try {
+        appendAutomationCreatedEvent(deps, {
+          threadId: payload.createdByThreadId,
+          automationId: created.id,
+          projectId,
+          automationName: created.name,
+        });
+      } catch {
+        // Notice is non-critical; the loop was created successfully.
+      }
+    }
 
     return context.json(toAutomationResponse(created), 201);
   });
