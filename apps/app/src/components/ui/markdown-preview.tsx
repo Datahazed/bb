@@ -44,8 +44,16 @@ import {
   buildThreadMentionComponent,
   remarkThreadMentions,
 } from "./markdown-thread-mentions.js";
+import {
+  buildPromptMentionComponent,
+  remarkPromptMentions,
+  substitutePromptMentions,
+  type IndexedPromptMention,
+  type MarkdownPromptMentions,
+} from "./markdown-prompt-mentions.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import {
@@ -72,6 +80,15 @@ export interface MarkdownPreviewProps {
    * assistant content, which carries no mentions; that path is unaffected.
    */
   threadMentions?: MarkdownThreadMentions;
+  /**
+   * Authored-prompt mentions (user messages): unlike {@link threadMentions},
+   * which matches a single `@thread:<id>` token by regex, this carries the
+   * editor's offset-based `mentions` array (offsets into `content`) and renders
+   * every kind — thread, file/path, and slash command — as its canonical pill.
+   * Activates the offset-substitution pipeline in `markdown-prompt-mentions`.
+   * Absent for assistant and generated bodies; that path is unaffected.
+   */
+  promptMentions?: MarkdownPromptMentions;
   urlTransform?: UrlTransform;
 }
 
@@ -96,6 +113,17 @@ interface BuildMarkdownComponentsArgs {
   rewriteLocalhostLinks: boolean;
   setExpandedImageUrl: ExpandedImageUrlSetter;
   threadMentions?: MarkdownThreadMentions;
+  promptMentions?: ResolvedPromptMentions;
+}
+
+/**
+ * {@link MarkdownPromptMentions} after sentinel substitution: the mention array
+ * is now indexed to match the sentinels embedded in the parsed content.
+ */
+interface ResolvedPromptMentions {
+  mentions: readonly IndexedPromptMention[];
+  resolveLinkHref?: TimelineTitleLinkResolver;
+  resolveMentionLink?: PromptMentionLinkResolver;
 }
 
 interface BuildLocalFileAwareUrlTransformArgs {
@@ -138,6 +166,11 @@ interface AreMarkdownLinkRoutingsEqualArgs {
 interface AreMarkdownThreadMentionsEqualArgs {
   next: MarkdownThreadMentions | undefined;
   previous: MarkdownThreadMentions | undefined;
+}
+
+interface AreMarkdownPromptMentionsEqualArgs {
+  next: MarkdownPromptMentions | undefined;
+  previous: MarkdownPromptMentions | undefined;
 }
 
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
@@ -261,6 +294,19 @@ function areMarkdownThreadMentionsEqual({
   );
 }
 
+function areMarkdownPromptMentionsEqual({
+  next,
+  previous,
+}: AreMarkdownPromptMentionsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.mentions === next.mentions &&
+    previous.resolveLinkHref === next.resolveLinkHref &&
+    previous.resolveMentionLink === next.resolveMentionLink
+  );
+}
+
 const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous,
   next,
@@ -276,6 +322,10 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   areMarkdownThreadMentionsEqual({
     next: next.threadMentions,
     previous: previous.threadMentions,
+  }) &&
+  areMarkdownPromptMentionsEqual({
+    next: next.promptMentions,
+    previous: previous.promptMentions,
   }) &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
@@ -706,6 +756,7 @@ function buildMarkdownComponents({
   rewriteLocalhostLinks,
   setExpandedImageUrl,
   threadMentions,
+  promptMentions,
 }: BuildMarkdownComponentsArgs): Components {
   function MarkdownLink(props: MarkdownAnchorProps) {
     return (
@@ -787,6 +838,14 @@ function buildMarkdownComponents({
     });
   }
 
+  if (promptMentions !== undefined) {
+    components["bb-prompt-mention"] = buildPromptMentionComponent({
+      mentions: promptMentions.mentions,
+      resolveLinkHref: promptMentions.resolveLinkHref,
+      resolveMentionLink: promptMentions.resolveMentionLink,
+    });
+  }
+
   return components;
 }
 
@@ -835,7 +894,8 @@ function useMarkdownContentWidthVariable() {
   return contentRef;
 }
 
-const FRONTMATTER_PATTERN = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+const FRONTMATTER_PATTERN =
+  /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
 /**
  * Splits a leading YAML frontmatter block (`---` … `---` at the very start of
@@ -876,7 +936,9 @@ function MarkdownFrontmatter({ source }: { source: string }) {
           // so every value lines up in a single column regardless of key width.
           return (
             <div key={index} className="contents">
-              <span className="font-medium text-muted-foreground/70">{key}</span>
+              <span className="font-medium text-muted-foreground/70">
+                {key}
+              </span>
               <span className="min-w-0 break-words">{value}</span>
             </div>
           );
@@ -902,6 +964,7 @@ function MarkdownPreviewComponent({
   imageLightboxTitle = "Expanded image preview",
   linkRouting,
   threadMentions,
+  promptMentions,
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -910,12 +973,35 @@ function MarkdownPreviewComponent({
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
   const normalizeLocalFileLinks = localFileRouting !== undefined;
+  // Substitute prompt-mention spans for inert sentinels first (offsets index
+  // into the raw `content`), so the sentinels are present before frontmatter
+  // splitting and link normalization run. `resolvedPromptMentions` carries the
+  // index-aligned mention list the `bb-prompt-mention` renderer reads back.
+  const promptMentionSubstitution = useMemo(
+    () =>
+      promptMentions
+        ? substitutePromptMentions(content, promptMentions.mentions)
+        : null,
+    [content, promptMentions],
+  );
+  const resolvedPromptMentions = useMemo<ResolvedPromptMentions | undefined>(
+    () =>
+      promptMentions && promptMentionSubstitution
+        ? {
+            mentions: promptMentionSubstitution.mentions,
+            resolveLinkHref: promptMentions.resolveLinkHref,
+            resolveMentionLink: promptMentions.resolveMentionLink,
+          }
+        : undefined,
+    [promptMentions, promptMentionSubstitution],
+  );
+  const substitutedContent = promptMentionSubstitution?.content ?? content;
   const markdownContent = useMemo(
     () =>
       normalizeLocalFileLinks
-        ? normalizeLocalFileMarkdownLinks(content)
-        : content,
-    [content, normalizeLocalFileLinks],
+        ? normalizeLocalFileMarkdownLinks(substitutedContent)
+        : substitutedContent,
+    [substitutedContent, normalizeLocalFileLinks],
   );
   const { frontmatter, body } = useMemo(
     () => splitMarkdownFrontmatter(markdownContent),
@@ -929,20 +1015,33 @@ function MarkdownPreviewComponent({
         rewriteLocalhostLinks,
         setExpandedImageUrl,
         threadMentions,
+        promptMentions: resolvedPromptMentions,
       }),
-    [linkRouting, preferredTheme, rewriteLocalhostLinks, threadMentions],
+    [
+      linkRouting,
+      preferredTheme,
+      rewriteLocalhostLinks,
+      threadMentions,
+      resolvedPromptMentions,
+    ],
   );
-  // The thread-mention pipeline only activates when `threadMentions` is set.
-  // Assistant content (no mentions) keeps the unchanged `[remarkGfm]` pipeline,
-  // including CommonMark soft breaks. The mention branch adds `remark-breaks` so
-  // a single `\n` stays a line break — generated bodies (child-outcome reports,
-  // provisioning transcripts) rely on the prior `whitespace-pre-wrap` behavior.
+  // A mention pipeline activates only when its prop is set. Assistant content
+  // (no mentions) keeps the unchanged `[remarkGfm]` pipeline, including
+  // CommonMark soft breaks. A mention branch adds `remark-breaks` so a single
+  // `\n` stays a line break — generated bodies (child-outcome reports,
+  // provisioning transcripts) and authored prompts both rely on the prior
+  // `whitespace-pre-wrap` behavior. The two mention props are mutually exclusive
+  // in practice but are honoured independently here.
   const remarkPlugins = useMemo(
-    () =>
-      threadMentions !== undefined
-        ? [remarkGfm, remarkBreaks, remarkThreadMentions]
-        : [remarkGfm],
-    [threadMentions],
+    () => [
+      remarkGfm,
+      ...(threadMentions !== undefined || promptMentions !== undefined
+        ? [remarkBreaks]
+        : []),
+      ...(threadMentions !== undefined ? [remarkThreadMentions] : []),
+      ...(promptMentions !== undefined ? [remarkPromptMentions] : []),
+    ],
+    [threadMentions, promptMentions],
   );
   const resolvedUrlTransform = useMemo(
     () =>
