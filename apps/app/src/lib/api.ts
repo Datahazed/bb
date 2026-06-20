@@ -16,6 +16,7 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  UpdateAutomationRequest,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -614,6 +615,19 @@ export async function deleteAutomation({
   await requestVoid(
     apiClient.projects[":id"].automations[":automationId"].$delete({
       param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function updateAutomation({
+  projectId,
+  automationId,
+  patch,
+}: AutomationRef & { patch: UpdateAutomationRequest }): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].$patch({
+      param: { id: projectId, automationId },
+      json: patch,
     }),
   );
 }

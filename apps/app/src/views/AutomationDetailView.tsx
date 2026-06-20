@@ -1,6 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Automation, AutomationRun } from "@bb/server-contract";
+import type {
+  Automation,
+  AutomationRun,
+  UpdateAutomationRequest,
+} from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import {
   ConfirmDeleteDialog,
@@ -8,7 +12,9 @@ import {
 } from "@/components/dialogs/ConfirmDeleteDialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
+import { Input } from "@/components/ui/input.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { Switch } from "@/components/ui/switch.js";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomationDetail,
@@ -17,6 +23,7 @@ import {
   usePauseAutomation,
   useResumeAutomation,
   useRunAutomation,
+  useUpdateAutomation,
 } from "@/hooks/queries/automation-queries";
 import { formatCronCadence } from "@/lib/format-schedule";
 import {
@@ -227,6 +234,8 @@ interface AutomationDetailContentProps {
   onResume: () => void;
   onRun: () => void;
   onDelete: () => void;
+  onSave: (patch: UpdateAutomationRequest) => Promise<void>;
+  savePending: boolean;
   actionsPending: boolean;
 }
 
@@ -244,8 +253,73 @@ export function AutomationDetailContent({
   onResume,
   onRun,
   onDelete,
+  onSave,
+  savePending,
   actionsPending,
 }: AutomationDetailContentProps) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(automation.name);
+  const [cron, setCron] = useState(
+    automation.trigger.triggerType === "schedule" ? automation.trigger.cron : "",
+  );
+  const [timezone, setTimezone] = useState(
+    automation.trigger.triggerType === "schedule"
+      ? automation.trigger.timezone
+      : "",
+  );
+  const [prompt, setPrompt] = useState(
+    automation.execution.mode === "agent" ? automation.execution.prompt : "",
+  );
+  const [autoArchive, setAutoArchive] = useState(automation.autoArchive);
+
+  function startEditing() {
+    setName(automation.name);
+    setCron(
+      automation.trigger.triggerType === "schedule"
+        ? automation.trigger.cron
+        : "",
+    );
+    setTimezone(
+      automation.trigger.triggerType === "schedule"
+        ? automation.trigger.timezone
+        : "",
+    );
+    setPrompt(
+      automation.execution.mode === "agent" ? automation.execution.prompt : "",
+    );
+    setAutoArchive(automation.autoArchive);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    const patch: UpdateAutomationRequest = {
+      name,
+      trigger: { triggerType: "schedule", cron, timezone },
+      autoArchive,
+      ...(automation.execution.mode === "agent"
+        ? {
+            execution: {
+              mode: "agent" as const,
+              prompt,
+              providerId: automation.execution.providerId,
+              model: automation.execution.model,
+              permissionMode: automation.execution.permissionMode,
+              ...(automation.execution.targetThreadId
+                ? { targetThreadId: automation.execution.targetThreadId }
+                : {}),
+            },
+          }
+        : {}),
+    };
+    try {
+      await onSave(patch);
+      setEditing(false);
+    } catch {
+      // Mutation errors are surfaced by the global error handler; stay in edit
+      // mode so the user can retry without losing their changes.
+    }
+  }
+
   const finishedRuns = runs.filter(
     (run) => run.status === "succeeded" || run.status === "failed",
   );
@@ -344,6 +418,20 @@ export function AutomationDetailContent({
                 <Icon name="Zap" className="size-4" />
                 Run now
               </Button>
+              {!editing ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Edit loop"
+                  title="Edit loop"
+                  disabled={actionsPending}
+                  onClick={startEditing}
+                >
+                  <Icon name="Edit" className="size-4" />
+                  Edit
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -371,15 +459,111 @@ export function AutomationDetailContent({
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Configuration</h2>
           <div className="rounded-lg border border-border bg-card px-3.5">
-            <ConfigLine
-              k="Schedule"
-              v={`${formatCronCadence(automation.trigger.cron)} · ${automation.trigger.timezone}`}
-            />
-            <ConfigLine k="Execution" v={describeExecution(automation)} />
-            <ConfigLine k="Environment" v={describeEnvironment(automation)} />
-            {automation.execution.mode === "agent" ? (
-              <ConfigLine k="Prompt" v={automation.execution.prompt} />
-            ) : null}
+            {editing ? (
+              <div className="space-y-3 py-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Name
+                  </label>
+                  <Input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className="h-8 text-sm"
+                    aria-label="Loop name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Schedule (cron)
+                    </label>
+                    <Input
+                      value={cron}
+                      onChange={(event) => setCron(event.target.value)}
+                      className="h-8 font-mono text-sm"
+                      aria-label="Cron schedule"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Timezone
+                    </label>
+                    <Input
+                      value={timezone}
+                      onChange={(event) => setTimezone(event.target.value)}
+                      className="h-8 text-sm"
+                      aria-label="Timezone"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatCronCadence(cron)}
+                </p>
+                {automation.execution.mode === "agent" ? (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Prompt
+                    </label>
+                    <textarea
+                      value={prompt}
+                      onChange={(event) => setPrompt(event.target.value)}
+                      rows={3}
+                      aria-label="Prompt"
+                      className="block w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Script edits aren't available here — delete and recreate the
+                    loop to change its script.
+                  </p>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">
+                    Auto-archive the thread when it finishes
+                  </span>
+                  <Switch
+                    checked={autoArchive}
+                    onCheckedChange={setAutoArchive}
+                    aria-label="Auto-archive the thread when it finishes"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={savePending}
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={savePending}
+                    onClick={handleSave}
+                  >
+                    Save changes
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ConfigLine
+                  k="Schedule"
+                  v={`${formatCronCadence(automation.trigger.cron)} · ${automation.trigger.timezone}`}
+                />
+                <ConfigLine k="Execution" v={describeExecution(automation)} />
+                <ConfigLine
+                  k="Environment"
+                  v={describeEnvironment(automation)}
+                />
+                {automation.execution.mode === "agent" ? (
+                  <ConfigLine k="Prompt" v={automation.execution.prompt} />
+                ) : null}
+              </>
+            )}
           </div>
         </section>
 
@@ -420,12 +604,21 @@ export function AutomationDetailView() {
   const resumeAutomation = useResumeAutomation();
   const runAutomation = useRunAutomation();
   const deleteAutomation = useDeleteAutomation();
+  const updateAutomation = useUpdateAutomation();
   const deleteDialog = useDialogState<true>();
   const { mutate: pauseMutate } = pauseAutomation;
   const { mutate: resumeMutate } = resumeAutomation;
   const { mutate: runMutate } = runAutomation;
   const { mutate: deleteMutate } = deleteAutomation;
+  const { mutateAsync: updateMutateAsync } = updateAutomation;
   const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
+
+  const handleSave = useCallback(
+    async (patch: UpdateAutomationRequest) => {
+      await updateMutateAsync({ projectId, automationId, patch });
+    },
+    [updateMutateAsync, projectId, automationId],
+  );
 
   const handlePause = useCallback(() => {
     pauseMutate({ projectId, automationId });
@@ -496,6 +689,8 @@ export function AutomationDetailView() {
         onDelete={() => {
           openDeleteDialog(true);
         }}
+        onSave={handleSave}
+        savePending={updateAutomation.isPending}
         actionsPending={actionsPending}
       />
       <ConfirmDeleteDialog

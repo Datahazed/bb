@@ -73,6 +73,8 @@ function renderContent(
         onResume={overrides.onResume ?? NOOP}
         onRun={overrides.onRun ?? NOOP}
         onDelete={overrides.onDelete ?? NOOP}
+        onSave={overrides.onSave ?? (() => Promise.resolve())}
+        savePending={overrides.savePending ?? false}
         actionsPending={overrides.actionsPending ?? false}
       />
     </MemoryRouter>,
