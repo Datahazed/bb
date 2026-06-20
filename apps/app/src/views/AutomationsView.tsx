@@ -1,6 +1,5 @@
 import { Fragment, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   Automation,
   AutomationsOverviewResponse,
@@ -20,7 +19,6 @@ import {
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { Pill } from "@/components/ui/pill.js";
 import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
@@ -46,9 +44,9 @@ interface AutomationOverviewEntry {
   project: { id: string; name: string };
 }
 
-interface AutomationStatusGroup {
-  status: "active" | "paused";
-  label: string;
+interface AutomationProjectGroup {
+  projectId: string;
+  projectName: string;
   entries: AutomationOverviewEntry[];
 }
 
@@ -75,35 +73,45 @@ export interface AutomationsOverviewProps {
 }
 
 /**
- * Group automations into an insertion-ordered set of status groups: enabled
- * automations under "Active", disabled ones under "Paused". Empty groups are
- * omitted so the view only renders sections that have rows.
+ * Group loops by the project they belong to, in the order projects first
+ * appear. Within a project, enabled loops sort above paused ones. The overview
+ * aggregates loops across every project, so the project is the row's context.
  */
-function groupAutomationsByStatus(
+function groupAutomationsByProject(
   entries: readonly AutomationOverviewEntry[],
-): AutomationStatusGroup[] {
-  const active: AutomationOverviewEntry[] = [];
-  const paused: AutomationOverviewEntry[] = [];
+): AutomationProjectGroup[] {
+  const byId = new Map<string, AutomationProjectGroup>();
+  const order: string[] = [];
   for (const entry of entries) {
-    if (entry.automation.enabled) {
-      active.push(entry);
-    } else {
-      paused.push(entry);
+    const id = entry.project.id;
+    const existing = byId.get(id);
+    if (existing) {
+      existing.entries.push(entry);
+      continue;
     }
+    byId.set(id, {
+      projectId: id,
+      projectName: entry.project.name,
+      entries: [entry],
+    });
+    order.push(id);
   }
-  const groups: AutomationStatusGroup[] = [];
-  if (active.length > 0) {
-    groups.push({ status: "active", label: "Active", entries: active });
-  }
-  if (paused.length > 0) {
-    groups.push({ status: "paused", label: "Paused", entries: paused });
-  }
-  return groups;
+  return order.map((id) => {
+    const group = byId.get(id)!;
+    return {
+      ...group,
+      entries: [...group.entries].sort(
+        (a, b) =>
+          Number(b.automation.enabled) - Number(a.automation.enabled),
+      ),
+    };
+  });
 }
 
 export interface AutomationRowMenuItem {
   key: "pause" | "resume" | "run" | "delete";
   label: string;
+  icon: IconName;
   destructive: boolean;
   /** True when selecting should keep the menu open (the confirm dialog opens). */
   preventClose: boolean;
@@ -126,6 +134,7 @@ export function buildAutomationRowMenuItems(
       ? {
           key: "pause",
           label: "Pause",
+          icon: "Pause",
           destructive: false,
           preventClose: false,
           run: () => actions.onPause(entry),
@@ -133,6 +142,7 @@ export function buildAutomationRowMenuItems(
       : {
           key: "resume",
           label: "Resume",
+          icon: "Play",
           destructive: false,
           preventClose: false,
           run: () => actions.onResume(entry),
@@ -140,6 +150,7 @@ export function buildAutomationRowMenuItems(
     {
       key: "run",
       label: "Run now",
+      icon: "Zap",
       destructive: false,
       preventClose: false,
       run: () => actions.onRun(entry),
@@ -147,6 +158,7 @@ export function buildAutomationRowMenuItems(
     {
       key: "delete",
       label: "Delete",
+      icon: "Trash2",
       destructive: true,
       preventClose: true,
       run: () => actions.onDelete(entry),
@@ -174,6 +186,10 @@ function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
               item.run();
             }}
           >
+            <Icon
+              name={item.icon}
+              className={cn("size-4", !item.destructive && "text-muted-foreground")}
+            />
             {item.label}
           </DropdownMenuItem>
         </Fragment>
@@ -193,9 +209,7 @@ const RUN_STATUS_META: Record<
 };
 
 function AutomationRow({ entry, actions }: AutomationRowProps) {
-  const { automation, project } = entry;
-  const projectLabel =
-    project.id === PERSONAL_PROJECT_ID ? null : project.name;
+  const { automation } = entry;
   const cadence =
     automation.trigger.triggerType === "schedule"
       ? formatCronCadence(automation.trigger.cron)
@@ -204,60 +218,51 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
     automation.lastRunStatus !== null
       ? RUN_STATUS_META[automation.lastRunStatus]
       : null;
+  // Single status signal: the leading icon reflects the LAST RUN. Paused state
+  // is conveyed by the next-run label ("Paused"), not a second status dot.
+  const lastRunText = runMeta
+    ? automation.lastRunAt !== null
+      ? `${runMeta.label} ${formatScheduleRunTime(automation.lastRunAt)}`
+      : runMeta.label
+    : "Never run";
   return (
-    <div className="group flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
-      <span
-        aria-hidden="true"
+    <div className="group flex items-start gap-3 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
+      <Icon
+        name={runMeta?.icon ?? "Circle"}
+        aria-hidden
         className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          automation.enabled ? "bg-success" : "bg-muted-foreground/50",
+          "mt-0.5 size-4 shrink-0",
+          runMeta?.tone ?? "text-muted-foreground/40",
         )}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <Link
-            to={getAutomationDetailRoutePath({
-              projectId: automation.projectId,
-              automationId: automation.id,
-            })}
-            className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
-          >
-            {automation.name}
-          </Link>
-          {projectLabel ? (
-            <Pill variant="outline" className="shrink-0">
-              {projectLabel}
-            </Pill>
-          ) : null}
-        </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <span className="truncate">{cadence}</span>
-          {runMeta ? (
-            <>
-              <span className="text-muted-foreground/40" aria-hidden>
-                ·
-              </span>
-              <span
-                className={cn("inline-flex shrink-0 items-center gap-1", runMeta.tone)}
-              >
-                <Icon name={runMeta.icon} className="size-3" aria-hidden />
-                <span className="text-muted-foreground">
-                  {runMeta.label}
-                  {automation.lastRunAt !== null
-                    ? ` ${formatScheduleRunTime(automation.lastRunAt)}`
-                    : ""}
-                </span>
-              </span>
-            </>
-          ) : null}
+        <Link
+          to={getAutomationDetailRoutePath({
+            projectId: automation.projectId,
+            automationId: automation.id,
+          })}
+          className="block truncate text-sm font-medium text-foreground hover:underline"
+        >
+          {automation.name}
+        </Link>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+          {lastRunText}
         </div>
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground/80">
-        {formatScheduleStatusLabel({
-          enabled: automation.enabled,
-          nextRunAt: automation.nextRunAt,
-        })}
-      </span>
+      <div className="w-44 shrink-0 text-right">
+        <div className="truncate text-xs text-muted-foreground/80">
+          {formatScheduleStatusLabel({
+            enabled: automation.enabled,
+            nextRunAt: automation.nextRunAt,
+          })}
+        </div>
+        <div
+          className="mt-0.5 truncate text-xs text-muted-foreground/50"
+          title={cadence}
+        >
+          {cadence}
+        </div>
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -290,7 +295,7 @@ export function AutomationsOverview({
   actions,
   onCreateAutomation,
 }: AutomationsOverviewProps) {
-  const groups = groupAutomationsByStatus(entries);
+  const groups = groupAutomationsByProject(entries);
   const isEmpty =
     !isLoading && !hasInitialLoadError && entries.length === 0;
 
@@ -322,11 +327,16 @@ export function AutomationsOverview({
         ) : (
           <div className="space-y-6">
             {groups.map((group) => (
-              <section key={group.status}>
-                <p className="text-xs font-medium uppercase text-muted-foreground">
-                  {group.label}
+              <section key={group.projectId}>
+                <p className="flex items-center gap-1.5 px-3 text-xs font-semibold text-muted-foreground">
+                  <Icon
+                    name="Folder"
+                    className="size-3.5 text-muted-foreground/70"
+                    aria-hidden
+                  />
+                  {group.projectName}
                 </p>
-                <div className="mt-1.5 space-y-1">
+                <div className="mt-1 space-y-0.5">
                   {group.entries.map((entry) => (
                     <AutomationRow
                       key={entry.automation.id}

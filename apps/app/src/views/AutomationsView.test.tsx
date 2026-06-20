@@ -93,10 +93,9 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Automations<");
   });
 
-  it("groups automations by status into Active and Paused sections", () => {
+  it("groups loops under project headers, enabled before paused", () => {
     const markup = renderOverview({
       entries: [
-        makeEntry(makeAutomation({ id: "auto_active", name: "Active one" })),
         makeEntry(
           makeAutomation({
             id: "auto_paused",
@@ -105,15 +104,21 @@ describe("AutomationsOverview", () => {
             nextRunAt: null,
           }),
         ),
+        makeEntry(makeAutomation({ id: "auto_active", name: "Active one" })),
       ],
     });
 
-    expect(markup).toContain(">Active<");
-    expect(markup).toContain(">Paused<");
+    // Project name renders as the group header (default fixture project = Personal).
+    expect(markup).toContain(">Personal<");
     expect(markup).toContain("Active one");
     expect(markup).toContain("Paused one");
-    // Enabled automations render the next-run label; paused ones read "Paused".
+    // Enabled loops sort above paused ones within a project group.
+    expect(markup.indexOf("Active one")).toBeLessThan(
+      markup.indexOf("Paused one"),
+    );
+    // Enabled loops render the next-run label; paused ones read "Paused".
     expect(markup).toContain("Next ");
+    expect(markup).toContain("Paused");
   });
 
   it("renders cadence and last-run health on the row, not mode/origin badges", () => {
@@ -141,7 +146,7 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Failed");
   });
 
-  it("omits the personal project label and shows real project names", () => {
+  it("renders a project header for each project", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
@@ -155,7 +160,7 @@ describe("AutomationsOverview", () => {
       ],
     });
 
-    expect(markup).not.toContain(">Personal<");
+    expect(markup).toContain(">Personal<");
     expect(markup).toContain(">App<");
   });
 
