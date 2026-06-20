@@ -24,6 +24,7 @@ import {
   useSkillContent,
   useUpdateSkill,
 } from "@/hooks/queries/skills-queries";
+import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 interface SkillProviderGroup {
   /** Group key: the provider id, or "bb" for provider-agnostic bb skills. */
@@ -280,6 +281,10 @@ function SkillDetailDialog({
   const contentQuery = useSkillContent(projectId, skill);
   const updateSkill = useUpdateSkill(projectId);
   const deleteSkill = useDeleteSkill(projectId);
+  // Skills live on the local host (personal project), so the SKILL.md is a real
+  // local file we can hand to the user's editor.
+  const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
+    useLocalOpenTargets({ enabled: skill !== null });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -295,6 +300,12 @@ function SkillDetailDialog({
       ? skill.scope
       : null;
   const canManage = skill?.manageable === true && deletableScope !== null;
+  const canOpenInEditor = skill !== null && canOpenPreferredFileTarget;
+
+  function handleOpenInEditor() {
+    if (!skill) return;
+    void openPathInPreferredFileTarget({ path: skill.filePath, lineNumber: null });
+  }
 
   async function handleSave() {
     if (!skill || deletableScope === null) return;
@@ -396,41 +407,53 @@ function SkillDetailDialog({
             <span />
           )}
 
-          {canManage ? (
-            editing ? (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={updateSkill.isPending}
-                  onClick={() => setEditing(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={updateSkill.isPending || contentQuery.isLoading}
-                  onClick={handleSave}
-                >
-                  Save
-                </Button>
-              </div>
-            ) : (
+          {editing ? (
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={contentQuery.isLoading}
-                onClick={() => {
-                  setDraft(content);
-                  setEditing(true);
-                }}
+                disabled={updateSkill.isPending}
+                onClick={() => setEditing(false)}
               >
-                <Icon name="Edit" className="size-4" />
-                Edit
+                Cancel
               </Button>
-            )
+              <Button
+                size="sm"
+                disabled={updateSkill.isPending || contentQuery.isLoading}
+                onClick={handleSave}
+              >
+                Save
+              </Button>
+            </div>
           ) : (
-            <span className="text-xs text-muted-foreground">Read-only</span>
+            <div className="flex items-center gap-2">
+              {canOpenInEditor ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenInEditor}
+                >
+                  <Icon name="ExternalLink" className="size-4" />
+                  Open in editor
+                </Button>
+              ) : null}
+              {canManage ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={contentQuery.isLoading}
+                  onClick={() => {
+                    setDraft(content);
+                    setEditing(true);
+                  }}
+                >
+                  <Icon name="Edit" className="size-4" />
+                  Edit
+                </Button>
+              ) : (
+                <span className="text-xs text-muted-foreground">Read-only</span>
+              )}
+            </div>
           )}
         </DialogFooter>
       </DialogContent>
