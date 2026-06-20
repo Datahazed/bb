@@ -511,7 +511,9 @@ export function getSidebarThreadComparator({
       direction === "asc"
         ? compareProjectThreadItemsByTitleAscending
         : (left, right) =>
-            invertNumber(compareProjectThreadItemsByTitleAscending(left, right));
+            invertNumber(
+              compareProjectThreadItemsByTitleAscending(left, right),
+            );
     return comparator;
   }
 
@@ -733,10 +735,7 @@ export function SidebarOrganizeOptionsMenu({
         iconName="Layers"
         tooltip="Organize"
       />
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="Organize sidebar"
-      >
+      <DropdownMenuContent align="end" mobileTitle="Organize sidebar">
         <DropdownMenuLabel>Organize by</DropdownMenuLabel>
         <SidebarOrganizeMenuOption
           label="Project"
@@ -856,15 +855,85 @@ function SidebarThreadActionsMenu({
         </TooltipTrigger>
         <TooltipContent side="bottom">Threads actions</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="Threads actions"
-      >
+      <DropdownMenuContent align="end" mobileTitle="Threads actions">
         <DropdownMenuItem onSelect={onOpenArchivedThreads}>
           View archived threads
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+interface SidebarDisplayOptionsActionsProps {
+  open: SidebarDisplayOptionsMenuKind | null;
+  onOpenChange: (menu: SidebarDisplayOptionsMenuKind, open: boolean) => void;
+  onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
+}
+
+// The Organize + Sort menu pair shown on every sidebar section header. Shared
+// so the project, folders, and threads headers stay identical and changes land
+// in one place instead of being copied per view.
+function SidebarDisplayOptionsActions({
+  open,
+  onOpenChange,
+  onOrganizationModeSelect,
+}: SidebarDisplayOptionsActionsProps) {
+  return (
+    <>
+      <SidebarOrganizeOptionsMenu
+        open={open === "organize"}
+        onOpenChange={(next) => onOpenChange("organize", next)}
+        onOrganizationModeSelect={onOrganizationModeSelect}
+      />
+      <SidebarSortOptionsMenu
+        open={open === "sort"}
+        onOpenChange={(next) => onOpenChange("sort", next)}
+      />
+    </>
+  );
+}
+
+interface SidebarThreadsSectionActionsProps {
+  displayOptionsOpen: SidebarDisplayOptionsMenuKind | null;
+  onDisplayOptionsOpenChange: (
+    menu: SidebarDisplayOptionsMenuKind,
+    open: boolean,
+  ) => void;
+  isActionsMenuOpen: boolean;
+  onActionsMenuOpenChange: (open: boolean) => void;
+  onOpenArchivedThreads?: () => void;
+  isCreatingFolder: boolean;
+  onNewThread: () => void;
+}
+
+// The complete Threads-section header cluster (archived menu + display options +
+// new thread). One component drives the Threads header in both project mode and
+// the folders view, so they can never drift apart.
+function SidebarThreadsSectionActions({
+  displayOptionsOpen,
+  onDisplayOptionsOpenChange,
+  isActionsMenuOpen,
+  onActionsMenuOpenChange,
+  onOpenArchivedThreads,
+  isCreatingFolder,
+  onNewThread,
+}: SidebarThreadsSectionActionsProps) {
+  return (
+    <>
+      <SidebarThreadActionsMenu
+        open={isActionsMenuOpen}
+        onOpenChange={onActionsMenuOpenChange}
+        onOpenArchivedThreads={onOpenArchivedThreads}
+      />
+      <SidebarDisplayOptionsActions
+        open={displayOptionsOpen}
+        onOpenChange={onDisplayOptionsOpenChange}
+      />
+      <ProjectListThreadsSectionActions
+        isCreatingFolder={isCreatingFolder}
+        onNewThread={onNewThread}
+      />
+    </>
   );
 }
 
@@ -1869,21 +1938,16 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
   );
+  // The "primary" section (Projects in project mode, Folders in the folders
+  // view) and the Threads section each own one display-options menu state, so
+  // both can be open independently — and never both at once across sections.
   const projectsSectionActions = (
     <>
-      <SidebarOrganizeOptionsMenu
-        open={projectsDisplayOptionsMenuOpen === "organize"}
-        onOpenChange={(open) =>
-          handleProjectsDisplayOptionsMenuOpenChange("organize", open)
-        }
+      <SidebarDisplayOptionsActions
+        open={projectsDisplayOptionsMenuOpen}
+        onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
         onOrganizationModeSelect={
           handleProjectsViewOptionsOrganizationModeSelect
-        }
-      />
-      <SidebarSortOptionsMenu
-        open={projectsDisplayOptionsMenuOpen === "sort"}
-        onOpenChange={(open) =>
-          handleProjectsDisplayOptionsMenuOpenChange("sort", open)
         }
       />
       {onNewProject ? (
@@ -1898,17 +1962,9 @@ function ProjectListComponent({
     projectsState.status === "ready" && renderedProjects.length === 0;
   const folderSectionActions = (
     <>
-      <SidebarOrganizeOptionsMenu
-        open={threadsDisplayOptionsMenuOpen === "organize"}
-        onOpenChange={(open) =>
-          handleThreadsDisplayOptionsMenuOpenChange("organize", open)
-        }
-      />
-      <SidebarSortOptionsMenu
-        open={threadsDisplayOptionsMenuOpen === "sort"}
-        onOpenChange={(open) =>
-          handleThreadsDisplayOptionsMenuOpenChange("sort", open)
-        }
+      <SidebarDisplayOptionsActions
+        open={projectsDisplayOptionsMenuOpen}
+        onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
       />
       <ProjectListSectionIconButton
         ariaLabel="New folder"
@@ -1919,43 +1975,17 @@ function ProjectListComponent({
       />
     </>
   );
-  const folderModeThreadsSectionActions = (
-    <>
-      <SidebarThreadActionsMenu
-        open={isThreadsActionsMenuOpen}
-        onOpenChange={handleThreadsActionsMenuOpenChange}
-        onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
-      />
-      <ProjectListThreadsSectionActions
-        isCreatingFolder={isCreateThreadFolderPending}
-        onNewThread={handleCreateProjectlessThread}
-      />
-    </>
-  );
+  // One Threads-header cluster shared by project mode and the folders view.
   const threadsSectionActions = (
-    <>
-      <SidebarThreadActionsMenu
-        open={isThreadsActionsMenuOpen}
-        onOpenChange={handleThreadsActionsMenuOpenChange}
-        onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
-      />
-      <SidebarOrganizeOptionsMenu
-        open={threadsDisplayOptionsMenuOpen === "organize"}
-        onOpenChange={(open) =>
-          handleThreadsDisplayOptionsMenuOpenChange("organize", open)
-        }
-      />
-      <SidebarSortOptionsMenu
-        open={threadsDisplayOptionsMenuOpen === "sort"}
-        onOpenChange={(open) =>
-          handleThreadsDisplayOptionsMenuOpenChange("sort", open)
-        }
-      />
-      <ProjectListThreadsSectionActions
-        isCreatingFolder={isCreateThreadFolderPending}
-        onNewThread={handleCreateProjectlessThread}
-      />
-    </>
+    <SidebarThreadsSectionActions
+      displayOptionsOpen={threadsDisplayOptionsMenuOpen}
+      onDisplayOptionsOpenChange={handleThreadsDisplayOptionsMenuOpenChange}
+      isActionsMenuOpen={isThreadsActionsMenuOpen}
+      onActionsMenuOpenChange={handleThreadsActionsMenuOpenChange}
+      onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
+      isCreatingFolder={isCreateThreadFolderPending}
+      onNewThread={handleCreateProjectlessThread}
+    />
   );
   const folderModeSectionsContent = (
     <ChronologicalFolderThreadSections
@@ -1976,7 +2006,7 @@ function ProjectListComponent({
         <TopLevelSidebarSection
           label="Folders"
           actions={folderSectionActions}
-          actionsOpen={threadsDisplayOptionsMenuOpen !== null}
+          actionsOpen={projectsDisplayOptionsMenuOpen !== null}
           actionsMobileAlways
         >
           {content}
@@ -1985,8 +2015,10 @@ function ProjectListComponent({
       renderThreadsSection={(content) => (
         <TopLevelSidebarSection
           label="Threads"
-          actions={folderModeThreadsSectionActions}
-          actionsOpen={isThreadsActionsMenuOpen}
+          actions={threadsSectionActions}
+          actionsOpen={
+            isThreadsActionsMenuOpen || threadsDisplayOptionsMenuOpen !== null
+          }
           actionsMobileAlways
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
