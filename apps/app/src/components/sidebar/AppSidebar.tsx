@@ -19,7 +19,6 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -312,14 +311,10 @@ export function AppSidebar({
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           <SidebarMenu className="flex-row items-center">
             <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
-                tooltip="Settings"
-                aria-label="Settings"
-              >
+              <SidebarMenuButton asChild aria-label="Settings">
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
+                  <span>Settings</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

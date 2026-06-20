@@ -105,8 +105,8 @@ import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
+  SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -283,9 +283,11 @@ interface ManualThreadTreeDndState {
   enabled: boolean;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
-  // The folder showing an empty drop-placeholder row while a thread is dragged
-  // over it (after a short hover); the dragged row itself carries the title.
-  dragOverFolderKey: string | null;
+  // The drop target showing an empty placeholder row while a thread is dragged
+  // over it (after a short hover): a folder key, or the loose root container id.
+  // The dragged row itself carries the title. One field drives both folder and
+  // loose-list previews so they stay visually identical.
+  dragOverParentKey: string | null;
 }
 
 interface UseManualThreadTreeDndArgs {
@@ -417,11 +419,11 @@ function resolveThreadDropTarget(
   return { activeId, fromParentKey, toParentKey };
 }
 
-// Spring-loaded delay before a hovered folder expands + shows the drop preview.
-// The preview/expand shift layout, so deferring them until the pointer settles
-// keeps dragging *through* a folder (e.g. up out of one's own folder) smooth
-// instead of the inserted row shoving the dragged item back down.
-const FOLDER_DRAG_DWELL_MS = 200;
+// Spring-loaded delay before a hovered drop target shows its placeholder (and a
+// folder expands). The placeholder/expand shift layout, so deferring them until
+// the pointer settles keeps dragging *through* a folder (e.g. up out of one's
+// own folder) smooth instead of the inserted row shoving the dragged item down.
+const DRAG_DWELL_MS = 200;
 
 function useManualThreadTreeDnd({
   containerId,
@@ -437,79 +439,83 @@ function useManualThreadTreeDnd({
   // Whether a thread (vs. nothing droppable) is currently being dragged.
   const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The folder the dwell timer is currently counting toward; null when the
-  // pointer isn't over a droppable target folder.
-  const dwellFolderKeyRef = useRef<string | null>(null);
-  // The folder currently showing an (empty) drop-placeholder row, after dwell.
-  const [dragOverFolderKey, setDragOverFolderKey] = useState<string | null>(
+  // The drop target the dwell timer is counting toward (folder key or the loose
+  // root container); null when the pointer isn't over a droppable target.
+  const dwellParentKeyRef = useRef<string | null>(null);
+  // The drop target currently showing an (empty) placeholder row, after dwell:
+  // a folder key, or the loose root container id.
+  const [dragOverParentKey, setDragOverParentKey] = useState<string | null>(
     null,
   );
 
-  const clearFolderDwell = useCallback(() => {
+  const clearDropDwell = useCallback(() => {
     if (dwellTimerRef.current !== null) {
       clearTimeout(dwellTimerRef.current);
       dwellTimerRef.current = null;
     }
-    dwellFolderKeyRef.current = null;
+    dwellParentKeyRef.current = null;
   }, []);
 
-  useEffect(() => clearFolderDwell, [clearFolderDwell]);
+  useEffect(() => clearDropDwell, [clearDropDwell]);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const activeId = event.active.id;
       draggingThreadRef.current =
         typeof activeId === "string" && lookup.threadByItemId.has(activeId);
-      clearFolderDwell();
-      setDragOverFolderKey(null);
+      clearDropDwell();
+      setDragOverParentKey(null);
     },
-    [clearFolderDwell, lookup],
+    [clearDropDwell, lookup],
   );
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       if (!enabled || !draggingThreadRef.current) return;
       const drop = resolveThreadDropTarget(lookup, event.active, event.over);
-      // Only a real folder (not the loose root) is a spring-load target.
-      const targetFolderKey =
-        drop && drop.toParentKey !== containerId ? drop.toParentKey : null;
+      // The drop target the placeholder will mark: a folder key, or the loose
+      // root container. Null when the pointer isn't over a valid target.
+      const targetParentKey = drop ? drop.toParentKey : null;
 
       // Same target as the in-flight dwell: nothing to do (don't thrash timers
       // on every pointer move).
-      if (targetFolderKey === dwellFolderKeyRef.current) return;
+      if (targetParentKey === dwellParentKeyRef.current) return;
 
-      clearFolderDwell();
-      dwellFolderKeyRef.current = targetFolderKey;
-      setDragOverFolderKey((current) => (current ? null : current));
-      if (targetFolderKey === null) return;
+      clearDropDwell();
+      dwellParentKeyRef.current = targetParentKey;
+      setDragOverParentKey((current) => (current ? null : current));
+      if (targetParentKey === null) return;
 
-      // Spring-loaded: expand a collapsed target and show the empty placeholder
-      // only after the pointer settles, so passing through a folder mid-drag
-      // doesn't shift it under the cursor.
+      // Spring-loaded: reveal the placeholder (and expand a collapsed target
+      // folder) only after the pointer settles, so passing through a folder
+      // mid-drag doesn't shift it under the cursor. The loose root is never
+      // collapsed, so it only gets the placeholder.
       dwellTimerRef.current = setTimeout(() => {
         dwellTimerRef.current = null;
         if (
           !draggingThreadRef.current ||
-          dwellFolderKeyRef.current !== targetFolderKey
+          dwellParentKeyRef.current !== targetParentKey
         ) {
           return;
         }
-        setCollapsedFolders((current) =>
-          current.includes(targetFolderKey)
-            ? current.filter((key) => key !== targetFolderKey)
-            : current,
-        );
-        setDragOverFolderKey(targetFolderKey);
-      }, FOLDER_DRAG_DWELL_MS);
+        if (targetParentKey !== containerId) {
+          setCollapsedFolders((current) =>
+            current.includes(targetParentKey)
+              ? current.filter((key) => key !== targetParentKey)
+              : current,
+          );
+        }
+        setDragOverParentKey(targetParentKey);
+      }, DRAG_DWELL_MS);
     },
-    [clearFolderDwell, containerId, enabled, lookup, setCollapsedFolders],
+    [clearDropDwell, containerId, enabled, lookup, setCollapsedFolders],
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       draggingThreadRef.current = false;
-      clearFolderDwell();
-      setDragOverFolderKey(null);
+      clearDropDwell();
+      setDragOverParentKey(null);
       if (!enabled) return;
 
       const drop = resolveThreadDropTarget(lookup, event.active, event.over);
@@ -526,14 +532,14 @@ function useManualThreadTreeDnd({
         folderPath: destinationFolderPath,
       });
     },
-    [clearFolderDwell, enabled, lookup, updateThread],
+    [clearDropDwell, enabled, lookup, updateThread],
   );
 
   const handleDragCancel = useCallback(() => {
     draggingThreadRef.current = false;
-    clearFolderDwell();
-    setDragOverFolderKey(null);
-  }, [clearFolderDwell]);
+    clearDropDwell();
+    setDragOverParentKey(null);
+  }, [clearDropDwell]);
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
@@ -553,7 +559,7 @@ function useManualThreadTreeDnd({
     enabled,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
-    dragOverFolderKey,
+    dragOverParentKey,
   };
 }
 
@@ -678,15 +684,10 @@ function getProjectThreadTreeEmptyStateClassName(
   );
 }
 
-function getProjectThreadTreeEmptyStateMessageClassName(
-  variant: ProjectThreadTreeVariant,
-): string {
-  return cn(
-    "text-xs leading-4",
-    variant === "project"
-      ? "font-medium text-sidebar-foreground/85"
-      : "text-muted-foreground",
-  );
+function getProjectThreadTreeEmptyStateMessageClassName(): string {
+  // One notch below the section-header label so an empty placeholder never
+  // out-emphasizes the header it sits under.
+  return "text-xs leading-4 text-subtle-foreground/60";
 }
 
 function getProjectThreadTreeGroupLineClassName(
@@ -850,6 +851,9 @@ function ManualSortableList({
   );
 }
 
+// Registers the loose root as a droppable so drops onto its bare/empty area
+// resolve to the loose container. Drop feedback is the inserted placeholder row
+// (see the loose section), matching how folders preview a drop.
 function ManualDroppableParent({
   children,
   className,
@@ -861,20 +865,13 @@ function ManualDroppableParent({
   manualSort?: ManualThreadTreeDndState | null;
   parentKey: string;
 }) {
-  const { isOver, setNodeRef } = useDroppable({
+  const { setNodeRef } = useDroppable({
     id: parentKey,
     disabled: !manualSort?.enabled,
   });
 
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "rounded-md transition-colors",
-        isOver && "bg-sidebar-accent",
-        className,
-      )}
-    >
+    <div ref={setNodeRef} className={className}>
       {children}
     </div>
   );
@@ -1067,7 +1064,7 @@ function EnvironmentThreadGroupHeaderActions({
             variant="ghost"
             size="icon"
             aria-label="Worktree actions"
-            title="Worktree actions"
+            title={undefined}
             className={cn(
               "rounded-md p-0 text-muted-foreground",
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
@@ -1150,7 +1147,7 @@ function EnvironmentThreadGroupHeader({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    "cursor-default",
+    "cursor-pointer",
   );
   const style = {
     paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
@@ -1233,7 +1230,6 @@ function EnvironmentThreadGroupHeader({
         level={stickyLevel}
         className={className}
         style={style}
-        title={displayName}
       >
         {content}
       </SidebarStickyTier>
@@ -1241,7 +1237,7 @@ function EnvironmentThreadGroupHeader({
   }
 
   return (
-    <div className={className} style={style} title={displayName}>
+    <div className={className} style={style}>
       {content}
     </div>
   );
@@ -1454,7 +1450,7 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
 // Empty drop-slot rendered inside the (auto-expanded) hovered folder so the
 // landing spot is visible. The dragged row itself carries the title (like
 // dragging a queued message), so this placeholder stays intentionally blank.
-export function FolderDropPreviewRow({ depth }: { depth: number }) {
+export function DropPreviewRow({ depth }: { depth: number }) {
   return (
     <div
       aria-hidden="true"
@@ -1506,7 +1502,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const folderPath = folder.path.join("/");
-  const showDropPreview = manualSort?.dragOverFolderKey === folderKey;
+  const showDropPreview = manualSort?.dragOverParentKey === folderKey;
   const showChildren = !isCollapsed && folder.items.length > 0;
   // Force the children area open while a thread is dragged over this folder so
   // the empty drop-placeholder row is visible even when the folder is empty.
@@ -1575,7 +1571,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
             </ManualSortableList>
           ) : null}
           {showDropPreview ? (
-            <FolderDropPreviewRow
+            <DropPreviewRow
               depth={getThreadRowDepth({
                 depthOffset: depthOffset + 1,
                 nodeDepth: 0,
@@ -1853,10 +1849,8 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
         }
         icon={getProjectThreadTreeEmptyStateIcon(variant)}
         className={getProjectThreadTreeEmptyStateClassName(variant)}
-        iconClassName="size-3.5"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName(
-          variant,
-        )}
+        iconClassName="size-3.5 text-subtle-foreground/50"
+        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
 
@@ -1944,10 +1938,8 @@ export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
         }
         icon={getProjectThreadTreeEmptyStateIcon("section")}
         className={getProjectThreadTreeEmptyStateClassName("section")}
-        iconClassName="size-3.5"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName(
-          "section",
-        )}
+        iconClassName="size-3.5 text-subtle-foreground/50"
+        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
   }
@@ -2048,18 +2040,21 @@ export const ChronologicalFolderThreadSections = memo(
           }
           icon="Folder"
           className={getProjectThreadTreeEmptyStateClassName("section")}
-          iconClassName="size-3.5"
-          messageClassName={getProjectThreadTreeEmptyStateMessageClassName(
-            "section",
-          )}
+          iconClassName="size-3.5 text-subtle-foreground/50"
+          messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
         />
       );
+    // A thread dragged out of a folder previews its landing in the loose list
+    // with the same inserted placeholder folders use (hiding the empty state so
+    // the placeholder reads as the drop slot when the loose list is empty).
+    const showLoosePreview =
+      manualSort?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
     const threadsListContent =
       threadListState.status === "loading" ? (
         <ThreadTreeLoadingSkeleton />
       ) : looseItems.length > 0 ? (
         renderItems(looseItems)
-      ) : (
+      ) : showLoosePreview ? null : (
         <EmptyState
           message={
             threadListState.status === "unavailable"
@@ -2068,10 +2063,8 @@ export const ChronologicalFolderThreadSections = memo(
           }
           icon={getProjectThreadTreeEmptyStateIcon("section")}
           className={getProjectThreadTreeEmptyStateClassName("section")}
-          iconClassName="size-3.5"
-          messageClassName={getProjectThreadTreeEmptyStateMessageClassName(
-            "section",
-          )}
+          iconClassName="size-3.5 text-subtle-foreground/50"
+          messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
         />
       );
     const threadsContent = manualSort?.enabled ? (
@@ -2080,6 +2073,15 @@ export const ChronologicalFolderThreadSections = memo(
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {threadsListContent}
+        {showLoosePreview ? (
+          <DropPreviewRow
+            depth={getThreadRowDepth({
+              depthOffset: 0,
+              nodeDepth: 0,
+              variant: "section",
+            })}
+          />
+        ) : null}
       </ManualDroppableParent>
     ) : (
       threadsListContent
@@ -2163,12 +2165,11 @@ function ProjectRowComponent({
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
                 ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+                : SIDEBAR_ROW_STATIC_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none",
             )}
-            title={project.name}
             onClick={handleProjectRowToggle}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
@@ -2199,34 +2200,26 @@ function ProjectRowComponent({
                 expandLabel={`Expand ${project.name}`}
                 collapseLabel={`Collapse ${project.name}`}
                 onToggle={handleProjectRowToggle}
-                revealOnHover
               />
             </span>
             {isLocalPathInvalid ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <NavLink
-                    to={getProjectSettingsRoutePath(project.id)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onProjectSelect?.();
-                    }}
-                    aria-label="Project path not found"
-                    className={cn(
-                      "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
-                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="AlertTriangle"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </NavLink>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Open project settings
-                </TooltipContent>
-              </Tooltip>
+              <NavLink
+                to={getProjectSettingsRoutePath(project.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onProjectSelect?.();
+                }}
+                aria-label="Project path not found"
+                className={cn(
+                  "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
+                  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                )}
+              >
+                <Icon
+                  name="AlertTriangle"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </NavLink>
             ) : (
               <span
                 data-sidebar-hover-actions-open={
@@ -2236,7 +2229,6 @@ function ProjectRowComponent({
                   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
                 }
                 className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
                   "relative z-10 inline-flex shrink-0 items-center",
                   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                 )}
@@ -2244,6 +2236,7 @@ function ProjectRowComponent({
                 <ProjectActionsMenu
                   project={project}
                   onOpenChange={setIsDropdownActionsOpen}
+                  hideTriggerTooltip
                   triggerClassName={cn(
                     "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                     COARSE_POINTER_ROW_ACTION_SIZE_CLASS,

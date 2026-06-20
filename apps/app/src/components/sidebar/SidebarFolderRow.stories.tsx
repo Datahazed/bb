@@ -6,7 +6,7 @@ import {
 } from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { SidebarFolderRow } from "./SidebarFolderRow";
-import { FolderDropPreviewRow } from "./ProjectRow";
+import { DropPreviewRow } from "./ProjectRow";
 
 export default {
   title: "sidebar/Folder row",
@@ -146,7 +146,15 @@ export function DragInto() {
             onToggleCollapsed={noop}
             isDropTargetActive
           />
-          <FolderDropPreviewRow depth={1} />
+          <DropPreviewRow depth={1} />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="loose-list drop"
+        hint="dragging a thread out of a folder previews the same slot at root depth in the loose Threads list"
+      >
+        <SidebarStage>
+          <DropPreviewRow depth={0} />
         </SidebarStage>
       </StoryRow>
     </StoryCard>

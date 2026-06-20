@@ -1,14 +1,7 @@
 import { useMemo } from "react";
-import {
-  createStore,
-  Provider as JotaiProvider,
-  useAtomValue,
-} from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import {
-  SidebarOrganizeOptionsMenu,
-  SidebarSortOptionsMenu,
-} from "./ProjectList";
+import { SidebarGroupOptionsMenu, SidebarSortOptionsMenu } from "./ProjectList";
 import {
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
@@ -27,7 +20,7 @@ function StateReadout() {
   const direction = useAtomValue(sidebarSortDirectionAtom);
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-      <dt className="text-muted-foreground">organize</dt>
+      <dt className="text-muted-foreground">group</dt>
       <dd className="font-mono">{organizationMode}</dd>
       <dt className="text-muted-foreground">sort</dt>
       <dd className="font-mono">{sort}</dd>
@@ -54,10 +47,10 @@ function InteractiveMenus() {
       <div className="flex w-72 flex-col gap-4 rounded-md bg-sidebar p-4 text-sidebar-foreground">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-muted-foreground">
-            Threads
+            Projects
           </span>
           <div className="flex items-center gap-1">
-            <SidebarOrganizeOptionsMenu />
+            <SidebarGroupOptionsMenu />
             <SidebarSortOptionsMenu />
           </div>
         </div>

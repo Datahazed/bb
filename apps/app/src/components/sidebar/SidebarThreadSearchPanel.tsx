@@ -32,7 +32,6 @@ interface SidebarThreadSearchPanelProps {
 
 interface ThreadSearchRenderableRow {
   id: string;
-  isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
   thread: ThreadListEntry;
 }
@@ -136,7 +135,6 @@ function renderSectionRows({
               key={row.id}
               id={item.optionId}
               isActive={activeIndex === index}
-              isArchivedGroup={row.isArchivedGroup}
               matches={row.matches}
               projectName={projectNamesById.get(row.thread.projectId)}
               thread={row.thread}
@@ -171,14 +169,13 @@ export function SidebarThreadSearchPanel({
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) => ({
           id: `recent:${thread.id}`,
-          isArchivedGroup: false,
           matches: EMPTY_MATCHES,
           thread,
         }));
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Recent",
           rows,
           total: rows.length,
         },
@@ -189,7 +186,7 @@ export function SidebarThreadSearchPanel({
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Threads",
           rows: [],
           total: 0,
         },
@@ -205,21 +202,19 @@ export function SidebarThreadSearchPanel({
     const activeRows =
       threadSearch.data?.active.results.map((result) => ({
         id: `active:${result.thread.id}`,
-        isArchivedGroup: false,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     const archivedRows =
       threadSearch.data?.archived.results.map((result) => ({
         id: `archived:${result.thread.id}`,
-        isArchivedGroup: true,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     return [
       {
         id: "active",
-        label: "Active",
+        label: "Threads",
         rows: activeRows,
         total: threadSearch.data?.active.total ?? 0,
       },

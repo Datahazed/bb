@@ -119,7 +119,6 @@ import {
   sidebarSortDirectionAtom,
   type SidebarChronologicalSort,
   type CollapsibleSidebarSectionId,
-  type SidebarOrganizationMode,
   type SidebarSectionId,
   type SidebarSortDirection,
 } from "./sidebarCollapsedAtoms";
@@ -203,10 +202,9 @@ interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-interface SidebarOrganizeOptionsMenuProps {
+interface SidebarGroupOptionsMenuProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
 }
 
 interface SidebarSortOptionsMenuProps {
@@ -234,11 +232,11 @@ const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "min-w-0 justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
+  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
 );
 
 const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
-  "inline-flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:opacity-50",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "w-8",
 );
@@ -277,7 +275,7 @@ type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
-type SidebarDisplayOptionsMenuKind = "organize" | "sort";
+type SidebarDisplayOptionsMenuKind = "group" | "sort";
 
 interface TopLevelSidebarSectionProps {
   label: string;
@@ -613,19 +611,19 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-interface SidebarOrganizeMenuOptionProps {
+interface SidebarGroupMenuOptionProps {
   disabled?: boolean;
   label: string;
   selected: boolean;
   onSelect: (event: Event) => void;
 }
 
-function SidebarOrganizeMenuOption({
+function SidebarGroupMenuOption({
   disabled = false,
   label,
   selected,
   onSelect,
-}: SidebarOrganizeMenuOptionProps) {
+}: SidebarGroupMenuOptionProps) {
   return (
     <DropdownMenuItem
       disabled={disabled}
@@ -723,11 +721,10 @@ function SidebarSortMenuOption({
 // Shared organization menu rendered on both the Projects and Threads section
 // headers. The organization mode is global, so either header's menu drives the
 // whole sidebar.
-export function SidebarOrganizeOptionsMenu({
+export function SidebarGroupOptionsMenu({
   open,
   onOpenChange,
-  onOrganizationModeSelect,
-}: SidebarOrganizeOptionsMenuProps) {
+}: SidebarGroupOptionsMenuProps) {
   const [organizationMode, setOrganizationMode] = useAtom(
     sidebarOrganizationModeAtom,
   );
@@ -735,28 +732,32 @@ export function SidebarOrganizeOptionsMenu({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel="Sidebar organization options"
+        ariaLabel="Sidebar grouping options"
         iconName="Layers"
-        tooltip="Organize"
+        tooltip="Group by"
       />
-      <DropdownMenuContent align="end" mobileTitle="Organize sidebar">
-        <DropdownMenuLabel>Organize by</DropdownMenuLabel>
-        <SidebarOrganizeMenuOption
+      <DropdownMenuContent
+        align="end"
+        mobileTitle="Group by"
+        className="min-w-0"
+      >
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Group by
+        </DropdownMenuLabel>
+        <SidebarGroupMenuOption
           label="Project"
           selected={organizationMode === "project"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("project");
-            onOrganizationModeSelect?.("project");
           }}
         />
-        <SidebarOrganizeMenuOption
+        <SidebarGroupMenuOption
           label="Folders"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
             setOrganizationMode("chronological");
-            onOrganizationModeSelect?.("chronological");
           }}
         />
       </DropdownMenuContent>
@@ -796,8 +797,10 @@ export function SidebarSortOptionsMenu({
         iconName="ArrowUpDown"
         tooltip="Sort"
       />
-      <DropdownMenuContent align="end" mobileTitle="Sort">
-        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+      <DropdownMenuContent align="end" mobileTitle="Sort" className="min-w-0">
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Sort by
+        </DropdownMenuLabel>
         <SidebarSortMenuOption
           label="Updated at"
           sort="updated"
@@ -835,33 +838,29 @@ function SidebarThreadActionsMenu({
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Threads actions"
-              title={undefined}
-              className={cn(
-                "rounded-md p-0 text-muted-foreground",
-                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              )}
-            >
-              <Icon
-                name="MoreHorizontal"
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Threads actions</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Threads actions"
+          title={undefined}
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          )}
+        >
+          <Icon
+            name="MoreHorizontal"
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" mobileTitle="Threads actions">
         <DropdownMenuItem onSelect={onOpenArchivedThreads}>
-          View archived threads
+          <Icon name="Archive" aria-hidden="true" />
+          View archive
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -871,23 +870,20 @@ function SidebarThreadActionsMenu({
 interface SidebarDisplayOptionsActionsProps {
   open: SidebarDisplayOptionsMenuKind | null;
   onOpenChange: (menu: SidebarDisplayOptionsMenuKind, open: boolean) => void;
-  onOrganizationModeSelect?: (mode: SidebarOrganizationMode) => void;
 }
 
-// The Organize + Sort menu pair shown on every sidebar section header. Shared
-// so the project, folders, and threads headers stay identical and changes land
-// in one place instead of being copied per view.
+// The Group + Sort menu pair shown on the primary section header (Projects in
+// project mode, Folders in the folders view). Shared so both headers stay
+// identical and changes land in one place instead of being copied per view.
 function SidebarDisplayOptionsActions({
   open,
   onOpenChange,
-  onOrganizationModeSelect,
 }: SidebarDisplayOptionsActionsProps) {
   return (
     <>
-      <SidebarOrganizeOptionsMenu
-        open={open === "organize"}
-        onOpenChange={(next) => onOpenChange("organize", next)}
-        onOrganizationModeSelect={onOrganizationModeSelect}
+      <SidebarGroupOptionsMenu
+        open={open === "group"}
+        onOpenChange={(next) => onOpenChange("group", next)}
       />
       <SidebarSortOptionsMenu
         open={open === "sort"}
@@ -910,9 +906,11 @@ interface SidebarThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-// The complete Threads-section header cluster (archived menu + display options +
-// new thread). One component drives the Threads header in both project mode and
-// the folders view, so they can never drift apart.
+// The complete Threads-section header cluster (archived menu + sort + new
+// thread). One component drives the Threads header in both project mode and the
+// folders view, so they can never drift apart. The Threads section is always the
+// loose/unfiled set, so it offers sorting but not the Group-by toggle (that
+// lives on the primary section header).
 function SidebarThreadsSectionActions({
   displayOptionsOpen,
   onDisplayOptionsOpenChange,
@@ -929,9 +927,9 @@ function SidebarThreadsSectionActions({
         onOpenChange={onActionsMenuOpenChange}
         onOpenArchivedThreads={onOpenArchivedThreads}
       />
-      <SidebarDisplayOptionsActions
-        open={displayOptionsOpen}
-        onOpenChange={onDisplayOptionsOpenChange}
+      <SidebarSortOptionsMenu
+        open={displayOptionsOpen === "sort"}
+        onOpenChange={(next) => onDisplayOptionsOpenChange("sort", next)}
       />
       <ProjectListThreadsSectionActions
         isCreatingFolder={isCreatingFolder}
@@ -1047,7 +1045,6 @@ function TopLevelSidebarSection({
           "rounded-md pr-1 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
-        title={label}
         onClick={collapseControl ? handleSectionLabelClick : undefined}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
@@ -1062,41 +1059,32 @@ function TopLevelSidebarSection({
           {/* Reserve room for up to four section action buttons on the right;
               coarse pointers need a little more. */}
           {collapseControl ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-expanded={!collapseControl.isCollapsed}
-                  aria-label={
-                    collapseControl.isCollapsed
-                      ? `Expand ${label} section`
-                      : `Collapse ${label} section`
-                  }
-                  title={undefined}
-                  className={cn(
-                    !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                    "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
-                  )}
-                  onClick={handleCollapseControlClick}
-                  onPointerDown={stopCollapseControlPointerDown}
-                  onKeyDown={stopCollapseControlKeyDown}
-                >
-                  <Icon
-                    name="ChevronRight"
-                    className={cn(
-                      "size-3 transition-transform duration-150",
-                      !collapseControl.isCollapsed && "rotate-90",
-                    )}
-                    aria-hidden="true"
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {collapseControl.isCollapsed
-                  ? `Expand ${label}`
-                  : `Collapse ${label}`}
-              </TooltipContent>
-            </Tooltip>
+            <button
+              type="button"
+              aria-expanded={!collapseControl.isCollapsed}
+              aria-label={
+                collapseControl.isCollapsed
+                  ? `Expand ${label} section`
+                  : `Collapse ${label} section`
+              }
+              title={undefined}
+              className={cn(
+                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
+                "relative z-20 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+              )}
+              onClick={handleCollapseControlClick}
+              onPointerDown={stopCollapseControlPointerDown}
+              onKeyDown={stopCollapseControlKeyDown}
+            >
+              <Icon
+                name="ChevronRight"
+                className={cn(
+                  "size-3 transition-transform duration-150",
+                  !collapseControl.isCollapsed && "rotate-90",
+                )}
+                aria-hidden="true"
+              />
+            </button>
           ) : null}
         </span>
         {actions ? (
@@ -1156,9 +1144,7 @@ export function ProjectListActionButtons({
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
   const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
-  const threadSearchTitle = `Search threads - ${threadSearchShortcut}`;
   const handleSearchClose = useCallback(() => {
     if (threadSearch?.query.trim()) {
       threadSearch.onQueryChange("");
@@ -1201,7 +1187,6 @@ export function ProjectListActionButtons({
             aria-label={
               threadSearch.query.trim() ? "Clear search" : "Close search"
             }
-            title={threadSearch.query.trim() ? "Clear search" : "Close search"}
             className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
             onClick={handleSearchClose}
           >
@@ -1217,7 +1202,6 @@ export function ProjectListActionButtons({
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
-            title={newChatTitle}
           >
             <Icon name="MessageSquarePlus" />
             <span className="min-w-0 flex-1 truncate text-left">
@@ -1230,7 +1214,6 @@ export function ProjectListActionButtons({
               size="icon"
               variant="ghost"
               aria-label={`Search threads (${threadSearchShortcut})`}
-              title={threadSearchTitle}
               className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
               onClick={threadSearch.onActivate}
             >
@@ -1250,7 +1233,6 @@ export function ProjectListActionButtons({
           )}
           aria-current={isAutomationsActive ? "page" : undefined}
           onClick={onOpenAutomations}
-          title="Automations"
         >
           <Icon name="Clock" />
           <span className="min-w-0 flex-1 truncate text-left">Automations</span>
@@ -1569,16 +1551,6 @@ function ProjectListComponent({
       if (open) {
         setProjectsDisplayOptionsMenuOpen(null);
         setIsThreadsActionsMenuOpen(false);
-      }
-    },
-    [],
-  );
-  const handleProjectsViewOptionsOrganizationModeSelect = useCallback(
-    (mode: SidebarOrganizationMode) => {
-      if (mode === "chronological") {
-        setProjectsDisplayOptionsMenuOpen(null);
-        setIsThreadsActionsMenuOpen(false);
-        setThreadsDisplayOptionsMenuOpen("organize");
       }
     },
     [],
@@ -1971,9 +1943,6 @@ function ProjectListComponent({
       <SidebarDisplayOptionsActions
         open={projectsDisplayOptionsMenuOpen}
         onOpenChange={handleProjectsDisplayOptionsMenuOpenChange}
-        onOrganizationModeSelect={
-          handleProjectsViewOptionsOrganizationModeSelect
-        }
       />
       {onNewProject ? (
         <ProjectListProjectsSectionActions

@@ -128,13 +128,18 @@ function renderThreadRowContainer({
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
+  // Draggable rows (the Folders view) show a grab cursor over the whole row.
+  const containerClassName = cn(
+    className,
+    dragBindings && "cursor-grab active:cursor-grabbing",
+  );
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
-        className={className}
+        className={containerClassName}
         style={style}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
@@ -148,7 +153,7 @@ function renderThreadRowContainer({
   return (
     <div
       ref={dragBindings?.setActivatorNodeRef}
-      className={className}
+      className={containerClassName}
       style={style}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
@@ -197,11 +202,7 @@ function ThreadSuccessStatusGlyph({ label }: { label: string }) {
   }
 
   return (
-    <span
-      className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
-      aria-label={label}
-      title={label}
-    />
+    <span className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS} aria-label={label} />
   );
 }
 
@@ -342,7 +343,6 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const linkTitle = linkLabel;
   const rowDragBindings = options.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -381,8 +381,12 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        title={linkTitle}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+        className={cn(
+          "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+          // Draggable rows (the Folders view) show a grab affordance; the link
+          // still selects on click since a drag needs the activation distance.
+          rowDragBindings && "cursor-grab active:cursor-grabbing",
+        )}
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate">{visibleTitle}</span>

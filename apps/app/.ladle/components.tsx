@@ -66,7 +66,7 @@ export const Provider: GlobalProvider = ({ globalState, children }) => {
             }}
             highlighterOptions={{}}
           >
-            <TooltipProvider delayDuration={300}>
+            <TooltipProvider delayDuration={300} disableHoverableContent>
               <div className="min-h-screen text-foreground">
                 {children}
                 <AppToaster position="bottom-right" />

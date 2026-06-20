@@ -27,7 +27,6 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import {
-  SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
@@ -37,7 +36,7 @@ import { cn } from "@/lib/utils";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import {
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+  SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
@@ -87,9 +86,7 @@ function SidebarFolderRowComponent({
   stickyLevel,
 }: SidebarFolderRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const hasMenuActions = Boolean(
-    onViewArchivedThreads || onRename || onRemove,
-  );
+  const hasMenuActions = Boolean(onViewArchivedThreads || onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
   // Collapsed: the header speaks for its hidden descendants through one glyph
   // (pending > working > unread). Expanded: descendants show their own glyphs.
@@ -101,9 +98,8 @@ function SidebarFolderRowComponent({
     // positioned box. Mirrors ThreadRow / EnvironmentThreadGroupHeader.
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
-    SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+    SIDEBAR_ROW_STATIC_STATE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    "cursor-pointer",
     dragBindings && !dragBindings.disabled && "select-none",
     isDropTargetActive && "bg-sidebar-accent text-sidebar-accent-foreground",
   );
@@ -188,7 +184,6 @@ function SidebarFolderRowComponent({
             SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
           }
           className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
             "relative z-10 inline-flex shrink-0 items-center",
             SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
           )}
@@ -196,46 +191,46 @@ function SidebarFolderRowComponent({
         >
           {hasMenuActions ? (
             <DropdownMenu onOpenChange={setIsActionsOpen}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${pathLabel} folder actions`}
-                      title={undefined}
-                      className={cn(
-                        "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                      )}
-                    >
-                      <Icon
-                        name="MoreHorizontal"
-                        className={COARSE_POINTER_ICON_SIZE_CLASS}
-                      />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Folder actions</TooltipContent>
-              </Tooltip>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${pathLabel} folder actions`}
+                  title={undefined}
+                  className={cn(
+                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                  )}
+                >
+                  <Icon
+                    name="MoreHorizontal"
+                    className={COARSE_POINTER_ICON_SIZE_CLASS}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {onViewArchivedThreads ? (
                   <DropdownMenuItem onSelect={onViewArchivedThreads}>
-                    View archived threads
+                    <Icon name="Archive" aria-hidden="true" />
+                    View archive
                   </DropdownMenuItem>
                 ) : null}
                 {onViewArchivedThreads && (onRename || onRemove) ? (
                   <DropdownMenuSeparator />
                 ) : null}
                 {onRename ? (
-                  <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onRename}>
+                    <Icon name="Edit" aria-hidden="true" />
+                    Rename
+                  </DropdownMenuItem>
                 ) : null}
                 {onRemove ? (
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
                     onSelect={onRemove}
                   >
+                    <Icon name="Trash2" aria-hidden="true" />
                     Remove
                   </DropdownMenuItem>
                 ) : null}
@@ -282,7 +277,6 @@ function SidebarFolderRowComponent({
         level={stickyLevel}
         className={className}
         style={style}
-        title={pathLabel}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
         onClickCapture={
@@ -299,7 +293,6 @@ function SidebarFolderRowComponent({
       ref={dragBindings?.setActivatorNodeRef}
       className={className}
       style={style}
-      title={pathLabel}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
       onClickCapture={consumeClickSuppression ? handleClickCapture : undefined}

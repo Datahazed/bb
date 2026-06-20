@@ -66,7 +66,9 @@ function useOptionalIsSidebarShowing() {
   if (context === null) {
     return null;
   }
-  return context.isCompactViewport ? context.openMobile : context.state === "expanded";
+  return context.isCompactViewport
+    ? context.openMobile
+    : context.state === "expanded";
 }
 
 /**
@@ -153,8 +155,10 @@ const SidebarProvider = React.forwardRef<
       <SidebarContext.Provider value={contextValue}>
         {/* Match the agent message action bar's tooltip timing (300ms open
             delay + Radix's default skip window) so sidebar icon tooltips feel
-            the same instead of flashing instantly on hover. */}
-        <TooltipProvider delayDuration={300}>
+            the same instead of flashing instantly on hover. disableHoverableContent
+            dismisses the tooltip the moment the pointer leaves the trigger, so it
+            never lingers/floats while the mouse moves on. */}
+        <TooltipProvider delayDuration={300} disableHoverableContent>
           <div
             style={
               {

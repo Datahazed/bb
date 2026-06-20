@@ -4,15 +4,17 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Button } from "@/components/ui/button.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,7 @@ interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
 interface ThreadActionMenuItemProps {
   children: ReactNode;
   className?: string;
+  icon: IconName;
   onSelect?: (event: Event) => void;
   surface: ThreadActionsMenuSurface;
 }
@@ -56,21 +59,42 @@ interface ThreadActionMenuItemProps {
 function ThreadActionMenuItem({
   children,
   className,
+  icon,
   onSelect,
   surface,
 }: ThreadActionMenuItemProps) {
+  // The menu item base styling sizes/spaces a direct <svg> child, so the Icon
+  // renders inline before the label.
+  const content = (
+    <>
+      <Icon name={icon} aria-hidden="true" />
+      {children}
+    </>
+  );
   if (surface === "context") {
     return (
       <ContextMenuItem className={className} onSelect={onSelect}>
-        {children}
+        {content}
       </ContextMenuItem>
     );
   }
 
   return (
     <DropdownMenuItem className={className} onSelect={onSelect}>
-      {children}
+      {content}
     </DropdownMenuItem>
+  );
+}
+
+function ThreadActionMenuSeparator({
+  surface,
+}: {
+  surface: ThreadActionsMenuSurface;
+}) {
+  return surface === "context" ? (
+    <ContextMenuSeparator />
+  ) : (
+    <DropdownMenuSeparator />
   );
 }
 
@@ -94,25 +118,31 @@ function ThreadActionsMenuItems({
 
   return (
     <>
+      {/* Quick status toggles. */}
       <ThreadActionMenuItem
         surface={surface}
+        icon={isRead ? "Mail" : "MailOpen"}
         onSelect={() => {
           toggleRead(thread);
         }}
       >
-        {isRead ? "Mark as unread" : "Mark as read"}
+        {isRead ? "Mark unread" : "Mark read"}
       </ThreadActionMenuItem>
       <ThreadActionMenuItem
         surface={surface}
+        icon={isPinned ? "PinOff" : "Pin"}
         onSelect={() => {
           togglePin(thread);
         }}
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
+      <ThreadActionMenuSeparator surface={surface} />
+      {/* Open + edit. */}
       {sendToPopout !== null ? (
         <ThreadActionMenuItem
           surface={surface}
+          icon="ExternalLink"
           onSelect={() => {
             sendToPopout(thread);
           }}
@@ -122,6 +152,7 @@ function ThreadActionsMenuItems({
       ) : null}
       <ThreadActionMenuItem
         surface={surface}
+        icon="Edit"
         onSelect={() => {
           window.setTimeout(() => {
             requestRename(thread);
@@ -130,8 +161,11 @@ function ThreadActionsMenuItems({
       >
         Rename
       </ThreadActionMenuItem>
+      <ThreadActionMenuSeparator surface={surface} />
+      {/* Lifecycle (archive is reversible; delete is destructive). */}
       <ThreadActionMenuItem
         surface={surface}
+        icon={isArchived ? "ArchiveRestore" : "Archive"}
         onSelect={() => {
           if (isArchived) {
             unarchiveThread(thread);
@@ -145,6 +179,7 @@ function ThreadActionsMenuItems({
       {canDelete ? (
         <ThreadActionMenuItem
           surface={surface}
+          icon="Trash2"
           className="text-destructive focus:text-destructive"
           onSelect={() => {
             window.setTimeout(() => {
@@ -210,10 +245,7 @@ export function ThreadActionsContextMenu({
   return (
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label="Thread actions"
-        className="w-44"
-      >
+      <ContextMenuContent aria-label="Thread actions" className="w-44">
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}

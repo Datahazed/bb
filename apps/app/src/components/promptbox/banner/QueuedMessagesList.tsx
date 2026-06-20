@@ -247,7 +247,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             )}
             aria-hidden="true"
           />
-          <Icon name="ArrowTurnForward" className="size-3.5 shrink-0 opacity-70" />
+          <Icon
+            name="ArrowTurnForward"
+            className="size-3.5 shrink-0 opacity-70"
+          />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
@@ -435,12 +438,12 @@ export function QueuedMessagesList({
       // coming up from behind the composer rather than floating above it.
       className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3"
     >
-      <div className="px-2.5 pb-1 pt-2.5">
+      <div className="px-1.5 pb-1 pt-2.5">
         <button
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="-ml-2 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+          className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">

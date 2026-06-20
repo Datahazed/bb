@@ -31,7 +31,7 @@ export function SidebarChildToggleChevron({
       }}
       className={cn(
         revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
-        "relative z-10 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-foreground focus-visible:ring-2",
+        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
       )}
     >
       <Icon

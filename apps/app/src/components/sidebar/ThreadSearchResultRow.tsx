@@ -9,8 +9,8 @@ import {
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { isBusyThread } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
@@ -24,7 +24,6 @@ import {
 interface ThreadSearchResultRowProps {
   id: string;
   isActive: boolean;
-  isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
   onActive: () => void;
   onSelect: () => void;
@@ -105,7 +104,6 @@ function getSnippetMatch(
 function ThreadSearchResultRowComponent({
   id,
   isActive,
-  isArchivedGroup,
   matches,
   onActive,
   onSelect,
@@ -118,10 +116,16 @@ function ThreadSearchResultRowComponent({
   const snippetMatch = getSnippetMatch(matches);
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
-  const metadataParts = [
-    thread.projectId !== PERSONAL_PROJECT_ID ? projectName : undefined,
-    thread.environmentBranchName ?? thread.environmentName ?? undefined,
-  ].filter((part): part is string => part !== undefined && part.length > 0);
+  // For recents and title-only matches, the second line shows the project and
+  // when the thread was last active.
+  const projectMetadata =
+    thread.projectId !== PERSONAL_PROJECT_ID && projectName
+      ? projectName
+      : null;
+  const relativeTime = formatRelativeTime({
+    timestamp: thread.updatedAt,
+    now: Date.now(),
+  });
   const handleMouseEnter = useCallback<
     MouseEventHandler<HTMLButtonElement>
   >(() => {
@@ -153,42 +157,45 @@ function ThreadSearchResultRowComponent({
       onFocus={onActive}
       onClick={onSelect}
     >
-      <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-subtle-foreground">
-        {isArchivedGroup ? (
-          <Icon name="Archive" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        ) : (
-          <Icon
-            name="MessageSquare"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        )}
-      </span>
       <span className="min-w-0 flex-1 space-y-0.5">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate">
-            <HighlightedText
-              text={title}
-              ranges={titleMatch?.highlightRanges ?? []}
-            />
-          </span>
-          {isArchivedGroup ? (
-            <span className="shrink-0 rounded-sm border border-sidebar-border px-1 py-px text-xs leading-none text-subtle-foreground">
-              Archived
-            </span>
-          ) : null}
+        <span className="block min-w-0 truncate">
+          <HighlightedText
+            text={title}
+            ranges={titleMatch?.highlightRanges ?? []}
+          />
         </span>
         {snippetMatch ? (
-          <span className="block min-w-0 truncate text-xs leading-4 text-muted-foreground">
-            <HighlightedText
-              text={snippetMatch.text}
-              ranges={snippetMatch.highlightRanges}
+          <span className="flex min-w-0 items-start gap-1.5 text-xs leading-4 text-muted-foreground">
+            <Icon
+              name="MessageSquare"
+              className="mt-px size-3 shrink-0 text-subtle-foreground"
+              aria-hidden="true"
             />
+            <span className="line-clamp-2 min-w-0">
+              <HighlightedText
+                text={snippetMatch.text}
+                ranges={snippetMatch.highlightRanges}
+              />
+            </span>
           </span>
-        ) : metadataParts.length > 0 ? (
-          <span className="block min-w-0 truncate text-xs leading-4 text-muted-foreground">
-            {metadataParts.join(" / ")}
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+            {projectMetadata ? (
+              <>
+                <span className="flex min-w-0 items-center gap-1">
+                  <Icon
+                    name="FolderGit"
+                    className="size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 truncate">{projectMetadata}</span>
+                </span>
+                <span className="shrink-0 opacity-60">·</span>
+              </>
+            ) : null}
+            <span className="shrink-0">{relativeTime}</span>
           </span>
-        ) : null}
+        )}
       </span>
       {hasPendingInteraction || threadIsBusy ? (
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
