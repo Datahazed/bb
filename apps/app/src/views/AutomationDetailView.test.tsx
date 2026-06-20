@@ -80,11 +80,21 @@ function renderContent(
 }
 
 describe("AutomationDetailContent", () => {
-  it("renders the header with name, Script and API pills", () => {
+  it("renders the header with the loop name and active status", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("Disk space watchdog");
-    expect(markup).toContain(">Script<");
-    expect(markup).toContain(">API<");
+    expect(markup).toContain("Active");
+    // mode/origin live in the config + health rollup, not header pills
+    expect(markup).not.toContain(">Script<");
+    expect(markup).not.toContain(">API<");
+  });
+
+  it("renders the health rollup", () => {
+    const markup = renderContent({ automation: makeAutomation() });
+    expect(markup).toContain("Success rate");
+    expect(markup).toContain("Last run");
+    expect(markup).toContain("Next run");
+    expect(markup).toContain("Avg duration");
   });
 
   it("renders the config summary with schedule, execution, and environment", () => {
@@ -115,7 +125,7 @@ describe("AutomationDetailContent", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain('aria-label="Run now"');
     expect(markup).toContain('data-icon="Zap"');
-    expect(markup).toContain('aria-label="Delete automation"');
+    expect(markup).toContain('aria-label="Delete loop"');
     expect(markup).toContain('data-icon="Trash2"');
   });
 

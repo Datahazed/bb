@@ -9,7 +9,6 @@ import {
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { Pill } from "@/components/ui/pill.js";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomationDetail,
@@ -178,6 +177,47 @@ function RunRow({ run, projectId }: RunRowProps) {
   );
 }
 
+function durationSeconds(run: AutomationRun): number | null {
+  if (run.finishedAt === null) {
+    return null;
+  }
+  const seconds = (run.finishedAt - run.startedAt) / 1000;
+  return seconds < 0 ? null : seconds;
+}
+
+function HealthStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "mt-0.5 text-sm font-semibold tabular-nums",
+          tone ?? "text-foreground",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ConfigLine({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex gap-3 border-b border-border-seam py-2 text-sm last:border-0">
+      <span className="w-24 shrink-0 text-muted-foreground">{k}</span>
+      <span className="min-w-0 break-words text-foreground">{v}</span>
+    </div>
+  );
+}
+
 interface AutomationDetailContentProps {
   automation: Automation;
   runs: readonly AutomationRun[];
@@ -206,108 +246,145 @@ export function AutomationDetailContent({
   onDelete,
   actionsPending,
 }: AutomationDetailContentProps) {
+  const finishedRuns = runs.filter(
+    (run) => run.status === "succeeded" || run.status === "failed",
+  );
+  const succeededCount = finishedRuns.filter(
+    (run) => run.status === "succeeded",
+  ).length;
+  const successRate =
+    finishedRuns.length > 0
+      ? `${Math.round((succeededCount / finishedRuns.length) * 100)}%`
+      : "—";
+  const durations = runs
+    .map(durationSeconds)
+    .filter((value): value is number => value !== null);
+  const avgDuration =
+    durations.length > 0
+      ? `${Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)}s`
+      : "—";
+  const lastRun = runs[0] ?? null;
+  const lastRunStatus = lastRun ? getRunStatusLabel(lastRun) : null;
+  const lastRunValue = lastRunStatus ? lastRunStatus.label : "Never run";
+  const lastRunTone = lastRunStatus
+    ? RUN_STATUS_TONE_CLASS[lastRunStatus.tone]
+    : "text-muted-foreground";
+  const nextRunValue = automation.enabled
+    ? automation.nextRunAt !== null
+      ? formatRunTimestamp(automation.nextRunAt)
+      : "Not scheduled"
+    : "Paused";
+
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                automation.enabled ? "bg-success" : "bg-muted-foreground/50",
+        <div>
+          <Link
+            to={getAutomationsRoutePath()}
+            className="mb-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Icon name="ChevronLeft" className="size-3.5" />
+            Loops
+          </Link>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {automation.name}
+              </h1>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    automation.enabled
+                      ? "bg-success"
+                      : "bg-muted-foreground/50",
+                  )}
+                />
+                {automation.enabled ? "Active" : "Paused"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {automation.enabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Pause"
+                  title="Pause"
+                  disabled={actionsPending}
+                  onClick={onPause}
+                >
+                  <Icon name="Pause" className="size-4" />
+                  Pause
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Resume"
+                  title="Resume"
+                  disabled={actionsPending}
+                  onClick={onResume}
+                >
+                  <Icon name="Play" className="size-4" />
+                  Resume
+                </Button>
               )}
-            />
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
-              {automation.name}
-            </h1>
-            {automation.execution.mode === "script" ? (
-              <Pill variant="outline" className="shrink-0">
-                Script
-              </Pill>
-            ) : null}
-            {automation.origin === "agent" ? (
-              <Pill variant="secondary" className="shrink-0">
-                API
-              </Pill>
-            ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label="Run now"
+                title="Run now"
+                disabled={actionsPending}
+                onClick={onRun}
+              >
+                <Icon name="Zap" className="size-4" />
+                Run now
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                aria-label="Delete loop"
+                title="Delete loop"
+                disabled={actionsPending}
+                onClick={onDelete}
+              >
+                <Icon name="Trash2" className="size-4" />
+                Delete
+              </Button>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {formatCronCadence(automation.trigger.cron)} ·{" "}
-            {automation.trigger.timezone}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {describeExecution(automation)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {describeEnvironment(automation)}
-          </p>
-          {automation.execution.mode === "agent" ? (
-            <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-              {automation.execution.prompt}
-            </p>
-          ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
-          {automation.enabled ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-label="Pause"
-              title="Pause"
-              disabled={actionsPending}
-              onClick={onPause}
-            >
-              <Icon name="Pause" className="size-4" />
-              Pause
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-label="Resume"
-              title="Resume"
-              disabled={actionsPending}
-              onClick={onResume}
-            >
-              <Icon name="Play" className="size-4" />
-              Resume
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Run now"
-            title="Run now"
-            disabled={actionsPending}
-            onClick={onRun}
-          >
-            <Icon name="Zap" className="size-4" />
-            Run now
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            aria-label="Delete automation"
-            title="Delete automation"
-            disabled={actionsPending}
-            onClick={onDelete}
-          >
-            <Icon name="Trash2" className="size-4" />
-            Delete
-          </Button>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <HealthStat label="Success rate" value={successRate} />
+          <HealthStat label="Last run" value={lastRunValue} tone={lastRunTone} />
+          <HealthStat label="Next run" value={nextRunValue} />
+          <HealthStat label="Avg duration" value={avgDuration} />
         </div>
 
         <section className="space-y-2">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Run history
-          </p>
+          <h2 className="text-sm font-semibold text-foreground">Configuration</h2>
+          <div className="rounded-lg border border-border bg-card px-3.5">
+            <ConfigLine
+              k="Schedule"
+              v={`${formatCronCadence(automation.trigger.cron)} · ${automation.trigger.timezone}`}
+            />
+            <ConfigLine k="Execution" v={describeExecution(automation)} />
+            <ConfigLine k="Environment" v={describeEnvironment(automation)} />
+            {automation.execution.mode === "agent" ? (
+              <ConfigLine k="Prompt" v={automation.execution.prompt} />
+            ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-foreground">Run history</h2>
           {runsError ? (
             <p className="text-sm text-destructive">Failed to load runs.</p>
           ) : runsLoading ? (
@@ -390,7 +467,7 @@ export function AutomationDetailView() {
     return (
       <PageShell contentClassName="pt-4 md:pt-5">
         <div className="mx-auto w-full max-w-3xl">
-          <p className="text-sm text-destructive">Failed to load automation.</p>
+          <p className="text-sm text-destructive">Failed to load loop.</p>
         </div>
       </PageShell>
     );
@@ -426,7 +503,7 @@ export function AutomationDetailView() {
         onOpenChange={deleteDialog.onOpenChange}
       >
         <ConfirmDeleteDialogContent
-          title="Delete automation?"
+          title="Delete loop?"
           description={`"${automation.name}" and its run history will be permanently removed.`}
           confirmLabel="Delete"
           pending={deleteAutomation.isPending}
