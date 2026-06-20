@@ -1,16 +1,29 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
-import { useProjectSkills } from "@/hooks/queries/skills-queries";
+import {
+  useDeleteSkill,
+  useProjectSkills,
+  useSkillContent,
+  useUpdateSkill,
+} from "@/hooks/queries/skills-queries";
 
 interface SkillProviderGroup {
   /** Group key: the provider id, or "bb" for provider-agnostic bb skills. */
@@ -77,10 +90,22 @@ function ProviderLogo({
   return <LogoIcon className={className} />;
 }
 
-/** Calm, typeahead-style row: skill icon + name + muted description. */
-function SkillRow({ skill }: { skill: SkillSummary }) {
+/** Calm, typeahead-style row: skill icon + name + muted description. Clicking
+ * views the skill. */
+function SkillRow({
+  skill,
+  onSelect,
+}: {
+  skill: SkillSummary;
+  onSelect: () => void;
+}) {
   return (
-    <div className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs">
+    <button
+      type="button"
+      onClick={onSelect}
+      title={skill.description ?? skill.name}
+      className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-file-accent"
+    >
       <Icon
         name="Zap"
         className="size-3.5 shrink-0 text-muted-foreground"
@@ -92,7 +117,7 @@ function SkillRow({ skill }: { skill: SkillSummary }) {
           {skill.description}
         </span>
       ) : null}
-    </div>
+    </button>
   );
 }
 
@@ -101,6 +126,7 @@ export interface SkillsOverviewProps {
   isLoading: boolean;
   hasError: boolean;
   onCreateSkill: () => void;
+  onSelectSkill: (skill: SkillSummary) => void;
 }
 
 /**
@@ -112,6 +138,7 @@ export function SkillsOverview({
   isLoading,
   hasError,
   onCreateSkill,
+  onSelectSkill,
 }: SkillsOverviewProps) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -182,6 +209,7 @@ export function SkillsOverview({
                     <SkillRow
                       key={`${group.key}-${skill.scope}-${skill.name}`}
                       skill={skill}
+                      onSelect={() => onSelectSkill(skill)}
                     />
                   ))}
                 </div>
@@ -194,6 +222,190 @@ export function SkillsOverview({
   );
 }
 
+const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
+  "bb-builtin": "bb · built-in",
+  "bb-user": "bb · user",
+  "bb-project": "bb · project",
+  "claude-user": "Claude · user",
+  "claude-project": "Claude · project",
+  codex: "Codex",
+  plugin: "Plugin",
+};
+
+/**
+ * View a skill's SKILL.md; bb skills (manageable) can be edited inline or
+ * deleted. Connected — owns the content/update/delete queries.
+ */
+function SkillDetailDialog({
+  projectId,
+  skill,
+  onClose,
+}: {
+  projectId: string;
+  skill: SkillSummary | null;
+  onClose: () => void;
+}) {
+  const contentQuery = useSkillContent(projectId, skill);
+  const updateSkill = useUpdateSkill(projectId);
+  const deleteSkill = useDeleteSkill(projectId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setConfirmingDelete(false);
+  }, [skill?.scope, skill?.name, skill?.provider]);
+
+  const content = contentQuery.data?.content ?? "";
+  const deletableScope =
+    skill && (skill.scope === "bb-user" || skill.scope === "bb-project")
+      ? skill.scope
+      : null;
+  const canManage = skill?.manageable === true && deletableScope !== null;
+
+  async function handleSave() {
+    if (!skill || deletableScope === null) return;
+    try {
+      await updateSkill.mutateAsync({
+        scope: deletableScope,
+        name: skill.name,
+        environmentId: null,
+        content: draft,
+      });
+      setEditing(false);
+    } catch {
+      // Errors surface via the global handler; keep the edits for retry.
+    }
+  }
+
+  function handleDelete() {
+    if (!skill || deletableScope === null) return;
+    deleteSkill.mutate(
+      { scope: deletableScope, name: skill.name, environmentId: null },
+      { onSuccess: onClose },
+    );
+  }
+
+  return (
+    <Dialog
+      open={skill !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Icon name="Zap" className="size-4 text-file-accent" />
+            <span className="min-w-0 truncate">{skill?.name}</span>
+            {skill?.provider ? (
+              <ProviderLogo providerId={skill.provider} className="size-3.5" />
+            ) : null}
+            {skill ? (
+              <Pill variant="outline" className="ml-1 shrink-0">
+                {SCOPE_LABELS[skill.scope]}
+              </Pill>
+            ) : null}
+          </DialogTitle>
+        </DialogHeader>
+
+        {contentQuery.isError ? (
+          <p className="text-sm text-destructive">Failed to load the skill.</p>
+        ) : contentQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : editing ? (
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label="SKILL.md"
+            className="h-80 w-full resize-none rounded-md border border-file-accent/50 bg-card p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-file-accent"
+          />
+        ) : (
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 font-mono text-xs leading-relaxed text-foreground">
+            {content}
+          </pre>
+        )}
+
+        <DialogFooter className="sm:justify-between">
+          {canManage && !editing ? (
+            confirmingDelete ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                Delete this skill?
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  disabled={deleteSkill.isPending}
+                  onClick={handleDelete}
+                >
+                  Delete
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Icon name="Trash2" className="size-4" />
+                Delete
+              </Button>
+            )
+          ) : (
+            <span />
+          )}
+
+          {canManage ? (
+            editing ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={updateSkill.isPending}
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={updateSkill.isPending || contentQuery.isLoading}
+                  onClick={handleSave}
+                >
+                  Save
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={contentQuery.isLoading}
+                onClick={() => {
+                  setDraft(content);
+                  setEditing(true);
+                }}
+              >
+                <Icon name="Edit" className="size-4" />
+                Edit
+              </Button>
+            )
+          ) : (
+            <span className="text-xs text-muted-foreground">Read-only</span>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function SkillsView() {
   const navigate = useNavigate();
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
@@ -201,6 +413,7 @@ export function SkillsView() {
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
+  const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(() => {
@@ -209,11 +422,19 @@ export function SkillsView() {
     });
   }, [navigate]);
   return (
-    <SkillsOverview
-      skills={skills}
-      isLoading={isLoading}
-      hasError={hasError}
-      onCreateSkill={handleCreateSkill}
-    />
+    <>
+      <SkillsOverview
+        skills={skills}
+        isLoading={isLoading}
+        hasError={hasError}
+        onCreateSkill={handleCreateSkill}
+        onSelectSkill={setSelectedSkill}
+      />
+      <SkillDetailDialog
+        projectId={PERSONAL_PROJECT_ID}
+        skill={selectedSkill}
+        onClose={() => setSelectedSkill(null)}
+      />
+    </>
   );
 }

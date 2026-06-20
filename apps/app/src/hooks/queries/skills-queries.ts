@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DeleteSkillRequest } from "@bb/server-contract";
+import type {
+  DeleteSkillRequest,
+  SkillSummary,
+  UpdateSkillRequest,
+} from "@bb/server-contract";
 import * as api from "@/lib/api";
 
 const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
+const SKILL_CONTENT_QUERY_KEY = "skillContent";
 
 function projectSkillsKey(projectId: string) {
   return [PROJECT_SKILLS_QUERY_KEY, projectId] as const;
+}
+
+function skillContentKey(projectId: string, scope: string, name: string) {
+  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name] as const;
 }
 
 /**
@@ -19,6 +28,44 @@ export function useProjectSkills(projectId: string) {
     queryFn: ({ signal }) =>
       api.listProjectSkills({ projectId, environmentId: null, signal }),
     enabled: projectId.length > 0,
+  });
+}
+
+/** Read a skill's SKILL.md (lazily; only when a skill is selected). */
+export function useSkillContent(
+  projectId: string,
+  skill: SkillSummary | null,
+) {
+  return useQuery({
+    queryKey: skill
+      ? skillContentKey(projectId, skill.scope, skill.name)
+      : [SKILL_CONTENT_QUERY_KEY, projectId, "none"],
+    queryFn: ({ signal }) =>
+      api.getSkillContent({
+        projectId,
+        scope: skill!.scope,
+        name: skill!.name,
+        environmentId: null,
+        signal,
+      }),
+    enabled: skill !== null && projectId.length > 0,
+  });
+}
+
+export function useUpdateSkill(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorMessage: "Failed to save skill." },
+    mutationFn: (body: UpdateSkillRequest) =>
+      api.updateSkillContent(projectId, body),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: skillContentKey(projectId, variables.scope, variables.name),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: projectSkillsKey(projectId),
+      });
+    },
   });
 }
 

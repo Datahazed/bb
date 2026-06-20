@@ -138,23 +138,23 @@ function isSafeSkillName(name: string): boolean {
  * root; `bb-project` is `<cwd>/.bb/skills`. These are the only roots the daemon
  * will ever delete from.
  */
-function resolveDeletableSkillRoot(
-  command: CommandOf<"host.delete_skill">,
+function resolveBbSkillRoot(
+  args: { scope: "bb-user" | "bb-project"; cwd: string | null },
   dataDir: string,
 ): string {
-  if (command.scope === "bb-user") {
+  if (args.scope === "bb-user") {
     return resolveDataDirSkillsRootPath(dataDir);
   }
-  if (command.cwd === null) {
+  if (args.cwd === null) {
     throw new CommandDispatchError(
       "invalid_path",
-      "cwd is required to delete a bb-project skill",
+      "cwd is required for a bb-project skill",
     );
   }
-  if (!path.isAbsolute(command.cwd)) {
+  if (!path.isAbsolute(args.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
   }
-  return path.join(command.cwd, ".bb", "skills");
+  return path.join(args.cwd, ".bb", "skills");
 }
 
 async function realpathOrNull(targetPath: string): Promise<string | null> {
@@ -183,7 +183,10 @@ export async function deleteHostSkill(
       "Skill name must be a single path segment",
     );
   }
-  const root = resolveDeletableSkillRoot(command, options.dataDir);
+  const root = resolveBbSkillRoot(
+    { scope: command.scope, cwd: command.cwd },
+    options.dataDir,
+  );
   const skillDirPath = path.join(root, command.name);
 
   const realRoot = await realpathOrNull(root);
@@ -222,4 +225,51 @@ export async function deleteHostSkill(
 
   await fs.rm(realTarget, { recursive: true, force: false });
   return { deletedPath: realTarget };
+}
+
+/**
+ * Overwrite an existing bb skill's SKILL.md. Same confinement as delete: path
+ * built host-side from `(scope, name, cwd)`, name a single safe segment, and the
+ * resolved target must be exactly `<bb-root>/<name>` of an existing skill (one
+ * whose SKILL.md already exists). Edits only — never creates a new skill.
+ */
+export async function writeHostSkill(
+  command: CommandOf<"host.write_skill">,
+  options: { dataDir: string },
+): Promise<HostDaemonOnlineRpcResult<"host.write_skill">> {
+  if (!isSafeSkillName(command.name)) {
+    throw new CommandDispatchError(
+      "invalid_skill_name",
+      "Skill name must be a single path segment",
+    );
+  }
+  const root = resolveBbSkillRoot(
+    { scope: command.scope, cwd: command.cwd },
+    options.dataDir,
+  );
+  const realRoot = await realpathOrNull(root);
+  const realTarget = await realpathOrNull(path.join(root, command.name));
+  if (realRoot === null || realTarget === null) {
+    throw new ExpectedCommandDispatchError(
+      "skill_not_found",
+      `Skill "${command.name}" not found`,
+    );
+  }
+  if (realTarget !== path.join(realRoot, command.name)) {
+    throw new CommandDispatchError(
+      "skill_outside_root",
+      "Refusing to edit a skill that resolves outside its bb root",
+    );
+  }
+  const skillFilePath = path.join(realTarget, SKILL_FILE_NAME);
+  // Edit-only: the SKILL.md must already exist (creation is via prompt).
+  const skillFileStat = await fs.stat(skillFilePath).catch(() => null);
+  if (skillFileStat === null || !skillFileStat.isFile()) {
+    throw new ExpectedCommandDispatchError(
+      "skill_not_found",
+      `Skill "${command.name}" not found`,
+    );
+  }
+  await fs.writeFile(skillFilePath, command.content, "utf8");
+  return { filePath: skillFilePath };
 }

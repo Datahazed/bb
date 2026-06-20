@@ -327,6 +327,35 @@ export const deleteSkillRequestSchema = z
   .strict();
 export type DeleteSkillRequest = z.infer<typeof deleteSkillRequestSchema>;
 
+/** View any skill's SKILL.md. Identity (scope + name; scope determines the
+ * provider) is resolved server-side to the authoritative `filePath`; a client
+ * path is never accepted. */
+export const projectSkillContentQuerySchema = z.object({
+  scope: skillScopeSchema,
+  name: z.string().min(1),
+  environmentId: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.string().min(1).nullable(),
+  ),
+});
+export type ProjectSkillContentQuery = z.infer<
+  typeof projectSkillContentQuerySchema
+>;
+
+export const skillContentResponseSchema = z.object({ content: z.string() });
+export type SkillContentResponse = z.infer<typeof skillContentResponseSchema>;
+
+/** Edit a bb skill's SKILL.md (only bb scopes are writable). */
+export const updateSkillRequestSchema = z
+  .object({
+    scope: deletableSkillScopeSchema,
+    name: z.string().min(1),
+    environmentId: z.string().min(1).nullable(),
+    content: z.string().min(1).max(1_000_000),
+  })
+  .strict();
+export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;
+
 export const projectResponseSchema = projectSchema.extend({
   sources: z.array(projectSourceSchema),
 });

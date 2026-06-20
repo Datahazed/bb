@@ -179,6 +179,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
   },
+  "host.write_skill": {
+    filePath: "/home/user/.bb/skills/review/SKILL.md",
+  },
   "host.list_branches": {
     branches: ["main"],
     branchesTruncated: false,

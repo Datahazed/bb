@@ -19,6 +19,9 @@ import type {
   UpdateAutomationRequest,
   SkillListResponse,
   DeleteSkillRequest,
+  SkillContentResponse,
+  UpdateSkillRequest,
+  SkillScope,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -662,6 +665,44 @@ export async function deleteProjectSkill(
 ): Promise<void> {
   await requestVoid(
     apiClient.projects[":id"].skills.$delete({
+      param: { id: projectId },
+      json: body,
+    }),
+  );
+}
+
+interface GetSkillContentArgs {
+  projectId: string;
+  scope: SkillScope;
+  name: string;
+  environmentId: string | null;
+  signal?: AbortSignal;
+}
+
+export async function getSkillContent({
+  projectId,
+  scope,
+  name,
+  environmentId,
+  signal,
+}: GetSkillContentArgs): Promise<SkillContentResponse> {
+  return request<SkillContentResponse>(
+    apiClient.projects[":id"].skills.content.$get(
+      {
+        param: { id: projectId },
+        query: { scope, name, environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function updateSkillContent(
+  projectId: string,
+  body: UpdateSkillRequest,
+): Promise<{ filePath: string }> {
+  return request<{ filePath: string }>(
+    apiClient.projects[":id"].skills.content.$patch({
       param: { id: projectId },
       json: body,
     }),

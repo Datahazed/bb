@@ -22,6 +22,7 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
       isLoading={props.isLoading ?? false}
       hasError={props.hasError ?? false}
       onCreateSkill={props.onCreateSkill ?? (() => {})}
+      onSelectSkill={props.onSelectSkill ?? (() => {})}
     />,
   );
 }
