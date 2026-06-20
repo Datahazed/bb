@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -422,6 +423,12 @@ function resolveThreadDropTarget(
   return { activeId, fromParentKey, toParentKey };
 }
 
+// Spring-loaded delay before a hovered folder expands + shows the drop preview.
+// The preview/expand shift layout, so deferring them until the pointer settles
+// keeps dragging *through* a folder (e.g. up out of one's own folder) smooth
+// instead of the inserted row shoving the dragged item back down.
+const FOLDER_DRAG_DWELL_MS = 350;
+
 function useManualThreadTreeDnd({
   containerId,
   enabled,
@@ -434,9 +441,23 @@ function useManualThreadTreeDnd({
   const updateThread = useUpdateThread();
   const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
   const activeThreadRef = useRef<ThreadListEntry | null>(null);
+  const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The folder the dwell timer is currently counting toward (or showing a
+  // preview for); null when the pointer isn't over a droppable target folder.
+  const dwellFolderKeyRef = useRef<string | null>(null);
   const [dragPreview, setDragPreview] = useState<FolderDragPreview | null>(
     null,
   );
+
+  const clearFolderDwell = useCallback(() => {
+    if (dwellTimerRef.current !== null) {
+      clearTimeout(dwellTimerRef.current);
+      dwellTimerRef.current = null;
+    }
+    dwellFolderKeyRef.current = null;
+  }, []);
+
+  useEffect(() => clearFolderDwell, [clearFolderDwell]);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -445,9 +466,10 @@ function useManualThreadTreeDnd({
         typeof activeId === "string"
           ? (lookup.threadByItemId.get(activeId) ?? null)
           : null;
+      clearFolderDwell();
       setDragPreview(null);
     },
-    [lookup],
+    [clearFolderDwell, lookup],
   );
 
   const handleDragOver = useCallback(
@@ -456,32 +478,46 @@ function useManualThreadTreeDnd({
       const thread = activeThreadRef.current;
       if (!thread) return;
       const drop = resolveThreadDropTarget(lookup, event.active, event.over);
-      // Only a real folder (not the loose root) gets a preview + auto-expand.
-      if (!drop || drop.toParentKey === containerId) {
-        setDragPreview((current) => (current ? null : current));
-        return;
-      }
-      const overFolderKey = drop.toParentKey;
-      // Expand a collapsed target so its contents — and the preview row —
-      // are visible to drop into. No-op if already expanded.
-      setCollapsedFolders((current) =>
-        current.includes(overFolderKey)
-          ? current.filter((key) => key !== overFolderKey)
-          : current,
-      );
-      setDragPreview((current) =>
-        current?.overFolderKey === overFolderKey &&
-        current.thread.id === thread.id
-          ? current
-          : { thread, overFolderKey },
-      );
+      // Only a real folder (not the loose root) is a preview/expand target.
+      const targetFolderKey =
+        drop && drop.toParentKey !== containerId ? drop.toParentKey : null;
+
+      // Same target as the in-flight dwell/preview: nothing to do (don't
+      // thrash timers or layout on every pointer move).
+      if (targetFolderKey === dwellFolderKeyRef.current) return;
+
+      // Target changed: cancel the pending dwell and drop any shown preview.
+      clearFolderDwell();
+      dwellFolderKeyRef.current = targetFolderKey;
+      setDragPreview((current) => (current ? null : current));
+      if (targetFolderKey === null) return;
+
+      // Spring-loaded: expand + preview only after the pointer settles, so
+      // passing through a folder mid-drag doesn't shift it under the cursor.
+      dwellTimerRef.current = setTimeout(() => {
+        dwellTimerRef.current = null;
+        const draggingThread = activeThreadRef.current;
+        if (!draggingThread || dwellFolderKeyRef.current !== targetFolderKey) {
+          return;
+        }
+        setCollapsedFolders((current) =>
+          current.includes(targetFolderKey)
+            ? current.filter((key) => key !== targetFolderKey)
+            : current,
+        );
+        setDragPreview({
+          thread: draggingThread,
+          overFolderKey: targetFolderKey,
+        });
+      }, FOLDER_DRAG_DWELL_MS);
     },
-    [containerId, enabled, lookup, setCollapsedFolders],
+    [clearFolderDwell, containerId, enabled, lookup, setCollapsedFolders],
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       activeThreadRef.current = null;
+      clearFolderDwell();
       setDragPreview(null);
       if (!enabled) return;
 
@@ -499,13 +535,14 @@ function useManualThreadTreeDnd({
         folderPath: destinationFolderPath,
       });
     },
-    [enabled, lookup, updateThread],
+    [clearFolderDwell, enabled, lookup, updateThread],
   );
 
   const handleDragCancel = useCallback(() => {
     activeThreadRef.current = null;
+    clearFolderDwell();
     setDragPreview(null);
-  }, []);
+  }, [clearFolderDwell]);
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
