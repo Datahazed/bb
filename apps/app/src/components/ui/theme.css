@@ -325,7 +325,7 @@
   --card-foreground: var(--ink);
   --popover: var(--canvas);
   --popover-foreground: var(--ink);
-  --primary: oklch(0.4891 0 0);
+  --primary: oklch(0.27 0 0);
   --primary-foreground: oklch(1 0 0);
   /* Subtle fill. secondary and accent share one low-emphasis step a touch more
    * prominent than the card; they stay separate tokens for their distinct
@@ -503,7 +503,7 @@
   --card-foreground: var(--ink);
   --popover: var(--canvas);
   --popover-foreground: var(--ink);
-  --primary: oklch(0.7058 0 0);
+  --primary: oklch(0.82 0 0);
   --primary-foreground: oklch(0.2178 0 0);
   /* Subtle fill: secondary and accent share one step; muted is a distinct step
    * more prominent (in light too), so the ramp reads the same in both themes. */
