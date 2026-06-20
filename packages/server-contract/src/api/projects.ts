@@ -57,7 +57,6 @@ export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 export const threadFolderSchema = z
   .object({
     id: z.string(),
-    projectId: z.string().min(1).nullable(),
     path: z.string().min(1),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -68,7 +67,6 @@ export type ThreadFolderResponse = z.infer<typeof threadFolderSchema>;
 export const createThreadFolderRequestSchema = z
   .object({
     path: z.string().min(1),
-    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type CreateThreadFolderRequest = z.infer<
@@ -79,7 +77,6 @@ export const updateThreadFolderRequestSchema = z
   .object({
     path: z.string().min(1),
     newPath: z.string().min(1),
-    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type UpdateThreadFolderRequest = z.infer<
@@ -89,7 +86,6 @@ export type UpdateThreadFolderRequest = z.infer<
 export const deleteThreadFolderRequestSchema = z
   .object({
     path: z.string().min(1),
-    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type DeleteThreadFolderRequest = z.infer<

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { asc, eq, or, sql } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   DbConnection,
@@ -15,18 +15,15 @@ export type ThreadFolderRow = typeof threadFolders.$inferSelect;
 
 export interface CreateThreadFolderInput {
   path: string;
-  projectId?: string | null;
 }
 
 export interface RenameThreadFolderInput {
   path: string;
   newPath: string;
-  projectId?: string | null;
 }
 
 export interface DeleteThreadFolderInput {
   path: string;
-  projectId?: string | null;
 }
 
 export interface ThreadFolderMutationResult {
@@ -67,22 +64,6 @@ function folderPathSubtreeFilter(
   );
 }
 
-function folderProjectScopeFilter(projectId: string | null | undefined) {
-  if (projectId === undefined) {
-    return undefined;
-  }
-  return projectId === null
-    ? isNull(threadFolders.projectId)
-    : eq(threadFolders.projectId, projectId);
-}
-
-function threadProjectScopeFilter(projectId: string | null | undefined) {
-  if (projectId === undefined) {
-    return undefined;
-  }
-  return projectId === null ? sql`1 = 0` : eq(threads.projectId, projectId);
-}
-
 function replaceFolderPathPrefix(
   value: string,
   oldPath: string,
@@ -121,21 +102,16 @@ export function isThreadFolderDescendantPath(
 export function getThreadFolderByPath(
   db: DbQueryConnection,
   path: string,
-  projectId: string | null = null,
 ): ThreadFolderRow | null {
   const normalized = normalizeThreadFolderPath(path);
   if (!normalized) {
     return null;
   }
-  const projectFilter =
-    projectId === null
-      ? isNull(threadFolders.projectId)
-      : eq(threadFolders.projectId, projectId);
   return (
     db
       .select()
       .from(threadFolders)
-      .where(and(eq(threadFolders.path, normalized), projectFilter))
+      .where(eq(threadFolders.path, normalized))
       .get() ?? null
   );
 }
@@ -144,11 +120,7 @@ export function listThreadFolders(db: DbQueryConnection): ThreadFolderRow[] {
   return db
     .select()
     .from(threadFolders)
-    .orderBy(
-      asc(threadFolders.projectId),
-      asc(threadFolders.path),
-      asc(threadFolders.id),
-    )
+    .orderBy(asc(threadFolders.path), asc(threadFolders.id))
     .all();
 }
 
@@ -156,13 +128,11 @@ export function ensureThreadFolderPath(
   db: ThreadFolderWriteConnection,
   notifier: DbNotifier,
   path: string | null | undefined,
-  projectId: string | null = null,
 ): ThreadFolderRow | null {
   const normalized = normalizeThreadFolderPath(path);
   if (!normalized) {
     return null;
   }
-  const scopedProjectId = projectId ?? null;
 
   const now = Date.now();
   let createdAny = false;
@@ -173,7 +143,6 @@ export function ensureThreadFolderPath(
         .insert(threadFolders)
         .values({
           id: createThreadFolderId(),
-          projectId: scopedProjectId,
           path: ancestorPath,
           createdAt: now,
           updatedAt: now,
@@ -186,13 +155,11 @@ export function ensureThreadFolderPath(
       deepest = inserted;
       continue;
     }
-    deepest = getThreadFolderByPath(db, ancestorPath, scopedProjectId);
+    deepest = getThreadFolderByPath(db, ancestorPath);
   }
 
   if (createdAny) {
-    notifier.notifyProject(scopedProjectId ?? PERSONAL_PROJECT_ID, [
-      "threads-changed",
-    ]);
+    notifier.notifyProject(PERSONAL_PROJECT_ID, ["threads-changed"]);
   }
   return deepest;
 }
@@ -202,12 +169,7 @@ export function createThreadFolder(
   notifier: DbNotifier,
   input: CreateThreadFolderInput,
 ): ThreadFolderRow {
-  const folder = ensureThreadFolderPath(
-    db,
-    notifier,
-    input.path,
-    input.projectId ?? null,
-  );
+  const folder = ensureThreadFolderPath(db, notifier, input.path);
   if (!folder) {
     throw new Error("Thread folder path cannot be empty");
   }
@@ -236,12 +198,7 @@ export function renameThreadFolder(
       const matchingFolders = tx
         .select()
         .from(threadFolders)
-        .where(
-          and(
-            folderPathSubtreeFilter(threadFolders.path, path),
-            folderProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threadFolders.path, path))
         .all();
       const matchingThreads = tx
         .select({
@@ -250,12 +207,7 @@ export function renameThreadFolder(
           folderPath: threads.folderPath,
         })
         .from(threads)
-        .where(
-          and(
-            folderPathSubtreeFilter(threads.folderPath, path),
-            threadProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threads.folderPath, path))
         .all();
 
       if (matchingFolders.length === 0 && matchingThreads.length === 0) {
@@ -263,22 +215,18 @@ export function renameThreadFolder(
       }
 
       tx.delete(threadFolders)
-        .where(
-          and(
-            folderPathSubtreeFilter(threadFolders.path, path),
-            folderProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threadFolders.path, path))
         .run();
 
-      const affectedProjects = new Set<string | null>();
+      // Folders are a single global namespace keyed by path, so the global
+      // folder list (PERSONAL_PROJECT_ID) always refreshes; each moved thread's
+      // own project refreshes too.
+      const affectedProjects = new Set<string | null>([null]);
       for (const folder of matchingFolders) {
-        affectedProjects.add(folder.projectId);
         ensureThreadFolderPath(
           tx,
           notifier,
           replaceFolderPathPrefix(folder.path, path, newPath),
-          folder.projectId,
         );
       }
 
@@ -293,7 +241,7 @@ export function renameThreadFolder(
           newPath,
         );
         affectedProjects.add(thread.projectId);
-        ensureThreadFolderPath(tx, notifier, nextFolderPath, thread.projectId);
+        ensureThreadFolderPath(tx, notifier, nextFolderPath);
         tx.update(threads)
           .set({ folderPath: nextFolderPath, updatedAt: now })
           .where(eq(threads.id, thread.id))
@@ -325,12 +273,7 @@ export function deleteThreadFolder(
       const matchingFolders = tx
         .select()
         .from(threadFolders)
-        .where(
-          and(
-            folderPathSubtreeFilter(threadFolders.path, path),
-            folderProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threadFolders.path, path))
         .all();
       const matchingThreads = tx
         .select({
@@ -338,12 +281,7 @@ export function deleteThreadFolder(
           projectId: threads.projectId,
         })
         .from(threads)
-        .where(
-          and(
-            folderPathSubtreeFilter(threads.folderPath, path),
-            threadProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threads.folderPath, path))
         .all();
 
       if (matchingFolders.length === 0 && matchingThreads.length === 0) {
@@ -351,18 +289,13 @@ export function deleteThreadFolder(
       }
 
       tx.delete(threadFolders)
-        .where(
-          and(
-            folderPathSubtreeFilter(threadFolders.path, path),
-            folderProjectScopeFilter(input.projectId),
-          ),
-        )
+        .where(folderPathSubtreeFilter(threadFolders.path, path))
         .run();
 
       const now = Date.now();
-      const affectedProjects = new Set<string | null>(
-        matchingFolders.map((folder) => folder.projectId),
-      );
+      // The global folder list (PERSONAL_PROJECT_ID) always refreshes; each
+      // cleared thread's own project refreshes too.
+      const affectedProjects = new Set<string | null>([null]);
       for (const thread of matchingThreads) {
         affectedProjects.add(thread.projectId);
         tx.update(threads)

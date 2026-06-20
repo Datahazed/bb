@@ -389,9 +389,9 @@ function dropPost0023Tables(db: DbConnection): void {
 
 /**
  * Folder schema lands after thread-search (0042 folder_path column, 0043
- * thread_folders table, 0044 project scoping). Replay scenarios that rewind the
- * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
- * against a DB that already has them.
+ * thread_folders table). Replay scenarios that rewind the ledger past it must
+ * drop the schema too, or migrate() re-runs the ADD/CREATE against a DB that
+ * already has them.
  */
 function dropThreadFolderSchema(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS thread_folders;");

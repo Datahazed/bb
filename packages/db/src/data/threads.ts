@@ -288,12 +288,7 @@ export function createThread(
         })
         .returning()
         .get();
-      ensureThreadFolderPath(
-        tx,
-        notifier,
-        createdThread.folderPath,
-        createdThread.projectId,
-      );
+      ensureThreadFolderPath(tx, notifier, createdThread.folderPath);
       upsertThreadTitleSearchSegments(tx, {
         threadId: createdThread.id,
         title: createdThread.title,
@@ -1559,7 +1554,7 @@ export function updateThread(
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
   if ("folderPath" in input) {
-    ensureThreadFolderPath(db, notifier, input.folderPath, existing.projectId);
+    ensureThreadFolderPath(db, notifier, input.folderPath);
     set.folderPath = input.folderPath;
   }
   if ("environmentId" in input) set.environmentId = input.environmentId;

@@ -311,21 +311,12 @@ export const threadFolders = sqliteTable(
   "thread_folders",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").references(() => projects.id, {
-      onDelete: "cascade",
-    }),
     path: text("path").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("thread_folders_global_path_idx")
-      .on(table.path)
-      .where(sql`${table.projectId} IS NULL`),
-    uniqueIndex("thread_folders_project_path_idx")
-      .on(table.projectId, table.path)
-      .where(sql`${table.projectId} IS NOT NULL`),
-    index("thread_folders_project_idx").on(table.projectId),
+    uniqueIndex("thread_folders_path_idx").on(table.path),
     index("thread_folders_updated_idx").on(table.updatedAt),
   ],
 );

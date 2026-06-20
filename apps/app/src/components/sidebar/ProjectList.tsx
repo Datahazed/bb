@@ -1459,30 +1459,28 @@ function ProjectListComponent({
     },
     [navigate, onProjectSelect],
   );
-  const [folderCreateTarget, setFolderCreateTarget] = useState<{
-    projectId: string | null;
-  } | null>(null);
+  const [isFolderCreateDialogOpen, setIsFolderCreateDialogOpen] =
+    useState(false);
   const folderRenameDialog = useDialogState<ThreadFolderRenameDialogTarget>();
   const folderDeleteDialog = useDialogState<string>();
-  const isFolderCreateDialogOpen = folderCreateTarget !== null;
   const handleOpenCreateFolderDialog = useCallback(() => {
-    setFolderCreateTarget({ projectId: null });
+    setIsFolderCreateDialogOpen(true);
   }, []);
   const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
-      setFolderCreateTarget(null);
+      setIsFolderCreateDialogOpen(false);
     }
   }, []);
   const handleCreateThreadFolder = useCallback(
     (path: string) => {
       createThreadFolderMutate(
-        { path, projectId: folderCreateTarget?.projectId ?? null },
+        { path },
         {
-          onSuccess: () => setFolderCreateTarget(null),
+          onSuccess: () => setIsFolderCreateDialogOpen(false),
         },
       );
     },
-    [createThreadFolderMutate, folderCreateTarget],
+    [createThreadFolderMutate],
   );
   const handleOpenRenameThreadFolder = useCallback(
     (path: string) => {
@@ -1493,7 +1491,7 @@ function ProjectListComponent({
   const handleRenameThreadFolder = useCallback(
     (path: string, newPath: string) => {
       updateThreadFolderMutate(
-        { path, newPath, projectId: null },
+        { path, newPath },
         { onSuccess: () => folderRenameDialog.onClose() },
       );
     },
@@ -1511,7 +1509,7 @@ function ProjectListComponent({
       return;
     }
     deleteThreadFolderMutate(
-      { path, projectId: null },
+      { path },
       { onSuccess: () => folderDeleteDialog.onClose() },
     );
   }, [deleteThreadFolderMutate, folderDeleteDialog]);
