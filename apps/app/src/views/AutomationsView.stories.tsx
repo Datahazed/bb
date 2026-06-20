@@ -92,6 +92,20 @@ const sampleEntries: AutomationOverviewEntry[] = [
   ),
   entry(
     makeAutomation({
+      id: "auto_new",
+      name: "Release notes draft",
+      lastRunStatus: null,
+      lastRunAt: null,
+      trigger: {
+        triggerType: "schedule",
+        cron: "0 17 * * 5",
+        timezone: "America/New_York",
+      },
+    }),
+    projectBb,
+  ),
+  entry(
+    makeAutomation({
       id: "auto_cleanup",
       name: "Weekly cleanup",
       enabled: false,

@@ -227,14 +227,27 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
     : "Never run";
   return (
     <div className="group flex items-start gap-3 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
-      <Icon
-        name={runMeta?.icon ?? "Circle"}
-        aria-hidden
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          runMeta?.tone ?? "text-muted-foreground/40",
-        )}
-      />
+      {runMeta ? (
+        <Icon
+          name={runMeta.icon}
+          aria-hidden
+          className={cn("mt-0.5 size-4 shrink-0", runMeta.tone)}
+        />
+      ) : (
+        // Not run yet: fall back to the enabled-state dot — green when the loop
+        // is enabled/scheduled, muted when paused.
+        <span
+          className="mt-0.5 flex size-4 shrink-0 items-center justify-center"
+          aria-hidden
+        >
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              automation.enabled ? "bg-success" : "bg-muted-foreground/40",
+            )}
+          />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <Link
           to={getAutomationDetailRoutePath({
