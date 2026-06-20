@@ -116,28 +116,14 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Next ");
   });
 
-  it("renders the API badge only for agent-origin automations", () => {
-    const apiMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "agent" }))],
-    });
-    expect(apiMarkup).toContain(">API<");
-
-    const humanMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "human" }))],
-    });
-    expect(humanMarkup).not.toContain(">API<");
-
-    const appMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "app" }))],
-    });
-    expect(appMarkup).not.toContain(">API<");
-  });
-
-  it("renders the Script badge only for script-mode automations", () => {
-    const scriptMarkup = renderOverview({
+  it("renders cadence and last-run health on the row, not mode/origin badges", () => {
+    const markup = renderOverview({
       entries: [
         makeEntry(
           makeAutomation({
+            origin: "agent",
+            lastRunAt: 1_700_000_000_000,
+            lastRunStatus: "failed",
             execution: {
               mode: "script",
               scriptFile: "watchdog.sh",
@@ -148,12 +134,11 @@ describe("AutomationsOverview", () => {
         ),
       ],
     });
-    expect(scriptMarkup).toContain(">Script<");
-
-    const agentMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation())],
-    });
-    expect(agentMarkup).not.toContain(">Script<");
+    // mode/origin are no longer surfaced as row badges
+    expect(markup).not.toContain(">API<");
+    expect(markup).not.toContain(">Script<");
+    // cadence (human-readable cron) and last-run health are shown instead
+    expect(markup).toContain("Failed");
   });
 
   it("omits the personal project label and shows real project names", () => {
@@ -176,13 +161,13 @@ describe("AutomationsOverview", () => {
 
   it("shows the empty state when there are no automations", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("No automations yet.");
+    expect(markup).toContain("No loops yet.");
   });
 
   it("shows a muted loading state", () => {
     const markup = renderOverview({ entries: [], isLoading: true });
     expect(markup).toContain("Loading...");
-    expect(markup).not.toContain("No automations yet.");
+    expect(markup).not.toContain("No loops yet.");
   });
 
   it("shows a destructive error state", () => {
@@ -190,7 +175,7 @@ describe("AutomationsOverview", () => {
       entries: [],
       hasInitialLoadError: true,
     });
-    expect(markup).toContain("Failed to load automations.");
+    expect(markup).toContain("Failed to load loops.");
     expect(markup).toContain("text-destructive");
   });
 
@@ -210,9 +195,9 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Watcher actions");
   });
 
-  it("renders a single create-via-chat button without a script option", () => {
+  it("renders a single create button without a script option", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("Create via chat");
+    expect(markup).toContain("New loop");
     expect(markup).not.toContain("Script automation");
     expect(markup).not.toContain("Agent automation");
   });

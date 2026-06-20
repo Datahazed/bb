@@ -923,10 +923,10 @@ export function ProjectListActionButtons({
           )}
           aria-current={isAutomationsActive ? "page" : undefined}
           onClick={onOpenAutomations}
-          title="Automations"
+          title="Loops"
         >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
+          <Icon name="Repeat" />
+          <span className="min-w-0 flex-1 truncate text-left">Loops</span>
         </Button>
       ) : null}
     </div>

@@ -61,13 +61,21 @@ const projectBb = { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb };
 const projectPersonal = { id: PERSONAL_PROJECT_ID, name: "Personal" };
 
 const sampleEntries: AutomationOverviewEntry[] = [
-  entry(makeAutomation(), projectBb),
+  entry(
+    makeAutomation({
+      lastRunStatus: "succeeded",
+      lastRunAt: 1_700_000_000_000,
+    }),
+    projectBb,
+  ),
   entry(
     makeAutomation({
       id: "auto_watchdog",
       name: "Disk space watchdog",
       projectId: PERSONAL_PROJECT_ID,
       origin: "agent",
+      lastRunStatus: "failed",
+      lastRunAt: 1_700_001_000_000,
       execution: {
         mode: "script",
         scriptFile: "disk.sh",

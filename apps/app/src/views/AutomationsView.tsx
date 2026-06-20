@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -30,7 +30,11 @@ import {
   useResumeAutomation,
   useRunAutomation,
 } from "@/hooks/queries/automation-queries";
-import { formatScheduleStatusLabel } from "@/lib/format-schedule";
+import {
+  formatCronCadence,
+  formatScheduleRunTime,
+  formatScheduleStatusLabel,
+} from "@/lib/format-schedule";
 import {
   getAutomationDetailRoutePath,
   getRootComposeRoutePath,
@@ -178,12 +182,30 @@ function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
   );
 }
 
+const RUN_STATUS_META: Record<
+  NonNullable<Automation["lastRunStatus"]>,
+  { icon: IconName; tone: string; label: string }
+> = {
+  running: { icon: "Clock", tone: "text-file-accent", label: "Running" },
+  succeeded: { icon: "CircleCheck", tone: "text-success", label: "Ran" },
+  failed: { icon: "CircleX", tone: "text-destructive", label: "Failed" },
+  skipped: { icon: "CircleDashed", tone: "text-muted-foreground", label: "Skipped" },
+};
+
 function AutomationRow({ entry, actions }: AutomationRowProps) {
   const { automation, project } = entry;
   const projectLabel =
     project.id === PERSONAL_PROJECT_ID ? null : project.name;
+  const cadence =
+    automation.trigger.triggerType === "schedule"
+      ? formatCronCadence(automation.trigger.cron)
+      : "Custom trigger";
+  const runMeta =
+    automation.lastRunStatus !== null
+      ? RUN_STATUS_META[automation.lastRunStatus]
+      : null;
   return (
-    <div className="group flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-state-hover">
+    <div className="group flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
       <span
         aria-hidden="true"
         className={cn(
@@ -191,31 +213,46 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
           automation.enabled ? "bg-success" : "bg-muted-foreground/50",
         )}
       />
-      <Link
-        to={getAutomationDetailRoutePath({
-          projectId: automation.projectId,
-          automationId: automation.id,
-        })}
-        className="min-w-0 flex-1 truncate hover:underline"
-      >
-        {automation.name}
-      </Link>
-      {projectLabel ? (
-        <Pill variant="outline" className="shrink-0">
-          {projectLabel}
-        </Pill>
-      ) : null}
-      {automation.execution.mode === "script" ? (
-        <Pill variant="outline" className="shrink-0">
-          Script
-        </Pill>
-      ) : null}
-      {automation.origin === "agent" ? (
-        <Pill variant="secondary" className="shrink-0">
-          API
-        </Pill>
-      ) : null}
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <Link
+            to={getAutomationDetailRoutePath({
+              projectId: automation.projectId,
+              automationId: automation.id,
+            })}
+            className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
+          >
+            {automation.name}
+          </Link>
+          {projectLabel ? (
+            <Pill variant="outline" className="shrink-0">
+              {projectLabel}
+            </Pill>
+          ) : null}
+        </div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <span className="truncate">{cadence}</span>
+          {runMeta ? (
+            <>
+              <span className="text-muted-foreground/40" aria-hidden>
+                ·
+              </span>
+              <span
+                className={cn("inline-flex shrink-0 items-center gap-1", runMeta.tone)}
+              >
+                <Icon name={runMeta.icon} className="size-3" aria-hidden />
+                <span className="text-muted-foreground">
+                  {runMeta.label}
+                  {automation.lastRunAt !== null
+                    ? ` ${formatScheduleRunTime(automation.lastRunAt)}`
+                    : ""}
+                </span>
+              </span>
+            </>
+          ) : null}
+        </div>
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground/80">
         {formatScheduleStatusLabel({
           enabled: automation.enabled,
           nextRunAt: automation.nextRunAt,
@@ -260,27 +297,28 @@ export function AutomationsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div className="flex items-center justify-end">
+        <div className="flex items-start justify-between gap-4">
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Recurring bb agent workflows. A loop runs a full agent thread on a
+            schedule or trigger, then reports back like any other thread.
+          </p>
           <Button
             type="button"
             variant="default"
             size="sm"
+            className="shrink-0"
             onClick={onCreateAutomation}
           >
-            <Icon name="MessageSquarePlus" className="size-4" />
-            Create via chat
+            <Icon name="Plus" className="size-4" />
+            New loop
           </Button>
         </div>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : hasInitialLoadError ? (
-          <p className="text-sm text-destructive">
-            Failed to load automations.
-          </p>
+          <p className="text-sm text-destructive">Failed to load loops.</p>
         ) : isEmpty ? (
-          <EmptyStatePanel className="py-6">
-            No automations yet.
-          </EmptyStatePanel>
+          <EmptyStatePanel className="py-6">No loops yet.</EmptyStatePanel>
         ) : (
           <div className="space-y-6">
             {groups.map((group) => (
@@ -397,7 +435,7 @@ export function AutomationsView() {
         onOpenChange={deleteDialog.onOpenChange}
       >
         <ConfirmDeleteDialogContent
-          title="Delete automation?"
+          title="Delete loop?"
           description={
             deleteDialog.target
               ? `"${deleteDialog.target.automation.name}" and its run history will be permanently removed.`

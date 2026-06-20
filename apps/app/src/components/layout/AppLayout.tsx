@@ -220,7 +220,7 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
-  "/automations": { title: "Automations" },
+  "/automations": { title: "Loops" },
 };
 
 interface AppHeaderProps {
@@ -454,7 +454,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           title: "",
           subtitle: undefined,
           breadcrumbs: [
-            { label: "Automations", to: getAutomationsRoutePath() },
+            { label: "Loops", to: getAutomationsRoutePath() },
             { label: automationName },
           ],
         }
