@@ -93,7 +93,7 @@ type ReasoningLevelSelectionSetter = (value: ReasoningLevel) => void;
 type PermissionModeSelectionSetter = (value: PermissionMode) => void;
 type ClearSelectionHandler = () => void;
 
-interface UseThreadCreationOptionsResult<TExecutionInputSources> {
+export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
   providerOptions: PickerOption<string>[];

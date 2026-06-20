@@ -14,9 +14,8 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
+import { useComposerArea } from "@/components/promptbox/useComposerArea";
 import {
   encodeHostValue,
   encodeReuseValue,
@@ -27,7 +26,6 @@ import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useProjectPromptHistory,
@@ -37,15 +35,10 @@ import {
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
-import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
-import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
@@ -402,27 +395,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     readForkThreadCreateSeedFromLocationState(location.state),
   );
   const primaryHostId = usePrimaryHost()?.id ?? null;
-  const uploadPromptAttachment = useUploadPromptAttachment();
-  const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
-  const promptMentions = usePromptMentions(
-    isProjectless ? undefined : projectId,
-    {
-      environmentId: null,
-    },
-  );
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const prompt = promptDraft.text;
-  const promptInput = useMemo(
-    () =>
-      promptDraftToInput({
-        text: promptDraft.text,
-        mentions: promptDraft.mentions,
-        attachments: promptDraft.attachments,
-      }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
   const rootComposeZenModeStorageKey = useMemo(
     () =>
       getProjectScopedStorageKey(ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY, projectId),
@@ -460,44 +434,104 @@ export function RootComposeView(props: RootComposeViewProps) {
     currentProject?.defaultExecutionOptions ??
     projectDefaultExecutionOptionsQuery.data ??
     null;
-  const creationOptions = useThreadCreationOptions({
-    scope: "new-thread",
-    initialProviderId: projectDefaultExecutionOptions?.providerId,
-    initialModel: projectDefaultExecutionOptions?.model,
-    initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
-    initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
-    initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
+  // Worktree picker options come from the project's unarchived threads.
+  // Threads on managed or unmanaged worktrees with a non-null environmentId
+  // contribute; envs with only archived threads disappear naturally. Resolved
+  // before the composer so command discovery can scope to a reused worktree.
+  const threadsQuery = useThreads(
+    { projectId, archived: false },
+    { enabled: Boolean(projectId) },
+  );
+  const reuseThreadOptions = useMemo(
+    () => buildReuseThreadOptions(threadsQuery.data ?? []),
+    [threadsQuery.data],
+  );
+  // The new-thread composer has no environment yet, so only thread mentions are
+  // openable here (they navigate). File pills stay non-interactive.
+  const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
+    (resource) =>
+      resource.kind === "thread"
+        ? () =>
+            navigate(
+              getSurfaceAwareThreadRoutePath({
+                projectId: resource.projectId ?? projectId,
+                surface: props.surface,
+                threadId: resource.threadId,
+              }),
+            )
+        : null,
+    [navigate, projectId, props.surface],
+  );
+  // Shared composer wiring. The new-thread box keeps its own submit handler,
+  // project / environment / branch / worktree pickers, and prompt-history
+  // surface; only the config assembly comes from the hook. Command discovery
+  // follows the resolved environment selection — which the hook itself produces
+  // — so it is supplied as a resolver over the live selection value.
+  const composerArea = useComposerArea({
+    creationOptions: {
+      scope: "new-thread",
+      initialProviderId: projectDefaultExecutionOptions?.providerId,
+      initialModel: projectDefaultExecutionOptions?.model,
+      initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
+      initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
+      initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
+    },
+    draftScope: { kind: "new-thread" },
+    mentionsProjectId: isProjectless ? undefined : projectId,
+    mentions: { environmentId: null },
+    commands: {
+      projectId,
+      environmentId: (environmentSelectionValue) => {
+        const effective = resolveRootComposeEffectiveEnvironmentValue({
+          environmentSelectionValue,
+          isProjectless,
+          primaryHostId,
+          projectSources,
+          reuseThreadOptions,
+          reuseThreadOptionsLoading: threadsQuery.isLoading,
+        });
+        const parsed = parseEnvironmentValue(effective);
+        return parsed?.type === "reuse" ? parsed.environmentId : null;
+      },
+    },
+    resolveMentionLink,
+    attachments: { projectId, errorMode: "first" },
+    execution: { providerSwitchable: forkSeed === null },
+    permission: { kind: "editable" },
   });
   const {
-    selectedProviderId,
-    setSelectedProviderId,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderComposerActions,
-    selectedModel,
-    setSelectedModel,
-    serviceTier,
-    setServiceTier,
-    reasoningLevel,
-    setReasoningLevel,
-    permissionMode,
-    setPermissionMode,
-    environmentSelectionValue,
-    setEnvironmentSelectionValue,
-    clearReuseEnvironment,
+    attachmentsConfig,
+    composer,
+    executionConfig,
+    permissionConfig,
+    promptDraft,
+    providerPromptActionProps,
+    setAttachmentError,
+    threadCreationOptions,
+    typeaheadConfig,
+  } = composerArea;
+  const {
     activeModel,
-    modelOptions,
-    moreModelOptions,
+    clearReuseEnvironment,
+    environmentSelectionValue,
+    executionInputSources,
     isLoadingModels,
-    modelLoadFailed,
     modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
+    permissionMode,
+    reasoningLevel,
+    selectedModel,
+    selectedProviderId,
+    serviceTier,
+    setEnvironmentSelectionValue,
+    setPermissionMode,
+    setReasoningLevel,
+    setSelectedModel,
+    setSelectedProviderId,
+    setServiceTier,
     supportsServiceTier,
-    serviceTierSupportByProvider,
-  } = creationOptions;
-  const executionInputSources = creationOptions.executionInputSources;
+  } = threadCreationOptions;
+  const prompt = composer.message;
+  const promptInput = composer.currentPromptDraftInput;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
   // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
@@ -554,17 +588,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [location.search, location.state, navigate, seedInitialPrompt]);
 
-  // Worktree picker options come from the project's unarchived threads.
-  // Threads on managed or unmanaged worktrees with a non-null environmentId
-  // contribute; envs with only archived threads disappear naturally.
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
-  const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? []),
-    [threadsQuery.data],
-  );
   const mobileRecentThreads = useMemo(
     () =>
       buildMobileRecentThreads({
@@ -776,32 +799,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     return () => window.cancelAnimationFrame(handle);
   }, [location.key, shouldFocusPrompt]);
 
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
-      if (!projectId || files.length === 0) return;
-
-      setAttachmentError(null);
-      for (const file of files) {
-        try {
-          const uploaded = await uploadPromptAttachment.mutateAsync({
-            projectId,
-            file,
-          });
-          promptDraft.addAttachment(uploaded);
-        } catch (err) {
-          setAttachmentError(
-            getMutationErrorMessage({
-              error: err,
-              fallbackMessage: "Attachment upload failed",
-            }),
-          );
-          break;
-        }
-      }
-    },
-    [projectId, promptDraft, uploadPromptAttachment],
-  );
-
   const submitPrompt = useCallback(async () => {
     const submittedDraft = {
       text: promptDraft.text,
@@ -891,6 +888,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     selectedProviderId,
     selectedThreadModel,
     serviceTier,
+    setAttachmentError,
     supportsServiceTier,
   ]);
 
@@ -922,14 +920,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     onHide: hideEmptyPopoutPrompt,
   });
 
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
+  const currentPromptDraft = composer.currentPromptDraft;
   const historyConfig = useMemo(
     () => ({
       currentDraft: currentPromptDraft,
@@ -938,154 +929,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       resetKey: projectId,
     }),
     [currentPromptDraft, projectId, promptDraft.setDraft, promptHistoryDrafts],
-  );
-  // The new-thread composer has no environment yet, so only thread mentions are
-  // openable here (they navigate). File pills stay non-interactive.
-  const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
-    (resource) =>
-      resource.kind === "thread"
-        ? () =>
-            navigate(
-              getSurfaceAwareThreadRoutePath({
-                projectId: resource.projectId ?? projectId,
-                surface: props.surface,
-                threadId: resource.threadId,
-              }),
-            )
-        : null,
-    [navigate, projectId, props.surface],
-  );
-  // Mirrors the @-mention plumbing: the composer feeds the text typed after the
-  // command trigger into `commandQuery`, which drives command typeahead. In
-  // projectless compose, the server resolves the personal project to user-home
-  // command discovery with cwd: null.
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const providerPromptActions = useMemo(
-    () => buildProviderPromptActionProps(selectedProviderComposerActions),
-    [selectedProviderComposerActions],
-  );
-  const providerPromptActionProps = useMemo(
-    () => ({
-      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
-    }),
-    [providerPromptActions.promptActions],
-  );
-  const reuseEnvironmentId =
-    parsedEnvironment?.type === "reuse"
-      ? parsedEnvironment.environmentId
-      : null;
-  const commandSuggestions = useCommandSuggestions({
-    projectId,
-    providerId: selectedProviderId,
-    skillsTrigger: providerPromptActions.skillsTrigger,
-    environmentId: reuseEnvironmentId,
-    query: commandQuery,
-  });
-  const typeaheadConfig = useMemo(
-    () => ({
-      mention: {
-        suggestions: promptMentions.suggestions,
-        isLoading: promptMentions.isLoading,
-        isError: promptMentions.isError,
-        onQueryChange: promptMentions.setQuery,
-        resolveLink: resolveMentionLink,
-      },
-      command: {
-        trigger: commandSuggestions.trigger,
-        suggestions: commandSuggestions.suggestions,
-        isLoading: commandSuggestions.isLoading,
-        isError: commandSuggestions.isError,
-        hasMore: commandSuggestions.hasMore,
-        isLoadingMore: commandSuggestions.isLoadingMore,
-        loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
-      },
-    }),
-    [
-      promptMentions.isError,
-      promptMentions.isLoading,
-      promptMentions.setQuery,
-      promptMentions.suggestions,
-      resolveMentionLink,
-      commandSuggestions.isError,
-      commandSuggestions.hasMore,
-      commandSuggestions.isLoading,
-      commandSuggestions.isLoadingMore,
-      commandSuggestions.loadMore,
-      commandSuggestions.suggestions,
-      commandSuggestions.trigger,
-    ],
-  );
-  const attachmentsConfig = useMemo(
-    () => ({
-      items: promptDraft.attachments,
-      projectId: projectId ?? "",
-      onAttachFiles: handleAttachFiles,
-      onRemove: promptDraft.removeAttachment,
-      isAttaching: uploadPromptAttachment.isPending,
-      error: attachmentError,
-    }),
-    [
-      attachmentError,
-      handleAttachFiles,
-      projectId,
-      promptDraft.attachments,
-      promptDraft.removeAttachment,
-      uploadPromptAttachment.isPending,
-    ],
-  );
-  const executionConfig = useMemo(
-    () => ({
-      provider: {
-        options: providerOptions,
-        selectedId: selectedProviderId,
-        onChange: forkSeed === null ? setSelectedProviderId : undefined,
-        hasMultiple: hasMultipleProviders,
-      },
-      model: {
-        active: activeModel,
-        selected: selectedModel,
-        options: modelOptions,
-        moreOptions: moreModelOptions,
-        isLoading: isLoadingModels,
-        loadFailed: modelLoadFailed,
-        loadError: modelLoadError,
-        onChange: setSelectedModel,
-      },
-      serviceTier: {
-        value: serviceTier,
-        onChange: setServiceTier,
-        supported: supportsServiceTier,
-        supportByProvider: serviceTierSupportByProvider,
-      },
-      reasoning: {
-        value: reasoningLevel,
-        options: reasoningOptions,
-        onChange: setReasoningLevel,
-      },
-    }),
-    [
-      activeModel,
-      forkSeed,
-      hasMultipleProviders,
-      isLoadingModels,
-      modelLoadFailed,
-      modelLoadError,
-      modelOptions,
-      moreModelOptions,
-      providerOptions,
-      reasoningLevel,
-      reasoningOptions,
-      selectedModel,
-      selectedProviderId,
-      serviceTier,
-      serviceTierSupportByProvider,
-      setReasoningLevel,
-      setSelectedModel,
-      setSelectedProviderId,
-      setServiceTier,
-      supportsServiceTier,
-    ],
   );
   const isForkDraft = forkSeed !== null;
   const environmentConfig = useMemo(
@@ -1180,20 +1023,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       setBranchSearchQuery,
       selectedBranch?.isNew,
       selectedBranch?.name,
-    ],
-  );
-  const permissionConfig = useMemo(
-    () => ({
-      value: permissionMode,
-      options: permissionModeOptions,
-      onChange: setPermissionMode,
-      supported: supportsPermissionModeSelection,
-    }),
-    [
-      permissionMode,
-      permissionModeOptions,
-      setPermissionMode,
-      supportsPermissionModeSelection,
     ],
   );
   const handleCancelForkDraft = useCallback(() => {
