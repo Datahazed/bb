@@ -1,5 +1,6 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
+  AppTheme,
   Environment,
   Experiments,
   Host,
@@ -84,6 +85,7 @@ import type {
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
   buildFilePreview,
@@ -1644,11 +1646,25 @@ export async function getSystemConfig(
   );
 }
 
+export async function getSystemUsageLimits(
+  signal?: AbortSignal,
+): Promise<ProviderUsageResponse> {
+  return request<ProviderUsageResponse>(
+    apiClient.system["usage-limits"].$get({}, requestOptions(signal)),
+  );
+}
+
 export async function updateExperiments(
   experiments: Experiments,
 ): Promise<Experiments> {
   return request<Experiments>(
     apiClient.settings.experiments.$put({ json: experiments }),
+  );
+}
+
+export async function updateAppearance(appearance: AppTheme): Promise<AppTheme> {
+  return request<AppTheme>(
+    apiClient.settings.appearance.$put({ json: appearance }),
   );
 }
 

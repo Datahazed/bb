@@ -203,12 +203,16 @@ const latestMigrationWhen = Math.max(
   ).entries.map((entry) => entry.when),
 );
 
-function dropAutomationsSchema(db: DbConnection): void {
+function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
-  // re-apply forward. The automations tables (added by 0039) must be dropped as
-  // part of that rewind so the forward re-migrate can re-create them.
+  // re-apply forward. Tables added by recent migrations must be dropped as part
+  // of that rewind so the forward re-migrate can re-create them: the automations
+  // tables (added by 0039/0041), app_theme (added by 0042), and the thread
+  // folder schema (folder_path column + thread_folders table).
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
+  db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  dropThreadFolderSchema(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -293,8 +297,7 @@ function closeConnection(db: DbConnection): void {
 // real upgrade, where thread-search is repaired before later migrations apply.
 // NOTE: when adding a migration after thread-search, drop its schema here too.
 function resetMigrationsAfterThreadSearch(db: DbConnection): void {
-  dropAutomationsSchema(db);
-  dropThreadFolderSchema(db);
+  dropRewindAddedTables(db);
   db.$client
     .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
     .run(threadSearchRowidFtsMigrationWhen);
@@ -1223,7 +1226,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
-      dropAutomationsSchema(db);
+      dropRewindAddedTables(db);
       restorePre0022ThreadTypeSchema(db);
       db.$client.exec(`
         INSERT INTO projects (id, name, created_at, updated_at)
@@ -1413,8 +1416,7 @@ describe("migrate", () => {
           `,
         )
         .run(threadSourceOriginMigrationWhen);
-      dropAutomationsSchema(db);
-      dropThreadFolderSchema(db);
+      dropRewindAddedTables(db);
       db.$client.exec(`
         DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
         DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
@@ -2219,7 +2221,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
-      dropAutomationsSchema(db);
+      dropRewindAddedTables(db);
       restorePre0022ThreadTypeSchema(db);
       addPre0017TerminalRuntimeColumns(db);
 
@@ -2845,7 +2847,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
-      dropAutomationsSchema(db);
+      dropRewindAddedTables(db);
       restorePre0022ThreadTypeSchema(db);
       seedPre0017TerminalSessionMigration({ db });
       db.$client
@@ -2937,7 +2939,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
-      dropAutomationsSchema(db);
+      dropRewindAddedTables(db);
       seedEventLargeValueBackfillThread(db);
       const values = seedEventLargeValueBackfillEvents(db);
 
@@ -2991,7 +2993,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
-      dropAutomationsSchema(db);
+      dropRewindAddedTables(db);
       seedEventLargeValueBackfillThread(db);
       const values = seedEventLargeValueBackfillEvents(db);
 

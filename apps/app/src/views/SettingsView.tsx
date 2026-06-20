@@ -1,5 +1,12 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
-import { defaultExperiments, isValidElectronAccelerator } from "@bb/domain";
+import {
+  builtInThemes,
+  defaultAppTheme,
+  defaultExperiments,
+  isValidElectronAccelerator,
+  type AppTheme,
+  type AppThemeId,
+} from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
@@ -26,7 +33,11 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { useUpdateExperiments } from "@/hooks/mutations/settings-mutations";
+import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
+import {
+  useUpdateAppearance,
+  useUpdateExperiments,
+} from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
@@ -109,9 +120,12 @@ export interface FaviconColorSettingsControlProps {
 }
 
 export interface GeneralSettingsSectionProps {
+  appearance: AppTheme;
+  appearanceDisabled: boolean;
   desktopBrowserAvailable: boolean;
   faviconColor: FaviconColorPreference;
   navigateToThreadAfterCreate: boolean;
+  onAppearanceThemeChange: (themeId: AppThemeId) => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
@@ -122,6 +136,12 @@ export interface GeneralSettingsSectionProps {
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   themePreference: ThemePreference;
+}
+
+function appPaletteLabel(appearance: AppTheme): string {
+  if (appearance.themeId === "custom") return "Custom";
+  const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
+  return meta?.name ?? appearance.themeId;
 }
 
 export interface ExperimentsSettingsSectionProps {
@@ -385,7 +405,8 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL = "Rich text formatting in the prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL =
+  "Rich text formatting in the prompt box";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -457,9 +478,12 @@ export function RichTextEditingSettingsControl({
 }
 
 export function GeneralSettingsSection({
+  appearance,
+  appearanceDisabled,
   desktopBrowserAvailable,
   faviconColor,
   navigateToThreadAfterCreate,
+  onAppearanceThemeChange,
   onFaviconColorChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
@@ -507,6 +531,63 @@ export function GeneralSettingsSection({
                   />
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label="Palette"
+          description="Applies to the whole app. Load a custom stylesheet with the bb theme CLI."
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-between border-border/60 bg-card sm:w-48"
+                aria-label="Palette"
+                disabled={appearanceDisabled}
+              >
+                {appPaletteLabel(appearance)}
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {builtInThemes.map((entry) => (
+                <DropdownMenuItem
+                  key={entry.id}
+                  onSelect={() => onAppearanceThemeChange(entry.id)}
+                >
+                  {entry.name}
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== entry.id && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+              {appearance.customCss !== null ? (
+                <DropdownMenuItem
+                  key="custom"
+                  onSelect={() => onAppearanceThemeChange("custom")}
+                >
+                  Custom
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== "custom" && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </SettingsWithControl>
@@ -813,11 +894,18 @@ export function SettingsView() {
   const [desktopShellAvailable] = useState(() => getBbDesktopInfo() !== null);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
+  const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
+  const updateAppearanceMutation = useUpdateAppearance();
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <GeneralSettingsSection
+          appearance={appearance}
+          appearanceDisabled={
+            systemConfigQuery.data === undefined ||
+            updateAppearanceMutation.isPending
+          }
           desktopBrowserAvailable={desktopBrowserAvailable}
           faviconColor={faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
@@ -825,6 +913,12 @@ export function SettingsView() {
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
           themePreference={themePreference}
+          onAppearanceThemeChange={(themeId) =>
+            updateAppearanceMutation.mutate({
+              themeId,
+              customCss: appearance.customCss,
+            })
+          }
           onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
@@ -832,6 +926,8 @@ export function SettingsView() {
           onRichTextEditingChange={setRichTextEditing}
           onThemePreferenceChange={setPreferredTheme}
         />
+
+        <UsageLimitsSettingsSection />
 
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}
@@ -843,9 +939,7 @@ export function SettingsView() {
         />
 
         <ExperimentsSettingsSection
-          claudeCodeMockCliTrafficEnabled={
-            experiments.claudeCodeMockCliTraffic
-          }
+          claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
           desktopShellAvailable={desktopShellAvailable}
           disabled={
             systemConfigQuery.data === undefined ||

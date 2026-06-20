@@ -1,4 +1,9 @@
-import { getExperiments, setExperiments } from "@bb/db";
+import {
+  getAppTheme,
+  getExperiments,
+  setAppTheme,
+  setExperiments,
+} from "@bb/db";
 import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   publicApiRoutes,
@@ -13,6 +18,7 @@ import {
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
 import { resolveSystemExecutionOptions } from "../services/system/execution-options.js";
+import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
@@ -23,6 +29,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   function buildSystemConfigResponse() {
     return {
       experiments: getExperiments(deps.db),
+      appearance: getAppTheme(deps.db),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
@@ -39,6 +46,14 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     return context.json(getExperiments(deps.db));
   });
 
+  put(routes.appearance, (context, payload) => {
+    setAppTheme(deps.db, payload);
+    // Broadcast like experiments: every window re-reads /system/config and
+    // re-applies the active palette.
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(getAppTheme(deps.db));
+  });
+
   post(routes.reloadConfig, async (context) => {
     try {
       await deps.bbAppManagedConfig.reload({ notify: true });
@@ -51,6 +66,10 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
 
   get(routes.providers, (context) =>
     context.json(listBuiltInAgentProviderInfos()),
+  );
+
+  get(routes.usageLimits, async (context) =>
+    context.json(await getProviderUsageLimits(deps)),
   );
 
   get(routes.executionOptions, async (context, query) =>

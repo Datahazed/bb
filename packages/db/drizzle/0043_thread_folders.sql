@@ -6,4 +6,5 @@ CREATE TABLE `thread_folders` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `thread_folders_path_idx` ON `thread_folders` (`path`);--> statement-breakpoint
-CREATE INDEX `thread_folders_updated_idx` ON `thread_folders` (`updated_at`);
+CREATE INDEX `thread_folders_updated_idx` ON `thread_folders` (`updated_at`);--> statement-breakpoint
+ALTER TABLE `threads` ADD `folder_path` text;

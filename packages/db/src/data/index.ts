@@ -188,6 +188,8 @@ export type {
 
 export { getExperiments, setExperiments } from "./experiments.js";
 
+export { getAppTheme, setAppTheme } from "./app-theme.js";
+
 export {
   getThreadDynamicContextFileState,
   upsertThreadDynamicContextFileState,
