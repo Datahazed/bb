@@ -93,7 +93,7 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Automations<");
   });
 
-  it("groups loops under project headers, enabled before paused", () => {
+  it("lists personal (projectless) loops flat, enabled before paused", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
@@ -108,11 +108,11 @@ describe("AutomationsOverview", () => {
       ],
     });
 
-    // Project name renders as the group header (default fixture project = Personal).
-    expect(markup).toContain(">Personal<");
+    // Personal == projectless: no folder header, just a flat list.
+    expect(markup).not.toContain(">Personal<");
     expect(markup).toContain("Active one");
     expect(markup).toContain("Paused one");
-    // Enabled loops sort above paused ones within a project group.
+    // Enabled loops sort above paused ones.
     expect(markup.indexOf("Active one")).toBeLessThan(
       markup.indexOf("Paused one"),
     );
@@ -146,7 +146,7 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Failed");
   });
 
-  it("renders a project header for each project", () => {
+  it("headers real projects but leaves personal loops flat", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
@@ -160,8 +160,9 @@ describe("AutomationsOverview", () => {
       ],
     });
 
-    expect(markup).toContain(">Personal<");
+    // Real projects get a folder header; personal stays headerless.
     expect(markup).toContain(">App<");
+    expect(markup).not.toContain(">Personal<");
   });
 
   it("shows the empty state when there are no automations", () => {

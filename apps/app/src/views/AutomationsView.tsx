@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   Automation,
   AutomationsOverviewResponse,
@@ -323,6 +324,13 @@ export function AutomationsOverview({
       return next;
     });
   }, []);
+  // Personal == projectless in bb: render those loops flat (no header), like the
+  // sidebar does for personal threads. Only real projects get a folder header.
+  const personalGroup =
+    groups.find((group) => group.projectId === PERSONAL_PROJECT_ID) ?? null;
+  const projectGroups = groups.filter(
+    (group) => group.projectId !== PERSONAL_PROJECT_ID,
+  );
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
@@ -351,7 +359,18 @@ export function AutomationsOverview({
           <EmptyStatePanel className="py-6">No loops yet.</EmptyStatePanel>
         ) : (
           <div className="space-y-4">
-            {groups.map((group) => {
+            {personalGroup ? (
+              <div className="space-y-0.5">
+                {personalGroup.entries.map((entry) => (
+                  <AutomationRow
+                    key={entry.automation.id}
+                    entry={entry}
+                    actions={actions}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {projectGroups.map((group) => {
               const isCollapsed = collapsed.has(group.projectId);
               return (
                 <section key={group.projectId}>
