@@ -19,6 +19,8 @@ export interface RouteState {
   isAutomationsView: boolean;
   /** On an automation detail page ("/automations/:projectId/:automationId"). */
   isAutomationDetailView: boolean;
+  /** On the Skills surface ("/skills"). */
+  isSkillsView: boolean;
   /** ID of the automation in view (automation detail only), else undefined. */
   automationId: string | undefined;
   /** Owning project of the automation in view (automation detail only). */
@@ -90,6 +92,7 @@ export function useRouteState(): RouteState {
     isAutomationsView:
       location.pathname === "/automations" || Boolean(automationDetailMatch),
     isAutomationDetailView: Boolean(automationDetailMatch),
+    isSkillsView: location.pathname === "/skills",
     automationId: automationDetailMatch?.params.automationId,
     automationProjectId: automationDetailMatch?.params.projectId,
     isRootView,

@@ -34,6 +34,7 @@ import {
 import {
   getAutomationsRoutePath,
   getRootComposeRoutePath,
+  getSkillsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -69,7 +70,7 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isAutomationsView } = useRouteState();
+  const { isAutomationsView, isSkillsView } = useRouteState();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
@@ -145,6 +146,11 @@ export function AppSidebar({
   const handleOpenAutomations = useCallback(() => {
     closeOnMobile();
     void navigate(getAutomationsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenSkills = useCallback(() => {
+    closeOnMobile();
+    void navigate(getSkillsRoutePath());
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -276,6 +282,8 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
+            onOpenSkills={handleOpenSkills}
+            isSkillsActive={isSkillsView}
             onOpenAutomations={handleOpenAutomations}
             isAutomationsActive={isAutomationsView}
             threadSearch={{

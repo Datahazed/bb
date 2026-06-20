@@ -141,6 +141,8 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
+  onOpenSkills?: () => void;
+  isSkillsActive?: boolean;
   onOpenAutomations?: () => void;
   isAutomationsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
@@ -824,6 +826,8 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
+  onOpenSkills,
+  isSkillsActive = false,
   onOpenAutomations,
   isAutomationsActive = false,
   threadSearch,
@@ -912,6 +916,23 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
+      {onOpenSkills ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            PROJECT_LIST_ACTION_BUTTON_CLASS,
+            isSkillsActive && "bg-sidebar-accent text-sidebar-foreground",
+          )}
+          aria-current={isSkillsActive ? "page" : undefined}
+          onClick={onOpenSkills}
+          title="Skills"
+        >
+          <Icon name="Zap" />
+          <span className="min-w-0 flex-1 truncate text-left">Skills</span>
+        </Button>
+      ) : null}
       {onOpenAutomations ? (
         <Button
           type="button"

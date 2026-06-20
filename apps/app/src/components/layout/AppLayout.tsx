@@ -221,6 +221,7 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Loops" },
+  "/skills": { title: "Skills" },
 };
 
 interface AppHeaderProps {

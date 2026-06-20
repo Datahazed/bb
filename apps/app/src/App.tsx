@@ -17,6 +17,7 @@ import {
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
@@ -49,6 +50,11 @@ const AutomationsView = lazy(() =>
 const AutomationDetailView = lazy(() =>
   import("./views/AutomationDetailView").then((m) => ({
     default: m.AutomationDetailView,
+  })),
+);
+const SkillsView = lazy(() =>
+  import("./views/SkillsView").then((m) => ({
+    default: m.SkillsView,
   })),
 );
 const ProjectSettingsView = lazy(() =>
@@ -108,6 +114,7 @@ function AppRoutes() {
             path={AUTOMATION_DETAIL_ROUTE_PATH}
             element={<AutomationDetailView />}
           />
+          <Route path={SKILLS_ROUTE_PATH} element={<SkillsView />} />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}
