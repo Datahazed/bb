@@ -195,7 +195,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const latestMigrationWhen = Math.max(
   ...(
     JSON.parse(
-      readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+      readFileSync(
+        resolve(__dirname, "../drizzle/meta/_journal.json"),
+        "utf-8",
+      ),
     ) as { entries: { when: number }[] }
   ).entries.map((entry) => entry.when),
 );
@@ -291,6 +294,7 @@ function closeConnection(db: DbConnection): void {
 // NOTE: when adding a migration after thread-search, drop its schema here too.
 function resetMigrationsAfterThreadSearch(db: DbConnection): void {
   dropAutomationsSchema(db);
+  dropThreadFolderSchema(db);
   db.$client
     .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
     .run(threadSearchRowidFtsMigrationWhen);
@@ -378,6 +382,25 @@ function dropPost0023Tables(db: DbConnection): void {
     "event_large_values",
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+  }
+
+  dropThreadFolderSchema(db);
+}
+
+/**
+ * Folder schema lands after thread-search (0042 folder_path column, 0043
+ * thread_folders table, 0044 project scoping). Replay scenarios that rewind the
+ * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
+ * against a DB that already has them.
+ */
+function dropThreadFolderSchema(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
+  const hasFolderPath = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all()
+    .some((row) => row.name === "folder_path");
+  if (hasFolderPath) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_path").run();
   }
 }
 
@@ -489,6 +512,7 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   restoreEnvironmentCleanupModeColumn(db);
   restoreEnvironmentCleanupRequestedAtColumn(db);
   restoreThreadStopRequestedAtColumn(db);
+  dropThreadFolderSchema(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
@@ -716,7 +740,9 @@ function expectEventLargeValuesInline(
   expect(webSearchData.item.resultText).toBe(values.webSearchResult);
   expect(webSearchData.item.truncation).toBeUndefined();
 
-  const fileData = JSON.parse(readMigratedEventData(db, "evt_large_file_diffs"));
+  const fileData = JSON.parse(
+    readMigratedEventData(db, "evt_large_file_diffs"),
+  );
   expect(fileData.item.changes).toEqual([
     { path: "a.ts", diff: values.firstDiff },
     { path: "b.ts", diff: "small diff" },
@@ -1388,6 +1414,7 @@ describe("migrate", () => {
         )
         .run(threadSourceOriginMigrationWhen);
       dropAutomationsSchema(db);
+      dropThreadFolderSchema(db);
       db.$client.exec(`
         DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
         DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
