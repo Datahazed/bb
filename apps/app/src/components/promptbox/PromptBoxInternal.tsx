@@ -2265,7 +2265,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-lg border border-border bg-background pb-2 shadow-lift",
+        "relative w-full rounded-xl rounded-l-2xl border border-border bg-background pb-2 shadow-lift",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.

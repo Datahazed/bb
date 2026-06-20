@@ -97,6 +97,7 @@ export function Overview() {
                   getThreadDisplayTitle(titleMatchThread),
                   "permission",
                 ),
+                sourceSeq: null,
               },
             ]}
             onActive={noop}
@@ -119,6 +120,7 @@ export function Overview() {
                 sourceKind: "assistant_message",
                 text: messageSnippet,
                 highlightRanges: highlight(messageSnippet, "permission"),
+                sourceSeq: 5,
               },
             ]}
             onActive={noop}

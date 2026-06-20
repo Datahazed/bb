@@ -62,6 +62,9 @@ export interface ThreadSearchMatch {
   sourceKind: ThreadSearchSourceKind;
   text: string;
   highlightRanges: ThreadSearchHighlightRange[];
+  // Event sequence of the matched message (null for title matches), so callers
+  // can deep-link to the message in the conversation timeline.
+  sourceSeq: number | null;
 }
 
 export interface ThreadSearchResult {
@@ -1002,6 +1005,7 @@ function hydrateThreadSearchGroup(
         text: row.text,
         tokens: args.tokens,
       }),
+      sourceSeq: row.sourceSeq,
     });
     matchesByThreadId.set(row.threadId, matches);
   }

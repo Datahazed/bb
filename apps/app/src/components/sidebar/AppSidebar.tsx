@@ -128,6 +128,12 @@ export function AppSidebar({
           projectId: item.projectId,
           threadId: item.threadId,
         }),
+        // Hand the matched message's event sequence to the timeline so it can
+        // scroll to and briefly highlight that message. Omitted for title-only
+        // matches, which just open the thread normally.
+        item.messageSeq !== null
+          ? { state: { searchMessageSeq: item.messageSeq } }
+          : undefined,
       );
       closeOnMobile();
     },

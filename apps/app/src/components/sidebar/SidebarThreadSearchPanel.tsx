@@ -51,6 +51,23 @@ interface ThreadSearchMessageProps {
 
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
+const TITLE_MATCH_KINDS = new Set<ThreadSearchMatch["sourceKind"]>([
+  "title",
+  "title_fallback",
+]);
+
+// The message (non-title) match drives the deep-link target. Mirrors the row's
+// snippet selection so clicking a result lands on the message shown in the row.
+function getMessageMatchSeq(
+  matches: readonly ThreadSearchMatch[],
+): number | null {
+  for (const match of matches) {
+    if (!TITLE_MATCH_KINDS.has(match.sourceKind) && match.sourceSeq !== null) {
+      return match.sourceSeq;
+    }
+  }
+  return null;
+}
 
 function toNavigationItem(
   row: ThreadSearchRenderableRow,
@@ -60,6 +77,7 @@ function toNavigationItem(
     optionId: getSidebarThreadSearchOptionId(row.id),
     projectId: row.thread.projectId,
     threadId: row.thread.id,
+    messageSeq: getMessageMatchSeq(row.matches),
   };
 }
 
@@ -120,7 +138,7 @@ function renderSectionRows({
         )}
       >
         <span className="min-w-0 truncate">{section.label}</span>
-        {section.total > section.rows.length ? (
+        {section.id !== "archived" && section.total > section.rows.length ? (
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {section.rows.length}/{section.total}
           </span>

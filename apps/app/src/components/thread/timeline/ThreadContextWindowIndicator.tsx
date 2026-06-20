@@ -36,9 +36,6 @@ export function ThreadContextWindowIndicator({
 
   const usedTokensLabel = formatCompactTokenCount(usage.usedTokens);
   const windowTokensLabel = formatCompactTokenCount(usage.modelContextWindow);
-  const title = usage.estimated
-    ? "Estimated context window usage"
-    : "Context window usage";
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -51,7 +48,6 @@ export function ThreadContextWindowIndicator({
             className,
           )}
           aria-label={`Context window ${usedPercent}% used`}
-          title={title}
         >
           <svg
             viewBox="0 0 16 16"
@@ -86,17 +82,25 @@ export function ThreadContextWindowIndicator({
         align="end"
         sideOffset={8}
         {...contentHoverProps}
-        className="w-auto max-w-[240px] border-border bg-surface-scrim px-3 py-2 text-sm shadow-lg backdrop-blur-sm"
+        className="w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
       >
-        <div className="space-y-1.5">
-          <p className="text-muted-foreground">
-            {usage.estimated ? "Estimated context window:" : "Context window:"}
-          </p>
-          <p className="font-medium">
-            {usedPercent}% used ({leftPercent}% left)
-          </p>
-          <p className="font-medium">
-            {usedTokensLabel} / {windowTokensLabel} tokens used
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {usage.estimated ? "Estimated context" : "Context window"}
+            </span>
+            <span className={cn("font-medium tabular-nums", toneClass)}>
+              {usedPercent}% used
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+            <div
+              className={cn("h-full rounded-full bg-current", toneClass)}
+              style={{ width: `${visualPercent}%` }}
+            />
+          </div>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {usedTokensLabel} / {windowTokensLabel} tokens · {leftPercent}% left
           </p>
         </div>
       </PopoverContent>

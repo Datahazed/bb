@@ -1145,12 +1145,10 @@ export function ProjectListActionButtons({
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
+  // One click on the X fully dismisses search — it clears the query and closes
+  // the input in a single step (onClose resets the query too). Previously this
+  // was a two-step clear-then-close, which felt like the X "needed two presses".
   const handleSearchClose = useCallback(() => {
-    if (threadSearch?.query.trim()) {
-      threadSearch.onQueryChange("");
-      threadSearch.inputRef.current?.focus();
-      return;
-    }
     threadSearch?.onClose();
   }, [threadSearch]);
 
