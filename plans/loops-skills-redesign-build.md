@@ -34,7 +34,16 @@ visuals: the prototype stories + Moss note "bb Skills, Loops & Settings — Rede
 | provider logos | `getProviderIconInfo` (done in prototype) |
 | empty state | `EmptyStatePanel` |
 
-## Status
+## Status — ALL STAGES BUILT (2026-06-20)
+
+Stages 1–9 complete and committed; smoke-tested live against the dev instance
+(:14104 / :22104): Loops list/detail/edit + run history + View thread; Skills
+list/create-via-prompt/view/edit/delete with security guards (non-bb scope →
+400, path-escape name → rejected). Minor follow-up: map the daemon
+`invalid_skill_name` error to 400 instead of 502. Inline-embedded prompt box and
+accent-promotion sweep remain as optional polish (see below).
+
+## Status (historical)
 
 - **Done & committed:** 1 (Loops overview), 2 (detail health + run history), 3 (Loop inline edit), 4 (S1 skills backend cherry-picked), 5 (Skills view + route + nav), 6 (Skills create-via-prompt — seeded composer), 8 (darken primary), loop-detail declutter + persistent View thread. 9 (dev fixtures) seeded in the running dev instance.
 - **Remaining — Stage 7 (skill view + edit):**
