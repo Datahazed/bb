@@ -6,6 +6,7 @@ import {
 } from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { SidebarFolderRow } from "./SidebarFolderRow";
+import { FolderDropPreviewRow } from "./ProjectRow";
 
 export default {
   title: "sidebar/Folder row",
@@ -102,6 +103,50 @@ export function Overview() {
             isCollapsed={false}
             onToggleCollapsed={noop}
           />
+        </SidebarStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+// Drag-into-folder affordance: the folder highlights as a drop target, and
+// after a short hover it springs open with an empty placeholder slot. The
+// dragged row keeps its own title (like dragging a queued message), so the
+// placeholder stays blank rather than duplicating the title.
+export function DragInto() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="drop target"
+        hint="folder highlights while a thread is dragged over it"
+      >
+        <SidebarStage>
+          <SidebarFolderRow
+            name="Work"
+            pathLabel="Work"
+            depth={0}
+            activity={activity()}
+            isCollapsed={false}
+            onToggleCollapsed={noop}
+            isDropTargetActive
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="empty placeholder"
+        hint="after the hover dwell, an empty slot opens inside the folder"
+      >
+        <SidebarStage>
+          <SidebarFolderRow
+            name="Work"
+            pathLabel="Work"
+            depth={0}
+            activity={activity()}
+            isCollapsed={false}
+            onToggleCollapsed={noop}
+            isDropTargetActive
+          />
+          <FolderDropPreviewRow depth={1} />
         </SidebarStage>
       </StoryRow>
     </StoryCard>

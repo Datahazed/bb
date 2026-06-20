@@ -277,21 +277,15 @@ interface FolderTreeItemRowProps {
   sortableStyle?: CSSProperties;
 }
 
-// While a thread is dragged over a folder, the folder renders an optimistic
-// preview row for that thread (and is auto-expanded) so it reads as the drop
-// target before the move is committed.
-interface FolderDragPreview {
-  thread: ThreadListEntry;
-  overFolderKey: string;
-}
-
 interface ManualThreadTreeDndState {
   consumeClickSuppression: ConsumeDragClickSuppression;
   dndContextProps: SidebarReorderDndContextProps;
   enabled: boolean;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
-  dragPreview: FolderDragPreview | null;
+  // The folder showing an empty drop-placeholder row while a thread is dragged
+  // over it (after a short hover); the dragged row itself carries the title.
+  dragOverFolderKey: string | null;
 }
 
 interface UseManualThreadTreeDndArgs {
@@ -440,12 +434,14 @@ function useManualThreadTreeDnd({
   );
   const updateThread = useUpdateThread();
   const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
-  const activeThreadRef = useRef<ThreadListEntry | null>(null);
+  // Whether a thread (vs. nothing droppable) is currently being dragged.
+  const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The folder the dwell timer is currently counting toward (or showing a
-  // preview for); null when the pointer isn't over a droppable target folder.
+  // The folder the dwell timer is currently counting toward; null when the
+  // pointer isn't over a droppable target folder.
   const dwellFolderKeyRef = useRef<string | null>(null);
-  const [dragPreview, setDragPreview] = useState<FolderDragPreview | null>(
+  // The folder currently showing an (empty) drop-placeholder row, after dwell.
+  const [dragOverFolderKey, setDragOverFolderKey] = useState<string | null>(
     null,
   );
 
@@ -462,42 +458,40 @@ function useManualThreadTreeDnd({
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const activeId = event.active.id;
-      activeThreadRef.current =
-        typeof activeId === "string"
-          ? (lookup.threadByItemId.get(activeId) ?? null)
-          : null;
+      draggingThreadRef.current =
+        typeof activeId === "string" && lookup.threadByItemId.has(activeId);
       clearFolderDwell();
-      setDragPreview(null);
+      setDragOverFolderKey(null);
     },
     [clearFolderDwell, lookup],
   );
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
-      if (!enabled) return;
-      const thread = activeThreadRef.current;
-      if (!thread) return;
+      if (!enabled || !draggingThreadRef.current) return;
       const drop = resolveThreadDropTarget(lookup, event.active, event.over);
-      // Only a real folder (not the loose root) is a preview/expand target.
+      // Only a real folder (not the loose root) is a spring-load target.
       const targetFolderKey =
         drop && drop.toParentKey !== containerId ? drop.toParentKey : null;
 
-      // Same target as the in-flight dwell/preview: nothing to do (don't
-      // thrash timers or layout on every pointer move).
+      // Same target as the in-flight dwell: nothing to do (don't thrash timers
+      // on every pointer move).
       if (targetFolderKey === dwellFolderKeyRef.current) return;
 
-      // Target changed: cancel the pending dwell and drop any shown preview.
       clearFolderDwell();
       dwellFolderKeyRef.current = targetFolderKey;
-      setDragPreview((current) => (current ? null : current));
+      setDragOverFolderKey((current) => (current ? null : current));
       if (targetFolderKey === null) return;
 
-      // Spring-loaded: expand + preview only after the pointer settles, so
-      // passing through a folder mid-drag doesn't shift it under the cursor.
+      // Spring-loaded: expand a collapsed target and show the empty placeholder
+      // only after the pointer settles, so passing through a folder mid-drag
+      // doesn't shift it under the cursor.
       dwellTimerRef.current = setTimeout(() => {
         dwellTimerRef.current = null;
-        const draggingThread = activeThreadRef.current;
-        if (!draggingThread || dwellFolderKeyRef.current !== targetFolderKey) {
+        if (
+          !draggingThreadRef.current ||
+          dwellFolderKeyRef.current !== targetFolderKey
+        ) {
           return;
         }
         setCollapsedFolders((current) =>
@@ -505,10 +499,7 @@ function useManualThreadTreeDnd({
             ? current.filter((key) => key !== targetFolderKey)
             : current,
         );
-        setDragPreview({
-          thread: draggingThread,
-          overFolderKey: targetFolderKey,
-        });
+        setDragOverFolderKey(targetFolderKey);
       }, FOLDER_DRAG_DWELL_MS);
     },
     [clearFolderDwell, containerId, enabled, lookup, setCollapsedFolders],
@@ -516,9 +507,9 @@ function useManualThreadTreeDnd({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      activeThreadRef.current = null;
+      draggingThreadRef.current = false;
       clearFolderDwell();
-      setDragPreview(null);
+      setDragOverFolderKey(null);
       if (!enabled) return;
 
       const drop = resolveThreadDropTarget(lookup, event.active, event.over);
@@ -539,9 +530,9 @@ function useManualThreadTreeDnd({
   );
 
   const handleDragCancel = useCallback(() => {
-    activeThreadRef.current = null;
+    draggingThreadRef.current = false;
     clearFolderDwell();
-    setDragPreview(null);
+    setDragOverFolderKey(null);
   }, [clearFolderDwell]);
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
@@ -562,7 +553,7 @@ function useManualThreadTreeDnd({
     enabled,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
-    dragPreview,
+    dragOverFolderKey,
   };
 }
 
@@ -1460,15 +1451,10 @@ export const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
 // in sidebarCollapsedFoldersAtom — read here rather than threaded so the rest of
 // the tree's prop wiring and memo equality stay untouched. Children render one
 // depth deeper and, when threads, show their leaf via insideFolder.
-// Non-interactive placeholder for the thread being dragged into a folder,
-// rendered inside the (auto-expanded) folder so it reads as the drop target.
-function FolderDropPreviewRow({
-  depth,
-  title,
-}: {
-  depth: number;
-  title: string;
-}) {
+// Empty drop-slot rendered inside the (auto-expanded) hovered folder so the
+// landing spot is visible. The dragged row itself carries the title (like
+// dragging a queued message), so this placeholder stays intentionally blank.
+export function FolderDropPreviewRow({ depth }: { depth: number }) {
   return (
     <div
       aria-hidden="true"
@@ -1477,11 +1463,9 @@ function FolderDropPreviewRow({
       className={cn(
         SIDEBAR_ROW_BASE_CLASS,
         COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        "pointer-events-none border border-dashed border-sidebar-border bg-sidebar-accent/40 text-sidebar-accent-foreground",
+        "pointer-events-none border border-dashed border-sidebar-border bg-sidebar-accent/40",
       )}
-    >
-      <span className="min-w-0 truncate opacity-80">{title}</span>
-    </div>
+    />
   );
 }
 
@@ -1522,13 +1506,11 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
   const folderPath = folder.path.join("/");
-  const dragPreview = manualSort?.dragPreview ?? null;
-  const previewThread =
-    dragPreview?.overFolderKey === folderKey ? dragPreview.thread : null;
+  const showDropPreview = manualSort?.dragOverFolderKey === folderKey;
   const showChildren = !isCollapsed && folder.items.length > 0;
   // Force the children area open while a thread is dragged over this folder so
-  // the optimistic drop-preview row is visible even when empty/collapsed.
-  const showChildrenArea = showChildren || previewThread !== null;
+  // the empty drop-placeholder row is visible even when the folder is empty.
+  const showChildrenArea = showChildren || showDropPreview;
 
   return (
     <SidebarStickyGroup
@@ -1592,14 +1574,13 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
               ))}
             </ManualSortableList>
           ) : null}
-          {previewThread ? (
+          {showDropPreview ? (
             <FolderDropPreviewRow
               depth={getThreadRowDepth({
                 depthOffset: depthOffset + 1,
                 nodeDepth: 0,
                 variant,
               })}
-              title={getThreadDisplayTitle(previewThread)}
             />
           ) : null}
         </div>
