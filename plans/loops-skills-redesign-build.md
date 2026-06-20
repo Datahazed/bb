@@ -34,6 +34,12 @@ visuals: the prototype stories + Moss note "bb Skills, Loops & Settings — Rede
 | provider logos | `getProviderIconInfo` (done in prototype) |
 | empty state | `EmptyStatePanel` |
 
+## Status
+
+- **Done & committed:** 1 (Loops overview), 2 (detail health + run history), 3 (Loop inline edit), 4 (S1 skills backend cherry-picked), 5 (Skills view + route + nav), 8 (darken primary). 9 (dev fixtures) seeded in the running dev instance.
+- **Remaining:** 6 (inline create-via-prompt) — large frontend integration of the real `NewThreadPromptBox`. 7 (skill detail + edit) — **backend-blocked:** S1 ships list + delete only; viewing/editing a `SKILL.md` needs new read/write skill-content endpoints (host-daemon command + server route + contract).
+- **Accent promotion** (decision #1, `--file-accent` on focus/active/links) is applied conceptually in the prototype but not yet swept across the built surfaces — follow-up polish.
+
 ## Stages
 
 1. **Loops overview restyle** — `AutomationsView.tsx`: body title "Loops" + description; two-line rows (cadence via `formatCronCadence`, last-run health via `lastRunStatus`/`lastRunAt`, next run); drop project/script/API pills; relabel user-facing strings to "Loops". Keep create entry (becomes prompt box in stage 5). Update stories/tests.
