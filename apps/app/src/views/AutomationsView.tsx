@@ -1,4 +1,4 @@
-import { Fragment, useCallback } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type {
   Automation,
@@ -311,6 +311,18 @@ export function AutomationsOverview({
   const groups = groupAutomationsByProject(entries);
   const isEmpty =
     !isLoading && !hasInitialLoadError && entries.length === 0;
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggleGroup = useCallback((projectId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
@@ -338,28 +350,46 @@ export function AutomationsOverview({
         ) : isEmpty ? (
           <EmptyStatePanel className="py-6">No loops yet.</EmptyStatePanel>
         ) : (
-          <div className="space-y-6">
-            {groups.map((group) => (
-              <section key={group.projectId}>
-                <p className="flex items-center gap-1.5 px-3 text-xs font-semibold text-muted-foreground">
-                  <Icon
-                    name="Folder"
-                    className="size-3.5 text-muted-foreground/70"
-                    aria-hidden
-                  />
-                  {group.projectName}
-                </p>
-                <div className="mt-1 space-y-0.5">
-                  {group.entries.map((entry) => (
-                    <AutomationRow
-                      key={entry.automation.id}
-                      entry={entry}
-                      actions={actions}
+          <div className="space-y-4">
+            {groups.map((group) => {
+              const isCollapsed = collapsed.has(group.projectId);
+              return (
+                <section key={group.projectId}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.projectId)}
+                    aria-expanded={!isCollapsed}
+                    className="flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold text-muted-foreground hover:bg-state-hover"
+                  >
+                    <Icon
+                      name={isCollapsed ? "ChevronRight" : "ChevronDown"}
+                      className="size-3.5 shrink-0 text-muted-foreground/70"
+                      aria-hidden
                     />
-                  ))}
-                </div>
-              </section>
-            ))}
+                    <Icon
+                      name="Folder"
+                      className="size-3.5 text-muted-foreground/70"
+                      aria-hidden
+                    />
+                    {group.projectName}
+                    <span className="text-muted-foreground/60">
+                      {group.entries.length}
+                    </span>
+                  </button>
+                  {isCollapsed ? null : (
+                    <div className="mt-1 space-y-0.5">
+                      {group.entries.map((entry) => (
+                        <AutomationRow
+                          key={entry.automation.id}
+                          entry={entry}
+                          actions={actions}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
