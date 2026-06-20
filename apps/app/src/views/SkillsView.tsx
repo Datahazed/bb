@@ -1,11 +1,15 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
+import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useProjectSkills } from "@/hooks/queries/skills-queries";
 
 interface SkillProviderGroup {
@@ -96,6 +100,7 @@ export interface SkillsOverviewProps {
   skills: readonly SkillSummary[];
   isLoading: boolean;
   hasError: boolean;
+  onCreateSkill: () => void;
 }
 
 /**
@@ -106,6 +111,7 @@ export function SkillsOverview({
   skills,
   isLoading,
   hasError,
+  onCreateSkill,
 }: SkillsOverviewProps) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -126,18 +132,24 @@ export function SkillsOverview({
           Reusable, agent-invokable workflows. Search your skills, or describe a
           new one to have an agent build it.
         </p>
-        <div className="relative">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            aria-label="Search skills"
-            placeholder="Search skills"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="h-8 pl-7 pr-2 text-sm focus-visible:ring-1"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Icon
+              name="Search"
+              className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              aria-label="Search skills"
+              placeholder="Search skills"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="h-8 pl-7 pr-2 text-sm focus-visible:ring-1"
+            />
+          </div>
+          <Button type="button" size="sm" className="shrink-0" onClick={onCreateSkill}>
+            <Icon name="Plus" className="size-4" />
+            New skill
+          </Button>
         </div>
         {hasError ? (
           <p className="text-sm text-destructive">Failed to load skills.</p>
@@ -183,12 +195,25 @@ export function SkillsOverview({
 }
 
 export function SkillsView() {
+  const navigate = useNavigate();
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? [];
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
+  // Create via prompt: open the composer seeded with the bb-skill prompt; the
+  // spawned thread authors the SKILL.md.
+  const handleCreateSkill = useCallback(() => {
+    navigate(getRootComposeRoutePath(), {
+      state: { focusPrompt: true, initialPrompt: CREATE_SKILL_PROMPT },
+    });
+  }, [navigate]);
   return (
-    <SkillsOverview skills={skills} isLoading={isLoading} hasError={hasError} />
+    <SkillsOverview
+      skills={skills}
+      isLoading={isLoading}
+      hasError={hasError}
+      onCreateSkill={handleCreateSkill}
+    />
   );
 }

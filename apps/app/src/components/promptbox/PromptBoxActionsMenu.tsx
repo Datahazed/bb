@@ -27,6 +27,8 @@ interface PromptBoxActionsMenuProps {
 }
 
 export const CREATE_LOOP_PROMPT = "Create a new bb loop to ";
+// Skill creation always targets a bb skill (the only manageable scope).
+export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
 export const LOOP_PROMPT_ACTION: PromptBoxAction = {
   kind: "loop",
   text: CREATE_LOOP_PROMPT,

@@ -21,6 +21,7 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
       skills={props.skills ?? []}
       isLoading={props.isLoading ?? false}
       hasError={props.hasError ?? false}
+      onCreateSkill={props.onCreateSkill ?? (() => {})}
     />,
   );
 }
@@ -52,6 +53,10 @@ describe("SkillsOverview", () => {
     expect(markup.indexOf("claude-skill")).toBeLessThan(
       markup.indexOf("bb-skill"),
     );
+  });
+
+  it("renders a New skill create action", () => {
+    expect(render({ skills: [] })).toContain("New skill");
   });
 
   it("shows the empty state when there are no skills", () => {
