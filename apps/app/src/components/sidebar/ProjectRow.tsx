@@ -427,7 +427,7 @@ function resolveThreadDropTarget(
 // The preview/expand shift layout, so deferring them until the pointer settles
 // keeps dragging *through* a folder (e.g. up out of one's own folder) smooth
 // instead of the inserted row shoving the dragged item back down.
-const FOLDER_DRAG_DWELL_MS = 350;
+const FOLDER_DRAG_DWELL_MS = 200;
 
 function useManualThreadTreeDnd({
   containerId,
