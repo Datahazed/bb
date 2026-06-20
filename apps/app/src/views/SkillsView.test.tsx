@@ -28,14 +28,14 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
 }
 
 describe("groupSkillsByProvider", () => {
-  it("groups by provider with bb-agnostic skills last", () => {
+  it("groups by provider with bb-agnostic skills first", () => {
     const groups = groupSkillsByProvider([
-      makeSkill({ name: "bb-skill", provider: null, scope: "bb-user" }),
       makeSkill({ name: "claude-skill", provider: "claude-code" }),
+      makeSkill({ name: "bb-skill", provider: null, scope: "bb-user" }),
       makeSkill({ name: "codex-skill", provider: "codex", scope: "codex" }),
     ]);
-    expect(groups.map((g) => g.key)).toEqual(["claude-code", "codex", "bb"]);
-    expect(groups.at(-1)?.label).toBe("bb");
+    expect(groups.map((g) => g.key)).toEqual(["bb", "claude-code", "codex"]);
+    expect(groups[0]?.label).toBe("bb");
   });
 });
 
@@ -49,11 +49,13 @@ describe("SkillsOverview", () => {
     });
     expect(markup).toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    // bb group header renders, and after the provider group
+    // bb group header renders, and bb comes before the provider group
     expect(markup).toContain(">bb<");
-    expect(markup.indexOf("claude-skill")).toBeLessThan(
-      markup.indexOf("bb-skill"),
+    expect(markup.indexOf("bb-skill")).toBeLessThan(
+      markup.indexOf("claude-skill"),
     );
+    // collapsible section headers, expanded by default
+    expect(markup).toContain('aria-expanded="true"');
   });
 
   it("renders a New skill create action", () => {

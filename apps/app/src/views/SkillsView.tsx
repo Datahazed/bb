@@ -33,11 +33,11 @@ interface SkillProviderGroup {
   skills: SkillSummary[];
 }
 
-// Order providers first, then bb-agnostic skills last.
+// bb-agnostic skills first, then each provider.
 const PROVIDER_ORDER: readonly (SkillProvider | null)[] = [
+  null,
   "claude-code",
   "codex",
-  null,
 ];
 
 function providerLabel(providerId: SkillProvider | null): string {
@@ -141,6 +141,18 @@ export function SkillsOverview({
   onSelectSkill,
 }: SkillsOverviewProps) {
   const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
   const normalizedQuery = query.trim().toLowerCase();
   const groups = useMemo(() => {
     const filtered = skills.filter(
@@ -189,32 +201,52 @@ export function SkillsOverview({
             {`No skills match "${query}"`}
           </EmptyStatePanel>
         ) : (
-          <div className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-            {groups.map((group) => (
-              <section key={group.key}>
-                <div className="flex items-center gap-1.5 border-b border-border-seam px-3 py-1.5 text-xs text-muted-foreground">
-                  {group.providerId ? (
-                    <ProviderLogo
-                      providerId={group.providerId}
-                      className="size-3.5"
+          <div className="space-y-2">
+            {groups.map((group) => {
+              const isCollapsed = collapsed.has(group.key);
+              return (
+                <section
+                  key={group.key}
+                  className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.key)}
+                    aria-expanded={!isCollapsed}
+                    className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
+                  >
+                    <Icon
+                      name={isCollapsed ? "ChevronRight" : "ChevronDown"}
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden
                     />
-                  ) : null}
-                  <span className="font-medium">{group.label}</span>
-                  <span className="text-subtle-foreground">
-                    {group.skills.length}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-px p-1">
-                  {group.skills.map((skill) => (
-                    <SkillRow
-                      key={`${group.key}-${skill.scope}-${skill.name}`}
-                      skill={skill}
-                      onSelect={() => onSelectSkill(skill)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+                    {group.providerId ? (
+                      <ProviderLogo
+                        providerId={group.providerId}
+                        className="size-3.5"
+                      />
+                    ) : null}
+                    <span className="font-medium">{group.label}</span>
+                    <span className="text-subtle-foreground">
+                      {group.skills.length}
+                    </span>
+                  </button>
+                  {isCollapsed ? null : (
+                    <div className="max-h-64 overflow-y-auto border-t border-border-seam p-1">
+                      <div className="flex flex-col gap-px">
+                        {group.skills.map((skill) => (
+                          <SkillRow
+                            key={`${group.key}-${skill.scope}-${skill.name}`}
+                            skill={skill}
+                            onSelect={() => onSelectSkill(skill)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
