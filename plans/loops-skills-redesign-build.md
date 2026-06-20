@@ -36,9 +36,12 @@ visuals: the prototype stories + Moss note "bb Skills, Loops & Settings — Rede
 
 ## Status
 
-- **Done & committed:** 1 (Loops overview), 2 (detail health + run history), 3 (Loop inline edit), 4 (S1 skills backend cherry-picked), 5 (Skills view + route + nav), 8 (darken primary). 9 (dev fixtures) seeded in the running dev instance.
-- **Remaining:** 6 (inline create-via-prompt) — large frontend integration of the real `NewThreadPromptBox`. 7 (skill detail + edit) — **backend-blocked:** S1 ships list + delete only; viewing/editing a `SKILL.md` needs new read/write skill-content endpoints (host-daemon command + server route + contract).
-- **Accent promotion** (decision #1, `--file-accent` on focus/active/links) is applied conceptually in the prototype but not yet swept across the built surfaces — follow-up polish.
+- **Done & committed:** 1 (Loops overview), 2 (detail health + run history), 3 (Loop inline edit), 4 (S1 skills backend cherry-picked), 5 (Skills view + route + nav), 6 (Skills create-via-prompt — seeded composer), 8 (darken primary), loop-detail declutter + persistent View thread. 9 (dev fixtures) seeded in the running dev instance.
+- **Remaining — Stage 7 (skill view + edit):**
+  - **View** (all scopes): reuse the existing `host.read_file` daemon command. Add `GET /projects/:id/skills/content?provider&scope&name&environmentId` → server lists skills, matches by identity, reads the authoritative `filePath` (never a client path), returns `{ content }` (decode via `decodeDaemonFileContent`). Frontend: click a skill row → detail/dialog showing the SKILL.md; Delete for `manageable` (bb) skills via the existing S1 delete route.
+  - **Edit** (bb skills only): needs a **new secure host-write daemon command** (`host.write_skill`, bb-user/bb-project only, path resolved host-side from `(scope,name,cwd)` like `delete_skill`, realpath/symlink guards) + server route + contract + the edit UI. Security-sensitive — do as a focused, reviewed change.
+- **Inline create-via-prompt** (embedding `NewThreadPromptBox` on the page) deferred: it needs `RootComposeView`'s full `modeConfig`; current create uses the seeded composer (robust, matches Loops). Revisit as a `RootComposeView` extraction if true-inline is wanted.
+- **Accent promotion** (decision #1, `--file-accent` on focus/active/links) — follow-up polish sweep across built surfaces.
 
 ## Stages
 
