@@ -79,6 +79,7 @@ export const updateThreadFolderRequestSchema = z
   .object({
     path: z.string().min(1),
     newPath: z.string().min(1),
+    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type UpdateThreadFolderRequest = z.infer<
@@ -88,6 +89,7 @@ export type UpdateThreadFolderRequest = z.infer<
 export const deleteThreadFolderRequestSchema = z
   .object({
     path: z.string().min(1),
+    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type DeleteThreadFolderRequest = z.infer<

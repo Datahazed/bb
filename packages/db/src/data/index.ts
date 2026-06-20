@@ -24,6 +24,7 @@ export {
   deleteThreadFolder,
   ensureThreadFolderPath,
   getThreadFolderByPath,
+  isThreadFolderDescendantPath,
   listThreadFolders,
   normalizeThreadFolderPath,
   renameThreadFolder,

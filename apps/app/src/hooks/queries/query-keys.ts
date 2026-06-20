@@ -79,7 +79,7 @@ export interface ThreadSearchQueryFilters {
 export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
-  projectId: string;
+  projectId?: string;
   folderPath?: string;
   unfiled?: boolean;
 }

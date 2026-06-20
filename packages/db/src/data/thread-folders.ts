@@ -21,10 +21,12 @@ export interface CreateThreadFolderInput {
 export interface RenameThreadFolderInput {
   path: string;
   newPath: string;
+  projectId?: string | null;
 }
 
 export interface DeleteThreadFolderInput {
   path: string;
+  projectId?: string | null;
 }
 
 export interface ThreadFolderMutationResult {
@@ -65,6 +67,22 @@ function folderPathSubtreeFilter(
   );
 }
 
+function folderProjectScopeFilter(projectId: string | null | undefined) {
+  if (projectId === undefined) {
+    return undefined;
+  }
+  return projectId === null
+    ? isNull(threadFolders.projectId)
+    : eq(threadFolders.projectId, projectId);
+}
+
+function threadProjectScopeFilter(projectId: string | null | undefined) {
+  if (projectId === undefined) {
+    return undefined;
+  }
+  return projectId === null ? sql`1 = 0` : eq(threads.projectId, projectId);
+}
+
 function replaceFolderPathPrefix(
   value: string,
   oldPath: string,
@@ -85,6 +103,19 @@ function notifyThreadFolderMutationProjects(
       "threads-changed",
     ]);
   }
+}
+
+export function isThreadFolderDescendantPath(
+  path: string | null | undefined,
+  possibleDescendantPath: string | null | undefined,
+): boolean {
+  const normalizedPath = normalizeThreadFolderPath(path);
+  const normalizedDescendant = normalizeThreadFolderPath(possibleDescendantPath);
+  return Boolean(
+    normalizedPath &&
+      normalizedDescendant &&
+      normalizedDescendant.startsWith(`${normalizedPath}/`),
+  );
 }
 
 export function getThreadFolderByPath(
@@ -196,13 +227,21 @@ export function renameThreadFolder(
   if (path === newPath) {
     return { path: newPath, updatedThreadCount: 0 };
   }
+  if (isThreadFolderDescendantPath(path, newPath)) {
+    return null;
+  }
 
   return db.transaction(
     (tx) => {
       const matchingFolders = tx
         .select()
         .from(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threadFolders.path, path),
+            folderProjectScopeFilter(input.projectId),
+          ),
+        )
         .all();
       const matchingThreads = tx
         .select({
@@ -211,7 +250,12 @@ export function renameThreadFolder(
           folderPath: threads.folderPath,
         })
         .from(threads)
-        .where(folderPathSubtreeFilter(threads.folderPath, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threads.folderPath, path),
+            threadProjectScopeFilter(input.projectId),
+          ),
+        )
         .all();
 
       if (matchingFolders.length === 0 && matchingThreads.length === 0) {
@@ -219,7 +263,12 @@ export function renameThreadFolder(
       }
 
       tx.delete(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threadFolders.path, path),
+            folderProjectScopeFilter(input.projectId),
+          ),
+        )
         .run();
 
       const affectedProjects = new Set<string | null>();
@@ -276,7 +325,12 @@ export function deleteThreadFolder(
       const matchingFolders = tx
         .select()
         .from(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threadFolders.path, path),
+            folderProjectScopeFilter(input.projectId),
+          ),
+        )
         .all();
       const matchingThreads = tx
         .select({
@@ -284,7 +338,12 @@ export function deleteThreadFolder(
           projectId: threads.projectId,
         })
         .from(threads)
-        .where(folderPathSubtreeFilter(threads.folderPath, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threads.folderPath, path),
+            threadProjectScopeFilter(input.projectId),
+          ),
+        )
         .all();
 
       if (matchingFolders.length === 0 && matchingThreads.length === 0) {
@@ -292,7 +351,12 @@ export function deleteThreadFolder(
       }
 
       tx.delete(threadFolders)
-        .where(folderPathSubtreeFilter(threadFolders.path, path))
+        .where(
+          and(
+            folderPathSubtreeFilter(threadFolders.path, path),
+            folderProjectScopeFilter(input.projectId),
+          ),
+        )
         .run();
 
       const now = Date.now();

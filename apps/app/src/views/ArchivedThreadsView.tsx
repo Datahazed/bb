@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useAtomValue } from "jotai";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
@@ -11,6 +12,7 @@ import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 
 type ArchivedThreadPillLabel = "child";
 
@@ -30,12 +32,18 @@ function getArchivedThreadPillLabel(
 export function ArchivedThreadsView() {
   const { projectId } = useRouteState();
   const [searchParams] = useSearchParams();
+  const sidebarOrganizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const folderPath = searchParams.get("folder") ?? undefined;
-  // The personal section's archived list shows loose threads only; threads
-  // filed in a folder live in that folder's archived list instead.
+  const isGlobalFoldersMode =
+    projectId === PERSONAL_PROJECT_ID &&
+    sidebarOrganizationMode === "chronological";
+  const archivedProjectId =
+    folderPath || isGlobalFoldersMode ? undefined : projectId;
+  // The loose archived list mirrors the current sidebar scope: in project mode
+  // it is personal-only; in Folders mode it is cross-project loose threads.
   const restrictToLoose = !folderPath && projectId === PERSONAL_PROJECT_ID;
   const archivedThreadsQuery = useArchivedThreads({
-    projectId,
+    projectId: archivedProjectId,
     ...(folderPath ? { folderPath } : {}),
     ...(restrictToLoose ? { unfiled: true } : {}),
   });

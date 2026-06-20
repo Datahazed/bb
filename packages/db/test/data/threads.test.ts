@@ -829,6 +829,88 @@ describe("threads", () => {
     );
   });
 
+  it("renames only one project folder scope when projectId is supplied", () => {
+    const { db, host, project } = setup();
+    const { project: otherProject } = createProject(db, noopNotifier, {
+      name: "other-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
+    });
+    const projectThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    const otherProjectThread = createThread(db, noopNotifier, {
+      projectId: otherProject.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    createThreadFolder(db, noopNotifier, { path: "Work/Global" });
+
+    const result = renameThreadFolder(db, noopNotifier, {
+      path: "Work",
+      newPath: "Archive",
+      projectId: project.id,
+    });
+
+    expect(result).toEqual({ path: "Archive", updatedThreadCount: 1 });
+    expect(getThread(db, projectThread.id)?.folderPath).toBe("Archive/Q3");
+    expect(getThread(db, otherProjectThread.id)?.folderPath).toBe("Work/Q3");
+    expect(
+      listThreadFolders(db)
+        .map((folder) => ({
+          path: folder.path,
+          projectId: folder.projectId,
+        }))
+        .sort((left, right) =>
+          `${left.projectId ?? ""}:${left.path}`.localeCompare(
+            `${right.projectId ?? ""}:${right.path}`,
+          ),
+        ),
+    ).toEqual(
+      [
+        { path: "Work", projectId: null },
+        { path: "Work/Global", projectId: null },
+        { path: "Archive", projectId: project.id },
+        { path: "Archive/Q3", projectId: project.id },
+        { path: "Work", projectId: otherProject.id },
+        { path: "Work/Q3", projectId: otherProject.id },
+      ].sort((left, right) =>
+        `${left.projectId ?? ""}:${left.path}`.localeCompare(
+          `${right.projectId ?? ""}:${right.path}`,
+        ),
+      ),
+    );
+  });
+
+  it("does not rename a thread folder into its own descendant", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    createThreadFolder(db, noopNotifier, { path: "Work/Empty" });
+    const foldersBefore = listThreadFolders(db).map((folder) => ({
+      path: folder.path,
+      projectId: folder.projectId,
+    }));
+
+    const result = renameThreadFolder(db, noopNotifier, {
+      path: "Work",
+      newPath: "Work/Q3",
+    });
+
+    expect(result).toBeNull();
+    expect(getThread(db, thread.id)?.folderPath).toBe("Work/Q3");
+    expect(
+      listThreadFolders(db).map((folder) => ({
+        path: folder.path,
+        projectId: folder.projectId,
+      })),
+    ).toEqual(foldersBefore);
+  });
+
   it("removes thread folders and clears descendant thread folder paths", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -843,6 +925,45 @@ describe("threads", () => {
     expect(result).toEqual({ path: "Work", updatedThreadCount: 1 });
     expect(getThread(db, thread.id)?.folderPath).toBeNull();
     expect(listThreadFolders(db)).toEqual([]);
+  });
+
+  it("removes only one project folder scope when projectId is supplied", () => {
+    const { db, host, project } = setup();
+    const { project: otherProject } = createProject(db, noopNotifier, {
+      name: "other-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
+    });
+    const projectThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    const otherProjectThread = createThread(db, noopNotifier, {
+      projectId: otherProject.id,
+      providerId: "codex",
+      folderPath: "Work/Q3",
+    });
+    createThreadFolder(db, noopNotifier, { path: "Work/Global" });
+
+    const result = deleteThreadFolder(db, noopNotifier, {
+      path: "Work",
+      projectId: project.id,
+    });
+
+    expect(result).toEqual({ path: "Work", updatedThreadCount: 1 });
+    expect(getThread(db, projectThread.id)?.folderPath).toBeNull();
+    expect(getThread(db, otherProjectThread.id)?.folderPath).toBe("Work/Q3");
+    expect(
+      listThreadFolders(db).map((folder) => ({
+        path: folder.path,
+        projectId: folder.projectId,
+      })),
+    ).toEqual([
+      { path: "Work", projectId: null },
+      { path: "Work/Global", projectId: null },
+      { path: "Work", projectId: otherProject.id },
+      { path: "Work/Q3", projectId: otherProject.id },
+    ]);
   });
 
   it("notifies when a thread parent changes", () => {

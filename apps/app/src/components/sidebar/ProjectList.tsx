@@ -64,6 +64,10 @@ import {
   ThreadFolderRenameDialog,
   type ThreadFolderRenameDialogTarget,
 } from "@/components/dialogs/ThreadFolderCreateDialog";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
@@ -1365,7 +1369,10 @@ function ProjectListComponent({
     isPending: isUpdateThreadFolderPending,
     mutate: updateThreadFolderMutate,
   } = useUpdateThreadFolder();
-  const { mutate: deleteThreadFolderMutate } = useDeleteThreadFolder();
+  const {
+    isPending: isDeleteThreadFolderPending,
+    mutate: deleteThreadFolderMutate,
+  } = useDeleteThreadFolder();
   const projectItems = projects ?? EMPTY_PROJECTS;
   const handleReorderProject = useCallback<
     UseNeighborReorderSortableArgs<ProjectResponse>["onReorder"]
@@ -1456,6 +1463,7 @@ function ProjectListComponent({
     projectId: string | null;
   } | null>(null);
   const folderRenameDialog = useDialogState<ThreadFolderRenameDialogTarget>();
+  const folderDeleteDialog = useDialogState<string>();
   const isFolderCreateDialogOpen = folderCreateTarget !== null;
   const handleOpenCreateFolderDialog = useCallback(() => {
     setFolderCreateTarget({ projectId: null });
@@ -1485,7 +1493,7 @@ function ProjectListComponent({
   const handleRenameThreadFolder = useCallback(
     (path: string, newPath: string) => {
       updateThreadFolderMutate(
-        { path, newPath },
+        { path, newPath, projectId: null },
         { onSuccess: () => folderRenameDialog.onClose() },
       );
     },
@@ -1493,9 +1501,28 @@ function ProjectListComponent({
   );
   const handleRemoveThreadFolder = useCallback(
     (path: string) => {
-      deleteThreadFolderMutate({ path });
+      folderDeleteDialog.onOpen(path);
     },
-    [deleteThreadFolderMutate],
+    [folderDeleteDialog],
+  );
+  const handleConfirmRemoveThreadFolder = useCallback(() => {
+    const path = folderDeleteDialog.target;
+    if (!path) {
+      return;
+    }
+    deleteThreadFolderMutate(
+      { path, projectId: null },
+      { onSuccess: () => folderDeleteDialog.onClose() },
+    );
+  }, [deleteThreadFolderMutate, folderDeleteDialog]);
+  const handleFolderDeleteDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        return;
+      }
+      folderDeleteDialog.onClose();
+    },
+    [folderDeleteDialog],
   );
   const handleOpenProjectlessArchivedThreads = useCallback(() => {
     onProjectSelect?.();
@@ -2046,6 +2073,23 @@ function ProjectListComponent({
       onRename={handleRenameThreadFolder}
     />
   );
+  const folderDeleteDialogContent = (
+    <ConfirmDeleteDialog
+      open={folderDeleteDialog.target !== null}
+      onOpenChange={handleFolderDeleteDialogOpenChange}
+    >
+      {folderDeleteDialog.target ? (
+        <ConfirmDeleteDialogContent
+          title="Remove folder?"
+          description={`Remove "${folderDeleteDialog.target}" and clear it from its threads? This cannot be undone.`}
+          confirmLabel="Remove folder"
+          pending={isDeleteThreadFolderPending}
+          onConfirm={handleConfirmRemoveThreadFolder}
+          onCancel={folderDeleteDialog.onClose}
+        />
+      ) : null}
+    </ConfirmDeleteDialog>
+  );
 
   if (threadSearch?.isActive) {
     return (
@@ -2085,6 +2129,7 @@ function ProjectListComponent({
         </div>
         {folderCreateDialog}
         {folderRenameDialogContent}
+        {folderDeleteDialogContent}
       </ProjectListShell>
     );
   }
@@ -2160,6 +2205,7 @@ function ProjectListComponent({
       </DndContext>
       {folderCreateDialog}
       {folderRenameDialogContent}
+      {folderDeleteDialogContent}
     </ProjectListShell>
   );
 }
