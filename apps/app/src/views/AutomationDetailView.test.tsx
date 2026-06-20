@@ -123,12 +123,24 @@ describe("AutomationDetailContent", () => {
     expect(paused).not.toContain('aria-label="Pause"');
   });
 
-  it("renders Run now and Delete icon actions", () => {
+  it("renders Run now and an actions overflow (Edit/Delete live in the menu)", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain('aria-label="Run now"');
     expect(markup).toContain('data-icon="Zap"');
-    expect(markup).toContain('aria-label="Delete loop"');
-    expect(markup).toContain('data-icon="Trash2"');
+    expect(markup).toContain('aria-label="More loop actions"');
+  });
+
+  it("renders a View thread action only when the loop has a last-run thread", () => {
+    const without = renderContent({
+      automation: makeAutomation({ lastRunThreadId: null }),
+    });
+    expect(without).not.toContain('aria-label="View thread"');
+
+    const withThread = renderContent({
+      automation: makeAutomation({ lastRunThreadId: "thr_latest" }),
+    });
+    expect(withThread).toContain('aria-label="View thread"');
+    expect(withThread).toContain("thr_latest");
   });
 
   it("renders a succeeded script run with its captured output and exit code", () => {

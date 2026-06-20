@@ -10,6 +10,13 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
@@ -352,100 +359,106 @@ export function AutomationDetailContent({
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div>
-          <Link
-            to={getAutomationsRoutePath()}
-            className="mb-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Icon name="ChevronLeft" className="size-3.5" />
-            Loops
-          </Link>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {automation.name}
-              </h1>
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    automation.enabled
-                      ? "bg-success"
-                      : "bg-muted-foreground/50",
-                  )}
-                />
-                {automation.enabled ? "Active" : "Paused"}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {automation.enabled ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Pause"
-                  title="Pause"
-                  disabled={actionsPending}
-                  onClick={onPause}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              {automation.name}
+            </h1>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-1.5 rounded-full",
+                  automation.enabled ? "bg-success" : "bg-muted-foreground/50",
+                )}
+              />
+              {automation.enabled ? "Active" : "Paused"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Always a way to view the latest run's thread when one exists. */}
+            {automation.lastRunThreadId ? (
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={getThreadRoutePath({
+                    projectId: automation.projectId,
+                    threadId: automation.lastRunThreadId,
+                  })}
+                  aria-label="View thread"
+                  title="View the latest run's thread"
                 >
-                  <Icon name="Pause" className="size-4" />
-                  Pause
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Resume"
-                  title="Resume"
-                  disabled={actionsPending}
-                  onClick={onResume}
-                >
-                  <Icon name="Play" className="size-4" />
-                  Resume
-                </Button>
-              )}
+                  <Icon name="MessageSquare" className="size-4" />
+                  View thread
+                </Link>
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Run now"
+              title="Run now"
+              disabled={actionsPending}
+              onClick={onRun}
+            >
+              <Icon name="Zap" className="size-4" />
+              Run now
+            </Button>
+            {automation.enabled ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                aria-label="Run now"
-                title="Run now"
+                aria-label="Pause"
+                title="Pause"
                 disabled={actionsPending}
-                onClick={onRun}
+                onClick={onPause}
               >
-                <Icon name="Zap" className="size-4" />
-                Run now
+                <Icon name="Pause" className="size-4" />
+                Pause
               </Button>
-              {!editing ? (
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label="Resume"
+                title="Resume"
+                disabled={actionsPending}
+                onClick={onResume}
+              >
+                <Icon name="Play" className="size-4" />
+                Resume
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  aria-label="Edit loop"
-                  title="Edit loop"
+                  size="icon"
+                  aria-label="More loop actions"
+                  title="More actions"
                   disabled={actionsPending}
-                  onClick={startEditing}
                 >
-                  <Icon name="Edit" className="size-4" />
+                  <Icon name="MoreHorizontal" className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onSelect={startEditing}>
+                  <Icon name="Edit" className="size-4 text-muted-foreground" />
                   Edit
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                aria-label="Delete loop"
-                title="Delete loop"
-                disabled={actionsPending}
-                onClick={onDelete}
-              >
-                <Icon name="Trash2" className="size-4" />
-                Delete
-              </Button>
-            </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={onDelete}
+                >
+                  <Icon name="Trash2" className="size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
