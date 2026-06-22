@@ -12,6 +12,7 @@ import type {
 export interface BackgroundTaskProjectionState {
   messages: EventProjectionMessage[];
   backgroundTasksByItemId: Map<string, EventProjectionWorkflowMessage>;
+  backgroundTaskParentToolCallIds: Set<string>;
 }
 
 interface BackgroundTaskLifecycleEvent {
@@ -102,6 +103,10 @@ export function upsertBackgroundTaskMessage(
     return false;
   }
 
+  if (lifecycle.item.parentToolCallId) {
+    state.backgroundTaskParentToolCallIds.add(lifecycle.item.parentToolCallId);
+  }
+
   const existing = state.backgroundTasksByItemId.get(lifecycle.item.id);
   if (existing) {
     applyBackgroundTaskItem(existing, lifecycle, meta);
@@ -140,4 +145,18 @@ export function upsertBackgroundTaskMessage(
   state.backgroundTasksByItemId.set(lifecycle.item.id, message);
   state.messages.push(message);
   return true;
+}
+
+export function filterBackgroundTaskLauncherMessages(
+  state: BackgroundTaskProjectionState,
+): EventProjectionMessage[] {
+  if (state.backgroundTaskParentToolCallIds.size === 0) {
+    return state.messages;
+  }
+
+  return state.messages.filter(
+    (message) =>
+      message.kind !== "command" ||
+      !state.backgroundTaskParentToolCallIds.has(message.callId),
+  );
 }

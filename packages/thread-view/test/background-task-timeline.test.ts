@@ -65,6 +65,19 @@ function findWorkflowRows(rows: TimelineRow[]): TimelineWorkflowWorkRow[] {
   return found;
 }
 
+function findCommandRows(rows: TimelineRow[]): TimelineRow[] {
+  const found: TimelineRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "command") {
+      found.push(row);
+    }
+    if (row.kind === "turn" && row.children) {
+      found.push(...findCommandRows(row.children));
+    }
+  }
+  return found;
+}
+
 function taskItem(args: {
   taskStatus: ThreadEventBackgroundTaskItem["taskStatus"];
   status: ThreadEventBackgroundTaskItem["status"];
@@ -442,6 +455,102 @@ describe("background task timeline projection", () => {
         'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
     });
     expect(row.completedAt).not.toBeNull();
+  });
+
+  it("hides the launcher command when a backgrounded shell command has a parent Bash item", () => {
+    const parentToolCallId = "toolu_bash_1";
+    const rows = buildTimelineRows([
+      turnStarted("turn-1", 1),
+      withMeta(
+        {
+          type: "item/started",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: turnScope("turn-1"),
+          item: {
+            type: "commandExecution",
+            id: parentToolCallId,
+            command: "sleep 10",
+            cwd: "",
+            status: "pending",
+            approvalStatus: null,
+          },
+        },
+        2,
+      ),
+      withMeta(
+        {
+          type: "item/started",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: turnScope("turn-1"),
+          item: {
+            ...bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:bg-1",
+              description: "Sleep for 10 seconds",
+            }),
+            parentToolCallId,
+          },
+        },
+        3,
+      ),
+      withMeta(
+        {
+          type: "item/completed",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: turnScope("turn-1"),
+          item: {
+            type: "commandExecution",
+            id: parentToolCallId,
+            command: "sleep 10",
+            cwd: "",
+            status: "completed",
+            approvalStatus: null,
+            aggregatedOutput:
+              "Command running in background with ID: bg-1. Output is being written to: /tmp/bg-1.output.",
+            exitCode: 0,
+          },
+        },
+        4,
+      ),
+      turnCompleted("turn-1", 5),
+      withMeta(
+        {
+          type: "item/backgroundTask/completed",
+          threadId: "thread-1",
+          providerThreadId: "provider-1",
+          scope: threadScope(),
+          item: {
+            ...bashTaskItem({
+              status: "completed",
+              taskStatus: "completed",
+              id: "task:bg-1",
+              description: "Sleep for 10 seconds",
+              summary:
+                'Background command "Sleep for 10 seconds" completed (exit code 0)',
+            }),
+            parentToolCallId,
+          },
+        },
+        6,
+      ),
+    ]);
+
+    expect(findCommandRows(rows)).toHaveLength(0);
+    const workflowRows = findWorkflowRows(rows);
+    expect(workflowRows).toHaveLength(1);
+    expect(workflowRows[0]).toMatchObject({
+      itemId: "task:bg-1",
+      taskType: "local_bash",
+      status: "completed",
+      taskStatus: "completed",
+      description: "Sleep for 10 seconds",
+      summary:
+        'Background command "Sleep for 10 seconds" completed (exit code 0)',
+    });
   });
 
   it("keeps backgrounded shell commands out of the active-workflow banner", () => {

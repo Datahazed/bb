@@ -5,6 +5,7 @@ import {
 } from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
 import {
+  filterBackgroundTaskLauncherMessages,
   parseBackgroundTaskLifecycleEvent,
   upsertBackgroundTaskMessage,
 } from "./background-task-projection.js";
@@ -745,7 +746,9 @@ function buildFlatProjectionData(
   }
 
   finalizeProjectionState({ state, options: args.options });
-  const messages = sortEventProjectionMessagesBySource(state.messages);
+  const messages = sortEventProjectionMessagesBySource(
+    filterBackgroundTaskLauncherMessages(state),
+  );
   return {
     activeThinking: args.includeActiveThinking
       ? buildProjectionActiveThinking(state, args.options?.threadStatus)

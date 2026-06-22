@@ -110,6 +110,7 @@ export function createProjectionState(): ProjectionState {
     delegatedTurnLinkCallIds: new Set(),
     toolActivity: createToolActivityState(),
     backgroundTasksByItemId: new Map(),
+    backgroundTaskParentToolCallIds: new Set(),
   };
 }
 
