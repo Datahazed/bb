@@ -71,6 +71,10 @@ function createThread(
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 2 },
+      pullRequest: { state: "not_applicable", refreshedAt: 2 },
+    },
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,
@@ -377,6 +381,8 @@ describe("buildProjectThreadGroups", () => {
         workflow: false,
         unread: false,
         unreadError: false,
+        gitChanges: false,
+        pullRequest: false,
       },
       childCount: 3,
     });
@@ -388,6 +394,8 @@ describe("buildProjectThreadGroups", () => {
         workflow: false,
         unread: false,
         unreadError: false,
+        gitChanges: false,
+        pullRequest: false,
       },
       childCount: 2,
     });

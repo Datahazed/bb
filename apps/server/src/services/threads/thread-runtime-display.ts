@@ -1,15 +1,24 @@
 import {
+  ensureEnvironmentStatusSnapshotRows,
   getEnvironment,
   getLatestSessionForHost,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestSessionsForHosts,
+  markEnvironmentStatusSnapshotsDue,
   type DbConnection,
   type HostDaemonSessionRow,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
+import {
+  threadEnvironmentGitStatusSnapshotSchema,
+  threadPullRequestSchema,
+} from "@bb/domain";
 import type {
   Thread,
   ThreadActivityState,
+  ThreadEnvironmentGitStatusSignal,
+  ThreadEnvironmentPullRequestStatusSignal,
+  ThreadEnvironmentStatusSummary,
   ThreadListEntry,
   ThreadRuntimeState,
   ThreadStatus,
@@ -56,6 +65,8 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   now?: number;
   thread: ThreadWithPendingInteractionState;
 }
+
+type SnapshotStatus = "available" | "not_applicable" | "pending" | "unavailable";
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
@@ -204,6 +215,7 @@ export function toThreadListEntryResponses(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadListEntryResponsesArgs,
 ): ThreadListEntry[] {
+  ensureSnapshotRowsForThreadListDemand(deps, args);
   const threadActivityById = new Map(
     listActiveBackgroundTaskCountsByThreadIds(deps.db, {
       threadIds: args.threads.map((thread) => thread.id),
@@ -239,6 +251,190 @@ export function toThreadListEntryResponses(
   );
 }
 
+function ensureSnapshotRowsForThreadListDemand(
+  deps: ThreadRuntimeDisplayDeps,
+  args: ToThreadListEntryResponsesArgs,
+): void {
+  const environmentIds = args.threads.flatMap((thread) =>
+    thread.environmentId !== null &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null
+      ? [thread.environmentId]
+      : [],
+  );
+  const now = args.now ?? Date.now();
+  ensureEnvironmentStatusSnapshotRows(deps.db, {
+    environmentIds,
+    now,
+  });
+  markEnvironmentStatusSnapshotsDue(deps.db, {
+    environmentIds,
+    now,
+  });
+}
+
+function normalizeSnapshotStatus(status: string | null): SnapshotStatus {
+  switch (status) {
+    case "available":
+    case "not_applicable":
+    case "pending":
+    case "unavailable":
+      return status;
+    case null:
+      return "pending";
+    default:
+      return "unavailable";
+  }
+}
+
+function snapshotUnavailableReason(args: {
+  code: string | null;
+  message: string | null;
+}) {
+  return {
+    code: args.code ?? "snapshot_unavailable",
+    message: args.message ?? "Environment status snapshot is unavailable",
+  };
+}
+
+function parseSnapshotJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function toThreadEnvironmentGitStatusSignal(
+  thread: ThreadWithPendingInteractionState,
+): ThreadEnvironmentGitStatusSignal {
+  const status = normalizeSnapshotStatus(thread.gitStatusSnapshotStatus);
+  switch (status) {
+    case "pending":
+      return { state: "pending" };
+    case "not_applicable":
+      return thread.gitStatusSnapshotRefreshedAt === null
+        ? { state: "pending" }
+        : {
+            state: "not_applicable",
+            refreshedAt: thread.gitStatusSnapshotRefreshedAt,
+          };
+    case "unavailable":
+      return thread.gitStatusSnapshotRefreshedAt === null
+        ? { state: "pending" }
+        : {
+            state: "unavailable",
+            refreshedAt: thread.gitStatusSnapshotRefreshedAt,
+            reason: snapshotUnavailableReason({
+              code: thread.gitStatusSnapshotErrorCode,
+              message: thread.gitStatusSnapshotErrorMessage,
+            }),
+          };
+    case "available": {
+      if (
+        thread.gitStatusSnapshotJson === null ||
+        thread.gitStatusSnapshotRefreshedAt === null
+      ) {
+        return { state: "pending" };
+      }
+      const parsed = threadEnvironmentGitStatusSnapshotSchema.safeParse(
+        parseSnapshotJson(thread.gitStatusSnapshotJson),
+      );
+      if (!parsed.success) {
+        return {
+          state: "unavailable",
+          refreshedAt: thread.gitStatusSnapshotRefreshedAt,
+          reason: {
+            code: "invalid_snapshot",
+            message: "Stored git status snapshot is invalid",
+          },
+        };
+      }
+      return {
+        state: "available",
+        refreshedAt: thread.gitStatusSnapshotRefreshedAt,
+        snapshot: parsed.data,
+      };
+    }
+  }
+}
+
+function toThreadEnvironmentPullRequestStatusSignal(
+  thread: ThreadWithPendingInteractionState,
+): ThreadEnvironmentPullRequestStatusSignal {
+  const status = normalizeSnapshotStatus(
+    thread.pullRequestStatusSnapshotStatus,
+  );
+  switch (status) {
+    case "pending":
+      return { state: "pending" };
+    case "not_applicable":
+      return thread.pullRequestStatusSnapshotRefreshedAt === null
+        ? { state: "pending" }
+        : {
+            state: "not_applicable",
+            refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+          };
+    case "unavailable":
+      return thread.pullRequestStatusSnapshotRefreshedAt === null
+        ? { state: "pending" }
+        : {
+            state: "unavailable",
+            refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+            reason: snapshotUnavailableReason({
+              code: thread.pullRequestStatusSnapshotErrorCode,
+              message: thread.pullRequestStatusSnapshotErrorMessage,
+            }),
+          };
+    case "available": {
+      if (thread.pullRequestStatusSnapshotRefreshedAt === null) {
+        return { state: "pending" };
+      }
+      if (thread.pullRequestStatusSnapshotJson === null) {
+        return {
+          state: "available",
+          refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+          pullRequest: null,
+        };
+      }
+      const parsed = threadPullRequestSchema.safeParse(
+        parseSnapshotJson(thread.pullRequestStatusSnapshotJson),
+      );
+      if (!parsed.success) {
+        return {
+          state: "unavailable",
+          refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+          reason: {
+            code: "invalid_snapshot",
+            message: "Stored pull request status snapshot is invalid",
+          },
+        };
+      }
+      return {
+        state: "available",
+        refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+        pullRequest: parsed.data,
+      };
+    }
+  }
+}
+
+function toThreadEnvironmentStatusSummary(
+  thread: ThreadWithPendingInteractionState,
+): ThreadEnvironmentStatusSummary {
+  if (thread.environmentId === null) {
+    return {
+      git: { state: "not_applicable", refreshedAt: thread.updatedAt },
+      pullRequest: { state: "not_applicable", refreshedAt: thread.updatedAt },
+    };
+  }
+
+  return {
+    git: toThreadEnvironmentGitStatusSignal(thread),
+    pullRequest: toThreadEnvironmentPullRequestStatusSignal(thread),
+  };
+}
+
 function toThreadListEntryResponseFromLatestSession(
   args: ToThreadListEntryResponseFromLatestSessionArgs,
 ): ThreadListEntry {
@@ -250,6 +446,7 @@ function toThreadListEntryResponseFromLatestSession(
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,
     environmentName: args.thread.environmentName,
+    environmentStatusSummary: toThreadEnvironmentStatusSummary(args.thread),
     environmentWorkspaceDisplayKind:
       args.thread.environmentWorkspaceDisplayKind,
     hasPendingInteraction: args.thread.hasPendingInteraction,

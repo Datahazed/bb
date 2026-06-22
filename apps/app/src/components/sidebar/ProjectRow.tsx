@@ -1167,6 +1167,28 @@ function EnvironmentThreadGroupHeader({
           onToggle={() => onToggleCollapsed(environmentId)}
           revealOnHover
         />
+        {isCollapsed && childActivity.gitChanges ? (
+          <span
+            aria-label="Hidden worktree thread has git changes"
+            title="Hidden worktree thread has git changes"
+            className="inline-flex size-3.5 shrink-0 items-center justify-center text-warning-text"
+          >
+            <Icon name="FileDiff" className="size-3.5" aria-hidden="true" />
+          </span>
+        ) : null}
+        {isCollapsed && childActivity.pullRequest ? (
+          <span
+            aria-label="Hidden worktree thread has a pull request"
+            title="Hidden worktree thread has a pull request"
+            className="inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground"
+          >
+            <Icon
+              name="GitPullRequest"
+              className="size-3.5"
+              aria-hidden="true"
+            />
+          </span>
+        ) : null}
       </span>
       <span
         className={cn(

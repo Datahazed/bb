@@ -221,6 +221,30 @@ export type {
 } from "./environments.js";
 
 export {
+  ensureEnvironmentStatusSnapshotRows,
+  ensureTrackedEnvironmentStatusSnapshotRows,
+  listDueEnvironmentGitStatusSnapshots,
+  listDueEnvironmentPullRequestStatusSnapshots,
+  listEnvironmentSnapshotWorkspaceWatchTargetsOnHost,
+  listEnvironmentThreadNotificationTargets,
+  listTrackedEnvironmentIds,
+  markEnvironmentGitStatusSnapshotDue,
+  markEnvironmentPullRequestStatusSnapshotDue,
+  markEnvironmentStatusSnapshotsDue,
+  writeEnvironmentGitStatusSnapshot,
+  writeEnvironmentPullRequestStatusSnapshot,
+} from "./environment-status-snapshots.js";
+export type {
+  EnvironmentGitStatusSnapshotRow,
+  EnvironmentPullRequestStatusSnapshotRow,
+  EnvironmentSnapshotWorkspaceWatchTarget,
+  EnvironmentStatusSnapshotStatus,
+  EnvironmentThreadNotificationTarget,
+  WriteEnvironmentGitStatusSnapshotArgs,
+  WriteEnvironmentPullRequestStatusSnapshotArgs,
+} from "./environment-status-snapshots.js";
+
+export {
   upsertHost,
   getHost,
   getNonDestroyedHost,

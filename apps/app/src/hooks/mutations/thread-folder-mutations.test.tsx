@@ -51,6 +51,10 @@ function makeThreadListEntry(
     environmentHostId: "host-1",
     environmentName: "Environment",
     environmentWorkspaceDisplayKind: "managed-worktree",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     ...thread,
   };
 }

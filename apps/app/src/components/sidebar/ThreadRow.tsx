@@ -10,6 +10,7 @@ import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@/components/ui/icon.js";
+import { getPullRequestAttentionDisplay } from "@/lib/pull-request-display";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -34,6 +35,7 @@ import {
   isRuntimeBusyThread,
   isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
+  threadHasEnvironmentGitChanges,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -106,6 +108,80 @@ function ThreadDraftIndicator() {
       className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
       aria-hidden="true"
     />
+  );
+}
+
+interface ThreadEnvironmentStatusIndicatorsProps {
+  childActivity: CollapsedChildActivity;
+  hasHiddenChildren: boolean;
+  thread: ThreadListEntry;
+}
+
+function ThreadEnvironmentStatusIndicators({
+  childActivity,
+  hasHiddenChildren,
+  thread,
+}: ThreadEnvironmentStatusIndicatorsProps) {
+  const ownGitChanges = threadHasEnvironmentGitChanges(thread);
+  const gitChanges =
+    ownGitChanges || (hasHiddenChildren && childActivity.gitChanges);
+  const pullRequestSummary = thread.environmentStatusSummary.pullRequest;
+  const ownPullRequest =
+    pullRequestSummary.state === "available"
+      ? pullRequestSummary.pullRequest
+      : null;
+  const hasPullRequest =
+    ownPullRequest !== null || (hasHiddenChildren && childActivity.pullRequest);
+
+  if (!gitChanges && !hasPullRequest) {
+    return null;
+  }
+
+  const pullRequestDisplay = ownPullRequest
+    ? getPullRequestAttentionDisplay(ownPullRequest)
+    : null;
+  const gitTitle =
+    ownGitChanges && hasHiddenChildren && childActivity.gitChanges
+      ? "Thread and hidden child threads have git changes"
+      : ownGitChanges
+        ? "Thread has git changes"
+        : "Hidden child thread has git changes";
+  const pullRequestTitle = ownPullRequest
+    ? `Pull request: ${pullRequestDisplay?.label ?? ownPullRequest.state}`
+    : "Hidden child thread has a pull request";
+
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-subtle-foreground">
+      {gitChanges ? (
+        <span
+          aria-label={gitTitle}
+          title={gitTitle}
+          className="inline-flex size-3.5 items-center justify-center"
+        >
+          <Icon
+            name="FileDiff"
+            className="size-3.5 text-warning-text"
+            aria-hidden="true"
+          />
+        </span>
+      ) : null}
+      {hasPullRequest ? (
+        <span
+          aria-label={pullRequestTitle}
+          title={pullRequestTitle}
+          className={cn(
+            "inline-flex size-3.5 items-center justify-center",
+            pullRequestDisplay?.className ?? "text-muted-foreground",
+          )}
+        >
+          <Icon
+            name={pullRequestDisplay?.icon ?? "GitPullRequest"}
+            className="size-3.5"
+            aria-hidden="true"
+          />
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -396,6 +472,11 @@ function ThreadRowComponent({
           />
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
+        <ThreadEnvironmentStatusIndicators
+          thread={thread}
+          hasHiddenChildren={hasHiddenChildren}
+          childActivity={childActivity}
+        />
       </span>
       <span
         className={cn(

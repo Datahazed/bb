@@ -584,6 +584,13 @@ export function optimisticallyInsertThread(
         hasPendingInteraction: false,
         pinSortKey: null,
         environmentWorkspaceDisplayKind: "other",
+        environmentStatusSummary: {
+          git: { state: "not_applicable", refreshedAt: thread.updatedAt },
+          pullRequest: {
+            state: "not_applicable",
+            refreshedAt: thread.updatedAt,
+          },
+        },
       },
       ...data,
     ]);
