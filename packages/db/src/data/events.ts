@@ -1135,7 +1135,6 @@ export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
 }
 
 export interface ActiveBackgroundTaskCountRow {
-  activeBackgroundSubagentCount: number;
   activeWorkflowCount: number;
   threadId: string;
 }
@@ -1190,9 +1189,9 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
 }
 
 /**
- * Counts open provider background tasks by thread, using each item's latest
- * start/progress row. A task can report a terminal status in a progress row
- * before the final completed event arrives, so active means the latest
+ * Counts open provider workflow background tasks by thread, using each item's
+ * latest start/progress row. A task can report a terminal status in a progress
+ * row before the final completed event arrives, so active means the latest
  * lifecycle snapshot still has item.status = "pending".
  */
 export function listActiveBackgroundTaskCountsByThreadIds(
@@ -1234,14 +1233,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
     )
     SELECT
       active_event.thread_id AS threadId,
-      COALESCE(SUM(CASE
-        WHEN json_extract(active_event.data, '$.item.taskType') = 'local_workflow'
-        THEN 1 ELSE 0
-      END), 0) AS activeWorkflowCount,
-      COALESCE(SUM(CASE
-        WHEN json_extract(active_event.data, '$.item.taskType') = 'local_agent'
-        THEN 1 ELSE 0
-      END), 0) AS activeBackgroundSubagentCount
+      COUNT(*) AS activeWorkflowCount
     FROM latest_background_task_activity latest
     JOIN events active_event
       ON active_event.thread_id = latest.thread_id
@@ -1251,6 +1243,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       AND completed.item_id = latest.item_id
     WHERE completed.item_id IS NULL
       AND json_extract(active_event.data, '$.item.status') = 'pending'
+      AND json_extract(active_event.data, '$.item.taskType') = 'local_workflow'
     GROUP BY active_event.thread_id
     ORDER BY active_event.thread_id
   `);

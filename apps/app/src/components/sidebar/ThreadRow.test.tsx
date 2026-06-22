@@ -37,7 +37,7 @@ function createThread(
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: { activeWorkflowCount: 0, activeBackgroundSubagentCount: 0 },
+    activity: { activeWorkflowCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -86,7 +86,7 @@ describe("ThreadRow", () => {
     renderThreadRow({
       thread: createThread({
         title: "Workflow thread",
-        activity: { activeWorkflowCount: 1, activeBackgroundSubagentCount: 0 },
+        activity: { activeWorkflowCount: 1 },
       }),
     });
 
@@ -103,7 +103,7 @@ describe("ThreadRow", () => {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
         },
-        activity: { activeWorkflowCount: 1, activeBackgroundSubagentCount: 0 },
+        activity: { activeWorkflowCount: 1 },
       }),
     });
 

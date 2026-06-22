@@ -25,6 +25,7 @@ import {
 import {
   type TimelineRow,
   threadComposerBootstrapResponseSchema,
+  threadListResponseSchema,
   threadQueuedMessageListResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
@@ -167,6 +168,87 @@ describe("public thread data routes", () => {
         `/api/v1/threads/${thread.id}?include=environment,timeline`,
       );
       expect(response.status).toBe(400);
+    });
+  });
+
+  it("lists only active workflow activity on public thread entries", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const workflowThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        title: "Workflow thread",
+      });
+      const localAgentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        title: "Local agent thread",
+      });
+      const backgroundTaskData = (args: {
+        id: string;
+        taskType: string;
+      }) => ({
+        item: {
+          type: "backgroundTask" as const,
+          id: args.id,
+          taskType: args.taskType,
+          description: "fixture background task",
+          status: "pending" as const,
+          taskStatus: "running" as const,
+          skipTranscript: false,
+        },
+      });
+
+      seedEvent(harness.deps, {
+        threadId: workflowThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-workflow-thread",
+        scope: turnScope("turn-workflow"),
+        sequence: 1,
+        type: "item/started",
+        data: backgroundTaskData({
+          id: "task:wf-active",
+          taskType: "local_workflow",
+        }),
+      });
+      seedEvent(harness.deps, {
+        threadId: localAgentThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-local-agent-thread",
+        scope: turnScope("turn-agent"),
+        sequence: 1,
+        type: "item/started",
+        data: backgroundTaskData({
+          id: "task:agent-active",
+          taskType: "local_agent",
+        }),
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads?projectId=${project.id}`,
+      );
+
+      expect(response.status).toBe(200);
+      const threads = threadListResponseSchema.parse(await readJson(response));
+      const activityByThreadId = new Map(
+        threads.map((thread) => [thread.id, thread.activity]),
+      );
+      expect(activityByThreadId.get(workflowThread.id)).toEqual({
+        activeWorkflowCount: 1,
+      });
+      expect(activityByThreadId.get(localAgentThread.id)).toEqual({
+        activeWorkflowCount: 0,
+      });
+      expect(
+        Object.keys(activityByThreadId.get(workflowThread.id) ?? {}),
+      ).toEqual(["activeWorkflowCount"]);
     });
   });
 

@@ -2858,13 +2858,8 @@ describe("events", () => {
     expect(countsByThreadId.get(thread.id)).toEqual({
       threadId: thread.id,
       activeWorkflowCount: 1,
-      activeBackgroundSubagentCount: 0,
     });
-    expect(countsByThreadId.get(otherThread.id)).toEqual({
-      threadId: otherThread.id,
-      activeWorkflowCount: 0,
-      activeBackgroundSubagentCount: 1,
-    });
+    expect(countsByThreadId.has(otherThread.id)).toBe(false);
   });
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
