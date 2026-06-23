@@ -28,6 +28,11 @@ export function useProjectSkills(projectId: string) {
     queryFn: ({ signal }) =>
       api.listProjectSkills({ projectId, environmentId: null, signal }),
     enabled: projectId.length > 0,
+    // Skills are on-disk files mutated out-of-band — agents write SKILL.md, and
+    // users edit them in their own editor (the detail view's "Open in editor").
+    // Always re-read from disk on mount/focus so the list never shows a stale set.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -49,6 +54,10 @@ export function useSkillContent(
         signal,
       }),
     enabled: skill !== null && projectId.length > 0,
+    // Re-read SKILL.md from disk every time the detail view opens or regains
+    // focus — the user may have just edited the file in their own editor.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
