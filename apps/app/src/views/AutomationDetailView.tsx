@@ -376,22 +376,7 @@ export function AutomationDetailContent({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {/* Always a way to view the latest run's thread when one exists. */}
-            {automation.lastRunThreadId ? (
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  to={getThreadRoutePath({
-                    projectId: automation.projectId,
-                    threadId: automation.lastRunThreadId,
-                  })}
-                  aria-label="View thread"
-                  title="View the latest run's thread"
-                >
-                  <Icon name="MessageSquare" className="size-4" />
-                  View thread
-                </Link>
-              </Button>
-            ) : null}
+            {/* "View thread" is per-run in the history, not a top-level action. */}
             <Button
               type="button"
               variant="outline"

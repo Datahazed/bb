@@ -130,17 +130,12 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain('aria-label="More loop actions"');
   });
 
-  it("renders a View thread action only when the loop has a last-run thread", () => {
-    const without = renderContent({
-      automation: makeAutomation({ lastRunThreadId: null }),
-    });
-    expect(without).not.toContain('aria-label="View thread"');
-
-    const withThread = renderContent({
+  it("has no top-level View thread action (it lives per-run in the history)", () => {
+    const markup = renderContent({
       automation: makeAutomation({ lastRunThreadId: "thr_latest" }),
     });
-    expect(withThread).toContain('aria-label="View thread"');
-    expect(withThread).toContain("thr_latest");
+    // The header no longer carries a View thread button, even with a last run.
+    expect(markup).not.toContain('aria-label="View thread"');
   });
 
   it("renders a succeeded script run with its captured output and exit code", () => {
