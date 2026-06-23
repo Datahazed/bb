@@ -264,14 +264,14 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
         </div>
       </div>
       <div className="w-44 shrink-0 text-right">
-        <div className="truncate text-xs text-muted-foreground/80">
+        <div className="truncate text-xs text-muted-foreground">
           {formatScheduleStatusLabel({
             enabled: automation.enabled,
             nextRunAt: automation.nextRunAt,
           })}
         </div>
         <div
-          className="mt-0.5 truncate text-xs text-muted-foreground/50"
+          className="mt-0.5 truncate text-xs text-subtle-foreground"
           title={cadence}
         >
           {cadence}
@@ -333,8 +333,8 @@ export function AutomationsOverview({
   );
 
   return (
-    <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
+      <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <p className="max-w-prose text-sm text-muted-foreground">
             Recurring bb agent workflows. A loop runs a full agent thread on a
@@ -381,17 +381,20 @@ export function AutomationsOverview({
                     className="flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold text-muted-foreground hover:bg-state-hover"
                   >
                     <Icon
-                      name={isCollapsed ? "ChevronRight" : "ChevronDown"}
-                      className="size-3.5 shrink-0 text-muted-foreground/70"
+                      name="ChevronRight"
+                      className={cn(
+                        "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+                        !isCollapsed && "rotate-90",
+                      )}
                       aria-hidden
                     />
                     <Icon
                       name="Folder"
-                      className="size-3.5 text-muted-foreground/70"
+                      className="size-3.5 text-muted-foreground"
                       aria-hidden
                     />
                     {group.projectName}
-                    <span className="text-muted-foreground/60">
+                    <span className="text-subtle-foreground">
                       {group.entries.length}
                     </span>
                   </button>

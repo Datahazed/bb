@@ -18,6 +18,7 @@ import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
+import { cn } from "@/lib/utils";
 import {
   useDeleteSkill,
   useProjectSkills,
@@ -105,7 +106,7 @@ function SkillRow({
       type="button"
       onClick={onSelect}
       title={skill.description ?? skill.name}
-      className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-file-accent"
+      className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <Icon
         name="Zap"
@@ -166,8 +167,8 @@ export function SkillsOverview({
   }, [skills, normalizedQuery]);
 
   return (
-    <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-4">
+    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
+      <div className="space-y-4">
         <p className="max-w-prose text-sm text-muted-foreground">
           Reusable, agent-invokable workflows. Search your skills, or describe a
           new one to have an agent build it.
@@ -176,14 +177,14 @@ export function SkillsOverview({
           <div className="relative min-w-0 flex-1">
             <Icon
               name="Search"
-              className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
               aria-label="Search skills"
               placeholder="Search skills"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-8 pl-7 pr-2 text-sm focus-visible:ring-1"
+              className="h-8 pl-8 pr-2"
             />
           </div>
           <Button type="button" size="sm" className="shrink-0" onClick={onCreateSkill}>
@@ -217,8 +218,11 @@ export function SkillsOverview({
                     className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
                   >
                     <Icon
-                      name={isCollapsed ? "ChevronRight" : "ChevronDown"}
-                      className="size-3.5 shrink-0 text-muted-foreground"
+                      name="ChevronRight"
+                      className={cn(
+                        "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+                        !isCollapsed && "rotate-90",
+                      )}
                       aria-hidden
                     />
                     {group.providerId ? (
@@ -362,7 +366,7 @@ function SkillDetailDialog({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="SKILL.md"
-            className="h-80 w-full resize-none rounded-md border border-file-accent/50 bg-card p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-file-accent"
+            className="h-80 w-full resize-none rounded-md border border-input bg-card p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         ) : (
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 font-mono text-xs leading-relaxed text-foreground">
