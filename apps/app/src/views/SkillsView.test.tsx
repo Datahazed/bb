@@ -58,18 +58,29 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-expanded="true"');
   });
 
-  it("renders a New skill create action", () => {
-    expect(render({ skills: [] })).toContain("New skill");
+  it("renders a New bb skill create action", () => {
+    expect(render({ skills: [] })).toContain("New bb skill");
   });
 
-  it("shows the empty state when there are no skills", () => {
-    expect(render({ skills: [] })).toContain("No skills yet.");
+  it("teaches create-via-prompt when there are no bb skills", () => {
+    const markup = render({ skills: [] });
+    expect(markup).toContain("Start from an example");
+    expect(markup).toContain("Scaffold to our patterns");
+  });
+
+  it("hides the teaching once a manageable bb skill exists", () => {
+    const markup = render({
+      skills: [
+        makeSkill({ name: "my-skill", provider: null, scope: "bb-user", manageable: true }),
+      ],
+    });
+    expect(markup).not.toContain("Start from an example");
   });
 
   it("shows a loading state", () => {
     const markup = render({ skills: [], isLoading: true });
     expect(markup).toContain("Loading...");
-    expect(markup).not.toContain("No skills yet.");
+    expect(markup).not.toContain("Start from an example");
   });
 
   it("shows a destructive error state", () => {

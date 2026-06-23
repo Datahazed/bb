@@ -199,6 +199,19 @@ export function readInitialPromptFromLocationState(
   return null;
 }
 
+// A seeded "create via prompt" draft (from the Skills/Loops "New …" buttons).
+// Drives a fork-style context chip above the composer so the seeded prompt
+// reads as "an agent will author this", not a dangling fragment.
+export type RootComposeCreateDraftKind = "skill" | "loop";
+
+export function readCreateDraftKindFromLocationState(
+  state: unknown,
+): RootComposeCreateDraftKind | null {
+  if (!state || typeof state !== "object") return null;
+  const candidate = (state as { createDraftKind?: unknown }).createDraftKind;
+  return candidate === "skill" || candidate === "loop" ? candidate : null;
+}
+
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
   if (thread.environmentId === null) return false;
   return (
@@ -401,6 +414,10 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
+  const [createDraftKind, setCreateDraftKind] =
+    useState<RootComposeCreateDraftKind | null>(() =>
+      readCreateDraftKindFromLocationState(location.state),
+    );
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
@@ -548,6 +565,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     const initialPrompt = readInitialPromptFromLocationState(location.state);
     if (initialPrompt === null) return;
     seedInitialPrompt({ text: initialPrompt, mentions: [], attachments: [] });
+    setCreateDraftKind(readCreateDraftKindFromLocationState(location.state));
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
@@ -858,6 +876,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
       setForkSeed(null);
+      setCreateDraftKind(null);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (props.surface === "popout") {
         props.onThreadCreated({
@@ -1203,34 +1222,70 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, []);
 
+  const handleCancelCreateDraft = useCallback(() => {
+    setCreateDraftKind(null);
+    window.requestAnimationFrame(() => {
+      promptBoxRef.current?.focusEnd();
+    });
+  }, []);
+
   const promptHeader = useMemo(() => {
-    if (forkSeed === null) return null;
-    return (
-      <div className="flex">
-        {/* `-ml-1.5` shifts the pill 6px left so its icon column lines up
-            with the prompt controls below the card. */}
-        <div
-          aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
-          title={`Forking ${forkSeed.sourceThreadTitle}`}
-          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
-        >
-          <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 truncate">
-            Forking {forkSeed.sourceThreadTitle}
-          </span>
-          <button
-            type="button"
-            aria-label="Cancel fork"
-            title="Cancel fork"
-            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={handleCancelForkDraft}
+    // `-ml-1.5` shifts the pill 6px left so its icon column lines up with the
+    // prompt controls below the card.
+    const pillClassName =
+      "-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground";
+    const cancelClassName =
+      "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    if (forkSeed !== null) {
+      return (
+        <div className="flex">
+          <div
+            aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
+            title={`Forking ${forkSeed.sourceThreadTitle}`}
+            className={pillClassName}
           >
-            <Icon name="X" className="size-3" aria-hidden />
-          </button>
+            <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">
+              Forking {forkSeed.sourceThreadTitle}
+            </span>
+            <button
+              type="button"
+              aria-label="Cancel fork"
+              title="Cancel fork"
+              className={cancelClassName}
+              onClick={handleCancelForkDraft}
+            >
+              <Icon name="X" className="size-3" aria-hidden />
+            </button>
+          </div>
         </div>
-      </div>
-    );
-  }, [forkSeed, handleCancelForkDraft]);
+      );
+    }
+    if (createDraftKind !== null) {
+      const draft =
+        createDraftKind === "skill"
+          ? { icon: "Zap" as const, label: "New bb skill" }
+          : { icon: "Repeat" as const, label: "New loop" };
+      return (
+        <div className="flex">
+          <div aria-label={draft.label} title={draft.label} className={pillClassName}>
+            <Icon name={draft.icon} className="size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{draft.label}</span>
+            <button
+              type="button"
+              aria-label={`Cancel ${draft.label.toLowerCase()}`}
+              title={`Cancel ${draft.label.toLowerCase()}`}
+              className={cancelClassName}
+              onClick={handleCancelCreateDraft}
+            >
+              <Icon name="X" className="size-3" aria-hidden />
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }, [forkSeed, handleCancelForkDraft, createDraftKind, handleCancelCreateDraft]);
 
   if (!hasSidebarNavigationSettled) {
     return (

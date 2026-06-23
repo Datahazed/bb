@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { CreateViaPromptExamples } from "@/components/create-via-prompt-examples";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -70,7 +70,8 @@ export interface AutomationsOverviewProps {
   isLoading: boolean;
   hasInitialLoadError: boolean;
   actions: AutomationRowActions;
-  onCreateAutomation: () => void;
+  /** Opens the composer to create a loop, optionally seeded with a full prompt. */
+  onCreateAutomation: (prompt?: string) => void;
 }
 
 /**
@@ -335,17 +336,13 @@ export function AutomationsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
       <div className="space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <p className="max-w-prose text-sm text-muted-foreground">
-            Recurring bb agent workflows. A loop runs a full agent thread on a
-            schedule or trigger, then reports back like any other thread.
-          </p>
+        <div className="flex justify-end">
           <Button
             type="button"
             variant="default"
             size="sm"
             className="shrink-0"
-            onClick={onCreateAutomation}
+            onClick={() => onCreateAutomation()}
           >
             <Icon name="Plus" className="size-4" />
             New loop
@@ -356,7 +353,7 @@ export function AutomationsOverview({
         ) : hasInitialLoadError ? (
           <p className="text-sm text-destructive">Failed to load loops.</p>
         ) : isEmpty ? (
-          <EmptyStatePanel className="py-6">No loops yet.</EmptyStatePanel>
+          <CreateViaPromptExamples kind="loop" onCreate={onCreateAutomation} />
         ) : (
           <div className="space-y-4">
             {personalGroup ? (
@@ -490,11 +487,18 @@ export function AutomationsView() {
     );
   }, [closeDeleteDialog, deleteDialog.target, deleteMutate]);
 
-  const handleCreateAutomation = useCallback(() => {
-    navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true, initialPrompt: CREATE_LOOP_PROMPT },
-    });
-  }, [navigate]);
+  const handleCreateAutomation = useCallback(
+    (prompt?: string) => {
+      navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: true,
+          initialPrompt: prompt ?? CREATE_LOOP_PROMPT,
+          createDraftKind: "loop",
+        },
+      });
+    },
+    [navigate],
+  );
 
   return (
     <>

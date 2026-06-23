@@ -165,15 +165,16 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Personal<");
   });
 
-  it("shows the empty state when there are no automations", () => {
+  it("teaches create-via-prompt when there are no automations", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("No loops yet.");
+    expect(markup).toContain("Start from an example");
+    expect(markup).toContain("Flaky-test sweep");
   });
 
   it("shows a muted loading state", () => {
     const markup = renderOverview({ entries: [], isLoading: true });
     expect(markup).toContain("Loading...");
-    expect(markup).not.toContain("No loops yet.");
+    expect(markup).not.toContain("Start from an example");
   });
 
   it("shows a destructive error state", () => {

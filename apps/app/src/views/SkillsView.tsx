@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { CreateViaPromptExamples } from "@/components/create-via-prompt-examples";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
@@ -126,7 +127,8 @@ export interface SkillsOverviewProps {
   skills: readonly SkillSummary[];
   isLoading: boolean;
   hasError: boolean;
-  onCreateSkill: () => void;
+  /** Opens the composer to create a skill, optionally seeded with a full prompt. */
+  onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
 }
 
@@ -155,6 +157,9 @@ export function SkillsOverview({
     });
   }, []);
   const normalizedQuery = query.trim().toLowerCase();
+  // Skills always include built-ins/provider skills, so "empty" means the user
+  // hasn't created any bb skills yet — that's when we teach create-via-prompt.
+  const hasManageableSkills = skills.some((skill) => skill.manageable);
   const groups = useMemo(() => {
     const filtered = skills.filter(
       (skill) =>
@@ -168,12 +173,8 @@ export function SkillsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
       <div className="space-y-4">
-        <p className="max-w-prose text-sm text-muted-foreground">
-          Reusable, agent-invokable workflows. Search your skills, or describe a
-          new one to have an agent build it.
-        </p>
         <div className="flex items-center gap-2">
-          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted px-2 transition-shadow focus-within:ring-1 focus-within:ring-ring">
+          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
             <Icon
               name="Search"
               className="size-3.5 shrink-0 text-muted-foreground"
@@ -188,23 +189,33 @@ export function SkillsOverview({
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <Button type="button" size="sm" className="shrink-0" onClick={onCreateSkill}>
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0"
+            onClick={() => onCreateSkill()}
+          >
             <Icon name="Plus" className="size-4" />
-            New skill
+            New bb skill
           </Button>
         </div>
         {hasError ? (
           <p className="text-sm text-destructive">Failed to load skills.</p>
         ) : isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : skills.length === 0 ? (
-          <EmptyStatePanel className="py-6">No skills yet.</EmptyStatePanel>
-        ) : groups.length === 0 ? (
-          <EmptyStatePanel className="py-6">
-            {`No skills match "${query}"`}
-          </EmptyStatePanel>
         ) : (
-          <div className="space-y-2">
+          <>
+            {!hasManageableSkills && normalizedQuery === "" ? (
+              <CreateViaPromptExamples kind="skill" onCreate={onCreateSkill} />
+            ) : null}
+            {groups.length === 0 ? (
+              normalizedQuery === "" ? null : (
+                <EmptyStatePanel className="py-6">
+                  {`No skills match "${query}"`}
+                </EmptyStatePanel>
+              )
+            ) : (
+              <div className="space-y-2">
             {groups.map((group) => {
               const isCollapsed = collapsed.has(group.key);
               return (
@@ -238,7 +249,7 @@ export function SkillsOverview({
                     </span>
                   </button>
                   {isCollapsed ? null : (
-                    <div className="max-h-64 overflow-y-auto border-t border-border-seam p-1">
+                    <div className="max-h-[max(16rem,60dvh)] overflow-y-auto border-t border-border-seam p-1">
                       <div className="flex flex-col gap-px">
                         {group.skills.map((skill) => (
                           <SkillRow
@@ -253,7 +264,9 @@ export function SkillsOverview({
                 </section>
               );
             })}
-          </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </PageShell>
@@ -476,11 +489,18 @@ export function SkillsView() {
   const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
-  const handleCreateSkill = useCallback(() => {
-    navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true, initialPrompt: CREATE_SKILL_PROMPT },
-    });
-  }, [navigate]);
+  const handleCreateSkill = useCallback(
+    (prompt?: string) => {
+      navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: true,
+          initialPrompt: prompt ?? CREATE_SKILL_PROMPT,
+          createDraftKind: "skill",
+        },
+      });
+    },
+    [navigate],
+  );
   return (
     <>
       <SkillsOverview
