@@ -104,7 +104,7 @@ export function ThreadGitActionDialog({
 
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[34rem] gap-0 overflow-hidden border-border bg-background p-0 shadow-lg">
+      <DialogContent className="max-w-[34rem] gap-0 overflow-hidden border-border bg-background p-0 shadow-xl">
         {target && dialogCopy ? (
           <ThreadGitActionDialogContent
             key={target.kind}
