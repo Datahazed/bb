@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
-import { Input } from "@/components/ui/input.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -174,17 +173,19 @@ export function SkillsOverview({
           new one to have an agent build it.
         </p>
         <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
+          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted px-2 transition-shadow focus-within:ring-1 focus-within:ring-ring">
             <Icon
               name="Search"
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
             />
-            <Input
+            <input
               aria-label="Search skills"
               placeholder="Search skills"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-8 pl-8 pr-2"
+              autoComplete="off"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
           <Button type="button" size="sm" className="shrink-0" onClick={onCreateSkill}>
