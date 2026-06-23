@@ -264,7 +264,10 @@ const Sidebar = React.forwardRef<
               // Adjust the padding for floating and inset variants.
               variant === "floating" || variant === "inset"
                 ? "md:p-2 md:group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-                : "md:group-data-[collapsible=icon]:w-(--sidebar-width-icon) md:border-border-seam-vertical md:group-data-[side=left]:border-r md:group-data-[side=right]:border-l",
+                : // The left-side seam moves to the content pane (SidebarInset)
+                  // so it follows the pane's rounded-left corner; the panel keeps
+                  // only the right-side seam for the (unused) right variant.
+                  "md:group-data-[collapsible=icon]:w-(--sidebar-width-icon) md:border-border-seam-vertical md:group-data-[side=right]:border-l",
               className,
             )}
             data-open={openMobile}
@@ -349,7 +352,12 @@ const SidebarInset = React.forwardRef<
     <main
       ref={ref}
       className={cn(
-        "relative flex min-h-svh min-w-0 flex-1 flex-col overflow-hidden rounded-l-2xl bg-background",
+        // The pane carries the left seam border itself so it traces the
+        // rounded-l corner (a straight border on the sidebar can't), which is
+        // what makes the corner radius actually read against the near-identical
+        // sidebar tone. Dropped when the sidebar is fully off-canvas so no stray
+        // line sits at the window edge.
+        "relative flex min-h-svh min-w-0 flex-1 flex-col overflow-hidden rounded-l-2xl border-border-seam-vertical bg-background md:border-l md:peer-data-[collapsible=offcanvas]:border-l-0",
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))] md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}

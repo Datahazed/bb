@@ -435,8 +435,10 @@ export function QueuedMessagesList({
       ariaLabel="Queued messages"
       // Tuck the drawer's flat, borderless bottom behind the prompt box (which
       // is `relative` + opaque, so it paints on top) so the queued list reads as
-      // coming up from behind the composer rather than floating above it.
-      className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3"
+      // coming up from behind the composer rather than floating above it. No
+      // shadow here: it tucks behind the composer rather than floating above it,
+      // and a drop shadow on the tucked bottom edge bleeds out as an artifact.
+      className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3 shadow-none"
     >
       <div className="px-1.5 pb-1 pt-2.5">
         <button
