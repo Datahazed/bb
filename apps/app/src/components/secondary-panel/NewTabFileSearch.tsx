@@ -53,6 +53,8 @@ export interface NewTabFileSearchProps {
   idleActions: ReactNode;
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
+  recentItemsThreadId?: string | null;
+  showFileSearch?: boolean;
 }
 
 export type OpenBrowserHandler = () => void;
@@ -477,6 +479,8 @@ export function NewTabFileSearch({
   idleActions,
   initialQuery = "",
   onSelect,
+  recentItemsThreadId,
+  showFileSearch = true,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
@@ -486,9 +490,13 @@ export function NewTabFileSearch({
   // Captured once on mount: the launcher is transient, so a static "now" keeps
   // every relative timestamp consistent within a single open without ticking.
   const [nowMs] = useState(() => Date.now());
-  const recentItems = useThreadRecentItems(
-    currentThreadId.length > 0 ? currentThreadId : null,
-  );
+  const defaultRecentItemsThreadId =
+    currentThreadId.length > 0 ? currentThreadId : null;
+  const recentItemsStorageThreadId =
+    recentItemsThreadId === undefined
+      ? defaultRecentItemsThreadId
+      : recentItemsThreadId;
+  const recentItems = useThreadRecentItems(recentItemsStorageThreadId);
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
   const { suggestions, isLoading, fileSearchError, isDebouncing, isUnavailable } =
@@ -635,6 +643,10 @@ export function NewTabFileSearch({
   // least one option. Gate the combobox relationship on that so
   // `aria-controls`/`aria-activedescendant` never point at an absent element.
   const hasListbox = !isSearchDisabled && navigableEntries.length > 0;
+
+  if (!showFileSearch) {
+    return <div className="flex min-w-0 flex-col gap-3">{idleActions}</div>;
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-3">

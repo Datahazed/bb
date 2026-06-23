@@ -171,6 +171,7 @@ function SidebarFolderRowComponent({
             <ThreadStatusGlyph
               hasPendingInteraction={activity.pending}
               isBusy={activity.working}
+              isWorkflowActive={activity.workflow}
               showUnreadBadge={activity.unread}
               unreadBadgeTone={activity.unreadError ? "error" : "default"}
             />

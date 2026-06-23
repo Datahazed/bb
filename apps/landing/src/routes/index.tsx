@@ -25,7 +25,7 @@ import {
   Tick02Icon,
   ZapIcon,
 } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -41,6 +41,28 @@ import { CLI_COMMAND, GITHUB_URL, downloadMacosHref } from "../site";
 export const Route = createFileRoute("/")({
   component: LandingPage,
 });
+
+// Filled (solid) variant of the Hugeicons apple — same silhouette as their
+// stroke AppleIcon, but rendered as a fill so the macOS CTA reads as a solid
+// glyph (the free icon set ships outline variants only).
+const AppleSolidIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M12 5.75C12 3.75 13.5 1.75 15.5 1.75C15.5 3.75 14 5.75 12 5.75Z",
+      fill: "currentColor",
+      key: "0",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M12.5 8.09001C11.9851 8.09001 11.5867 7.92646 11.1414 7.74368C10.5776 7.51225 9.93875 7.25 8.89334 7.25C7.02235 7.25 4 8.74945 4 12.7495C4 17.4016 7.10471 22.25 9.10471 22.25C9.77426 22.25 10.3775 21.9871 10.954 21.7359C11.4815 21.5059 11.9868 21.2857 12.5 21.2857C13.0132 21.2857 13.5185 21.5059 14.046 21.7359C14.6225 21.9871 15.2257 22.25 15.8953 22.25C17.2879 22.25 18.9573 19.8992 20 16.9008C18.3793 16.2202 17.338 14.618 17.338 12.75C17.338 11.121 18.2036 10.0398 19.5 9.25C18.5 7.75 17.0134 7.25 15.9447 7.25C14.8993 7.25 14.2604 7.51225 13.6966 7.74368C13.2514 7.92646 13.0149 8.09001 12.5 8.09001Z",
+      fill: "currentColor",
+      key: "1",
+    },
+  ],
+];
 
 /* ── CTAs ─────────────────────────────────────────────────────────── */
 
@@ -76,7 +98,10 @@ function GitHubLink({ placement, className, children }: CtaLinkProps) {
   );
 }
 
-function InstallCommand({ placement }: { placement: CtaPlacement }) {
+// The browser install path, rendered as an outline button whose body is the
+// run command. Clicking anywhere copies it (there's no hosted URL to open —
+// the command starts bb locally and opens it in the browser).
+function RunCommandButton({ placement }: { placement: CtaPlacement }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     // Track and show feedback first; the clipboard write can reject (no user
@@ -90,16 +115,52 @@ function InstallCommand({ placement }: { placement: CtaPlacement }) {
     navigator.clipboard.writeText(CLI_COMMAND).catch(() => {});
   };
   return (
-    <div className="install mono">
-      <span className="dollar">$</span>
-      <span>{CLI_COMMAND}</span>
-      <button
-        type="button"
-        className={copied ? "copied" : undefined}
-        onClick={copy}
+    <button
+      type="button"
+      className={
+        copied
+          ? "btn btn-ghost btn-install cmd-btn copied"
+          : "btn btn-ghost btn-install cmd-btn"
+      }
+      onClick={copy}
+      aria-label={`Copy browser install command: ${CLI_COMMAND}`}
+    >
+      <span className="cmd-dollar">$</span>
+      <span className="cmd-text">{CLI_COMMAND}</span>
+      <span className="cmd-copy">Copy</span>
+      {/* Toast floats above the button (absolute) so confirming the copy never
+          reflows the centered CTA row — the label stays a fixed width. */}
+      <span
+        className={copied ? "cmd-toast show" : "cmd-toast"}
+        aria-hidden="true"
       >
-        {copied ? "✓ Copied" : "Copy"}
-      </button>
+        Copied to clipboard
+      </span>
+    </button>
+  );
+}
+
+function InstallOptions({ placement }: { placement: CtaPlacement }) {
+  return (
+    <div className="install-options">
+      <div className="install-actions">
+        <span className="install-choice">
+          <DownloadLink
+            placement={placement}
+            className="btn btn-primary btn-install"
+          >
+            <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />
+            Download for macOS
+          </DownloadLink>
+          <span className="install-note">One-click, no terminal</span>
+        </span>
+        <span className="install-choice">
+          <RunCommandButton placement={placement} />
+          <span className="install-note">
+            Windows, Linux &amp; remote machines
+          </span>
+        </span>
+      </div>
     </div>
   );
 }
@@ -178,6 +239,46 @@ function useConstructMock() {
         window.clearTimeout(timer);
       }
     };
+  }, []);
+}
+
+/** Scale the desktop app mock for narrow viewports. Below the mobile breakpoint
+ *  the mock keeps its full desktop layout and is shrunk with `zoom` so a fixed
+ *  left slice of the app (`--mock-visible-width`) fills the available width; the
+ *  rest bleeds off the right edge, clipped by `.mockup-wrap`'s overflow. This
+ *  stays legible instead of shrinking the whole app to fit. `--mock-visible-width`
+ *  is defined only inside that breakpoint, so above it the variable is unset and
+ *  the mock renders unscaled at its natural width. */
+function useFitMock() {
+  useEffect(() => {
+    const mock = document.querySelector<HTMLElement>(".mock");
+    const wrap = mock?.parentElement;
+    if (!mock || !wrap) {
+      return;
+    }
+    const fit = () => {
+      const wrapStyle = getComputedStyle(wrap);
+      const visibleWidth = Number.parseFloat(
+        getComputedStyle(mock).getPropertyValue("--mock-visible-width"),
+      );
+      if (!visibleWidth) {
+        // Desktop layout (variable unset above the breakpoint): no scaling.
+        mock.style.removeProperty("--mock-scale");
+        return;
+      }
+      // The card is inset by the wrap's side padding (its left gutter holds the
+      // drop shadow), so its on-screen width is the content box — clientWidth
+      // minus the padding — not clientWidth itself.
+      const slice =
+        wrap.clientWidth -
+        Number.parseFloat(wrapStyle.paddingLeft) -
+        Number.parseFloat(wrapStyle.paddingRight);
+      mock.style.setProperty("--mock-scale", String(slice / visibleWidth));
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(wrap);
+    return () => observer.disconnect();
   }, []);
 }
 
@@ -838,9 +939,6 @@ function HeroAppMock() {
   const [activeId, setActiveId] = useState(HERO_THREADS[0].id);
   const [view, setView] = useState<"thread" | "new">("thread");
   const [diffOpen, setDiffOpen] = useState(false);
-  // Mobile sidebar drawer (mirrors the app's openMobile nav). Inert on desktop,
-  // where the sidebar is always in-flow.
-  const [navOpen, setNavOpen] = useState(false);
   // Subagents a running thread spawns, keyed by parent id. They persist once
   // spawned and render as nested child rows in the sidebar.
   const [spawned, setSpawned] = useState<Record<string, MockThread[]>>({});
@@ -856,7 +954,6 @@ function HeroAppMock() {
   const openThread = (id: string) => {
     setActiveId(id);
     setView("thread");
-    setNavOpen(false);
   };
 
   const handleSpawn = useCallback((parentId: string, child: MockThread) => {
@@ -883,15 +980,9 @@ function HeroAppMock() {
               <i />
               <i />
             </span>
-            <button
-              type="button"
-              className="bar-menu"
-              aria-label="Toggle sidebar"
-              aria-expanded={navOpen}
-              onClick={() => setNavOpen((open) => !open)}
-            >
+            <span className="bar-menu" aria-hidden>
               <PanelIcon className="ri bar-ic" />
-            </button>
+            </span>
             <span className="bar-nav" aria-hidden>
               <ChevronLeft className="ri" />
               <ChevronRight className="ri" />
@@ -925,25 +1016,14 @@ function HeroAppMock() {
           </div>
         </div>
         <div className="mock-body">
-          {navOpen ? (
-            <button
-              type="button"
-              className="nav-backdrop"
-              aria-label="Close sidebar"
-              onClick={() => setNavOpen(false)}
-            />
-          ) : null}
-          <aside className={navOpen ? "side nav-open" : "side"}>
+          <aside className="side">
             <button
               type="button"
               className={
                 view === "new" ? "side-act active-act" : "side-act"
               }
               aria-pressed={view === "new"}
-              onClick={() => {
-                setView("new");
-                setNavOpen(false);
-              }}
+              onClick={() => setView("new")}
             >
               <NewThreadIcon className="sa-ic" />
               New thread
@@ -1269,30 +1349,102 @@ function AutomationRun() {
   );
 }
 
-/* ── Band 5 visual: one agent runs another ────────────────────────── */
+/* ── Band 5 visual: one agent spawns and manages a thread per provider ── */
 
-function ProviderTree() {
+// A bb sidebar mock: a parent Claude thread with three worker threads nested
+// beneath it on a connector rail, one per provider. Each worker's status flips
+// running → done; the parent manages until they all land, then ships. Mirrors
+// the run-receipt pill and reveal timing — the list replays each cycle.
+function SpawnRow({
+  icon,
+  name,
+  task,
+  status,
+  at,
+  doneAt,
+  parent,
+}: {
+  icon: ReactNode;
+  name: string;
+  task: string;
+  status: string;
+  at: number;
+  doneAt: number;
+  parent?: boolean;
+}) {
   return (
-    <div className="ptree" aria-label="One agent spawning workers on other providers">
-      <div className="pnode parent">
-        <ClaudeIcon className="pn-icon" />
-        <span className="pn-name">Claude Code</span>
-        <span className="pn-task">Ship the release</span>
+    <div
+      className={parent ? "sb-thread sb-parent" : "sb-thread"}
+      style={{ animationDelay: `${at}s` }}
+    >
+      <span className="sb-prov" aria-hidden>
+        {icon}
+      </span>
+      <span className="sb-body">
+        <span className="sb-name">{name}</span>
+        <span className="sb-task">{task}</span>
+      </span>
+      <span className="sb-stat" aria-hidden>
+        <span className="sb-run" style={{ animationDelay: `${doneAt}s` }}>
+          <span className="sb-dot" />
+          {status}
+        </span>
+        <span className="sb-done" style={{ animationDelay: `${doneAt}s` }}>
+          <CheckIcon className="sb-check" />
+          done
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function SpawnSidebar() {
+  const { cycle, leaving } = useCycle(5600, 500);
+  return (
+    <div
+      className="spawnbar"
+      aria-label="bb spawns and manages a worker thread for each provider"
+    >
+      <div className="sb-head">
+        <img src={bbIcon} alt="" className="sb-mark" />
+        <span className="sb-title">Threads</span>
+        <span className="sb-active">4 active</span>
       </div>
-      <div className="pbranch" aria-hidden>
-        <span />
-        <span />
-      </div>
-      <div className="pchildren">
-        <div className="pnode">
-          <OpenAiIcon className="pn-icon" />
-          <span className="pn-name">Codex</span>
-          <span className="pn-task">Port module to TS</span>
-        </div>
-        <div className="pnode">
-          <PiIcon className="pn-icon" />
-          <span className="pn-name">Pi</span>
-          <span className="pn-task">Write release notes</span>
+      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
+        <SpawnRow
+          parent
+          icon={<ClaudeIcon className="sb-ic" />}
+          name="Claude Code"
+          task="Ship the release"
+          status="managing"
+          at={0.1}
+          doneAt={4}
+        />
+        <div className="sb-kids">
+          <SpawnRow
+            icon={<OpenAiIcon className="sb-ic" />}
+            name="Codex"
+            task="Port module to TS"
+            status="running"
+            at={0.6}
+            doneAt={2.3}
+          />
+          <SpawnRow
+            icon={<CursorIcon className="sb-ic" />}
+            name="Cursor"
+            task="Refactor the auth flow"
+            status="running"
+            at={1}
+            doneAt={3}
+          />
+          <SpawnRow
+            icon={<PiIcon className="sb-ic" />}
+            name="Pi"
+            task="Write release notes"
+            status="running"
+            at={1.4}
+            doneAt={3.7}
+          />
         </div>
       </div>
     </div>
@@ -1304,6 +1456,7 @@ function ProviderTree() {
 function LandingPage() {
   useScrollReveal();
   useConstructMock();
+  useFitMock();
   return (
     <div className="wrap">
       <nav className="nav">
@@ -1328,16 +1481,7 @@ function LandingPage() {
           and automations drive it for you.
         </p>
 
-        <div className="cta-row">
-          <DownloadLink placement="hero" className="btn btn-primary">
-            Download for macOS
-          </DownloadLink>
-          <GitHubLink placement="hero" className="btn btn-ghost">
-            Star on GitHub
-          </GitHubLink>
-        </div>
-
-        <InstallCommand placement="hero" />
+        <InstallOptions placement="hero" />
 
         <div className="providers">
           <span className="label">Works with</span>
@@ -1371,7 +1515,7 @@ function LandingPage() {
       <Band
         title="The gang's all here"
         flip
-        visual={<ProviderTree />}
+        visual={<SpawnSidebar />}
       >
         <p>
           Claude Code, Codex, Cursor, and Pi all live in bb. Give a task to
@@ -1395,11 +1539,6 @@ function LandingPage() {
           organization. It still runs local-first on your machines, on the
           provider subscriptions you already pay for.
         </p>
-        <p className="facts">
-          <span>MIT licensed</span>
-          <span>Fork and customize</span>
-          <span>Self-host in your org</span>
-        </p>
         <div className="cta-row">
           <GitHubLink placement="local" className="btn btn-ghost">
             View the source →
@@ -1410,10 +1549,8 @@ function LandingPage() {
       <section className="closer" data-reveal>
         <h2 className="sec-title">Start your first loop.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
-        <div className="cta-row">
-          <DownloadLink placement="closer" className="btn btn-primary">
-            Download for macOS
-          </DownloadLink>
+        <InstallOptions placement="closer" />
+        <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
           </GitHubLink>

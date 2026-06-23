@@ -9,8 +9,8 @@ import {
 
 export const terminalSessionSchema = z.object({
   id: z.string().min(1),
-  threadId: z.string().min(1),
-  environmentId: z.string().min(1),
+  threadId: z.string().min(1).nullable(),
+  environmentId: z.string().min(1).nullable(),
   hostId: z.string().min(1),
   title: z.string().min(1),
   initialCwd: z.string().min(1),
@@ -25,18 +25,68 @@ export const terminalSessionSchema = z.object({
 });
 export type TerminalSession = z.infer<typeof terminalSessionSchema>;
 
-export const threadTerminalListResponseSchema = z.object({
+export const terminalListResponseSchema = z.object({
   sessions: z.array(terminalSessionSchema),
 });
-export type ThreadTerminalListResponse = z.infer<
-  typeof threadTerminalListResponseSchema
->;
+export type TerminalListResponse = z.infer<typeof terminalListResponseSchema>;
 
-export const createThreadTerminalRequestSchema = z
+export const terminalListQuerySchema = z
+  .object({
+    cwd: z.string().trim().min(1).optional(),
+    environmentId: z.string().min(1).optional(),
+    hostId: z.string().min(1).optional(),
+    threadId: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((query, context) => {
+    const scopeCount = [
+      query.threadId !== undefined,
+      query.environmentId !== undefined,
+      query.hostId !== undefined,
+    ].filter(Boolean).length;
+    if (scopeCount !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Exactly one terminal scope must be provided: threadId, environmentId, or hostId",
+      });
+    }
+    if (query.cwd !== undefined && query.hostId === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "cwd can only be provided with hostId",
+      });
+    }
+  });
+export type TerminalListQuery = z.infer<typeof terminalListQuerySchema>;
+
+export const terminalCreateTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("thread"),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("environment"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host_path"),
+      hostId: z.string().min(1),
+      cwd: z.string().trim().min(1).nullable(),
+    })
+    .strict(),
+]);
+export type TerminalCreateTarget = z.infer<typeof terminalCreateTargetSchema>;
+
+export const createTerminalRequestSchema = z
   .object({
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
-    title: z.string().trim().min(1).max(200).optional(),
     start: z
       .discriminatedUnion("mode", [
         z
@@ -52,30 +102,26 @@ export const createThreadTerminalRequestSchema = z
           .strict(),
       ])
       .optional(),
+    target: terminalCreateTargetSchema,
+    title: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
-export type CreateThreadTerminalRequest = z.infer<
-  typeof createThreadTerminalRequestSchema
->;
+export type CreateTerminalRequest = z.infer<typeof createTerminalRequestSchema>;
 
-export const closeThreadTerminalRequestSchema = z
+export const closeTerminalRequestSchema = z
   .object({
     mode: z.enum(["force", "if-clean"]),
     reason: z.literal("user"),
   })
   .strict();
-export type CloseThreadTerminalRequest = z.infer<
-  typeof closeThreadTerminalRequestSchema
->;
+export type CloseTerminalRequest = z.infer<typeof closeTerminalRequestSchema>;
 
-export const updateThreadTerminalRequestSchema = z
+export const updateTerminalRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
   })
   .strict();
-export type UpdateThreadTerminalRequest = z.infer<
-  typeof updateThreadTerminalRequestSchema
->;
+export type UpdateTerminalRequest = z.infer<typeof updateTerminalRequestSchema>;
 
 export const terminalOutputChunkSchema = z
   .object({

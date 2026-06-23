@@ -1202,6 +1202,194 @@ describe("timeline CLI rendering snapshots", () => {
     });
   });
 
+  it("does not attach later human turns to Codex same-provider receiver delegations", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "parent-turn",
+    });
+    const parentToolCallId = "call_MV1jTrxEd9bsYdEXQo1PhVOs";
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: parentToolCallId,
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Run the child command",
+          senderThreadId: "root-provider",
+          receiverThreadIds: ["root-provider"],
+        },
+      }),
+      event.turnCompleted(),
+      event.turnStarted({
+        turnId: "child-turn",
+        parentToolCallId,
+      }),
+      event.commandStarted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+      }),
+      event.turnStarted({ turnId: "follow-up-turn" }),
+      event.assistantCompleted({
+        itemId: "follow-up-assistant",
+        turnId: "follow-up-turn",
+        text: "follow-up done",
+      }),
+      event.commandCompleted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+        aggregatedOutput: "CHILD_REAL_PROVIDER_DONE\n",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "follow-up-turn",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "work",
+          workKind: "command",
+          turnId: "child-turn",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "follow-up-turn"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "follow-up done",
+      turnId: "follow-up-turn",
+    });
+  });
+
+  it("keeps accepted human turns top-level when persisted Codex child links are stale", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "parent-turn",
+    });
+    const parentToolCallId = "call_XLYYu5d3CKM9X51TRxrIJauc";
+    const followUpRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Queued follow-up during delegated child work.",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: parentToolCallId,
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Run the child command",
+          senderThreadId: "root-provider",
+          receiverThreadIds: [],
+        },
+      }),
+      event.toolCallCompleted({
+        itemId: parentToolCallId,
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Run the child command",
+          senderThreadId: "root-provider",
+          receiverThreadIds: ["child-provider-thread"],
+        },
+        result: {
+          "child-provider-thread": {
+            status: "pendingInit",
+            message: null,
+          },
+        },
+      }),
+      event.turnStarted({
+        turnId: "child-turn",
+        parentToolCallId,
+      }),
+      event.commandStarted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+        parentToolCallId,
+      }),
+      event.turnCompleted({ turnId: "parent-turn" }),
+      followUpRequest,
+      event.turnStarted({
+        turnId: "follow-up-turn",
+        parentToolCallId,
+      }),
+      event.inputAccepted({
+        clientRequestId: followUpRequest.data.requestId,
+        turnId: "follow-up-turn",
+      }),
+      event.assistantCompleted({
+        itemId: "follow-up-assistant",
+        turnId: "follow-up-turn",
+        text: "follow-up done",
+        parentToolCallId,
+      }),
+      event.commandCompleted({
+        itemId: "child-command",
+        turnId: "child-turn",
+        command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
+        aggregatedOutput: "CHILD_REAL_PROVIDER_DONE\n",
+        parentToolCallId,
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "follow-up-turn",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "work",
+          workKind: "command",
+          turnId: "child-turn",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "follow-up-turn"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "follow-up done",
+      turnId: "follow-up-turn",
+    });
+  });
+
   it("keeps streaming Codex same-provider child turns out of top-level rows", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
@@ -1262,6 +1450,133 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
+  });
+
+  it("nests persisted child turns from turn started parent ids", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review the branch",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.turnStarted({
+        turnId: "child-turn-1",
+        parentToolCallId: "delegation-1",
+      }),
+      event.assistantCompleted({
+        itemId: "child-assistant-1",
+        turnId: "child-turn-1",
+        text: "Child done.",
+      }),
+      event.turnCompleted({ turnId: "child-turn-1" }),
+      event.turnCompleted(),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const topLevelChildRows = timeline.rows.filter(
+      (row) => row.turnId === "child-turn-1",
+    );
+
+    expect(topLevelChildRows).toHaveLength(0);
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Child done.",
+          turnId: "child-turn-1",
+        }),
+      ]),
+    );
+  });
+
+  it("drains pending same-provider links when child turns have explicit parent ids", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review the branch",
+          receiverThreadIds: [],
+        },
+      }),
+      event.turnStarted({
+        turnId: "child-turn-1",
+        parentToolCallId: "delegation-1",
+      }),
+      event.assistantCompleted({
+        itemId: "child-assistant-1",
+        turnId: "child-turn-1",
+        text: "Child done.",
+      }),
+      event.turnCompleted({ turnId: "child-turn-1" }),
+      event.turnCompleted(),
+      event.turnStarted({ turnId: "turn-2" }),
+      event.assistantCompleted({
+        itemId: "root-assistant-2",
+        turnId: "turn-2",
+        text: "Root follow-up is separate.",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "turn-2",
+    );
+
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Child done.",
+          turnId: "child-turn-1",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "turn-2"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "Root follow-up is separate.",
+      turnId: "turn-2",
+    });
   });
 
   it("renders pending delegation children as flat rows even with mixed statuses", () => {

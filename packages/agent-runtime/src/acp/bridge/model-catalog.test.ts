@@ -56,20 +56,70 @@ describe("acp model catalog", () => {
     ).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
-  it("keeps -fast variants as their own family", () => {
+  it("folds -fast variants into the family as a service tier", () => {
     const catalog = catalogFromSample();
-    const fast = catalog.models.find((m) => m.id === "gpt-5.3-codex-fast");
+    // No standalone `-fast` family is offered in the picker anymore.
+    expect(catalog.models.some((m) => m.id.endsWith("-fast"))).toBe(false);
     expect(
-      fast?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["low", "medium"]);
+      catalog.models.find((m) => m.id === "gpt-5.3-codex-fast"),
+    ).toBeUndefined();
+    // The family's reasoning ladder comes from the non-fast members.
+    const codex = catalog.models.find((m) => m.id === "gpt-5.3-codex");
+    expect(
+      codex?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
+    // The fast tail is reachable through serviceTier instead of a new entry.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "low",
+        serviceTier: "fast",
+      }),
+    ).toBe("gpt-5.3-codex-low-fast");
+    // The default tier resolves to the normal id.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "low",
+        serviceTier: "default",
+      }),
+    ).toBe("gpt-5.3-codex-low");
+    // An effort with no fast twin falls back to the normal id under fast.
+    expect(
+      catalog.resolveVariant({
+        model: "gpt-5.3-codex",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      }),
+    ).toBe("gpt-5.3-codex-high");
+  });
+
+  it("resolves fast at the default effort when no reasoning level is given", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "composer-2.5 - Composer 2.5",
+          "composer-2.5-fast - Composer 2.5 Fast",
+        ].join("\n"),
+      ),
+    );
+    // composer's `-fast` twin folds in — one family, fast id reachable as a tier.
+    expect(catalog?.models.map((m) => m.id)).toEqual(["composer-2.5"]);
+    expect(
+      catalog?.resolveVariant({ model: "composer-2.5", serviceTier: "fast" }),
+    ).toBe("composer-2.5-fast");
+    expect(catalog?.resolveVariant({ model: "composer-2.5" })).toBe(
+      "composer-2.5",
+    );
   });
 
   it("maps the extra-high spelling onto xhigh and resolves it back exactly", () => {
     const catalog = catalogFromSample();
     const gpt55 = catalog.models.find((m) => m.id === "gpt-5.5-medium");
+    // The explicit `gpt-5.5-none` id contributes the "none" level.
     expect(
       gpt55?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["low", "medium", "xhigh"]);
+    ).toEqual(["none", "low", "medium", "xhigh"]);
     expect(
       catalog.resolveVariant({ model: "gpt-5.5-medium", reasoningLevel: "xhigh" }),
     ).toBe("gpt-5.5-extra-high");
@@ -88,7 +138,7 @@ describe("acp model catalog", () => {
     ).toBe("gpt-5.1-codex-max-high");
   });
 
-  it("strips the default variant's effort word from the family name", () => {
+  it("strips the effort word and picker noise from the family name", () => {
     const catalog = buildAgentModelCatalog(
       parseAgentModelLines(
         [
@@ -98,14 +148,77 @@ describe("acp model catalog", () => {
         ].join("\n"),
       ),
     );
+    // 1M, the (NO ZDR) marker, the "Thinking" marker, and the default
+    // variant's effort word are all stripped.
     expect(catalog?.models.map((m) => m.displayName)).toEqual([
-      "Opus 4.8 1M",
-      "Fable 5 1M Thinking (NO ZDR)",
+      "Opus 4.8",
+      "Fable 5",
     ]);
     // The raw variant names survive as per-effort descriptions.
     expect(
       catalog?.models[0]?.supportedReasoningEfforts.map((e) => e.description),
     ).toEqual(["Opus 4.8 1M Medium", "Opus 4.8 1M"]);
+  });
+
+  it("strips 1M, NO ZDR, and Cursor's default/current annotations", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "composer-2.5 - Composer 2.5 (current)",
+          "composer-2.5-fast - Composer 2.5 Fast (default)",
+          "gpt-5.5-medium - GPT-5.5 1M",
+          "claude-fable-5-high - Fable 5 1M (NO ZDR)",
+        ].join("\n"),
+      ),
+    );
+    expect(catalog?.models.map((m) => m.displayName)).toEqual([
+      "Composer 2.5",
+      "GPT-5.5",
+      "Fable 5",
+    ]);
+    // The family id stays the non-fast variant; fast is the opt-in tier.
+    expect(catalog?.models.map((m) => m.id)).toEqual([
+      "composer-2.5",
+      "gpt-5.5-medium",
+      "claude-fable-5-high",
+    ]);
+  });
+
+  it("merges infix-thinking variants into one entry with a none level", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "claude-opus-4-8-low - Opus 4.8 1M Low",
+          "claude-opus-4-8-medium - Opus 4.8 1M Medium",
+          "claude-opus-4-8-thinking-low - Opus 4.8 1M Low Thinking",
+          "claude-opus-4-8-thinking-medium - Opus 4.8 1M Medium Thinking",
+        ].join("\n"),
+      ),
+    );
+    // One clean entry, defaulting to the thinking medium, with "none" at the
+    // bottom of the ladder.
+    expect(catalog?.models).toHaveLength(1);
+    const opus = catalog?.models[0];
+    expect(opus?.id).toBe("claude-opus-4-8-thinking-medium");
+    expect(opus?.displayName).toBe("Opus 4.8");
+    expect(opus?.defaultReasoningEffort).toBe("medium");
+    expect(
+      opus?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["none", "low", "medium"]);
+    // "none" picks the medium-effort non-thinking representative; thinking
+    // efforts resolve to the thinking ids.
+    expect(
+      catalog?.resolveVariant({
+        model: "claude-opus-4-8-thinking-medium",
+        reasoningLevel: "none",
+      }),
+    ).toBe("claude-opus-4-8-medium");
+    expect(
+      catalog?.resolveVariant({
+        model: "claude-opus-4-8-thinking-medium",
+        reasoningLevel: "low",
+      }),
+    ).toBe("claude-opus-4-8-thinking-low");
   });
 
   it("orders reasoning efforts low → max regardless of listing order", () => {
@@ -135,34 +248,44 @@ describe("acp model catalog", () => {
     ).toBe("Codex 5.1 Max");
   });
 
-  it("defaults effort-less and unrecognized ids to standalone models", () => {
+  it("folds an explicit -none id into the family's none level", () => {
     const catalog = catalogFromSample();
-    const none = catalog.models.find((m) => m.id === "gpt-5.5-none");
+    // gpt-5.5-none is no longer offered as its own standalone model.
+    expect(catalog.models.find((m) => m.id === "gpt-5.5-none")).toBeUndefined();
     expect(
-      none?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["medium"]);
-    // `…-high-thinking` does not follow base[-effort][-fast]; stays standalone.
-    const thinking = catalog.models.find(
-      (m) => m.id === "claude-4.6-opus-high-thinking",
-    );
-    expect(
-      thinking?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["medium"]);
+      catalog.resolveVariant({
+        model: "gpt-5.5-medium",
+        reasoningLevel: "none",
+      }),
+    ).toBe("gpt-5.5-none");
   });
 
-  it("falls back to the first variant when a family has no medium", () => {
+  it("merges thinking with its non-thinking twins, defaulting to a thinking effort when there is no medium", () => {
     const catalog = catalogFromSample();
-    const opus = catalog.models.find((m) => m.id === "claude-4.6-opus-high");
+    // claude-4.6-opus-high / -max (non-thinking) and -high-thinking (suffix
+    // thinking) collapse into one family. With no medium, the default is the
+    // thinking effort, never the bottom "none" rung.
+    const opus = catalog.models.find(
+      (m) => m.id === "claude-4.6-opus-high-thinking",
+    );
     expect(opus).toMatchObject({ defaultReasoningEffort: "high" });
     expect(
       opus?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["high", "max"]);
+    ).toEqual(["none", "high"]);
+    // The thinking effort resolves to the thinking id; "none" resolves to a
+    // non-thinking twin.
     expect(
       catalog.resolveVariant({
-        model: "claude-4.6-opus-high",
-        reasoningLevel: "max",
+        model: "claude-4.6-opus-high-thinking",
+        reasoningLevel: "high",
       }),
-    ).toBe("claude-4.6-opus-max");
+    ).toBe("claude-4.6-opus-high-thinking");
+    expect(
+      catalog.resolveVariant({
+        model: "claude-4.6-opus-high-thinking",
+        reasoningLevel: "none",
+      }),
+    ).toBe("claude-4.6-opus-high");
   });
 
   it("marks only the first listed family as default", () => {

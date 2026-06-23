@@ -25,6 +25,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     latestAttentionAt: 2,
     createdAt: 1,
     updatedAt: 2,
+    activity: { activeWorkflowCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,

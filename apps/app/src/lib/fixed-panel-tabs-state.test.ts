@@ -5,9 +5,11 @@ import {
   buildFixedPanelTabId,
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
+  createHostFilePreviewFixedPanelTab,
   createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
+  createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
@@ -37,6 +39,7 @@ describe("fixed-panel-tabs-state", () => {
     const now = 1_000;
     const workspaceTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-1",
+      projectId: null,
       tab: {
         lineRange: {
           startLineNumber: 1,
@@ -73,6 +76,7 @@ describe("fixed-panel-tabs-state", () => {
     });
     const expectedWorkspaceTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-1",
+      projectId: null,
       tab: {
         lineRange: null,
         path: "src/index.ts",
@@ -131,6 +135,194 @@ describe("fixed-panel-tabs-state", () => {
         "bb.thread.fixedPanelTabsState-thr_old-0",
       ),
     ).toBe(true);
+  });
+});
+
+describe("workspace file preview fixed panel tabs", () => {
+  it("round-trips an active project-source preview tab", () => {
+    const projectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_app",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: projectTab.id,
+        isOpen: true,
+        tabs: [projectTab],
+      },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.activeTabId).toBe(projectTab.id);
+    expect(parsed.secondary.tabs).toEqual([projectTab]);
+  });
+
+  it("does not collide project-source preview tabs for the same path in different projects", () => {
+    const firstProjectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_first",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const secondProjectTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: null,
+      projectId: "proj_second",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+
+    expect(firstProjectTab.id).not.toBe(secondProjectTab.id);
+    expect(
+      areFixedPanelTabsEquivalent(firstProjectTab, secondProjectTab),
+    ).toBe(false);
+  });
+});
+
+describe("thread-owned file preview fixed panel tabs", () => {
+  it("round-trips active host and storage preview tabs with their owner thread", () => {
+    const hostTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_app",
+      tab: {
+        lineRange: null,
+        path: "/tmp/log.txt",
+      },
+      threadId: "thr_app",
+    });
+    const storageTab = createThreadStorageFilePreviewFixedPanelTab({
+      environmentId: "env_app",
+      isPinned: false,
+      tab: {
+        lineRange: null,
+        path: "artifact.txt",
+      },
+      threadId: "thr_app",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: storageTab.id,
+        isOpen: true,
+        tabs: [hostTab, storageTab],
+      },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.activeTabId).toBe(storageTab.id);
+    expect(parsed.secondary.tabs).toEqual([hostTab, storageTab]);
+  });
+
+  it("does not collide host or storage preview tabs for the same path in different threads", () => {
+    const firstHostTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_first",
+      tab: {
+        lineRange: null,
+        path: "/tmp/log.txt",
+      },
+      threadId: "thr_first",
+    });
+    const secondHostTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_second",
+      tab: {
+        lineRange: null,
+        path: "/tmp/log.txt",
+      },
+      threadId: "thr_second",
+    });
+    const firstStorageTab = createThreadStorageFilePreviewFixedPanelTab({
+      environmentId: "env_first",
+      isPinned: false,
+      tab: {
+        lineRange: null,
+        path: "artifact.txt",
+      },
+      threadId: "thr_first",
+    });
+    const secondStorageTab = createThreadStorageFilePreviewFixedPanelTab({
+      environmentId: "env_second",
+      isPinned: false,
+      tab: {
+        lineRange: null,
+        path: "artifact.txt",
+      },
+      threadId: "thr_second",
+    });
+
+    expect(firstHostTab.id).not.toBe(secondHostTab.id);
+    expect(firstStorageTab.id).not.toBe(secondStorageTab.id);
+    expect(areFixedPanelTabsEquivalent(firstHostTab, secondHostTab)).toBe(false);
+    expect(
+      areFixedPanelTabsEquivalent(firstStorageTab, secondStorageTab),
+    ).toBe(false);
+  });
+
+  it("keeps legacy ownerless host and storage preview tabs parseable", () => {
+    const state = {
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+      secondary: {
+        activeTabId: "thread-storage-file-preview:artifact.txt:none",
+        isOpen: true,
+        tabs: [
+          {
+            id: "host-file-preview:%2Ftmp%2Flog.txt:none",
+            kind: "host-file-preview",
+            lineRange: null,
+            path: "/tmp/log.txt",
+          },
+          {
+            id: "thread-storage-file-preview:artifact.txt:none",
+            isPinned: false,
+            kind: "thread-storage-file-preview",
+            lineRange: null,
+            path: "artifact.txt",
+          },
+        ],
+      },
+      lastUsedAt: NOW,
+    };
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: JSON.stringify(state),
+    });
+
+    expect(parsed.secondary.tabs).toMatchObject([
+      {
+        environmentId: null,
+        kind: "host-file-preview",
+        threadId: null,
+      },
+      {
+        environmentId: null,
+        kind: "thread-storage-file-preview",
+        threadId: null,
+      },
+    ]);
   });
 });
 
@@ -228,4 +420,5 @@ describe("side-chat fixed panel tabs", () => {
     expect(areFixedPanelTabsEquivalent(pendingTab, pendingTab)).toBe(true);
     expect(areFixedPanelTabsEquivalent(pendingTab, createdTab)).toBe(false);
   });
+
 });

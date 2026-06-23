@@ -102,6 +102,7 @@ interface BuildThreadNodeArgs {
   childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
   compareThreads: ThreadComparator;
   depth: number;
+  groupEnvironmentThreads: boolean;
   thread: ThreadListEntry;
   visitedThreadIds: Set<string>;
 }
@@ -243,7 +244,13 @@ function buildEnvironmentItem(
 function buildSortedItems(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
+  groupEnvironmentThreads: boolean,
 ): ProjectThreadItem[] {
+  if (!groupEnvironmentThreads) {
+    nodes.sort((left, right) => compareThreads(left.thread, right.thread));
+    return nodes.map(buildThreadItem);
+  }
+
   const { environmentThreadGroups, looseNodes } =
     bucketWorktreeEnvironmentGroups(nodes, compareThreads);
   const items = [
@@ -261,6 +268,7 @@ function buildThreadNode({
   childrenByParentId,
   compareThreads,
   depth,
+  groupEnvironmentThreads,
   thread,
   visitedThreadIds,
 }: BuildThreadNodeArgs): ProjectThreadNode {
@@ -279,13 +287,18 @@ function buildThreadNode({
         childrenByParentId,
         compareThreads,
         depth: depth + 1,
+        groupEnvironmentThreads,
         thread: childThread,
         visitedThreadIds,
       }),
     );
   }
 
-  const children = buildSortedItems(childNodes, compareThreads);
+  const children = buildSortedItems(
+    childNodes,
+    compareThreads,
+    groupEnvironmentThreads,
+  );
   return {
     thread,
     children,
@@ -309,7 +322,41 @@ export function buildProjectThreadGroups(
   compareThreads: ThreadComparator = compareStandardThreads,
   folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
-  const projectThreads = allProjectThreads.filter(isSidebarProjectThread);
+  const rootItems = buildThreadTreeItems(
+    allProjectThreads,
+    compareThreads,
+    true,
+  );
+  // Group by: None — return today's output untouched unless an internal test
+  // path explicitly supplied a manual order for this section.
+  if (folderOptions?.groupBy !== "folder") {
+    if (folderOptions?.manualOrder) {
+      return orderSiblingItems(
+        rootItems,
+        folderOptions.containerId,
+        compareThreads,
+        {
+          manualOrder: folderOptions.manualOrder,
+        },
+      );
+    }
+    return rootItems;
+  }
+  return bucketIntoFolders(
+    rootItems,
+    folderOptions.containerId,
+    compareThreads,
+    folderOptions.manualOrder,
+    folderOptions.folderPaths,
+  );
+}
+
+function buildThreadTreeItems(
+  allThreads: readonly ThreadListEntry[],
+  compareThreads: ThreadComparator,
+  groupEnvironmentThreads: boolean,
+): ProjectThreadItem[] {
+  const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
   const childrenByParentId = new Map<string, ThreadListEntry[]>();
 
@@ -338,6 +385,7 @@ export function buildProjectThreadGroups(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        groupEnvironmentThreads,
         thread,
         visitedThreadIds,
       }),
@@ -355,84 +403,55 @@ export function buildProjectThreadGroups(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        groupEnvironmentThreads,
         thread,
         visitedThreadIds,
       }),
     );
   }
 
-  const rootItems = buildSortedItems(rootNodes, compareThreads);
-  // Group by: None — return today's output untouched unless an internal test
-  // path explicitly supplied a manual order for this section.
-  if (folderOptions?.groupBy !== "folder") {
-    if (folderOptions?.manualOrder) {
-      return orderSiblingItems(
-        rootItems,
-        folderOptions.containerId,
-        compareThreads,
-        {
-          manualOrder: folderOptions.manualOrder,
-        },
-      );
-    }
-    return rootItems;
-  }
-  return bucketIntoFolders(
-    rootItems,
-    folderOptions.containerId,
-    compareThreads,
-    folderOptions.manualOrder,
-    folderOptions.folderPaths,
-  );
+  return buildSortedItems(rootNodes, compareThreads, groupEnvironmentThreads);
 }
 
-// Flat ordering for the chronological "All Threads" bucket: one top-level row
-// per thread, globally ordered by the chosen comparator. Unlike
-// buildProjectThreadGroups this intentionally drops parent/child nesting and
-// worktree grouping so every thread is visible (none hidden behind a collapsed
-// parent) and the sort is global rather than per-sibling. Side chats are
-// excluded to match buildProjectThreadGroups.
+// Chronological "All Threads" bucket: parent/child links still form a tree,
+// but worktree grouping stays off so Group by None does not add synthetic group
+// rows. Side chats are excluded to match buildProjectThreadGroups.
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
-  const items = allThreads
-    .filter(isSidebarProjectThread)
-    .sort(compareThreads)
-    .map(
-      (thread): ProjectThreadItem => ({
-        kind: "thread",
-        node: {
-          thread,
-          children: [],
-          depth: 0,
-          stats: buildStatsForHiddenThreads([]),
-        },
-      }),
-    );
-  // Group by: None — flat globally-sorted list, no folder logic unless Sort:
-  // None has explicitly supplied a manual order for the chronological section.
-  if (folderOptions?.groupBy !== "folder") {
-    if (folderOptions?.manualOrder) {
-      return orderSiblingItems(
+  // Folder grouping (and the test-only manual-order path) need a flat,
+  // globally-sorted list; everything else keeps main's parent/child tree.
+  if (folderOptions?.groupBy === "folder" || folderOptions?.manualOrder) {
+    const items = allThreads
+      .filter(isSidebarProjectThread)
+      .sort(compareThreads)
+      .map(
+        (thread): ProjectThreadItem => ({
+          kind: "thread",
+          node: {
+            thread,
+            children: [],
+            depth: 0,
+            stats: buildStatsForHiddenThreads([]),
+          },
+        }),
+      );
+    if (folderOptions.groupBy === "folder") {
+      return bucketIntoFolders(
         items,
         folderOptions.containerId,
         compareThreads,
-        {
-          manualOrder: folderOptions.manualOrder,
-        },
+        folderOptions.manualOrder,
+        folderOptions.folderPaths,
       );
     }
-    return items;
+    return orderSiblingItems(items, folderOptions.containerId, compareThreads, {
+      manualOrder: folderOptions.manualOrder,
+    });
   }
-  return bucketIntoFolders(
-    items,
-    folderOptions.containerId,
-    compareThreads,
-    folderOptions.manualOrder,
-    folderOptions.folderPaths,
-  );
+  return buildThreadTreeItems(allThreads, compareThreads, false);
 }
 
 export function isSidebarProjectThread(

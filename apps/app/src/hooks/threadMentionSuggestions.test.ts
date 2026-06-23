@@ -8,6 +8,8 @@ interface ThreadFixtureOptions {
   projectId?: string;
   title: string | null;
   titleFallback?: string | null;
+  originKind?: Thread["originKind"];
+  childOrigin?: Thread["childOrigin"];
 }
 
 interface BuildSuggestionFixtureArgs {
@@ -30,8 +32,8 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     status: "idle",
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,
-    originKind: null,
-    childOrigin: null,
+    originKind: options.originKind ?? null,
+    childOrigin: options.childOrigin ?? null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -122,6 +124,32 @@ describe("buildThreadMentionSuggestions", () => {
         currentThreadId: "thr_current",
       }),
     ).toEqual(["thr_other"]);
+  });
+
+  it("excludes side chats", () => {
+    const threads = [
+      makeThread({
+        id: "thr_parent",
+        title: "Prompt mention improvements",
+      }),
+      makeThread({
+        id: "thr_side_chat",
+        originKind: "side-chat",
+        title: "Prompt mention side chat",
+      }),
+      makeThread({
+        id: "thr_legacy_side_chat",
+        childOrigin: "side-chat",
+        title: "Prompt mention legacy side chat",
+      }),
+    ];
+
+    expect(
+      getSuggestionThreadIds({
+        threads,
+        query: "prompt mention",
+      }),
+    ).toEqual(["thr_parent"]);
   });
 
   it("returns threads with deterministic ties", () => {

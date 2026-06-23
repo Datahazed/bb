@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4ce115cf-0c47-4ee3-9e17-b7ba6ea12c92",
+  "id": "37888a75-eb3f-4f33-b430-26928568f390",
   "prevId": "a5784c47-0c24-46c1-8646-9017f4272195",
   "tables": {
     "app_theme": {
@@ -2095,14 +2095,14 @@
           "name": "thread_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "environment_id": {
           "name": "environment_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "host_id": {
@@ -2364,59 +2364,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "thread_folders": {
-      "name": "thread_folders",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "path": {
-          "name": "path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "thread_folders_path_idx": {
-          "name": "thread_folders_path_idx",
-          "columns": [
-            "path"
-          ],
-          "isUnique": true
-        },
-        "thread_folders_updated_idx": {
-          "name": "thread_folders_updated_idx",
-          "columns": [
-            "updated_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "thread_search_segments": {
       "name": "thread_search_segments",
       "columns": {
@@ -2568,13 +2515,6 @@
         },
         "title_fallback": {
           "name": "title_fallback",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "folder_path": {
-          "name": "folder_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

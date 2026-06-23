@@ -17,6 +17,7 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadFolderRoutes } from "./routes/thread-folders.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -248,6 +249,7 @@ export function createApp(
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps);
+  registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
@@ -275,23 +277,22 @@ export function createApp(
   );
 
   app.get(
-    "/ws/threads/:threadId/terminals/:terminalId",
+    "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
-      const threadId = context.req.param("threadId");
       const terminalId = context.req.param("terminalId");
       return {
         onOpen: (_event, socket) =>
           onTerminalSocketOpen(deps, {
             socket,
             terminalId,
-            threadId,
+            threadId: null,
           }),
         onMessage: (event, socket) =>
           onTerminalSocketMessage(deps, {
             raw: event.data,
             socket,
             terminalId,
-            threadId,
+            threadId: null,
           }),
         onClose: (_event, socket) =>
           onTerminalSocketClose(deps, {

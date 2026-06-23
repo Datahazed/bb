@@ -113,6 +113,10 @@ export interface CreateAcpProviderAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   /** Override the directory containing bundled bridge files. */
   bridgeBundleDir?: string;
+  /** Optional environment values needed by the Node runtime that launches the bridge. */
+  bridgeNodeEnv?: Record<string, string>;
+  /** Optional executable used to run the Node bridge process. */
+  bridgeNodeExecutablePath?: string;
   /** Prefix for bb-owned turn ids emitted by this adapter instance. */
   turnIdPrefix?: string;
 }
@@ -1113,9 +1117,9 @@ export function createAcpProviderAdapter(
 
   /**
    * Session-level model pin for the bridge, which resolves (model,
-   * reasoningLevel) to the exact agent model variant via the list command's
-   * catalog. The synthetic "acp-default" id (persisted by threads started
-   * before the bridge listed real models) is never forwarded.
+   * reasoningLevel, serviceTier) to the exact agent model variant via the list
+   * command's catalog. The synthetic "acp-default" id (persisted by threads
+   * started before the bridge listed real models) is never forwarded.
    */
   function buildModelSelectionParam(
     options: ProviderExecutionContext,
@@ -1135,6 +1139,10 @@ export function createAcpProviderAdapter(
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
           : {}),
+        // Only "fast" changes resolution; "default" is the catalog's normal id.
+        ...(options.serviceTier === "fast"
+          ? { serviceTier: options.serviceTier }
+          : {}),
       },
     };
   }
@@ -1146,13 +1154,14 @@ export function createAcpProviderAdapter(
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
     process: {
-      command: "node",
+      command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
         bridgeBundleDir: opts.bridgeBundleDir,
         bundleFileName: "bb-acp-bridge.mjs",
         importMetaUrl: import.meta.url,
         bridgeRelativePath: "bridge/bridge.js",
       }),
+      ...(opts.bridgeNodeEnv !== undefined ? { env: opts.bridgeNodeEnv } : {}),
     },
 
     // -- Unified command builder -------------------------------------------

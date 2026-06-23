@@ -4,7 +4,12 @@ import type { ThreadListEntry } from "@bb/domain";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@/components/ui/icon.js";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
-import { isBusyThread, isUnreadDoneThread } from "@/lib/thread-activity";
+import {
+  hasActiveWorkflowActivity,
+  isBusyThread,
+  isRuntimeBusyThread,
+  isUnreadDoneThread,
+} from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
 
@@ -78,11 +83,17 @@ function getMobileRecentThreads({
 
 function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
   const isBusy = isBusyThread(thread);
+  const isRuntimeBusy = isRuntimeBusyThread(thread);
+  const isWorkflowActive =
+    !isRuntimeBusy &&
+    hasActiveWorkflowActivity(thread) &&
+    !thread.hasPendingInteraction;
 
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={thread.hasPendingInteraction}
-      isBusy={isBusy && !thread.hasPendingInteraction}
+      isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
+      isWorkflowActive={isWorkflowActive}
       showUnreadBadge={
         !thread.hasPendingInteraction && !isBusy && isUnreadDoneThread(thread)
       }

@@ -2,6 +2,8 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -30,7 +32,9 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveWorkflowActivity,
   isBusyThread,
+  isRuntimeBusyThread,
   isUnreadDoneThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
@@ -167,7 +171,9 @@ function renderThreadRowContainer({
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
   isBusy: boolean;
+  isWorkflowActive: boolean;
   showUnreadBadge: boolean;
+  successAnimationKey?: number | null;
   unreadBadgeTone: SidebarUnreadDotTone;
 }
 
@@ -177,16 +183,28 @@ interface ThreadUnreadBadgeLabelArgs {
 
 const THREAD_SUCCESS_CHECK_DELAY_MS = 1200;
 
-function ThreadSuccessStatusGlyph({ label }: { label: string }) {
-  const [showCheck, setShowCheck] = useState(true);
+function ThreadSuccessStatusGlyph({
+  animate,
+  label,
+}: {
+  animate: boolean;
+  label: string;
+}) {
+  const [showCheck, setShowCheck] = useState(animate);
 
   useEffect(() => {
+    if (!animate) {
+      setShowCheck(false);
+      return;
+    }
+
+    setShowCheck(true);
     const timeoutId = window.setTimeout(
       () => setShowCheck(false),
       THREAD_SUCCESS_CHECK_DELAY_MS,
     );
     return () => window.clearTimeout(timeoutId);
-  }, []);
+  }, [animate]);
 
   if (showCheck) {
     return (
@@ -209,7 +227,9 @@ function ThreadSuccessStatusGlyph({ label }: { label: string }) {
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   isBusy,
+  isWorkflowActive,
   showUnreadBadge,
+  successAnimationKey = null,
   unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
   if (showUnreadBadge && unreadBadgeTone === "error") {
@@ -236,9 +256,25 @@ export function ThreadStatusGlyph({
     );
   }
 
+  if (isWorkflowActive) {
+    return (
+      <Icon
+        name="Workflow"
+        className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
+        aria-label="Workflow running"
+      />
+    );
+  }
+
   if (showUnreadBadge) {
     const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
-    return <ThreadSuccessStatusGlyph label={label} />;
+    return (
+      <ThreadSuccessStatusGlyph
+        key={successAnimationKey ?? "settled"}
+        animate={successAnimationKey !== null}
+        label={label}
+      />
+    );
   }
 
   if (isBusy) {
@@ -264,13 +300,41 @@ function getThreadUnreadBadgeLabel({
   return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
 }
 
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
+
+function useUnreadSuccessAnimationKey(
+  showUnreadSuccess: boolean,
+): number | null {
+  const previousShowUnreadSuccessRef = useRef(showUnreadSuccess);
+  const [animationKey, setAnimationKey] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const previousShowUnreadSuccess = previousShowUnreadSuccessRef.current;
+    previousShowUnreadSuccessRef.current = showUnreadSuccess;
+
+    if (showUnreadSuccess && !previousShowUnreadSuccess) {
+      setAnimationKey((current) => (current ?? 0) + 1);
+      return;
+    }
+
+    if (!showUnreadSuccess && animationKey !== null) {
+      setAnimationKey(null);
+    }
+  }, [animationKey, showUnreadSuccess]);
+
+  return showUnreadSuccess ? animationKey : null;
+}
+
 function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
+  isWorkflowActive,
   showUnreadBadge,
+  successAnimationKey,
   unreadBadgeTone,
-}: ThreadStatusGlyphProps) {
-  const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
+}: ThreadTrailingIndicatorProps) {
+  const showStatusGlyph =
+    hasPendingInteraction || isBusy || isWorkflowActive || showUnreadBadge;
 
   if (!showStatusGlyph) {
     return null;
@@ -286,7 +350,9 @@ function ThreadTrailingIndicator({
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
         isBusy={isBusy}
+        isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
+        successAnimationKey={successAnimationKey}
         unreadBadgeTone={unreadBadgeTone}
       />
     </span>
@@ -310,8 +376,15 @@ function ThreadRowComponent({
   );
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
+  const threadRuntimeBusy =
+    isRuntimeBusyThread(thread) && !hasPendingInteraction;
+  const threadWorkflowActive =
+    !threadRuntimeBusy &&
+    !hasPendingInteraction &&
+    hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
-  const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
+  const showUnreadBadge =
+    !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
   const unreadBadgeTone: SidebarUnreadDotTone =
     showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
@@ -332,14 +405,21 @@ function ThreadRowComponent({
   const trailingHasPendingInteraction = hasHiddenChildren
     ? hasPendingInteraction || childActivity.pending
     : hasPendingInteraction;
-  const trailingIsBusy = hasHiddenChildren
-    ? threadIsBusy || childActivity.working
-    : threadIsBusy;
+  const trailingRuntimeBusy = hasHiddenChildren
+    ? threadRuntimeBusy || childActivity.runtimeWorking
+    : threadRuntimeBusy;
+  const trailingIsWorkflowActive = hasHiddenChildren
+    ? !trailingRuntimeBusy && (threadWorkflowActive || childActivity.workflow)
+    : threadWorkflowActive;
+  const trailingIsBusy = trailingRuntimeBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
   const trailingUnreadBadgeTone: SidebarUnreadDotTone =
     hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
+  const unreadSuccessAnimationKey = useUnreadSuccessAnimationKey(
+    trailingShowUnreadBadge && trailingUnreadBadgeTone === "default",
+  );
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
@@ -423,7 +503,9 @@ function ThreadRowComponent({
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
+              isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}
+              successAnimationKey={unreadSuccessAnimationKey}
               unreadBadgeTone={trailingUnreadBadgeTone}
             />
           </span>

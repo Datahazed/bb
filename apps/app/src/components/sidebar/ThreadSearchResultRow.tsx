@@ -11,7 +11,11 @@ import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@/components/ui/icon.js";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { isBusyThread } from "@/lib/thread-activity";
+import {
+  hasActiveWorkflowActivity,
+  isBusyThread,
+  isRuntimeBusyThread,
+} from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
@@ -115,6 +119,12 @@ function ThreadSearchResultRowComponent({
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
   const hasPendingInteraction = thread.hasPendingInteraction;
+  const threadRuntimeBusy =
+    isRuntimeBusyThread(thread) && !hasPendingInteraction;
+  const threadWorkflowActive =
+    !threadRuntimeBusy &&
+    !hasPendingInteraction &&
+    hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.
@@ -201,7 +211,8 @@ function ThreadSearchResultRowComponent({
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
           <ThreadStatusGlyph
             hasPendingInteraction={hasPendingInteraction}
-            isBusy={threadIsBusy}
+            isBusy={threadRuntimeBusy}
+            isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}
             unreadBadgeTone="default"
           />

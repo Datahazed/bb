@@ -1,9 +1,9 @@
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   ContextMenu,
@@ -19,11 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip.js";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import {
   getProjectArchivedRoutePath,
@@ -40,8 +35,6 @@ interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
   align?: "start" | "center" | "end";
   onOpenChange?: (open: boolean) => void;
-  /** Suppress the trigger's hover tooltip (the sidebar keeps tooltips minimal). */
-  hideTriggerTooltip?: boolean;
 }
 
 interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
@@ -58,7 +51,6 @@ interface ProjectActionsMenuItemsProps extends ProjectActionsMenuBaseProps {
 interface ProjectActionMenuItemProps {
   children: ReactNode;
   className?: string;
-  icon: IconName;
   onSelect?: (event: Event) => void;
   surface: ProjectActionsMenuSurface;
 }
@@ -67,32 +59,27 @@ interface ProjectActionMenuSeparatorProps {
   surface: ProjectActionsMenuSurface;
 }
 
+function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
+  event.stopPropagation();
+}
+
 function ProjectActionMenuItem({
   children,
   className,
-  icon,
   onSelect,
   surface,
 }: ProjectActionMenuItemProps) {
-  // The menu item base styling sizes/spaces a direct <svg> child, so the Icon
-  // renders inline before the label.
-  const content = (
-    <>
-      <Icon name={icon} aria-hidden="true" />
-      {children}
-    </>
-  );
   if (surface === "context") {
     return (
       <ContextMenuItem className={className} onSelect={onSelect}>
-        {content}
+        {children}
       </ContextMenuItem>
     );
   }
 
   return (
     <DropdownMenuItem className={className} onSelect={onSelect}>
-      {content}
+      {children}
     </DropdownMenuItem>
   );
 }
@@ -123,7 +110,6 @@ function ProjectActionsMenuItems({
     <>
       <ProjectActionMenuItem
         surface={surface}
-        icon="Settings"
         onSelect={() => {
           navigate(getProjectSettingsRoutePath(project.id));
         }}
@@ -132,21 +118,16 @@ function ProjectActionsMenuItems({
       </ProjectActionMenuItem>
       <ProjectActionMenuItem
         surface={surface}
-        icon="Archive"
         onSelect={() => {
           navigate(getProjectArchivedRoutePath(project.id));
         }}
       >
-        View archive
+        Archived threads
       </ProjectActionMenuItem>
       <ProjectActionMenuSeparator surface={surface} />
       <ProjectActionMenuItem
         surface={surface}
-        icon="Edit"
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           requestRename(project);
         }}
       >
@@ -155,11 +136,7 @@ function ProjectActionsMenuItems({
       {showAddLocalPath ? (
         <ProjectActionMenuItem
           surface={surface}
-          icon="FolderPlus"
-          onSelect={(event) => {
-            if (surface === "dropdown") {
-              event.preventDefault();
-            }
+          onSelect={() => {
             requestAddLocalPath(project);
           }}
         >
@@ -168,12 +145,8 @@ function ProjectActionsMenuItems({
       ) : null}
       <ProjectActionMenuItem
         surface={surface}
-        icon="Trash2"
         className="text-destructive focus:text-destructive"
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           requestDelete(project);
         }}
       >
@@ -188,43 +161,33 @@ export function ProjectActionsMenu({
   triggerClassName,
   align = "end",
   onOpenChange,
-  hideTriggerTooltip = false,
 }: ProjectActionsMenuProps) {
-  const trigger = (
-    <DropdownMenuTrigger asChild>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={cn(
-          "rounded-md p-0 text-muted-foreground",
-          triggerClassName,
-          "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-        )}
-        aria-label={`${project.name} actions`}
-        title={undefined}
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
-      >
-        <Icon
-          name="MoreHorizontal"
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-        />
-      </Button>
-    </DropdownMenuTrigger>
-  );
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
-      {hideTriggerTooltip ? (
-        trigger
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent side="bottom">Project actions</TooltipContent>
-        </Tooltip>
-      )}
-      <DropdownMenuContent align={align}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "rounded-md p-0 text-muted-foreground",
+            triggerClassName,
+            "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+          )}
+          aria-label={`${project.name} actions`}
+          title={`${project.name} actions`}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align={align}
+        className="w-44"
+        onClick={stopProjectActionsMenuClickPropagation}
+      >
         <ProjectActionsMenuItems project={project} surface="dropdown" />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -239,7 +202,11 @@ export function ProjectActionsContextMenu({
   return (
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={`${project.name} actions`}>
+      <ContextMenuContent
+        aria-label={`${project.name} actions`}
+        className="w-44"
+        onClick={stopProjectActionsMenuClickPropagation}
+      >
         <ProjectActionsMenuItems project={project} surface="context" />
       </ContextMenuContent>
     </ContextMenu>

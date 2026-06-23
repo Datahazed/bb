@@ -34,8 +34,9 @@ import type {
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
+  TerminalListResponse,
   CreateThreadRequest,
-  CreateThreadTerminalRequest,
+  CreateTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
   PromptHistoryResponse,
@@ -67,18 +68,18 @@ import type {
   ProjectBranchesQuery,
   ThreadStorageFilesQuery,
   ThreadStoragePathsQuery,
+  TerminalListQuery,
   TerminalSession,
-  ThreadTerminalListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
-  CloseThreadTerminalRequest,
+  CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
+  UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
-  UpdateThreadTerminalRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
   ThreadStorageFileListResponse,
@@ -95,6 +96,7 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
+  buildProjectFileContentUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -120,6 +122,12 @@ interface GetEnvironmentFilePreviewArgs {
   id: string;
   path: string;
   source: EnvironmentFilePreviewSource;
+  signal?: AbortSignal;
+}
+
+interface GetProjectFilePreviewArgs {
+  projectId: string;
+  path: string;
   signal?: AbortSignal;
 }
 
@@ -453,6 +461,21 @@ export async function getEnvironmentFilePreview({
     path,
     url: buildEnvironmentDiffFilePreviewUrl(response, contentBytes, mimeType),
   });
+}
+
+export async function getProjectFilePreview({
+  projectId,
+  path,
+  signal,
+}: GetProjectFilePreviewArgs): Promise<FilePreview> {
+  return loadFilePreview(
+    {
+      name: path.split("/").at(-1),
+      path,
+      url: buildProjectFileContentUrl(projectId, path),
+    },
+    signal,
+  );
 }
 
 async function postMultipart<T>(
@@ -866,6 +889,8 @@ export interface ThreadListFilters {
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;
+  /** Exclude source-derived side-chat threads. */
+  excludeSideChats?: boolean;
   /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin;
   /** App callers must choose active or archived; server omission intentionally means both. */
@@ -904,6 +929,13 @@ export async function listThreads(
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),
           ...(filters.originKind ? { originKind: filters.originKind } : {}),
+          ...(filters.excludeSideChats !== undefined
+            ? {
+                excludeSideChats: toBooleanQueryValue(
+                  filters.excludeSideChats,
+                ),
+              }
+            : {}),
           ...(filters.childOrigin ? { childOrigin: filters.childOrigin } : {}),
           archived: toBooleanQueryValue(filters.archived),
           ...(filters.limit !== undefined
@@ -1102,51 +1134,44 @@ export async function updateThread(
   );
 }
 
-export async function listThreadTerminals(
-  id: string,
+export async function listTerminals(
+  query: TerminalListQuery,
   signal?: AbortSignal,
-): Promise<ThreadTerminalListResponse> {
-  return request<ThreadTerminalListResponse>(
-    apiClient.threads[":id"].terminals.$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
+): Promise<TerminalListResponse> {
+  return request<TerminalListResponse>(
+    apiClient.terminals.$get({ query }, requestOptions(signal)),
   );
 }
 
-export async function createThreadTerminal(
-  id: string,
-  req: CreateThreadTerminalRequest,
+export async function createTerminal(
+  req: CreateTerminalRequest,
 ): Promise<TerminalSession> {
   return request<TerminalSession>(
-    apiClient.threads[":id"].terminals.$post({
-      param: { id },
+    apiClient.terminals.$post({
       json: req,
     }),
   );
 }
 
-export async function renameThreadTerminal(
-  id: string,
+export async function renameTerminal(
   terminalId: string,
-  req: UpdateThreadTerminalRequest,
+  req: UpdateTerminalRequest,
 ): Promise<TerminalSession> {
   return request<TerminalSession>(
-    apiClient.threads[":id"].terminals[":terminalId"].$patch({
-      param: { id, terminalId },
+    apiClient.terminals[":terminalId"].$patch({
+      param: { terminalId },
       json: req,
     }),
   );
 }
 
-export async function closeThreadTerminal(
-  id: string,
+export async function closeTerminal(
   terminalId: string,
-  req: CloseThreadTerminalRequest,
+  req: CloseTerminalRequest,
 ): Promise<TerminalSession> {
   return request<TerminalSession>(
-    apiClient.threads[":id"].terminals[":terminalId"].close.$post({
-      param: { id, terminalId },
+    apiClient.terminals[":terminalId"].close.$post({
+      param: { terminalId },
       json: req,
     }),
   );

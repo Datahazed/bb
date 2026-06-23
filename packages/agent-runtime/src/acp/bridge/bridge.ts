@@ -30,6 +30,7 @@ import {
   decodeBridgeJsonRpcResponse,
   jsonRpcEnvelopeSchema,
 } from "../../shared/bridge-tool-calls.js";
+import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import {
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
@@ -201,7 +202,10 @@ async function loadAgentModelCatalog(
     execFile(
       listCommand.command,
       listCommand.args,
-      { timeout: MODEL_LIST_TIMEOUT_MS },
+      {
+        env: withoutBridgeRuntimeEnv(process.env),
+        timeout: MODEL_LIST_TIMEOUT_MS,
+      },
       (error, out, stderr) => {
         if (!error) {
           resolveExec(out);
@@ -291,7 +295,12 @@ async function resolveAgentLaunchArgs(
   }
   let resolved: string | undefined;
   let warning: string | undefined;
-  if (selection.reasoningLevel !== undefined) {
+  // Resolve whenever the selection narrows the raw id: an explicit reasoning
+  // effort, or Fast mode (which picks the model's `-fast` twin).
+  if (
+    selection.reasoningLevel !== undefined ||
+    selection.serviceTier === "fast"
+  ) {
     // Prefer the catalog cached by the last model/list (the picker the
     // selection came from) over re-running the list command per spawn.
     const key = JSON.stringify(selection.listCommand);
@@ -302,8 +311,9 @@ async function resolveAgentLaunchArgs(
     resolved = catalog?.resolveVariant({
       model: selection.model,
       reasoningLevel: selection.reasoningLevel,
+      serviceTier: selection.serviceTier,
     });
-    if (resolved === undefined) {
+    if (resolved === undefined && selection.reasoningLevel !== undefined) {
       warning = `Model "${selection.model}" has no ${selection.reasoningLevel} reasoning variant; launching it at its default effort.`;
     }
   }
@@ -681,7 +691,7 @@ async function startAgentSession(
     command: params.agent.command,
     args: launch.args,
     cwd: params.cwd,
-    env: { ...process.env, ...params.envVars },
+    env: { ...withoutBridgeRuntimeEnv(process.env), ...params.envVars },
     onNotification: (method, notificationParams) =>
       handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>

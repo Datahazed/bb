@@ -48,8 +48,15 @@ interface GetActiveTabIdAfterCloseArgs {
 }
 
 interface BuildOrderedSecondaryPanelFileTabsArgs {
+  includeWorkspaceTabsOutsideEnvironment?: boolean;
   tabs: readonly FixedPanelTab[];
   resolvedEnvironmentId: string | null | undefined;
+}
+
+interface PruneStorageTabsArgs {
+  knownPaths: ReadonlySet<string>;
+  tabs: readonly FixedPanelTab[];
+  threadId: string | null | undefined;
 }
 
 export function isWorkspaceFilePreviewTab(
@@ -362,12 +369,16 @@ export function removeWorkspaceTabsForOtherEnvironments(
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
 
-export function pruneStorageTabs(
-  tabs: readonly FixedPanelTab[],
-  knownPaths: ReadonlySet<string>,
-): readonly FixedPanelTab[] {
+export function pruneStorageTabs({
+  knownPaths,
+  tabs,
+  threadId,
+}: PruneStorageTabsArgs): readonly FixedPanelTab[] {
   const nextTabs = tabs.filter(
-    (tab) => !isStorageFilePreviewTab(tab) || knownPaths.has(tab.path),
+    (tab) =>
+      !isStorageFilePreviewTab(tab) ||
+      (tab.threadId !== null && tab.threadId !== threadId) ||
+      knownPaths.has(tab.path),
   );
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
@@ -382,6 +393,7 @@ export function getActiveTabIdAfterPrune(
 }
 
 export function buildOrderedSecondaryPanelFileTabs({
+  includeWorkspaceTabsOutsideEnvironment = false,
   tabs,
   resolvedEnvironmentId,
 }: BuildOrderedSecondaryPanelFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
@@ -390,8 +402,9 @@ export function buildOrderedSecondaryPanelFileTabs({
     switch (tab.kind) {
       case "workspace-file-preview":
         if (
-          resolvedEnvironmentId !== undefined &&
-          tab.environmentId === resolvedEnvironmentId
+          includeWorkspaceTabsOutsideEnvironment ||
+          (resolvedEnvironmentId !== undefined &&
+            tab.environmentId === resolvedEnvironmentId)
         ) {
           displayable.push(tab);
         }

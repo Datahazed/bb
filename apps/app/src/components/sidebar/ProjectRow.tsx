@@ -1085,8 +1085,7 @@ function EnvironmentThreadGroupHeaderActions({
           ) : null}
           {onRenameEnvironment ? (
             <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault();
+              onSelect={() => {
                 onRenameEnvironment();
               }}
             >
@@ -1198,7 +1197,10 @@ function EnvironmentThreadGroupHeader({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={childActivity.pending}
-              isBusy={childActivity.working}
+              isBusy={childActivity.runtimeWorking}
+              isWorkflowActive={
+                !childActivity.runtimeWorking && childActivity.workflow
+              }
               showUnreadBadge={childActivity.unread}
               unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />
@@ -1643,9 +1645,11 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
+  const rowProjectId =
+    variant === "section" ? node.thread.projectId : projectId;
   const hasComposerDraft = usePromptDraftHasInput({
     kind: "thread",
-    projectId,
+    projectId: rowProjectId,
     threadId: node.thread.id,
   });
   // Inside a folder the row shows its leaf but keeps the full path for a11y;
@@ -1664,7 +1668,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   }, [insideFolder, node.thread]);
   const row = (
     <ThreadRow
-      projectId={projectId}
+      projectId={rowProjectId}
       thread={node.thread}
       isActive={selectedThreadId === node.thread.id}
       hasComposerDraft={hasComposerDraft}
@@ -2170,17 +2174,10 @@ function ProjectRowComponent({
                 !projectDragBindings.disabled &&
                 "select-none",
             )}
-            onClick={handleProjectRowToggle}
+            title={project.name}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            <button
-              type="button"
-              aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
@@ -2236,7 +2233,6 @@ function ProjectRowComponent({
                 <ProjectActionsMenu
                   project={project}
                   onOpenChange={setIsDropdownActionsOpen}
-                  hideTriggerTooltip
                   triggerClassName={cn(
                     "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                     COARSE_POINTER_ROW_ACTION_SIZE_CLASS,

@@ -259,7 +259,12 @@ export function BottomAnchoredScrollBody({
     lastWriteAt: number;
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
+  const userDetachedFromBottomRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const cancelPendingScrollRestore = useCallback(() => {
+    pendingScrollRestoreRef.current = null;
+  }, []);
 
   const cancelQueuedRestore = useCallback(() => {
     if (restoreFrameRef.current === null) return;
@@ -320,15 +325,17 @@ export function BottomAnchoredScrollBody({
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
+    cancelPendingScrollRestore();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
+    userDetachedFromBottomRef.current = false;
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
     if (scrollArea) {
       scrollElementToBottom(scrollArea);
     }
     queueBottomRestore();
-  }, [queueBottomRestore]);
+  }, [cancelPendingScrollRestore, queueBottomRestore]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
@@ -393,31 +400,50 @@ export function BottomAnchoredScrollBody({
     pendingPrependAnchorRef.current = null;
   });
 
+  const hasRecentUserScrollIntent = useCallback(() => {
+    return (
+      pointerScrollIntentRef.current ||
+      window.performance.now() <= userScrollIntentUntilRef.current
+    );
+  }, []);
+
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
-  // restores it. Continuous capture (vs. on unmount) is required: the timeline
-  // subtree is force-remounted via `key={threadId}`, and an unmount-time read
-  // races that teardown.
-  const writeScrollAnchor = useCallback(() => {
-    if (scrollAnchorThreadId === undefined) return;
-    const scrollArea = scrollAreaRef.current;
-    if (!scrollArea) return;
-    const atBottom = isScrolledNearBottom(scrollArea);
-    const anchorAtom =
-      threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
-    if (atBottom) {
-      store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
-      return;
-    }
-    const topMostRow = getTopMostVisibleRow(scrollArea);
-    // No rows yet: don't clobber a good anchor with an empty one.
-    if (!topMostRow) return;
-    store.set(anchorAtom, {
-      rowId: topMostRow.rowId,
-      offsetWithinRow: topMostRow.offsetWithinRow,
-      atBottom: false,
-    });
-  }, [scrollAnchorThreadId, store]);
+  // restores it. Continuous capture keeps the atom current while mounted; cleanup
+  // flushes through the effect-captured scroll area because refs can be nulled
+  // during unmount.
+  const writeScrollAnchor = useCallback(
+    (scrollAreaOverride?: HTMLElement) => {
+      if (scrollAnchorThreadId === undefined) return;
+      const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
+      if (!scrollArea) return;
+      const atBottomByGeometry = isScrolledNearBottom(scrollArea);
+      const recentUserIntent = hasRecentUserScrollIntent();
+      const anchorAtom =
+        threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
+      if (atBottomByGeometry) {
+        userDetachedFromBottomRef.current = false;
+        store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
+        return;
+      }
+      if (recentUserIntent) {
+        userDetachedFromBottomRef.current = true;
+      }
+      if (shouldStickToBottomRef.current && !userDetachedFromBottomRef.current) {
+        store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
+        return;
+      }
+      const topMostRow = getTopMostVisibleRow(scrollArea);
+      // No rows yet: don't clobber a good anchor with an empty one.
+      if (!topMostRow) return;
+      store.set(anchorAtom, {
+        rowId: topMostRow.rowId,
+        offsetWithinRow: topMostRow.offsetWithinRow,
+        atBottom: false,
+      });
+    },
+    [hasRecentUserScrollIntent, scrollAnchorThreadId, store],
+  );
 
   const captureScrollAnchorThrottled = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
@@ -473,6 +499,18 @@ export function BottomAnchoredScrollBody({
       window.performance.now() + USER_SCROLL_INTENT_MS;
   }, []);
 
+  const markWheelScrollIntent = useCallback(() => {
+    markUserScrollIntent();
+  }, [markUserScrollIntent]);
+
+  const markTouchStartScrollIntent = useCallback(() => {
+    markUserScrollIntent();
+  }, [markUserScrollIntent]);
+
+  const markTouchMoveScrollIntent = useCallback(() => {
+    markUserScrollIntent();
+  }, [markUserScrollIntent]);
+
   const startPointerScrollIntent = useCallback(() => {
     pointerScrollIntentRef.current = true;
   }, []);
@@ -499,6 +537,7 @@ export function BottomAnchoredScrollBody({
     if (!scrollArea) return;
 
     if (isScrolledNearBottom(scrollArea)) {
+      userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;
       setIsAtBottom(true);
       // A deliberate scroll to the bottom during the restore settle window means
@@ -507,18 +546,15 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    const hasUserScrollIntent =
-      pointerScrollIntentRef.current ||
-      window.performance.now() <= userScrollIntentUntilRef.current;
+    if (!hasRecentUserScrollIntent()) return;
 
-    if (!hasUserScrollIntent) return;
-
+    userDetachedFromBottomRef.current = true;
     shouldStickToBottomRef.current = false;
     setIsAtBottom(false);
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore]);
+  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();
@@ -605,6 +641,27 @@ export function BottomAnchoredScrollBody({
     ],
   );
 
+  const flushScrollAnchorCapture = useCallback(
+    (scrollArea: HTMLElement) => {
+      const captureThrottle = scrollAnchorCaptureThrottleRef.current;
+      if (captureThrottle.trailingTimeout !== null) {
+        window.clearTimeout(captureThrottle.trailingTimeout);
+        captureThrottle.trailingTimeout = null;
+      }
+      writeScrollAnchor(scrollArea);
+    },
+    [writeScrollAnchor],
+  );
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    return () => {
+      flushScrollAnchorCapture(scrollArea);
+    };
+  }, [flushScrollAnchorCapture]);
+
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     const scrollContent = scrollContentRef.current;
@@ -620,13 +677,13 @@ export function BottomAnchoredScrollBody({
     scrollArea.addEventListener("scroll", handleScroll, {
       passive: true,
     });
-    scrollArea.addEventListener("wheel", markUserScrollIntent, {
+    scrollArea.addEventListener("wheel", markWheelScrollIntent, {
       passive: true,
     });
-    scrollArea.addEventListener("touchstart", markUserScrollIntent, {
+    scrollArea.addEventListener("touchstart", markTouchStartScrollIntent, {
       passive: true,
     });
-    scrollArea.addEventListener("touchmove", markUserScrollIntent, {
+    scrollArea.addEventListener("touchmove", markTouchMoveScrollIntent, {
       passive: true,
     });
     // Captures scrollbar-thumb drags and other pointer-driven scrolling that
@@ -641,30 +698,17 @@ export function BottomAnchoredScrollBody({
 
     queueBottomRestore();
 
-    // Capture the (stable) throttle-state object so the cleanup doesn't read a
-    // ref's `.current` directly (react-hooks/exhaustive-deps). The ref is never
-    // reassigned — only its `trailingTimeout` field mutates — so this still
-    // clears the live pending timeout at cleanup time.
-    const captureThrottle = scrollAnchorCaptureThrottleRef.current;
-
     return () => {
       resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScroll);
-      scrollArea.removeEventListener("wheel", markUserScrollIntent);
-      scrollArea.removeEventListener("touchstart", markUserScrollIntent);
-      scrollArea.removeEventListener("touchmove", markUserScrollIntent);
+      scrollArea.removeEventListener("wheel", markWheelScrollIntent);
+      scrollArea.removeEventListener("touchstart", markTouchStartScrollIntent);
+      scrollArea.removeEventListener("touchmove", markTouchMoveScrollIntent);
       scrollArea.removeEventListener("pointerdown", startPointerScrollIntent);
       window.removeEventListener("pointerup", endPointerScrollIntent);
       window.removeEventListener("pointercancel", endPointerScrollIntent);
       window.removeEventListener("keydown", markKeyboardScrollIntent);
       cancelQueuedRestore();
-      // Flush the final resting position before the key={threadId} teardown:
-      // a pending trailing capture would otherwise be dropped on unmount.
-      if (captureThrottle.trailingTimeout !== null) {
-        window.clearTimeout(captureThrottle.trailingTimeout);
-        captureThrottle.trailingTimeout = null;
-      }
-      writeScrollAnchor();
     };
   }, [
     cancelQueuedRestore,
@@ -672,10 +716,11 @@ export function BottomAnchoredScrollBody({
     handleScroll,
     handleScrollAreaResize,
     markKeyboardScrollIntent,
-    markUserScrollIntent,
+    markTouchMoveScrollIntent,
+    markTouchStartScrollIntent,
+    markWheelScrollIntent,
     queueBottomRestore,
     startPointerScrollIntent,
-    writeScrollAnchor,
   ]);
 
   return (
