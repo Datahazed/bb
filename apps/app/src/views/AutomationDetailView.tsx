@@ -11,7 +11,8 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Skeleton } from "@/components/ui/skeleton.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
@@ -94,6 +95,17 @@ const RUN_STATUS_TONE_CLASS: Record<RunStatusLabel["tone"], string> = {
   muted: "text-muted-foreground",
 };
 
+/** Semantic icon + tone per run status, leading each run-history row. */
+const RUN_STATUS_META: Record<
+  AutomationRun["status"],
+  { icon: IconName; tone: string }
+> = {
+  running: { icon: "Clock", tone: "text-file-accent" },
+  succeeded: { icon: "CircleCheck", tone: "text-success" },
+  failed: { icon: "CircleX", tone: "text-destructive" },
+  skipped: { icon: "CircleDashed", tone: "text-muted-foreground" },
+};
+
 function describeEnvironment(automation: Automation): string {
   const { environment } = automation;
   if (environment.type === "reuse") {
@@ -164,16 +176,34 @@ interface RunRowProps {
 }
 
 function RunRow({ run, projectId }: RunRowProps) {
+  const meta = RUN_STATUS_META[run.status];
   const status = getRunStatusLabel(run);
   const duration = formatRunDuration(run);
   const silent = isSilentRun(run);
-  const showOutput =
-    run.runMode === "script" &&
-    (run.output !== null || run.error !== null || silent);
+  // One subtle detail line, not a heavy output banner: the error, the skip
+  // reason, the silent note, or the script's captured output.
+  const detail =
+    run.error ??
+    run.skipReason ??
+    (run.runMode === "script"
+      ? silent
+        ? "No output · silent gate held, nothing surfaced"
+        : run.output
+      : null);
+  const detailTone = run.error
+    ? "text-destructive"
+    : silent
+      ? "italic text-subtle-foreground"
+      : "text-muted-foreground";
 
   return (
-    <div className="overflow-hidden rounded-md border border-border">
-      <div className="flex items-center gap-2 px-3 py-2 text-sm">
+    <div className="border-b border-border-seam py-2.5 last:border-0">
+      <div className="flex items-center gap-2 text-sm">
+        <Icon
+          name={meta.icon}
+          className={cn("size-4 shrink-0", meta.tone)}
+          aria-hidden
+        />
         <span className={cn("font-medium", RUN_STATUS_TONE_CLASS[status.tone])}>
           {status.label}
         </span>
@@ -181,37 +211,36 @@ function RunRow({ run, projectId }: RunRowProps) {
           {formatRunTimestamp(run.startedAt)}
           {duration ? ` · ${duration}` : ""}
         </span>
-        {run.runMode === "agent" && run.threadId ? (
-          <Link
-            to={getThreadRoutePath({ projectId, threadId: run.threadId })}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground hover:underline"
-          >
-            View thread
-          </Link>
-        ) : run.runMode === "script" && run.exitCode !== null ? (
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
-            exit {run.exitCode}
-          </span>
+        {run.threadId !== null ||
+        (run.runMode === "script" && run.exitCode !== null) ? (
+          <div className="ml-auto flex shrink-0 items-center gap-2.5">
+            {run.runMode === "script" && run.exitCode !== null ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                exit {run.exitCode}
+              </span>
+            ) : null}
+            {run.threadId !== null ? (
+              <Link
+                to={getThreadRoutePath({ projectId, threadId: run.threadId })}
+                className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                {/* An agent run IS its thread; a script run that set a thread
+                    escalated by spawning one. */}
+                {run.runMode === "script" ? "View spawned thread" : "View thread"}
+              </Link>
+            ) : null}
+          </div>
         ) : null}
       </div>
-      {run.skipReason ? (
-        <p className="border-t border-border-seam px-3 py-2 text-xs text-muted-foreground">
-          {run.skipReason}
-        </p>
-      ) : null}
-      {showOutput ? (
-        <pre
+      {detail ? (
+        <p
           className={cn(
-            "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
-            run.error ? "text-destructive" : "text-foreground",
-            silent && "italic text-subtle-foreground",
+            "mt-1 whitespace-pre-wrap break-words pl-6 font-mono text-xs leading-relaxed",
+            detailTone,
           )}
         >
-          {run.error ??
-            (silent
-              ? "no output — silent gate, nothing surfaced"
-              : (run.output ?? ""))}
-        </pre>
+          {detail}
+        </p>
       ) : null}
     </div>
   );
@@ -495,11 +524,34 @@ export function AutomationDetailContent({
           {runsError ? (
             <p className="text-sm text-destructive">Failed to load runs.</p>
           ) : runsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div
+              className="rounded-lg border border-border bg-card px-3.5"
+              aria-busy
+              aria-label="Loading runs"
+            >
+              {["w-20", "w-28", "w-24"].map((labelWidth) => (
+                <div
+                  key={labelWidth}
+                  className="flex items-center gap-2 border-b border-border-seam py-2.5 last:border-0"
+                >
+                  <Skeleton className="size-4 shrink-0 rounded-full" />
+                  <Skeleton className={cn("h-3.5", labelWidth)} />
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="ml-auto h-3 w-16" />
+                </div>
+              ))}
+            </div>
           ) : runs.length === 0 ? (
-            <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
+            <EmptyStatePanel className="py-6">
+              No runs yet.{" "}
+              {automation.enabled
+                ? automation.nextRunAt !== null
+                  ? `Runs appear here after the next trigger, ${formatRunTimestamp(automation.nextRunAt)}.`
+                  : "Runs appear here once the loop is scheduled."
+                : "Resume the loop to schedule its first run."}
+            </EmptyStatePanel>
           ) : (
-            <div className="space-y-2">
+            <div className="rounded-lg border border-border bg-card px-3.5">
               {runs.map((run) => (
                 <RunRow
                   key={run.id}

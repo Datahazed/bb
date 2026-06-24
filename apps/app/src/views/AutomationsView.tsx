@@ -17,7 +17,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { CreateViaPromptExamples } from "@/components/create-via-prompt-examples";
+import {
+  CreateViaPromptExamples,
+  CreateWithTemplatesButton,
+} from "@/components/create-via-prompt-examples";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
@@ -202,44 +205,39 @@ function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
   );
 }
 
-const RUN_STATUS_META: Record<
-  NonNullable<Automation["lastRunStatus"]>,
-  { icon: IconName; tone: string; label: string }
-> = {
-  running: { icon: "Clock", tone: "text-file-accent", label: "Running" },
-  succeeded: { icon: "CircleCheck", tone: "text-success", label: "Ran" },
-  failed: { icon: "CircleX", tone: "text-destructive", label: "Failed" },
-  skipped: { icon: "CircleDashed", tone: "text-muted-foreground", label: "Skipped" },
-};
-
 function AutomationRow({ entry, actions }: AutomationRowProps) {
   const { automation } = entry;
   const cadence =
     automation.trigger.triggerType === "schedule"
       ? formatCronCadence(automation.trigger.cron)
       : "Custom trigger";
-  const runMeta =
-    automation.lastRunStatus !== null
-      ? RUN_STATUS_META[automation.lastRunStatus]
+  // An overview row answers two questions, not the full run taxonomy (that
+  // lives in the detail run history): is it on or paused, and is it healthy or
+  // failing. Only a failed last run earns a loud signal; everything else is the
+  // quiet enabled/paused dot.
+  const failed = automation.lastRunStatus === "failed";
+  const lastRunLabel =
+    automation.lastRunAt !== null
+      ? formatScheduleRunTime(automation.lastRunAt)
       : null;
-  // Single status signal: the leading icon reflects the LAST RUN. Paused state
-  // is conveyed by the next-run label ("Paused"), not a second status dot.
-  const lastRunText = runMeta
-    ? automation.lastRunAt !== null
-      ? `${runMeta.label} ${formatScheduleRunTime(automation.lastRunAt)}`
-      : runMeta.label
-    : "Never run";
+  const lastRunText = failed
+    ? lastRunLabel
+      ? `Failed ${lastRunLabel}`
+      : "Failed"
+    : lastRunLabel
+      ? `Last run ${lastRunLabel}`
+      : "Never run";
   return (
     <div className="group flex items-start gap-3 rounded-md px-3 py-2 transition-colors hover:bg-state-hover">
-      {runMeta ? (
+      {failed ? (
         <Icon
-          name={runMeta.icon}
+          name="CircleX"
           aria-hidden
-          className={cn("mt-0.5 size-4 shrink-0", runMeta.tone)}
+          className="mt-0.5 size-4 shrink-0 text-destructive"
         />
       ) : (
-        // Not run yet: fall back to the enabled-state dot — green when the loop
-        // is enabled/scheduled, muted when paused.
+        // On or paused: a single quiet dot, green when enabled/scheduled, muted
+        // when paused. No per-run-outcome icons.
         <span
           className="mt-0.5 flex size-4 shrink-0 items-center justify-center"
           aria-hidden
@@ -262,7 +260,12 @@ function AutomationRow({ entry, actions }: AutomationRowProps) {
         >
           {automation.name}
         </Link>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "mt-0.5 truncate text-xs",
+            failed ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
           {lastRunText}
         </div>
       </div>
@@ -362,16 +365,11 @@ export function AutomationsOverview({
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            className="shrink-0"
-            onClick={() => onCreateAutomation()}
-          >
-            <Icon name="Plus" className="size-4" />
-            New loop
-          </Button>
+          <CreateWithTemplatesButton
+            kind="loop"
+            label="New loop"
+            onCreate={onCreateAutomation}
+          />
         </div>
         {isLoading ? (
           <div className="space-y-0.5" aria-busy aria-label="Loading loops">

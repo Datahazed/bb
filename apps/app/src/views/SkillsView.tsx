@@ -16,7 +16,7 @@ import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
-import { CreateViaPromptExamples } from "@/components/create-via-prompt-examples";
+import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
@@ -158,9 +158,6 @@ export function SkillsOverview({
     });
   }, []);
   const normalizedQuery = query.trim().toLowerCase();
-  // Skills always include built-ins/provider skills, so "empty" means the user
-  // hasn't created any bb skills yet — that's when we teach create-via-prompt.
-  const hasManageableSkills = skills.some((skill) => skill.manageable);
   const groups = useMemo(() => {
     const filtered = skills.filter(
       (skill) =>
@@ -174,35 +171,37 @@ export function SkillsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
       <div className="space-y-4">
-        <p className="max-w-prose text-sm text-muted-foreground">
-          Every local skill, from all your providers, shows up here automatically
-          to view and manage.
-        </p>
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
-            <Icon
-              name="Search"
-              className="size-3.5 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-            <input
-              aria-label="Search skills"
-              placeholder="Search skills"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoComplete="off"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        {/* One library of every skill across providers. You search and manage
+            here; creating a bb skill is a single template-based action, the way
+            VS Code / Raycast keep authoring out of the management list rather
+            than stacking a teaching panel onto a list that is never empty. */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
+              <Icon
+                name="Search"
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <input
+                aria-label="Search skills"
+                placeholder="Search skills"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoComplete="off"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <CreateWithTemplatesButton
+              kind="skill"
+              label="New bb skill"
+              onCreate={onCreateSkill}
             />
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="shrink-0"
-            onClick={() => onCreateSkill()}
-          >
-            <Icon name="Plus" className="size-4" />
-            New bb skill
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            Every skill your agents can run, grouped by provider. bb skills run
+            across all of them.
+          </p>
         </div>
         {hasError ? (
           <p className="text-sm text-destructive">Failed to load skills.</p>
@@ -228,9 +227,6 @@ export function SkillsOverview({
           </div>
         ) : (
           <>
-            {!hasManageableSkills && normalizedQuery === "" ? (
-              <CreateViaPromptExamples kind="skill" onCreate={onCreateSkill} />
-            ) : null}
             {groups.length === 0 ? (
               normalizedQuery === "" ? null : (
                 <EmptyStatePanel className="py-6">

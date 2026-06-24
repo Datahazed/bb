@@ -206,6 +206,25 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain("View thread");
   });
 
+  it("links a script run that escalated to its spawned thread", () => {
+    const markup = renderContent({
+      runs: [
+        makeRun({
+          id: "run_escalate",
+          runMode: "script",
+          threadId: "thr_spawned",
+          output: "2 flaky suites detected. Spawned a fixer thread.",
+          exitCode: 0,
+        }),
+      ],
+    });
+    // A script escalation shows BOTH its exit code and a link to the thread it
+    // spawned (an agent run, by contrast, reads just "View thread").
+    expect(markup).toContain("exit 0");
+    expect(markup).toContain('href="/threads/thr_spawned"');
+    expect(markup).toContain("View spawned thread");
+  });
+
   it("shows a skip reason for skipped runs", () => {
     const markup = renderContent({
       runs: [
@@ -227,9 +246,10 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain("No runs yet.");
   });
 
-  it("shows a loading run-history state", () => {
+  it("shows a loading run-history skeleton", () => {
     const markup = renderContent({ runs: [], runsLoading: true });
-    expect(markup).toContain("Loading...");
+    expect(markup).toContain('aria-label="Loading runs"');
+    expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("No runs yet.");
   });
 

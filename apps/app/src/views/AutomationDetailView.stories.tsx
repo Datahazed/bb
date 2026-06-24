@@ -112,6 +112,61 @@ const agentRuns: AutomationRun[] = [
   }),
 ];
 
+// A script loop that escalates: a cheap script ticks on schedule and stays
+// silent when there's nothing to do, but spawns an agent thread when it finds
+// real work — the Hermes "script -> agent on escalation" shape.
+const escalatingScriptAutomation = makeAutomation({
+  id: "auto_flaky_sweep",
+  name: "Flaky-test sweep",
+  projectId: PROJECT_IDS.bb,
+  origin: "agent",
+  execution: {
+    mode: "script",
+    scriptFile: "flaky-sweep.sh",
+    interpreter: "bash",
+    timeoutMs: 120_000,
+  },
+  environment: {
+    type: "host",
+    workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+  },
+  trigger: {
+    triggerType: "schedule",
+    cron: "0 3 * * *",
+    timezone: "America/New_York",
+  },
+});
+
+const escalatingRuns: AutomationRun[] = [
+  // Escalation: the script found flaky suites and spawned a fixer thread.
+  makeRun({
+    id: "run_escalate",
+    runMode: "script",
+    threadId: "thr_flakyfix",
+    output:
+      "2 flaky suites detected across 14 reruns. Spawned a fixer thread to triage and patch them.",
+    startedAt: 1_700_000_000_000,
+    finishedAt: 1_700_000_004_500,
+  }),
+  // Quiet tick: nothing flaky, stays silent, no token spend, no thread.
+  makeRun({
+    id: "run_quiet",
+    runMode: "script",
+    output: null,
+    startedAt: 1_699_999_100_000,
+    finishedAt: 1_699_999_102_900,
+  }),
+  // An earlier escalation, for the run-history pattern.
+  makeRun({
+    id: "run_escalate_prev",
+    runMode: "script",
+    threadId: "thr_flakyfix_prev",
+    output: "1 flaky suite detected. Spawned a fixer thread.",
+    startedAt: 1_699_998_200_000,
+    finishedAt: 1_699_998_205_100,
+  }),
+];
+
 function Story(props: Partial<Parameters<typeof AutomationDetailContent>[0]>) {
   return (
     <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
@@ -137,6 +192,10 @@ export function ScriptAutomation() {
 
 export function AgentAutomation() {
   return <Story automation={agentAutomation} runs={agentRuns} />;
+}
+
+export function ScriptEscalatesToAgent() {
+  return <Story automation={escalatingScriptAutomation} runs={escalatingRuns} />;
 }
 
 export function Paused() {

@@ -62,18 +62,11 @@ describe("SkillsOverview", () => {
     expect(render({ skills: [] })).toContain("New bb skill");
   });
 
-  it("teaches create-via-prompt when there are no bb skills", () => {
+  it("keeps create out of the list (templates live in the menu, not a panel)", () => {
+    // The page is never truly empty (built-ins always ship), so there is no
+    // persistent teaching panel; the create templates live in the closed menu.
     const markup = render({ skills: [] });
-    expect(markup).toContain("Start from an example");
-    expect(markup).toContain("Scaffold to our patterns");
-  });
-
-  it("hides the teaching once a manageable bb skill exists", () => {
-    const markup = render({
-      skills: [
-        makeSkill({ name: "my-skill", provider: null, scope: "bb-user", manageable: true }),
-      ],
-    });
+    expect(markup).toContain("New bb skill");
     expect(markup).not.toContain("Start from an example");
   });
 
