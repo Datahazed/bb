@@ -5,17 +5,15 @@ import type {
   UpdateSkillRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
-
-const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
-const SKILL_CONTENT_QUERY_KEY = "skillContent";
-
-function projectSkillsKey(projectId: string) {
-  return [PROJECT_SKILLS_QUERY_KEY, projectId] as const;
-}
-
-function skillContentKey(projectId: string, scope: string, name: string) {
-  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name] as const;
-}
+import {
+  projectSkillsQueryKey,
+  skillContentQueryKey,
+  SKILL_CONTENT_QUERY_KEY,
+} from "@/hooks/queries/query-keys";
+import {
+  invalidateProjectSkillsMutationQueries,
+  invalidateSkillContentMutationQueries,
+} from "@/hooks/cache-owners/skills-cache-effects";
 
 /**
  * Skills discovered for a project's default workspace (user/builtin/provider
@@ -24,7 +22,7 @@ function skillContentKey(projectId: string, scope: string, name: string) {
  */
 export function useProjectSkills(projectId: string) {
   return useQuery({
-    queryKey: projectSkillsKey(projectId),
+    queryKey: projectSkillsQueryKey(projectId),
     queryFn: ({ signal }) =>
       api.listProjectSkills({ projectId, environmentId: null, signal }),
     enabled: projectId.length > 0,
@@ -43,7 +41,7 @@ export function useSkillContent(
 ) {
   return useQuery({
     queryKey: skill
-      ? skillContentKey(projectId, skill.scope, skill.name)
+      ? skillContentQueryKey(projectId, skill.scope, skill.name)
       : [SKILL_CONTENT_QUERY_KEY, projectId, "none"],
     queryFn: ({ signal }) =>
       api.getSkillContent({
@@ -68,11 +66,11 @@ export function useUpdateSkill(projectId: string) {
     mutationFn: (body: UpdateSkillRequest) =>
       api.updateSkillContent(projectId, body),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: skillContentKey(projectId, variables.scope, variables.name),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: projectSkillsKey(projectId),
+      invalidateSkillContentMutationQueries({
+        projectId,
+        scope: variables.scope,
+        name: variables.name,
+        queryClient,
       });
     },
   });
@@ -85,9 +83,7 @@ export function useDeleteSkill(projectId: string) {
     mutationFn: (body: DeleteSkillRequest) =>
       api.deleteProjectSkill(projectId, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: projectSkillsKey(projectId),
-      });
+      invalidateProjectSkillsMutationQueries({ projectId, queryClient });
     },
   });
 }
