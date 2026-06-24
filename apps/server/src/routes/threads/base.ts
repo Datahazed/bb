@@ -49,7 +49,6 @@ import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
-import { refreshEnvironmentPullRequestStatusSnapshotForEnvironment } from "../../services/environments/environment-status-snapshots.js";
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
@@ -91,28 +90,10 @@ function resolveIncludedThreadEnvironment(
   return getEnvironment(deps.db, thread.environmentId);
 }
 
-async function refreshThreadDetailStatusSnapshots(
-  deps: AppDeps,
-  thread: Thread,
-): Promise<void> {
-  if (
-    thread.environmentId === null ||
-    thread.archivedAt !== null ||
-    thread.deletedAt !== null
-  ) {
-    return;
-  }
-  await refreshEnvironmentPullRequestStatusSnapshotForEnvironment(deps, {
-    environmentId: thread.environmentId,
-    now: Date.now(),
-  });
-}
-
-async function buildThreadResponse(
+function buildThreadResponse(
   deps: AppDeps,
   args: BuildThreadResponseArgs,
-): Promise<ThreadWithIncludesResponse> {
-  await refreshThreadDetailStatusSnapshots(deps, args.thread);
+): ThreadWithIncludesResponse {
   const response: ThreadWithIncludesResponse = toThreadResponseFromThread(
     deps,
     {
