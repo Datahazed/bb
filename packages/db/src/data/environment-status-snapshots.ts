@@ -261,6 +261,34 @@ export function listDueEnvironmentPullRequestStatusSnapshots(
     .all();
 }
 
+export function getEnvironmentGitStatusSnapshot(
+  db: SnapshotReadConnection,
+  environmentId: string,
+): EnvironmentGitStatusSnapshotRow | null {
+  return (
+    db
+      .select()
+      .from(environmentGitStatusSnapshots)
+      .where(eq(environmentGitStatusSnapshots.environmentId, environmentId))
+      .get() ?? null
+  );
+}
+
+export function getEnvironmentPullRequestStatusSnapshot(
+  db: SnapshotReadConnection,
+  environmentId: string,
+): EnvironmentPullRequestStatusSnapshotRow | null {
+  return (
+    db
+      .select()
+      .from(environmentPullRequestStatusSnapshots)
+      .where(
+        eq(environmentPullRequestStatusSnapshots.environmentId, environmentId),
+      )
+      .get() ?? null
+  );
+}
+
 export function markEnvironmentGitStatusSnapshotDue(
   db: SnapshotWriteConnection,
   args: MarkEnvironmentStatusSnapshotDueArgs,

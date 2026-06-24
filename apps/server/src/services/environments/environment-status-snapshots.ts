@@ -2,11 +2,11 @@ import {
   ensureEnvironmentStatusSnapshotRows,
   ensureTrackedEnvironmentStatusSnapshotRows,
   getEnvironment,
+  getEnvironmentPullRequestStatusSnapshot,
   getThread,
   listDueEnvironmentGitStatusSnapshots,
   listDueEnvironmentPullRequestStatusSnapshots,
   listEnvironmentThreadNotificationTargets,
-  markEnvironmentGitStatusSnapshotDue,
   markEnvironmentStatusSnapshotsDue,
   writeEnvironmentGitStatusSnapshot,
   writeEnvironmentPullRequestStatusSnapshot,
@@ -191,11 +191,13 @@ function notifyEnvironmentStatusSummaryChanged(
     deps.db,
     environmentId,
   )) {
-    deps.hub.notifyThread(target.threadId, [
-      "environment-status-summary-changed",
-    ], {
-      projectId: target.projectId,
-    });
+    deps.hub.notifyThread(
+      target.threadId,
+      ["environment-status-summary-changed"],
+      {
+        projectId: target.projectId,
+      },
+    );
   }
 }
 
@@ -374,13 +376,8 @@ function dirtyEnvironmentSnapshotsForChange(
     now,
   });
 
-  if (message.changes.includes("work-status-changed")) {
-    markEnvironmentGitStatusSnapshotDue(deps.db, {
-      environmentId: message.id,
-      now,
-    });
-  }
   if (
+    message.changes.includes("work-status-changed") ||
     message.changes.includes("git-refs-changed") ||
     hasAnyChange(message.changes, ENVIRONMENT_CHANGES_DIRTYING_BOTH)
   ) {
@@ -395,7 +392,9 @@ function dirtyEnvironmentSnapshotsForThreadChange(
   deps: SnapshotCoordinatorDeps,
   message: Extract<ChangedMessage, { entity: "thread" }>,
 ): void {
-  if (!hasAnyChange(message.changes, THREAD_CHANGES_THAT_CAN_CHANGE_ELIGIBILITY)) {
+  if (
+    !hasAnyChange(message.changes, THREAD_CHANGES_THAT_CAN_CHANGE_ELIGIBILITY)
+  ) {
     return;
   }
 
@@ -485,4 +484,22 @@ export async function refreshDueEnvironmentStatusSnapshots(
   for (const row of pullRequestRows) {
     await refreshPullRequestStatusSnapshot(deps, row, Date.now());
   }
+}
+
+export async function refreshEnvironmentPullRequestStatusSnapshotForEnvironment(
+  deps: SnapshotRefreshDeps,
+  args: { environmentId: string; now: number },
+): Promise<void> {
+  ensureEnvironmentStatusSnapshotRows(deps.db, {
+    environmentIds: [args.environmentId],
+    now: args.now,
+  });
+  const row = getEnvironmentPullRequestStatusSnapshot(
+    deps.db,
+    args.environmentId,
+  );
+  if (row === null) {
+    return;
+  }
+  await refreshPullRequestStatusSnapshot(deps, row, args.now);
 }

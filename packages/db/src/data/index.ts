@@ -223,6 +223,8 @@ export type {
 export {
   ensureEnvironmentStatusSnapshotRows,
   ensureTrackedEnvironmentStatusSnapshotRows,
+  getEnvironmentGitStatusSnapshot,
+  getEnvironmentPullRequestStatusSnapshot,
   listDueEnvironmentGitStatusSnapshots,
   listDueEnvironmentPullRequestStatusSnapshots,
   listEnvironmentSnapshotWorkspaceWatchTargetsOnHost,

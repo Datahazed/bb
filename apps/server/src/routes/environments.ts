@@ -45,6 +45,7 @@ import {
   requireAvailableWorkspaceDiff,
   requireAvailableWorkspaceStatus,
 } from "../services/environments/workspace-rpc-results.js";
+import { refreshEnvironmentPullRequestStatusSnapshotForEnvironment } from "../services/environments/environment-status-snapshots.js";
 import {
   rawDiffFileStatToEntry,
   selectInitialPatchPaths,
@@ -216,6 +217,16 @@ function assertCanMergePullRequest(
       "Pull request is not currently mergeable",
     );
   }
+}
+
+async function refreshPullRequestSnapshotAfterAction(
+  deps: AppDeps,
+  environment: Environment,
+): Promise<void> {
+  await refreshEnvironmentPullRequestStatusSnapshotForEnvironment(deps, {
+    environmentId: environment.id,
+    now: Date.now(),
+  });
 }
 
 /**
@@ -790,6 +801,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             },
           }),
         );
+        await refreshPullRequestSnapshotAfterAction(deps, environment);
         return context.json({
           ok: true,
           action: "pull_request_ready",
@@ -823,6 +835,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             },
           }),
         );
+        await refreshPullRequestSnapshotAfterAction(deps, environment);
         return context.json({
           ok: true,
           action: "pull_request_draft",
@@ -857,6 +870,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             },
           }),
         );
+        await refreshPullRequestSnapshotAfterAction(deps, environment);
         return context.json({
           ok: true,
           action: "pull_request_merge",

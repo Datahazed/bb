@@ -5,7 +5,10 @@ import {
   environmentPullRequestStatusSnapshots,
 } from "@bb/db";
 import type { GitHostPullRequest, WorkspaceStatus } from "@bb/domain";
-import { refreshDueEnvironmentStatusSnapshots } from "../../../src/services/environments/environment-status-snapshots.js";
+import {
+  EnvironmentStatusSnapshotCoordinator,
+  refreshDueEnvironmentStatusSnapshots,
+} from "../../../src/services/environments/environment-status-snapshots.js";
 import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
 import { seedThreadFixture } from "../../helpers/seed.js";
 import { withTestHarness } from "../../helpers/test-app.js";
@@ -149,9 +152,7 @@ describe("environment status snapshots", () => {
       const gitRow = harness.db
         .select()
         .from(environmentGitStatusSnapshots)
-        .where(
-          eq(environmentGitStatusSnapshots.environmentId, environment.id),
-        )
+        .where(eq(environmentGitStatusSnapshots.environmentId, environment.id))
         .get();
       expect(gitRow).toMatchObject({
         status: "available",
@@ -232,6 +233,83 @@ describe("environment status snapshots", () => {
         },
         attention: "ready_to_merge",
       });
+    });
+  });
+
+  it("marks both git and pull request snapshots due for workspace status changes", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment } = seedThreadFixture(harness, {
+        environment: {
+          path: "/tmp/status-snapshots",
+          workspaceProvisionType: "managed-worktree",
+        },
+      });
+      const futureRefreshAt = Date.now() + 60_000;
+      harness.db
+        .insert(environmentGitStatusSnapshots)
+        .values({
+          environmentId: environment.id,
+          status: "available",
+          gitStatusJson: JSON.stringify({ stale: true }),
+          errorCode: null,
+          errorMessage: null,
+          refreshedAt: 1,
+          nextRefreshAt: futureRefreshAt,
+          createdAt: 1,
+          updatedAt: 1,
+        })
+        .run();
+      harness.db
+        .insert(environmentPullRequestStatusSnapshots)
+        .values({
+          environmentId: environment.id,
+          status: "available",
+          pullRequestJson: null,
+          errorCode: null,
+          errorMessage: null,
+          refreshedAt: 1,
+          nextRefreshAt: futureRefreshAt,
+          createdAt: 1,
+          updatedAt: 1,
+        })
+        .run();
+
+      const coordinator = new EnvironmentStatusSnapshotCoordinator({
+        db: harness.db,
+        hub: harness.hub,
+        logger: harness.deps.logger,
+      });
+      try {
+        const beforeNotify = Date.now();
+        harness.hub.notifyEnvironment(environment.id, ["work-status-changed"]);
+
+        const gitRow = harness.db
+          .select()
+          .from(environmentGitStatusSnapshots)
+          .where(
+            eq(environmentGitStatusSnapshots.environmentId, environment.id),
+          )
+          .get();
+        const pullRequestRow = harness.db
+          .select()
+          .from(environmentPullRequestStatusSnapshots)
+          .where(
+            eq(
+              environmentPullRequestStatusSnapshots.environmentId,
+              environment.id,
+            ),
+          )
+          .get();
+
+        expect(gitRow?.nextRefreshAt).toBeGreaterThanOrEqual(beforeNotify);
+        expect(gitRow?.nextRefreshAt).toBeLessThan(futureRefreshAt);
+        expect(pullRequestRow?.nextRefreshAt).toBeGreaterThanOrEqual(
+          beforeNotify,
+        );
+        expect(pullRequestRow?.nextRefreshAt).toBeLessThan(futureRefreshAt);
+      } finally {
+        coordinator.dispose();
+      }
     });
   });
 });

@@ -61,6 +61,10 @@ function makeThreadResponse(
   return {
     ...makeThreadWithRuntime(thread),
     canSpawnChild: true,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     ...thread,
   };
 }
@@ -228,9 +232,9 @@ describe("thread state mutations", () => {
 
     await waitFor(() => {
       expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-        ?.folderId,
-    ).toBe("fld_personal");
+        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+          ?.folderId,
+      ).toBe("fld_personal");
     });
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.folderId,

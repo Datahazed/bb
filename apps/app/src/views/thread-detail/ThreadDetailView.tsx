@@ -16,6 +16,7 @@ import {
 import {
   isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
+  type ThreadPullRequest,
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
@@ -36,7 +37,6 @@ import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutat
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
-  useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
@@ -1282,10 +1282,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
-  const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
-  });
-  const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
+  const pullRequest = useMemo<ThreadPullRequest | null>(() => {
+    const summary = thread?.environmentStatusSummary.pullRequest;
+    return summary?.state === "available" ? summary.pullRequest : null;
+  }, [thread?.environmentStatusSummary.pullRequest]);
   const handlePullRequestReady = useCallback(async () => {
     const environmentId = thread?.environmentId;
     if (!environmentId) {

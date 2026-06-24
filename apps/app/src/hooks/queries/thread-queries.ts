@@ -9,7 +9,7 @@ import { useDebounceValue } from "usehooks-ts";
 import type {
   PendingInteraction,
   ResolvedThreadExecutionOptions,
-  ThreadWithRuntime,
+  ThreadListEntry,
 } from "@bb/domain";
 import type {
   PromptHistoryResponse,
@@ -518,7 +518,7 @@ export function useThread(id: string, options?: QueryOptions) {
 // placeholder; the real single-thread response, which carries the server-
 // computed value, resolves moments later.
 function liftThreadListPlaceholder(
-  thread: ThreadWithRuntime | undefined,
+  thread: ThreadListEntry | undefined,
 ): ThreadResponse | undefined {
   if (thread === undefined) {
     return undefined;
