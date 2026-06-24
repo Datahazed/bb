@@ -1,6 +1,6 @@
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -57,6 +57,10 @@ interface ProjectActionMenuItemProps {
 
 interface ProjectActionMenuSeparatorProps {
   surface: ProjectActionsMenuSurface;
+}
+
+function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
+  event.stopPropagation();
 }
 
 function ProjectActionMenuItem({
@@ -123,10 +127,7 @@ function ProjectActionsMenuItems({
       <ProjectActionMenuSeparator surface={surface} />
       <ProjectActionMenuItem
         surface={surface}
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           requestRename(project);
         }}
       >
@@ -135,10 +136,7 @@ function ProjectActionsMenuItems({
       {showAddLocalPath ? (
         <ProjectActionMenuItem
           surface={surface}
-          onSelect={(event) => {
-            if (surface === "dropdown") {
-              event.preventDefault();
-            }
+          onSelect={() => {
             requestAddLocalPath(project);
           }}
         >
@@ -148,10 +146,7 @@ function ProjectActionsMenuItems({
       <ProjectActionMenuItem
         surface={surface}
         className="text-destructive focus:text-destructive"
-        onSelect={(event) => {
-          if (surface === "dropdown") {
-            event.preventDefault();
-          }
+        onSelect={() => {
           requestDelete(project);
         }}
       >
@@ -188,7 +183,11 @@ export function ProjectActionsMenu({
           <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="w-44">
+      <DropdownMenuContent
+        align={align}
+        className="w-44"
+        onClick={stopProjectActionsMenuClickPropagation}
+      >
         <ProjectActionsMenuItems project={project} surface="dropdown" />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -206,6 +205,7 @@ export function ProjectActionsContextMenu({
       <ContextMenuContent
         aria-label={`${project.name} actions`}
         className="w-44"
+        onClick={stopProjectActionsMenuClickPropagation}
       >
         <ProjectActionsMenuItems project={project} surface="context" />
       </ContextMenuContent>

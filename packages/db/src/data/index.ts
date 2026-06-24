@@ -170,7 +170,11 @@ export type {
 
 export { getExperiments, setExperiments } from "./experiments.js";
 
-export { getAppTheme, setAppTheme } from "./app-theme.js";
+export {
+  getStoredThemeId,
+  getStoredFaviconColor,
+  setStoredAppearance,
+} from "./app-theme.js";
 
 export {
   getThreadDynamicContextFileState,
@@ -229,6 +233,7 @@ export {
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   insertEvents,
+  listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
@@ -246,6 +251,7 @@ export {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   getLatestThreadInterruptedReason,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listLatestOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -258,6 +264,7 @@ export {
 } from "./events.js";
 export type {
   AcceptedDaemonEvent,
+  ActiveBackgroundTaskCountRow,
   AppendDaemonEventInput,
   AppendDaemonEventsResult,
   AppendStoredThreadEventArgs,
@@ -269,7 +276,9 @@ export type {
   HasStoredTurnStartedArgs,
   InsertEventInput,
   InsertEventsResult,
+  ListActiveBackgroundTaskCountsByThreadIdsArgs,
   ListEventsOptions,
+  ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
   ListTimelineSegmentAnchorsDescendingArgs,
   TimelineSegmentAnchorLookupArgs,
   ListStoredClientTurnRequestIdsInRangeArgs,
@@ -296,10 +305,15 @@ export type {
 
 export {
   createTerminalSession,
+  getTerminalSession,
   getTerminalSessionForThread,
+  getThreadlessTerminalSessionForEnvironment,
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
+  listThreadlessTerminalSessionsByEnvironment,
+  listVisibleTerminalSessions,
   listVisibleTerminalSessionsByThread,
+  listVisibleThreadlessTerminalSessionsByEnvironment,
   markDaemonTerminalSessionExited,
   markDaemonTerminalSessionsDisconnected,
   markEnvironmentTerminalSessionsExited,
@@ -307,13 +321,21 @@ export {
   markTerminalSessionExited,
   markTerminalSessionRunning,
   markTerminalSessionUserInput,
+  markTerminalSessionUserInputById,
+  markThreadlessTerminalSessionUserInput,
   markThreadTerminalSessionsExited,
   updateTerminalSessionSize,
+  updateTerminalSessionSizeById,
   updateTerminalSessionTitle,
+  updateTerminalSessionTitleById,
+  updateThreadlessTerminalSessionSize,
+  updateThreadlessTerminalSessionTitle,
 } from "./terminal-sessions.js";
 export type {
   CreateTerminalSessionInput,
+  GetTerminalSessionArgs,
   GetTerminalSessionForThreadArgs,
+  GetThreadlessTerminalSessionForEnvironmentArgs,
   MarkDaemonTerminalSessionExitedArgs,
   MarkDaemonTerminalSessionsDisconnectedArgs,
   MarkEnvironmentTerminalSessionsExitedArgs,
@@ -321,10 +343,16 @@ export type {
   MarkTerminalSessionExitedArgs,
   MarkTerminalSessionRunningArgs,
   MarkTerminalSessionUserInputArgs,
+  MarkTerminalSessionUserInputByIdArgs,
+  MarkThreadlessTerminalSessionUserInputArgs,
   MarkThreadTerminalSessionsExitedArgs,
   TerminalSessionRow,
   UpdateTerminalSessionSizeArgs,
+  UpdateTerminalSessionSizeByIdArgs,
   UpdateTerminalSessionTitleArgs,
+  UpdateTerminalSessionTitleByIdArgs,
+  UpdateThreadlessTerminalSessionSizeArgs,
+  UpdateThreadlessTerminalSessionTitleArgs,
 } from "./terminal-sessions.js";
 
 export {

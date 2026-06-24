@@ -1,9 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type {
-  TerminalSession,
-  ThreadTerminalListResponse,
-} from "@bb/server-contract";
-import { threadTerminalsQueryKey } from "../queries/query-keys";
+import type { TerminalListResponse, TerminalSession } from "@bb/server-contract";
+import {
+  allTerminalsQueryKeyPrefix,
+  terminalsQueryKey,
+  type TerminalQueryScope,
+} from "../queries/query-keys";
 
 interface TerminalSessionCacheArgs {
   queryClient: QueryClient;
@@ -15,9 +16,9 @@ interface CloseTerminalSessionCacheArgs extends TerminalSessionCacheArgs {
 }
 
 function upsertTerminalSession(
-  current: ThreadTerminalListResponse | undefined,
+  current: TerminalListResponse | undefined,
   session: TerminalSession,
-): ThreadTerminalListResponse {
+): TerminalListResponse {
   if (!current) {
     return { sessions: [session] };
   }
@@ -37,9 +38,9 @@ function upsertTerminalSession(
 }
 
 function removeTerminalSession(
-  current: ThreadTerminalListResponse | undefined,
+  current: TerminalListResponse | undefined,
   terminalId: string,
-): ThreadTerminalListResponse | undefined {
+): TerminalListResponse | undefined {
   if (!current) {
     return current;
   }
@@ -54,32 +55,51 @@ function removeTerminalSession(
   return { sessions };
 }
 
-export function applyThreadTerminalSessionUpsert({
+function terminalScopesForSession(
+  session: TerminalSession,
+): TerminalQueryScope[] {
+  if (session.threadId !== null) {
+    return [{ kind: "thread", threadId: session.threadId }];
+  }
+  if (session.environmentId !== null) {
+    return [{ kind: "environment", environmentId: session.environmentId }];
+  }
+  return [
+    { kind: "host_path", hostId: session.hostId },
+    { kind: "host_path", hostId: session.hostId, cwd: session.initialCwd },
+  ];
+}
+
+export function applyTerminalSessionUpsert({
   queryClient,
   session,
 }: TerminalSessionCacheArgs): void {
-  queryClient.setQueryData<ThreadTerminalListResponse>(
-    threadTerminalsQueryKey(session.threadId),
-    (current) => upsertTerminalSession(current, session),
-  );
+  for (const scope of terminalScopesForSession(session)) {
+    queryClient.setQueryData<TerminalListResponse>(
+      terminalsQueryKey(scope),
+      (current) => upsertTerminalSession(current, session),
+    );
+  }
   queryClient.invalidateQueries({
-    queryKey: threadTerminalsQueryKey(session.threadId),
+    queryKey: allTerminalsQueryKeyPrefix(),
   });
 }
 
-export function applyThreadTerminalSessionClose({
+export function applyTerminalSessionClose({
   queryClient,
   session,
   terminalId,
 }: CloseTerminalSessionCacheArgs): void {
-  queryClient.setQueryData<ThreadTerminalListResponse>(
-    threadTerminalsQueryKey(session.threadId),
-    (current) =>
-      session.status === "exited"
-        ? removeTerminalSession(current, terminalId)
-        : upsertTerminalSession(current, session),
-  );
+  for (const scope of terminalScopesForSession(session)) {
+    queryClient.setQueryData<TerminalListResponse>(
+      terminalsQueryKey(scope),
+      (current) =>
+        session.status === "exited"
+          ? removeTerminalSession(current, terminalId)
+          : upsertTerminalSession(current, session),
+    );
+  }
   queryClient.invalidateQueries({
-    queryKey: threadTerminalsQueryKey(session.threadId),
+    queryKey: allTerminalsQueryKeyPrefix(),
   });
 }

@@ -2,16 +2,17 @@
  * ACP provider adapter.
  *
  * Maps between bb's ProviderAdapter contract and the generic ACP bridge
- * process; the adapter binds a profile's agent command (Cursor) into each
- * bridge session. The agent owns tool execution. Models and reasoning ride
- * the profile's CLI model surface (`modelCli`): the bridge groups the listed
- * ids into families with reasoning-effort variants, and the session's
- * (model, reasoningLevel) selection is pinned via the agent's launch flag —
- * applied per session, so a mid-thread change takes effect on the next
- * session spawn, not the next turn.
+ * process; the adapter binds a profile's agent command into each bridge
+ * session. The agent owns tool execution. CLI-style agents such as Cursor keep
+ * reasoning in model-id variants selected at launch. ACP-native agents can
+ * instead expose model and thought-level config options over the protocol.
  */
 
-import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
+import {
+  buildAcpProviderInfo,
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
 import type {
   PendingInteractionApprovalDecision,
   ThreadEvent,
@@ -113,6 +114,10 @@ export interface CreateAcpProviderAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   /** Override the directory containing bundled bridge files. */
   bridgeBundleDir?: string;
+  /** Optional environment values needed by the Node runtime that launches the bridge. */
+  bridgeNodeEnv?: Record<string, string>;
+  /** Optional executable used to run the Node bridge process. */
+  bridgeNodeExecutablePath?: string;
   /** Prefix for bb-owned turn ids emitted by this adapter instance. */
   turnIdPrefix?: string;
 }
@@ -335,9 +340,7 @@ function completeAcpStartedToolItem(
           cwd: item.cwd,
           status,
           approvalStatus: item.approvalStatus,
-          ...(outputText === undefined
-            ? {}
-            : { aggregatedOutput: outputText }),
+          ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
           ...(status === "completed" || status === "failed"
             ? { exitCode: status === "failed" ? 1 : 0 }
             : {}),
@@ -454,8 +457,51 @@ export function createAcpProviderAdapter(
   opts: CreateAcpProviderAdapterOptions,
 ): ProviderAdapter {
   const profile = opts.profile;
-  const providerInfo = getBuiltInAgentProviderInfo(profile.providerId);
+  const providerInfo = isAgentProviderId(profile.providerId)
+    ? getBuiltInAgentProviderInfo(profile.providerId)
+    : buildAcpProviderInfo({
+        id: profile.providerId,
+        displayName: profile.displayName,
+      });
   const additionalWorkspaceWriteRoots = opts.additionalWorkspaceWriteRoots;
+
+  function buildModelListCommand():
+    | {
+        command: string;
+        args: string[];
+        cwd?: string;
+        envVars?: Record<string, string>;
+      }
+    | undefined {
+    if (!profile.modelCli || profile.modelCli.listArgs.length === 0) {
+      return undefined;
+    }
+    return {
+      command: profile.agentCommand.command,
+      args: [...profile.modelCli.listArgs],
+      ...(profile.cwd !== undefined ? { cwd: profile.cwd } : {}),
+      ...(profile.env !== undefined ? { envVars: profile.env } : {}),
+    };
+  }
+
+  function buildModelDiscoveryAgentCommand():
+    | {
+        command: string;
+        args: string[];
+        cwd?: string;
+        envVars?: Record<string, string>;
+      }
+    | undefined {
+    if (buildModelListCommand() !== undefined) {
+      return undefined;
+    }
+    return {
+      command: profile.agentCommand.command,
+      args: [...profile.agentCommand.args],
+      ...(profile.cwd !== undefined ? { cwd: profile.cwd } : {}),
+      ...(profile.env !== undefined ? { envVars: profile.env } : {}),
+    };
+  }
 
   const turnState = createProviderTurnStateRegistry<AcpTurnState>({
     createState: () => ({
@@ -768,9 +814,7 @@ export function createAcpProviderAdapter(
         const startedEvent = state.toolCallEventsByCallId.get(
           parsed.data.toolCallId,
         );
-        const startedItem = state.toolItemsByCallId.get(
-          parsed.data.toolCallId,
-        );
+        const startedItem = state.toolItemsByCallId.get(parsed.data.toolCallId);
         const mergedEvent = mergeAcpToolCallEvents(startedEvent, parsed.data);
         const mergedItem = translateAcpToolCallItem(
           mergedEvent,
@@ -1092,9 +1136,14 @@ export function createAcpProviderAdapter(
       );
     }
     const instructions = command.options.instructions?.trim();
+    const cwd = profile.cwd ?? command.cwd;
+    const envVars = {
+      ...(profile.env ?? {}),
+      ...(command.options.envVars ?? {}),
+    };
     return {
       threadId: command.threadId,
-      cwd: command.cwd,
+      cwd,
       agent: {
         command: profile.agentCommand.command,
         args: [...profile.agentCommand.args],
@@ -1102,38 +1151,52 @@ export function createAcpProviderAdapter(
       ...buildModelSelectionParam(command.options),
       permissionMode: command.options.permissionMode,
       permissionEscalation: command.options.permissionEscalation,
-      workspaceWriteRoots: [command.cwd, ...additionalWorkspaceWriteRoots],
-      ...(command.options.envVars &&
-      Object.keys(command.options.envVars).length > 0
-        ? { envVars: command.options.envVars }
-        : {}),
+      workspaceWriteRoots: [cwd, ...additionalWorkspaceWriteRoots],
+      ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
       ...(instructions ? { instructions } : {}),
     };
   }
 
   /**
-   * Session-level model pin for the bridge, which resolves (model,
-   * reasoningLevel) to the exact agent model variant via the list command's
-   * catalog. The synthetic "acp-default" id (persisted by threads started
-   * before the bridge listed real models) is never forwarded.
+   * Session-level model pin for the bridge. CLI-style agents use launch flags;
+   * ACP-native agents receive the selected model over the protocol. The
+   * synthetic "acp-default" id is never forwarded.
    */
   function buildModelSelectionParam(
     options: ProviderExecutionContext,
   ): Record<string, unknown> {
     const model = options.model;
+    const listCommand = buildModelListCommand();
     if (!model || model === ACP_DEFAULT_MODEL_ID) {
       return {};
     }
+    if (!listCommand) {
+      return {
+        modelSelection: {
+          modelId: model,
+          ...(options.reasoningLevel !== undefined
+            ? { reasoningLevel: options.reasoningLevel }
+            : {}),
+        },
+      };
+    }
+    if (!profile.modelCli?.selectFlag) {
+      return {};
+    }
+    // Cursor encodes reasoning in the selected model id and has no ACP
+    // `thought_level` option; keep that CLI variant path separate from native
+    // ACP config-option reasoning.
     return {
       modelSelection: {
-        listCommand: {
-          command: profile.agentCommand.command,
-          args: [...profile.modelCli.listArgs],
-        },
+        listCommand,
         selectFlag: profile.modelCli.selectFlag,
         model,
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
+          : {}),
+        // Only "fast" changes resolution; "default" is the catalog's normal id.
+        ...(options.serviceTier === "fast"
+          ? { serviceTier: options.serviceTier }
           : {}),
       },
     };
@@ -1146,13 +1209,14 @@ export function createAcpProviderAdapter(
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
     process: {
-      command: "node",
+      command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
         bridgeBundleDir: opts.bridgeBundleDir,
         bundleFileName: "bb-acp-bridge.mjs",
         importMetaUrl: import.meta.url,
         bridgeRelativePath: "bridge/bridge.js",
       }),
+      ...(opts.bridgeNodeEnv !== undefined ? { env: opts.bridgeNodeEnv } : {}),
     },
 
     // -- Unified command builder -------------------------------------------
@@ -1166,15 +1230,15 @@ export function createAcpProviderAdapter(
             params: { clientInfo: { name: "bb", version: "1.0.0" } },
           };
         case "model/list":
+          const listCommand = buildModelListCommand();
+          const agent = buildModelDiscoveryAgentCommand();
           return {
             kind: "request",
             method: "model/list",
             params: {
-              listCommand: {
-                command: profile.agentCommand.command,
-                args: [...profile.modelCli.listArgs],
-              },
-              primaryModels: [...profile.modelCli.primaryModels],
+              ...(listCommand !== undefined ? { listCommand } : {}),
+              ...(agent !== undefined ? { agent } : {}),
+              primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
             },
           };
         case "skills/configure":

@@ -72,25 +72,30 @@ const workspaceFilePreviewFixedPanelTabSchema = z
     kind: z.literal("workspace-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    projectId: z.string().min(1).nullable().default(null),
     source: environmentFilePreviewSourceSchema,
     statusLabel: workspaceFilePreviewStatusLabelSchema,
   })
   .strict();
 const hostFilePreviewFixedPanelTabSchema = z
   .object({
+    environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("host-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const threadStorageFilePreviewFixedPanelTabSchema = z
   .object({
+    environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     isPinned: z.boolean(),
     kind: z.literal("thread-storage-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
     path: z.string().min(1),
+    threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const browserFixedPanelTabSchema = z
@@ -171,23 +176,28 @@ export interface WorkspaceFilePreviewFixedPanelTab {
   kind: "workspace-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  projectId: string | null;
   source: EnvironmentFilePreviewSource;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
 }
 
 export interface HostFilePreviewFixedPanelTab {
+  environmentId: string | null;
   id: string;
   kind: "host-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  threadId: string | null;
 }
 
 export interface ThreadStorageFilePreviewFixedPanelTab {
+  environmentId: string | null;
   id: string;
   isPinned: boolean;
   kind: "thread-storage-file-preview";
   lineRange: FilePreviewLineRange | null;
   path: string;
+  threadId: string | null;
 }
 
 /**
@@ -325,8 +335,16 @@ interface NormalizeFixedPanelTabGroupStateArgs {
 }
 
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
+  environmentId: string | null;
   isPinned: boolean;
   tab: ThreadStorageFileTabState;
+  threadId: string;
+}
+
+interface CreateHostFilePreviewFixedPanelTabArgs {
+  environmentId: string;
+  tab: HostFileTabState;
+  threadId: string;
 }
 
 interface CreateBrowserFixedPanelTabArgs {
@@ -342,6 +360,7 @@ interface CreateSideChatFixedPanelTabArgs {
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
   environmentId: string | null;
+  projectId: string | null;
   tab: WorkspaceFileTabState;
 }
 
@@ -353,6 +372,23 @@ interface BuildFixedPanelTabIdArgs {
   environmentId: string | null;
   kind: FixedPanelTab["kind"];
   path: string;
+}
+
+interface BuildWorkspaceFilePreviewTabIdArgs {
+  environmentId: string | null;
+  path: string;
+  projectId: string | null;
+}
+
+interface BuildHostFilePreviewTabIdArgs {
+  environmentId: string | null;
+  path: string;
+  threadId: string | null;
+}
+
+interface BuildThreadStorageFilePreviewTabIdArgs {
+  path: string;
+  threadId: string | null;
 }
 
 interface NormalizeFixedPanelTabGroupStateResult {
@@ -391,6 +427,48 @@ export function buildFixedPanelTabId({
   ].join(":");
 }
 
+function buildWorkspaceFilePreviewTabId({
+  environmentId,
+  path,
+  projectId,
+}: BuildWorkspaceFilePreviewTabIdArgs): string {
+  return buildFixedPanelTabId({
+    environmentId: environmentId ?? (projectId ? `project:${projectId}` : null),
+    kind: "workspace-file-preview",
+    path,
+  });
+}
+
+function buildHostFilePreviewTabId({
+  environmentId,
+  path,
+  threadId,
+}: BuildHostFilePreviewTabIdArgs): string {
+  if (threadId === null || environmentId === null) {
+    return buildFixedPanelTabId({
+      environmentId: null,
+      kind: "host-file-preview",
+      path,
+    });
+  }
+  return buildFixedPanelTabId({
+    environmentId: `thread:${threadId}:environment:${environmentId}`,
+    kind: "host-file-preview",
+    path,
+  });
+}
+
+function buildThreadStorageFilePreviewTabId({
+  path,
+  threadId,
+}: BuildThreadStorageFilePreviewTabIdArgs): string {
+  return buildFixedPanelTabId({
+    environmentId: threadId === null ? null : `thread:${threadId}`,
+    kind: "thread-storage-file-preview",
+    path,
+  });
+}
+
 export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
   return {
     id: THREAD_INFO_TAB_ID,
@@ -407,52 +485,61 @@ export function createGitDiffFixedPanelTab(): GitDiffFixedPanelTab {
 
 export function createWorkspaceFilePreviewFixedPanelTab({
   environmentId,
+  projectId,
   tab,
 }: CreateWorkspaceFilePreviewFixedPanelTabArgs): WorkspaceFilePreviewFixedPanelTab {
   return {
     environmentId,
-    id: buildFixedPanelTabId({
+    id: buildWorkspaceFilePreviewTabId({
       environmentId,
-      kind: "workspace-file-preview",
       path: tab.path,
+      projectId,
     }),
     kind: "workspace-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    projectId,
     source: tab.source,
     statusLabel: tab.statusLabel,
   };
 }
 
-export function createHostFilePreviewFixedPanelTab(
-  tab: HostFileTabState,
-): HostFilePreviewFixedPanelTab {
+export function createHostFilePreviewFixedPanelTab({
+  environmentId,
+  tab,
+  threadId,
+}: CreateHostFilePreviewFixedPanelTabArgs): HostFilePreviewFixedPanelTab {
   return {
-    id: buildFixedPanelTabId({
-      environmentId: null,
-      kind: "host-file-preview",
+    environmentId,
+    id: buildHostFilePreviewTabId({
+      environmentId,
       path: tab.path,
+      threadId,
     }),
     kind: "host-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    threadId,
   };
 }
 
 export function createThreadStorageFilePreviewFixedPanelTab({
+  environmentId,
   isPinned,
   tab,
+  threadId,
 }: CreateThreadStorageFilePreviewFixedPanelTabArgs): ThreadStorageFilePreviewFixedPanelTab {
   return {
-    id: buildFixedPanelTabId({
-      environmentId: null,
-      kind: "thread-storage-file-preview",
+    environmentId,
+    id: buildThreadStorageFilePreviewTabId({
       path: tab.path,
+      threadId,
     }),
     isPinned,
     kind: "thread-storage-file-preview",
     lineRange: tab.lineRange,
     path: tab.path,
+    threadId,
   };
 }
 
@@ -538,26 +625,25 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
             id: GIT_DIFF_TAB_ID,
           };
     case "workspace-file-preview": {
-      const id = buildFixedPanelTabId({
+      const id = buildWorkspaceFilePreviewTabId({
         environmentId: tab.environmentId,
-        kind: tab.kind,
         path: tab.path,
+        projectId: tab.projectId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
     case "host-file-preview": {
-      const id = buildFixedPanelTabId({
-        environmentId: null,
-        kind: tab.kind,
+      const id = buildHostFilePreviewTabId({
+        environmentId: tab.environmentId,
         path: tab.path,
+        threadId: tab.threadId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
     case "thread-storage-file-preview": {
-      const id = buildFixedPanelTabId({
-        environmentId: null,
-        kind: tab.kind,
+      const id = buildThreadStorageFilePreviewTabId({
         path: tab.path,
+        threadId: tab.threadId,
       });
       return tab.id === id ? tab : { ...tab, id };
     }
@@ -844,17 +930,20 @@ export function areFixedPanelTabsEquivalent(
           b: b.lineRange,
         }) &&
         a.path === b.path &&
+        a.projectId === b.projectId &&
         areEnvironmentFilePreviewSourcesEqual(a.source, b.source) &&
         a.statusLabel === b.statusLabel
       );
     case "host-file-preview":
       return (
         b.kind === "host-file-preview" &&
+        a.environmentId === b.environmentId &&
         areFilePreviewLineRangesEqual({
           a: a.lineRange,
           b: b.lineRange,
         }) &&
-        a.path === b.path
+        a.path === b.path &&
+        a.threadId === b.threadId
       );
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
@@ -869,12 +958,14 @@ export function areFixedPanelTabsEquivalent(
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&
+        a.environmentId === b.environmentId &&
         a.isPinned === b.isPinned &&
         areFilePreviewLineRangesEqual({
           a: a.lineRange,
           b: b.lineRange,
         }) &&
-        a.path === b.path
+        a.path === b.path &&
+        a.threadId === b.threadId
       );
     case "terminal":
       return b.kind === "terminal" && a.terminalId === b.terminalId;

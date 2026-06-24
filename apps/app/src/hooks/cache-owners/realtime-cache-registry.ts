@@ -69,7 +69,7 @@ import {
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
-  allThreadTerminalsQueryKeyPrefix,
+  allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentPullRequestQueryKey,
@@ -80,7 +80,7 @@ import {
   systemProvidersQueryKey,
   threadQueryKey,
   threadSearchQueryKeyPrefix,
-  threadTerminalsQueryKey,
+  terminalsQueryKey,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
@@ -211,6 +211,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "events-appended": {
     flush: "debounced",
     dirty: [
+      dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
       dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
@@ -425,6 +426,7 @@ export interface RealtimeDirtyContext {
 }
 
 export interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
+  backgroundActivityChanged: boolean | undefined;
   eventTypes: readonly ThreadEventType[] | undefined;
   hasPendingInteraction: boolean | undefined;
   projectId: string | undefined;
@@ -552,6 +554,15 @@ function dirtyThreadListQueries({
   return getThreadListInvalidationQueryKeys({ projectId, queryClient });
 }
 
+function dirtyThreadListQueriesForBackgroundActivity(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  if (context.backgroundActivityChanged !== true) {
+    return [];
+  }
+  return dirtyThreadListQueries(context);
+}
+
 function dirtyRootOrderThreadListQueries({
   projectId,
   queryClient,
@@ -619,8 +630,8 @@ function dirtyThreadTerminalQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return threadId
-    ? [threadTerminalsQueryKey(threadId)]
-    : [allThreadTerminalsQueryKeyPrefix()];
+    ? [terminalsQueryKey({ kind: "thread", threadId })]
+    : [allTerminalsQueryKeyPrefix()];
 }
 
 function dirtyThreadStorageQueriesForThread({

@@ -20,6 +20,7 @@ import type {
   AutomationRunTrigger,
   AutomationTriggerType,
   EnvironmentStatus,
+  FaviconColorPreference,
   HostType,
   PendingInteractionStatus,
   PermissionMode,
@@ -152,12 +153,16 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
-// Single-row table (id = "current") holding the app-wide color palette: the
-// active built-in theme id (or "custom") plus the custom stylesheet text.
+// Single-row table (id = "current") holding the app-wide appearance: the active
+// palette id (a built-in theme id, or a custom theme name whose CSS lives on
+// disk under `<data-dir>/theme/<name>/theme.css`) and the browser tab icon tint.
 export const appTheme = sqliteTable("app_theme", {
   id: text("id").primaryKey(),
   themeId: text("theme_id").notNull(),
-  customCss: text("custom_css"),
+  faviconColor: text("favicon_color")
+    .$type<FaviconColorPreference>()
+    .notNull()
+    .default("default"),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -556,12 +561,12 @@ export const terminalSessions = sqliteTable(
   "terminal_sessions",
   {
     id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").references(() => threads.id, {
+      onDelete: "cascade",
+    }),
+    environmentId: text("environment_id").references(() => environments.id, {
+      onDelete: "cascade",
+    }),
     hostId: text("host_id")
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),

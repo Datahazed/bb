@@ -27,6 +27,7 @@ import type {
   ThreadEventType,
 } from "@bb/domain";
 import {
+  LOCAL_WORKFLOW_TASK_TYPE,
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
@@ -48,6 +49,8 @@ import {
 } from "./threads.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
+
+const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
 
 export interface InsertEventInput {
   threadId: string;
@@ -1130,6 +1133,19 @@ export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
   threadId: string;
 }
 
+export interface ListLatestOpenBackgroundTaskStateRowsForThreadArgs {
+  threadId: string;
+}
+
+export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
+  threadIds: readonly string[];
+}
+
+export interface ActiveBackgroundTaskCountRow {
+  activeWorkflowCount: number;
+  threadId: string;
+}
+
 /**
  * Latest thread-scoped lifecycle row per backgroundTask item, regardless of
  * sequence. Timeline windows backfill these for in-window items so a page
@@ -1177,6 +1193,120 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     )
     .orderBy(events.sequence)
     .all();
+}
+
+/**
+ * Latest non-terminal lifecycle row per open backgroundTask item in a thread.
+ * Open tasks can outlive the latest timeline window; these rows let latest-page
+ * projections surface active workflow/background-command state even when the
+ * spawning turn and progress row are outside the selected event window.
+ */
+export function listLatestOpenBackgroundTaskStateRowsForThread(
+  db: DbConnection,
+  args: ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
+): StoredEventRow[] {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const completed = alias(events, "completed_background_task_state");
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.itemKind, "backgroundTask"),
+        inArray(events.type, [startedType, progressType]),
+        isNotNull(events.itemId),
+        sql`json_extract(${events.data}, '$.item.status') = 'pending'`,
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(completed)
+            .where(
+              and(
+                eq(completed.threadId, events.threadId),
+                eq(completed.itemId, events.itemId),
+                eq(completed.type, completedType),
+              ),
+            ),
+        ),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_id = ${events.itemId}
+            AND latest.type IN (${startedType}, ${progressType})
+        )`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+/**
+ * Counts open provider workflow tasks by thread, using each item's latest
+ * start/progress row. A task can report a terminal status in a progress row
+ * before the final completed event arrives, so active means the latest
+ * lifecycle snapshot still has item.status = "pending".
+ */
+export function listActiveBackgroundTaskCountsByThreadIds(
+  db: DbQueryConnection,
+  args: ListActiveBackgroundTaskCountsByThreadIdsArgs,
+): ActiveBackgroundTaskCountRow[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+
+  return db.all<ActiveBackgroundTaskCountRow>(sql`
+    WITH latest_background_task_activity AS (
+      SELECT
+        ${events.threadId} AS thread_id,
+        ${events.itemId} AS item_id,
+        MAX(${events.sequence}) AS sequence
+      FROM ${events}
+      WHERE ${inArray(events.threadId, [...args.threadIds])}
+        AND ${eq(events.itemKind, "backgroundTask")}
+        AND ${inArray(events.type, [startedType, progressType])}
+        AND ${isNotNull(events.itemId)}
+      GROUP BY ${events.threadId}, ${events.itemId}
+    ),
+    completed_background_task_activity AS (
+      SELECT DISTINCT
+        ${events.threadId} AS thread_id,
+        ${events.itemId} AS item_id
+      FROM ${events}
+      WHERE ${inArray(events.threadId, [...args.threadIds])}
+        AND ${eq(events.itemKind, "backgroundTask")}
+        AND ${eq(events.type, completedType)}
+        AND ${isNotNull(events.itemId)}
+    )
+    SELECT
+      active_event.thread_id AS threadId,
+      COUNT(*) AS activeWorkflowCount
+    FROM latest_background_task_activity latest
+    JOIN events active_event
+      ON active_event.thread_id = latest.thread_id
+      AND active_event.sequence = latest.sequence
+    LEFT JOIN completed_background_task_activity completed
+      ON completed.thread_id = latest.thread_id
+      AND completed.item_id = latest.item_id
+    WHERE completed.item_id IS NULL
+      AND json_extract(active_event.data, '$.item.status') = 'pending'
+      AND json_extract(active_event.data, '$.item.taskType') =
+        ${LOCAL_WORKFLOW_TASK_TYPE}
+    GROUP BY active_event.thread_id
+    ORDER BY active_event.thread_id
+  `);
 }
 
 function listStoredTurnStartedKeysChunk(
@@ -1528,6 +1658,7 @@ export function getActiveStoredTurnId(
         eq(events.threadId, threadId),
         eq(events.type, "turn/started"),
         isNotNull(events.turnId),
+        isRootTurnStartedEventData,
       ),
     )
     .orderBy(desc(events.sequence))
@@ -1623,12 +1754,14 @@ export function listThreadTurnInterruptionEventStates(
         inArray(events.threadId, threadIds),
         eq(events.type, "turn/started"),
         isNotNull(events.turnId),
+        isRootTurnStartedEventData,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest
           WHERE latest.thread_id = ${events.threadId}
             AND latest.type = 'turn/started'
             AND latest.turn_id IS NOT NULL
+            AND COALESCE(json_extract(latest.data, '$.parentToolCallId'), '') = ''
         )`,
         sql`NOT EXISTS (
           SELECT 1

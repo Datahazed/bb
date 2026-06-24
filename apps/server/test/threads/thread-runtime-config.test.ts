@@ -15,7 +15,11 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
-import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
+import {
+  buildAcpLaunchSpec,
+  buildThreadStartCommand,
+  prepareTurnSubmitCommandPayload,
+} from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -50,7 +54,201 @@ async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
   return sourceRootPath;
 }
 
+interface WriteWorkspaceAgentInstructionsArgs {
+  content: string;
+  workspacePath: string;
+}
+
+async function writeWorkspaceAgentInstructions(
+  args: WriteWorkspaceAgentInstructionsArgs,
+): Promise<void> {
+  const bbDir = path.join(args.workspacePath, ".bb");
+  await mkdir(bbDir, { recursive: true });
+  await writeFile(path.join(bbDir, "AGENTS.md"), args.content, "utf8");
+}
+
 describe("thread runtime config", () => {
+  it("omits empty custom ACP modelCli from launch specs", () => {
+    expect(
+      buildAcpLaunchSpec({
+        id: "custom",
+        displayName: "Custom ACP",
+        command: "custom-agent",
+        args: [],
+        env: {},
+        modelCli: {
+          listArgs: [],
+          selectFlag: "--model",
+          primaryModels: ["model-a"],
+        },
+      }),
+    ).toEqual({
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: [],
+      env: {},
+    });
+  });
+
+  it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "custom",
+            displayName: "Custom ACP",
+            command: "custom-agent",
+            args: ["serve"],
+            env: { CUSTOM_AGENT_TOKEN: "token" },
+            cwd: "/agent-home",
+            modelCli: {
+              listArgs: ["models", "list"],
+              selectFlag: "--model",
+              primaryModels: ["model-a"],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-runtime-custom-acp",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/custom-acp",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "acp-custom",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-custom",
+          threadId: thread.id,
+        });
+        const execution = {
+          model: "model-a",
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        } as const;
+        const expectedSpec = {
+          displayName: "Custom ACP",
+          command: "custom-agent",
+          args: ["serve"],
+          env: { CUSTOM_AGENT_TOKEN: "token" },
+          cwd: "/agent-home",
+          modelCli: {
+            listArgs: ["models", "list"],
+            selectFlag: "--model",
+            primaryModels: ["model-a"],
+          },
+        };
+
+        const startCommand = await buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId: "acp-custom",
+          requestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+
+        const submitCommand = await prepareTurnSubmitCommandPayload(
+          harness.deps,
+          {
+            environment,
+            execution,
+            permissionEscalation: "ask",
+            input: textInput("continue"),
+            target: { mode: "start" },
+            thread,
+          },
+        );
+        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+      },
+    );
+  });
+
+  it("attaches known ACP launch specs to thread start and turn submit commands", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-known-acp",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/known-acp",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-opencode",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-opencode",
+        threadId: thread.id,
+      });
+      const execution = {
+        model: "opencode/default",
+        permissionMode: "workspace-write",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      } as const;
+      const expectedSpec = {
+        displayName: "opencode",
+        command: "opencode",
+        args: ["acp"],
+        env: {},
+      };
+
+      const startCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
+        projectId: project.id,
+        providerId: "acp-opencode",
+        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+      expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+
+      const submitCommand = await prepareTurnSubmitCommandPayload(
+        harness.deps,
+        {
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("continue"),
+          target: { mode: "start" },
+          thread,
+        },
+      );
+      expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+      expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+    });
+  });
+
   it.each([
     {
       childProviderId: "codex",
@@ -747,6 +945,61 @@ describe("thread runtime config", () => {
         "bb_send_to_main_thread",
       );
       expect(runtimeConfig.instructions).not.toContain("Side chat handoff");
+    });
+  });
+
+  it("appends workspace .bb/AGENTS.md instructions to the standard agent instructions", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-runtime-agents-md";
+      seedHostSession(harness.deps, { id: hostId });
+      const workspacePath = path.join(
+        harness.config.dataDir,
+        "agents-md-workspace",
+      );
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      await writeWorkspaceAgentInstructions({
+        content:
+          "# Project Rules\n\nAlways run the smoke test before pushing.\n",
+        workspacePath,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread,
+          environment: {
+            hostId: environment.hostId,
+            id: environment.id,
+            path: environment.path,
+            status: environment.status,
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+        },
+      );
+
+      expect(runtimeConfig.instructionMode).toBe("append");
+      expect(runtimeConfig.instructions).toContain(
+        "You are working inside bb, an agentic IDE",
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "The following workspace instructions come from .bb/AGENTS.md:",
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "Always run the smoke test before pushing.",
+      );
     });
   });
 });

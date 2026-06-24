@@ -76,6 +76,11 @@ interface ThreadTimelineFromEventsBaseOptions {
    * encoded in command pills on the accepted request.
    */
   providerId?: string;
+  /**
+   * Display name for the current provider, supplied by the server for dynamic
+   * providers that are not in thread-view's static provider table.
+   */
+  providerDisplayName?: string;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -120,6 +125,7 @@ export interface ThreadTimelineSourceSeqRange {
 
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
+  providerDisplayName?: string;
   threadStatus: Thread["status"];
   /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
   threadName: string;
@@ -1072,6 +1078,65 @@ function hasTurnSummaryRows(rows: TimelineRow[]): boolean {
   return rows.some((row) => row.kind === "turn");
 }
 
+function collectExternalUserBoundarySeqs(
+  projection: EventProjection,
+): number[] {
+  const boundarySeqs = new Set<number>();
+  for (const entry of projection.entries) {
+    if (entry.kind !== "turn") {
+      continue;
+    }
+    for (const seq of entry.turn.externalUserBoundarySeqs ?? []) {
+      boundarySeqs.add(seq);
+    }
+  }
+  return [...boundarySeqs].sort((left, right) => left - right);
+}
+
+function compareTimelineRowsBySource(
+  left: TimelineRow,
+  right: TimelineRow,
+): number {
+  if (left.sourceSeqStart !== right.sourceSeqStart) {
+    return left.sourceSeqStart - right.sourceSeqStart;
+  }
+  if (left.sourceSeqEnd !== right.sourceSeqEnd) {
+    return left.sourceSeqEnd - right.sourceSeqEnd;
+  }
+  return 0;
+}
+
+function orderRowsAfterExternalUserBoundary(
+  rows: TimelineRow[],
+  boundarySeqs: readonly number[],
+): TimelineRow[] {
+  const firstBoundarySeq = boundarySeqs[0];
+  if (firstBoundarySeq === undefined) {
+    return rows;
+  }
+
+  const suffixStartIndex = rows.findIndex(
+    (row) => row.sourceSeqStart >= firstBoundarySeq,
+  );
+  if (suffixStartIndex === -1) {
+    return rows;
+  }
+
+  // Keep pre-boundary rows in their established projection order. A global
+  // source sort moves thread provisioning under initial turn summaries because
+  // those summaries inherit the accepted request's source range.
+  const suffix = rows.slice(suffixStartIndex);
+  const orderedSuffix = suffix
+    .map((row, index) => ({ index, row }))
+    .sort((left, right) => {
+      const sourceOrder = compareTimelineRowsBySource(left.row, right.row);
+      return sourceOrder === 0 ? left.index - right.index : sourceOrder;
+    })
+    .map(({ row }) => row);
+
+  return [...rows.slice(0, suffixStartIndex), ...orderedSuffix];
+}
+
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
@@ -1100,7 +1165,10 @@ function buildTimelineRows(
     }
   }
 
-  return rows;
+  return orderRowsAfterExternalUserBoundary(
+    rows,
+    collectExternalUserBoundarySeqs(projection),
+  );
 }
 
 export function buildThreadTimelineFromEvents(
@@ -1111,6 +1179,7 @@ export function buildThreadTimelineFromEvents(
     includeDebugRawEvents: args.options.includeDebugRawEvents,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
+    providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
@@ -1174,6 +1243,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     includeDebugRawEvents: false,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
+    providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: "full",

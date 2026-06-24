@@ -221,6 +221,32 @@ function buildSelectedStartedTurnIds(
   return turnIds;
 }
 
+function buildAcceptedRootClientTurnIds(
+  events: ThreadEventWithMeta[],
+  clientRequestById: ReadonlyMap<string, ClientTurnRequestedWithMeta>,
+): ReadonlySet<string> {
+  const turnIds = new Set<string>();
+  for (const { event } of events) {
+    if (event.type !== "turn/input/accepted") {
+      continue;
+    }
+    const request = clientRequestById.get(event.clientRequestId);
+    if (
+      request?.event.target.kind !== "new-turn" &&
+      request?.event.target.kind !== "thread-start"
+    ) {
+      continue;
+    }
+    turnIds.add(
+      requireThreadEventScopeTurnId({
+        type: event.type,
+        scope: event.scope,
+      }),
+    );
+  }
+  return turnIds;
+}
+
 function canUseAcceptedClientRequestForVisibleProjection(
   acceptedClientRequest: AcceptedClientRequest,
   decoded: ClientTurnRequestedEvent,
@@ -286,6 +312,20 @@ function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
     (receiverThreadId): receiverThreadId is string =>
       typeof receiverThreadId === "string" && receiverThreadId.length > 0,
   );
+}
+
+function getToolCallSenderThreadId(decoded: ThreadEvent): string | undefined {
+  if (
+    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
+    decoded.item.type !== "toolCall"
+  ) {
+    return undefined;
+  }
+
+  const senderThreadId = decoded.item.arguments?.senderThreadId;
+  return typeof senderThreadId === "string" && senderThreadId.length > 0
+    ? senderThreadId
+    : undefined;
 }
 
 function enqueuePendingDelegationTurnLink(
@@ -395,35 +435,60 @@ function buildFlatProjectionData(
   });
   const clientRequestById = buildClientTurnRequestById(orderedEvents);
   const selectedStartedTurnIds = buildSelectedStartedTurnIds(orderedEvents);
+  const acceptedRootClientTurnIds = buildAcceptedRootClientTurnIds(
+    orderedEvents,
+    clientRequestById,
+  );
   for (const { event: decoded, meta } of orderedEvents) {
     const eventType = decoded.type;
     const eventTurnId = getEventTurnId(decoded);
     const eventProviderThreadId = getEventProviderThreadId(decoded);
-    const explicitEventParentToolCallId = getEventParentToolCallId(decoded);
+    const isAcceptedRootClientTurn =
+      typeof eventTurnId === "string" &&
+      acceptedRootClientTurnIds.has(eventTurnId);
+    const explicitEventParentToolCallId = isAcceptedRootClientTurn
+      ? undefined
+      : getEventParentToolCallId(decoded);
 
     if (decoded.type === "turn/started") {
       const turnId = requireThreadEventScopeTurnId({
         type: decoded.type,
         scope: decoded.scope,
       });
-      consumePendingDelegationTurnLink(
-        state,
-        eventProviderThreadId,
-        turnId,
-      );
+      if (isAcceptedRootClientTurn) {
+        state.delegationParentToolCallIdsByTurnId.delete(turnId);
+      } else {
+        const pendingParentToolCallId = consumePendingDelegationTurnLink(
+          state,
+          eventProviderThreadId,
+          turnId,
+        );
+        if (explicitEventParentToolCallId) {
+          state.delegationParentToolCallIdsByTurnId.set(
+            turnId,
+            explicitEventParentToolCallId,
+          );
+        } else if (pendingParentToolCallId) {
+          state.delegationParentToolCallIdsByTurnId.set(
+            turnId,
+            pendingParentToolCallId,
+          );
+        }
+      }
       onTurnStarted(state, turnId);
     }
 
-    const eventParentToolCallId =
-      explicitEventParentToolCallId ??
-      (eventTurnId
-        ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
-        : undefined) ??
-      (eventProviderThreadId
-        ? state.delegationParentToolCallIdsByProviderThreadId.get(
-            eventProviderThreadId,
-          )
-        : undefined);
+    const eventParentToolCallId = isAcceptedRootClientTurn
+      ? undefined
+      : (explicitEventParentToolCallId ??
+        (eventTurnId
+          ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
+          : undefined) ??
+        (eventProviderThreadId
+          ? state.delegationParentToolCallIdsByProviderThreadId.get(
+              eventProviderThreadId,
+            )
+          : undefined));
 
     const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
     if (compactionTurnFinalization) {
@@ -562,6 +627,7 @@ function buildFlatProjectionData(
     if (toolCallEvent) {
       const toolCallName = getToolCallName(decoded);
       const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
+      const toolCallSenderThreadId = getToolCallSenderThreadId(decoded);
       if (toolCallEvent.kind !== "output") {
         if (
           !toolCallEvent.call.parentToolCallId &&
@@ -599,6 +665,18 @@ function buildFlatProjectionData(
             );
           }
           for (const receiverThreadId of toolCallReceiverThreadIds) {
+            if (
+              receiverThreadId === eventProviderThreadId ||
+              receiverThreadId === toolCallSenderThreadId
+            ) {
+              enqueuePendingDelegationTurnLink(
+                state,
+                eventProviderThreadId,
+                eventTurnId,
+                toolCallEvent.call.callId,
+              );
+              continue;
+            }
             state.delegationParentToolCallIdsByProviderThreadId.set(
               receiverThreadId,
               toolCallEvent.call.callId,
@@ -692,6 +770,7 @@ function buildFlatProjectionData(
     const operation = parseOperationMessage(decoded, meta, {
       includeProviderUnhandledOperations:
         args.options?.includeProviderUnhandledOperations,
+      providerDisplayName: args.options?.providerDisplayName,
       threadName: args.options?.threadName ?? "",
     });
     if (operation) {

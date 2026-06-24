@@ -75,6 +75,98 @@ provider env keys only when opting into a non-Codex provider route.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon.
 
+## Custom ACP Agents
+
+Known ACP agents can appear automatically when their CLI is installed on the
+host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
+be launched as `opencode acp`.
+
+Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
+There is no `bb-app config set` or `unset` command for this list, matching the
+manual-file workflow used for custom models. After editing the file, run
+`npx bb-app config refresh` to apply it to a running local server, or restart bb.
+Use `customAcpAgents` for arbitrary ACP agents, or to override the launch
+command for a known provider id such as `acp-opencode`. To override
+`acp-opencode`, set `"id": "opencode"`; bb derives the provider id by adding
+the `acp-` prefix.
+
+Example:
+
+```json
+{
+  "customAcpAgents": [
+    {
+      "id": "my-agent",
+      "displayName": "My Agent",
+      "command": "my-agent",
+      "args": ["acp"],
+      "env": {
+        "MY_AGENT_MODE": "bb"
+      },
+      "cwd": "/Users/me/project",
+      "modelCli": {
+        "listArgs": ["--list-models"],
+        "selectFlag": "--model",
+        "primaryModels": ["default"]
+      }
+    }
+  ]
+}
+```
+
+`id` is a slug matching `^[a-z0-9][a-z0-9-]*$`. bb derives the provider id by
+prefixing it with `acp-`, so the example appears as `acp-my-agent` in
+`bb provider list`, `bb provider models acp-my-agent`, and provider pickers.
+The derived id must not collide with a built-in provider such as `acp-cursor` or
+with another custom ACP agent. It may match a known ACP agent provider id, in
+which case the custom config wins.
+
+`command` is the executable name or path. bb runs it directly with the `args`
+array; it is not a shell command line. `env` adds environment variables for the
+agent process. `cwd` is optional; omit it to use the thread workspace directory.
+
+`modelCli` is optional. When present, `listArgs` are used to ask the agent for
+models, `selectFlag` is the flag bb passes when launching with a selected model,
+and `primaryModels` marks preferred models in the picker. ACP agents that
+advertise models over the protocol are auto-discovered without `modelCli`; keep
+`modelCli` for CLI-style agents such as Cursor.
+
+For ACP-native agents, bb also uses a protocol `thought_level` config option
+when the selected model advertises one. The selected reasoning level is applied
+with `session/set_config_option` before the first prompt. Models without that
+option keep agent-managed reasoning. Cursor is intentionally separate: it
+encodes reasoning in model ids discovered through `modelCli`, not in an ACP
+`thought_level` option.
+
+Custom ACP agents are supported only with the co-located daemon from the same
+machine as the server. A command path in server config is host-local and is not
+meaningful for a remote daemon.
+
+Security note: `command` is arbitrary local code execution by design. Anyone who
+can write `~/.bb/config.json` can cause bb to run that command as the local user
+when the provider is used. Treat `config.json` write access as the trust
+boundary.
+
+## Workspace Agent Instructions
+
+bb reads per-workspace agent instructions from a project's `.bb/` directory and
+appends them to every thread's system prompt, alongside the `.bb/skills/`
+convention. Create `.bb/AGENTS.md` at the workspace root:
+
+```
+<workspace>/.bb/AGENTS.md
+```
+
+The file contents are appended to bb's standard agent instructions for every
+provider-backed thread (start and resume), so the guidance applies regardless of
+which provider runs. An empty or whitespace-only file is treated as absent.
+
+No agent loads `.bb/AGENTS.md` natively — provider-native instruction files
+(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) live at the
+workspace root and are never read from the `.bb/` subdirectory. bb reads
+`.bb/AGENTS.md` itself and injects it, so use it for guidance you want every bb
+thread to receive regardless of provider.
+
 ## Startup Flags
 
 Use launcher flags for per-run startup details:

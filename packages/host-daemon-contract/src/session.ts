@@ -305,6 +305,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
+    onlineRpcResponseSuccessSchemaFor("known_acp_agents.status"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
@@ -360,16 +361,29 @@ export const hostDaemonTerminalOutputChunkSchema = z
   })
   .strict();
 
+const hostDaemonTerminalOpenTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("workspace"),
+      environmentId: z.string().min(1),
+      workspaceContext: workspaceContextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host_path"),
+      cwd: z.string().min(1).nullable(),
+    })
+    .strict(),
+]);
+
 const hostDaemonTerminalOpenMessageSchema = z
   .object({
     type: z.literal("terminal.open"),
     requestId: terminalRequestIdSchema,
     terminalId: terminalIdSchema,
-    threadId: z.string().min(1),
-    projectId: z.string().min(1),
-    environmentId: z.string().min(1),
-    threadStoragePath: z.string().min(1),
-    workspaceContext: workspaceContextSchema,
+    threadId: z.string().min(1).optional(),
+    target: hostDaemonTerminalOpenTargetSchema,
     cols: terminalColsSchema,
     rows: terminalRowsSchema,
     start: z

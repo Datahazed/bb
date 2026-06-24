@@ -1,4 +1,9 @@
 import path from "node:path";
+import {
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
+import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
@@ -55,6 +60,7 @@ import {
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
+import { findKnownAcpAgentForProviderId } from "../../services/system/known-acp-agents.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
 import {
@@ -65,6 +71,25 @@ import {
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
+
+function resolveThreadProviderDisplayName(
+  deps: Pick<AppDeps, "config">,
+  providerId: string,
+): string | undefined {
+  const customAcpAgent = deps.config.customAcpAgents.find(
+    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
+  );
+  if (customAcpAgent) {
+    return customAcpAgent.displayName;
+  }
+  const knownAcpAgent = findKnownAcpAgentForProviderId(providerId);
+  if (knownAcpAgent) {
+    return knownAcpAgent.displayName;
+  }
+  return isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId).displayName
+    : undefined;
+}
 
 interface ThreadComposerExecutionOptionsSource {
   archivedAt: number | null;
@@ -332,10 +357,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+    const providerDisplayName = resolveThreadProviderDisplayName(
+      deps,
+      thread.providerId,
+    );
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
       environmentId: thread.environmentId,
+      providerDisplayName,
       page,
       includeNestedRows,
       summaryOnly,
@@ -350,6 +380,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             includeNestedRows,
             maxSeq,
             page,
+            providerDisplayName,
             summaryOnly,
           }),
         ),
@@ -383,6 +414,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
         isDevelopment: deps.config.isDevelopment,
+        providerDisplayName: resolveThreadProviderDisplayName(
+          deps,
+          thread.providerId,
+        ),
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),

@@ -494,6 +494,12 @@ function threadMatchesListFilters(
     return false;
   }
   if (
+    filters?.excludeSideChats &&
+    (thread.originKind ?? thread.childOrigin) === "side-chat"
+  ) {
+    return false;
+  }
+  if (
     filters?.childOrigin !== undefined &&
     (thread.originKind ?? thread.childOrigin) !== filters.childOrigin
   ) {
@@ -528,6 +534,7 @@ export function optimisticallyInsertThread(
     queryClient.setQueryData<ThreadListEntry[]>(queryKey, [
       {
         ...thread,
+        activity: { activeWorkflowCount: 0 },
         environmentBranchName: null,
         environmentHostId: null,
         environmentName: null,

@@ -729,9 +729,10 @@ function startPopoutConfigSync(serverUrl: string): void {
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
-  applicationWindowWebContentsIds.add(browserWindow.webContents.id);
+  const webContentsId = browserWindow.webContents.id;
+  applicationWindowWebContentsIds.add(webContentsId);
   browserWindow.on("closed", () => {
-    applicationWindowWebContentsIds.delete(browserWindow.webContents.id);
+    applicationWindowWebContentsIds.delete(webContentsId);
   });
 }
 
@@ -1003,7 +1004,7 @@ async function loadBbApp(serverUrl: string): Promise<void> {
 }
 
 function shouldOpenDevTools(): boolean {
-  return !app.isPackaged || process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
+  return process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
 }
 
 async function createApplicationWindow(

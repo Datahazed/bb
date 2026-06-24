@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectLogLines,
   collectLogPayloads,
+  getHelpOutput,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -36,15 +37,33 @@ describe("bb thread terminal command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  function captureCommanderErrors() {
+    return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  }
+
+  it("documents required thread IDs in terminal help", async () => {
+    const help = await getHelpOutput(["thread", "terminal"], register);
+
+    expect(help).toContain("list [options] <threadId>");
+    expect(help).toContain("start [options] <threadId> [command...]");
+    expect(help).toContain("attach [options] <terminalId> <threadId>");
+    expect(help).toContain("send [options] <terminalId> <threadId>");
+    expect(help).toContain("resize [options] <terminalId> <threadId>");
+    expect(help).toContain("output [options] <terminalId> <threadId>");
+    expect(help).toContain("wait [options] <terminalId> <threadId>");
+    expect(help).toContain("stop [options] <terminalId> <threadId>");
+    expect(help).not.toContain("[threadId]");
+  });
+
   it("bb thread terminal list prints sessions for a thread", async () => {
     const list = vi.fn(async () => ({
       sessions: [makeTerminalSession({ title: "pnpm dev" })],
     }));
-    stubServerApi({ "v1.threads.:id.terminals.$get": list });
+    stubServerApi({ "v1.terminals.$get": list });
 
     await runCommand(["thread", "terminal", "list", "thr-1"], register);
 
-    expect(list).toHaveBeenCalledWith({ param: { id: "thr-1" } });
+    expect(list).toHaveBeenCalledWith({ query: { threadId: "thr-1" } });
     expect(collectLogLines(vi.mocked(console.log)).join("\n")).toContain(
       "pnpm dev",
     );
@@ -52,7 +71,7 @@ describe("bb thread terminal command output", () => {
 
   it("bb thread terminal start sends command start requests", async () => {
     const start = vi.fn(async () => makeTerminalSession({ title: "echo hi" }));
-    stubServerApi({ "v1.threads.:id.terminals.$post": start });
+    stubServerApi({ "v1.terminals.$post": start });
 
     await runCommand(
       ["thread", "terminal", "start", "thr-1", "--", "echo", "hi"],
@@ -60,12 +79,12 @@ describe("bb thread terminal command output", () => {
     );
 
     expect(start).toHaveBeenCalledWith({
-      param: { id: "thr-1" },
       json: {
         cols: 80,
         rows: 24,
         title: undefined,
         start: { mode: "command", command: "echo hi" },
+        target: { kind: "thread", threadId: "thr-1" },
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
@@ -77,7 +96,7 @@ describe("bb thread terminal command output", () => {
     const start = vi.fn(async () =>
       makeTerminalSession({ title: "python server" }),
     );
-    stubServerApi({ "v1.threads.:id.terminals.$post": start });
+    stubServerApi({ "v1.terminals.$post": start });
 
     await runCommand(
       [
@@ -95,7 +114,6 @@ describe("bb thread terminal command output", () => {
     );
 
     expect(start).toHaveBeenCalledWith({
-      param: { id: "thr-1" },
       json: {
         cols: 80,
         rows: 24,
@@ -104,45 +122,44 @@ describe("bb thread terminal command output", () => {
           mode: "command",
           command: `python3 -u -c 'print("hello world"); print('"'"'quoted'"'"')'`,
         },
+        target: { kind: "thread", threadId: "thr-1" },
       },
     });
   });
 
-  it("bb thread terminal start --command defaults to BB_THREAD_ID", async () => {
+  it("bb thread terminal start --command requires a thread id", async () => {
     vi.stubEnv("BB_THREAD_ID", "thr-env");
     const start = vi.fn(async () =>
       makeTerminalSession({ threadId: "thr-env", title: "echo env" }),
     );
-    stubServerApi({ "v1.threads.:id.terminals.$post": start });
+    const stderrWrite = captureCommanderErrors();
+    stubServerApi({ "v1.terminals.$post": start });
 
-    await runCommand(
-      ["thread", "terminal", "start", "--command", "echo env"],
-      register,
+    await expect(
+      runCommand(
+        ["thread", "terminal", "start", "--command", "echo env"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(start).not.toHaveBeenCalled();
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining("error: missing required argument 'threadId'"),
     );
-
-    expect(start).toHaveBeenCalledWith({
-      param: { id: "thr-env" },
-      json: {
-        cols: 80,
-        rows: 24,
-        title: undefined,
-        start: { mode: "command", command: "echo env" },
-      },
-    });
   });
 
   it("bb thread terminal attach --json prints the target session", async () => {
     const list = vi.fn(async () => ({
       sessions: [makeTerminalSession({ id: "term-attach" })],
     }));
-    stubServerApi({ "v1.threads.:id.terminals.$get": list });
+    stubServerApi({ "v1.terminals.$get": list });
 
     await runCommand(
       ["thread", "terminal", "attach", "term-attach", "thr-1", "--json"],
       register,
     );
 
-    expect(list).toHaveBeenCalledWith({ param: { id: "thr-1" } });
+    expect(list).toHaveBeenCalledWith({ query: { threadId: "thr-1" } });
     expect(
       JSON.parse(collectLogPayloads(vi.mocked(console.log))[0] ?? "{}"),
     ).toEqual(makeTerminalSession({ id: "term-attach" }));
@@ -151,7 +168,7 @@ describe("bb thread terminal command output", () => {
   it("bb thread terminal send forwards text input", async () => {
     const send = vi.fn(async () => makeTerminalSession());
     stubServerApi({
-      "v1.threads.:id.terminals.:terminalId.input.$post": send,
+      "v1.terminals.:terminalId.input.$post": send,
     });
 
     await runCommand(
@@ -169,7 +186,7 @@ describe("bb thread terminal command output", () => {
     );
 
     expect(send).toHaveBeenCalledWith({
-      param: { id: "thr-1", terminalId: "term-1" },
+      param: { terminalId: "term-1" },
       json: {
         dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
       },
@@ -191,7 +208,7 @@ describe("bb thread terminal command output", () => {
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
     stubServerApi({
-      "v1.threads.:id.terminals.:terminalId.output.$get": output,
+      "v1.terminals.:terminalId.output.$get": output,
     });
 
     await runCommand(
@@ -200,7 +217,7 @@ describe("bb thread terminal command output", () => {
     );
 
     expect(output).toHaveBeenCalledWith({
-      param: { id: "thr-1", terminalId: "term-1" },
+      param: { terminalId: "term-1" },
       query: {},
     });
     expect(write).toHaveBeenCalledWith(Buffer.from("hello\n", "utf8"));
@@ -213,7 +230,7 @@ describe("bb thread terminal command output", () => {
       truncated: true,
     }));
     stubServerApi({
-      "v1.threads.:id.terminals.:terminalId.output.$get": output,
+      "v1.terminals.:terminalId.output.$get": output,
     });
 
     await runCommand(
@@ -260,7 +277,7 @@ describe("bb thread terminal command output", () => {
       };
     });
     stubServerApi({
-      "v1.threads.:id.terminals.:terminalId.output.$get": output,
+      "v1.terminals.:terminalId.output.$get": output,
     });
 
     await runCommand(
@@ -281,11 +298,11 @@ describe("bb thread terminal command output", () => {
     );
 
     expect(output).toHaveBeenNthCalledWith(1, {
-      param: { id: "thr-1", terminalId: "term-1" },
+      param: { terminalId: "term-1" },
       query: { limitChunks: 1, tailBytes: 1 },
     });
     expect(output).toHaveBeenNthCalledWith(2, {
-      param: { id: "thr-1", terminalId: "term-1" },
+      param: { terminalId: "term-1" },
       query: { sinceSeq: 5 },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
@@ -309,7 +326,7 @@ describe("bb thread terminal command output", () => {
         ),
     );
     stubServerApi({
-      "v1.threads.:id.terminals.:terminalId.output.$get": output,
+      "v1.terminals.:terminalId.output.$get": output,
     });
 
     await expect(

@@ -15,11 +15,27 @@ message agents, or inspect projects, providers, and environments.
 - Run `bb guide` for the system overview and `bb guide <chapter>` for full
   command reference.
 
+## Environment Setup Script
+
+- To make a repo work with bb worktrees, run `bb guide environments`. It
+  documents the repo-level `.bb-env-setup.sh` setup hook.
+
+## Workspace Agent Instructions
+
+- Add a `.bb/AGENTS.md` file at a workspace root to inject repo-specific
+  instructions into every thread that runs there. bb appends the file contents
+  to the thread system prompt for all providers, on start and resume; edits
+  apply on the next turn.
+- Only the plural `AGENTS.md` is read, only from the workspace-root `.bb/`
+  directory (no parent-directory walk); an empty file is ignored. Track it with
+  git so fresh managed worktrees include it. Run `bb guide agent-configuration`
+  for details (it also covers project `.bb/skills/`).
+
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
-  thread. Inside a thread, pass the current project explicitly with
-  `--project "$BB_PROJECT_ID"` when appropriate.
+  thread. Pass the intended project explicitly; the CLI does not infer it from
+  context variables.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
@@ -28,6 +44,15 @@ message agents, or inspect projects, providers, and environments.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
+- Known ACP agents can appear automatically when their CLI is installed on the
+  host; for example `opencode` on PATH appears as provider `acp-opencode`.
+- Custom ACP agents can be registered in the app data-dir `config.json` under
+  `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
+  id `acp-<id>`. Custom config wins if it uses the same provider id as a known
+  ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
+  has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
+  or restart bb. The configured command is local code execution and only works
+  with a co-located daemon.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files
@@ -50,8 +75,8 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread show <thread-id>` for status, parent, environment, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
 - Use `bb thread log <thread-id>` to inspect the conversation.
-- Use `bb thread output <thread-id>` to read the latest final output. Inside a
-  thread, omitting `<thread-id>` reads `BB_THREAD_ID`.
+- Use `bb thread output <thread-id>` to read the latest final output, or
+  `bb thread output --self` for the current thread.
 
 For review or fix pipelines, get the environment ID from
 `bb thread show <thread-id> --json`, then spawn the follow-up with
@@ -75,14 +100,14 @@ For review or fix pipelines, get the environment ID from
   The terminal is a real PTY scoped to the thread's environment and appears in
   the bb UI as a terminal tab.
 - Start a server with
-  `bb thread terminal start "$BB_THREAD_ID" --title "pnpm dev" --command "pnpm dev"`.
-- Use `bb thread terminal wait <terminal-id> "$BB_THREAD_ID" --contains "Local:" --timeout 120`
+  `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`
   to wait for readiness from new output. Pass `--from-start` only when matching
   existing scrollback is intentional.
-- Use `bb thread terminal output <terminal-id> "$BB_THREAD_ID" --json` to read
+- Use `bb thread terminal output <terminal-id> <thread-id> --json` to read
   bounded output, then continue with `--since-seq <nextSeq>` when polling.
-- Use `bb thread terminal send <terminal-id> "$BB_THREAD_ID" --text "..." --enter`
-  for interactive input, and `bb thread terminal stop <terminal-id> "$BB_THREAD_ID"`
+- Use `bb thread terminal send <terminal-id> <thread-id> --text "..." --enter`
+  for interactive input, and `bb thread terminal stop <terminal-id> <thread-id>`
   when the process is no longer needed.
 
 ## Failures And Interruptions
@@ -113,9 +138,9 @@ For review or fix pipelines, get the environment ID from
   server policy — fall back to an `agent` automation if script creation is
   rejected.
 - Create an agent automation with
-  `bb automation create --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+  `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
 - Create a script automation with
-  `bb automation create --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
+  `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
 - Script automations run with the bb environment injected — `BB_SERVER_URL`,
@@ -129,8 +154,7 @@ For review or fix pipelines, get the environment ID from
   on failed runs (see `--output <run-id>`).
 - Cron accepts standard 5-field expressions, including step values like
   `*/5 * * * *` (minimum granularity is 5 minutes).
-- The project defaults to `BB_PROJECT_ID`, then the personal project, so
-  `--project` is never required.
+- Pass `--project <id>` explicitly for every automation command.
 - Use `bb automation list`, `bb automation show <id>`, and
   `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
   run's captured stdout.
@@ -143,28 +167,40 @@ For review or fix pipelines, get the environment ID from
 
 - `bb theme` controls the **app-wide color palette** — a set of CSS-variable
   overrides persisted server-side and applied live to every open window. This is
-  the *palette* only; light/dark *mode* is a separate per-client setting that the
+  the _palette_ only; light/dark _mode_ is a separate per-client setting that the
   palette layers on top of.
+- **Custom themes live on disk** under the app data dir, one folder per theme:
+  `<bb-data-dir>/theme/<name>/theme.css` (the packaged app uses `~/.bb/theme/…`).
+  The folder name *is* the theme id. This mirrors how user skills live under
+  `<bb-data-dir>/skills/<name>/`.
 - Commands:
-  - `bb theme list` — built-in themes and which palette is active.
-  - `bb theme set <id>` — switch to a built-in: `default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`.
-  - `bb theme set-custom --file <path.css>` — load a custom stylesheet and
-    activate it. This is the only way to set custom CSS (Settings only switches
-    between built-ins).
-  - `bb theme show [--css]` — print the active palette; `--css` dumps the custom CSS.
-  - `bb theme reset` — back to `default`, clearing the custom stylesheet.
+  - `bb theme list` — built-in and custom themes and which palette is active.
+  - `bb theme dir` — print the absolute custom-theme directory (where to create
+    `<name>/theme.css`). Use this instead of guessing the path.
+  - `bb theme set <id>` — activate a built-in (`default`, `nord`, `dracula`,
+    `solarized`, `gruvbox`, `catppuccin`) or a custom theme by its folder name.
+  - `bb theme show [--css]` — print the active palette; `--css` dumps the active
+    theme's CSS.
+  - `bb theme reset` — back to `default`.
 
-### Authoring a theme
+### Creating or editing a custom theme
 
-To write a built-in theme or a custom stylesheet, **read `references/theming.md`
-(in this skill's directory) first.** It is the full design-token reference — what
-every CSS variable drives, which tokens to set vs. which auto-derive — plus the
-two-block light/dark structure, how to set colors and fonts, and a worked example.
+This is the BB habit: custom app-theme work belongs in
+`<bb-data-dir>/theme/<name>/theme.css` — never a stray `.css` file elsewhere.
+
+1. Find the directory: `bb theme dir` (e.g. `~/.bb/theme`).
+2. Write the stylesheet to `<that-dir>/<name>/theme.css` (create the folder). Use
+   a short, lowercase, hyphenated `<name>` (it must not collide with a built-in
+   id). To edit an existing theme, change its `theme.css` in place.
+3. Activate it: `bb theme set <name>`. Changes apply live to every open window.
+
+To author the stylesheet, **read `references/theming.md` (in this skill's
+directory) first.** It is the full design-token reference — what every CSS
+variable drives, which tokens to set vs. which auto-derive — plus the two-block
+light/dark structure, how to set colors and fonts, and a worked example.
 
 The short version: a custom theme is a plain CSS file that overrides CSS custom
 properties. Set the two anchors `--canvas`/`--ink` (most of the UI derives from
 them by mixing ink into canvas), the `--primary` accent, the secondary text tiers
 (`--muted-foreground` etc.), and the semantic colors (`--destructive`,
-`--success`, …). Ship one file with a `:root, .light` block and a `.dark` block,
-then load it with `bb theme set-custom --file <path.css>`.
+`--success`, …). Ship one file with a `:root, .light` block and a `.dark` block.

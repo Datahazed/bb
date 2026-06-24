@@ -24,7 +24,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 42 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 44 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -104,11 +104,36 @@ export type HostDaemonInjectedSkillSource = z.infer<
   typeof hostDaemonInjectedSkillSourceSchema
 >;
 
+export const hostDaemonAcpLaunchSpecSchema = z
+  .object({
+    displayName: z.string().min(1),
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    env: z.record(z.string().min(1), z.string()),
+    cwd: z.string().min(1).optional(),
+    modelCli: z
+      .object({
+        listArgs: z.array(z.string()),
+        selectFlag: z.string().min(1).optional(),
+        primaryModels: z.array(z.string()),
+      })
+      .strict()
+      .transform((modelCli) =>
+        modelCli.listArgs.length > 0 ? modelCli : undefined,
+      )
+      .optional(),
+  })
+  .strict();
+export type HostDaemonAcpLaunchSpec = z.infer<
+  typeof hostDaemonAcpLaunchSpecSchema
+>;
+
 const hostDaemonThreadRuntimeContextSchema = z
   .object({
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
@@ -195,6 +220,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     requestId: clientTurnRequestIdSchema,
     input: z.array(promptInputSchema).min(1),
     options: runtimeThreadExecutionOptionsSchema,
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
   })
@@ -410,7 +436,22 @@ const hostListBranchesCommandSchema = z.object({
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
+  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
 });
+
+const knownAcpAgentExecutableQuerySchema = z
+  .object({
+    id: z.string().min(1),
+    executableName: z.string().min(1),
+  })
+  .strict();
+
+const knownAcpAgentsStatusCommandSchema = z
+  .object({
+    type: z.literal("known_acp_agents.status"),
+    agents: z.array(knownAcpAgentExecutableQuerySchema),
+  })
+  .strict();
 
 const provisionInitiatorSchema = z
   .object({
@@ -748,6 +789,21 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
+
+const knownAcpAgentExecutableStatusSchema = z
+  .object({
+    id: z.string().min(1),
+    executableName: z.string().min(1),
+    installed: z.boolean(),
+    executablePath: z.string().min(1).nullable(),
+  })
+  .strict();
+
+const knownAcpAgentsStatusResultSchema = z
+  .object({
+    agents: z.array(knownAcpAgentExecutableStatusSchema),
+  })
+  .strict();
 
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
@@ -1093,6 +1149,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.list_models",
     schema: providerListModelsCommandSchema,
     resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "known_acp_agents.status": defineHostDaemonCommandDescriptor({
+    type: "known_acp_agents.status",
+    schema: knownAcpAgentsStatusCommandSchema,
+    resultSchema: knownAcpAgentsStatusResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

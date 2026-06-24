@@ -5,17 +5,23 @@ import {
   useRef,
   useState,
 } from "react";
-import { File as PierreFile } from "@pierre/diffs/react";
+import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@/components/ui/button.js";
 import {
-  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { CopyButton } from "@/components/ui/copy-button.js";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -23,19 +29,20 @@ import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
-  getNextCodeOverflowMode,
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
 import { cn } from "@/lib/utils";
 
 export interface FilePreviewFile {
+  cacheKey?: string;
   name: string;
   contents: string;
   lang?: SupportedLanguages;
@@ -98,6 +105,7 @@ interface HtmlFilePreviewBodyProps {
 interface FilePreviewHeaderProps {
   path: string;
   copyPath: string | null;
+  rawContents: string | null;
   onOpenInEditor?: (path: string) => void;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
   toggleKind: FilePreviewToggleKind | null;
@@ -106,6 +114,13 @@ interface FilePreviewHeaderProps {
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
   viewMode: FilePreviewViewMode;
   onViewModeChange: (mode: FilePreviewViewMode) => void;
+}
+
+interface FilePreviewActionsMenuProps {
+  rawContents: string | null;
+  showLineOverflowToggle: boolean;
+  lineOverflowMode: CodeOverflowMode;
+  onLineOverflowModeChange: CodeOverflowModeChangeHandler;
 }
 
 interface MarkdownFilePreviewProps {
@@ -133,6 +148,18 @@ interface FilePreviewCodeProps {
   file: FilePreviewFile;
   lineOverflowMode: CodeOverflowMode;
   lineRange: FilePreviewLineRange | null;
+}
+
+interface FilePreviewWorkerPoolStats {
+  managerState: "waiting" | "initializing" | "initialized";
+  workersFailed: boolean;
+  totalWorkers: number;
+  busyWorkers: number;
+  queuedTasks: number;
+  activeTasks: number;
+  themeSubscribers: number;
+  fileCacheSize: number;
+  diffCacheSize: number;
 }
 
 interface GetInitialFilePreviewViewModeArgs {
@@ -174,6 +201,8 @@ const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   border: 0,
 } as CSSProperties;
 const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
+const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
+  "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
 
 function isMarkdownFile(name: string): boolean {
   const extension = name.split(".").pop()?.toLowerCase();
@@ -209,6 +238,13 @@ function getFilePreviewLineRange(
 ): FilePreviewLineRange | null {
   if (state.kind === "html" || state.kind === "ready") {
     return state.lineRange;
+  }
+  return null;
+}
+
+function getRawFilePreviewContents(state: FilePreviewState): string | null {
+  if (state.kind === "html" || state.kind === "ready") {
+    return state.file.contents;
   }
   return null;
 }
@@ -249,6 +285,7 @@ export function FilePreview({
 }: FilePreviewProps) {
   const toggleKind = getFilePreviewToggleKind(state);
   const filePreviewLineRange = getFilePreviewLineRange(state);
+  const rawContents = getRawFilePreviewContents(state);
   const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
     getInitialFilePreviewViewMode({
       lineRange: filePreviewLineRange,
@@ -276,7 +313,6 @@ export function FilePreview({
     toggleKind === null ? "preview" : viewMode;
   const usesCodeLayout = usesCodeViewLayout(state, bodyViewMode);
   const showLineOverflowToggle = usesCodeLayout;
-  const usesFullHeightLayout = usesIframeLayout || usesCodeLayout;
   // The markdown preview renders on a raised "paper" surface that should fill
   // the panel to the bottom even for short documents. `min-h-full` (vs the
   // iframe layout's `h-full min-h-0`) keeps the column growable, so long
@@ -285,17 +321,18 @@ export function FilePreview({
     state.kind === "ready" &&
     isMarkdownFile(state.file.name) &&
     bodyViewMode === "preview";
+  const usesContentHeightLayout = usesCodeLayout || usesMarkdownPreviewLayout;
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
   // table breakout sizes against this panel, not the viewport.
   return (
     <div
       className={
-        usesFullHeightLayout
+        usesIframeLayout
           ? "@container/page flex h-full min-h-0 flex-col"
-          : usesMarkdownPreviewLayout
+          : usesContentHeightLayout
             ? "@container/page flex min-h-full flex-col"
-            : "@container/page"
+            : "@container/page min-h-full"
       }
       style={FILE_PREVIEW_WRAPPER_STYLE}
     >
@@ -303,6 +340,7 @@ export function FilePreview({
         <FilePreviewHeader
           path={path}
           copyPath={copyPath}
+          rawContents={rawContents}
           onOpenInEditor={onOpenInEditor}
           statusLabel={statusLabel}
           toggleKind={toggleKind}
@@ -393,6 +431,7 @@ function FilePreviewBody({
 function FilePreviewHeader({
   path,
   copyPath,
+  rawContents,
   onOpenInEditor,
   statusLabel,
   toggleKind,
@@ -402,6 +441,9 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
+  const showActionsMenu = showLineOverflowToggle || rawContents !== null;
+  const showHeaderControls = showActionsMenu || toggleKind !== null;
+
   return (
     // The wrapper carries an opaque `bg-background` base so the translucent
     // `bg-surface-recessed` tint on the bar composites to a solid tone — without
@@ -443,36 +485,15 @@ function FilePreviewHeader({
             <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
           ) : null}
         </div>
-        {showLineOverflowToggle || toggleKind !== null ? (
+        {showHeaderControls ? (
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {showLineOverflowToggle ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                  "text-muted-foreground",
-                )}
-                onClick={() =>
-                  onLineOverflowModeChange(
-                    getNextCodeOverflowMode(lineOverflowMode),
-                  )
-                }
-                aria-label={
-                  lineOverflowMode === "wrap"
-                    ? "Disable source line wrap"
-                    : "Wrap source lines"
-                }
-                aria-pressed={lineOverflowMode === "wrap"}
-                title={
-                  lineOverflowMode === "wrap"
-                    ? "Disable source line wrap"
-                    : "Wrap source lines"
-                }
-              >
-                <Icon name="TextWrap" />
-              </Button>
+            {showActionsMenu ? (
+              <FilePreviewActionsMenu
+                rawContents={rawContents}
+                showLineOverflowToggle={showLineOverflowToggle}
+                lineOverflowMode={lineOverflowMode}
+                onLineOverflowModeChange={onLineOverflowModeChange}
+              />
             ) : null}
             {toggleKind !== null ? (
               <div
@@ -514,6 +535,62 @@ function FilePreviewHeader({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function FilePreviewActionsMenu({
+  rawContents,
+  showLineOverflowToggle,
+  lineOverflowMode,
+  onLineOverflowModeChange,
+}: FilePreviewActionsMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+            "text-muted-foreground",
+          )}
+          aria-label="File preview actions"
+          title="File preview actions"
+        >
+          <Icon name="MoreHorizontal" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        mobileTitle="File preview actions"
+        className="w-44"
+      >
+        {showLineOverflowToggle ? (
+          <DropdownMenuCheckboxItem
+            checked={lineOverflowMode === "wrap"}
+            onCheckedChange={(checked) =>
+              onLineOverflowModeChange(checked ? "wrap" : "scroll")
+            }
+            textValue="Wrap"
+          >
+            Wrap
+          </DropdownMenuCheckboxItem>
+        ) : null}
+        {rawContents === null ? null : (
+          <DropdownMenuItem
+            onSelect={() => {
+              void copyToClipboardWithToast(rawContents, {
+                successMessage: null,
+                errorMessage: "Failed to copy",
+              });
+            }}
+          >
+            Copy raw file
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -559,7 +636,7 @@ function MarkdownFilePreview({
     // viewer reads as a distinct surface from the white chat — one tonal step
     // lighter than the recessed header (matching the raised-body / recessed-
     // header pairing used elsewhere in this panel).
-    <div className="flex-1 bg-surface-raised px-4 py-4">
+    <div className="flex-auto bg-surface-raised px-4 py-4">
       <MarkdownPreview
         allowHtml
         content={file.contents}
@@ -706,6 +783,11 @@ function FilePreviewCode({
 }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const workerPool = useWorkerPool();
+  const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
+  const [workerPoolStats, setWorkerPoolStats] =
+    useState<FilePreviewWorkerPoolStats | null>(null);
+  const [, rerenderAfterWorkerPoolChange] = useState(0);
   const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
@@ -726,6 +808,43 @@ function FilePreviewCode({
     [lineRange],
   );
   const targetLineNumber = selectedLines?.start ?? null;
+
+  useEffect(() => {
+    if (!workerPool) {
+      setWorkerPoolStats(null);
+      return;
+    }
+
+    lastWorkerPoolStatsKeyRef.current = null;
+    return workerPool.subscribeToStatChanges((stats) => {
+      setWorkerPoolStats(stats);
+      const statsKey = [
+        stats.managerState,
+        stats.workersFailed,
+        stats.busyWorkers,
+        stats.queuedTasks,
+        stats.activeTasks,
+        stats.fileCacheSize,
+      ].join(":");
+      if (lastWorkerPoolStatsKeyRef.current === statsKey) {
+        return;
+      }
+      lastWorkerPoolStatsKeyRef.current = statsKey;
+      rerenderAfterWorkerPoolChange((version) => version + 1);
+    });
+  }, [file.contents, file.name, workerPool]);
+
+  const shouldWaitForWorkerPool =
+    workerPool !== undefined &&
+    workerPoolStats?.managerState !== "initialized" &&
+    workerPoolStats?.workersFailed !== true;
+  // Pierre can mount an empty zero-height <pre> while its worker highlighter is
+  // still initializing, and the imperative instance does not always recover
+  // when the highlighted AST is cached later. Wait for readiness, then remount
+  // once the cache entry for this exact file appears so syntax highlighting
+  // replaces the plain-text fallback.
+  const workerHighlightCacheState =
+    workerPool?.getFileResultCache(file) !== undefined ? "highlighted" : "plain";
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
@@ -775,14 +894,24 @@ function FilePreviewCode({
     };
   }, [file.contents, file.name, targetLineNumber]);
 
+  if (shouldWaitForWorkerPool) {
+    return <FilePreviewLoading />;
+  }
+
   return (
     <div
       ref={containerRef}
-      className="min-h-0 flex-1"
+      className="min-h-0 flex-auto"
       style={FILE_PREVIEW_VIEW_STYLE}
       data-file-preview-line-number={targetLineNumber ?? undefined}
     >
-      <PierreFile file={file} options={options} selectedLines={selectedLines} />
+      <PierreFile
+        key={`${file.cacheKey ?? file.name}:${workerHighlightCacheState}`}
+        disableWorkerPool={workerPoolStats?.workersFailed === true}
+        file={file}
+        options={options}
+        selectedLines={selectedLines}
+      />
     </div>
   );
 }

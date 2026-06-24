@@ -32,10 +32,25 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  type HostDaemonAcpLaunchSpec,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
+const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
+  displayName: "Local ACP",
+  command: "local-acp",
+  args: ["serve"],
+  env: {
+    LOCAL_ACP_MODE: "test",
+  },
+  cwd: "/tmp/local-acp",
+  modelCli: {
+    listArgs: ["models", "list"],
+    selectFlag: "--model",
+    primaryModels: ["local-default"],
+  },
+};
 
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
@@ -225,6 +240,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     selectedOnlyModels: [],
+  },
+  "known_acp_agents.status": {
+    agents: [
+      {
+        id: "acp-opencode",
+        executableName: "opencode",
+        installed: true,
+        executablePath: "/opt/homebrew/bin/opencode",
+      },
+    ],
   },
   "provider.usage": {
     codex: {
@@ -456,10 +481,26 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.acpLaunchSpec":
+    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonCommandSchema.acpLaunchSpec.cwd":
+    "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
+  "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
+    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
+  "hostDaemonCommandSchema.acpLaunchSpec.modelCli.selectFlag":
+    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
+    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
+    "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
+    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
+    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.ref":
@@ -480,6 +521,14 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
+    "turn.submit resume context carries an ACP launch spec only for dynamic ACP providers that may need lazy resume.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.cwd":
+    "resume-context ACP launch specs may omit cwd so the daemon uses the resumed thread workspace cwd.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli":
+    "resume-context ACP launch specs may omit modelCli so ACP uses the shared default-model sentinel path.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli.selectFlag":
+    "resume-context ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -937,6 +986,16 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-opencode", executableName: "opencode" }],
+      }),
+    ).toMatchObject({
+      type: "known_acp_agents.status",
+      agents: [{ id: "acp-opencode", executableName: "opencode" }],
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
@@ -1062,6 +1121,10 @@ describe("host-daemon command schemas", () => {
         dotfiles: "deny",
       },
       { type: "provider.list_models", providerId: "codex" },
+      {
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-opencode", executableName: "opencode" }],
+      },
       {
         type: "workspace.status",
         environmentId: "env_123",
@@ -1282,6 +1345,101 @@ describe("host-daemon command schemas", () => {
         workspaceProvisionType: "unmanaged",
       },
     });
+  });
+
+  it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {
+    const providerListModelsCommand = {
+      type: "provider.list_models",
+      providerId: "acp-local",
+      acpLaunchSpec: ACP_LAUNCH_SPEC,
+    };
+    const providerListModelsRoundTrip = JSON.parse(
+      JSON.stringify(providerListModelsCommand),
+    );
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse(providerListModelsRoundTrip),
+    ).toEqual(providerListModelsCommand);
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "host-rpc.request",
+        requestId: "rpc-acp-models",
+        command: providerListModelsRoundTrip,
+      }),
+    ).toEqual({
+      type: "host-rpc.request",
+      requestId: "rpc-acp-models",
+      command: providerListModelsCommand,
+    });
+
+    const threadStartCommand = {
+      type: "thread.start",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      workspaceContext: {
+        workspacePath: "/tmp/workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_123",
+      providerId: "acp-local",
+      acpLaunchSpec: ACP_LAUNCH_SPEC,
+      requestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: {
+        model: "acp-default",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      instructions: "Be a helpful thread.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+    const threadStartRoundTrip = JSON.parse(JSON.stringify(threadStartCommand));
+
+    expect(hostDaemonCommandSchema.parse(threadStartRoundTrip)).toEqual(
+      threadStartCommand,
+    );
+
+    const turnSubmitCommand = {
+      type: "turn.submit",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      requestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "follow up", mentions: [] }],
+      options: {
+        model: "acp-default",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      acpLaunchSpec: ACP_LAUNCH_SPEC,
+      resumeContext: {
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "proj_123",
+        providerId: "acp-local",
+        providerThreadId: "provider_123",
+        acpLaunchSpec: ACP_LAUNCH_SPEC,
+        instructions: "Be a helpful thread.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      target: { mode: "start" },
+    };
+    const turnSubmitRoundTrip = JSON.parse(JSON.stringify(turnSubmitCommand));
+
+    expect(hostDaemonCommandSchema.parse(turnSubmitRoundTrip)).toEqual(
+      turnSubmitCommand,
+    );
   });
 
   it("parses every injected skill source variant", () => {
@@ -1909,7 +2067,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(42);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(44);
   });
 
   it("parses valid session open and event batch payloads", () => {
@@ -2499,12 +2657,13 @@ describe("host-daemon session schemas", () => {
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",
-        projectId: "proj_123",
-        environmentId: "env_123",
-        threadStoragePath: "/tmp/thread-storage/thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
+        target: {
+          kind: "workspace",
+          environmentId: "env_123",
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+            workspaceProvisionType: "unmanaged",
+          },
         },
         cols: TERMINAL_COLS_MAX,
         rows: TERMINAL_ROWS_MAX,

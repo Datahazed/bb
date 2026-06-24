@@ -605,8 +605,7 @@ function EnvironmentThreadGroupHeaderActions({
           ) : null}
           {onRenameEnvironment ? (
             <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault();
+              onSelect={() => {
                 onRenameEnvironment();
               }}
             >
@@ -720,7 +719,10 @@ function EnvironmentThreadGroupHeader({
           >
             <ThreadStatusGlyph
               hasPendingInteraction={childActivity.pending}
-              isBusy={childActivity.working}
+              isBusy={childActivity.runtimeWorking}
+              isWorkflowActive={
+                !childActivity.runtimeWorking && childActivity.workflow
+              }
               showUnreadBadge={childActivity.unread}
               unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />
@@ -981,14 +983,16 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
+  const rowProjectId =
+    variant === "section" ? node.thread.projectId : projectId;
   const hasComposerDraft = usePromptDraftHasInput({
     kind: "thread",
-    projectId,
+    projectId: rowProjectId,
     threadId: node.thread.id,
   });
   const row = (
     <ThreadRow
-      projectId={projectId}
+      projectId={rowProjectId}
       thread={node.thread}
       isActive={selectedThreadId === node.thread.id}
       hasComposerDraft={hasComposerDraft}
@@ -1124,11 +1128,10 @@ function getChronologicalItemProjectId(item: ProjectThreadItem): string {
     : item.group.nodes[0].thread.projectId;
 }
 
-// Flat "All Threads" bucket for chronological mode: one top-level row per
-// non-pinned thread across all projects, globally ordered by the chosen
-// comparator (no parent/child nesting or worktree grouping, so nothing hides
-// behind a collapsed parent). Derives projectId per row from its own thread so
-// cross-project rows still route correctly.
+// "All Threads" bucket for chronological mode: root threads across projects
+// are ordered by the chosen comparator, descendants stay under their parents,
+// and worktree grouping stays off. Section rows derive projectId from each
+// thread so cross-project rows still route correctly.
 export const ChronologicalThreadTree = memo(function ChronologicalThreadTree({
   threadListState,
   compareThreads,
@@ -1264,17 +1267,9 @@ function ProjectRowComponent({
                 "select-none",
             )}
             title={project.name}
-            onClick={handleProjectRowToggle}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            <button
-              type="button"
-              aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-            />
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",

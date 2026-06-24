@@ -104,11 +104,15 @@ export interface ComposerAreaAttachmentsConfig {
   errorMode?: "collect" | "first";
 }
 
+export type ComposerAreaMentionsConfig =
+  | UsePromptMentionsOptions
+  | ((environmentSelectionValue: string) => UsePromptMentionsOptions);
+
 interface UseComposerAreaBaseOptions {
   draftScope: PromptDraftScope;
   /** Project scope for `@`-mention discovery (`undefined` for projectless). */
   mentionsProjectId: string | undefined;
-  mentions: UsePromptMentionsOptions;
+  mentions: ComposerAreaMentionsConfig;
   commands: ComposerAreaCommandsConfig;
   resolveMentionLink: PromptMentionLinkResolver;
   attachments: ComposerAreaAttachmentsConfig;
@@ -216,7 +220,17 @@ export function useComposerArea(
   } = threadCreationOptions;
 
   const promptDraft = usePromptDraftStorage(draftScope);
-  const promptMentions = usePromptMentions(mentionsProjectId, mentions);
+  const resolvedMentions = useMemo(
+    () =>
+      typeof mentions === "function"
+        ? mentions(threadCreationOptions.environmentSelectionValue)
+        : mentions,
+    [mentions, threadCreationOptions.environmentSelectionValue],
+  );
+  const promptMentions = usePromptMentions(
+    mentionsProjectId,
+    resolvedMentions,
+  );
   const uploadPromptAttachment = useUploadPromptAttachment();
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
