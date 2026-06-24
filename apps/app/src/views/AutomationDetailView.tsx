@@ -1,9 +1,15 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type {
-  Automation,
-  AutomationRun,
-  UpdateAutomationRequest,
+import {
+  automationScriptInterpreterValues,
+  type AutomationScriptInterpreter,
+} from "@bb/domain";
+import {
+  AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+  type Automation,
+  type AutomationRun,
+  type UpdateAutomationRequest,
 } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -255,6 +261,47 @@ function ConfigLine({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
+const DEFAULT_INTERPRETER: AutomationScriptInterpreter = "bash";
+const AUTOMATION_SCRIPT_TIMEOUT_MAX_SECONDS = Math.floor(
+  AUTOMATION_SCRIPT_TIMEOUT_MAX_MS / 1000,
+);
+
+function initialScript(automation: Automation): string {
+  return automation.execution.mode === "script"
+    ? (automation.execution.script ?? "")
+    : "";
+}
+
+function initialInterpreter(automation: Automation): AutomationScriptInterpreter {
+  return automation.execution.mode === "script"
+    ? (automation.execution.interpreter ?? DEFAULT_INTERPRETER)
+    : DEFAULT_INTERPRETER;
+}
+
+function initialTimeoutSeconds(automation: Automation): string {
+  const ms =
+    automation.execution.mode === "script"
+      ? automation.execution.timeoutMs
+      : AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS;
+  return String(Math.round(ms / 1000));
+}
+
+/**
+ * Clamp the edited timeout (seconds) to a valid millisecond value, falling back
+ * to the default when the field is blank or non-numeric.
+ */
+function resolveTimeoutMs(timeoutSeconds: string): number {
+  const seconds = Number(timeoutSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS;
+  }
+  const clamped = Math.min(
+    Math.round(seconds),
+    AUTOMATION_SCRIPT_TIMEOUT_MAX_SECONDS,
+  );
+  return clamped * 1000;
+}
+
 interface AutomationDetailContentProps {
   automation: Automation;
   runs: readonly AutomationRun[];
@@ -298,6 +345,13 @@ export function AutomationDetailContent({
   const [prompt, setPrompt] = useState(
     automation.execution.mode === "agent" ? automation.execution.prompt : "",
   );
+  const [script, setScript] = useState(initialScript(automation));
+  const [interpreter, setInterpreter] = useState<AutomationScriptInterpreter>(
+    initialInterpreter(automation),
+  );
+  const [timeoutSeconds, setTimeoutSeconds] = useState(
+    initialTimeoutSeconds(automation),
+  );
   const [autoArchive, setAutoArchive] = useState(automation.autoArchive);
 
   function startEditing() {
@@ -315,6 +369,9 @@ export function AutomationDetailContent({
     setPrompt(
       automation.execution.mode === "agent" ? automation.execution.prompt : "",
     );
+    setScript(initialScript(automation));
+    setInterpreter(initialInterpreter(automation));
+    setTimeoutSeconds(initialTimeoutSeconds(automation));
     setAutoArchive(automation.autoArchive);
     setEditing(true);
   }
@@ -337,7 +394,20 @@ export function AutomationDetailContent({
                 : {}),
             },
           }
-        : {}),
+        : {
+            // Inline-content path: send `script` (not `scriptFile`) so the server
+            // rewrites the stored file. `env` is not edited here, so carry the
+            // existing value through to avoid silently dropping it.
+            execution: {
+              mode: "script" as const,
+              script,
+              interpreter,
+              timeoutMs: resolveTimeoutMs(timeoutSeconds),
+              ...(automation.execution.env
+                ? { env: automation.execution.env }
+                : {}),
+            },
+          }),
     };
     try {
       await onSave(patch);
@@ -462,10 +532,60 @@ export function AutomationDetailContent({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Script edits aren't available here — delete and recreate the
-                    loop to change its script.
-                  </p>
+                  <>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Script
+                      </label>
+                      <textarea
+                        value={script}
+                        onChange={(event) => setScript(event.target.value)}
+                        rows={10}
+                        spellCheck={false}
+                        aria-label="Script"
+                        className="block w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Interpreter
+                        </label>
+                        <select
+                          value={interpreter}
+                          onChange={(event) =>
+                            setInterpreter(
+                              event.target.value as AutomationScriptInterpreter,
+                            )
+                          }
+                          aria-label="Interpreter"
+                          className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          {automationScriptInterpreterValues.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Timeout (seconds)
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={AUTOMATION_SCRIPT_TIMEOUT_MAX_SECONDS}
+                          value={timeoutSeconds}
+                          onChange={(event) =>
+                            setTimeoutSeconds(event.target.value)
+                          }
+                          className="h-8 font-mono text-sm"
+                          aria-label="Timeout (seconds)"
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground">
@@ -490,7 +610,11 @@ export function AutomationDetailContent({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={savePending}
+                    disabled={
+                      savePending ||
+                      (automation.execution.mode === "script" &&
+                        script.trim().length === 0)
+                    }
                     onClick={handleSave}
                   >
                     Save changes
