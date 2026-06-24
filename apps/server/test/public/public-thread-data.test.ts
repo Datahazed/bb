@@ -2555,7 +2555,11 @@ describe("public thread data routes", () => {
       ).toEqual([
         {
           type: "known_acp_agents.status",
-          agents: [{ id: "acp-opencode", executableName: "opencode" }],
+          agents: [
+            { id: "acp-opencode", executableName: "opencode" },
+            { id: "acp-github-copilot", executableName: "copilot" },
+            { id: "acp-qwen-code", executableName: "qwen" },
+          ],
         },
         { type: "provider.list_models", providerId: "codex" },
       ]);

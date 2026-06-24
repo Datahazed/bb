@@ -132,7 +132,30 @@ describe("thread execution plan input sources", () => {
     });
   });
 
-  it("rejects providers that are not built in, custom ACP, or known ACP", async () => {
+  it("allows non-ACP provider ids for runtime-registered providers", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-source-aware-fake-provider",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      const resolution = resolveProjectExecutionDefaultsForCreate(
+        harness.deps,
+        {
+          model: "fake-model",
+          projectId: project.id,
+          providerId: "fake",
+        },
+      );
+
+      expect(resolution.providerId).toBe("fake");
+      expect(resolution.executionDefaults).toBeNull();
+    });
+  });
+
+  it("rejects ACP providers that are not built in, custom, or known", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-source-aware-unsupported-provider",

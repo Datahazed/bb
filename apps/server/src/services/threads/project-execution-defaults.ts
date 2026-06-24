@@ -2,7 +2,7 @@ import {
   getProjectExecutionDefaults,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
-import { isAgentProviderId } from "@bb/agent-providers";
+import { isAcpProviderId, isAgentProviderId } from "@bb/agent-providers";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import type {
   ProjectExecutionDefaults,
@@ -79,6 +79,9 @@ function isSupportedCreateProviderId(
   deps: Pick<AppDeps, "config">,
   providerId: string,
 ): boolean {
+  if (!isAcpProviderId(providerId)) {
+    return true;
+  }
   return (
     isAgentProviderId(providerId) ||
     findKnownAcpAgentForProviderId(providerId) !== undefined ||
