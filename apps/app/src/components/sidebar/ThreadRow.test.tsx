@@ -24,6 +24,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

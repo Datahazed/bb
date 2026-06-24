@@ -5,7 +5,10 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { withParentToolCallId } from "../shared/adapter-utils.js";
+import {
+  toOptionalRecord,
+  withParentToolCallId,
+} from "../shared/adapter-utils.js";
 import type { AcceptedUserMessageState } from "../shared/accepted-user-messages.js";
 import type {
   EnsureProviderTurnStartedArgs,
@@ -29,6 +32,7 @@ import {
   claudeSystemMessageSchema,
   claudeUserMessageSchema,
   type ClaudeApiRetryMessage,
+  type ClaudeAssistantMessage,
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
   type ClaudeToolUseResult,
@@ -144,6 +148,49 @@ const claudeResultFallbackErrorDetails: Record<string, string> = {
     "Claude Code exhausted structured output retries.",
   error_max_turns: "Claude Code reached the maximum number of turns.",
 };
+
+const CLAUDE_SYNTHETIC_MODEL = "<synthetic>";
+const CLAUDE_NO_RESPONSE_REQUESTED_TEXT = "No response requested.";
+const CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS = [
+  "input_tokens",
+  "cache_creation_input_tokens",
+  "cache_read_input_tokens",
+  "output_tokens",
+] as const;
+
+function hasClaudeAssistantErrorMarker(
+  message: ClaudeAssistantMessage,
+): boolean {
+  const messageRecord = toOptionalRecord(message);
+  return (
+    messageRecord?.error !== undefined ||
+    messageRecord?.isApiErrorMessage === true ||
+    messageRecord?.apiErrorStatus !== undefined
+  );
+}
+
+function hasClaudeZeroUsage(usage: unknown): boolean {
+  const usageRecord = toOptionalRecord(usage);
+  return (
+    usageRecord !== undefined &&
+    CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS.every((key) => usageRecord[key] === 0)
+  );
+}
+
+function isClaudeNoResponseRequestedSyntheticMessage(
+  message: ClaudeAssistantMessage,
+): boolean {
+  const nestedMessage = toOptionalRecord(message.message);
+  return (
+    nestedMessage?.model === CLAUDE_SYNTHETIC_MODEL &&
+    nestedMessage.role === "assistant" &&
+    nestedMessage.stop_reason === "stop_sequence" &&
+    nestedMessage.stop_sequence === "" &&
+    !hasClaudeAssistantErrorMarker(message) &&
+    hasClaudeZeroUsage(nestedMessage.usage) &&
+    extractAssistantText(message) === CLAUDE_NO_RESPONSE_REQUESTED_TEXT
+  );
+}
 
 function buildClaudeProviderErrorEvent(
   args: BuildClaudeProviderErrorEventArgs,
@@ -404,6 +451,29 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      if (isClaudeNoResponseRequestedSyntheticMessage(message)) {
+        const turnId =
+          state.currentTurnId ??
+          (state.pendingAcceptedUserMessages.length > 0
+            ? args.ensureTurnStarted({
+                events,
+                state,
+                threadId,
+              })
+            : undefined);
+        if (!turnId) {
+          return [];
+        }
+        events.push({
+          type: "turn/completed",
+          threadId,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          status: "completed",
+        });
+        args.turnState.finishTurn({ state, threadId: stateKey });
+        return events;
+      }
       const turnId = args.ensureTurnStarted({
         events,
         state,

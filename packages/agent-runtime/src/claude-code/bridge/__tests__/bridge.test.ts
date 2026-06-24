@@ -2174,6 +2174,112 @@ describe("bridge", () => {
     }
   });
 
+  it("queues grouped turn input as separate Claude SDK user messages", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-grouped-turn-input";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId,
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [
+          { type: "text", text: "First grouped input" },
+          { type: "text", text: "\n\n" },
+          { type: "text", text: "Second grouped input" },
+        ],
+        inputGroups: [
+          [{ type: "text", text: "First grouped input" }],
+          [{ type: "text", text: "Second grouped input" }],
+        ],
+        providerThreadId,
+        threadId,
+      });
+      await bridge.flushWork();
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { threadId },
+      });
+
+      const call = getLatestQueryCall();
+      await expect(readNextPromptText(call)).resolves.toBe(
+        "First grouped input",
+      );
+      await expect(readNextPromptText(call)).resolves.toBe(
+        "Second grouped input",
+      );
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("acknowledges grouped turn input after queuing SDK user messages", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-grouped-turn-input-rejects-later-prompt";
+      await startBridgeThread({ bridge, threadId });
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [
+          { type: "text", text: "First grouped input" },
+          { type: "text", text: "\n\n" },
+          { type: "text", text: "Second grouped input" },
+        ],
+        inputGroups: [
+          [{ type: "text", text: "First grouped input" }],
+          [{ type: "text", text: "Second grouped input" }],
+        ],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.flushWork();
+
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { threadId },
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "First grouped input",
+      );
+
+      queries[0]?.finish();
+      await bridge.flushWork();
+      expect(
+        bridge.messages.filter((message) => message.id === 2),
+      ).toHaveLength(1);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("forwards stale Claude resume errors without starting a fresh session", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -2377,6 +2483,53 @@ describe("bridge", () => {
       });
 
       await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+
+  it("acknowledges grouped turn steer input after queuing SDK user messages", async () => {
+    const threadId = "thread-grouped-steer-queued";
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      await startBridgeThread({ bridge, threadId });
+
+      bridge.sendRequest(2, "turn/steer", {
+        expectedTurnId: "turn-1",
+        input: [
+          { type: "text", text: "First grouped steer" },
+          { type: "text", text: "\n\n" },
+          { type: "text", text: "Second grouped steer" },
+        ],
+        inputGroups: [
+          [{ type: "text", text: "First grouped steer" }],
+          [{ type: "text", text: "Second grouped steer" }],
+        ],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.flushWork();
+
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { threadId },
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "First grouped steer",
+      );
+
+      queries[0]?.finish();
+      await bridge.flushWork();
+      expect(
+        bridge.messages.filter((message) => message.id === 2),
+      ).toHaveLength(1);
     } finally {
       queries[0]?.finish();
       bridge.restore();

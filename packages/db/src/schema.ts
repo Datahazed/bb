@@ -263,6 +263,9 @@ export const threads = sqliteTable(
     ).$type<ReasoningLevel>(),
     title: text("title"),
     titleFallback: text("title_fallback"),
+    folderId: text("folder_id").references(() => threadFolders.id, {
+      onDelete: "set null",
+    }),
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
@@ -308,6 +311,12 @@ export const threads = sqliteTable(
       table.sourceThreadId,
       table.originKind,
     ),
+    index("threads_folder_archived_deleted_idx").on(
+      table.folderId,
+      table.archivedAt,
+      table.deletedAt,
+      table.id,
+    ),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,
@@ -318,6 +327,17 @@ export const threads = sqliteTable(
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
+);
+
+export const threadFolders = sqliteTable(
+  "thread_folders",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("thread_folders_name_idx").on(table.name)],
 );
 
 export const threadSearchSegments = sqliteTable(
@@ -497,6 +517,9 @@ export const queuedThreadMessages = sqliteTable(
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     serviceTier: text("service_tier").notNull(),
+    groupWithNext: integer("group_with_next", { mode: "boolean" })
+      .notNull()
+      .default(false),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),

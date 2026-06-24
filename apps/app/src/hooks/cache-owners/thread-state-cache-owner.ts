@@ -62,7 +62,13 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
+  folderId?: string | null;
   title: string | null;
+}
+
+interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
+  folderId?: string | null;
+  title?: string | null;
 }
 
 interface ReorderPinnedThreadTransactionRequest extends ReorderPinnedThreadRequest {
@@ -361,18 +367,37 @@ export function beginThreadReadStateTransaction({
 }
 
 export function beginThreadTitleTransaction({
+  folderId,
   queryClient,
   threadId,
   title,
 }: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
+  return beginThreadMetadataTransaction({
+    folderId,
+    queryClient,
+    threadId,
+    title,
+  });
+}
+
+export function beginThreadMetadataTransaction({
+  folderId,
+  queryClient,
+  threadId,
+  title,
+}: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
+  const patch = {
+    ...(title !== undefined ? { title } : {}),
+    ...(folderId !== undefined ? { folderId } : {}),
+  };
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>
       applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
         list.map((thread) =>
-          thread.id === threadId ? { ...thread, title } : thread,
+          thread.id === threadId ? { ...thread, ...patch } : thread,
         ),
       ),
-    patch: { title },
+    patch,
     queryClient,
     threadId,
   });

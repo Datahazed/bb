@@ -14,6 +14,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -183,5 +184,21 @@ describe("buildPinnedSidebarState", () => {
       kind: "thread",
     });
     expect(state.rootNodes[0]?.stats.childCount).toBe(1);
+  });
+
+  it("keeps pinned roots flat even when they have folders", () => {
+    const state = buildPinnedSidebarState({
+      threads: [
+        createThread({
+          id: "a",
+          title: "Alpha",
+          folderId: "fld_work",
+          pinnedAt: 1_000,
+          pinSortKey: "a",
+        }),
+      ],
+    });
+
+    expect(rootIds(state)).toEqual(["a"]);
   });
 });

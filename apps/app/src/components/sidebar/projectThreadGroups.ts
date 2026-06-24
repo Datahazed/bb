@@ -7,6 +7,11 @@ import {
   getCollapsedChildActivity,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
+import { buildFolderKey } from "./folderKeys";
+import type {
+  SidebarGroupBy,
+  SidebarManualOrder,
+} from "./sidebarCollapsedAtoms";
 
 export interface ProjectThreadNodeStats {
   childCount: number;
@@ -32,20 +37,60 @@ export interface EnvironmentThreadGroup {
   stats: ProjectThreadNodeStats;
 }
 
+export interface SidebarFolderDefinition {
+  id: string;
+  name: string;
+}
+
+// A flat folder node backed by a durable DB folder row.
+export interface SidebarFolderGroup {
+  id: string;
+  key: string;
+  name: string;
+  items: ProjectThreadItem[];
+  threadCount: number;
+  activity: CollapsedChildActivity;
+}
+
 // A single render slot in a thread sibling list. Threads and env groups
 // interleave by recency, so renderers iterate one ordered list rather than two
-// parallel arrays.
+// parallel arrays. Folders join the same list only under Group by: Folder.
 export type ProjectThreadItem =
   | { kind: "thread"; node: ProjectThreadNode }
-  | { kind: "environment"; group: EnvironmentThreadGroup };
+  | { kind: "environment"; group: EnvironmentThreadGroup }
+  | { kind: "folder"; group: SidebarFolderGroup };
+
+// Folder grouping, threaded into the three assembly sites. `containerId` scopes
+// folder identity to its section (a `proj_*` id, or the sentinels below). When
+// groupBy is "none" each site early-returns its current output untouched — no
+// folder logic runs.
+export interface SidebarFolderOptions {
+  groupBy: SidebarGroupBy;
+  containerId: string;
+  folders?: readonly SidebarFolderDefinition[];
+  manualOrder?: SidebarManualOrder;
+}
+
+// Container-id sentinels for the global (non-project) sections; project
+// sections use their own `proj_*` id. These namespace folder keys and manual
+// order so "Work" in one section never collides with "Work" in another.
+export const CHRONOLOGICAL_CONTAINER_ID = "chronological";
+export const PINNED_CONTAINER_ID = "pinned";
 
 // Orders sibling threads. The default keeps active rows pinned to createdAt and
 // inactive rows on attention recency; chronological mode can swap in a literal
 // createdAt comparator instead.
-export type ThreadComparator = (
+export type ThreadItemComparator = (
+  left: ProjectThreadItem,
+  right: ProjectThreadItem,
+) => number;
+
+export type ThreadComparator = ((
   left: ThreadListEntry,
   right: ThreadListEntry,
-) => number;
+) => number) & {
+  compareItems?: ThreadItemComparator;
+};
 
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
 type SidebarProjectThreadShape = Pick<
@@ -122,7 +167,16 @@ export function compareStandardThreads(
 }
 
 function representativeThread(item: ProjectThreadItem): ThreadListEntry {
-  return item.kind === "thread" ? item.node.thread : item.group.nodes[0].thread;
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread;
+    case "environment":
+      return item.group.nodes[0].thread;
+    case "folder":
+      // Folders never reach this pre-bucket comparator path; fall back to the
+      // first nested item's representative so the function stays total.
+      return representativeThread(item.group.items[0]);
+  }
 }
 
 function compareProjectThreadItems(
@@ -145,11 +199,16 @@ function getNodeAndDescendantThreads(
 function getItemThreadDescendants(
   items: readonly ProjectThreadItem[],
 ): ThreadListEntry[] {
-  return items.flatMap((item) =>
-    item.kind === "thread"
-      ? getNodeAndDescendantThreads(item.node)
-      : item.group.nodes.flatMap(getNodeAndDescendantThreads),
-  );
+  return items.flatMap((item) => {
+    switch (item.kind) {
+      case "thread":
+        return getNodeAndDescendantThreads(item.node);
+      case "environment":
+        return item.group.nodes.flatMap(getNodeAndDescendantThreads);
+      case "folder":
+        return getItemThreadDescendants(item.group.items);
+    }
+  });
 }
 
 function buildStatsForHiddenThreads(
@@ -262,8 +321,35 @@ function isRootThread(
 export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
+  folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
-  return buildThreadTreeItems(allProjectThreads, compareThreads, true);
+  const rootItems = buildThreadTreeItems(
+    allProjectThreads,
+    compareThreads,
+    true,
+  );
+  // Group by: None — return today's output untouched unless an internal test
+  // path explicitly supplied a manual order for this section.
+  if (folderOptions?.groupBy !== "folder") {
+    if (folderOptions?.manualOrder) {
+      return orderSiblingItems(
+        rootItems,
+        folderOptions.containerId,
+        compareThreads,
+        {
+          manualOrder: folderOptions.manualOrder,
+        },
+      );
+    }
+    return rootItems;
+  }
+  return bucketIntoFolders(
+    rootItems,
+    folderOptions.containerId,
+    compareThreads,
+    folderOptions.manualOrder,
+    folderOptions.folders,
+  );
 }
 
 function buildThreadTreeItems(
@@ -334,7 +420,38 @@ function buildThreadTreeItems(
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
+  folderOptions?: SidebarFolderOptions,
 ): ProjectThreadItem[] {
+  // Folder grouping (and the test-only manual-order path) need a flat,
+  // globally-sorted list; everything else keeps main's parent/child tree.
+  if (folderOptions?.groupBy === "folder" || folderOptions?.manualOrder) {
+    const items = allThreads
+      .filter(isSidebarProjectThread)
+      .sort(compareThreads)
+      .map(
+        (thread): ProjectThreadItem => ({
+          kind: "thread",
+          node: {
+            thread,
+            children: [],
+            depth: 0,
+            stats: buildStatsForHiddenThreads([]),
+          },
+        }),
+      );
+    if (folderOptions.groupBy === "folder") {
+      return bucketIntoFolders(
+        items,
+        folderOptions.containerId,
+        compareThreads,
+        folderOptions.manualOrder,
+        folderOptions.folders,
+      );
+    }
+    return orderSiblingItems(items, folderOptions.containerId, compareThreads, {
+      manualOrder: folderOptions.manualOrder,
+    });
+  }
   return buildThreadTreeItems(allThreads, compareThreads, false);
 }
 
@@ -369,9 +486,7 @@ function bucketWorktreeEnvironmentGroups(
   const environmentThreadGroups: EnvironmentThreadGroup[] = [];
   for (const [environmentId, bucket] of nodesByEnvironmentId) {
     if (!hasAtLeastTwoThreadNodes(bucket)) continue;
-    bucket.sort((left, right) =>
-      compareThreads(left.thread, right.thread),
-    );
+    bucket.sort((left, right) => compareThreads(left.thread, right.thread));
     groupedEnvironmentIds.add(environmentId);
     environmentThreadGroups.push(
       buildEnvironmentThreadGroup(environmentId, bucket),
@@ -383,9 +498,7 @@ function bucketWorktreeEnvironmentGroups(
       node.thread.environmentId === null ||
       !groupedEnvironmentIds.has(node.thread.environmentId),
   );
-  looseNodes.sort((left, right) =>
-    compareThreads(left.thread, right.thread),
-  );
+  looseNodes.sort((left, right) => compareThreads(left.thread, right.thread));
 
   return { environmentThreadGroups, looseNodes };
 }
@@ -394,4 +507,240 @@ function hasAtLeastTwoThreadNodes(
   nodes: ProjectThreadNode[],
 ): nodes is EnvironmentThreadGroupNodes {
   return nodes.length >= 2;
+}
+
+interface ManualOrderSiblingOptions {
+  manualOrder?: SidebarManualOrder;
+}
+
+// The thread that orders an item among its siblings.
+function getItemOrderingThread(
+  item: ProjectThreadItem,
+  compareThreads: ThreadComparator,
+): ThreadListEntry | null {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread;
+    case "environment":
+      return item.group.nodes[0].thread;
+    case "folder": {
+      const descendants = getItemThreadDescendants(item.group.items);
+      if (descendants.length === 0) {
+        return null;
+      }
+      return descendants.reduce((first, thread) =>
+        compareThreads(thread, first) < 0 ? thread : first,
+      );
+    }
+  }
+}
+
+export function getManualOrderItemKey(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.id;
+    case "environment":
+      return item.group.nodes[0].thread.id;
+    case "folder":
+      return item.group.key;
+  }
+}
+
+export function pruneManualOrderForChildren(
+  storedOrder: readonly string[] | undefined,
+  childKeys: ReadonlySet<string>,
+): string[] {
+  if (!storedOrder) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const pruned: string[] = [];
+  for (const key of storedOrder) {
+    if (!childKeys.has(key) || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    pruned.push(key);
+  }
+  return pruned;
+}
+
+function orderItemsByManualOrder(
+  items: readonly ProjectThreadItem[],
+  parentKey: string,
+  compareThreads: ThreadComparator,
+  manualOrder: SidebarManualOrder,
+): ProjectThreadItem[] {
+  const itemsByKey = new Map<string, ProjectThreadItem>();
+  for (const item of items) {
+    itemsByKey.set(getManualOrderItemKey(item), item);
+  }
+
+  const childKeys = new Set(itemsByKey.keys());
+  const prunedOrder = pruneManualOrderForChildren(
+    manualOrder[parentKey],
+    childKeys,
+  );
+  const orderedKeys = new Set(prunedOrder);
+  const unorderedItems = items
+    .filter((item) => !orderedKeys.has(getManualOrderItemKey(item)))
+    .sort((left, right) => compareSiblingItems(left, right, compareThreads));
+  const orderedItems = prunedOrder.flatMap((key) => {
+    const item = itemsByKey.get(key);
+    return item ? [item] : [];
+  });
+
+  return [...unorderedItems, ...orderedItems];
+}
+
+// The one sibling-ordering hook. It orders folders-first, each block by the
+// active comparator. Internal manual-order tests can still supply a stored
+// per-parent order; missing child keys stay at the top in fallback order.
+function orderSiblingItems(
+  items: readonly ProjectThreadItem[],
+  parentKey: string,
+  compareThreads: ThreadComparator,
+  options: ManualOrderSiblingOptions = {},
+): ProjectThreadItem[] {
+  if (options.manualOrder) {
+    return orderItemsByManualOrder(
+      items,
+      parentKey,
+      compareThreads,
+      options.manualOrder,
+    );
+  }
+
+  const decorated = items.map((item) => ({
+    item,
+    isFolder: item.kind === "folder",
+  }));
+  decorated.sort((left, right) => {
+    if (left.isFolder !== right.isFolder) {
+      return left.isFolder ? -1 : 1;
+    }
+    return compareSiblingItems(left.item, right.item, compareThreads);
+  });
+  return decorated.map((entry) => entry.item);
+}
+
+function getItemFallbackSortLabel(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.id;
+    case "environment":
+      return item.group.environmentId;
+    case "folder":
+      return item.group.name;
+  }
+}
+
+function compareSiblingItems(
+  left: ProjectThreadItem,
+  right: ProjectThreadItem,
+  compareThreads: ThreadComparator,
+): number {
+  if (compareThreads.compareItems) {
+    return compareThreads.compareItems(left, right);
+  }
+
+  const leftThread = getItemOrderingThread(left, compareThreads);
+  const rightThread = getItemOrderingThread(right, compareThreads);
+  if (leftThread && rightThread) {
+    return compareThreads(leftThread, rightThread);
+  }
+  if (leftThread || rightThread) {
+    return leftThread ? -1 : 1;
+  }
+  return compareCodepoint(
+    getItemFallbackSortLabel(left),
+    getItemFallbackSortLabel(right),
+  );
+}
+
+function buildFolderGroup(
+  containerId: string,
+  folder: SidebarFolderDefinition,
+  items: ProjectThreadItem[],
+): SidebarFolderGroup {
+  const descendantThreads = getItemThreadDescendants(items);
+  return {
+    id: folder.id,
+    key: buildFolderKey(containerId, folder.id),
+    name: folder.name,
+    items,
+    threadCount: descendantThreads.length,
+    activity: getCollapsedChildActivity(descendantThreads),
+  };
+}
+
+// Fold a top-level item list into flat DB-backed folders plus loose items.
+export function bucketIntoFolders(
+  items: readonly ProjectThreadItem[],
+  containerId: string,
+  compareThreads: ThreadComparator = compareStandardThreads,
+  manualOrder?: SidebarManualOrder,
+  folders: readonly SidebarFolderDefinition[] = [],
+): ProjectThreadItem[] {
+  const folderDefinitionsById = new Map<string, SidebarFolderDefinition>();
+  const orderedFolders: SidebarFolderDefinition[] = [];
+  for (const folder of folders) {
+    if (folderDefinitionsById.has(folder.id)) {
+      continue;
+    }
+    folderDefinitionsById.set(folder.id, folder);
+    orderedFolders.push(folder);
+  }
+
+  const itemsByFolderId = new Map<string, ProjectThreadItem[]>();
+  for (const folder of orderedFolders) {
+    itemsByFolderId.set(folder.id, []);
+  }
+  const looseItems: ProjectThreadItem[] = [];
+
+  for (const item of items) {
+    const orderingThread = getItemOrderingThread(item, compareThreads);
+    const folderId = orderingThread?.folderId;
+    if (!folderId) {
+      looseItems.push(item);
+      continue;
+    }
+
+    let folderItems = itemsByFolderId.get(folderId);
+    if (!folderItems) {
+      const fallbackFolder = { id: folderId, name: "Folder" };
+      folderDefinitionsById.set(folderId, fallbackFolder);
+      orderedFolders.push(fallbackFolder);
+      folderItems = [];
+      itemsByFolderId.set(folderId, folderItems);
+    }
+    folderItems.push(item);
+  }
+
+  const folderItemsByName = orderedFolders.map((folder): ProjectThreadItem => {
+    const folderKey = buildFolderKey(containerId, folder.id);
+    const children = orderSiblingItems(
+      itemsByFolderId.get(folder.id) ?? [],
+      folderKey,
+      compareThreads,
+      { manualOrder },
+    );
+    return {
+      kind: "folder",
+      group: buildFolderGroup(containerId, folder, children),
+    };
+  });
+  const folderItems = compareThreads.compareItems
+    ? orderSiblingItems(folderItemsByName, containerId, compareThreads, {
+        manualOrder,
+      })
+    : folderItemsByName;
+  const orderedLooseItems = orderSiblingItems(
+    looseItems,
+    containerId,
+    compareThreads,
+    { manualOrder },
+  );
+  return [...folderItems, ...orderedLooseItems];
 }

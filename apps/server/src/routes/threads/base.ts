@@ -4,6 +4,7 @@ import {
   countNonDeletedAssignedChildThreads,
   disableAutomationsForDeletedThread,
   getEnvironment,
+  getThreadFolderById,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
@@ -145,6 +146,15 @@ function parseSearchLimitPerGroup(value: string | undefined): number {
   return limit;
 }
 
+function requireThreadFolder(
+  deps: Pick<AppDeps, "db">,
+  folderId: string,
+): void {
+  if (!getThreadFolderById(deps.db, folderId)) {
+    throw new ApiError(404, "folder_not_found", "Folder not found");
+  }
+}
+
 function buildThreadSearchGroupResponse(
   deps: AppDeps,
   args: BuildThreadSearchGroupResponseArgs,
@@ -196,10 +206,22 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.projectId) {
       requirePublicProject(deps.db, query.projectId);
     }
+    if (query.folderId && query.unfiled === "true") {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "folderId and unfiled cannot be used together",
+      );
+    }
+    if (query.folderId) {
+      requireThreadFolder(deps, query.folderId);
+    }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
+      ...(query.folderId ? { folderId: query.folderId } : {}),
+      ...(query.unfiled === "true" ? { unfiled: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
       ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
@@ -236,6 +258,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.create, async (context, payload) => {
+    if (payload.folderId) {
+      requireThreadFolder(deps, payload.folderId);
+    }
     const thread = await createThreadFromRequest(deps, {
       ...payload,
       origin: payload.origin,
@@ -295,6 +320,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const metadataUpdate: UpdateThreadInput = {};
     if ("title" in payload) {
       metadataUpdate.title = payload.title;
+    }
+    const folderId = payload.folderId;
+    if (folderId !== undefined) {
+      if (folderId !== null) {
+        requireThreadFolder(deps, folderId);
+      }
+      metadataUpdate.folderId = folderId;
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;

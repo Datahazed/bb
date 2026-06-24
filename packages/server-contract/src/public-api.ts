@@ -50,7 +50,9 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
+  CreateThreadFolderRequest,
   CreateThreadRequest,
+  DeleteThreadFolderRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
@@ -94,6 +96,7 @@ import type {
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
   SendMessageRequest,
+  SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
@@ -118,6 +121,8 @@ import type {
   ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
+  ThreadFolderMutationResponse,
+  ThreadFolderResponse,
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
@@ -141,6 +146,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
+  UpdateThreadFolderRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
@@ -155,6 +161,8 @@ import {
   createAutomationRequestSchema,
   runAutomationRequestSchema,
   updateAutomationRequestSchema,
+  createThreadFolderRequestSchema,
+  deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
@@ -186,6 +194,7 @@ import {
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
   sendMessageRequestSchema,
+  setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
   threadEventWaitQuerySchema,
@@ -206,6 +215,7 @@ import {
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateThreadFolderRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
@@ -576,6 +586,43 @@ export const publicApiRoutes = {
     }),
   },
 
+  threadFolders: {
+    create: defineRoute({
+      path: "/thread-folders",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
+        createThreadFolderRequestSchema,
+      ),
+      response: [
+        jsonResponse<ThreadFolderResponse>({ status: 201 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    update: defineRoute({
+      path: "/thread-folders",
+      method: "patch",
+      request: jsonRequest<EmptyInput, UpdateThreadFolderRequest>(
+        updateThreadFolderRequestSchema,
+      ),
+      response: [
+        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    delete: defineRoute({
+      path: "/thread-folders",
+      method: "delete",
+      request: jsonRequest<EmptyInput, DeleteThreadFolderRequest>(
+        deleteThreadFolderRequestSchema,
+      ),
+      response: [
+        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
+    }),
+  },
+
   threads: {
     list: defineRoute({
       path: "/threads",
@@ -646,6 +693,7 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<{ ok: true }>(),
     }),
+    /** @deprecated App code uses dedicated composer queries. */
     composerBootstrap: defineRoute({
       path: "/threads/:id/composer-bootstrap",
       method: "get",
@@ -690,6 +738,14 @@ export const publicApiRoutes = {
         PathThreadAndQueuedMessage,
         ReorderQueuedMessageRequest
       >(reorderQueuedMessageRequestSchema),
+      response: jsonResponse<ThreadQueuedMessageListResponse>(),
+    }),
+    setQueuedMessageGroupBoundary: defineRoute({
+      path: "/threads/:id/queued-messages/group-boundary",
+      method: "patch",
+      request: jsonRequest<PathId, SetQueuedMessageGroupBoundaryRequest>(
+        setQueuedMessageGroupBoundaryRequestSchema,
+      ),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
     promptHistory: defineRoute({

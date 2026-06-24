@@ -47,7 +47,12 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli", "automation"]);
+export const threadCreateOriginSchema = z.enum([
+  "app",
+  "cli",
+  "automation",
+  "sdk",
+]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
@@ -113,6 +118,7 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: environmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
+    folderId: z.string().min(1).nullable().optional(),
     sourceThreadId: z.string().min(1).optional(),
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
@@ -184,9 +190,18 @@ export type SendQueuedMessageRequest = z.infer<
 export const reorderQueuedMessageRequestSchema = z.object({
   previousQueuedMessageId: z.string().min(1).nullable(),
   nextQueuedMessageId: z.string().min(1).nullable(),
+  groupBoundaryQueuedMessageId: z.string().min(1).optional(),
 });
 export type ReorderQueuedMessageRequest = z.infer<
   typeof reorderQueuedMessageRequestSchema
+>;
+
+export const setQueuedMessageGroupBoundaryRequestSchema = z.object({
+  expectedGroupedPrefixQueuedMessageIds: z.array(z.string().min(1)).min(1),
+  groupBoundaryQueuedMessageId: z.string().min(1),
+});
+export type SetQueuedMessageGroupBoundaryRequest = z.infer<
+  typeof setQueuedMessageGroupBoundaryRequestSchema
 >;
 
 export const sendQueuedMessageResponseSchema = z.object({
@@ -319,6 +334,7 @@ export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
 export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
+    folderId: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
@@ -330,6 +346,7 @@ export const updateThreadRequestSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
+      value.folderId !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined,
@@ -393,17 +410,10 @@ export const threadOpenResponseSchema = z.object({
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
 
+/** @deprecated Compatibility shape for clients that still call composer bootstrap. */
 export const threadComposerBootstrapResponseSchema = z.object({
   defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
   queuedMessages: threadQueuedMessageListResponseSchema,
-  /**
-   * Provider/model options for the thread's composer picker. Null when the
-   * server deliberately skips resolving them — for archived or environment-less
-   * threads, whose follow-up composer locks the provider and needs no list.
-   * Null means "not resolved", distinct from a resolved-but-empty list, so
-   * callers must not treat it as a system-wide answer (e.g. don't seed the
-   * shared system-execution-options cache with it).
-   */
   executionOptions: systemExecutionOptionsResponseSchema.nullable(),
   pendingInteractions: threadPendingInteractionsResponseSchema,
   promptHistory: promptHistoryResponseSchema,
@@ -425,6 +435,10 @@ export const threadListQuerySchema = z.object({
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
+  /** Restrict to threads filed directly under this folder. */
+  folderId: z.string().min(1).optional(),
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
   /** Restrict to threads spawned with this origin (fork or side-chat). */

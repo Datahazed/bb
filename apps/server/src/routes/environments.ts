@@ -39,6 +39,7 @@ import {
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
+import { callEnvironmentWorkspaceStatus } from "../services/environments/workspace-status.js";
 import { assembleThreadPullRequest } from "../services/environments/pull-request.js";
 import {
   requireAvailableWorkspaceDiff,
@@ -324,17 +325,12 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       });
     }
     const target = requireWorkspaceCommandTarget(environment);
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "workspace.status",
-        environmentId: target.environmentId,
-        workspaceContext: target.workspaceContext,
-        ...(query.mergeBaseBranch
-          ? { mergeBaseBranch: query.mergeBaseBranch }
-          : {}),
-      },
+    const result = await callEnvironmentWorkspaceStatus(deps, {
+      environment,
+      target,
+      ...(query.mergeBaseBranch
+        ? { mergeBaseBranch: query.mergeBaseBranch }
+        : {}),
     });
     if (result.outcome === "unavailable") {
       return context.json({
@@ -613,14 +609,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         const { workspaceContext } = target;
 
         const [statusResult, diffResult] = await Promise.all([
-          callHostRetryableOnlineRpc(deps, {
-            hostId: target.hostId,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-            command: {
-              type: "workspace.status",
-              environmentId: target.environmentId,
-              workspaceContext,
-            },
+          callEnvironmentWorkspaceStatus(deps, {
+            environment,
+            target,
           }),
           callHostRetryableOnlineRpc(deps, {
             hostId: target.hostId,
@@ -680,14 +671,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         const { workspaceContext } = target;
         const targetBranch = payload.options.mergeBaseBranch;
 
-        const statusResult = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "workspace.status",
-            environmentId: target.environmentId,
-            workspaceContext,
-          },
+        const statusResult = await callEnvironmentWorkspaceStatus(deps, {
+          environment,
+          target,
         });
         const workspaceStatus = requireAvailableWorkspaceStatus(statusResult);
 

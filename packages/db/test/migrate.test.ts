@@ -195,7 +195,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const latestMigrationWhen = Math.max(
   ...(
     JSON.parse(
-      readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+      readFileSync(
+        resolve(__dirname, "../drizzle/meta/_journal.json"),
+        "utf-8",
+      ),
     ) as { entries: { when: number }[] }
   ).entries.map((entry) => entry.when),
 );
@@ -204,10 +207,12 @@ function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
-  // tables (added by 0039/0041) and app_theme (added by 0042).
+  // tables (added by 0039/0041), app_theme (added by 0042), and the thread
+  // folder schema (thread folder columns + thread_folders table).
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  dropThreadFolderSchema(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -248,6 +253,8 @@ const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
+const threadFoldersMigrationWhen = 1782252763916;
+const queuedMessageGroupingMigrationWhen = 1782273194188;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -382,6 +389,24 @@ function dropPost0023Tables(db: DbConnection): void {
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
+
+  dropThreadFolderSchema(db);
+}
+
+/**
+ * Folder schema lands in migration 0046. Replay scenarios that rewind the
+ * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
+ * against a DB that already has it.
+ */
+function dropThreadFolderSchema(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS threads_folder_archived_deleted_idx;");
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((row) => row.name === "folder_id")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_id").run();
+  }
+  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
 }
 
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {
@@ -505,6 +530,7 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   restoreEnvironmentCleanupModeColumn(db);
   restoreEnvironmentCleanupRequestedAtColumn(db);
   restoreThreadStopRequestedAtColumn(db);
+  dropThreadFolderSchema(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
@@ -732,7 +758,9 @@ function expectEventLargeValuesInline(
   expect(webSearchData.item.resultText).toBe(values.webSearchResult);
   expect(webSearchData.item.truncation).toBeUndefined();
 
-  const fileData = JSON.parse(readMigratedEventData(db, "evt_large_file_diffs"));
+  const fileData = JSON.parse(
+    readMigratedEventData(db, "evt_large_file_diffs"),
+  );
   expect(fileData.item.changes).toEqual([
     { path: "a.ts", diff: values.firstDiff },
     { path: "b.ts", diff: "small diff" },
@@ -1202,6 +1230,57 @@ describe("migrate", () => {
             `,
           )
           .get(threadSearchMigrationWhen),
+      ).toEqual({ count: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("repairs branch-local queued grouping history that skipped thread folders", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      dropThreadFolderSchema(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadFoldersMigrationWhen);
+
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(queuedMessageGroupingMigrationWhen),
+      ).toEqual({ count: 1 });
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(readTableNames(db)).toContain("thread_folders");
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+          .all()
+          .map((row) => row.name),
+      ).toContain("folder_id");
+      expect(readIndexNames({ db, tableName: "threads" })).toContain(
+        "threads_folder_archived_deleted_idx",
+      );
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(threadFoldersMigrationWhen),
       ).toEqual({ count: 1 });
     } finally {
       closeConnection(db);

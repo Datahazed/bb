@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import { QueuedMessagesList } from "./QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  resolveQueuedMessageDrag,
+} from "./QueuedMessagesList";
 
 const noop = () => {};
 
@@ -21,9 +24,21 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     reasoningLevel: "medium",
     permissionMode: "workspace-write",
     serviceTier: "default",
+    groupWithNext: false,
     createdAt: 0,
     updatedAt: 0,
   };
+}
+
+function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
+  return [
+    {
+      ...makeQueuedMessage("q_one", "First queued message"),
+      groupWithNext: true,
+    },
+    makeQueuedMessage("q_two", "Second queued message"),
+    makeQueuedMessage("q_three", "Third queued message"),
+  ];
 }
 
 function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
@@ -36,6 +51,7 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
       processingAction={null}
       onSendImmediately={noop}
       onReorder={noop}
+      onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
     />,
@@ -98,6 +114,166 @@ describe("QueuedMessagesList", () => {
         container.querySelector('[data-queued-messages-fade="below"]'),
       ).not.toBeNull();
     });
+  });
+
+  it("renders the draggable group divider without filling grouped rows", () => {
+    const { container, getByLabelText } = renderQueuedMessages(
+      makeGroupedQueuedMessages(),
+    );
+
+    expect(getByLabelText("Messages above send together")).not.toBeNull();
+    expect(
+      container.querySelectorAll("[data-queued-message-row]"),
+    ).toHaveLength(3);
+    expect(
+      container.querySelector("[data-queued-message-group-fill]"),
+    ).toBeNull();
+  });
+
+  it("makes the group divider handle visible on focus and non-hover devices", () => {
+    const { getByLabelText } = renderQueuedMessages(
+      makeGroupedQueuedMessages(),
+    );
+
+    expect(getByLabelText("Messages above send together").className).toContain(
+      "focus-visible:opacity-100",
+    );
+    expect(getByLabelText("Messages above send together").className).toContain(
+      "[@media(hover:none)]:opacity-100",
+    );
+  });
+
+  it("preserves grouping when reordering a row across the divider", () => {
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+      makeQueuedMessage("q_three", "Third queued message"),
+    ];
+
+    const result = resolveQueuedMessageDrag({
+      activeId: "q_three",
+      overId: "q_one",
+      combinedIds: [
+        "q_one",
+        "__queued_message_group_divider__",
+        "q_two",
+        "q_three",
+      ],
+      orderedMessages: queuedMessages,
+    });
+
+    expect(result).toMatchObject({
+      kind: "row",
+      request: {
+        queuedMessageId: "q_three",
+        previousQueuedMessageId: null,
+        nextQueuedMessageId: "q_one",
+      },
+      orderedMessages: [
+        { id: "q_three", groupWithNext: false },
+        { id: "q_one", groupWithNext: false },
+        { id: "q_two", groupWithNext: false },
+      ],
+    });
+    if (result?.kind !== "row") {
+      throw new Error("Expected row drag result");
+    }
+    expect(result.request.groupBoundaryQueuedMessageId).toBeUndefined();
+  });
+
+  it("updates grouping when dragging the divider", () => {
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+      makeQueuedMessage("q_three", "Third queued message"),
+    ];
+
+    expect(
+      resolveQueuedMessageDrag({
+        activeId: "__queued_message_group_divider__",
+        overId: "q_three",
+        combinedIds: [
+          "q_one",
+          "__queued_message_group_divider__",
+          "q_two",
+          "q_three",
+        ],
+        orderedMessages: queuedMessages,
+      }),
+    ).toMatchObject({
+      kind: "divider",
+      request: {
+        expectedGroupedPrefixQueuedMessageIds: ["q_one", "q_two", "q_three"],
+        groupBoundaryQueuedMessageId: "q_three",
+      },
+      orderedMessages: [
+        { id: "q_one", groupWithNext: true },
+        { id: "q_two", groupWithNext: true },
+        { id: "q_three", groupWithNext: false },
+      ],
+    });
+  });
+
+  it("re-adopts queued-message order from props when the same rows are restored", () => {
+    const originalMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+      makeQueuedMessage("q_three", "Third queued message"),
+    ];
+    const { container, rerender } = renderQueuedMessages(originalMessages);
+
+    rerender(
+      <QueuedMessagesList
+        queuedMessages={[
+          originalMessages[1]!,
+          originalMessages[0]!,
+          originalMessages[2]!,
+        ]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(
+      Array.from(container.querySelectorAll("[data-queued-message-row]")).map(
+        (row) => row.textContent,
+      ),
+    ).toEqual([
+      expect.stringContaining("Second queued message"),
+      expect.stringContaining("First queued message"),
+      expect.stringContaining("Third queued message"),
+    ]);
+
+    rerender(
+      <QueuedMessagesList
+        queuedMessages={originalMessages}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(
+      Array.from(container.querySelectorAll("[data-queued-message-row]")).map(
+        (row) => row.textContent,
+      ),
+    ).toEqual([
+      expect.stringContaining("First queued message"),
+      expect.stringContaining("Second queued message"),
+      expect.stringContaining("Third queued message"),
+    ]);
   });
 
   it("does not show a fade when stale observer entries report hidden sentinels without overflow", async () => {

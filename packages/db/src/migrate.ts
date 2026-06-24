@@ -1129,7 +1129,8 @@ function skipEventLargeValuesRoundTripForInlineEvents(
     expectedMigrations,
     "0029_drop_workflow_tables",
   );
-  const latestAppliedMigrationCreatedAt = readLatestAppliedMigrationCreatedAt(db);
+  const latestAppliedMigrationCreatedAt =
+    readLatestAppliedMigrationCreatedAt(db);
   if (latestAppliedMigrationCreatedAt === null) {
     return;
   }
@@ -1146,6 +1147,94 @@ function skipEventLargeValuesRoundTripForInlineEvents(
 
   markMigrationApplied(db, largeValuesMigration);
   markMigrationApplied(db, restoreMigration);
+}
+
+function applyQueuedMessageGroupingSchema(db: DbConnection): void {
+  if (
+    !tableExists(db, "queued_thread_messages") ||
+    columnExists(db, "queued_thread_messages", "group_with_next")
+  ) {
+    return;
+  }
+
+  db.$client
+    .prepare(
+      "ALTER TABLE queued_thread_messages ADD COLUMN group_with_next integer DEFAULT 0 NOT NULL",
+    )
+    .run();
+}
+
+function applyThreadFoldersSchema(db: DbConnection): void {
+  if (!tableExists(db, "thread_folders")) {
+    db.$client
+      .prepare(
+        `
+          CREATE TABLE thread_folders (
+            id text PRIMARY KEY NOT NULL,
+            name text NOT NULL,
+            created_at integer NOT NULL,
+            updated_at integer NOT NULL
+          )
+        `,
+      )
+      .run();
+  }
+
+  if (!indexExists(db, "thread_folders", "thread_folders_name_idx")) {
+    db.$client
+      .prepare(
+        "CREATE UNIQUE INDEX thread_folders_name_idx ON thread_folders (name)",
+      )
+      .run();
+  }
+
+  if (tableExists(db, "threads") && !columnExists(db, "threads", "folder_id")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE threads ADD COLUMN folder_id text REFERENCES thread_folders(id) ON DELETE SET NULL",
+      )
+      .run();
+  }
+
+  if (
+    tableExists(db, "threads") &&
+    !indexExists(db, "threads", "threads_folder_archived_deleted_idx")
+  ) {
+    db.$client
+      .prepare(
+        "CREATE INDEX threads_folder_archived_deleted_idx ON threads (folder_id, archived_at, deleted_at, id)",
+      )
+      .run();
+  }
+}
+
+function repairBranchLocalQueuedGroupingBeforeThreadFolders(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const threadFoldersMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0046_thread_folders",
+  );
+  const queuedGroupingMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0047_sharp_martin_li",
+  );
+  if (
+    appliedCreatedAts.has(threadFoldersMigration.createdAt) ||
+    !appliedCreatedAts.has(queuedGroupingMigration.createdAt)
+  ) {
+    return;
+  }
+
+  applyThreadFoldersSchema(db);
+  markMigrationApplied(db, threadFoldersMigration);
 }
 
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
@@ -1306,8 +1395,10 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     }
     repairBranchLocalThreadSearchMigrations(db);
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
+    repairBranchLocalQueuedGroupingBeforeThreadFolders(db, migrationsFolder);
     drizzleMigrate(db, { migrationsFolder });
     applyReorderedCleanupMigrations(db, migrationsFolder);
+    applyQueuedMessageGroupingSchema(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

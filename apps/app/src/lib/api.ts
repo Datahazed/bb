@@ -26,7 +26,9 @@ import type {
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
+  CreateThreadFolderRequest,
   CreateQueuedMessageRequest,
+  DeleteThreadFolderRequest,
   DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
   EnvironmentActionRequest,
@@ -50,6 +52,7 @@ import type {
   ReorderQueuedMessageRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
+  SetQueuedMessageGroupBoundaryRequest,
   SendMessageRequest,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
@@ -59,6 +62,8 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadFolderMutationResponse,
+  ThreadFolderResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -79,6 +84,7 @@ import type {
   CloseTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
+  UpdateThreadFolderRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
@@ -510,6 +516,30 @@ export async function createProject(
   req: CreateProjectRequest,
 ): Promise<ProjectResponse> {
   return request<ProjectResponse>(apiClient.projects.$post({ json: req }));
+}
+
+export async function createThreadFolder(
+  req: CreateThreadFolderRequest,
+): Promise<ThreadFolderResponse> {
+  return request<ThreadFolderResponse>(
+    apiClient["thread-folders"].$post({ json: req }),
+  );
+}
+
+export async function updateThreadFolder(
+  req: UpdateThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$patch({ json: req }),
+  );
+}
+
+export async function deleteThreadFolder(
+  req: DeleteThreadFolderRequest,
+): Promise<ThreadFolderMutationResponse> {
+  return request<ThreadFolderMutationResponse>(
+    apiClient["thread-folders"].$delete({ json: req }),
+  );
 }
 
 export async function updateProject(
@@ -945,6 +975,10 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
+  /** Restrict to threads filed directly under this folder. */
+  folderId?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;
@@ -982,15 +1016,15 @@ export async function listThreads(
           ...(filters.sourceThreadId
             ? { sourceThreadId: filters.sourceThreadId }
             : {}),
+          ...(filters.folderId ? { folderId: filters.folderId } : {}),
+          ...(filters.unfiled ? { unfiled: toBooleanQueryValue(true) } : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),
           ...(filters.originKind ? { originKind: filters.originKind } : {}),
           ...(filters.excludeSideChats !== undefined
             ? {
-                excludeSideChats: toBooleanQueryValue(
-                  filters.excludeSideChats,
-                ),
+                excludeSideChats: toBooleanQueryValue(filters.excludeSideChats),
               }
             : {}),
           ...(filters.childOrigin ? { childOrigin: filters.childOrigin } : {}),
@@ -1302,6 +1336,18 @@ export async function reorderThreadQueuedMessage(
       ":queuedMessageId"
     ].order.$patch({
       param: { id, queuedMessageId },
+      json: req,
+    }),
+  );
+}
+
+export async function setThreadQueuedMessageGroupBoundary(
+  id: string,
+  req: SetQueuedMessageGroupBoundaryRequest,
+): Promise<ThreadQueuedMessageListResponse> {
+  return request<ThreadQueuedMessageListResponse>(
+    apiClient.threads[":id"]["queued-messages"]["group-boundary"].$patch({
+      param: { id },
       json: req,
     }),
   );

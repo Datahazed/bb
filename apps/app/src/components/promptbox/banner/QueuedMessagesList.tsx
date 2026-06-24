@@ -22,19 +22,27 @@ import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
   getQueuedMessageVisibleText,
 } from "@/views/thread-detail/threadQueuedMessages";
-import {
-  buildQueuedMessageReorderRequest,
-  type QueuedMessageReorderRequest,
-} from "@/lib/queued-message-reorder";
+import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
+
+export interface QueuedMessageGroupBoundaryRequest {
+  expectedGroupedPrefixQueuedMessageIds: string[];
+  groupBoundaryQueuedMessageId: string;
+}
 
 export interface QueuedMessagesListProps {
   queuedMessages: readonly ThreadQueuedMessage[];
@@ -44,6 +52,7 @@ export interface QueuedMessagesListProps {
   processingAction: QueuedMessageProcessingAction | null;
   onSendImmediately: (id: string) => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
+  onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -64,6 +73,131 @@ interface QueuedMessageRowProps {
   onSendImmediately: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+}
+
+const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
+
+function collectLeadQueuedMessageGroupIds(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): string[] {
+  const ids: string[] = [];
+  for (const queuedMessage of queuedMessages) {
+    ids.push(queuedMessage.id);
+    if (!queuedMessage.groupWithNext) break;
+  }
+  return ids;
+}
+
+function preserveLeadQueuedMessageGroupAfterReorder({
+  originalLeadGroupIds,
+  queuedMessages,
+}: {
+  originalLeadGroupIds: readonly string[];
+  queuedMessages: readonly ThreadQueuedMessage[];
+}): ThreadQueuedMessage[] {
+  if (originalLeadGroupIds.length <= 1) {
+    return queuedMessages.map((queuedMessage) => ({
+      ...queuedMessage,
+      groupWithNext: false,
+    }));
+  }
+
+  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
+  const preservesLeadGroup = queuedMessages
+    .slice(0, originalLeadGroupIds.length)
+    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
+
+  return queuedMessages.map((queuedMessage, index) => ({
+    ...queuedMessage,
+    groupWithNext:
+      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
+  }));
+}
+
+export function resolveQueuedMessageDrag({
+  activeId,
+  combinedIds,
+  orderedMessages,
+  overId,
+}: {
+  activeId: string;
+  combinedIds: readonly string[];
+  orderedMessages: readonly ThreadQueuedMessage[];
+  overId: string;
+}):
+  | {
+      kind: "divider";
+      orderedMessages: ThreadQueuedMessage[];
+      request: QueuedMessageGroupBoundaryRequest;
+    }
+  | {
+      kind: "row";
+      request: QueuedMessageReorderRequest;
+      orderedMessages: ThreadQueuedMessage[];
+    }
+  | null {
+  if (activeId === overId) {
+    return null;
+  }
+  const oldIndex = combinedIds.indexOf(activeId);
+  const newIndex = combinedIds.indexOf(overId);
+  if (oldIndex === -1 || newIndex === -1) {
+    return null;
+  }
+
+  const movedIds = arrayMove([...combinedIds], oldIndex, newIndex);
+  const byId = new Map(
+    orderedMessages.map((queuedMessage) => [queuedMessage.id, queuedMessage]),
+  );
+  const dividerIndex = movedIds.indexOf(GROUP_DIVIDER_ID);
+  const nextMessages = movedIds
+    .filter((id) => id !== GROUP_DIVIDER_ID)
+    .map((id) => byId.get(id))
+    .filter(
+      (queuedMessage): queuedMessage is ThreadQueuedMessage =>
+        queuedMessage !== undefined,
+    );
+
+  if (activeId === GROUP_DIVIDER_ID) {
+    const boundaryIndex = Math.max(dividerIndex - 1, 0);
+    const groupBoundaryQueuedMessageId = nextMessages[boundaryIndex]?.id;
+    if (!groupBoundaryQueuedMessageId) {
+      return null;
+    }
+    return {
+      kind: "divider",
+      orderedMessages: nextMessages.map((queuedMessage, index) => ({
+        ...queuedMessage,
+        groupWithNext: index < boundaryIndex,
+      })),
+      request: {
+        expectedGroupedPrefixQueuedMessageIds: nextMessages
+          .slice(0, boundaryIndex + 1)
+          .map((queuedMessage) => queuedMessage.id),
+        groupBoundaryQueuedMessageId,
+      },
+    };
+  }
+
+  const messageIndex = nextMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === activeId,
+  );
+  if (messageIndex === -1) {
+    return null;
+  }
+
+  return {
+    kind: "row",
+    orderedMessages: preserveLeadQueuedMessageGroupAfterReorder({
+      queuedMessages: nextMessages,
+      originalLeadGroupIds: collectLeadQueuedMessageGroupIds(orderedMessages),
+    }),
+    request: {
+      queuedMessageId: activeId,
+      previousQueuedMessageId: nextMessages[messageIndex - 1]?.id ?? null,
+      nextQueuedMessageId: nextMessages[messageIndex + 1]?.id ?? null,
+    },
+  };
 }
 
 function isQuoteLine(line: string): boolean {
@@ -216,6 +350,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
     <li
       ref={setNodeRef}
       style={rowStyle}
+      data-queued-message-row=""
       className={cn(
         "group px-2.5 py-0.5",
         isDragging && "relative z-10 opacity-80",
@@ -247,7 +382,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             )}
             aria-hidden="true"
           />
-          <Icon name="ArrowTurnForward" className="size-3.5 shrink-0 opacity-70" />
+          <Icon
+            name="ArrowTurnForward"
+            className="size-3.5 shrink-0 opacity-70"
+          />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
@@ -312,6 +450,60 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   );
 });
 
+function SortableGroupDivider({ disabled }: { disabled: boolean }) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: GROUP_DIVIDER_ID, disabled });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(
+        "group/divider relative list-none px-2.5 py-1.5",
+        isDragging && "z-10",
+      )}
+    >
+      <div className="mx-auto h-px w-3/4 bg-border/60" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                ref={setActivatorNodeRef}
+                type="button"
+                className={cn(
+                  "pointer-events-none flex h-4 shrink-0 touch-none select-none items-center rounded-full bg-surface-recessed px-1.5 text-muted-foreground opacity-0 shadow-sm transition focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/divider:pointer-events-auto group-hover/divider:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                  !disabled && "cursor-grab active:cursor-grabbing",
+                  isDragging &&
+                    "pointer-events-auto cursor-grabbing text-foreground opacity-100",
+                )}
+                disabled={disabled}
+                aria-label="Messages above send together"
+                {...attributes}
+                {...listeners}
+              >
+                <Icon
+                  name="DragDropHorizontal"
+                  className="size-3.5"
+                  aria-hidden="true"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Messages above send together</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </li>
+  );
+}
+
 export function QueuedMessagesList({
   queuedMessages,
   sendDisabled,
@@ -320,6 +512,7 @@ export function QueuedMessagesList({
   processingAction,
   onSendImmediately,
   onReorder,
+  onSetGroupBoundary,
   onEdit,
   onDelete,
 }: QueuedMessagesListProps) {
@@ -338,33 +531,53 @@ export function QueuedMessagesList({
     }),
   );
   const [isExpanded, setIsExpanded] = useState(true);
-  const scrollOverflow = useScrollOverflowState<HTMLDivElement>({
+  const {
+    aboveOverflow,
+    belowOverflow,
+    bottomSentinelRef,
+    scrollRef,
+    topSentinelRef,
+  } = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
   });
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
-  // membership changes (add / send / delete / edit) — not when a reorder's
-  // optimistic cache update merely catches up to an order we already applied.
+  // persisted order or grouping changes — not when an unrelated query
+  // notification merely replays the same order we already applied.
   // (React Query defers its notification past dnd-kit's drop, so re-adopting on
   // every prop change would momentarily re-render a dropped row in its old
   // slot.)
   const [orderedMessages, setOrderedMessages] = useState(queuedMessages);
-  const membershipKey = queuedMessages
-    .map((queuedMessage) => queuedMessage.id)
-    .slice()
-    .sort()
+  const orderKey = queuedMessages
+    .map(
+      (queuedMessage) =>
+        `${queuedMessage.id}:${queuedMessage.groupWithNext ? "1" : "0"}`,
+    )
     .join("|");
-  const [syncedMembershipKey, setSyncedMembershipKey] = useState(membershipKey);
-  if (membershipKey !== syncedMembershipKey) {
-    setSyncedMembershipKey(membershipKey);
+  const [syncedOrderKey, setSyncedOrderKey] = useState(orderKey);
+  if (orderKey !== syncedOrderKey) {
+    setSyncedOrderKey(orderKey);
     setOrderedMessages(queuedMessages);
   }
 
-  const queuedMessageIds = useMemo(
-    () => orderedMessages.map((queuedMessage) => queuedMessage.id),
-    [orderedMessages],
-  );
+  const groupBoundaryIndex = useMemo(() => {
+    const firstUngroupedIndex = orderedMessages.findIndex(
+      (queuedMessage) => !queuedMessage.groupWithNext,
+    );
+    return firstUngroupedIndex === -1
+      ? Math.max(0, orderedMessages.length - 1)
+      : firstUngroupedIndex;
+  }, [orderedMessages]);
+  const combinedIds = useMemo(() => {
+    const ids = orderedMessages.map((queuedMessage) => queuedMessage.id);
+    if (ids.length < 2) return ids;
+    return [
+      ...ids.slice(0, groupBoundaryIndex + 1),
+      GROUP_DIVIDER_ID,
+      ...ids.slice(groupBoundaryIndex + 1),
+    ];
+  }, [groupBoundaryIndex, orderedMessages]);
   const sortingDisabled =
     actionDisabled || processingMessageId !== null || queuedMessages.length < 2;
   const handleDragEnd = useCallback(
@@ -374,33 +587,33 @@ export function QueuedMessagesList({
       }
       const activeId = String(event.active.id);
       const overId = String(event.over.id);
-      const oldIndex = orderedMessages.findIndex(
-        (queuedMessage) => queuedMessage.id === activeId,
-      );
-      const newIndex = orderedMessages.findIndex(
-        (queuedMessage) => queuedMessage.id === overId,
-      );
+      const oldIndex = combinedIds.indexOf(activeId);
+      const newIndex = combinedIds.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1) {
         return;
       }
 
+      const dragResult = resolveQueuedMessageDrag({
+        activeId,
+        combinedIds,
+        orderedMessages,
+        overId,
+      });
+      if (!dragResult) return;
+
       // Apply the new order locally and synchronously so the dropped row
       // settles into place in the same render flush as the drop; the mutation
       // syncs the server in the background.
-      setOrderedMessages((current) =>
-        arrayMove([...current], oldIndex, newIndex),
-      );
+      setOrderedMessages(dragResult.orderedMessages);
 
-      const reorderRequest = buildQueuedMessageReorderRequest({
-        activeId,
-        overId,
-        queuedMessages: orderedMessages,
-      });
-      if (reorderRequest) {
-        onReorder(reorderRequest);
+      if (dragResult.kind === "divider") {
+        onSetGroupBoundary(dragResult.request);
+        return;
       }
+
+      onReorder(dragResult.request);
     },
-    [onReorder, orderedMessages],
+    [combinedIds, onReorder, onSetGroupBoundary, orderedMessages],
   );
 
   // Keep a dragged row from being pulled outside the visible list: clamp the
@@ -409,7 +622,7 @@ export function QueuedMessagesList({
   const restrictToListBounds = useCallback<Modifier>(
     ({ draggingNodeRect, transform }) => {
       const listRect =
-        scrollOverflow.scrollRef.current?.getBoundingClientRect() ??
+        scrollRef.current?.getBoundingClientRect() ??
         listRef.current?.getBoundingClientRect();
       if (!listRect || !draggingNodeRect) {
         return { ...transform, x: 0 };
@@ -422,7 +635,7 @@ export function QueuedMessagesList({
         y: Math.min(Math.max(transform.y, minY), maxY),
       };
     },
-    [scrollOverflow.scrollRef],
+    [scrollRef],
   );
 
   if (queuedMessages.length === 0) return null;
@@ -459,16 +672,12 @@ export function QueuedMessagesList({
       {isExpanded ? (
         <div className="relative isolate">
           <div
-            ref={scrollOverflow.scrollRef}
+            ref={scrollRef}
             data-queued-messages-scroll=""
             className="max-h-32 min-w-0 overflow-y-auto overflow-x-hidden pb-1"
             tabIndex={0}
           >
-            <div
-              ref={scrollOverflow.topSentinelRef}
-              aria-hidden
-              className="h-px w-full"
-            />
+            <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -476,42 +685,53 @@ export function QueuedMessagesList({
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={queuedMessageIds}
+                items={combinedIds}
                 strategy={verticalListSortingStrategy}
               >
                 <ul ref={listRef}>
-                  {orderedMessages.map((queuedMessage, index) => (
-                    <QueuedMessageRow
-                      key={queuedMessage.id}
-                      queuedMessage={queuedMessage}
-                      index={index}
-                      isProcessing={processingMessageId === queuedMessage.id}
-                      processingLabel={processingLabel}
-                      dragDisabled={sortingDisabled}
-                      sendDisabled={sendDisabled}
-                      actionDisabled={actionDisabled}
-                      onSendImmediately={onSendImmediately}
-                      onEdit={onEdit}
-                      onDelete={onDelete}
-                    />
-                  ))}
+                  {combinedIds.map((id) => {
+                    if (id === GROUP_DIVIDER_ID) {
+                      return (
+                        <SortableGroupDivider
+                          key={id}
+                          disabled={sortingDisabled}
+                        />
+                      );
+                    }
+                    const queuedMessage = orderedMessages.find(
+                      (message) => message.id === id,
+                    );
+                    if (!queuedMessage) return null;
+                    const index = orderedMessages.indexOf(queuedMessage);
+                    return (
+                      <QueuedMessageRow
+                        key={queuedMessage.id}
+                        queuedMessage={queuedMessage}
+                        index={index}
+                        isProcessing={processingMessageId === queuedMessage.id}
+                        processingLabel={processingLabel}
+                        dragDisabled={sortingDisabled}
+                        sendDisabled={sendDisabled}
+                        actionDisabled={actionDisabled}
+                        onSendImmediately={onSendImmediately}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                      />
+                    );
+                  })}
                 </ul>
               </SortableContext>
             </DndContext>
-            <div
-              ref={scrollOverflow.bottomSentinelRef}
-              aria-hidden
-              className="h-px w-full"
-            />
+            <div ref={bottomSentinelRef} aria-hidden className="h-px w-full" />
           </div>
-          {scrollOverflow.aboveOverflow ? (
+          {aboveOverflow ? (
             <div
               aria-hidden
               data-queued-messages-fade="above"
               className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface-recessed to-transparent"
             />
           ) : null}
-          {scrollOverflow.belowOverflow ? (
+          {belowOverflow ? (
             <div
               aria-hidden
               data-queued-messages-fade="below"

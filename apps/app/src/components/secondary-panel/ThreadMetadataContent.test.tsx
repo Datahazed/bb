@@ -14,6 +14,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     providerId: "codex",
     title: null,
     titleFallback: null,
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

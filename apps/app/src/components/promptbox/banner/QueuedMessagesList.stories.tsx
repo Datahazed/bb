@@ -4,7 +4,10 @@ import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
-import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  type QueuedMessageGroupBoundaryRequest,
+} from "@/components/promptbox/banner/QueuedMessagesList";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -24,9 +27,7 @@ function PromptStage({ children, size }: PromptStageProps) {
   return (
     <div
       data-promptbox-shell=""
-      className={
-        size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"
-      }
+      className={size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"}
     >
       {children}
     </div>
@@ -69,6 +70,7 @@ function makeQueuedMessage({
     reasoningLevel: "medium",
     permissionMode: "workspace-write",
     serviceTier: "default",
+    groupWithNext: false,
     createdAt: 0,
     updatedAt: 0,
   };
@@ -207,6 +209,7 @@ function StaticQueuedMessagesList({
       processingAction={null}
       onSendImmediately={noop}
       onReorder={noop}
+      onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
     />
@@ -286,12 +289,20 @@ function ReorderableQueuedMessagesList() {
     useState<readonly ThreadQueuedMessage[]>(multipleMessages);
   const handleReorder = useCallback((request: QueuedMessageReorderRequest) => {
     setQueuedMessages((currentQueuedMessages) =>
-      applyQueuedMessageReorder({
-        queuedMessages: currentQueuedMessages,
-        request,
-      }),
+      applyStoryReorder(currentQueuedMessages, request),
     );
   }, []);
+  const handleSetGroupBoundary = useCallback(
+    (request: QueuedMessageGroupBoundaryRequest) => {
+      setQueuedMessages((currentQueuedMessages) =>
+        applyStoryGroupBoundary(
+          currentQueuedMessages,
+          request.groupBoundaryQueuedMessageId,
+        ),
+      );
+    },
+    [],
+  );
 
   return (
     <QueuedMessagesList
@@ -302,10 +313,84 @@ function ReorderableQueuedMessagesList() {
       processingAction={null}
       onSendImmediately={noop}
       onReorder={handleReorder}
+      onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
       onDelete={noop}
     />
   );
+}
+
+function collectStoryLeadGroupIds(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): string[] {
+  const ids: string[] = [];
+  for (const queuedMessage of queuedMessages) {
+    ids.push(queuedMessage.id);
+    if (!queuedMessage.groupWithNext) break;
+  }
+  return ids;
+}
+
+function preserveStoryLeadGroupAfterReorder({
+  originalLeadGroupIds,
+  queuedMessages,
+}: {
+  originalLeadGroupIds: readonly string[];
+  queuedMessages: readonly ThreadQueuedMessage[];
+}): ThreadQueuedMessage[] {
+  if (originalLeadGroupIds.length <= 1) {
+    return queuedMessages.map((queuedMessage) => ({
+      ...queuedMessage,
+      groupWithNext: false,
+    }));
+  }
+
+  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
+  const preservesLeadGroup = queuedMessages
+    .slice(0, originalLeadGroupIds.length)
+    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
+
+  return queuedMessages.map((queuedMessage, index) => ({
+    ...queuedMessage,
+    groupWithNext:
+      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
+  }));
+}
+
+function applyStoryReorder(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  request: QueuedMessageReorderRequest,
+): ThreadQueuedMessage[] {
+  const reorderedMessages = applyQueuedMessageReorder({
+    queuedMessages,
+    request,
+  });
+
+  if (request.groupBoundaryQueuedMessageId !== undefined) {
+    return applyStoryGroupBoundary(
+      reorderedMessages,
+      request.groupBoundaryQueuedMessageId,
+    );
+  }
+
+  return preserveStoryLeadGroupAfterReorder({
+    originalLeadGroupIds: collectStoryLeadGroupIds(queuedMessages),
+    queuedMessages: reorderedMessages,
+  });
+}
+
+function applyStoryGroupBoundary(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  boundaryId: string,
+): ThreadQueuedMessage[] {
+  const boundaryIndex = queuedMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === boundaryId,
+  );
+  if (boundaryIndex === -1) return [...queuedMessages];
+  return queuedMessages.map((queuedMessage, index) => ({
+    ...queuedMessage,
+    groupWithNext: index < boundaryIndex,
+  }));
 }
 
 export function Overview() {
@@ -321,6 +406,7 @@ export function Overview() {
             processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
@@ -344,6 +430,7 @@ export function Overview() {
             processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
@@ -362,6 +449,7 @@ export function Overview() {
             processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
@@ -380,6 +468,7 @@ export function Overview() {
             processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
@@ -398,6 +487,7 @@ export function Overview() {
             processingAction="send"
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
@@ -416,9 +506,47 @@ export function Overview() {
             processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
+            onSetGroupBoundary={noop}
             onEdit={noop}
             onDelete={noop}
           />
+        </ResponsivePromptStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+const oneGroupedStoryMessage: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "g_one",
+    text: "Refactor the queued-message reorder helper",
+  }),
+];
+
+const groupedMessages: readonly ThreadQueuedMessage[] = multipleMessages.map(
+  (message, index) => ({
+    ...message,
+    groupWithNext: index === 0,
+  }),
+);
+
+export function GroupedSendDivider() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="one message"
+        hint="no divider — grouping needs at least two queued messages"
+      >
+        <ResponsivePromptStage>
+          <StaticQueuedMessagesList queuedMessages={oneGroupedStoryMessage} />
+        </ResponsivePromptStage>
+      </StoryRow>
+      <StoryRow
+        label="multiple messages"
+        hint="hover the divider and drag it down to group; drag a row's grip to reorder"
+      >
+        <ResponsivePromptStage>
+          <StaticQueuedMessagesList queuedMessages={groupedMessages} />
         </ResponsivePromptStage>
       </StoryRow>
     </StoryCard>

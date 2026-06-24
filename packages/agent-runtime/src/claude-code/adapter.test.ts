@@ -790,6 +790,33 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand turn/start preserves grouped input", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "turn/start",
+      clientRequestId: "creq_2222222297",
+      threadId: "bb-thread-1",
+      providerThreadId: "claude-session-1",
+      input: [
+        promptTextInput({ text: "first" }),
+        promptTextInput({ text: "\n\n" }),
+        promptTextInput({ text: "second" }),
+      ],
+      inputGroups: [
+        [promptTextInput({ text: "first" })],
+        [promptTextInput({ text: "second" })],
+      ],
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd?.params).toMatchObject({
+      inputGroups: [
+        [{ type: "text", text: "first" }],
+        [{ type: "text", text: "second" }],
+      ],
+    });
+  });
+
   it("buildCommand uses native plan mode and strips the plan command pill", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const startCmd = adapter.buildCommandPlan({
@@ -1890,6 +1917,240 @@ describe("claude-code provider adapter", () => {
         }),
       }),
     );
+  });
+
+  it("translateEvent completes a pending turn for Claude synthetic no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.translateAcceptedCommand({
+        command: {
+          type: "turn/start",
+          threadId: "bb-thread-1",
+          providerThreadId: "claude-session-1",
+          clientRequestId: "creq_23456789af",
+          input: [promptTextInput({ text: "please do this" })],
+          options: fullProviderExecutionContext,
+        },
+      }),
+    ).toEqual([]);
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "No response requested." }],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+      },
+      {
+        type: "turn/input/accepted",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        clientRequestId: "creq_23456789af",
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "No response requested.",
+        }),
+      }),
+    );
+  });
+
+  it("translateEvent completes a pending turn for wrapped Claude synthetic no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.translateAcceptedCommand({
+        command: {
+          type: "turn/start",
+          threadId: "bb-thread-1",
+          providerThreadId: "claude-session-1",
+          clientRequestId: "creq_23456789af",
+          input: [promptTextInput({ text: "please do this" })],
+          options: fullProviderExecutionContext,
+        },
+      }),
+    ).toEqual([]);
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "bb-thread-1",
+          message: {
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "No response requested." }],
+              model: "<synthetic>",
+              stop_reason: "stop_sequence",
+              stop_sequence: "",
+              usage: {
+                input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+                output_tokens: 0,
+              },
+            },
+            session_id: "claude-session-1",
+          },
+        },
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+      },
+      {
+        type: "turn/input/accepted",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        clientRequestId: "creq_23456789af",
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
+  });
+
+  it("translateEvent does not treat Claude synthetic assistant errors as no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        error: "rate_limit",
+        isApiErrorMessage: true,
+        apiErrorStatus: 429,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "API Error: Server is temporarily limiting requests.",
+            },
+          ],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "API Error: Server is temporarily limiting requests.",
+        }),
+      }),
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+      }),
+    );
+  });
+
+  it("translateEvent completes an open turn for Claude synthetic no-response messages", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    adapter.translateEvent(
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Starting" },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    const events = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "No response requested." }],
+          model: "<synthetic>",
+          stop_reason: "stop_sequence",
+          stop_sequence: "",
+          usage: {
+            input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
   });
 
   it("translateEvent keeps assistant message ids distinct within one turn", () => {

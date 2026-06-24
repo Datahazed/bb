@@ -47,7 +47,6 @@ import {
   useThreadPendingInteractions,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
-import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -197,7 +196,6 @@ import {
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
-import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
@@ -497,41 +495,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     isFetching: threadDetailBootstrapQuery.isFetching || isFetching,
     isLoadingError,
   });
-  const threadComposerBootstrapQuery = useThreadComposerBootstrap(
-    thread?.id ?? "",
-    {
-      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-      environmentId: thread?.environmentId ?? undefined,
-      providerId: thread?.providerId,
-    },
-  );
-  const hasThreadComposerBootstrapData =
-    threadComposerBootstrapQuery.data !== undefined;
-  const hasThreadComposerBootstrapReady = resolveThreadComposerBootstrapReady({
-    hasData: hasThreadComposerBootstrapData,
-    isError: threadComposerBootstrapQuery.isError,
-    isFetching: threadComposerBootstrapQuery.isFetching,
-    isSuccess: threadComposerBootstrapQuery.isSuccess,
-  });
-  const composerQueryThreadId = hasThreadComposerBootstrapReady
-    ? (thread?.id ?? "")
-    : "";
-  const composerHydratedDataStaleTime = hasThreadComposerBootstrapData
-    ? 10_000
-    : undefined;
   const threadOriginKind = thread?.originKind ?? thread?.childOrigin ?? null;
   const threadSourceThreadId =
     thread?.sourceThreadId ??
     (thread && threadOriginKind ? thread.parentThreadId : null);
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
-  const { data: pendingInteractions = [] } = useThreadPendingInteractions(
-    composerQueryThreadId,
+  const pendingInteractionsQuery = useThreadPendingInteractions(
+    thread?.id ?? "",
     {
-      enabled: hasThreadComposerBootstrapReady,
-      staleTime: composerHydratedDataStaleTime,
+      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
     },
   );
+  const pendingInteractions = pendingInteractionsQuery.data ?? [];
+  const pendingInteractionsInitialLoading =
+    pendingInteractionsQuery.data === undefined &&
+    (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const unreadDividerState = useThreadUnreadDividerState({
@@ -1981,8 +1960,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
-      composerQueriesEnabled={hasThreadComposerBootstrapReady}
-      composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}
       openThreadDiffPanel={openSecondaryPanelDiffPanel}
       projectId={projectId}
@@ -2010,6 +1987,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
+      pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}

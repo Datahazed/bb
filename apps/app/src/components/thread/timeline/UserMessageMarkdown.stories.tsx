@@ -3,6 +3,10 @@ import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import {
+  StoryDraftPromptBox,
+  useStoryPromptDraft,
+} from "@/components/thread/timeline/StoryDraftPromptBox";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -11,8 +15,22 @@ export default {
 
 // ThreadTimelinePane caps content at 760px; match it so the bubble reflects
 // production width.
-function TimelineStage({ children }: { children: ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+function TimelineStage({
+  children,
+  revealMessageActions = false,
+}: {
+  children: ReactNode;
+  revealMessageActions?: boolean;
+}) {
+  return (
+    <div
+      className={`w-full max-w-[760px] ${
+        revealMessageActions ? "[&_button]:opacity-100" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
 }
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
@@ -43,12 +61,16 @@ function mentionAt(
 function UserMessage({
   text,
   mentions = [],
+  onAddToChat,
+  revealMessageActions = false,
 }: {
   text: string;
   mentions?: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
+  revealMessageActions?: boolean;
 }) {
   return (
-    <TimelineStage>
+    <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
         role="user"
         initiator="user"
@@ -58,6 +80,7 @@ function UserMessage({
         senderChildOrigin={null}
         resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}
+        onAddToChat={onAddToChat}
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}
@@ -131,31 +154,53 @@ const LONG_BODY = [
 ].join("\n");
 
 export function Overview() {
+  const promptDraft = useStoryPromptDraft();
+  const handleAddToChat = promptDraft.addQuote;
+
   return (
     <StoryCard>
       <StoryRow
-        label="formatting"
-        hint="headings, bold/italic, inline code, ordered + unordered lists"
+        label="formatting (hover)"
+        hint="production behavior — hover or focus the message to reveal actions"
       >
-        <UserMessage text={FORMATTING_BODY} />
+        <UserMessage text={FORMATTING_BODY} onAddToChat={handleAddToChat} />
       </StoryRow>
       <StoryRow
         label="mentions"
         hint="thread (linked), file (interactive), and slash-command pills inside markdown"
       >
-        <UserMessage text={MENTIONS_BODY} mentions={MENTIONS} />
+        <UserMessage
+          text={MENTIONS_BODY}
+          mentions={MENTIONS}
+          onAddToChat={handleAddToChat}
+          revealMessageActions
+        />
       </StoryRow>
       <StoryRow
         label="blockquote"
         hint="`> ` lines render as a native markdown blockquote + reply paragraph"
       >
-        <UserMessage text={QUOTE_BODY} />
+        <UserMessage
+          text={QUOTE_BODY}
+          onAddToChat={handleAddToChat}
+          revealMessageActions
+        />
       </StoryRow>
       <StoryRow
         label="long (collapsible)"
         hint="clamped to ~15 lines with a Show more / Show less toggle"
       >
-        <UserMessage text={LONG_BODY} />
+        <UserMessage
+          text={LONG_BODY}
+          onAddToChat={handleAddToChat}
+          revealMessageActions
+        />
+      </StoryRow>
+      <StoryRow
+        label="add to chat result"
+        hint="click Add to chat under any markdown user message, then type below the quote"
+      >
+        <StoryDraftPromptBox draft={promptDraft} />
       </StoryRow>
     </StoryCard>
   );

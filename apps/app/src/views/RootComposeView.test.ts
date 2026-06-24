@@ -14,6 +14,9 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
+  hasSingleUseRootComposeTargetState,
+  readFolderIdFromLocationState,
+  readRootComposeFolderTargetFromLocationState,
   readInitialPromptFromLocationState,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposePanelThreadId,
@@ -62,6 +65,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     providerId: "codex",
     title: args.id,
     titleFallback: args.id,
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -126,6 +130,7 @@ function makeTerminalSession(
 describe("buildMobileRecentThreads", () => {
   it("includes projectless and every project thread", () => {
     const sidebarNavigation: SidebarBootstrapResponse = {
+      folders: [],
       personalProject: makeProject({
         id: PERSONAL_PROJECT_ID,
         kind: "personal",
@@ -190,6 +195,63 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({ initialPrompt: 42 }),
     ).toBeNull();
+  });
+});
+
+describe("readFolderIdFromLocationState", () => {
+  it("returns a trimmed folder id seeded by navigation state", () => {
+    expect(readFolderIdFromLocationState({ folderId: " fld_work " })).toBe(
+      "fld_work",
+    );
+  });
+
+  it("returns null when no usable folder id is present", () => {
+    expect(readFolderIdFromLocationState(null)).toBeNull();
+    expect(readFolderIdFromLocationState({})).toBeNull();
+    expect(readFolderIdFromLocationState({ folderId: "" })).toBeNull();
+    expect(readFolderIdFromLocationState({ folderId: 42 })).toBeNull();
+  });
+});
+
+describe("readRootComposeFolderTargetFromLocationState", () => {
+  it("returns a folder target when navigation provides a folder id", () => {
+    expect(
+      readRootComposeFolderTargetFromLocationState({ folderId: " fld_work " }),
+    ).toEqual({ folderId: "fld_work", kind: "set" });
+  });
+
+  it("clears the folder target for plain new-thread focus navigation", () => {
+    expect(
+      readRootComposeFolderTargetFromLocationState({ focusPrompt: true }),
+    ).toEqual({ kind: "clear" });
+  });
+
+  it("clears the folder target for an unusable folder id", () => {
+    expect(readRootComposeFolderTargetFromLocationState({ folderId: "" }))
+      .toEqual({ kind: "clear" });
+  });
+
+  it("returns null when no folder target instruction is present", () => {
+    expect(readRootComposeFolderTargetFromLocationState(null)).toBeNull();
+    expect(readRootComposeFolderTargetFromLocationState({})).toBeNull();
+  });
+});
+
+describe("hasSingleUseRootComposeTargetState", () => {
+  it("treats folder targets as single-use navigation state", () => {
+    expect(hasSingleUseRootComposeTargetState({ folderId: "fld_work" })).toBe(
+      true,
+    );
+  });
+
+  it("treats plain new-thread navigation as single-use target state", () => {
+    expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
+      true,
+    );
+  });
+
+  it("ignores non-target state", () => {
+    expect(hasSingleUseRootComposeTargetState(null)).toBe(false);
   });
 });
 

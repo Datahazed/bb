@@ -3,7 +3,12 @@ import type {
   TimelineRowStatus,
   TimelineToolWorkRow,
 } from "@bb/server-contract";
+import type { ReactNode } from "react";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
+import {
+  StoryDraftPromptBox,
+  useStoryPromptDraft,
+} from "@/components/thread/timeline/StoryDraftPromptBox";
 import {
   commandRow,
   conversationRow,
@@ -19,7 +24,11 @@ export default {
   title: "thread/timeline/rows/Bundle Summary",
 };
 
-function TimelineStage({ children }: { children: React.ReactNode }) {
+function TimelineStage({
+  children,
+}: {
+  children: ReactNode;
+}) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
@@ -968,6 +977,9 @@ const interleavedConversationRows: TimelineRow[] = [
 ];
 
 export function Conversation() {
+  const promptDraft = useStoryPromptDraft();
+  const handleAddToChat = promptDraft.addQuote;
+
   return (
     <StoryCard>
       <StoryRow
@@ -978,8 +990,12 @@ export function Conversation() {
           <ThreadTimelineRows
             {...baseProps}
             threadRuntimeDisplayStatus="active"
+            onSelectionAddToChat={handleAddToChat}
             timelineRows={interleavedConversationRows}
           />
+          <div className="mt-3">
+            <StoryDraftPromptBox draft={promptDraft} />
+          </div>
         </TimelineStage>
       </StoryRow>
     </StoryCard>

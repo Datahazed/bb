@@ -139,9 +139,20 @@ interface ReorderQueuedMessageRequest extends QueuedMessageReorderRequest {
   id: string;
 }
 
+interface SetQueuedMessageGroupBoundaryRequest {
+  expectedGroupedPrefixQueuedMessageIds: string[];
+  groupBoundaryQueuedMessageId: string;
+  id: string;
+}
+
 interface ReorderQueuedMessageTransactionArgs {
   queryClient: QueryClient;
   request: ReorderQueuedMessageRequest;
+}
+
+interface SetQueuedMessageGroupBoundaryTransactionArgs {
+  queryClient: QueryClient;
+  request: SetQueuedMessageGroupBoundaryRequest;
 }
 
 interface RollbackQueuedMessageTransactionArgs {
@@ -154,6 +165,12 @@ interface ApplyQueuedMessageReorderResultArgs {
   queryClient: QueryClient;
   queuedMessages: ThreadQueuedMessageListResponse;
   request: ReorderQueuedMessageRequest;
+}
+
+interface ApplyQueuedMessageGroupBoundaryResultArgs {
+  queryClient: QueryClient;
+  queuedMessages: ThreadQueuedMessageListResponse;
+  request: SetQueuedMessageGroupBoundaryRequest;
 }
 
 interface StopThreadTransactionArgs extends ThreadIdCacheArgs {
@@ -257,6 +274,107 @@ function buildQueuedPromptHistoryEntry(
   };
 }
 
+function applyQueuedMessageGroupBoundary({
+  groupBoundaryQueuedMessageId,
+  queuedMessages,
+}: {
+  groupBoundaryQueuedMessageId: string;
+  queuedMessages: readonly ThreadQueuedMessage[];
+}): ThreadQueuedMessage[] {
+  const boundaryIndex = queuedMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === groupBoundaryQueuedMessageId,
+  );
+  if (boundaryIndex === -1) return [...queuedMessages];
+  return queuedMessages.map((queuedMessage, index) => ({
+    ...queuedMessage,
+    groupWithNext: index < boundaryIndex,
+  }));
+}
+
+function collectLeadQueuedMessageGroupIds(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): string[] {
+  const ids: string[] = [];
+  for (const queuedMessage of queuedMessages) {
+    ids.push(queuedMessage.id);
+    if (!queuedMessage.groupWithNext) break;
+  }
+  return ids;
+}
+
+function preserveLeadQueuedMessageGroupAfterReorder({
+  originalLeadGroupIds,
+  queuedMessages,
+}: {
+  originalLeadGroupIds: readonly string[];
+  queuedMessages: readonly ThreadQueuedMessage[];
+}): ThreadQueuedMessage[] {
+  if (originalLeadGroupIds.length <= 1) {
+    return queuedMessages.map((queuedMessage) => ({
+      ...queuedMessage,
+      groupWithNext: false,
+    }));
+  }
+
+  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
+  const preservesLeadGroup = queuedMessages
+    .slice(0, originalLeadGroupIds.length)
+    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
+
+  return queuedMessages.map((queuedMessage, index) => ({
+    ...queuedMessage,
+    groupWithNext:
+      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
+  }));
+}
+
+function queuedMessageSendGroup(
+  queuedMessages: readonly ThreadQueuedMessage[] | undefined,
+  queuedMessageId: string,
+): ThreadQueuedMessage[] {
+  if (!queuedMessages) return [];
+  const queuedMessageIndex = queuedMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === queuedMessageId,
+  );
+  if (queuedMessageIndex === -1) return [];
+  if (queuedMessageIndex !== 0) return [queuedMessages[queuedMessageIndex]!];
+
+  const group: ThreadQueuedMessage[] = [];
+  for (const queuedMessage of queuedMessages) {
+    group.push(queuedMessage);
+    if (!queuedMessage.groupWithNext) break;
+  }
+  return group;
+}
+
+function queuedMessageSendIds(
+  queuedMessages: readonly ThreadQueuedMessage[] | undefined,
+  queuedMessageId: string,
+): Set<string> {
+  const group = queuedMessageSendGroup(queuedMessages, queuedMessageId);
+  if (group.length === 0) return new Set([queuedMessageId]);
+  return new Set(group.map((queuedMessage) => queuedMessage.id));
+}
+
+function removeQueuedMessagesAndRepairGroupEdges(
+  queuedMessages: ThreadQueuedMessageListResponse | undefined,
+  removeIds: ReadonlySet<string>,
+): ThreadQueuedMessageListResponse | undefined {
+  if (!queuedMessages) return queuedMessages;
+  return queuedMessages.flatMap((queuedMessage, index) => {
+    if (removeIds.has(queuedMessage.id)) return [];
+    const nextQueuedMessage = queuedMessages[index + 1];
+    if (
+      nextQueuedMessage &&
+      removeIds.has(nextQueuedMessage.id) &&
+      queuedMessage.groupWithNext
+    ) {
+      return [{ ...queuedMessage, groupWithNext: false }];
+    }
+    return [queuedMessage];
+  });
+}
+
 function getCachedDefaultExecutionOptions(
   queryClient: QueryClient,
   threadId: string,
@@ -290,6 +408,7 @@ function buildOptimisticQueuedMessage({
       "readonly",
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
+    groupWithNext: false,
     createdAt,
     updatedAt: createdAt,
   };
@@ -348,9 +467,10 @@ function removeCachedQueuedMessage({
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     queryKey,
     (currentQueuedMessages) =>
-      currentQueuedMessages?.filter(
-        (queuedMessage) => queuedMessage.id !== request.queuedMessageId,
-      ) ?? currentQueuedMessages,
+      removeQueuedMessagesAndRepairGroupEdges(
+        currentQueuedMessages,
+        new Set([request.queuedMessageId]),
+      ),
   );
 
   return {
@@ -782,9 +902,14 @@ export async function beginSendQueuedMessageTransaction({
     queryClient.getQueryData<ThreadQueuedMessageListResponse>(
       threadQueuedMessagesQueryKey(request.id),
     );
-  const queuedMessage = previousQueuedMessages?.find(
-    (currentQueuedMessage) =>
-      currentQueuedMessage.id === request.queuedMessageId,
+  const queuedMessageGroup = queuedMessageSendGroup(
+    previousQueuedMessages,
+    request.queuedMessageId,
+  );
+  const queuedMessage = queuedMessageGroup[0] ?? null;
+  const sendIds = queuedMessageSendIds(
+    previousQueuedMessages,
+    request.queuedMessageId,
   );
   const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(request.id),
@@ -793,10 +918,7 @@ export async function beginSendQueuedMessageTransaction({
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     threadQueuedMessagesQueryKey(request.id),
     (currentQueuedMessages) =>
-      currentQueuedMessages?.filter(
-        (currentQueuedMessage) =>
-          currentQueuedMessage.id !== request.queuedMessageId,
-      ) ?? currentQueuedMessages,
+      removeQueuedMessagesAndRepairGroupEdges(currentQueuedMessages, sendIds),
   );
 
   if (!queuedMessage) {
@@ -813,6 +935,13 @@ export async function beginSendQueuedMessageTransaction({
     queryClient,
     threadId: request.id,
   });
+  if (queuedMessageGroup.length > 1) {
+    return {
+      optimisticRowId: null,
+      previousQueuedMessages,
+      previousThread,
+    };
+  }
   const optimisticRow = buildOptimisticUserMessageRow({
     createdAt: optimisticCreatedAt,
     input: queuedMessage.content,
@@ -879,13 +1008,25 @@ export async function beginReorderQueuedMessageTransaction({
   // snap-back before it settles into place.
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     queryKey,
-    (currentQueuedMessages) =>
-      currentQueuedMessages
-        ? applyQueuedMessageReorder({
-            queuedMessages: currentQueuedMessages,
-            request,
+    (currentQueuedMessages) => {
+      if (!currentQueuedMessages) return currentQueuedMessages;
+      const originalLeadGroupIds = collectLeadQueuedMessageGroupIds(
+        currentQueuedMessages,
+      );
+      const reordered = applyQueuedMessageReorder({
+        queuedMessages: currentQueuedMessages,
+        request,
+      });
+      return request.groupBoundaryQueuedMessageId !== undefined
+        ? applyQueuedMessageGroupBoundary({
+            queuedMessages: reordered,
+            groupBoundaryQueuedMessageId: request.groupBoundaryQueuedMessageId,
           })
-        : currentQueuedMessages,
+        : preserveLeadQueuedMessageGroupAfterReorder({
+            queuedMessages: reordered,
+            originalLeadGroupIds,
+          });
+    },
   );
 
   await queryClient.cancelQueries({ queryKey });
@@ -915,6 +1056,45 @@ export function applyQueuedMessageReorderResult({
   queuedMessages,
   request,
 }: ApplyQueuedMessageReorderResultArgs): void {
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    threadQueuedMessagesQueryKey(request.id),
+    queuedMessages,
+  );
+  invalidateThreadQueueQueries({
+    queryClient,
+    threadId: request.id,
+  });
+}
+
+export async function beginSetQueuedMessageGroupBoundaryTransaction({
+  queryClient,
+  request,
+}: SetQueuedMessageGroupBoundaryTransactionArgs): Promise<ReorderQueuedMessageTransaction> {
+  const queryKey = threadQueuedMessagesQueryKey(request.id);
+  const previousQueuedMessages =
+    queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
+
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    queryKey,
+    (currentQueuedMessages) =>
+      currentQueuedMessages
+        ? applyQueuedMessageGroupBoundary({
+            queuedMessages: currentQueuedMessages,
+            groupBoundaryQueuedMessageId: request.groupBoundaryQueuedMessageId,
+          })
+        : currentQueuedMessages,
+  );
+
+  await queryClient.cancelQueries({ queryKey });
+
+  return { previousQueuedMessages };
+}
+
+export function applyQueuedMessageGroupBoundaryResult({
+  queryClient,
+  queuedMessages,
+  request,
+}: ApplyQueuedMessageGroupBoundaryResultArgs): void {
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     threadQueuedMessagesQueryKey(request.id),
     queuedMessages,

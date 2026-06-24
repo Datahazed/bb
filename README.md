@@ -14,8 +14,8 @@ bb is an agentic IDE that can control itself. You can seamlessly
 orchestrate all of your favorite coding agents together and have them
 programmatically use bb too.
 
-Every surface — the web app, CLI, and HTTP API — is a first-class way to
-drive bb. Work runs in threads you can follow live, steer at any point,
+Every surface — the desktop app, web app, CLI, and HTTP API — is a first-class
+way to drive bb. Work runs in threads you can follow live, steer at any point,
 or hand off to another agent.
 
 > [!NOTE]
@@ -34,8 +34,11 @@ The recommended way to start using bb is the desktop app:
 
 **[Download the latest desktop app](https://github.com/ymichael/bb/releases/tag/desktop-latest)**
 
-The desktop build is currently macOS Apple Silicon (arm64) only. Intel Mac,
-Linux, and Windows users should run bb with `npx` instead.
+The desktop build is currently macOS Apple Silicon (arm64) only. Intel Mac and
+Linux users should run bb with `npx` instead. On Windows, run bb inside
+[WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
+install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
+shell. Native Windows PowerShell and CMD are not supported.
 
 ### Or run it anywhere with npx
 
@@ -64,16 +67,25 @@ runs never send. Opt out any run with `BB_TELEMETRY=false`. See
 
 This monorepo contains the packaged app plus the runtime services it bundles:
 
-| Package or app                                                     | Role                                                                                  |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [`packages/bb-app`](./packages/bb-app)                             | Published npm package and `npx bb-app@latest` launcher.                               |
-| [`apps/app`](./apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.              |
-| [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy. |
-| [`apps/host-daemon`](./apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.            |
-| [`apps/cli`](./apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                             |
-| [`apps/landing`](./apps/landing)                                   | Static marketing landing page (TanStack Start, prerendered).                          |
-| [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                           |
-| [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                           |
+| Package or app                                                     | Role                                                                                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [`packages/bb-app`](./packages/bb-app)                             | Published npm package, `npx bb-app@latest` launcher, bundled `bb` CLI entry, and public SDK export. |
+| [`apps/desktop`](./apps/desktop)                                   | macOS Electron shell that supervises the packaged runtime and loads the bb web UI.                  |
+| [`apps/app`](./apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.                            |
+| [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy.               |
+| [`apps/host-daemon`](./apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.                          |
+| [`apps/cli`](./apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                           |
+| [`apps/landing`](./apps/landing)                                   | Static marketing landing page (TanStack Start, prerendered).                                        |
+| [`packages/sdk`](./packages/sdk)                                   | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                       |
+| [`packages/agent-runtime`](./packages/agent-runtime)               | Provider runtime adapters and bridges for Codex, Claude Code, Pi, and ACP agents.                   |
+| [`packages/config`](./packages/config)                             | Config parsing, defaults, managed package config schema, and environment variable definitions.      |
+| [`packages/db`](./packages/db)                                     | SQLite schema, migrations, and data access helpers.                                                 |
+| [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                                         |
+| [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                                         |
+
+`bb-app` also exposes a Node scripting SDK:
+`import { BBSdk } from "bb-app"`. See
+[`packages/bb-app`](./packages/bb-app/README.md#scripting-with-the-sdk).
 
 ## Development
 
@@ -99,7 +111,8 @@ pnpm dev:desktop
 
 This uses `scripts/bb-dev-app current --desktop`, which stops stale launcher
 sessions, checks dependencies and native modules, starts the source dev server,
-then opens the desktop shell against that dev app.
+then opens the desktop shell against that dev app. The launcher prints the web
+URL but does not open a browser unless you pass `--open`.
 
 To use the dev app from another machine, for example over Tailscale, run:
 
@@ -162,12 +175,12 @@ These reset commands prompt for confirmation before deleting anything.
 
 ### The runtime pieces
 
-| Component       | Role                                                                                                                                                                                                                                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server**      | Central hub. Stores all state in a SQLite database, exposes an HTTP API, and pushes change notifications over WebSocket. Stateless itself — the DB is the source of truth. Routes work to hosts by queuing commands.                                                                                    |
+| Component       | Role                                                                                                                                                                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Server**      | Central hub. Stores all state in a SQLite database, exposes an HTTP API, and pushes change notifications over WebSocket. Stateless itself — the DB is the source of truth. Routes work to hosts by queuing commands.                                                           |
 | **Host daemon** | Runs on the local machine. Connects to the server, picks up commands, provisions workspaces, runs agent provider processes, and streams events back. Exposes a local HTTP API for the app and CLI to do machine-local things (open editor, pick folders, check daemon status). |
-| **App**         | Web UI for inspecting projects and threads, following progress, and steering work.                                                                                                                                                                                                                      |
-| **CLI** (`bb`)  | First-class interface for both users and agents. Same capabilities as the app, scriptable.                                                                                                                                                                                                              |
+| **App**         | Web UI for inspecting projects and threads, following progress, and steering work.                                                                                                                                                                                             |
+| **CLI** (`bb`)  | First-class interface for both users and agents. Same capabilities as the app, scriptable.                                                                                                                                                                                     |
 
 ### Data model
 

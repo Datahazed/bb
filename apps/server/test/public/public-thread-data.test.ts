@@ -12,6 +12,8 @@ import {
   listQueuedThreadMessages,
   getThread,
   queuedThreadMessages,
+  reorderQueuedThreadMessage,
+  setQueuedThreadMessageGroupBoundary,
   setThreadExecutionOverride,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
@@ -33,20 +35,25 @@ import {
 } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { loadActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-environment.js";
 import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
-import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  registerProviderHostRpcResponder,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
+  seedHost,
   seedQueuedMessage,
   seedEnvironment,
   seedEvent,
-  seedHost,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -79,6 +86,20 @@ const clientTurnRequestedDataSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 describe("public thread data routes", () => {
+  it("rejects contradictory folder and unfiled thread list filters", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request(
+        "/api/v1/threads?folderId=fld_work&unfiled=true",
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "folderId and unfiled cannot be used together",
+      });
+    });
+  });
+
   it("embeds thread environment and host snapshots when requested", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {
@@ -1921,6 +1942,115 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("rejects grouping queued messages with different execution options", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-queued-message-group-execution-errors",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-queued-message-group-execution-errors-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("First queued message"),
+        model: "gpt-5",
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Second queued message"),
+        model: "gpt-5.5",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/group-boundary`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedGroupedPrefixQueuedMessageIds: [
+              firstQueuedMessage.id,
+              secondQueuedMessage.id,
+            ],
+            groupBoundaryQueuedMessageId: secondQueuedMessage.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message:
+          "Queued messages with different execution options cannot be grouped",
+      });
+    });
+  });
+
+  it("rejects a stale queued-message group boundary prefix", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-thread-queued-message-group-stale-prefix",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-queued-message-group-stale-prefix-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("First queued message"),
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Second queued message"),
+      });
+      const thirdQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Third queued message"),
+      });
+      expect(
+        reorderQueuedThreadMessage({
+          db: harness.db,
+          notifier: harness.hub,
+          threadId: thread.id,
+          queuedMessageId: thirdQueuedMessage.id,
+          previousQueuedMessageId: firstQueuedMessage.id,
+          nextQueuedMessageId: secondQueuedMessage.id,
+        }).kind,
+      ).toBe("reordered");
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/group-boundary`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedGroupedPrefixQueuedMessageIds: [
+              firstQueuedMessage.id,
+              secondQueuedMessage.id,
+            ],
+            groupBoundaryQueuedMessageId: secondQueuedMessage.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Queued message order changed",
+      });
+    });
+  });
+
   it("returns queued messages without notification for unchanged reorder requests", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -2105,8 +2235,143 @@ describe("public thread data routes", () => {
           providerThreadId: "provider-queued-message-create-idle-auto-send",
         },
       });
+      expect("inputGroups" in queued.command).toBe(false);
+      const requestedEvent = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, thread.id),
+            eq(events.type, "client/turn/requested"),
+          ),
+        )
+        .get();
+      expect(requestedEvent).toBeTruthy();
+      expect(
+        Object.hasOwn(JSON.parse(requestedEvent!.data), "inputGroups"),
+      ).toBe(false);
       expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  it("sends the contiguous lead queued-message group as one turn request", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: {
+          status: "idle",
+        },
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-queued-message-group",
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("First grouped queued message"),
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Second grouped queued message"),
+      });
+      const thirdQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Ungrouped queued message"),
+      });
+      expect(
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [
+            firstQueuedMessage.id,
+            secondQueuedMessage.id,
+          ],
+          groupBoundaryQueuedMessageId: secondQueuedMessage.id,
+        }).kind,
+      ).toBe("updated");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${firstQueuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+      expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(queued.command).toMatchObject({
+        input: [
+          { type: "text", text: "First grouped queued message" },
+          { type: "text", text: "\n\n" },
+          { type: "text", text: "Second grouped queued message" },
+        ],
+        inputGroups: [
+          [{ type: "text", text: "First grouped queued message" }],
+          [{ type: "text", text: "Second grouped queued message" }],
+        ],
+        target: { mode: "start" },
+      });
+
+      expect(
+        getQueuedThreadMessage(harness.db, firstQueuedMessage.id),
+      ).toBeNull();
+      expect(
+        getQueuedThreadMessage(harness.db, secondQueuedMessage.id),
+      ).toBeNull();
+      expect(
+        getQueuedThreadMessage(harness.db, thirdQueuedMessage.id),
+      ).toMatchObject({
+        id: thirdQueuedMessage.id,
+      });
+
+      const requestedEvents = harness.db
+        .select({
+          data: events.data,
+        })
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, thread.id),
+            eq(events.type, "client/turn/requested"),
+          ),
+        )
+        .all();
+      const groupedRequestEvents = requestedEvents.filter((event) =>
+        Object.hasOwn(JSON.parse(event.data), "inputGroups"),
+      );
+      expect(groupedRequestEvents).toHaveLength(1);
+      const eventData = JSON.parse(groupedRequestEvents[0]!.data) as {
+        inputGroups: { text: string; type: "text" }[][];
+      };
+      expect(eventData.inputGroups.map((group) => group[0]?.text)).toEqual([
+        "First grouped queued message",
+        "Second grouped queued message",
+      ]);
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const userRows = timeline.rows.filter(
+        (row) => row.kind === "conversation" && row.role === "user",
+      );
+      expect(userRows.map((row) => row.text).slice(-2)).toEqual([
+        "First grouped queued message",
+        "Second grouped queued message",
+      ]);
     });
   });
 
@@ -2160,7 +2425,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("loads thread composer bootstrap state", async () => {
+  it("loads legacy thread composer bootstrap state", async () => {
     await withTestHarness(async (harness) => {
       seedHostSession(harness.deps, {
         id: "host-composer-default",
@@ -2262,6 +2527,16 @@ describe("public thread data routes", () => {
         permissionMode: "workspace-write",
       });
       expect(bootstrap.queuedMessages).toHaveLength(1);
+      expect(bootstrap.queuedMessages[0]?.content).toEqual(
+        textInput("Queued message"),
+      );
+      expect(bootstrap.pendingInteractions).toEqual([]);
+      expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
+        expect.arrayContaining([
+          textInput("Accepted prompt"),
+          textInput("Queued message"),
+        ]),
+      );
       const { executionOptions } = bootstrap;
       if (executionOptions === null) {
         throw new Error(
@@ -2275,16 +2550,6 @@ describe("public thread data routes", () => {
         id: "codex",
       });
       expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
-      expect(bootstrap.queuedMessages[0]?.content).toEqual(
-        textInput("Queued message"),
-      );
-      expect(bootstrap.pendingInteractions).toEqual([]);
-      expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
-        expect.arrayContaining([
-          textInput("Accepted prompt"),
-          textInput("Queued message"),
-        ]),
-      );
       expect(
         providerResponder.requests.map((request) => request.command),
       ).toEqual([
@@ -2520,6 +2785,400 @@ describe("public thread data routes", () => {
           )
           .all(),
       ).toHaveLength(1);
+    });
+  });
+
+  it("keeps queued messages when reprovision dispatch is rejected", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/queued-message-reprovision-rejected",
+        status: "error",
+        managed: false,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const queuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Queued message survives rejected reprovision"),
+      });
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+
+      expect(sendResponse.status).toBe(409);
+      expect(
+        getQueuedThreadMessage(harness.db, queuedMessage.id),
+      ).toMatchObject({
+        id: queuedMessage.id,
+        claimedAt: null,
+        claimToken: null,
+      });
+      expect(
+        harness.db
+          .select({ id: events.id })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, thread.id),
+              eq(events.type, "client/turn/requested"),
+            ),
+          )
+          .all(),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("persists queued reprovision request before starting the provision command", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/queued-message-immediate-reprovision",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const queuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Queued message before immediate reprovision"),
+      });
+      let stateAtProvisionStart: {
+        activeContextStage: string | null;
+        queuedMessageExists: boolean;
+        requestEventCount: number;
+      } | null = null;
+
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "environment.provision") {
+            stateAtProvisionStart = {
+              activeContextStage:
+                loadActiveThreadProvisionContext(harness.deps, thread.id)?.state
+                  .stage ?? null,
+              queuedMessageExists:
+                getQueuedThreadMessage(harness.db, queuedMessage.id) !== null,
+              requestEventCount: harness.db
+                .select({ id: events.id })
+                .from(events)
+                .where(
+                  and(
+                    eq(events.threadId, thread.id),
+                    eq(events.type, "client/turn/requested"),
+                  ),
+                )
+                .all().length,
+            };
+            return {
+              ok: true,
+              result: {
+                path:
+                  environment.path ??
+                  "/tmp/queued-message-immediate-reprovision",
+                branchName: `bb/${thread.id}`,
+                defaultBranch: "main",
+                isGitRepo: true,
+                isWorktree: true,
+                transcript: [],
+              },
+            };
+          }
+          if (request.command.type === "thread.start") {
+            return {
+              ok: true,
+              result: { providerThreadId: "provider-immediate-reprovision" },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+
+      expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
+      expect(stateAtProvisionStart).toEqual({
+        activeContextStage: "environment-provisioning",
+        queuedMessageExists: false,
+        requestEventCount: 1,
+      });
+      await vi.waitFor(() => {
+        expect(
+          responder.requests.some(
+            (request) =>
+              request.command.type === "thread.start" &&
+              request.command.threadId === thread.id,
+          ),
+        ).toBe(true);
+      });
+    });
+  });
+
+  it("preserves grouped queued messages and consumes them during reprovision send", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/grouped-queued-message-reprovision",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("First reprovision grouped message"),
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Second reprovision grouped message"),
+      });
+      expect(
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [
+            firstQueuedMessage.id,
+            secondQueuedMessage.id,
+          ],
+          groupBoundaryQueuedMessageId: secondQueuedMessage.id,
+        }).kind,
+      ).toBe("updated");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${firstQueuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+
+      expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
+      expect(
+        getQueuedThreadMessage(harness.db, firstQueuedMessage.id),
+      ).toBeNull();
+      expect(
+        getQueuedThreadMessage(harness.db, secondQueuedMessage.id),
+      ).toBeNull();
+
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.environmentId === environment.id,
+      );
+      expect(provisionCommand.command.type).toBe("environment.provision");
+
+      const requestedEvent = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, thread.id),
+            eq(events.type, "client/turn/requested"),
+          ),
+        )
+        .get();
+      expect(requestedEvent).toBeTruthy();
+      const requestedData = JSON.parse(requestedEvent?.data ?? "{}") as {
+        inputGroups?: { text: string; type: "text" }[][];
+      };
+      expect(requestedData.inputGroups?.map((group) => group[0]?.text)).toEqual(
+        [
+          "First reprovision grouped message",
+          "Second reprovision grouped message",
+        ],
+      );
+
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: "/tmp/grouped-queued-message-reprovision",
+        branchName: `bb/${thread.id}`,
+        defaultBranch: "main",
+        isGitRepo: true,
+        isWorktree: true,
+        transcript: [],
+      });
+      const startCommand = await waitForQueuedCommandAfter(
+        harness,
+        provisionCommand.row.cursor,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      expect(startCommand.command.type).toBe("thread.start");
+      if (startCommand.command.type !== "thread.start") {
+        throw new Error("Expected thread.start command");
+      }
+      expect(
+        startCommand.command.inputGroups?.map((group) => {
+          const firstInput = group[0];
+          return firstInput?.type === "text" ? firstInput.text : undefined;
+        }),
+      ).toEqual([
+        "First reprovision grouped message",
+        "Second reprovision grouped message",
+      ]);
+    });
+  });
+
+  it("sends grouped queued sender messages with matching input and inputGroups", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, project, thread } = seedThreadFixture(harness, {
+        thread: {
+          status: "active",
+        },
+      });
+      const senderThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-active-grouped-sender",
+        scope: turnScope("turn-active-grouped-sender"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      const firstQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        senderThreadId: senderThread.id,
+        content: textInput("First grouped sender message"),
+      });
+      const secondQueuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        senderThreadId: senderThread.id,
+        content: textInput("Second grouped sender message"),
+      });
+      expect(
+        setQueuedThreadMessageGroupBoundary({
+          db: harness.db,
+          notifier: harness.hub,
+          threadId: thread.id,
+          expectedGroupedPrefixQueuedMessageIds: [
+            firstQueuedMessage.id,
+            secondQueuedMessage.id,
+          ],
+          groupBoundaryQueuedMessageId: secondQueuedMessage.id,
+        }).kind,
+      ).toBe("updated");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${firstQueuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+      expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
+
+      const firstFormattedText = renderTemplate("agentThreadMessage", {
+        messageText: "First grouped sender message",
+        senderThreadId: senderThread.id,
+      });
+      const secondFormattedText = renderTemplate("agentThreadMessage", {
+        messageText: "Second grouped sender message",
+        senderThreadId: senderThread.id,
+      });
+      const expectedInput = [
+        { type: "text", text: firstFormattedText, mentions: [] },
+        { type: "text", text: "\n\n", mentions: [] },
+        { type: "text", text: secondFormattedText, mentions: [] },
+      ];
+      const expectedInputGroups = [
+        [{ type: "text", text: firstFormattedText, mentions: [] }],
+        [{ type: "text", text: secondFormattedText, mentions: [] }],
+      ];
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(queued.command).toMatchObject({
+        input: expectedInput,
+        inputGroups: expectedInputGroups,
+        target: {
+          mode: "auto",
+          expectedTurnId: "turn-active-grouped-sender",
+        },
+      });
+      if (queued.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit command");
+      }
+      expect(queued.command.input).toEqual(
+        queued.command.inputGroups?.flatMap((input, index) =>
+          index === 0
+            ? input
+            : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...input],
+        ),
+      );
+
+      const requestedEvent = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, thread.id),
+            eq(events.type, "client/turn/requested"),
+          ),
+        )
+        .orderBy(events.sequence)
+        .all()
+        .at(-1);
+      expect(requestedEvent).toBeTruthy();
+      const requestedData = JSON.parse(requestedEvent?.data ?? "{}") as {
+        input?: unknown;
+        inputGroups?: unknown;
+      };
+      expect(requestedData.input).toEqual(expectedInput);
+      expect(requestedData.inputGroups).toEqual(expectedInputGroups);
     });
   });
 

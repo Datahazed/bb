@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -64,6 +64,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -91,6 +92,13 @@ type AssistantMessageRowIdentity = Pick<
   TimelineRowBase,
   "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
 >;
+
+const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
+  maskImage:
+    "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
+  WebkitMaskImage:
+    "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
+};
 
 export interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
@@ -146,6 +154,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  onAddToChat?: (text: string) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -270,6 +279,9 @@ function CollapsibleMessageText({
           "break-words",
           !isExpanded && "max-h-[15lh] overflow-hidden",
         )}
+        style={
+          !isExpanded && showToggle ? COLLAPSED_MESSAGE_FADE_STYLE : undefined
+        }
       >
         <MarkdownPreview
           content={body.text}
@@ -296,6 +308,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -412,7 +425,11 @@ function UserConversationMessage({
         </div>
         {messageText ? (
           <div className="mt-1 flex justify-end">
-            <MessageActionBar messageText={messageText} alignment="end" />
+            <MessageActionBar
+              messageText={messageText}
+              alignment="end"
+              onAddToChat={onAddToChat}
+            />
           </div>
         ) : null}
       </div>
@@ -528,6 +545,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        onAddToChat={props.onAddToChat}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}

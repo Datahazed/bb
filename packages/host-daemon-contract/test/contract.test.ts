@@ -529,6 +529,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
+  "hostDaemonCommandSchema.inputGroups":
+    "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
@@ -1361,6 +1363,80 @@ describe("host-daemon command schemas", () => {
         workspaceProvisionType: "unmanaged",
       },
     });
+  });
+
+  it("rejects grouped commands whose flat input disagrees with inputGroups", () => {
+    const threadStartCommand = {
+      type: "thread.start",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      workspaceContext: {
+        workspacePath: "/tmp/workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_123",
+      providerId: "codex",
+      requestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "different", mentions: [] }],
+      inputGroups: [[{ type: "text", text: "grouped", mentions: [] }]],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      instructions: "Be a helpful thread.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "replace",
+    };
+
+    expect(() => hostDaemonCommandSchema.parse(threadStartCommand)).toThrow(
+      /flattened inputGroups/u,
+    );
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...threadStartCommand,
+        fork: { sourceProviderThreadId: "provider-source" },
+        input: [],
+      }),
+    ).toThrow(/flattened inputGroups/u);
+
+    const turnSubmitCommand = {
+      type: "turn.submit",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      requestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "different", mentions: [] }],
+      inputGroups: [[{ type: "text", text: "grouped", mentions: [] }]],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionEscalation: null,
+      },
+      resumeContext: {
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "proj_123",
+        providerId: "codex",
+        providerThreadId: "provider_123",
+        instructions: "Be a helpful coding agent.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      target: { mode: "start" },
+    };
+    expect(() => hostDaemonCommandSchema.parse(turnSubmitCommand)).toThrow(
+      /flattened inputGroups/u,
+    );
   });
 
   it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {

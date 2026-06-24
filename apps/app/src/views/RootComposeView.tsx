@@ -27,6 +27,13 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  buildProviderCliIssue,
+  hasProviderCliAction,
+  useProviderCliInstallRunner,
+  type ProviderCliActionableIssue,
+} from "@/components/provider-cli/provider-cli-install";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import { useComposerArea } from "@/components/promptbox/useComposerArea";
 import {
@@ -70,6 +77,10 @@ import {
 } from "@/hooks/queries/project-queries";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
+import {
+  useLocalProviderCliStatus,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -127,6 +138,7 @@ import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
+import { isLoopbackOrigin } from "@/lib/system-config-atoms";
 import { RootComposeSecondaryContent } from "./RootComposeSecondaryContent";
 import {
   buildRootComposeBranchUiState,
@@ -135,6 +147,7 @@ import {
 import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
@@ -170,6 +183,9 @@ import {
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
+// Fill the scroll area and center the no-projects welcome both axes.
+const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
+  "min-h-full flex-1 items-center justify-center pb-12";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
@@ -186,6 +202,40 @@ type NullableSecondaryPanelChangeHandler = (
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
+}
+
+export function readFolderIdFromLocationState(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+  if (!("folderId" in state) || typeof state.folderId !== "string") {
+    return null;
+  }
+  const folderId = state.folderId.trim();
+  return folderId.length > 0 ? folderId : null;
+}
+
+export type RootComposeFolderTarget =
+  | { kind: "clear" }
+  | { folderId: string; kind: "set" };
+
+export function readRootComposeFolderTargetFromLocationState(
+  state: unknown,
+): RootComposeFolderTarget | null {
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+
+  if ("folderId" in state) {
+    const folderId = readFolderIdFromLocationState(state);
+    return folderId ? { folderId, kind: "set" } : { kind: "clear" };
+  }
+
+  if ("focusPrompt" in state && state.focusPrompt === true) {
+    return { kind: "clear" };
+  }
+
+  return null;
 }
 
 type RootComposeViewProps =
@@ -364,6 +414,14 @@ function readForkThreadCreateSeedFromLocationState(
     sourceThreadId: value.sourceThreadId,
     sourceThreadTitle: value.sourceThreadTitle.trim(),
   };
+}
+
+export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
+  return (
+    readRootComposeFolderTargetFromLocationState(state) !== null ||
+    readReuseEnvironmentIdFromLocationState(state) !== null ||
+    readForkThreadCreateSeedFromLocationState(state) !== null
+  );
 }
 
 // react-router's location.state is freeform unknown — narrow it here at the
@@ -590,6 +648,56 @@ function LegacyProjectComposeRedirect({
   );
 }
 
+interface CodexCliVersionBannerProps {
+  currentVersion: string | null;
+  minimumSupportedVersion: string | null;
+  issue: ProviderCliActionableIssue | null;
+  updating: boolean;
+  onUpdate: () => void;
+}
+
+function CodexCliVersionBanner({
+  currentVersion,
+  minimumSupportedVersion,
+  issue,
+  updating,
+  onUpdate,
+}: CodexCliVersionBannerProps) {
+  const minimumVersion = minimumSupportedVersion ?? "a newer version";
+  const versionCopy = currentVersion
+    ? `Installed ${currentVersion}; required ${minimumVersion} or newer.`
+    : `Required ${minimumVersion} or newer.`;
+  return (
+    <PromptStackCard
+      ariaLabel="Codex update needed"
+      className="overflow-hidden"
+    >
+      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
+        <Icon
+          name="Info"
+          className="size-3.5 shrink-0 text-subtle-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">
+          Update Codex to start this thread. {versionCopy}
+        </span>
+        {issue ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 shrink-0 px-2 text-xs"
+            disabled={updating}
+            onClick={onUpdate}
+          >
+            {updating ? "Updating" : issue.action.label}
+          </Button>
+        ) : null}
+      </div>
+    </PromptStackCard>
+  );
+}
+
 export function RootComposeRoute() {
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -612,6 +720,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
+  const [rootComposeFolderId, setRootComposeFolderId] = useState<string | null>(
+    () => readFolderIdFromLocationState(location.state),
+  );
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const quickCreateProject = useQuickCreateProjectController();
   const sidebarNavigationQuery = useSidebarNavigation();
@@ -642,6 +753,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
+  // The no-projects welcome replaces the composer until the user opts in; once
+  // they pick "New thread" we reveal the composer for the rest of the session.
+  const [startedComposing, setStartedComposing] = useState(false);
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
@@ -806,6 +920,45 @@ export function RootComposeView(props: RootComposeViewProps) {
   const executionInputSources = threadCreationOptions.executionInputSources;
   const prompt = composer.message;
   const promptInput = composer.currentPromptDraftInput;
+  const providerCliSystemConfig = useSystemConfig();
+  const providerCliDaemonPort = isLoopbackOrigin()
+    ? (providerCliSystemConfig.data?.hostDaemonPort ?? null)
+    : null;
+  const providerCliStatus = useLocalProviderCliStatus({
+    daemonPort: providerCliDaemonPort,
+    enabled: providerCliDaemonPort !== null,
+  });
+  const refetchProviderCliStatus = providerCliStatus.refetch;
+  const {
+    installLogDialog: providerCliInstallLogDialog,
+    runningProvider,
+    startInstall,
+  } = useProviderCliInstallRunner({
+    daemonPort: providerCliDaemonPort,
+    onStatusUpdated: () => {
+      void refetchProviderCliStatus();
+    },
+  });
+  const codexCliStatus = providerCliStatus.data?.codex ?? null;
+  const isCodexCliVersionBlocked =
+    selectedProviderId === "codex" &&
+    codexCliStatus?.versionUnsupported === true;
+  const codexCliIssue = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    const issue = buildProviderCliIssue({
+      provider: "codex",
+      status: codexCliStatus,
+    });
+    return issue && hasProviderCliAction(issue) ? issue : null;
+  }, [codexCliStatus, isCodexCliVersionBlocked]);
+  const handleUpdateCodexCli = useCallback(() => {
+    if (codexCliIssue === null) {
+      return;
+    }
+    startInstall(codexCliIssue);
+  }, [codexCliIssue, startInstall]);
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
   // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
@@ -813,13 +966,23 @@ export function RootComposeView(props: RootComposeViewProps) {
   // thread/environment. This is single-use — clear location.state after applying
   // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
+    const folderTarget = readRootComposeFolderTargetFromLocationState(
+      location.state,
+    );
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
       location.state,
     );
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
       location.state,
     );
-    if (reuseEnvironmentId === null && nextForkSeed === null) return;
+    if (!hasSingleUseRootComposeTargetState(location.state)) {
+      return;
+    }
+    if (folderTarget?.kind === "set") {
+      setRootComposeFolderId(folderTarget.folderId);
+    } else if (folderTarget?.kind === "clear") {
+      setRootComposeFolderId(null);
+    }
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
     }
@@ -1090,6 +1253,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     if (
       submittedInput.length === 0 ||
       createThread.isPending ||
+      isCodexCliVersionBlocked ||
       (forkSeed === null && !selectedEnvironment)
     ) {
       return;
@@ -1116,6 +1280,9 @@ export function RootComposeView(props: RootComposeViewProps) {
                 projectId,
                 providerId: selectedProviderId,
                 model: selectedThreadModel,
+                ...(rootComposeFolderId
+                  ? { folderId: rootComposeFolderId }
+                  : {}),
                 ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
                 reasoningLevel,
                 permissionMode,
@@ -1131,6 +1298,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       clearReuseEnvironment();
       setForkSeed(null);
       setCreateDraftKind(null);
+      setRootComposeFolderId(null);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (props.surface === "popout") {
         props.onThreadCreated({
@@ -1153,6 +1321,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     createThread,
     executionInputSources,
     forkSeed,
+    isCodexCliVersionBlocked,
     navigate,
     navigateToThreadAfterCreate,
     permissionMode,
@@ -1160,6 +1329,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     props,
     promptDraft,
     reasoningLevel,
+    rootComposeFolderId,
     selectedEnvironment,
     selectedProviderId,
     selectedThreadModel,
@@ -1173,6 +1343,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isLoadingModels ||
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required" ||
+    isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||
@@ -2183,6 +2354,26 @@ export function RootComposeView(props: RootComposeViewProps) {
       </div>
     ) : null;
   const isForkDraft = forkSeed !== null;
+  const showEmptyWelcome =
+    props.surface === "page" &&
+    !isForkDraft &&
+    !startedComposing &&
+    projects !== undefined &&
+    projects.length === 0;
+  const handleStartComposing = useCallback(
+    (prefill?: string) => {
+      if (prefill) {
+        promptDraft.setTextAndMentions(prefill, []);
+      }
+      setStartedComposing(true);
+    },
+    [promptDraft],
+  );
+  // Focus the composer once it mounts in place of the welcome screen.
+  useEffect(() => {
+    if (!startedComposing) return;
+    promptBoxRef.current?.focusEnd();
+  }, [startedComposing]);
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
@@ -2349,6 +2540,27 @@ export function RootComposeView(props: RootComposeViewProps) {
     return null;
   }, [forkSeed, handleCancelForkDraft, createDraftKind, handleCancelCreateDraft]);
 
+  const promptBanner = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    return (
+      <CodexCliVersionBanner
+        currentVersion={codexCliStatus.currentVersion}
+        minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
+        issue={codexCliIssue}
+        updating={runningProvider === "codex"}
+        onUpdate={handleUpdateCodexCli}
+      />
+    );
+  }, [
+    codexCliIssue,
+    codexCliStatus,
+    handleUpdateCodexCli,
+    isCodexCliVersionBlocked,
+    runningProvider,
+  ]);
+
   if (!hasSidebarNavigationSettled) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
@@ -2388,6 +2600,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         branch: branchConfig,
         worktree: worktreeConfig,
         permission: permissionConfig,
+        banner: promptBanner,
         header: promptHeader,
       }}
       project={{
@@ -2408,14 +2621,24 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
 
   if (props.surface === "popout") {
-    return <div className="w-full">{promptBox}</div>;
+    return (
+      <>
+        <div className="w-full">{promptBox}</div>
+        {providerCliInstallLogDialog}
+      </>
+    );
   }
 
   return (
     <>
+      {providerCliInstallLogDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
-        contentClassName={ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS}
+        contentClassName={
+          showEmptyWelcome
+            ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+            : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+        }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,
@@ -2446,13 +2669,25 @@ export function RootComposeView(props: RootComposeViewProps) {
           onPanelChange: handleSecondaryPanelChange,
         }}
       >
-        {promptBox}
-        <RootComposeMobileRecents
-          highlightedThreadId={lastCreatedThreadId}
-          projectNamesById={mobileRecentProjectNamesById}
-          showCreatingRow={createThread.isPending}
-          threads={mobileRecentThreads}
-        />
+        {showEmptyWelcome ? (
+          <RootComposeEmptyWelcome
+            onCompose={handleStartComposing}
+            onAddProject={quickCreateProject.openCreateDialog}
+            addProjectDisabled={
+              !quickCreateProject.isAvailable || quickCreateProject.isCreating
+            }
+          />
+        ) : (
+          <>
+            {promptBox}
+            <RootComposeMobileRecents
+              highlightedThreadId={lastCreatedThreadId}
+              projectNamesById={mobileRecentProjectNamesById}
+              showCreatingRow={createThread.isPending}
+              threads={mobileRecentThreads}
+            />
+          </>
+        )}
       </RootComposeSecondaryContent>
     </>
   );

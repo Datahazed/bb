@@ -8,6 +8,7 @@ import {
   type Environment,
   type Thread,
   type ThreadGitDiffResponse,
+  type ThreadPullRequest,
   type ThreadTimelinePendingTodos,
   type WorkspaceStatus,
 } from "@bb/domain";
@@ -19,6 +20,7 @@ import type {
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
+  getErrorMessage,
   outputJson,
   printContextLabel,
   requireThreadIdWithLabelOrSelf,
@@ -59,12 +61,22 @@ interface ThreadStatusPayload {
   thread: Thread;
 }
 
+type ThreadShowEnvironmentJsonPayload = Environment & {
+  pullRequest: ThreadShowPullRequestPayload;
+};
+
 interface ThreadShowJsonPayload extends ThreadStatusPayload {
-  environment: Environment | null;
+  environment: ThreadShowEnvironmentJsonPayload | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   workStatus?: WorkspaceStatus | null;
   gitDiff?: ThreadGitDiffResponse | null;
   mergeBaseBranches?: string[];
+}
+
+interface ThreadShowPullRequestPayload {
+  status: "available" | "none" | "unavailable";
+  pullRequest: ThreadPullRequest | null;
+  message?: string;
 }
 
 type FetchedWorkStatus =
@@ -74,6 +86,8 @@ type FetchedWorkStatus =
 type FetchedGitDiff =
   | { available: true; diff: ThreadGitDiffResponse }
   | { available: false; message: string };
+
+type FetchedPullRequest = ThreadShowPullRequestPayload;
 
 type CliEnvironmentDiffQuery =
   | { target: "uncommitted" }
@@ -117,13 +131,59 @@ async function fetchGitDiff(args: {
   return { available: false, message: environmentDiff.failure.message };
 }
 
+async function fetchPullRequest(args: {
+  environmentId: string;
+  sdk: BbSdk;
+}): Promise<FetchedPullRequest> {
+  try {
+    const response = await args.sdk.environments.pullRequest({
+      environmentId: args.environmentId,
+    });
+    if (response.pullRequest) {
+      return {
+        status: "available",
+        pullRequest: response.pullRequest,
+      };
+    }
+    return {
+      status: "none",
+      pullRequest: null,
+    };
+  } catch (err) {
+    return {
+      status: "unavailable",
+      pullRequest: null,
+      message: getErrorMessage(err),
+    };
+  }
+}
+
+function threadShowEnvironmentJson(
+  environment: Environment | null,
+  pullRequest: FetchedPullRequest | null,
+): ThreadShowEnvironmentJsonPayload | null {
+  if (!environment) {
+    return null;
+  }
+  return {
+    ...environment,
+    pullRequest:
+      pullRequest ??
+      {
+        status: "unavailable",
+        pullRequest: null,
+        message: "Pull request lookup was not run.",
+      },
+  };
+}
+
 export function registerShowCommand(
   parent: Command,
   getUrl: () => string,
 ): void {
   parent
     .command("show [id]")
-    .description("Show thread details")
+    .description("Show thread details and pull request status")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .option("--work-status", "Include work status (git state) in output")
@@ -243,6 +303,13 @@ export function registerShowCommand(
           mergeBaseBranches = branchResponse.branches;
         }
 
+        const fetchedPullRequest = thread.environmentId
+          ? await fetchPullRequest({
+              environmentId: thread.environmentId,
+              sdk,
+            })
+          : null;
+
         const environmentInfo = thread.environmentId
           ? await fetchEnvironmentInfo({
               environmentId: thread.environmentId,
@@ -256,9 +323,13 @@ export function registerShowCommand(
         });
 
         if (opts.json) {
+          const environment = await getEnvironment();
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
-            environment: await getEnvironment(),
+            environment: threadShowEnvironmentJson(
+              environment,
+              fetchedPullRequest,
+            ),
             pendingTodos,
           };
           if (fetchedWorkStatus !== undefined) {
@@ -278,7 +349,11 @@ export function registerShowCommand(
           return;
         }
 
-        printThreadStatus(statusPayload, environmentInfo);
+        printThreadStatus(
+          statusPayload,
+          environmentInfo,
+          fetchedPullRequest,
+        );
 
         printPendingTodos(pendingTodos);
 
@@ -425,6 +500,7 @@ export function registerShowCommand(
 function printThreadStatus(
   payload: ThreadStatusPayload,
   environmentInfo: ThreadEnvironmentInfo | null,
+  pullRequest: FetchedPullRequest | null,
 ): void {
   const { thread } = payload;
   console.log(`Thread: ${thread.id}`);
@@ -444,11 +520,53 @@ function printThreadStatus(
   }
   if (environmentInfo) {
     printEnvironmentInfo(environmentInfo);
+    printEnvironmentPullRequest(pullRequest);
   } else if (thread.environmentId) {
     console.log(`  Environment: ${thread.environmentId}`);
+    printEnvironmentPullRequest(pullRequest);
   }
   console.log(`  Created: ${new Date(thread.createdAt).toLocaleString()}`);
   console.log(`  Updated: ${new Date(thread.updatedAt).toLocaleString()}`);
+}
+
+function printEnvironmentPullRequest(
+  pullRequest: FetchedPullRequest | null,
+): void {
+  if (!pullRequest) {
+    return;
+  }
+
+  if (pullRequest.status === "unavailable") {
+    console.log("    Pull request: unavailable");
+    if (pullRequest.message) {
+      console.log(`      ${pullRequest.message}`);
+    }
+    return;
+  }
+
+  if (pullRequest.status === "none") {
+    console.log("    Pull request: none");
+    return;
+  }
+
+  const pr = pullRequest.pullRequest;
+  if (!pr) {
+    console.log("    Pull request: none");
+    return;
+  }
+  console.log(`    Pull request: #${pr.number} ${pr.state} - ${pr.title}`);
+  console.log(`    URL:          ${pr.url}`);
+  console.log(`    Branch:       ${pr.headRefName} -> ${pr.baseRefName}`);
+  console.log(`    Attention:    ${pr.attention}`);
+  console.log(
+    `    Checks:       ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
+      `${pr.checks.failedCount} failed, ${pr.checks.pendingCount} pending, ` +
+      `${pr.checks.totalCount} total)`,
+  );
+  console.log(
+    `    Review:       ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
+  );
+  console.log(`    Merge:        ${pr.mergeability.state}`);
 }
 
 function resolveThreadTimelineTextFormat(

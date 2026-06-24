@@ -34,6 +34,7 @@ function makeThreadWithRuntime(
     providerId: "codex",
     title: null,
     titleFallback: null,
+    folderId: null,
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,
@@ -84,6 +85,7 @@ function makeSidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
   return {
+    folders: [],
     projects: [
       {
         id: "project-1",
@@ -174,6 +176,75 @@ describe("thread state mutations", () => {
         makeThreadResponse({
           id: threadId,
           title: "New title",
+          updatedAt: 2,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+  });
+
+  it("optimistically moves a thread between folders while the update request is pending", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadId = "thread-1";
+    const thread = makeThreadWithRuntime({
+      id: threadId,
+      folderId: "fld_work",
+    });
+    const listEntry = makeThreadListEntry({
+      id: threadId,
+      folderId: "fld_work",
+    });
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    let resolveUpdate: (thread: ThreadResponse) => void = () => {};
+
+    queryClient.setQueryData(threadQueryKey(threadId), thread);
+    queryClient.setQueryData(threadListKey, [listEntry]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([listEntry]),
+    );
+    vi.mocked(api.updateThread).mockImplementation(
+      () =>
+        new Promise<ThreadResponse>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useUpdateThread(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ id: threadId, folderId: "fld_personal" });
+    });
+
+    await waitFor(() => {
+      expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.folderId,
+    ).toBe("fld_personal");
+    });
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.folderId,
+    ).toBe("fld_personal");
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.folderId,
+    ).toBe("fld_personal");
+    expect(api.updateThread).toHaveBeenCalledWith(threadId, {
+      folderId: "fld_personal",
+    });
+
+    act(() => {
+      resolveUpdate(
+        makeThreadResponse({
+          id: threadId,
+          folderId: "fld_personal",
           updatedAt: 2,
         }),
       );

@@ -54,6 +54,55 @@ export const createProjectRequestSchema = z.object({
 });
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 
+export const threadFolderSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().min(1),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict();
+export type ThreadFolderResponse = z.infer<typeof threadFolderSchema>;
+
+export const createThreadFolderRequestSchema = z
+  .object({
+    name: z.string().min(1),
+  })
+  .strict();
+export type CreateThreadFolderRequest = z.infer<
+  typeof createThreadFolderRequestSchema
+>;
+
+export const updateThreadFolderRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .strict();
+export type UpdateThreadFolderRequest = z.infer<
+  typeof updateThreadFolderRequestSchema
+>;
+
+export const deleteThreadFolderRequestSchema = z
+  .object({
+    id: z.string().min(1),
+  })
+  .strict();
+export type DeleteThreadFolderRequest = z.infer<
+  typeof deleteThreadFolderRequestSchema
+>;
+
+export const threadFolderMutationResponseSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    updatedThreadCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadFolderMutationResponse = z.infer<
+  typeof threadFolderMutationResponseSchema
+>;
+
 export const reorderProjectRequestSchema = z.object({
   previousProjectId: z.string().min(1).nullable(),
   nextProjectId: z.string().min(1).nullable(),
@@ -384,6 +433,7 @@ export type ProjectWithThreadsResponse = z.infer<
 >;
 
 export const sidebarBootstrapResponseSchema = z.object({
+  folders: z.array(threadFolderSchema),
   projects: z.array(projectWithThreadsResponseSchema),
   personalProject: projectWithThreadsResponseSchema,
 });

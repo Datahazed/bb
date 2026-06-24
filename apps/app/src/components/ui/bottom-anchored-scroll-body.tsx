@@ -34,6 +34,7 @@ import {
 // input and pointer-drag scrolling before a non-bottom scroll event.
 
 export interface BottomAnchorContextValue {
+  getScrollElement: () => HTMLElement | null;
   isAtBottom: boolean;
   scrollToBottom: () => void;
   scrollElementIntoView: (args: ScrollElementIntoViewArgs) => void;
@@ -53,6 +54,7 @@ export interface BottomAnchorContextValue {
 export interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
+  scrollOverlay?: ReactNode;
   scrollAreaClassName?: string;
   contentClassName?: string;
   maxWidthClassName: string;
@@ -163,7 +165,9 @@ interface TopMostVisibleRow {
 // edge — i.e. the first row still (at least partially) visible. `offsetWithinRow`
 // is how far the scroll area's top sits past that row's top, so restore can
 // reproduce a mid-row reading position.
-function getTopMostVisibleRow(scrollArea: HTMLElement): TopMostVisibleRow | null {
+function getTopMostVisibleRow(
+  scrollArea: HTMLElement,
+): TopMostVisibleRow | null {
   const scrollAreaTop = scrollArea.getBoundingClientRect().top;
   const rows = scrollArea.querySelectorAll<HTMLElement>(
     TIMELINE_ROW_ID_SELECTOR,
@@ -229,6 +233,7 @@ export function BottomAnchoredScrollBody({
   contentClassName,
   maxWidthClassName,
   footer,
+  scrollOverlay,
   children,
   scrollAnchorThreadId,
 }: BottomAnchoredScrollBodyProps) {
@@ -262,6 +267,8 @@ export function BottomAnchoredScrollBody({
   const userDetachedFromBottomRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
+  const getScrollElement = useCallback(() => scrollAreaRef.current, []);
+
   const cancelPendingScrollRestore = useCallback(() => {
     pendingScrollRestoreRef.current = null;
   }, []);
@@ -292,18 +299,6 @@ export function BottomAnchoredScrollBody({
     return true;
   }, []);
 
-  const runQueuedRestore = useCallback(() => {
-    restoreFrameRef.current = null;
-    if (!restoreBottomOnce()) {
-      restoreFramesRemainingRef.current = 0;
-      return;
-    }
-    restoreFramesRemainingRef.current -= 1;
-    if (restoreFramesRemainingRef.current > 0) {
-      restoreFrameRef.current = window.requestAnimationFrame(runQueuedRestore);
-    }
-  }, [restoreBottomOnce]);
-
   const queueBottomRestore = useCallback(() => {
     if (!shouldStickToBottomRef.current) return;
     // Restore synchronously in the frame the size change was observed.
@@ -320,8 +315,20 @@ export function BottomAnchoredScrollBody({
     restoreBottomOnce();
     restoreFramesRemainingRef.current = BOTTOM_RESTORE_SETTLE_FRAME_COUNT;
     if (restoreFrameRef.current !== null) return;
+    const runQueuedRestore = () => {
+      restoreFrameRef.current = null;
+      if (!restoreBottomOnce()) {
+        restoreFramesRemainingRef.current = 0;
+        return;
+      }
+      restoreFramesRemainingRef.current -= 1;
+      if (restoreFramesRemainingRef.current > 0) {
+        restoreFrameRef.current =
+          window.requestAnimationFrame(runQueuedRestore);
+      }
+    };
     restoreFrameRef.current = window.requestAnimationFrame(runQueuedRestore);
-  }, [restoreBottomOnce, runQueuedRestore]);
+  }, [restoreBottomOnce]);
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
@@ -423,14 +430,25 @@ export function BottomAnchoredScrollBody({
         threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
       if (atBottomByGeometry) {
         userDetachedFromBottomRef.current = false;
-        store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
+        store.set(anchorAtom, {
+          rowId: "",
+          offsetWithinRow: 0,
+          atBottom: true,
+        });
         return;
       }
       if (recentUserIntent) {
         userDetachedFromBottomRef.current = true;
       }
-      if (shouldStickToBottomRef.current && !userDetachedFromBottomRef.current) {
-        store.set(anchorAtom, { rowId: "", offsetWithinRow: 0, atBottom: true });
+      if (
+        shouldStickToBottomRef.current &&
+        !userDetachedFromBottomRef.current
+      ) {
+        store.set(anchorAtom, {
+          rowId: "",
+          offsetWithinRow: 0,
+          atBottom: true,
+        });
         return;
       }
       const topMostRow = getTopMostVisibleRow(scrollArea);
@@ -626,6 +644,7 @@ export function BottomAnchoredScrollBody({
 
   const bottomAnchorContextValue = useMemo<BottomAnchorContextValue>(
     () => ({
+      getScrollElement,
       isAtBottom,
       scrollToBottom,
       scrollElementIntoView,
@@ -633,6 +652,7 @@ export function BottomAnchoredScrollBody({
       captureScrollAnchor,
     }),
     [
+      getScrollElement,
       isAtBottom,
       scrollToBottom,
       scrollElementIntoView,
@@ -725,11 +745,11 @@ export function BottomAnchoredScrollBody({
 
   return (
     <BottomAnchorContext.Provider value={bottomAnchorContextValue}>
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="grid min-h-0 flex-1 overflow-hidden">
         <div
           ref={scrollAreaRef}
           className={cn(
-            "@container/page min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
+            "@container/page col-start-1 row-start-1 min-h-0 overflow-x-hidden overflow-y-auto",
             scrollAreaClassName,
           )}
         >
@@ -756,6 +776,14 @@ export function BottomAnchoredScrollBody({
             ) : null}
           </div>
         </div>
+        {scrollOverlay ? (
+          <div
+            data-scroll-overlay=""
+            className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-start justify-start px-3 pt-3"
+          >
+            <div className="pointer-events-auto">{scrollOverlay}</div>
+          </div>
+        ) : null}
       </div>
     </BottomAnchorContext.Provider>
   );

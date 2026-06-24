@@ -86,7 +86,6 @@ export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
 export const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
-  composerBootstrapPrefetch?: boolean;
   timelinePrefetch?: boolean;
 }
 
@@ -282,15 +281,21 @@ export function hasThreadSearchableQuery(value: string): boolean {
 }
 
 export interface UseArchivedThreadsFilters {
-  projectId: string | undefined;
+  projectId?: string;
+  /** Restrict to threads filed directly under this folder. */
+  folderId?: string;
+  /** Restrict to loose threads — those not filed under any folder. */
+  unfiled?: boolean;
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId } = filters;
-  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  const { projectId, folderId, unfiled } = filters;
+  const enabled =
+    (options?.enabled ?? true) &&
+    (Boolean(projectId) || Boolean(folderId) || Boolean(unfiled));
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -301,12 +306,16 @@ export function useArchivedThreads(
     number
   >({
     queryKey: archivedThreadsListQueryKey({
-      projectId: projectId ?? "",
+      ...(projectId ? { projectId } : {}),
+      ...(folderId ? { folderId } : {}),
+      ...(unfiled ? { unfiled: true } : {}),
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
-          projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
+          ...(projectId ? { projectId } : {}),
+          ...(folderId ? { folderId } : {}),
+          ...(unfiled ? { unfiled: true } : {}),
           archived: true,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,
@@ -533,7 +542,6 @@ export function useThreadDetailBootstrap(
         signal,
       );
       ingestThreadDetailBootstrap({
-        composerBootstrapPrefetch: options?.composerBootstrapPrefetch ?? false,
         queryClient,
         thread,
         timelinePrefetch: options?.timelinePrefetch ?? false,

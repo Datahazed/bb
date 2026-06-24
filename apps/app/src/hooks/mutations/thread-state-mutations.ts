@@ -17,7 +17,7 @@ import {
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
-  beginThreadTitleTransaction,
+  beginThreadMetadataTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinThreadTransaction,
@@ -78,14 +78,16 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       api.updateThread(id, request),
     onMutate: ({
+      folderId,
       id,
       title,
     }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
-      if (title === undefined) {
+      if (title === undefined && folderId === undefined) {
         return undefined;
       }
 
-      return beginThreadTitleTransaction({
+      return beginThreadMetadataTransaction({
+        folderId,
         queryClient,
         threadId: id,
         title,

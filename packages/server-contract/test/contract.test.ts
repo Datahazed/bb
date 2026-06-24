@@ -68,6 +68,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
+      "createThreadRequestSchema.folderId",
       "createThreadRequestSchema.model",
       "createThreadRequestSchema.parentThreadId",
       "createThreadRequestSchema.providerId",
@@ -145,10 +146,16 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread PATCH requests omit fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateThreadRequestSchema.model",
+      "updateThreadRequestSchema.folderId",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.title",
     ],
+  },
+  {
+    reason:
+      "Queued-message reorder requests may omit the grouping boundary to leave grouping unchanged.",
+    fields: ["reorderQueuedMessageRequestSchema.groupBoundaryQueuedMessageId"],
   },
   {
     reason:
@@ -184,6 +191,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.childOrigin",
       "threadListQuerySchema.excludeSideChats",
+      "threadListQuerySchema.folderId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.offset",
@@ -191,6 +199,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",
+      "threadListQuerySchema.unfiled",
     ],
   },
   {
@@ -762,6 +771,7 @@ describe("server-contract canonical schemas", () => {
           providerId: "codex",
           title: "Pending thread",
           titleFallback: "Pending thread",
+          folderId: null,
           status: "idle",
           parentThreadId: null,
           sourceThreadId: null,
@@ -1104,6 +1114,21 @@ describe("server-contract canonical schemas", () => {
     expect(parsed.childOrigin).toBeNull();
   });
 
+  it("accepts sdk as a thread creation origin", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "sdk",
+      input: [{ type: "text", text: "Scripted start" }],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+    });
+    expect(parsed.origin).toBe("sdk");
+  });
+
   it("rejects empty input for a normal thread start", () => {
     expect(() =>
       createThreadRequestSchema.parse({
@@ -1283,6 +1308,11 @@ describe("server-contract clients", () => {
         .pathname,
     ).toBe("/api/v1/threads/thr_123/send");
     expect(
+      publicClient.threads[":id"]["composer-bootstrap"].$url({
+        param: { id: "thr_123" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/composer-bootstrap");
+    expect(
       publicClient.threads[":id"]["queued-messages"].$url({
         param: { id: "thr_123" },
       }).pathname,
@@ -1309,11 +1339,6 @@ describe("server-contract clients", () => {
         param: { id: "thr_123" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/pin-order");
-    expect(
-      publicClient.threads[":id"]["composer-bootstrap"].$url({
-        param: { id: "thr_123" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/composer-bootstrap");
     expect(publicClient.system["execution-options"].$url().pathname).toBe(
       "/api/v1/system/execution-options",
     );

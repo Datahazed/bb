@@ -28,6 +28,12 @@ import {
   applyThreadLifecycleEvent,
   requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
+import {
+  createThreadFolder,
+  deleteThreadFolder,
+  listThreadFolders,
+  renameThreadFolder,
+} from "../../src/data/thread-folders.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
@@ -44,6 +50,17 @@ function setup() {
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
   });
   return { db, host, project };
+}
+
+function mustCreateThreadFolder(
+  db: ReturnType<typeof createConnection>,
+  name: string,
+) {
+  const result = createThreadFolder(db, noopNotifier, { name });
+  if (result.status !== "created") {
+    throw new Error(`Expected folder "${name}" to be created`);
+  }
+  return result.folder;
 }
 
 describe("threads", () => {
@@ -305,6 +322,78 @@ describe("threads", () => {
       providerId: "codex",
     });
     expect(listThreads(db, { projectId: project.id })).toHaveLength(2);
+  });
+
+  it("filters archived threads by folder id", () => {
+    const { db, project } = setup();
+    const workFolder = mustCreateThreadFolder(db, "work");
+    const playFolder = mustCreateThreadFolder(db, "play");
+    const archivedInWork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: workFolder.id,
+    });
+    const otherArchivedInWork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: workFolder.id,
+    });
+    const archivedInPlay = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: playFolder.id,
+    });
+    // Active (non-archived) thread in the same folder must be excluded.
+    createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: workFolder.id,
+    });
+    archiveThread(db, noopNotifier, archivedInWork.id);
+    archiveThread(db, noopNotifier, otherArchivedInWork.id);
+    archiveThread(db, noopNotifier, archivedInPlay.id);
+
+    const workArchived = listThreads(db, {
+      projectId: project.id,
+      archived: true,
+      folderId: workFolder.id,
+    });
+    expect(workArchived.map((thread) => thread.id).sort()).toEqual(
+      [archivedInWork.id, otherArchivedInWork.id].sort(),
+    );
+
+    expect(
+      listThreads(db, {
+        projectId: project.id,
+        archived: true,
+        folderId: playFolder.id,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("filters archived threads to loose (unfiled) only", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "work");
+    const looseArchived = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const foldered = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+    archiveThread(db, noopNotifier, looseArchived.id);
+    archiveThread(db, noopNotifier, foldered.id);
+
+    const unfiledArchived = listThreads(db, {
+      projectId: project.id,
+      archived: true,
+      unfiled: true,
+    });
+    expect(unfiledArchived.map((thread) => thread.id)).toEqual([
+      looseArchived.id,
+    ]);
   });
 
   it("isolates threads by project", () => {
@@ -598,6 +687,169 @@ describe("threads", () => {
       title: "New title",
     });
     expect(updated?.title).toBe("New title");
+  });
+
+  it("updates thread folder id", () => {
+    const { db, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const folder = mustCreateThreadFolder(db, "Work/Q3");
+
+    const updated = updateThread(db, spy, thread.id, {
+      folderId: folder.id,
+    });
+
+    expect(updated?.folderId).toBe(folder.id);
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      thread.id,
+      ["title-changed"],
+      { projectId: project.id },
+    );
+  });
+
+  it("creates explicit thread folders with literal slash names", () => {
+    const { db } = setup();
+
+    const result = createThreadFolder(db, noopNotifier, {
+      name: " Work / Q3 ",
+    });
+
+    expect(result.status).toBe("created");
+    if (result.status !== "created") return;
+    expect(result.folder.name).toBe("Work / Q3");
+    expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
+      "Work / Q3",
+    ]);
+  });
+
+  it("returns duplicate when creating a folder with an existing name", () => {
+    const { db } = setup();
+    const existing = mustCreateThreadFolder(db, "Work");
+
+    const result = createThreadFolder(db, noopNotifier, {
+      name: "Work",
+    });
+
+    expect(result).toEqual({ status: "duplicate", folder: existing });
+  });
+
+  it("renames a folder by id without changing member thread ids", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+
+    const result = renameThreadFolder(db, noopNotifier, {
+      id: folder.id,
+      name: "Archive",
+    });
+
+    expect(result).toEqual({
+      status: "renamed",
+      result: { id: folder.id, name: "Archive", updatedThreadCount: 0 },
+    });
+    expect(getThread(db, thread.id)?.folderId).toBe(folder.id);
+    expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
+      "Archive",
+    ]);
+  });
+
+  it("returns duplicate when renaming a folder to an existing name", () => {
+    const { db } = setup();
+    const work = mustCreateThreadFolder(db, "Work");
+    const archive = mustCreateThreadFolder(db, "Archive");
+
+    const result = renameThreadFolder(db, noopNotifier, {
+      id: work.id,
+      name: "Archive",
+    });
+
+    expect(result).toEqual({ status: "duplicate", folder: archive });
+    expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
+      "Archive",
+      "Work",
+    ]);
+  });
+
+  it("returns not_found when renaming a missing folder id", () => {
+    const { db } = setup();
+    const result = renameThreadFolder(db, noopNotifier, {
+      id: "fld_missing",
+      name: "Archive",
+    });
+
+    expect(result).toEqual({ status: "not_found" });
+  });
+
+  it("removes a folder and clears direct member thread folder ids", () => {
+    const { db, project } = setup();
+    const folder = mustCreateThreadFolder(db, "Work");
+    const siblingFolder = mustCreateThreadFolder(db, "Work / Q3");
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+    const siblingThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: siblingFolder.id,
+    });
+
+    const result = deleteThreadFolder(db, noopNotifier, { id: folder.id });
+
+    expect(result).toEqual({
+      id: folder.id,
+      name: "Work",
+      updatedThreadCount: 1,
+    });
+    expect(getThread(db, thread.id)?.folderId).toBeNull();
+    expect(getThread(db, siblingThread.id)?.folderId).toBe(siblingFolder.id);
+    expect(listThreadFolders(db).map((entry) => entry.name)).toEqual([
+      "Work / Q3",
+    ]);
+  });
+
+  it("removes a folder for threads across every project", () => {
+    const { db, host, project } = setup();
+    const { project: otherProject } = createProject(db, noopNotifier, {
+      name: "other-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
+    });
+    const folder = mustCreateThreadFolder(db, "Work");
+    const projectThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+    const otherProjectThread = createThread(db, noopNotifier, {
+      projectId: otherProject.id,
+      providerId: "codex",
+      folderId: folder.id,
+    });
+
+    const result = deleteThreadFolder(db, noopNotifier, { id: folder.id });
+
+    expect(result).toEqual({
+      id: folder.id,
+      name: "Work",
+      updatedThreadCount: 2,
+    });
+    expect(getThread(db, projectThread.id)?.folderId).toBeNull();
+    expect(getThread(db, otherProjectThread.id)?.folderId).toBeNull();
+    expect(listThreadFolders(db)).toEqual([]);
   });
 
   it("notifies when a thread parent changes", () => {

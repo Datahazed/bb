@@ -177,6 +177,7 @@ interface TimelineRendererStaticContextValue {
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
   /**
    * Reports an assistant message's text selection to the timeline-level
    * controller. `undefined` when no selection action is wired (Add to chat /
@@ -786,6 +787,7 @@ function ConversationRow({
     onForkMessage,
     onSideChatMessage,
     onSendToMainMessage,
+    onSelectionAddToChat,
     reportProseSelection,
     threadChildOrigin,
     onOpenLink,
@@ -813,6 +815,7 @@ function ConversationRow({
         childOrigin={childOrigin}
         initiator={row.initiator}
         mentions={row.mentions}
+        onAddToChat={onSelectionAddToChat}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
@@ -1767,6 +1770,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     },
     [onSelectionAddToChat],
   );
+  const selectionAddToChatHandler =
+    onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
   const handleSelectionReplyInSideChat = useCallback(
     (selection: MessageProseSelection) => {
       onSelectionReplyInSideChat?.({
@@ -1784,6 +1789,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onForkMessage: props.onForkMessage,
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
+      onSelectionAddToChat: selectionAddToChatHandler,
       reportProseSelection,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
@@ -1805,6 +1811,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onForkMessage,
       props.onSideChatMessage,
       props.onSendToMainMessage,
+      selectionAddToChatHandler,
       reportProseSelection,
       props.threadChildOrigin,
       props.onOpenLink,
@@ -1851,7 +1858,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         {hasSelectionActions ? (
           <TimelineSelectionMenu
             selection={activeSelection}
-            onAddToChat={handleSelectionAddToChat}
+            onAddToChat={selectionAddToChatHandler}
             onReplyInSideChat={handleSelectionReplyInSideChat}
             onDismiss={dismissSelection}
           />

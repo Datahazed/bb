@@ -28,6 +28,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     providerId: "codex",
     title: null,
     titleFallback: "Test thread",
+    folderId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -56,6 +57,11 @@ async function renderOpenMenu(thread: Thread) {
   await screen.findByRole("menuitem", { name: /Mark as / });
   expect(onOpenChange).toHaveBeenLastCalledWith(true);
   return onOpenChange;
+}
+
+function expectMenuItemIcon(label: string, iconName: string) {
+  const menuItem = screen.getByRole("menuitem", { name: label });
+  expect(menuItem.querySelector(`[data-icon="${iconName}"]`)).not.toBeNull();
 }
 
 describe("ThreadActionsMenu", () => {
@@ -102,5 +108,15 @@ describe("ThreadActionsMenu", () => {
 
     expect(action).toHaveBeenCalledWith(thread);
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("renders icons for thread action menu items", async () => {
+    await renderOpenMenu(makeThread());
+
+    expectMenuItemIcon("Mark as read", "MailOpen");
+    expectMenuItemIcon("Pin", "Pin");
+    expectMenuItemIcon("Rename", "Edit");
+    expectMenuItemIcon("Archive", "Archive");
+    expectMenuItemIcon("Delete", "Trash2");
   });
 });

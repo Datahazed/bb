@@ -22,6 +22,7 @@ const NPM_VIEW_TIMEOUT_MS = 15_000;
 const NPM_INSTALL_STATE_TIMEOUT_MS = 5_000;
 const CLAUDE_CODE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
+export const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
 const providerCliNodePtyLogger: HostDaemonLogger = {
   debug() {},
   info() {},
@@ -48,6 +49,7 @@ export interface ProviderCliDefinition {
   displayName: string;
   executableName: string;
   npmPackageName: string | null;
+  minimumSupportedVersion: string | null;
   installCommand: ProviderCliInstallCommandDefinition;
   updateCommand: ProviderCliActionCommand;
 }
@@ -79,6 +81,12 @@ interface InspectProviderCliArgs {
 }
 
 interface GetProviderCliStatusArgs {
+  env?: NodeJS.ProcessEnv;
+  runner?: ProviderCliCommandRunner;
+  nodePlatform?: NodeJS.Platform;
+}
+
+interface GetProviderCliStatusForProviderArgs {
   env?: NodeJS.ProcessEnv;
   runner?: ProviderCliCommandRunner;
   nodePlatform?: NodeJS.Platform;
@@ -150,6 +158,12 @@ interface NeedsProviderCliUpdateArgs {
   latestVersion: string | null;
 }
 
+interface IsProviderCliVersionUnsupportedArgs {
+  installed: boolean;
+  currentVersion: string | null;
+  minimumSupportedVersion: string | null;
+}
+
 interface ResolveProviderCliInstallSourceArgs {
   installed: boolean;
   executablePath: string | null;
@@ -161,6 +175,7 @@ interface BuildInstallActionArgs {
   definition: ProviderCliDefinition;
   installed: boolean;
   needsUpdate: boolean;
+  versionUnsupported: boolean;
   nodePlatform: NodeJS.Platform;
 }
 
@@ -241,6 +256,7 @@ const PROVIDER_CLI_DEFINITIONS = {
     displayName: "Codex",
     executableName: "codex",
     npmPackageName: "@openai/codex",
+    minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
     installCommand: {
       kind: "npmGlobal",
     },
@@ -256,6 +272,7 @@ const PROVIDER_CLI_DEFINITIONS = {
     displayName: "Claude Code",
     executableName: "claude",
     npmPackageName: "@anthropic-ai/claude-code",
+    minimumSupportedVersion: null,
     installCommand: {
       kind: "downloadedShellScript",
       scriptUrl: CLAUDE_CODE_INSTALL_SCRIPT_URL,
@@ -272,6 +289,7 @@ const PROVIDER_CLI_DEFINITIONS = {
     displayName: "Cursor",
     executableName: "agent",
     npmPackageName: null,
+    minimumSupportedVersion: null,
     installCommand: {
       kind: "downloadedShellScript",
       scriptUrl: CURSOR_INSTALL_SCRIPT_URL,
@@ -357,6 +375,17 @@ function needsProviderCliUpdate(args: NeedsProviderCliUpdateArgs): boolean {
     return false;
   }
   return semver.gt(args.latestVersion, args.currentVersion);
+}
+
+function isProviderCliVersionUnsupported({
+  installed,
+  currentVersion,
+  minimumSupportedVersion,
+}: IsProviderCliVersionUnsupportedArgs): boolean {
+  if (!installed || !currentVersion || !minimumSupportedVersion) {
+    return false;
+  }
+  return semver.lt(currentVersion, minimumSupportedVersion);
 }
 
 function npmInstallCommandArgs(definition: ProviderCliDefinition): string[] {
@@ -471,10 +500,24 @@ function resolveExecutableInstallStatus(
   };
 }
 
+function resolveExecutablePathStatus(whichResult: ProviderCliCommandResult): {
+  installed: boolean;
+  executablePath: string | null;
+} {
+  const executablePath = isSuccessfulCommand(whichResult)
+    ? firstOutputLine(whichResult.stdout)
+    : null;
+  return {
+    executablePath,
+    installed: executablePath !== null,
+  };
+}
+
 function buildInstallAction({
   definition,
   installed,
   needsUpdate,
+  versionUnsupported,
   nodePlatform,
 }: BuildInstallActionArgs): ProviderCliInstallAction | null {
   if (!installed) {
@@ -487,6 +530,15 @@ function buildInstallAction({
     };
   }
   if (needsUpdate) {
+    const command = definition.updateCommand;
+    return {
+      kind: "update",
+      label: "Update",
+      commandKind: command.commandKind,
+      command: command.displayCommand,
+    };
+  }
+  if (versionUnsupported) {
     const command = definition.updateCommand;
     return {
       kind: "update",
@@ -694,10 +746,16 @@ export async function inspectProviderCli({
     currentVersion,
     latestVersion,
   });
+  const versionUnsupported = isProviderCliVersionUnsupported({
+    installed,
+    currentVersion,
+    minimumSupportedVersion: definition.minimumSupportedVersion,
+  });
   const installAction = buildInstallAction({
     definition,
     installed,
     needsUpdate,
+    versionUnsupported,
     nodePlatform,
   });
 
@@ -709,10 +767,12 @@ export async function inspectProviderCli({
     installSource,
     currentVersion,
     latestVersion,
+    minimumSupportedVersion: definition.minimumSupportedVersion,
     npmPackageName,
     npmGlobalPackageVersion,
     installAction,
     needsUpdate,
+    versionUnsupported,
   };
 }
 
@@ -742,6 +802,19 @@ export async function getProviderCliStatus(
   return { codex, claudeCode, cursor };
 }
 
+export async function getProviderCliStatusForProvider(
+  provider: ProviderCliKey,
+  args: GetProviderCliStatusForProviderArgs = {},
+): Promise<ProviderCliStatus> {
+  const runner = args.runner ?? createSpawnProviderCliCommandRunner(args.env);
+  const nodePlatform = args.nodePlatform ?? process.platform;
+  return await inspectProviderCli({
+    definition: getProviderCliDefinition(provider),
+    runner,
+    nodePlatform,
+  });
+}
+
 export async function inspectExecutableInstallStatus({
   executableName,
   runner,
@@ -749,20 +822,13 @@ export async function inspectExecutableInstallStatus({
   installed: boolean;
   executablePath: string | null;
 }> {
-  const [whichResult, versionResult] = await Promise.all([
-    runner.run({
-      command: "which",
-      args: [executableName],
-      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
-    }),
-    runner.run({
-      command: executableName,
-      args: ["--version"],
-      timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
-    }),
-  ]);
+  const whichResult = await runner.run({
+    command: "which",
+    args: [executableName],
+    timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
+  });
 
-  return resolveExecutableInstallStatus(whichResult, versionResult);
+  return resolveExecutablePathStatus(whichResult);
 }
 
 export async function getKnownAcpAgentsStatus({

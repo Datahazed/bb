@@ -37,6 +37,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     status: "idle",
     title: "Thread",
     titleFallback: "Thread",
+    folderId: null,
     updatedAt: 1,
     ...overrides,
   };

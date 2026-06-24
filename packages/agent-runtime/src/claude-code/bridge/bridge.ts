@@ -402,6 +402,15 @@ function ignoreInputConsumption(promise: Promise<void>): void {
   void promise.catch(() => {});
 }
 
+function queuePromptInputs(
+  threadSession: ThreadSession,
+  inputs: readonly string[],
+): void {
+  for (const input of inputs) {
+    ignoreInputConsumption(threadSession.session.pushInput(input));
+  }
+}
+
 function sendSdkMessage(threadId: string, message: SDKMessage): void {
   send({
     jsonrpc: "2.0",
@@ -1152,7 +1161,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       await handleThreadFork(request.id, request.params);
       break;
     case "turn/start":
-      handleTurnStart(request.id, request.params);
+      await handleTurnStart(request.id, request.params);
       break;
     case "turn/steer":
       await handleTurnSteer(request.id, request.params);
@@ -1325,9 +1334,28 @@ async function handleThreadFork(
   sendThreadIdentity(threadId, forkedProviderThreadId);
 }
 
-function handleTurnStart(id: string | number, params: TurnStartParams): void {
-  const input = buildPromptText(params.input);
-  if (!input) {
+function buildPromptTexts(
+  input: unknown,
+  inputGroups: unknown[][] | undefined,
+): string[] | undefined {
+  const groups = inputGroups ?? [input];
+  const texts: string[] = [];
+  for (const group of groups) {
+    const text = buildPromptText(group);
+    if (text === undefined) {
+      return undefined;
+    }
+    texts.push(text);
+  }
+  return texts;
+}
+
+async function handleTurnStart(
+  id: string | number,
+  params: TurnStartParams,
+): Promise<void> {
+  const inputs = buildPromptTexts(params.input, params.inputGroups);
+  if (!inputs) {
     sendError(id, -32602, "Missing input text");
     return;
   }
@@ -1338,7 +1366,7 @@ function handleTurnStart(id: string | number, params: TurnStartParams): void {
     return;
   }
 
-  ignoreInputConsumption(threadSession.session.pushInput(input));
+  queuePromptInputs(threadSession, inputs);
   sendResult(id, { threadId: params.threadId });
 }
 
@@ -1346,8 +1374,8 @@ async function handleTurnSteer(
   id: string | number,
   params: TurnSteerParams,
 ): Promise<void> {
-  const input = buildPromptText(params.input);
-  if (!input) {
+  const inputs = buildPromptTexts(params.input, params.inputGroups);
+  if (!inputs) {
     sendError(id, -32602, "Missing input text");
     return;
   }
@@ -1358,8 +1386,14 @@ async function handleTurnSteer(
     return;
   }
 
+  if (inputs.length > 1) {
+    queuePromptInputs(threadSession, inputs);
+    sendResult(id, { threadId: params.threadId });
+    return;
+  }
+
   try {
-    await threadSession.session.pushInput(input);
+    await threadSession.session.pushInput(inputs[0] ?? "");
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

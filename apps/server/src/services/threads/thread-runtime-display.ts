@@ -94,6 +94,7 @@ function toPublicThread(thread: Thread): Thread {
     providerId: thread.providerId,
     title: thread.title,
     titleFallback: thread.titleFallback,
+    folderId: thread.folderId,
     status: thread.status,
     parentThreadId: thread.parentThreadId,
     sourceThreadId: thread.sourceThreadId,

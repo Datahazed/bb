@@ -62,9 +62,14 @@ type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 export type SendThreadMessageTrigger = "auto-dispatch" | "user";
 
+type SendThreadMessagePayload = SendMessageRequest & {
+  inputGroups?: PromptInput[][];
+};
+
 export interface SendThreadMessageArgs {
+  beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
-  payload: SendMessageRequest;
+  payload: SendThreadMessagePayload;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
 }
@@ -84,7 +89,7 @@ interface BuildAgentThreadMessageTextArgs {
   senderThreadId: string;
 }
 
-interface SendThreadMessageTransactionPreflightArgs {
+export interface SendThreadMessageTransactionPreflightArgs {
   tx: DbTransaction;
 }
 
@@ -97,7 +102,7 @@ interface SendThreadMessageQueueRequestResult {
   threadBecameActive: boolean;
 }
 
-interface SendThreadMessageTransactionPreflight {
+export interface SendThreadMessageTransactionPreflight {
   (args: SendThreadMessageTransactionPreflightArgs): void;
 }
 
@@ -114,6 +119,7 @@ interface AppendAndQueueSendThreadMessageArgs {
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
+  inputGroups?: PromptInput[][];
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
@@ -282,6 +288,16 @@ export function formatAgentThreadInput(
   });
 }
 
+function groupedInputForRuntime(
+  inputGroups: readonly PromptInput[][],
+): PromptInput[] {
+  return inputGroups.flatMap((input, index) =>
+    index === 0
+      ? input
+      : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...input],
+  );
+}
+
 function appendAndQueueSendThreadMessageInTransaction({
   beforeAppendInTransaction,
   db,
@@ -289,6 +305,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   execution,
   initiator,
   input,
+  inputGroups,
   queueInTransaction,
   requestId,
   senderThreadId,
@@ -307,6 +324,7 @@ function appendAndQueueSendThreadMessageInTransaction({
             environmentId,
             type: "client/turn/requested",
             input,
+            ...(inputGroups !== undefined ? { inputGroups } : {}),
             execution,
             initiator,
             senderThreadId,
@@ -359,12 +377,25 @@ export async function sendThreadMessage(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
-  const input = senderThreadId
-    ? formatAgentThreadInput({
-        input: payload.input,
-        senderThreadId,
-      })
-    : payload.input;
+  const inputGroups = payload.inputGroups
+    ? payload.inputGroups.map((inputGroup) =>
+        senderThreadId
+          ? formatAgentThreadInput({
+              input: inputGroup,
+              senderThreadId,
+            })
+          : inputGroup,
+      )
+    : undefined;
+  const input =
+    inputGroups !== undefined
+      ? groupedInputForRuntime(inputGroups)
+      : senderThreadId
+        ? formatAgentThreadInput({
+            input: payload.input,
+            senderThreadId,
+          })
+        : payload.input;
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input,
@@ -392,11 +423,13 @@ export async function sendThreadMessage(
 
   if (
     await dispatchTurnDuringReprovision({
+      beforeRequestAppendInTransaction: args.beforeAppendInTransaction,
       deps,
       environment,
       execution,
       initiator,
       input,
+      inputGroups,
       senderThreadId,
       thread,
     })
@@ -425,6 +458,7 @@ export async function sendThreadMessage(
       // happens at create time.
       fork: null,
       input,
+      ...(inputGroups !== undefined ? { inputGroups } : {}),
       requestId,
       execution,
       permissionEscalation,
@@ -440,7 +474,8 @@ export async function sendThreadMessage(
       syncGeneratedTitle: false,
     });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-      beforeAppendInTransaction: () => {
+      beforeAppendInTransaction: ({ tx }) => {
+        args.beforeAppendInTransaction?.({ tx });
         ensureThreadCanStartRequest(thread);
       },
       db: deps.db,
@@ -448,6 +483,7 @@ export async function sendThreadMessage(
       execution,
       initiator,
       input,
+      inputGroups,
       queueInTransaction: ({ tx }) => {
         const dispatchKind = prepareReadyThreadTurnDispatchInTransaction(tx, {
           command,
@@ -511,6 +547,7 @@ export async function sendThreadMessage(
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
     thread,
     input,
+    ...(inputGroups !== undefined ? { inputGroups } : {}),
     execution,
     permissionEscalation,
     target: {
@@ -530,11 +567,13 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+    beforeAppendInTransaction: args.beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,
     execution,
     initiator,
     input,
+    inputGroups,
     queueInTransaction: () => {
       return { threadBecameActive: false };
     },

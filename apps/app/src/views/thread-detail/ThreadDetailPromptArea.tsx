@@ -38,6 +38,7 @@ import type {
 } from "@/components/workspace/workspace-change-summary";
 import {
   QueuedMessagesList,
+  type QueuedMessageGroupBoundaryRequest,
   type QueuedMessageProcessingAction,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -50,6 +51,7 @@ import {
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
+  useSetThreadQueuedMessageGroupBoundary,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
@@ -88,8 +90,6 @@ export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
 
 interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
-  composerQueriesEnabled: boolean;
-  composerQueriesStaleTime?: number;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -112,6 +112,7 @@ interface ThreadDetailPromptAreaProps {
   pullRequestMergeMethod: PullRequestMergeMethod;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
+  pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   openThreadDiffPanel: () => void;
   projectId: string;
@@ -170,8 +171,6 @@ interface SendQueuedMessageByIdArgs {
 
 export function ThreadDetailPromptArea({
   canUseGitUi,
-  composerQueriesEnabled,
-  composerQueriesStaleTime,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -186,6 +185,7 @@ export function ThreadDetailPromptArea({
   pullRequestMergeMethod,
   isEnvironmentActionPending,
   pendingInteractions,
+  pendingInteractionsInitialLoading,
   onChangedFileClick,
   openThreadDiffPanel,
   projectId,
@@ -205,12 +205,10 @@ export function ThreadDetailPromptArea({
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
-  const composerQueryThreadId = composerQueriesEnabled ? thread.id : "";
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
-    composerQueryThreadId,
+    thread.id,
     {
-      enabled: composerQueriesEnabled,
-      staleTime: composerQueriesStaleTime,
+      enabled: true,
     },
   );
   const defaultExecutionOptions = defaultExecutionOptionsQuery.data;
@@ -225,13 +223,9 @@ export function ThreadDetailPromptArea({
   });
   const isDefaultExecutionOptionsLoading =
     defaultExecutionOptionsState === "loading";
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(
-    composerQueryThreadId,
-    {
-      enabled: composerQueriesEnabled,
-      staleTime: composerQueriesStaleTime,
-    },
-  );
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(thread.id, {
+    enabled: true,
+  });
   // Ref-backed lookup keeps queued-message action handlers stable across
   // queue refetches so memoized rows do not rerender on unrelated queue updates.
   const queuedMessagesByIdRef = useRef<
@@ -269,16 +263,17 @@ export function ThreadDetailPromptArea({
     [processingQueuedMessage, queuedMessages],
   );
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
-    composerQueryThreadId,
+    thread.id,
     {
-      enabled: composerQueriesEnabled,
-      staleTime: composerQueriesStaleTime,
+      enabled: true,
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
+  const setQueuedMessageGroupBoundary =
+    useSetThreadQueuedMessageGroupBoundary();
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
   // The personal project isn't a meaningful label in the footer, so skip it.
@@ -292,7 +287,7 @@ export function ThreadDetailPromptArea({
   // stack below.
   const composerArea = useComposerArea({
     creationOptions: {
-      enabled: composerQueriesEnabled,
+      enabled: thread.archivedAt === null,
       environmentId: thread.environmentId ?? undefined,
       scope: "component-local",
       resetKey: thread.id,
@@ -335,8 +330,8 @@ export function ThreadDetailPromptArea({
   } = composerArea;
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
-    () => {
+  const pullRequestSection =
+    useMemo<ThreadPromptPullRequestSection | null>(() => {
       if (!pullRequest) {
         return null;
       }
@@ -360,16 +355,14 @@ export function ThreadDetailPromptArea({
             }
           : undefined;
       return actions ? { pullRequest, actions } : { pullRequest };
-    },
-    [
+    }, [
       isEnvironmentActionPending,
       onPullRequestDraft,
       onPullRequestMerge,
       onPullRequestReady,
       pullRequest,
       pullRequestMergeMethod,
-    ],
-  );
+    ]);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
@@ -407,6 +400,7 @@ export function ThreadDetailPromptArea({
     sendQueuedMessage.isPending ||
     deleteQueuedMessage.isPending ||
     reorderQueuedMessage.isPending ||
+    setQueuedMessageGroupBoundary.isPending ||
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
     sendMessage.isPending ||
@@ -419,6 +413,7 @@ export function ThreadDetailPromptArea({
     return buildFollowUpSubmitMode({
       hasPendingInteraction,
       isDefaultExecutionOptionsLoading,
+      isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
       isStopRequested,
       onStop: handleStopThread,
       runtimeDisplayStatus,
@@ -427,6 +422,7 @@ export function ThreadDetailPromptArea({
     handleStopThread,
     hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
+    pendingInteractionsInitialLoading,
     isStopRequested,
     runtimeDisplayStatus,
   ]);
@@ -742,6 +738,26 @@ export function ThreadDetailPromptArea({
     [reorderQueuedMessage, thread.id],
   );
 
+  const handleSetQueuedMessageGroupBoundary = useCallback(
+    (request: QueuedMessageGroupBoundaryRequest) => {
+      void setQueuedMessageGroupBoundary
+        .mutateAsync({
+          id: thread.id,
+          ...request,
+        })
+        .catch((nextError) => {
+          appToast.error(
+            getMutationErrorMessage({
+              error: nextError,
+              fallbackMessage: "Failed to group queued messages",
+              lifecycleOperation: "set_queued_message_group_boundary",
+            }),
+          );
+        });
+    },
+    [setQueuedMessageGroupBoundary, thread.id],
+  );
+
   const handlePromptBannerFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       onChangedFileClick(selection);
@@ -909,6 +925,7 @@ export function ThreadDetailPromptArea({
             processingAction={displayedProcessingQueuedMessage?.action ?? null}
             onSendImmediately={handleSendQueuedImmediately}
             onReorder={handleReorderQueuedMessage}
+            onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={handleEditQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
           />
@@ -924,6 +941,7 @@ export function ThreadDetailPromptArea({
       handlePromptBannerFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
+      handleSetQueuedMessageGroupBoundary,
       handleToggleBannerSection,
       handleUnarchiveCurrentThread,
       environmentGoneStatus,

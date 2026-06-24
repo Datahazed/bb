@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 interface MessageActionBarProps {
   messageText: string;
   alignment: "start" | "end";
+  onAddToChat?: (text: string) => void;
   onFork?: () => void;
   onSideChat?: () => void;
   /**
@@ -31,7 +32,12 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "Fork" | "SideChat" | "ArrowTurnBackward";
+  icon:
+    | "Copy"
+    | "MessageSquarePlus"
+    | "Fork"
+    | "SideChat"
+    | "ArrowTurnBackward";
   label: string;
   onSelect: () => void;
   disabled?: boolean;
@@ -43,11 +49,12 @@ interface MessageOverflowAction {
 // an action button reveals the bar). The fork/side-chat buttons mirror
 // CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
+  "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:hidden";
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
   "hidden size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-5";
+const ACTION_TOOLTIP_SIDE = "bottom";
 
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
@@ -66,12 +73,14 @@ export function findMessageActionTooltipCollisionBoundary(
 export function MessageActionBar({
   messageText,
   alignment,
+  onAddToChat,
   onFork,
   onSideChat,
   onSendToMain,
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
+  const hasAddToChat = hasCopy && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] =
     useState<HTMLElement | undefined>();
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -88,6 +97,15 @@ export function MessageActionBar({
                 errorMessage: "Failed to copy",
               });
             },
+          },
+        ]
+      : []),
+    ...(hasAddToChat
+      ? [
+          {
+            icon: "MessageSquarePlus" as const,
+            label: "Add to chat",
+            onSelect: () => onAddToChat(messageText),
           },
         ]
       : []),
@@ -122,7 +140,7 @@ export function MessageActionBar({
       : []),
   ];
 
-  if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
+  if (!hasCopy && !hasAddToChat && !onFork && !onSideChat && !onSendToMain) {
     return null;
   }
 
@@ -149,8 +167,31 @@ export function MessageActionBar({
                 )}
               />
             </TooltipTrigger>
-            <TooltipContent collisionBoundary={collisionBoundary}>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
               Copy message
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {hasAddToChat ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                onClick={() => onAddToChat(messageText)}
+                aria-label="Add to chat"
+              >
+                <Icon name="MessageSquarePlus" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
+              Add to chat
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -167,7 +208,10 @@ export function MessageActionBar({
                 <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent collisionBoundary={collisionBoundary}>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
               Fork into new thread
             </TooltipContent>
           </Tooltip>
@@ -185,7 +229,10 @@ export function MessageActionBar({
                 <Icon name="SideChat" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent collisionBoundary={collisionBoundary}>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
               Reply in side chat
             </TooltipContent>
           </Tooltip>
@@ -202,7 +249,10 @@ export function MessageActionBar({
                 <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent collisionBoundary={collisionBoundary}>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
               Send to main thread
             </TooltipContent>
           </Tooltip>
