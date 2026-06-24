@@ -71,7 +71,6 @@ function renderContent(
         runsError={overrides.runsError ?? false}
         onPause={overrides.onPause ?? NOOP}
         onResume={overrides.onResume ?? NOOP}
-        onRun={overrides.onRun ?? NOOP}
         onDelete={overrides.onDelete ?? NOOP}
         onSave={overrides.onSave ?? (() => Promise.resolve())}
         savePending={overrides.savePending ?? false}
@@ -82,52 +81,61 @@ function renderContent(
 }
 
 describe("AutomationDetailContent", () => {
-  it("renders the header with the loop name and active status", () => {
+  it("renders the loop name with the next-run line (no mode/status pills)", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("Disk space watchdog");
-    expect(markup).toContain("Active");
-    // mode/origin live in the config + health rollup, not header pills
+    expect(markup).toContain("Next run");
     expect(markup).not.toContain(">Script<");
     expect(markup).not.toContain(">API<");
-  });
-
-  it("renders the health rollup", () => {
-    const markup = renderContent({ automation: makeAutomation() });
-    expect(markup).toContain("Success rate");
-    expect(markup).toContain("Last run");
-    expect(markup).toContain("Next run");
-    expect(markup).toContain("Avg duration");
   });
 
   it("renders the config summary with schedule, execution, and environment", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("America/New_York");
-    expect(markup).toContain("bash disk.sh");
+    // Script execution: interpreter · file · timeout.
+    expect(markup).toContain("disk.sh");
     expect(markup).toContain("30s timeout");
     expect(markup).toContain("Personal workspace");
   });
 
-  it("shows a Pause icon button for an enabled automation and Resume for a paused one", () => {
-    const enabled = renderContent({
+  it("shows a readable permission label, not the raw mode", () => {
+    const markup = renderContent({
+      automation: makeAutomation({
+        execution: {
+          mode: "agent",
+          prompt: "Summarize.",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: "readonly",
+        },
+      }),
+    });
+    expect(markup).toContain("Read-only");
+    expect(markup).not.toContain(">readonly<");
+  });
+
+  it("shows next run with inline Edit / Pause / Delete (no Run now, no overflow)", () => {
+    const markup = renderContent({
       automation: makeAutomation({ enabled: true }),
     });
-    expect(enabled).toContain('aria-label="Pause"');
-    expect(enabled).toContain('data-icon="Pause"');
-    expect(enabled).not.toContain('aria-label="Resume"');
+    expect(markup).toContain("Next run");
+    expect(markup).toContain(">Edit<");
+    expect(markup).toContain(">Pause<");
+    expect(markup).toContain(">Delete<");
+    // Run now is gone; there's no overflow menu and no "Active" label.
+    expect(markup).not.toContain("Run now");
+    expect(markup).not.toContain('aria-label="More loop actions"');
+    expect(markup).not.toContain(">Active<");
+  });
 
+  it("swaps Pause for Resume when paused", () => {
     const paused = renderContent({
       automation: makeAutomation({ enabled: false }),
     });
-    expect(paused).toContain('aria-label="Resume"');
-    expect(paused).toContain('data-icon="Play"');
-    expect(paused).not.toContain('aria-label="Pause"');
-  });
-
-  it("renders Run now and an actions overflow (Edit/Delete live in the menu)", () => {
-    const markup = renderContent({ automation: makeAutomation() });
-    expect(markup).toContain('aria-label="Run now"');
-    expect(markup).toContain('data-icon="Zap"');
-    expect(markup).toContain('aria-label="More loop actions"');
+    expect(paused).toContain(">Resume<");
+    expect(paused).not.toContain(">Pause<");
+    // The next-run line reads "Paused".
+    expect(paused).toContain("Paused");
   });
 
   it("has no top-level View thread action (it lives per-run in the history)", () => {
