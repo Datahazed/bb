@@ -77,9 +77,10 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain("Start from an example");
   });
 
-  it("shows a loading state", () => {
+  it("shows a loading skeleton", () => {
     const markup = render({ skills: [], isLoading: true });
-    expect(markup).toContain("Loading...");
+    expect(markup).toContain('aria-label="Loading skills"');
+    expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("Start from an example");
   });
 

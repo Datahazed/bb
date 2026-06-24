@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
@@ -173,6 +174,10 @@ export function SkillsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
       <div className="space-y-4">
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Every local skill, from all your providers, shows up here automatically
+          to view and manage.
+        </p>
         <div className="flex items-center gap-2">
           <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
             <Icon
@@ -202,7 +207,25 @@ export function SkillsOverview({
         {hasError ? (
           <p className="text-sm text-destructive">Failed to load skills.</p>
         ) : isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="space-y-px" aria-busy aria-label="Loading skills">
+            {[
+              ["w-28", "w-48"],
+              ["w-36", "w-40"],
+              ["w-24", "w-56"],
+              ["w-32", "w-44"],
+              ["w-40", "w-52"],
+              ["w-28", "w-44"],
+            ].map(([nameWidth, descWidth]) => (
+              <div
+                key={`${nameWidth}-${descWidth}`}
+                className="flex items-center gap-1.5 px-2 py-1.5"
+              >
+                <Skeleton className="size-3.5 rounded" />
+                <Skeleton className={cn("h-3", nameWidth)} />
+                <Skeleton className={cn("h-3", descWidth)} />
+              </div>
+            ))}
+          </div>
         ) : (
           <>
             {!hasManageableSkills && normalizedQuery === "" ? (

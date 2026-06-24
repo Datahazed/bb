@@ -171,9 +171,10 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Flaky-test sweep");
   });
 
-  it("shows a muted loading state", () => {
+  it("shows a loading skeleton", () => {
     const markup = renderOverview({ entries: [], isLoading: true });
-    expect(markup).toContain("Loading...");
+    expect(markup).toContain('aria-label="Loading loops"');
+    expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("Start from an example");
   });
 

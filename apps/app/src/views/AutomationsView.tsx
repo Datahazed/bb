@@ -18,6 +18,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { CreateViaPromptExamples } from "@/components/create-via-prompt-examples";
+import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { CREATE_LOOP_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -310,10 +312,18 @@ export function AutomationsOverview({
   actions,
   onCreateAutomation,
 }: AutomationsOverviewProps) {
-  const groups = groupAutomationsByProject(entries);
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered =
+    normalizedQuery === ""
+      ? entries
+      : entries.filter((entry) =>
+          entry.automation.name.toLowerCase().includes(normalizedQuery),
+        );
+  const groups = groupAutomationsByProject(filtered);
   const isEmpty =
     !isLoading && !hasInitialLoadError && entries.length === 0;
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const toggleGroup = useCallback((projectId: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -336,7 +346,22 @@ export function AutomationsOverview({
   return (
     <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
       <div className="space-y-6">
-        <div className="flex justify-end">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
+            <Icon
+              name="Search"
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <input
+              aria-label="Search loops"
+              placeholder="Search loops"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoComplete="off"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
           <Button
             type="button"
             variant="default"
@@ -349,11 +374,30 @@ export function AutomationsOverview({
           </Button>
         </div>
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="space-y-0.5" aria-busy aria-label="Loading loops">
+            {["w-44", "w-36", "w-52", "w-40", "w-48"].map((nameWidth) => (
+              <div key={nameWidth} className="flex items-start gap-2 px-1 py-1.5">
+                <Skeleton className="mt-0.5 size-4 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className={cn("h-3.5", nameWidth)} />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+                <div className="hidden w-44 space-y-1.5 sm:block">
+                  <Skeleton className="ml-auto h-3 w-20" />
+                  <Skeleton className="ml-auto h-3 w-14" />
+                </div>
+                <Skeleton className="size-6 shrink-0 rounded-md" />
+              </div>
+            ))}
+          </div>
         ) : hasInitialLoadError ? (
           <p className="text-sm text-destructive">Failed to load loops.</p>
         ) : isEmpty ? (
           <CreateViaPromptExamples kind="loop" onCreate={onCreateAutomation} />
+        ) : groups.length === 0 ? (
+          <EmptyStatePanel className="py-6">
+            {`No loops match "${query}"`}
+          </EmptyStatePanel>
         ) : (
           <div className="space-y-4">
             {personalGroup ? (
@@ -391,9 +435,6 @@ export function AutomationsOverview({
                       aria-hidden
                     />
                     {group.projectName}
-                    <span className="text-subtle-foreground">
-                      {group.entries.length}
-                    </span>
                   </button>
                   {isCollapsed ? null : (
                     <div className="mt-1 space-y-0.5">
