@@ -118,6 +118,26 @@ const sampleEntries: AutomationOverviewEntry[] = [
     }),
     projectBb,
   ),
+  entry(
+    makeAutomation({
+      id: "auto_running",
+      name: "Flaky-test sweep",
+      projectId: PERSONAL_PROJECT_ID,
+      origin: "agent",
+      lastRunStatus: "running",
+      lastRunAt: 1_700_002_000_000,
+    }),
+    projectPersonal,
+  ),
+  entry(
+    makeAutomation({
+      id: "auto_skipped",
+      name: "Error sentinel",
+      lastRunStatus: "skipped",
+      lastRunAt: 1_700_001_500_000,
+    }),
+    projectBb,
+  ),
 ];
 
 const NOOP = () => {};

@@ -122,7 +122,6 @@ function Story(props: Partial<Parameters<typeof AutomationDetailContent>[0]>) {
         runsError={props.runsError ?? false}
         onPause={NOOP}
         onResume={NOOP}
-        onRun={NOOP}
         onDelete={NOOP}
         onSave={() => Promise.resolve()}
         savePending={false}
