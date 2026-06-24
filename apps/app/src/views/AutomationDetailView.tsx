@@ -1,4 +1,10 @@
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   automationScriptInterpreterValues,
@@ -16,6 +22,15 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog.js";
+import { ExecutionControls } from "@/components/promptbox/ExecutionControls";
+import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
+import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import {
+  permissionDisplayForPromptMode,
+  shouldDisablePermissionPickerForPromptMode,
+} from "@/components/promptbox/effective-prompt-mode";
+import { useComposerArea } from "@/components/promptbox/useComposerArea";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
@@ -302,6 +317,258 @@ function resolveTimeoutMs(timeoutSeconds: string): number {
   return clamped * 1000;
 }
 
+type AgentAutomationExecution = Extract<
+  Automation["execution"],
+  { mode: "agent" }
+>;
+
+interface AgentAutomationEditComposerProps {
+  automation: Automation;
+  execution: AgentAutomationExecution;
+  editSessionKey: number;
+  name: string;
+  cron: string;
+  timezone: string;
+  autoArchive: boolean;
+  onAutoArchiveChange: (value: boolean) => void;
+  onSave: (patch: UpdateAutomationRequest) => Promise<void>;
+  onCancel: () => void;
+  onSaved: () => void;
+  savePending: boolean;
+}
+
+function automationComposerEnvironmentId(automation: Automation): string | null {
+  return automation.environment.type === "reuse"
+    ? automation.environment.environmentId
+    : null;
+}
+
+/**
+ * Form-local composer for editing an agent loop. It reuses the prompt-box
+ * editor internals plus execution controls, but owns a form save payload rather
+ * than thread submission state.
+ */
+function AgentAutomationEditComposer({
+  automation,
+  execution,
+  editSessionKey,
+  name,
+  cron,
+  timezone,
+  autoArchive,
+  onAutoArchiveChange,
+  onSave,
+  onCancel,
+  onSaved,
+  savePending,
+}: AgentAutomationEditComposerProps) {
+  const environmentId = automationComposerEnvironmentId(automation);
+  const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
+    () => null,
+    [],
+  );
+  const composerArea = useComposerArea({
+    creationOptions: {
+      scope: "component-local",
+      environmentId: environmentId ?? undefined,
+      resetKey: editSessionKey,
+      initialProviderId: execution.providerId,
+      initialModel: execution.model,
+      initialPermissionMode: execution.permissionMode,
+    },
+    draftScope: {
+      kind: "automation-edit",
+      automationId: automation.id,
+    },
+    mentionsProjectId: automation.projectId,
+    mentions: {
+      environmentId,
+    },
+    commands: {
+      projectId: automation.projectId,
+      environmentId,
+    },
+    resolveMentionLink,
+    attachments: { projectId: automation.projectId },
+    execution: { providerSwitchable: true },
+    permission: { kind: "editable" },
+  });
+  const {
+    attachmentsConfig,
+    composer,
+    executionConfig,
+    permissionConfig,
+    promptActions,
+    promptDraft,
+    setAttachmentError,
+    threadCreationOptions,
+    typeaheadConfig,
+  } = composerArea;
+
+  const { setDraft } = promptDraft;
+  useLayoutEffect(() => {
+    setDraft({
+      text: execution.prompt,
+      mentions: [],
+      attachments: [],
+    });
+    setAttachmentError(null);
+  }, [editSessionKey, execution.prompt, setAttachmentError, setDraft]);
+
+  const promptModeInput = useMemo(
+    () => ({
+      providerId: executionConfig.provider.selectedId,
+      value: composer.message,
+      mentionRanges: composer.mentionRanges,
+    }),
+    [
+      composer.mentionRanges,
+      composer.message,
+      executionConfig.provider.selectedId,
+    ],
+  );
+  const permissionDisplayOverride = useMemo(
+    () => permissionDisplayForPromptMode(promptModeInput),
+    [promptModeInput],
+  );
+  const permissionPickerDisabledByPlanMode =
+    shouldDisablePermissionPickerForPromptMode(promptModeInput);
+
+  const selectedProviderId =
+    threadCreationOptions.selectedProviderId || execution.providerId;
+  const selectedModel = threadCreationOptions.selectedModel || execution.model;
+  const selectedPermissionMode =
+    threadCreationOptions.permissionMode || execution.permissionMode;
+  const canSave =
+    !threadCreationOptions.isLoadingModels &&
+    composer.message.trim().length > 0 &&
+    selectedProviderId.length > 0 &&
+    selectedModel.length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!canSave) {
+      return;
+    }
+    const patch: UpdateAutomationRequest = {
+      name,
+      trigger: { triggerType: "schedule", cron, timezone },
+      autoArchive,
+      execution: {
+        mode: "agent",
+        prompt: composer.message,
+        providerId: selectedProviderId,
+        model: selectedModel,
+        permissionMode: selectedPermissionMode,
+        ...(execution.targetThreadId
+          ? { targetThreadId: execution.targetThreadId }
+          : {}),
+      },
+    };
+
+    try {
+      await onSave(patch);
+      promptDraft.clear();
+      onSaved();
+    } catch {
+      // Mutation errors are surfaced by the global error handler; stay in edit
+      // mode so the user can retry without losing their changes.
+    }
+  }, [
+    autoArchive,
+    canSave,
+    composer.message,
+    cron,
+    execution.targetThreadId,
+    name,
+    onSave,
+    onSaved,
+    promptDraft,
+    selectedModel,
+    selectedPermissionMode,
+    selectedProviderId,
+    timezone,
+  ]);
+
+  const handleCancel = useCallback(() => {
+    promptDraft.clear();
+    setAttachmentError(null);
+    onCancel();
+  }, [onCancel, promptDraft, setAttachmentError]);
+
+  return (
+    <>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Prompt
+        </label>
+        <PromptBoxInternal
+          value={composer.message}
+          mentionRanges={composer.mentionRanges}
+          onChange={composer.onChangeMessage}
+          onSubmit={handleSave}
+          placeholder="Ask anything. @ to mention files or folders"
+          typeahead={typeaheadConfig}
+          mentionMenuPlacement="bottom"
+          attachments={attachmentsConfig}
+          promptActions={promptActions}
+          footerStart={<ExecutionControls {...executionConfig} />}
+          submission={{
+            isSubmitting: savePending,
+            disabled: !canSave || savePending,
+            title: savePending ? "Saving..." : "Save changes (Enter)",
+          }}
+          zenMode={{
+            layout: "thread",
+            storageKey: null,
+            resetKey: editSessionKey,
+          }}
+        />
+        <div className="mt-1 flex min-h-6 justify-end px-3.5">
+          <PermissionModePicker
+            value={permissionConfig.value}
+            options={permissionConfig.options}
+            onChange={permissionConfig.onChange}
+            supported={permissionConfig.supported}
+            disabled={savePending || permissionPickerDisabledByPlanMode}
+            showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
+            displayOverride={permissionDisplayOverride}
+            className="h-6"
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-foreground">
+          Auto-archive the thread when it finishes
+        </span>
+        <Switch
+          checked={autoArchive}
+          onCheckedChange={onAutoArchiveChange}
+          aria-label="Auto-archive the thread when it finishes"
+        />
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={savePending}
+          onClick={handleCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={savePending || !canSave}
+          onClick={handleSave}
+        >
+          Save changes
+        </Button>
+      </div>
+    </>
+  );
+}
+
 interface AutomationDetailContentProps {
   automation: Automation;
   runs: readonly AutomationRun[];
@@ -333,6 +600,7 @@ export function AutomationDetailContent({
   actionsPending,
 }: AutomationDetailContentProps) {
   const [editing, setEditing] = useState(false);
+  const [editSessionKey, setEditSessionKey] = useState(0);
   const [name, setName] = useState(automation.name);
   const [cron, setCron] = useState(
     automation.trigger.triggerType === "schedule" ? automation.trigger.cron : "",
@@ -341,9 +609,6 @@ export function AutomationDetailContent({
     automation.trigger.triggerType === "schedule"
       ? automation.trigger.timezone
       : "",
-  );
-  const [prompt, setPrompt] = useState(
-    automation.execution.mode === "agent" ? automation.execution.prompt : "",
   );
   const [script, setScript] = useState(initialScript(automation));
   const [interpreter, setInterpreter] = useState<AutomationScriptInterpreter>(
@@ -366,13 +631,11 @@ export function AutomationDetailContent({
         ? automation.trigger.timezone
         : "",
     );
-    setPrompt(
-      automation.execution.mode === "agent" ? automation.execution.prompt : "",
-    );
     setScript(initialScript(automation));
     setInterpreter(initialInterpreter(automation));
     setTimeoutSeconds(initialTimeoutSeconds(automation));
     setAutoArchive(automation.autoArchive);
+    setEditSessionKey((key) => key + 1);
     setEditing(true);
   }
 
@@ -381,23 +644,11 @@ export function AutomationDetailContent({
       name,
       trigger: { triggerType: "schedule", cron, timezone },
       autoArchive,
-      ...(automation.execution.mode === "agent"
+      // Inline-content path: send `script` (not `scriptFile`) so the server
+      // rewrites the stored file. `env` is not edited here, so carry the
+      // existing value through to avoid silently dropping it.
+      ...(automation.execution.mode === "script"
         ? {
-            execution: {
-              mode: "agent" as const,
-              prompt,
-              providerId: automation.execution.providerId,
-              model: automation.execution.model,
-              permissionMode: automation.execution.permissionMode,
-              ...(automation.execution.targetThreadId
-                ? { targetThreadId: automation.execution.targetThreadId }
-                : {}),
-            },
-          }
-        : {
-            // Inline-content path: send `script` (not `scriptFile`) so the server
-            // rewrites the stored file. `env` is not edited here, so carry the
-            // existing value through to avoid silently dropping it.
             execution: {
               mode: "script" as const,
               script,
@@ -407,7 +658,8 @@ export function AutomationDetailContent({
                 ? { env: automation.execution.env }
                 : {}),
             },
-          }),
+          }
+        : {}),
     };
     try {
       await onSave(patch);
@@ -519,18 +771,20 @@ export function AutomationDetailContent({
                   {formatCronCadence(cron)}
                 </p>
                 {automation.execution.mode === "agent" ? (
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                      Prompt
-                    </label>
-                    <textarea
-                      value={prompt}
-                      onChange={(event) => setPrompt(event.target.value)}
-                      rows={3}
-                      aria-label="Prompt"
-                      className="block w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    />
-                  </div>
+                  <AgentAutomationEditComposer
+                    automation={automation}
+                    execution={automation.execution}
+                    editSessionKey={editSessionKey}
+                    name={name}
+                    cron={cron}
+                    timezone={timezone}
+                    autoArchive={autoArchive}
+                    onAutoArchiveChange={setAutoArchive}
+                    onSave={onSave}
+                    onCancel={() => setEditing(false)}
+                    onSaved={() => setEditing(false)}
+                    savePending={savePending}
+                  />
                 ) : (
                   <>
                     <div>
@@ -585,41 +839,37 @@ export function AutomationDetailContent({
                         />
                       </div>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-foreground">
+                        Auto-archive the thread when it finishes
+                      </span>
+                      <Switch
+                        checked={autoArchive}
+                        onCheckedChange={setAutoArchive}
+                        aria-label="Auto-archive the thread when it finishes"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={savePending}
+                        onClick={() => setEditing(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savePending || script.trim().length === 0}
+                        onClick={handleSave}
+                      >
+                        Save changes
+                      </Button>
+                    </div>
                   </>
                 )}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-foreground">
-                    Auto-archive the thread when it finishes
-                  </span>
-                  <Switch
-                    checked={autoArchive}
-                    onCheckedChange={setAutoArchive}
-                    aria-label="Auto-archive the thread when it finishes"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={savePending}
-                    onClick={() => setEditing(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={
-                      savePending ||
-                      (automation.execution.mode === "script" &&
-                        script.trim().length === 0)
-                    }
-                    onClick={handleSave}
-                  >
-                    Save changes
-                  </Button>
-                </div>
               </div>
             ) : (
               <>
