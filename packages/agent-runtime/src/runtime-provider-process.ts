@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
@@ -44,6 +45,8 @@ export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
   bridgeBundleDir: string | undefined;
+  bridgeNodeEnv?: Record<string, string>;
+  bridgeNodeExecutablePath?: string;
   /**
    * Snapshots a thread's turn/provider state for the process-exit
    * notification. Invoked before `onProviderThreadDetached` clears the
@@ -72,6 +75,7 @@ export interface RuntimeProviderProcessManagerArgs {
 }
 
 export interface EnsureRuntimeProviderArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   processKey: string;
   providerId: string;
 }
@@ -152,7 +156,7 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
-      const adapter = this.getAdapter(args.providerId);
+      const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
       const providerProcess = this.spawnProvider({
         adapter,
         processKey: args.processKey,
@@ -292,10 +296,20 @@ export class RuntimeProviderProcessManager {
     await Promise.all(shutdownPromises);
   }
 
-  private getAdapter(providerId: string): ProviderAdapter {
+  private getAdapter(
+    providerId: string,
+    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
+  ): ProviderAdapter {
     const adapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
+      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       bridgeBundleDir: this.args.bridgeBundleDir,
+      ...(this.args.bridgeNodeEnv !== undefined
+        ? { bridgeNodeEnv: this.args.bridgeNodeEnv }
+        : {}),
+      ...(this.args.bridgeNodeExecutablePath !== undefined
+        ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
+        : {}),
       turnIdPrefix: createAdapterTurnIdPrefix(),
     };
 
@@ -306,11 +320,12 @@ export class RuntimeProviderProcessManager {
   }
 
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
+    const processConfig = args.adapter.process;
     const env: NodeJS.ProcessEnv = {
       ...sanitizeInheritedChildProcessEnv({ env: process.env }),
       ...this.args.env,
+      ...processConfig.env,
     };
-    const processConfig = args.adapter.process;
 
     const child = spawnPortablePipedProcess({
       command: processConfig.command,

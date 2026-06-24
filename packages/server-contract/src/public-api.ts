@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { hc } from "hono/client";
 import type {
   AppTheme,
+  AppThemeSelection,
   Environment,
   Experiments,
   Host,
@@ -12,7 +13,7 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import { appThemeSchema, experimentsSchema } from "@bb/domain";
+import { appThemeSelectionSchema, experimentsSchema } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
@@ -32,7 +33,7 @@ import type {
   PathProjectId,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
-  PathThreadAndTerminal,
+  PathTerminal,
 } from "./common.js";
 import type {
   Automation,
@@ -40,16 +41,16 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  CloseTerminalRequest,
   CreateAutomationRequest,
   RunAutomationRequest,
   UpdateAutomationRequest,
-  CloseThreadTerminalRequest,
   CommandListResponse,
+  CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
   CreateThreadRequest,
-  CreateThreadTerminalRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
@@ -74,6 +75,7 @@ import type {
   ProjectBranchesResponse,
   ProjectCommandsQuery,
   ProjectDefaultExecutionOptionsQuery,
+  ProjectFileContentQuery,
   ProjectFilesQuery,
   ProjectListQuery,
   ProjectPathsQuery,
@@ -103,8 +105,11 @@ import type {
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
+  TerminalListResponse,
+  ThemeCatalogResponse,
   TerminalSession,
   TerminalInputRequest,
+  TerminalListQuery,
   TerminalOutputQuery,
   TerminalOutputResponse,
   TerminalResizeRequest,
@@ -130,32 +135,31 @@ import type {
   ThreadStorageFilesQuery,
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
-  ThreadTerminalListResponse,
   ThreadTimelineQuery,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
+  UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
-  UpdateThreadTerminalRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
 } from "./api-types.js";
 import {
   automationRunListQuerySchema,
+  closeTerminalRequestSchema,
   createAutomationRequestSchema,
   runAutomationRequestSchema,
   updateAutomationRequestSchema,
-  closeThreadTerminalRequestSchema,
+  createTerminalRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
-  createThreadTerminalRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
@@ -168,6 +172,7 @@ import {
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
+  projectFileContentQuerySchema,
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
@@ -195,15 +200,16 @@ import {
   threadStorageFilesQuerySchema,
   threadStoragePathsQuerySchema,
   terminalInputRequestSchema,
+  terminalListQuerySchema,
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
-  updateThreadTerminalRequestSchema,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
@@ -312,6 +318,14 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<WorkspaceFileListResponse>(),
     }),
+    fileContent: defineRoute({
+      path: "/projects/:id/files/content",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectFileContentQuery>(
+        projectFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
     paths: defineRoute({
       path: "/projects/:id/paths",
       method: "get",
@@ -396,6 +410,65 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<Host>(),
+    }),
+  },
+
+  terminals: {
+    list: defineRoute({
+      path: "/terminals",
+      method: "get",
+      request: queryRequest<EmptyInput, TerminalListQuery>(
+        terminalListQuerySchema,
+      ),
+      response: jsonResponse<TerminalListResponse>(),
+    }),
+    create: defineRoute({
+      path: "/terminals",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateTerminalRequest>(
+        createTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>({ status: 201 }),
+    }),
+    update: defineRoute({
+      path: "/terminals/:terminalId",
+      method: "patch",
+      request: jsonRequest<PathTerminal, UpdateTerminalRequest>(
+        updateTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    close: defineRoute({
+      path: "/terminals/:terminalId/close",
+      method: "post",
+      request: jsonRequest<PathTerminal, CloseTerminalRequest>(
+        closeTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    input: defineRoute({
+      path: "/terminals/:terminalId/input",
+      method: "post",
+      request: jsonRequest<PathTerminal, TerminalInputRequest>(
+        terminalInputRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    resize: defineRoute({
+      path: "/terminals/:terminalId/resize",
+      method: "post",
+      request: jsonRequest<PathTerminal, TerminalResizeRequest>(
+        terminalResizeRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>(),
+    }),
+    output: defineRoute({
+      path: "/terminals/:terminalId/output",
+      method: "get",
+      request: optionalQueryRequest<PathTerminal, TerminalOutputQuery>(
+        terminalOutputQuerySchema,
+      ),
+      response: jsonResponse<TerminalOutputResponse>(),
     }),
   },
 
@@ -716,60 +789,6 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
     }),
-    terminals: defineRoute({
-      path: "/threads/:id/terminals",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<ThreadTerminalListResponse>(),
-    }),
-    createTerminal: defineRoute({
-      path: "/threads/:id/terminals",
-      method: "post",
-      request: jsonRequest<PathId, CreateThreadTerminalRequest>(
-        createThreadTerminalRequestSchema,
-      ),
-      response: jsonResponse<TerminalSession>({ status: 201 }),
-    }),
-    updateTerminal: defineRoute({
-      path: "/threads/:id/terminals/:terminalId",
-      method: "patch",
-      request: jsonRequest<PathThreadAndTerminal, UpdateThreadTerminalRequest>(
-        updateThreadTerminalRequestSchema,
-      ),
-      response: jsonResponse<TerminalSession>(),
-    }),
-    closeTerminal: defineRoute({
-      path: "/threads/:id/terminals/:terminalId/close",
-      method: "post",
-      request: jsonRequest<PathThreadAndTerminal, CloseThreadTerminalRequest>(
-        closeThreadTerminalRequestSchema,
-      ),
-      response: jsonResponse<TerminalSession>(),
-    }),
-    terminalInput: defineRoute({
-      path: "/threads/:id/terminals/:terminalId/input",
-      method: "post",
-      request: jsonRequest<PathThreadAndTerminal, TerminalInputRequest>(
-        terminalInputRequestSchema,
-      ),
-      response: jsonResponse<TerminalSession>(),
-    }),
-    terminalResize: defineRoute({
-      path: "/threads/:id/terminals/:terminalId/resize",
-      method: "post",
-      request: jsonRequest<PathThreadAndTerminal, TerminalResizeRequest>(
-        terminalResizeRequestSchema,
-      ),
-      response: jsonResponse<TerminalSession>(),
-    }),
-    terminalOutput: defineRoute({
-      path: "/threads/:id/terminals/:terminalId/output",
-      method: "get",
-      request: optionalQueryRequest<PathThreadAndTerminal, TerminalOutputQuery>(
-        terminalOutputQuerySchema,
-      ),
-      response: jsonResponse<TerminalOutputResponse>(),
-    }),
     timeline: defineRoute({
       path: "/threads/:id/timeline",
       method: "get",
@@ -884,8 +903,16 @@ export const publicApiRoutes = {
     appearance: defineRoute({
       path: "/settings/appearance",
       method: "put",
-      request: jsonRequest<EmptyInput, AppTheme>(appThemeSchema),
+      request: jsonRequest<EmptyInput, AppThemeSelection>(
+        appThemeSelectionSchema,
+      ),
       response: jsonResponse<AppTheme>(),
+    }),
+    themes: defineRoute({
+      path: "/settings/themes",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ThemeCatalogResponse>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",

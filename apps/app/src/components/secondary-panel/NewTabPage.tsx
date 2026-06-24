@@ -33,6 +33,8 @@ export function NewTabPage({
   onStartSideChat,
   onStartTerminal,
   projectId,
+  recentItemsThreadId,
+  showFileSearch,
 }: NewTabPageProps) {
   return (
     <div className="flex min-h-full flex-col gap-3 px-4 pb-3 pt-1">
@@ -50,6 +52,8 @@ export function NewTabPage({
         }
         initialQuery={initialQuery}
         onSelect={onSelect}
+        recentItemsThreadId={recentItemsThreadId}
+        showFileSearch={showFileSearch}
       />
     </div>
   );

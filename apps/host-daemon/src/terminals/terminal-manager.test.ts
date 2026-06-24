@@ -21,6 +21,7 @@ import {
 } from "./terminal-manager.js";
 
 const tempDirs: string[] = [];
+const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
 
 interface ResizeCall {
   cols: number;
@@ -52,9 +53,6 @@ interface Deferred<T> {
 }
 
 type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
-type TerminalOpenMessage = Parameters<TerminalManager["handleMessage"]>[0] & {
-  type: "terminal.open";
-};
 
 interface CreateHarnessOptions {
   onSendMessage: TerminalMessageObserver;
@@ -240,7 +238,6 @@ function createFakeWorkspace(path: string): HostWorkspace {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
-    getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateFingerprint: vi.fn(async () => "local-1"),
@@ -251,6 +248,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
         mergeBase: makeWorkspaceMergeBase(),
       }),
     ),
+    getDefaultBranch: vi.fn(async () => "main"),
     getDiff: vi.fn(async () => ({
       diff: "",
       files: "",
@@ -265,7 +263,6 @@ function createFakeWorkspace(path: string): HostWorkspace {
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => null),
-    runPullRequestAction: vi.fn(async () => undefined),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
@@ -280,6 +277,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       merged: true,
       targetBranch: "main",
     })),
+    runPullRequestAction: vi.fn(async () => undefined),
     destroy: vi.fn(async () => undefined),
   };
 }
@@ -361,32 +359,26 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function terminalOpenMessage(
-  overrides: Partial<TerminalOpenMessage> = {},
-): TerminalOpenMessage {
-  return {
+async function openTerminal(
+  harness: TerminalManagerHarness,
+): Promise<FakeTerminalPty> {
+  await harness.manager.handleMessage({
     type: "terminal.open",
     requestId: "open-1",
     terminalId: "term-1",
     threadId: "thr-1",
-    projectId: "proj-1",
-    environmentId: "env-1",
-    threadStoragePath: "/tmp/thread-storage/thr-1",
-    workspaceContext: {
-      workspacePath: "/tmp/terminal-workspace",
-      workspaceProvisionType: "unmanaged",
+    target: {
+      kind: "workspace",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
     },
     cols: 100,
     rows: 30,
-    start: { mode: "shell" },
-    ...overrides,
-  };
-}
-
-async function openTerminal(
-  harness: TerminalManagerHarness,
-): Promise<FakeTerminalPty> {
-  await harness.manager.handleMessage(terminalOpenMessage());
+    start: DEFAULT_TERMINAL_START,
+  });
   const spawned = harness.adapter.spawned[0];
   if (!spawned) {
     throw new Error("Expected terminal PTY to spawn");
@@ -406,7 +398,6 @@ describe("TerminalManager", () => {
 
     expect(harness.adapter.spawned).toHaveLength(1);
     expect(harness.adapter.spawned[0]?.args).toMatchObject({
-      args: [],
       cols: 100,
       cwd: "/tmp/terminal-workspace",
       file: "/bin/zsh",
@@ -414,11 +405,7 @@ describe("TerminalManager", () => {
     });
     expect(harness.adapter.spawned[0]?.args.env).toMatchObject({
       BB_BASE_ENV: "1",
-      BB_ENVIRONMENT_ID: "env-1",
-      BB_PROJECT_ID: "proj-1",
       BB_TERMINAL_SESSION_ID: "term-1",
-      BB_THREAD_ID: "thr-1",
-      BB_THREAD_STORAGE: "/tmp/thread-storage/thr-1",
       COLORTERM: "truecolor",
       DISABLE_AUTO_TITLE: "true",
       PROMPT_EOL_MARK: "",
@@ -439,13 +426,24 @@ describe("TerminalManager", () => {
 
   it("opens a command PTY through the resolved shell", async () => {
     const harness = createHarness();
-    await harness.manager.handleMessage(
-      terminalOpenMessage({
-        requestId: "open-command",
-        terminalId: "term-command",
-        start: { mode: "command", command: "pnpm dev" },
-      }),
-    );
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-command",
+      terminalId: "term-command",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "pnpm dev" },
+    });
 
     expect(harness.adapter.spawned[0]?.args).toMatchObject({
       args: ["-lc", "pnpm dev"],
@@ -458,6 +456,77 @@ describe("TerminalManager", () => {
         title: "pnpm dev",
       }),
     );
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual([]);
+  });
+
+  it("opens a PTY in a host path without an environment", async () => {
+    const cwd = await makeTempDir("bb-terminal-host-path-");
+    const harness = createHarness();
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-host-path",
+      terminalId: "term-host-path",
+      target: {
+        kind: "host_path",
+        cwd,
+      },
+      cols: 80,
+      rows: 24,
+      start: DEFAULT_TERMINAL_START,
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      cols: 80,
+      cwd,
+      rows: 24,
+    });
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-host-path",
+        initialCwd: cwd,
+      }),
+    );
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual([]);
+  });
+
+  it("opens a host-path PTY in the home directory when no cwd is provided", async () => {
+    const harness = createHarness();
+    const expectedCwd = os.homedir();
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-host-home",
+      terminalId: "term-host-home",
+      target: {
+        kind: "host_path",
+        cwd: null,
+      },
+      cols: 80,
+      rows: 24,
+      start: DEFAULT_TERMINAL_START,
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      cwd: expectedCwd,
+    });
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        type: "terminal.opened",
+        terminalId: "term-host-home",
+        initialCwd: expectedCwd,
+      }),
+    );
+    await expect(
+      harness.runtimeManager.evictIdleEnvironments(),
+    ).resolves.toEqual([]);
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
@@ -470,7 +539,23 @@ describe("TerminalManager", () => {
       },
     });
 
-    const openPromise = harness.manager.handleMessage(terminalOpenMessage());
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
     const closePromise = harness.manager.handleMessage({
@@ -517,7 +602,23 @@ describe("TerminalManager", () => {
       },
     });
 
-    const openPromise = harness.manager.handleMessage(terminalOpenMessage());
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
     const closePromise = harness.manager.closeEnvironmentTerminals({
@@ -560,7 +661,23 @@ describe("TerminalManager", () => {
       },
     });
 
-    const openPromise = harness.manager.handleMessage(terminalOpenMessage());
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
     const shutdownPromise = harness.manager.shutdownAll();
@@ -594,16 +711,42 @@ describe("TerminalManager", () => {
       },
     });
 
-    const firstOpenPromise = harness.manager.handleMessage(
-      terminalOpenMessage(),
-    );
+    const firstOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
-    const secondOpenPromise = harness.manager.handleMessage(
-      terminalOpenMessage({
-        requestId: "open-2",
-      }),
-    );
+    const secondOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-2",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
 
     shell.resolve("/bin/zsh");
     await Promise.all([firstOpenPromise, secondOpenPromise]);
@@ -642,16 +785,42 @@ describe("TerminalManager", () => {
       },
     });
 
-    const firstOpenPromise = harness.manager.handleMessage(
-      terminalOpenMessage(),
-    );
+    const firstOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
 
-    const secondOpenPromise = harness.manager.handleMessage(
-      terminalOpenMessage({
-        requestId: "open-2",
-      }),
-    );
+    const secondOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-2",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
 
     exitOnOpened = true;
     shell.resolve("/bin/zsh");
@@ -696,16 +865,23 @@ describe("TerminalManager", () => {
       workspacePath: "/tmp/terminal-workspace",
     });
 
-    await harness.manager.handleMessage(
-      terminalOpenMessage({
-        requestId: "open-stale",
-        terminalId: "term-stale",
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-stale",
+      terminalId: "term-stale",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/stale-terminal-workspace",
           workspaceProvisionType: "unmanaged",
         },
-      }),
-    );
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
 
     expect(harness.adapter.spawned).toHaveLength(0);
     expect(harness.messages).toEqual([
@@ -1027,7 +1203,23 @@ describe("TerminalManager", () => {
       },
     });
 
-    await manager.handleMessage(terminalOpenMessage());
+    await manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
 
     expect(harness.adapter.spawned).toHaveLength(0);
     expect(harness.messages).toEqual([
@@ -1070,20 +1262,23 @@ describe("TerminalManager", () => {
       },
     });
 
-    await manager.handleMessage(
-      terminalOpenMessage({
-        requestId: "open-real",
-        terminalId: "term-real",
-        threadId: "thr-real",
-        projectId: "proj-real",
+    await manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-real",
+      terminalId: "term-real",
+      threadId: "thr-real",
+      target: {
+        kind: "workspace",
         environmentId: "env-real",
-        threadStoragePath: "/tmp/thread-storage/thr-real",
         workspaceContext: {
           workspacePath,
           workspaceProvisionType: "unmanaged",
         },
-      }),
-    );
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
     await manager.handleMessage({
       type: "terminal.input",
       terminalId: "term-real",

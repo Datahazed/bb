@@ -14,6 +14,7 @@ export const HOSTS_QUERY_KEY = "hosts";
 export const HOST_QUERY_KEY = "host";
 export const PROJECTS_QUERY_KEY = "projects";
 export const PROJECT_PATHS_QUERY_KEY = "projectPaths";
+export const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
 export const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
 export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
@@ -31,7 +32,7 @@ export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
   "threadPendingInteractions";
-export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
+export const TERMINALS_QUERY_KEY = "terminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 export const PROJECT_COMMANDS_PAGES_QUERY_KEY = "projectCommandsPages";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
@@ -67,6 +68,7 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   sourceThreadId?: string;
   originKind?: ThreadListFilters["originKind"];
+  excludeSideChats?: ThreadListFilters["excludeSideChats"];
   childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;
@@ -122,6 +124,11 @@ export type ProjectPathsQueryKey = readonly [
 export type ProjectPathsQueryKeyPrefix = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
   string,
+];
+export type ProjectFilePreviewQueryKey = readonly [
+  typeof PROJECT_FILE_PREVIEW_QUERY_KEY,
+  string | undefined,
+  string | null,
 ];
 export type ProjectSourceBranchesQueryKey = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
@@ -198,12 +205,14 @@ export type ThreadPendingInteractionsQueryKey = readonly [
   typeof THREAD_PENDING_INTERACTIONS_QUERY_KEY,
   string,
 ];
-export type AllThreadTerminalsQueryKeyPrefix = readonly [
-  typeof THREAD_TERMINALS_QUERY_KEY,
-];
-export type ThreadTerminalsQueryKey = readonly [
-  typeof THREAD_TERMINALS_QUERY_KEY,
-  string,
+export type TerminalQueryScope =
+  | { kind: "thread"; threadId: string }
+  | { kind: "environment"; environmentId: string }
+  | { kind: "host_path"; cwd?: string; hostId: string };
+export type AllTerminalsQueryKeyPrefix = readonly [typeof TERMINALS_QUERY_KEY];
+export type TerminalsQueryKey = readonly [
+  typeof TERMINALS_QUERY_KEY,
+  TerminalQueryScope,
 ];
 export type ProjectCommandsQueryKey = readonly [
   typeof PROJECT_COMMANDS_QUERY_KEY,
@@ -477,6 +486,13 @@ export function projectPathsQueryKey(
   ];
 }
 
+export function projectFilePreviewQueryKey(
+  projectId: string | undefined,
+  path: string | null,
+): ProjectFilePreviewQueryKey {
+  return [PROJECT_FILE_PREVIEW_QUERY_KEY, projectId, path];
+}
+
 export function allProjectPathsQueryKeyPrefix(): AllProjectPathsQueryKeyPrefix {
   return [PROJECT_PATHS_QUERY_KEY];
 }
@@ -658,14 +674,14 @@ export function allThreadPendingInteractionsQueryKeyPrefix(): ThreadPendingInter
   return [THREAD_PENDING_INTERACTIONS_QUERY_KEY];
 }
 
-export function threadTerminalsQueryKey(
-  threadId: string,
-): ThreadTerminalsQueryKey {
-  return [THREAD_TERMINALS_QUERY_KEY, threadId];
+export function terminalsQueryKey(
+  scope: TerminalQueryScope,
+): TerminalsQueryKey {
+  return [TERMINALS_QUERY_KEY, scope];
 }
 
-export function allThreadTerminalsQueryKeyPrefix(): AllThreadTerminalsQueryKeyPrefix {
-  return [THREAD_TERMINALS_QUERY_KEY];
+export function allTerminalsQueryKeyPrefix(): AllTerminalsQueryKeyPrefix {
+  return [TERMINALS_QUERY_KEY];
 }
 
 export function projectCommandsQueryKey(

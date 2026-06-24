@@ -18,6 +18,7 @@ function makeChild(
     latestAttentionAt: 10,
     parentThreadId: null,
     hasPendingInteraction: false,
+    activity: { activeWorkflowCount: 0 },
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };
@@ -39,6 +40,7 @@ describe("thread-activity", () => {
   it("exposes shared running/unread helpers", () => {
     expect(
       isBusyThread({
+        activity: { activeWorkflowCount: 0 },
         runtime: {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
@@ -47,6 +49,7 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
+        activity: { activeWorkflowCount: 0 },
         runtime: {
           displayStatus: "host-reconnecting",
           hostReconnectGraceExpiresAt: 100,
@@ -55,6 +58,7 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
+        activity: { activeWorkflowCount: 0 },
         runtime: {
           displayStatus: "provisioning",
           hostReconnectGraceExpiresAt: null,
@@ -63,12 +67,23 @@ describe("thread-activity", () => {
     ).toBe(true);
     expect(
       isBusyThread({
+        activity: { activeWorkflowCount: 0 },
         runtime: {
           displayStatus: "waiting-for-host",
           hostReconnectGraceExpiresAt: null,
         },
       }),
     ).toBe(false);
+
+    expect(
+      isBusyThread({
+        activity: { activeWorkflowCount: 1 },
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    ).toBe(true);
 
     expect(
       isUnreadDoneThread({
@@ -109,12 +124,16 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([])).toEqual({
         pending: false,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
         unread: false,
         unreadError: false,
       });
       expect(getCollapsedChildActivity([makeChild(), makeChild()])).toEqual({
         pending: false,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
         unread: false,
         unreadError: false,
       });
@@ -124,24 +143,32 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([busyChild])).toEqual({
         pending: false,
         working: true,
+        runtimeWorking: true,
+        workflow: false,
         unread: false,
         unreadError: false,
       });
       expect(getCollapsedChildActivity([pendingChild])).toEqual({
         pending: true,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
         unread: false,
         unreadError: false,
       });
       expect(getCollapsedChildActivity([unreadChild])).toEqual({
         pending: false,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
         unread: true,
         unreadError: false,
       });
       expect(getCollapsedChildActivity([unreadErrorChild])).toEqual({
         pending: false,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
         unread: true,
         unreadError: true,
       });
@@ -153,6 +180,8 @@ describe("thread-activity", () => {
       ).toEqual({
         pending: true,
         working: true,
+        runtimeWorking: true,
+        workflow: false,
         unread: true,
         unreadError: false,
       });
@@ -166,6 +195,8 @@ describe("thread-activity", () => {
       ).toEqual({
         pending: true,
         working: true,
+        runtimeWorking: true,
+        workflow: false,
         unread: true,
         unreadError: true,
       });
@@ -180,6 +211,23 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([busyAndPending])).toEqual({
         pending: true,
         working: false,
+        runtimeWorking: false,
+        workflow: false,
+        unread: false,
+        unreadError: false,
+      });
+    });
+
+    it("distinguishes idle workflow activity from runtime work", () => {
+      const workflowChild = makeChild({
+        activity: { activeWorkflowCount: 1 },
+      });
+
+      expect(getCollapsedChildActivity([workflowChild])).toEqual({
+        pending: false,
+        working: true,
+        runtimeWorking: false,
+        workflow: true,
         unread: false,
         unreadError: false,
       });

@@ -6,13 +6,17 @@ import {
 import type {
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
+  TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import {
+  buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
+  canCreateRootComposeTerminal,
   readInitialPromptFromLocationState,
   resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposePanelThreadId,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 
@@ -71,6 +75,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 100,
     updatedAt: 100,
+    activity: { activeWorkflowCount: 0 },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -93,6 +98,28 @@ function makeProject(args: MakeProjectArgs): ProjectWithThreadsResponse {
     defaultExecutionOptions: null,
     createdAt: 1,
     updatedAt: 1,
+  };
+}
+
+function makeTerminalSession(
+  overrides: Partial<TerminalSession>,
+): TerminalSession {
+  return {
+    id: "term_1",
+    threadId: null,
+    environmentId: null,
+    hostId: "host_1",
+    title: "Terminal",
+    initialCwd: "/repo",
+    cols: 100,
+    rows: 30,
+    status: "running",
+    exitCode: null,
+    closeReason: null,
+    createdAt: 1,
+    updatedAt: 1,
+    lastUserInputAt: null,
+    ...overrides,
   };
 }
 
@@ -267,5 +294,134 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("host:host_1:local");
+  });
+});
+
+describe("buildRootComposeTerminalSessions", () => {
+  it("keeps host-path terminal sessions unresolved until the global list loads", () => {
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: undefined,
+        globalTerminalSessions: undefined,
+        terminalTarget: {
+          kind: "host_path",
+          hostId: "host_1",
+          cwd: "/repo",
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("filters loaded host-path terminal sessions by root target", () => {
+    const matching = makeTerminalSession({
+      id: "term_matching",
+      hostId: "host_1",
+      initialCwd: "/repo",
+    });
+    const otherHost = makeTerminalSession({
+      id: "term_other_host",
+      hostId: "host_2",
+      initialCwd: "/repo",
+    });
+    const threadTerminal = makeTerminalSession({
+      id: "term_thread",
+      threadId: "thr_1",
+      hostId: "host_1",
+      initialCwd: "/repo",
+    });
+
+    expect(
+      buildRootComposeTerminalSessions({
+        environmentTerminalSessions: undefined,
+        globalTerminalSessions: [matching, otherHost, threadTerminal],
+        terminalTarget: {
+          kind: "host_path",
+          hostId: "host_1",
+          cwd: "/repo",
+        },
+      }),
+    ).toEqual([matching]);
+  });
+});
+
+describe("resolveRootComposePanelThreadId", () => {
+  it("uses the most-recent thread from the selected reuse worktree", () => {
+    expect(
+      resolveRootComposePanelThreadId({
+        environmentId: "env_b",
+        reuseThreadOptions: [
+          {
+            environmentId: "env_a",
+            branchName: "main",
+            name: null,
+            threads: [{ id: "thr_a", title: "Thread A" }],
+          },
+          {
+            environmentId: "env_b",
+            branchName: "feature",
+            name: "Feature worktree",
+            threads: [
+              { id: "thr_b_recent", title: "Recent thread" },
+              { id: "thr_b_old", title: "Old thread" },
+            ],
+          },
+        ],
+      }),
+    ).toBe("thr_b_recent");
+  });
+
+  it("returns null without a selected reuse worktree", () => {
+    expect(
+      resolveRootComposePanelThreadId({
+        environmentId: null,
+        reuseThreadOptions: [
+          {
+            environmentId: "env_a",
+            branchName: "main",
+            name: null,
+            threads: [{ id: "thr_a", title: "Thread A" }],
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("canCreateRootComposeTerminal", () => {
+  it("allows ready environments and host paths", () => {
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+        environmentStatus: "ready",
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "environment", environmentId: "env_1" },
+        environmentStatus: "provisioning",
+      }),
+    ).toBe(false);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "host_path", hostId: "host_1", cwd: "/repo" },
+        environmentStatus: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: { kind: "host_path", hostId: "host_1", cwd: null },
+        environmentStatus: undefined,
+      }),
+    ).toBe(true);
+
+    expect(
+      canCreateRootComposeTerminal({
+        terminalTarget: null,
+        environmentStatus: "ready",
+      }),
+    ).toBe(false);
   });
 });

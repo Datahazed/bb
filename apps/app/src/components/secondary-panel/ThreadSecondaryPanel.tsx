@@ -13,7 +13,10 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
-import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -78,6 +81,7 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 // Stable empty TOC reference so the collapse-controls hook's derived atom and
 // the stats memo are not rebuilt every render while the diff is loading/absent.
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
@@ -120,7 +124,10 @@ export interface ThreadSecondaryPanelProps {
    */
   isSideChatTabActive?: boolean;
   isOpen: boolean;
+  showConversationCollapseControl?: boolean;
   showGitDiffTab?: boolean;
+  showInfoTab?: boolean;
+  showNewTabButton?: boolean;
   onPanelFocus: () => void;
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
@@ -198,7 +205,10 @@ export function ThreadSecondaryPanel({
   sideChatDeck,
   isSideChatTabActive = false,
   isOpen,
+  showConversationCollapseControl = true,
   showGitDiffTab = true,
+  showInfoTab = true,
+  showNewTabButton = true,
   onPanelFocus,
   onPanelChange,
   onCollapse,
@@ -213,13 +223,15 @@ export function ThreadSecondaryPanel({
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
+  const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
   const hasActiveFileTab = activeFileTab !== undefined;
   const isTerminalTabActive =
     activeTab?.kind === "terminal" && hasActiveFileTab;
   const togglePanelIconName = renderAsDrawer ? "X" : "PanelRight";
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
-  const conversationCollapseControl = renderAsDrawer
+  const conversationCollapseControl =
+    renderAsDrawer || !showConversationCollapseControl
     ? null
     : resolveConversationCollapseControl({
         isConversationCollapsed,
@@ -374,23 +386,25 @@ export function ThreadSecondaryPanel({
             role="toolbar"
             aria-label="Right panel views"
           >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-              )}
-              onClick={() => onPanelChange("thread-info")}
-              aria-label="Show thread info panel"
-              aria-pressed={
-                activeFixedPanel === "thread-info" && !hasActiveFileTab
-              }
-              title="Info"
-            >
-              <Icon name="Info" />
-            </Button>
+            {showInfoTab ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                )}
+                onClick={() => onPanelChange("thread-info")}
+                aria-label="Show thread info panel"
+                aria-pressed={
+                  activeFixedPanel === "thread-info" && !hasActiveFileTab
+                }
+                title="Info"
+              >
+                <Icon name="Info" />
+              </Button>
+            ) : null}
             {shouldShowGitDiffTab ? (
               <Button
                 type="button"
@@ -408,17 +422,19 @@ export function ThreadSecondaryPanel({
                 <Icon name="FileDiff" />
               </Button>
             ) : null}
-            {fileTabs && fileTabs.length > 0 ? (
+            {visibleFileTabs && visibleFileTabs.length > 0 ? (
               <SecondaryPanelTabStrip
-                fileTabs={fileTabs}
+                fileTabs={visibleFileTabs}
                 onReorderTab={onFileTabReorder}
                 usesDesktopChrome={usesDesktopChrome}
               />
             ) : null}
-            <NewTabButton
-              onOpenNewTab={onOpenNewTab}
-              usesDesktopChrome={usesDesktopChrome}
-            />
+            {showNewTabButton ? (
+              <NewTabButton
+                onOpenNewTab={onOpenNewTab}
+                usesDesktopChrome={usesDesktopChrome}
+              />
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {conversationCollapseControl ? (
@@ -444,8 +460,7 @@ export function ThreadSecondaryPanel({
               variant="ghost"
               size="icon"
               className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "shrink-0",
+                SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
                 usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               )}
               onClick={onClose}

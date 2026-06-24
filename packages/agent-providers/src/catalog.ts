@@ -19,11 +19,16 @@ const ACP_AGENT_PROVIDER_ID_VALUES = [
   "acp-cursor",
 ] as const satisfies readonly AgentProviderId[];
 export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDER_ID_VALUES)[number];
+const ACP_PROVIDER_ID_PREFIX = "acp-";
 
 export function isAcpAgentProviderId(
   value: string,
 ): value is AcpAgentProviderId {
   return (ACP_AGENT_PROVIDER_ID_VALUES as readonly string[]).includes(value);
+}
+
+export function isAcpProviderId(value: string): boolean {
+  return value.startsWith(ACP_PROVIDER_ID_PREFIX);
 }
 
 /**
@@ -71,6 +76,11 @@ export interface BuiltInAgentProviderInfo extends ProviderInfo {
 export interface BuiltInAgentProviderCatalogEntry {
   info: BuiltInAgentProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
+}
+
+export interface BuildAcpProviderInfoArgs {
+  displayName: string;
+  id: string;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
@@ -129,10 +139,13 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 // its own model selection, tool execution, and session naming, so BB-side
 // capabilities stay minimal. Permission modes are enforced cooperatively by
 // the ACP bridge (permission-request policy + client fs write policy).
+// Cursor exposes a `-fast` service tail per model; the bridge resolves it from
+// the serviceTier (the "Fast mode" toggle), so service tier is supported here
+// rather than fanning fast variants out as separate model-list entries.
 const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
   supportsRename: false,
-  supportsServiceTier: false,
+  supportsServiceTier: true,
   supportsUserQuestion: false,
   // ACP has no session-fork primitive; the adapter has no thread/fork handler,
   // so forks are blocked at the server boundary rather than failing at runtime.
@@ -293,6 +306,42 @@ function cloneBuiltInAgentProviderInfo(
     displayName: info.displayName,
     id: info.id,
   };
+}
+
+export function buildAcpProviderInfo(
+  args: BuildAcpProviderInfoArgs,
+): ProviderInfo {
+  if (!isAcpProviderId(args.id)) {
+    throw new Error(`ACP provider id "${args.id}" must start with "acp-".`);
+  }
+  return {
+    available: true,
+    capabilities: cloneCapabilities(ACP_CAPABILITIES),
+    composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
+    displayName: args.displayName,
+    id: args.id,
+  };
+}
+
+export function getAcpProviderServerCapabilities(
+  providerId: string,
+): ProviderServerCapabilities {
+  if (!isAcpProviderId(providerId)) {
+    throw new Error(`ACP provider id "${providerId}" must start with "acp-".`);
+  }
+  return ACP_SERVER_CAPABILITIES;
+}
+
+export function getAgentProviderServerCapabilities(
+  providerId: string,
+): ProviderServerCapabilities | null {
+  if (isAgentProviderId(providerId)) {
+    return getBuiltInAgentProviderServerCapabilities(providerId);
+  }
+  if (isAcpProviderId(providerId)) {
+    return getAcpProviderServerCapabilities(providerId);
+  }
+  return null;
 }
 
 export function isAgentProviderId(value: string): value is AgentProviderId {

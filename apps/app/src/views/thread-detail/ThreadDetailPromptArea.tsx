@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
@@ -44,12 +43,7 @@ import {
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
-import { usePromptMentions } from "@/hooks/usePromptMentions";
-import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
-import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCreateThreadQueuedMessage,
@@ -67,13 +61,12 @@ import {
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
-import { promptDraftToInput } from "@/lib/prompt-draft";
 import { appToast } from "@/components/ui/app-toast";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { useComposerArea } from "@/components/promptbox/useComposerArea";
 import { queuedInputToDraft } from "./threadQueuedMessages";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import {
@@ -288,26 +281,58 @@ export function ThreadDetailPromptArea({
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const stopThread = useStopThread();
   const unarchiveThread = useUnarchiveThread();
-  const uploadPromptAttachment = useUploadPromptAttachment();
   // The personal project isn't a meaningful label in the footer, so skip it.
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
   );
-  const promptDraft = usePromptDraftStorage({
-    kind: "thread",
-    projectId,
-    threadId: thread.id,
+  // Shared composer wiring: thread creation options, the draft store,
+  // `@`-mention + command typeahead, attachment upload, and the assembled
+  // execution / permission / typeahead / attachments configs. The follow-up box
+  // keeps its own submit handlers, prompt-history surface, and queued-message
+  // stack below.
+  const composerArea = useComposerArea({
+    creationOptions: {
+      enabled: composerQueriesEnabled,
+      environmentId: thread.environmentId ?? undefined,
+      scope: "component-local",
+      resetKey: thread.id,
+      initialProviderId: thread.providerId,
+      initialModel: defaultExecutionOptions?.model,
+      initialServiceTier: defaultExecutionOptions?.serviceTier,
+      initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
+      initialPermissionMode: defaultExecutionOptions?.permissionMode,
+      initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
+    },
+    draftScope: { kind: "thread", projectId, threadId: thread.id },
+    mentionsProjectId: projectId,
+    mentions: {
+      currentThreadId: thread.id,
+      environmentId: thread.environmentId ?? null,
+    },
+    commands: {
+      projectId: thread.projectId,
+      providerId: thread.providerId,
+      environmentId: thread.environmentId,
+    },
+    resolveMentionLink,
+    attachments: { projectId },
+    execution: {},
+    permission: {
+      kind: "editable-gated",
+      resolved: hasConcreteDefaultExecutionOptions,
+    },
   });
-  const promptMentions = usePromptMentions(projectId, {
-    currentThreadId: thread.id,
-    environmentId: thread.environmentId ?? null,
-  });
-  // Mirrors the @-mention query plumbing above: the composer feeds the text
-  // typed after the command trigger into `commandQuery`, which drives the hook.
-  // Called unconditionally (hooks rules); inert when the provider has no
-  // command trigger.
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const {
+    attachmentsConfig,
+    composer,
+    executionConfig,
+    permissionConfig,
+    promptDraft,
+    providerPromptActionProps,
+    setAttachmentError,
+    threadCreationOptions,
+    typeaheadConfig,
+  } = composerArea;
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
@@ -357,61 +382,17 @@ export function ThreadDetailPromptArea({
     () => promptHistoryEntriesToDrafts(promptHistoryEntries),
     [promptHistoryEntries],
   );
+  // Execution selection fields the follow-up submit path reads directly (the
+  // execution/permission pickers themselves are wired by useComposerArea above).
   const {
-    selectedProviderId,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderDisplayName,
-    selectedProviderComposerActions,
-    selectedModel,
-    setSelectedModel,
-    serviceTier,
-    setServiceTier,
-    reasoningLevel,
-    setReasoningLevel,
-    permissionMode,
-    setPermissionMode,
     activeModel,
-    modelOptions,
-    moreModelOptions,
-    isLoadingModels,
-    modelLoadFailed,
-    modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
-    supportsServiceTier,
-    serviceTierSupportByProvider,
     executionInputSources,
-  } = useThreadCreationOptions({
-    enabled: composerQueriesEnabled,
-    environmentId: thread.environmentId ?? undefined,
-    scope: "component-local",
-    resetKey: thread.id,
-    initialProviderId: thread.providerId,
-    initialModel: defaultExecutionOptions?.model,
-    initialServiceTier: defaultExecutionOptions?.serviceTier,
-    initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
-    initialPermissionMode: defaultExecutionOptions?.permissionMode,
-    initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
-  });
-  const providerPromptActions = useMemo(
-    () => buildProviderPromptActionProps(selectedProviderComposerActions),
-    [selectedProviderComposerActions],
-  );
-  const providerPromptActionProps = useMemo(
-    () => ({
-      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
-    }),
-    [providerPromptActions.promptActions],
-  );
-  const commandSuggestions = useCommandSuggestions({
-    projectId: thread.projectId,
-    providerId: thread.providerId,
-    skillsTrigger: providerPromptActions.skillsTrigger,
-    environmentId: thread.environmentId,
-    query: commandQuery,
-  });
+    permissionMode,
+    reasoningLevel,
+    selectedModel,
+    serviceTier,
+    supportsServiceTier,
+  } = threadCreationOptions;
   const runtimeDisplayStatus = thread.runtime.displayStatus;
   const isStopRequested =
     thread.status === "stopping" ||
@@ -452,19 +433,8 @@ export function ThreadDetailPromptArea({
   const promptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const currentPromptDraftInput = useMemo(
-    () => promptDraftToInput(currentPromptDraft),
-    [currentPromptDraft],
-  );
-  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+  const { currentPromptDraft, currentPromptDraftInput, hasPromptDraftInput } =
+    composer;
   const isPromptEmpty = useCallback(
     () => !hasPromptDraftInput,
     [hasPromptDraftInput],
@@ -507,32 +477,6 @@ export function ThreadDetailPromptArea({
     serviceTier,
     supportsServiceTier,
   ]);
-
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) {
-        return;
-      }
-
-      setAttachmentError(null);
-      const failedFiles: string[] = [];
-      for (const file of files) {
-        try {
-          const uploaded = await uploadPromptAttachment.mutateAsync({
-            projectId,
-            file,
-          });
-          promptDraft.addAttachment(uploaded);
-        } catch {
-          failedFiles.push(file.name);
-        }
-      }
-      if (failedFiles.length > 0) {
-        setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
-      }
-    },
-    [projectId, promptDraft, uploadPromptAttachment],
-  );
 
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
@@ -590,6 +534,7 @@ export function ThreadDetailPromptArea({
     isDefaultExecutionOptionsLoading,
     promptDraft,
     sendMessage,
+    setAttachmentError,
     thread.id,
     runtimeDisplayStatus,
   ]);
@@ -633,7 +578,7 @@ export function ThreadDetailPromptArea({
         );
       }
     },
-    [sendQueuedMessage, thread.id],
+    [sendQueuedMessage, setAttachmentError, thread.id],
   );
 
   const handleModifierSubmit = useCallback(async () => {
@@ -695,6 +640,7 @@ export function ThreadDetailPromptArea({
     promptDraft,
     sendMessage,
     sendQueuedMessageById,
+    setAttachmentError,
     thread.id,
   ]);
 
@@ -748,7 +694,7 @@ export function ThreadDetailPromptArea({
           );
         });
     },
-    [deleteQueuedMessage, promptDraft, thread.id],
+    [deleteQueuedMessage, promptDraft, setAttachmentError, thread.id],
   );
 
   const handleDeleteQueuedMessage = useCallback(
@@ -817,25 +763,6 @@ export function ThreadDetailPromptArea({
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
 
-  const attachmentsConfig = useMemo(
-    () => ({
-      items: promptDraft.attachments,
-      projectId,
-      isAttaching: uploadPromptAttachment.isPending,
-      error: attachmentError,
-      onAttachFiles: handleAttachFiles,
-      onRemove: promptDraft.removeAttachment,
-    }),
-    [
-      attachmentError,
-      handleAttachFiles,
-      projectId,
-      promptDraft.attachments,
-      promptDraft.removeAttachment,
-      uploadPromptAttachment.isPending,
-    ],
-  );
-
   const composerConfig = useMemo(
     () => ({
       history: {
@@ -870,112 +797,6 @@ export function ThreadDetailPromptArea({
       runtimeDisplayStatus,
       submitMode,
       thread.id,
-    ],
-  );
-
-  const executionConfig = useMemo(
-    () => ({
-      provider: {
-        options: providerOptions,
-        selectedId: selectedProviderId,
-        hasMultiple: hasMultipleProviders,
-        displayName: selectedProviderDisplayName,
-      },
-      model: {
-        active: activeModel,
-        selected: selectedModel,
-        options: modelOptions,
-        moreOptions: moreModelOptions,
-        isLoading: isLoadingModels,
-        loadFailed: modelLoadFailed,
-        loadError: modelLoadError,
-        onChange: setSelectedModel,
-      },
-      serviceTier: {
-        value: serviceTier,
-        onChange: setServiceTier,
-        supported: supportsServiceTier,
-        supportByProvider: serviceTierSupportByProvider,
-      },
-      reasoning: {
-        value: reasoningLevel,
-        options: reasoningOptions,
-        onChange: setReasoningLevel,
-      },
-    }),
-    [
-      activeModel,
-      hasMultipleProviders,
-      isLoadingModels,
-      modelLoadFailed,
-      modelLoadError,
-      modelOptions,
-      moreModelOptions,
-      providerOptions,
-      reasoningLevel,
-      reasoningOptions,
-      selectedModel,
-      selectedProviderDisplayName,
-      selectedProviderId,
-      serviceTier,
-      serviceTierSupportByProvider,
-      setReasoningLevel,
-      setSelectedModel,
-      setServiceTier,
-      supportsServiceTier,
-    ],
-  );
-
-  const permissionConfig = useMemo(
-    () => ({
-      value: hasConcreteDefaultExecutionOptions ? permissionMode : undefined,
-      options: hasConcreteDefaultExecutionOptions ? permissionModeOptions : [],
-      onChange: setPermissionMode,
-      supported:
-        hasConcreteDefaultExecutionOptions && supportsPermissionModeSelection,
-    }),
-    [
-      hasConcreteDefaultExecutionOptions,
-      permissionMode,
-      permissionModeOptions,
-      setPermissionMode,
-      supportsPermissionModeSelection,
-    ],
-  );
-
-  const typeaheadConfig = useMemo(
-    () => ({
-      mention: {
-        suggestions: promptMentions.suggestions,
-        isLoading: promptMentions.isLoading,
-        isError: promptMentions.isError,
-        onQueryChange: promptMentions.setQuery,
-        resolveLink: resolveMentionLink,
-      },
-      command: {
-        trigger: commandSuggestions.trigger,
-        suggestions: commandSuggestions.suggestions,
-        isLoading: commandSuggestions.isLoading,
-        isError: commandSuggestions.isError,
-        hasMore: commandSuggestions.hasMore,
-        isLoadingMore: commandSuggestions.isLoadingMore,
-        loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
-      },
-    }),
-    [
-      promptMentions.isError,
-      promptMentions.isLoading,
-      promptMentions.setQuery,
-      promptMentions.suggestions,
-      resolveMentionLink,
-      commandSuggestions.isError,
-      commandSuggestions.hasMore,
-      commandSuggestions.isLoading,
-      commandSuggestions.isLoadingMore,
-      commandSuggestions.loadMore,
-      commandSuggestions.suggestions,
-      commandSuggestions.trigger,
     ],
   );
 

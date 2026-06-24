@@ -9,9 +9,22 @@ type ThreadStatusShape = Pick<
 >;
 
 type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
+type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
 
-export function isBusyThread(thread: ThreadRuntimeShape): boolean {
+export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
+}
+
+export function hasActiveWorkflowActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeWorkflowCount > 0;
+}
+
+export function isBusyThread(
+  thread: ThreadRuntimeShape & ThreadActivityStateShape,
+): boolean {
+  return isRuntimeBusyThread(thread) || hasActiveWorkflowActivity(thread);
 }
 
 /**
@@ -24,8 +37,12 @@ export function isBusyThread(thread: ThreadRuntimeShape): boolean {
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
   pending: boolean;
-  /** At least one child is actively working. */
+  /** At least one child is actively working, including workflow work. */
   working: boolean;
+  /** At least one child is actively running a foreground/runtime turn. */
+  runtimeWorking: boolean;
+  /** At least one idle child has a provider workflow still running. */
+  workflow: boolean;
   /**
    * At least one finished child is unread. Only top-level worktree children
    * qualify — `isUnreadDoneThread` is false for parented threads, so manager
@@ -39,13 +56,15 @@ export interface CollapsedChildActivity {
 export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
+  runtimeWorking: false,
+  workflow: false,
   unread: false,
   unreadError: false,
 };
 
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
-  Pick<ThreadListEntry, "hasPendingInteraction">;
+  Pick<ThreadListEntry, "activity" | "hasPendingInteraction">;
 
 /** Rolls a child thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
@@ -53,6 +72,8 @@ export function getCollapsedChildActivity(
 ): CollapsedChildActivity {
   let pending = false;
   let working = false;
+  let runtimeWorking = false;
+  let workflow = false;
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
@@ -61,7 +82,11 @@ export function getCollapsedChildActivity(
       pending = true;
       continue;
     }
-    if (isBusyThread(thread)) {
+    if (isRuntimeBusyThread(thread)) {
+      runtimeWorking = true;
+      working = true;
+    } else if (hasActiveWorkflowActivity(thread)) {
+      workflow = true;
       working = true;
     } else if (isUnreadDoneThread(thread)) {
       unread = true;
@@ -70,7 +95,14 @@ export function getCollapsedChildActivity(
       }
     }
   }
-  return { pending, working, unread, unreadError };
+  return {
+    pending,
+    working,
+    runtimeWorking,
+    workflow,
+    unread,
+    unreadError,
+  };
 }
 
 export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {

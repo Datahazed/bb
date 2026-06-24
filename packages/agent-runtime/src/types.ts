@@ -12,6 +12,7 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -83,6 +84,12 @@ export interface AgentRuntimeOptions {
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
 
+  /** Optional executable used to run Node-based provider bridges. */
+  bridgeNodeExecutablePath?: string;
+
+  /** Optional env values needed by the executable used for Node-based bridges. */
+  bridgeNodeEnv?: Record<string, string>;
+
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
 
@@ -112,6 +119,7 @@ export interface AgentRuntimeOptions {
 // ---------------------------------------------------------------------------
 
 export interface EnsureProviderArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   /**
    * Providers with thread-scoped processes use this to start the process for a
    * specific bb thread. Omit it for provider-scoped maintenance work such as
@@ -122,6 +130,7 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -150,6 +159,7 @@ export interface StartThreadResult {
 }
 
 export interface ResumeThreadArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -242,6 +252,7 @@ export interface UnarchiveThreadArgs {
 
 export interface ListModelsArgs {
   providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
 }
 
 export interface AgentRuntime {

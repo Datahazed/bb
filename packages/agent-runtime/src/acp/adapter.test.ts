@@ -207,6 +207,33 @@ describe("acp adapter model cli", () => {
     expect(primaryModels.length).toBeGreaterThan(1);
   });
 
+  it("requests ACP-native session discovery when the profile has no model CLI", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+        cwd: "/custom-cwd",
+        env: { CUSTOM_ACP_TOKEN: "token" },
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+
+    expect(adapter.buildCommandPlan({ type: "model/list" })).toEqual({
+      kind: "request",
+      method: "model/list",
+      params: {
+        agent: {
+          command: "custom-acp",
+          args: ["serve"],
+          cwd: "/custom-cwd",
+          envVars: { CUSTOM_ACP_TOKEN: "token" },
+        },
+        primaryModels: [],
+      },
+    });
+  });
+
   it("forwards the session model and reasoning level for bridge resolution", () => {
     const plan = createAdapter().buildCommandPlan({
       type: "thread/start",
@@ -232,6 +259,65 @@ describe("acp adapter model cli", () => {
     });
   });
 
+  it("forwards ACP-native model and reasoning selections when there is no model CLI", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+
+    const plan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "custom/strong",
+        reasoningLevel: "high",
+      },
+      instructionMode: "append",
+    });
+
+    expect(plan).toMatchObject({
+      params: {
+        agent: { command: "custom-acp", args: ["serve"] },
+        modelSelection: { modelId: "custom/strong", reasoningLevel: "high" },
+      },
+    });
+  });
+
+  it("does not use ACP-native selection for CLI-discovered models without a select flag", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+        modelCli: {
+          listArgs: ["models", "list"],
+          primaryModels: [],
+        },
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+
+    const plan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "custom/strong",
+      },
+      instructionMode: "append",
+    });
+
+    const params = (plan as { params: Record<string, unknown> }).params;
+    expect("modelSelection" in params).toBe(false);
+  });
+
   it("omits the reasoning level when the session has none", () => {
     const plan = createAdapter().buildCommandPlan({
       type: "thread/start",
@@ -248,6 +334,42 @@ describe("acp adapter model cli", () => {
     const params = (plan as { params: Record<string, unknown> }).params;
     const selection = params.modelSelection as Record<string, unknown>;
     expect("reasoningLevel" in selection).toBe(false);
+  });
+
+  it("forwards Fast mode as the model selection service tier", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "composer-2.5",
+        serviceTier: "fast",
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      params: {
+        modelSelection: { model: "composer-2.5", serviceTier: "fast" },
+      },
+    });
+  });
+
+  it("omits a default service tier from the model selection", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "composer-2.5",
+        serviceTier: "default",
+      },
+      instructionMode: "append",
+    });
+    const params = (plan as { params: Record<string, unknown> }).params;
+    const selection = params.modelSelection as Record<string, unknown>;
+    expect("serviceTier" in selection).toBe(false);
   });
 
   it("never forwards the synthetic default model id", () => {
@@ -487,10 +609,11 @@ describe("acp adapter event translation", () => {
         changes: [{ path: "/workspace/a.ts", kind: "update" }],
       },
     });
-    const change = events[0]?.type === "item/completed" &&
+    const change =
+      events[0]?.type === "item/completed" &&
       events[0].item.type === "fileChange"
-      ? events[0].item.changes[0]
-      : undefined;
+        ? events[0].item.changes[0]
+        : undefined;
     expect(change?.diff).toContain("-old line");
     expect(change?.diff).toContain("+new line");
     expect(change?.diff).not.toContain("-same");

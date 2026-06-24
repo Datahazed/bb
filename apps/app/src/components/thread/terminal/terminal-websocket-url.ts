@@ -2,22 +2,15 @@ import { buildDevWebSocketUrl } from "@/lib/dev-websocket-url";
 
 interface BuildTerminalWebSocketUrlArgs {
   terminalId: string;
-  threadId: string;
 }
 
 function buildTerminalWebSocketPath({
   terminalId,
-  threadId,
 }: BuildTerminalWebSocketUrlArgs): string {
-  return `/ws/threads/${encodeURIComponent(threadId)}/terminals/${encodeURIComponent(
-    terminalId,
-  )}`;
+  return `/ws/terminals/${encodeURIComponent(terminalId)}`;
 }
 
-export function buildTerminalWebSocketUrl(
-  args: BuildTerminalWebSocketUrlArgs,
-): string {
-  const path = buildTerminalWebSocketPath(args);
+function buildWebSocketUrl(path: string): string {
   const devWebSocketUrl = buildDevWebSocketUrl({ path });
   if (devWebSocketUrl !== undefined) {
     return devWebSocketUrl;
@@ -25,4 +18,10 @@ export function buildTerminalWebSocketUrl(
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}${path}`;
+}
+
+export function buildTerminalWebSocketUrl(
+  args: BuildTerminalWebSocketUrlArgs,
+): string {
+  return buildWebSocketUrl(buildTerminalWebSocketPath(args));
 }

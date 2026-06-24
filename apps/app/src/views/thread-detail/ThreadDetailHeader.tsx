@@ -57,6 +57,7 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
+  const showRightPanelToggle = renderAsDrawer || !isSecondaryPanelOpen;
 
   const center = (
     <>
@@ -113,26 +114,28 @@ export function ThreadDetailHeader({
           {primaryAction.label}
         </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={`${HEADER_ICON_BUTTON_CLASS} relative`}
-        aria-label={rightPanelLabel}
-        aria-pressed={isSecondaryPanelOpen}
-        title={rightPanelLabel}
-        onClick={onToggleSecondaryPanel}
-      >
-        <Icon name={rightPanelIconName} />
-        {activeTerminalCount > 0 ? (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
-          >
-            {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
-          </span>
-        ) : null}
-      </Button>
+      {showRightPanelToggle ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={`${HEADER_ICON_BUTTON_CLASS} relative`}
+          aria-label={rightPanelLabel}
+          aria-pressed={isSecondaryPanelOpen}
+          title={rightPanelLabel}
+          onClick={onToggleSecondaryPanel}
+        >
+          <Icon name={rightPanelIconName} />
+          {activeTerminalCount > 0 ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
+            >
+              {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
+            </span>
+          ) : null}
+        </Button>
+      ) : null}
     </>
   );
 

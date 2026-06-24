@@ -7,11 +7,11 @@ import { terminalServerMessageSchema } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import {
   openUrlInExternalBrowser,
   useOpenUrlByPreference,
 } from "@/lib/url-open-routing";
+import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
@@ -80,7 +80,6 @@ interface ThreadTerminalViewProps {
   onTitleChange?: TerminalTitleChangeHandler;
   onUserInput?: () => void;
   session: TerminalSession;
-  threadId: string;
 }
 
 type TerminalTitleChangeHandler = (title: string) => void;
@@ -287,7 +286,6 @@ export function ThreadTerminalView({
   onTitleChange,
   onUserInput,
   session,
-  threadId,
 }: ThreadTerminalViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
@@ -410,10 +408,7 @@ export function ThreadTerminalView({
       }
 
       socket = new WebSocket(
-        buildTerminalWebSocketUrl({
-          terminalId: session.id,
-          threadId,
-        }),
+        buildTerminalWebSocketUrl({ terminalId: session.id }),
       );
       const activeSocket = socket;
       const activeTerminal = terminal;
@@ -511,7 +506,7 @@ export function ThreadTerminalView({
       terminalRef.current = null;
       scheduleFitRef.current = null;
     };
-  }, [session.id, threadId]);
+  }, [session.id, session.threadId]);
 
   useEffect(() => {
     if (!isPanelOpen) {

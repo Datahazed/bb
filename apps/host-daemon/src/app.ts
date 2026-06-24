@@ -27,7 +27,11 @@ import {
   TerminalManager,
   type TerminalManagerOptions,
 } from "./terminals/terminal-manager.js";
-import { createServerClient, ServerResponseError } from "./server-client.js";
+import {
+  createServerClient,
+  ServerResponseError,
+  type FetchFn,
+} from "./server-client.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
@@ -46,7 +50,10 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
 } from "@bb/domain";
-import type { HostWatcher } from "@bb/host-watcher";
+import {
+  disposeParcelWatcherBackend,
+  type HostWatcher,
+} from "@bb/host-watcher";
 
 interface SessionState {
   value: string | null;
@@ -106,7 +113,7 @@ export interface CreateHostDaemonAppOptions {
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   pickFolder?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
+  fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
 }
 
@@ -774,6 +781,9 @@ export async function createHostDaemonApp(
       hostDaemonHealthMonitor.stop();
       await localApi?.close();
       await watchManager.shutdown();
+      // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so
+      // the daemon's event loop can drain and the child is not orphaned.
+      disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
       await runtimeManager.shutdownAll();
       await eventSink.flush();

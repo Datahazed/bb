@@ -5,7 +5,7 @@ import {
   defaultExperiments,
   isValidElectronAccelerator,
   type AppTheme,
-  type AppThemeId,
+  type FaviconColorPreference,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -44,8 +44,6 @@ import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   FAVICON_COLOR_VALUES,
   getFaviconGlyphHref,
-  useFaviconColorPreference,
-  type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
@@ -115,6 +113,7 @@ export interface RichTextEditingSettingsControlProps {
 }
 
 export interface FaviconColorSettingsControlProps {
+  disabled: boolean;
   faviconColor: FaviconColorPreference;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
@@ -122,10 +121,11 @@ export interface FaviconColorSettingsControlProps {
 export interface GeneralSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
+  customThemes: readonly string[];
   desktopBrowserAvailable: boolean;
   faviconColor: FaviconColorPreference;
   navigateToThreadAfterCreate: boolean;
-  onAppearanceThemeChange: (themeId: AppThemeId) => void;
+  onAppearanceThemeChange: (themeId: string) => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
@@ -139,7 +139,6 @@ export interface GeneralSettingsSectionProps {
 }
 
 function appPaletteLabel(appearance: AppTheme): string {
-  if (appearance.themeId === "custom") return "Custom";
   const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
   return meta?.name ?? appearance.themeId;
 }
@@ -210,6 +209,7 @@ function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
 }
 
 export function FaviconColorSettingsControl({
+  disabled,
   faviconColor,
   onFaviconColorChange,
 }: FaviconColorSettingsControlProps) {
@@ -225,6 +225,7 @@ export function FaviconColorSettingsControl({
             size="sm"
             className="w-full justify-between border-border/60 bg-card sm:w-48"
             aria-label="Favicon color"
+            disabled={disabled}
           >
             <span className="flex min-w-0 items-center gap-2">
               <FaviconColorPreview value={faviconColor} />
@@ -480,6 +481,7 @@ export function RichTextEditingSettingsControl({
 export function GeneralSettingsSection({
   appearance,
   appearanceDisabled,
+  customThemes,
   desktopBrowserAvailable,
   faviconColor,
   navigateToThreadAfterCreate,
@@ -537,7 +539,7 @@ export function GeneralSettingsSection({
 
         <SettingsWithControl
           label="Palette"
-          description="Applies to the whole app. Load a custom stylesheet with the bb theme CLI."
+          description="Applies to the whole app. Add a custom theme by creating .bb/theme/<name>/theme.css, then pick it here or with the bb theme CLI."
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -572,27 +574,28 @@ export function GeneralSettingsSection({
                   />
                 </DropdownMenuItem>
               ))}
-              {appearance.customCss !== null ? (
+              {customThemes.map((name) => (
                 <DropdownMenuItem
-                  key="custom"
-                  onSelect={() => onAppearanceThemeChange("custom")}
+                  key={`custom:${name}`}
+                  onSelect={() => onAppearanceThemeChange(name)}
                 >
-                  Custom
+                  {name}
                   <Icon
                     name="Check"
                     className={cn(
                       "ml-auto",
-                      appearance.themeId !== "custom" && "opacity-0",
+                      appearance.themeId !== name && "opacity-0",
                       COARSE_POINTER_ICON_SIZE_CLASS,
                     )}
                   />
                 </DropdownMenuItem>
-              ) : null}
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </SettingsWithControl>
 
         <FaviconColorSettingsControl
+          disabled={appearanceDisabled}
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
         />
@@ -873,7 +876,6 @@ export function ExperimentsSettingsSection({
 export function SettingsView() {
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
-  const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
@@ -906,20 +908,23 @@ export function SettingsView() {
             systemConfigQuery.data === undefined ||
             updateAppearanceMutation.isPending
           }
+          customThemes={systemConfigQuery.data?.customThemes ?? []}
           desktopBrowserAvailable={desktopBrowserAvailable}
-          faviconColor={faviconColor}
+          faviconColor={appearance.faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
           themePreference={themePreference}
           onAppearanceThemeChange={(themeId) =>
+            updateAppearanceMutation.mutate({ themeId })
+          }
+          onFaviconColorChange={(faviconColor) =>
             updateAppearanceMutation.mutate({
-              themeId,
-              customCss: appearance.customCss,
+              themeId: appearance.themeId,
+              faviconColor,
             })
           }
-          onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}

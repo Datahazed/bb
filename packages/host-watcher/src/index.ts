@@ -1,6 +1,13 @@
 import type { HostWatcher } from "./host-watcher-types.js";
 import { createParcelHostWatcher } from "./parcel-host-watcher.js";
 
+export {
+  createSubprocessParcelWatcherBackend,
+  disposeParcelWatcherBackend,
+  setParcelWatcherBackend,
+  type ParcelWatcherBackendLogger,
+} from "./parcel-watcher-backend.js";
+
 export type {
   HostObservedChange,
   HostWatchError,

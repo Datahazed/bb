@@ -1,20 +1,24 @@
 import { randomUUID } from "node:crypto";
 import {
   createTerminalSession,
+  getTerminalSession,
   getTerminalSessionForThread,
   listTerminalSessionsByEnvironment,
   listTerminalSessionsByThread,
+  listThreadlessTerminalSessionsByEnvironment,
+  listVisibleTerminalSessions,
   listVisibleTerminalSessionsByThread,
+  listVisibleThreadlessTerminalSessionsByEnvironment,
   markDaemonTerminalSessionExited,
   markDaemonTerminalSessionsDisconnected,
   markEnvironmentTerminalSessionsExited,
   markHostDisconnectedTerminalSessionsExited,
   markTerminalSessionExited,
   markTerminalSessionRunning,
-  markTerminalSessionUserInput,
+  markTerminalSessionUserInputById,
   markThreadTerminalSessionsExited,
-  updateTerminalSessionSize,
-  updateTerminalSessionTitle,
+  updateTerminalSessionSizeById,
+  updateTerminalSessionTitleById,
   type TerminalSessionRow,
 } from "@bb/db";
 import type { TerminalSessionCloseReason } from "@bb/domain";
@@ -23,21 +27,24 @@ import type {
   HostDaemonServerWsMessage,
 } from "@bb/host-daemon-contract";
 import type {
-  CloseThreadTerminalRequest,
-  CreateThreadTerminalRequest,
+  CloseTerminalRequest,
+  CreateTerminalRequest,
   TerminalClientMessage,
   TerminalInputRequest,
+  TerminalCreateTarget,
+  TerminalListQuery,
   TerminalOutputChunk,
   TerminalOutputQuery,
   TerminalOutputResponse,
   TerminalResizeRequest,
   TerminalSession,
-  UpdateThreadTerminalRequest,
+  UpdateTerminalRequest,
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, ServerLogger } from "../../types.js";
 import {
   requireConnectedHostSession,
+  requireEnvironment,
   requirePublicThread,
   requireReadyEnvironment,
 } from "../lib/entity-lookup.js";
@@ -46,17 +53,14 @@ import {
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
-import {
-  resolveThreadStoragePathFromRoot,
-  resolveThreadStorageRootPath,
-} from "../threads/thread-storage.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_START: NonNullable<
-  CreateThreadTerminalRequest["start"]
+  CreateTerminalRequest["start"]
 > = {
   mode: "shell",
 };
+const HOST_HOME_INITIAL_CWD = "~";
 
 type TerminalOpenedMessage = Extract<
   HostDaemonDaemonWsMessage,
@@ -97,7 +101,7 @@ interface PendingTerminalAttach {
   daemonSessionId: string;
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -120,7 +124,7 @@ interface WaitForTerminalAttachArgs {
   requestId: string;
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
 }
 
 interface WaitForTerminalOutputReadArgs {
@@ -190,10 +194,26 @@ interface TerminalDaemonCloseTarget {
   terminalId: string;
 }
 
+type TerminalDaemonOpenTarget = Extract<
+  HostDaemonServerWsMessage,
+  { type: "terminal.open" }
+>["target"];
+type TerminalLaunchTarget = Exclude<
+  TerminalCreateTarget,
+  { kind: "thread" }
+>;
+
+interface ResolvedTerminalLaunchTarget {
+  daemonTarget: TerminalDaemonOpenTarget;
+  environmentId: string | null;
+  hostId: string;
+  initialCwd: string;
+}
+
 interface AttachBrowserTerminalArgs {
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
 }
 
 interface DetachBrowserTerminalArgs {
@@ -205,31 +225,35 @@ interface HandleBrowserTerminalMessageArgs {
   message: TerminalClientMessage;
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
 }
 
-interface SendThreadTerminalInputArgs {
+interface SendTerminalInputArgs {
   payload: TerminalInputRequest;
   terminalId: string;
-  threadId: string;
 }
 
-interface ResizeThreadTerminalArgs {
+interface ResizeTerminalArgs {
   payload: TerminalResizeRequest;
   terminalId: string;
-  threadId: string;
 }
 
-interface ReadThreadTerminalOutputArgs {
+interface ReadTerminalOutputArgs {
   query: TerminalOutputQuery;
   terminalId: string;
-  threadId: string;
 }
 
 interface GetRunningBrowserTerminalArgs {
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string;
+  threadId: string | null;
+}
+
+interface GetBrowserTerminalSessionArgs {
+  reportMissing?: boolean;
+  socket: TerminalClientSocket;
+  terminalId: string;
+  threadId: string | null;
 }
 
 interface SendTerminalSocketErrorArgs {
@@ -251,7 +275,6 @@ interface RejectPendingAttachesForTerminalArgs {
 interface CloseStaleOpenedTerminalArgs {
   daemonSessionId: string;
   terminalId: string;
-  threadId: string;
 }
 
 interface PublishLifecycleTerminalExitsForSessionsArgs {
@@ -274,21 +297,41 @@ interface TerminalSessionLifecycleOptions {
   openTimeoutMs?: number;
 }
 
-interface CreateThreadTerminalArgs {
-  payload: CreateThreadTerminalRequest;
-  threadId: string;
+interface ListTerminalsArgs {
+  query: TerminalListQuery;
 }
 
-interface RenameThreadTerminalArgs {
-  payload: UpdateThreadTerminalRequest;
-  terminalId: string;
-  threadId: string;
+interface CreateTerminalArgs {
+  payload: CreateTerminalRequest;
 }
 
-interface CloseThreadTerminalArgs {
-  payload: CloseThreadTerminalRequest;
+interface TerminalCreatePayload {
+  cols: number;
+  rows: number;
+  start?: NonNullable<CreateTerminalRequest["start"]>;
+  title?: string;
+}
+
+interface CreateTerminalForTargetArgs {
+  payload: TerminalCreatePayload;
+  target: TerminalLaunchTarget;
+  threadId: string | null;
+  title: string;
+}
+
+interface RenameTerminalArgs {
+  payload: UpdateTerminalRequest;
   terminalId: string;
-  threadId: string;
+}
+
+interface CloseTerminalArgs {
+  payload: CloseTerminalRequest;
+  terminalId: string;
+}
+
+interface CloseTerminalSessionArgs {
+  current: TerminalSessionRow;
+  payload: CloseTerminalRequest;
 }
 
 interface CloseDeletedThreadTerminalsArgs {
@@ -336,7 +379,7 @@ function titleFromCommand(command: string): string {
 }
 
 function initialTitleForTerminal(
-  payload: CreateThreadTerminalRequest,
+  payload: TerminalCreatePayload,
   existingSessionCount: number,
 ): string {
   if (payload.title !== undefined) {
@@ -448,68 +491,113 @@ export class TerminalSessionLifecycle {
       options.openTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
   }
 
-  listThreadTerminals(threadId: string): TerminalSession[] {
-    requirePublicThread(this.options.db, threadId);
-    return listVisibleTerminalSessionsByThread(this.options.db, threadId).map(
-      toTerminalSession,
-    );
+  listTerminals(args: ListTerminalsArgs): TerminalSession[] {
+    const { query } = args;
+    if (query.threadId !== undefined) {
+      requirePublicThread(this.options.db, query.threadId);
+      return listVisibleTerminalSessionsByThread(
+        this.options.db,
+        query.threadId,
+      ).map(toTerminalSession);
+    }
+    if (query.environmentId !== undefined) {
+      requireEnvironment(this.options.db, query.environmentId);
+      return listVisibleThreadlessTerminalSessionsByEnvironment(
+        this.options.db,
+        query.environmentId,
+      ).map(toTerminalSession);
+    }
+    const hostId = query.hostId;
+    if (hostId === undefined) {
+      return [];
+    }
+    return listVisibleTerminalSessions(this.options.db)
+      .filter(
+        (session) =>
+          session.threadId === null &&
+          session.environmentId === null &&
+          session.hostId === hostId &&
+          (query.cwd === undefined || session.initialCwd === query.cwd),
+      )
+      .map(toTerminalSession);
   }
 
-  async createThreadTerminal(
-    args: CreateThreadTerminalArgs,
-  ): Promise<TerminalSession> {
-    const thread = requirePublicThread(this.options.db, args.threadId);
+  async createTerminal(args: CreateTerminalArgs): Promise<TerminalSession> {
+    const { target } = args.payload;
+    const existingSessionCount = this.countExistingSessionsForTarget(target);
+    const launchTarget =
+      target.kind === "thread"
+        ? this.resolveThreadTerminalCreateTarget(target.threadId)
+        : target;
+    return this.createTerminalForTarget({
+      payload: args.payload,
+      target: launchTarget,
+      threadId: target.kind === "thread" ? target.threadId : null,
+      title: initialTitleForTerminal(args.payload, existingSessionCount),
+    });
+  }
+
+  private countExistingSessionsForTarget(target: TerminalCreateTarget): number {
+    switch (target.kind) {
+      case "thread": {
+        const thread = requirePublicThread(this.options.db, target.threadId);
+        return listTerminalSessionsByThread(this.options.db, thread.id).length;
+      }
+      case "environment":
+        return listThreadlessTerminalSessionsByEnvironment(
+          this.options.db,
+          target.environmentId,
+        ).length;
+      case "host_path":
+        return listVisibleTerminalSessions(this.options.db).filter(
+          (session) =>
+            session.threadId === null &&
+            session.environmentId === null &&
+            session.hostId === target.hostId &&
+            (target.cwd === null || session.initialCwd === target.cwd),
+        ).length;
+    }
+  }
+
+  private resolveThreadTerminalCreateTarget(
+    threadId: string,
+  ): TerminalLaunchTarget {
+    const thread = requirePublicThread(this.options.db, threadId);
     if (!thread.environmentId) {
       throwThreadEnvironmentUnavailable(
         threadEnvironmentUnavailableDetails("never_attached", null),
       );
     }
-    const environment = requireReadyEnvironment(
-      this.options.db,
-      thread.environmentId,
-    );
+    return { kind: "environment", environmentId: thread.environmentId };
+  }
+
+  private async createTerminalForTarget(
+    args: CreateTerminalForTargetArgs,
+  ): Promise<TerminalSession> {
+    const launchTarget = this.resolveTerminalLaunchTarget(args.target);
     const daemonSession = requireConnectedHostSession(
       this.options,
-      environment.hostId,
-    );
-    const target = requireWorkspaceCommandTarget(environment);
-    const existingSessions = listTerminalSessionsByThread(
-      this.options.db,
-      thread.id,
+      launchTarget.hostId,
     );
     const start = args.payload.start ?? DEFAULT_TERMINAL_START;
-    const title = initialTitleForTerminal(
-      args.payload,
-      existingSessions.length,
-    );
-    const threadStoragePath = resolveThreadStoragePathFromRoot({
-      threadId: thread.id,
-      threadStorageRootPath: resolveThreadStorageRootPath({
-        dataDir: daemonSession.dataDir,
-        env: {},
-      }),
-    });
     const startingSession = createTerminalSession(this.options.db, {
       cols: args.payload.cols,
       daemonSessionId: daemonSession.id,
-      environmentId: environment.id,
-      hostId: environment.hostId,
-      initialCwd: environment.path,
+      environmentId: launchTarget.environmentId,
+      hostId: launchTarget.hostId,
+      initialCwd: launchTarget.initialCwd,
       rows: args.payload.rows,
       status: "starting",
-      threadId: thread.id,
-      title,
+      threadId: args.threadId,
+      title: args.title,
     });
     const requestId = randomUUID();
     const openMessage: HostDaemonServerWsMessage = {
       type: "terminal.open",
       requestId,
       terminalId: startingSession.id,
-      threadId: thread.id,
-      projectId: thread.projectId,
-      environmentId: target.environmentId,
-      threadStoragePath,
-      workspaceContext: target.workspaceContext,
+      ...(args.threadId !== null ? { threadId: args.threadId } : {}),
+      target: launchTarget.daemonTarget,
       cols: args.payload.cols,
       rows: args.payload.rows,
       start,
@@ -532,7 +620,7 @@ export class TerminalSessionLifecycle {
         closeReason: "daemon-disconnect",
       });
       if (exited) {
-        this.notifyThreadTerminalsChanged(exited.threadId);
+        this.notifyTerminalSessionChanged(exited);
       }
       throw new ApiError(
         502,
@@ -555,7 +643,7 @@ export class TerminalSessionLifecycle {
           closeReason: "open-timeout",
         });
         if (exited) {
-          this.notifyThreadTerminalsChanged(exited.threadId);
+          this.notifyTerminalSessionChanged(exited);
         }
         this.options.hub.sendDaemonSessionMessage(daemonSession.id, {
           type: "terminal.close",
@@ -572,7 +660,7 @@ export class TerminalSessionLifecycle {
           closeReason: "process-exit",
         });
         if (exited) {
-          this.notifyThreadTerminalsChanged(exited.threadId);
+          this.notifyTerminalSessionChanged(exited);
         }
       }
       throw error;
@@ -590,7 +678,6 @@ export class TerminalSessionLifecycle {
       this.closeStaleOpenedTerminal({
         daemonSessionId: daemonSession.id,
         terminalId: startingSession.id,
-        threadId: thread.id,
       });
       throw new ApiError(
         409,
@@ -598,15 +685,47 @@ export class TerminalSessionLifecycle {
         "Terminal session was cancelled before it opened",
       );
     }
-    this.notifyThreadTerminalsChanged(runningSession.threadId);
+    this.notifyTerminalSessionChanged(runningSession);
     return toTerminalSession(runningSession);
   }
 
-  renameThreadTerminal(args: RenameThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const renamed = updateTerminalSessionTitle(this.options.db, {
+  private resolveTerminalLaunchTarget(
+    target: TerminalLaunchTarget,
+  ): ResolvedTerminalLaunchTarget {
+    switch (target.kind) {
+      case "environment": {
+        const environment = requireReadyEnvironment(
+          this.options.db,
+          target.environmentId,
+        );
+        const workspaceTarget = requireWorkspaceCommandTarget(environment);
+        return {
+          daemonTarget: {
+            kind: "workspace",
+            environmentId: workspaceTarget.environmentId,
+            workspaceContext: workspaceTarget.workspaceContext,
+          },
+          environmentId: environment.id,
+          hostId: workspaceTarget.hostId,
+          initialCwd: workspaceTarget.workspaceContext.workspacePath,
+        };
+      }
+      case "host_path":
+        return {
+          daemonTarget: {
+            kind: "host_path",
+            cwd: target.cwd,
+          },
+          environmentId: null,
+          hostId: target.hostId,
+          initialCwd: target.cwd ?? HOST_HOME_INITIAL_CWD,
+        };
+    }
+  }
+
+  renameTerminal(args: RenameTerminalArgs): TerminalSession {
+    const renamed = updateTerminalSessionTitleById(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
       title: args.payload.title,
     });
     if (!renamed) {
@@ -616,7 +735,7 @@ export class TerminalSessionLifecycle {
         "Terminal session not found",
       );
     }
-    this.notifyThreadTerminalsChanged(renamed.threadId);
+    this.notifyTerminalSessionChanged(renamed);
     const session = toTerminalSession(renamed);
     this.options.hub.sendTerminalClientMessage(renamed.id, {
       type: "session-updated",
@@ -625,11 +744,9 @@ export class TerminalSessionLifecycle {
     return session;
   }
 
-  closeThreadTerminal(args: CloseThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+  closeTerminal(args: CloseTerminalArgs): TerminalSession {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -638,6 +755,14 @@ export class TerminalSessionLifecycle {
         "Terminal session not found",
       );
     }
+    return this.closeTerminalSession({
+      current,
+      payload: args.payload,
+    });
+  }
+
+  private closeTerminalSession(args: CloseTerminalSessionArgs): TerminalSession {
+    const current = args.current;
     if (current.status === "exited") {
       return toTerminalSession(current);
     }
@@ -669,11 +794,9 @@ export class TerminalSessionLifecycle {
     return terminalSession;
   }
 
-  sendThreadTerminalInput(args: SendThreadTerminalInputArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+  sendTerminalInput(args: SendTerminalInputArgs): TerminalSession {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -690,13 +813,12 @@ export class TerminalSessionLifecycle {
       );
     }
 
-    const markedInput = markTerminalSessionUserInput(this.options.db, {
+    const markedInput = markTerminalSessionUserInputById(this.options.db, {
       terminalId: current.id,
-      threadId: args.threadId,
     });
     const session = markedInput ?? current;
     if (markedInput) {
-      this.notifyThreadTerminalsChanged(markedInput.threadId);
+      this.notifyTerminalSessionChanged(markedInput);
       this.options.hub.sendTerminalClientMessage(markedInput.id, {
         type: "session-updated",
         session: toTerminalSession(markedInput),
@@ -720,11 +842,9 @@ export class TerminalSessionLifecycle {
     return toTerminalSession(session);
   }
 
-  resizeThreadTerminal(args: ResizeThreadTerminalArgs): TerminalSession {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+  resizeTerminal(args: ResizeTerminalArgs): TerminalSession {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -744,15 +864,14 @@ export class TerminalSessionLifecycle {
     const resized =
       current.cols === args.payload.cols && current.rows === args.payload.rows
         ? current
-        : updateTerminalSessionSize(this.options.db, {
+        : updateTerminalSessionSizeById(this.options.db, {
             cols: args.payload.cols,
             rows: args.payload.rows,
             terminalId: current.id,
-            threadId: args.threadId,
           });
     const session = resized ?? current;
     if (resized && resized !== current) {
-      this.notifyThreadTerminalsChanged(resized.threadId);
+      this.notifyTerminalSessionChanged(resized);
       this.options.hub.sendTerminalClientMessage(resized.id, {
         type: "session-updated",
         session: toTerminalSession(resized),
@@ -777,13 +896,11 @@ export class TerminalSessionLifecycle {
     return toTerminalSession(session);
   }
 
-  async readThreadTerminalOutput(
-    args: ReadThreadTerminalOutputArgs,
+  async readTerminalOutput(
+    args: ReadTerminalOutputArgs,
   ): Promise<TerminalOutputResponse> {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     if (!current) {
       throw new ApiError(
@@ -907,10 +1024,9 @@ export class TerminalSessionLifecycle {
   }
 
   attachBrowserTerminal(args: AttachBrowserTerminalArgs): void {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
-      terminalId: args.terminalId,
-      threadId: args.threadId,
+    const current = this.getBrowserTerminalSession({
+      ...args,
+      reportMissing: false,
     });
     if (!current) {
       throw new ApiError(
@@ -1000,11 +1116,13 @@ export class TerminalSessionLifecycle {
         this.resizeBrowserTerminal(args);
         return;
       case "close":
-        this.closeThreadTerminal({
-          threadId: args.threadId,
-          terminalId: args.terminalId,
-          payload: { mode: "force", reason: args.message.reason },
-        });
+        const current = this.getBrowserTerminalSession(args);
+        if (current) {
+          this.closeTerminalSession({
+            current,
+            payload: { mode: "force", reason: args.message.reason },
+          });
+        }
         return;
     }
   }
@@ -1041,7 +1159,7 @@ export class TerminalSessionLifecycle {
           closeReason: args.message.closeReason,
         });
         if (exited) {
-          this.notifyThreadTerminalsChanged(exited.threadId);
+          this.notifyTerminalSessionChanged(exited);
           const session = toTerminalSession(exited);
           this.options.hub.sendTerminalClientMessage(exited.id, {
             type: "exited",
@@ -1132,9 +1250,8 @@ export class TerminalSessionLifecycle {
   }
 
   private closeStaleOpenedTerminal(args: CloseStaleOpenedTerminalArgs): void {
-    const current = getTerminalSessionForThread(this.options.db, {
+    const current = getTerminalSession(this.options.db, {
       terminalId: args.terminalId,
-      threadId: args.threadId,
     });
     this.options.hub.sendDaemonSessionMessage(args.daemonSessionId, {
       type: "terminal.close",
@@ -1168,7 +1285,7 @@ export class TerminalSessionLifecycle {
   private notifyExitedTerminalSession(
     args: NotifyExitedTerminalSessionArgs,
   ): void {
-    this.notifyThreadTerminalsChanged(args.session.threadId);
+    this.notifyTerminalSessionChanged(args.session);
     this.options.hub.sendTerminalClientMessage(args.session.id, {
       type: "exited",
       session: toTerminalSession(args.session),
@@ -1195,13 +1312,12 @@ export class TerminalSessionLifecycle {
     if (!current) {
       return;
     }
-    const markedInput = markTerminalSessionUserInput(this.options.db, {
+    const markedInput = markTerminalSessionUserInputById(this.options.db, {
       terminalId: current.id,
-      threadId: args.threadId,
     });
     if (markedInput) {
       const session = toTerminalSession(markedInput);
-      this.notifyThreadTerminalsChanged(markedInput.threadId);
+      this.notifyTerminalSessionChanged(markedInput);
       this.options.hub.sendTerminalClientMessage(markedInput.id, {
         type: "session-updated",
         session,
@@ -1239,15 +1355,14 @@ export class TerminalSessionLifecycle {
       current.cols !== args.message.cols ||
       current.rows !== args.message.rows
     ) {
-      const resized = updateTerminalSessionSize(this.options.db, {
+      const resized = updateTerminalSessionSizeById(this.options.db, {
         cols: args.message.cols,
         rows: args.message.rows,
         terminalId: current.id,
-        threadId: args.threadId,
       });
       if (resized) {
         const session = toTerminalSession(resized);
-        this.notifyThreadTerminalsChanged(resized.threadId);
+        this.notifyTerminalSessionChanged(resized);
         this.options.hub.sendTerminalClientMessage(resized.id, {
           type: "session-updated",
           session,
@@ -1278,17 +1393,8 @@ export class TerminalSessionLifecycle {
   private getRunningBrowserTerminal(
     args: GetRunningBrowserTerminalArgs,
   ): RunningBrowserTerminalSession | null {
-    requirePublicThread(this.options.db, args.threadId);
-    const current = getTerminalSessionForThread(this.options.db, {
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-    });
+    const current = this.getBrowserTerminalSession(args);
     if (!current) {
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "terminal_not_found",
-        message: "Terminal session not found",
-      });
       return null;
     }
     if (!isRunningBrowserTerminalSession(current)) {
@@ -1297,6 +1403,34 @@ export class TerminalSessionLifecycle {
         code: "terminal_not_running",
         message: "Terminal session is not running",
       });
+      return null;
+    }
+    return current;
+  }
+
+  private getBrowserTerminalSession(
+    args: GetBrowserTerminalSessionArgs,
+  ): TerminalSessionRow | null {
+    let current: TerminalSessionRow | null;
+    if (args.threadId === null) {
+      current = getTerminalSession(this.options.db, {
+        terminalId: args.terminalId,
+      });
+    } else {
+      requirePublicThread(this.options.db, args.threadId);
+      current = getTerminalSessionForThread(this.options.db, {
+        terminalId: args.terminalId,
+        threadId: args.threadId,
+      });
+    }
+    if (!current) {
+      if (args.reportMissing !== false) {
+        this.sendTerminalSocketError({
+          socket: args.socket,
+          code: "terminal_not_found",
+          message: "Terminal session not found",
+        });
+      }
       return null;
     }
     return current;
@@ -1333,7 +1467,7 @@ export class TerminalSessionLifecycle {
         { terminalId: session.id, sessionId: args.daemonSessionId },
         "Terminal session disconnected with daemon session",
       );
-      this.notifyThreadTerminalsChanged(session.threadId);
+      this.notifyTerminalSessionChanged(session);
       this.options.hub.sendTerminalClientMessage(session.id, {
         type: "session-updated",
         session: toTerminalSession(session),
@@ -1460,10 +1594,15 @@ export class TerminalSessionLifecycle {
     clearTimeout(pending.timeout);
     this.pendingAttaches.delete(args.message.requestId);
 
-    const current = getTerminalSessionForThread(this.options.db, {
-      terminalId: pending.terminalId,
-      threadId: pending.threadId,
-    });
+    const current =
+      pending.threadId === null
+        ? getTerminalSession(this.options.db, {
+            terminalId: pending.terminalId,
+          })
+        : getTerminalSessionForThread(this.options.db, {
+            terminalId: pending.terminalId,
+            threadId: pending.threadId,
+          });
     if (!current) {
       this.sendTerminalSocketError({
         socket: pending.socket,
@@ -1612,7 +1751,11 @@ export class TerminalSessionLifecycle {
     });
   }
 
-  private notifyThreadTerminalsChanged(threadId: string): void {
-    this.options.hub.notifyThread(threadId, ["terminals-changed"]);
+  private notifyTerminalSessionChanged(
+    session: Pick<TerminalSessionRow, "threadId">,
+  ): void {
+    if (session.threadId !== null) {
+      this.options.hub.notifyThread(session.threadId, ["terminals-changed"]);
+    }
   }
 }

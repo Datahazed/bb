@@ -5,6 +5,15 @@ uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
 
 ## Development
 
+From the repo root, the full source dev loop is:
+
+```bash
+pnpm dev:desktop
+```
+
+That starts the source dev server and the Electron shell through
+`scripts/bb-dev-app`. To run only the desktop package task directly:
+
 ```bash
 pnpm exec turbo run dev --filter=@bb/desktop
 ```
@@ -140,8 +149,8 @@ codesign --verify --deep --strict --verbose=2 /path/to/bb.app
 
 ## Debugging
 
-The Turbo dev task opens DevTools automatically. For a packaged app, run the
-binary with `BB_DESKTOP_OPEN_DEVTOOLS=1`:
+Use the View menu to toggle DevTools. To open them automatically on launch, set
+`BB_DESKTOP_OPEN_DEVTOOLS=1`:
 
 ```bash
 BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/bb

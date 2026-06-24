@@ -302,6 +302,27 @@
       "when": 1781917615702,
       "tag": "0042_careful_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1782173519934,
+      "tag": "0043_threadless_terminal_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1782249376381,
+      "tag": "0044_flimsy_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1782251367423,
+      "tag": "0045_unique_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

@@ -23,35 +23,20 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import {
-  type AttachmentsConfig,
-  type HistoryConfig,
-  type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+import { type HistoryConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
   type QueuedMessageProcessingAction,
 } from "@/components/promptbox/banner/QueuedMessagesList";
-import type {
-  ExecutionControlsProps,
-  ExecutionPermissionConfig,
-} from "@/components/promptbox/ExecutionControls";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
-import { usePromptMentions } from "@/hooks/usePromptMentions";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useComposerArea } from "@/components/promptbox/useComposerArea";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
-import { promptDraftToInput } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -341,23 +326,7 @@ export function SideChatTabContent({
     markThreadRead,
     thread: isActive ? childThreadQuery.data : undefined,
   });
-  // Build the SAME execution + permission configs the main thread builds (see
-  // ThreadDetailPromptArea), seeded from the parent thread's resolved options
-  // and its environment's provider/model catalog. The side chat renders these
-  // through the identical pickers, just disabled (read-only) — so the model and
-  // permission labels match the main thread exactly. Permission is pinned to
-  // "readonly": a side chat never writes to the workspace.
   const defaultExecutionOptions = executionOptionsQuery.data;
-  const threadCreationOptions = useThreadCreationOptions({
-    scope: "component-local",
-    environmentId: sourceThread.environmentId ?? undefined,
-    resetKey: sourceThread.id,
-    initialProviderId: sourceThread.providerId,
-    initialModel: defaultExecutionOptions?.model,
-    initialServiceTier: defaultExecutionOptions?.serviceTier,
-    initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
-    initialPermissionMode: "readonly",
-  });
   // `tab.threadId` only flips after async create resolves and panel state
   // propagates. Keep the in-flight create promise here so repeated submit
   // attempts share one side-chat thread.
@@ -368,41 +337,59 @@ export function SideChatTabContent({
   const observedChildThreadIdRef = useRef<string | null>(childThreadId);
   const isMountedRef = useRef(false);
   const queuedMessageCountRef = useRef(0);
-  const promptDraft = usePromptDraftStorage({
-    kind: "side-chat",
-    parentThreadId: sourceThread.id,
-    tabId: tab.id,
-  });
   const promptContextEnvironmentId =
     childThreadQuery.data?.environmentId ?? sourceThread.environmentId ?? null;
   const promptContextThreadId = childThreadId ?? sourceThread.id;
-  const promptMentions = usePromptMentions(sourceThread.projectId, {
-    currentThreadId: promptContextThreadId,
-    environmentId: promptContextEnvironmentId,
+  // Build the SAME execution + permission configs the main thread builds (see
+  // ThreadDetailPromptArea), seeded from the parent thread's resolved options
+  // and its environment's provider/model catalog. The side chat renders these
+  // through the identical pickers, just disabled (read-only, via the
+  // FollowUpPromptBox `readOnly` flag below) — so the model and permission
+  // labels match the main thread exactly. Permission is pinned to "readonly":
+  // a side chat never writes to the workspace.
+  const composerArea = useComposerArea({
+    creationOptions: {
+      scope: "component-local",
+      environmentId: sourceThread.environmentId ?? undefined,
+      resetKey: sourceThread.id,
+      initialProviderId: sourceThread.providerId,
+      initialModel: defaultExecutionOptions?.model,
+      initialServiceTier: defaultExecutionOptions?.serviceTier,
+      initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
+      initialPermissionMode: "readonly",
+    },
+    draftScope: {
+      kind: "side-chat",
+      parentThreadId: sourceThread.id,
+      tabId: tab.id,
+    },
+    mentionsProjectId: sourceThread.projectId,
+    mentions: {
+      currentThreadId: promptContextThreadId,
+      environmentId: promptContextEnvironmentId,
+    },
+    commands: {
+      projectId: sourceThread.projectId,
+      providerId: sourceThread.providerId,
+      environmentId: promptContextEnvironmentId,
+    },
+    resolveMentionLink,
+    attachments: { projectId: sourceThread.projectId },
+    execution: { readOnly: true },
+    permission: { kind: "read-only", value: SIDE_CHAT_PERMISSION_MODE },
   });
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const providerPromptActions = useMemo(
-    () =>
-      buildProviderPromptActionProps(
-        threadCreationOptions.selectedProviderComposerActions ?? [],
-      ),
-    [threadCreationOptions.selectedProviderComposerActions],
-  );
-  const promptActions = useMemo(
-    () => withLoopPromptAction(providerPromptActions.promptActions),
-    [providerPromptActions.promptActions],
-  );
-  const commandSuggestions = useCommandSuggestions({
-    projectId: sourceThread.projectId,
-    providerId: sourceThread.providerId,
-    skillsTrigger: providerPromptActions.skillsTrigger,
-    environmentId: promptContextEnvironmentId,
-    query: commandQuery,
-  });
-  const uploadPromptAttachment = useUploadPromptAttachment();
+  const {
+    attachmentsConfig,
+    composer,
+    executionConfig,
+    permissionConfig,
+    promptActions,
+    promptDraft,
+    setAttachmentError,
+    typeaheadConfig,
+  } = composerArea;
 
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
   const [optimisticFirstUserRow, setOptimisticFirstUserRow] =
@@ -411,25 +398,8 @@ export function SideChatTabContent({
     action: QueuedMessageProcessingAction;
     id: string;
   } | null>(null);
-  const handleChangeMessage = useCallback(
-    (nextValue: string, nextMentions: PromptTextMention[]) => {
-      promptDraft.setTextAndMentions(nextValue, nextMentions);
-    },
-    [promptDraft],
-  );
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const currentPromptDraftInput = useMemo(
-    () => promptDraftToInput(currentPromptDraft),
-    [currentPromptDraft],
-  );
-  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+  const { currentPromptDraft, currentPromptDraftInput, hasPromptDraftInput } =
+    composer;
 
   // The anchored-message reply reference: present only when the anchor is NOT
   // the parent's last conversation message (the most recent exchange needs no
@@ -706,31 +676,6 @@ export function SideChatTabContent({
     : isSideChatProvisioning
         ? "Provisioning side chat..."
         : "Reply in the side chat…";
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) {
-        return;
-      }
-
-      setAttachmentError(null);
-      const failedFiles: string[] = [];
-      for (const file of files) {
-        try {
-          const uploaded = await uploadPromptAttachment.mutateAsync({
-            projectId: sourceThread.projectId,
-            file,
-          });
-          promptDraft.addAttachment(uploaded);
-        } catch {
-          failedFiles.push(file.name);
-        }
-      }
-      if (failedFiles.length > 0) {
-        setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
-      }
-    },
-    [promptDraft, sourceThread.projectId, uploadPromptAttachment],
-  );
   const handleSubmit = useCallback(() => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
@@ -784,6 +729,7 @@ export function SideChatTabContent({
     isSideChatTurnSubmitting,
     promptDraft,
     sendOrQueueSideChatInput,
+    setAttachmentError,
     sideChatRuntimeDisplayStatus,
     tab.id,
   ]);
@@ -889,6 +835,7 @@ export function SideChatTabContent({
     promptDraft,
     queuedMessages,
     sendThreadMessage,
+    setAttachmentError,
   ]);
 
   const handleEditQueuedMessage = useCallback(
@@ -1030,7 +977,7 @@ export function SideChatTabContent({
       isFollowUpSubmitting: isSideChatTurnSubmitting,
       message: promptDraft.text,
       mentionRanges: promptDraft.mentions,
-      onChangeMessage: handleChangeMessage,
+      onChangeMessage: composer.onChangeMessage,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
       promptPlaceholder: composerPlaceholder,
@@ -1040,8 +987,8 @@ export function SideChatTabContent({
     }),
     [
       canSubmitModifierShortcut,
+      composer.onChangeMessage,
       composerPlaceholder,
-      handleChangeMessage,
       handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
@@ -1051,147 +998,6 @@ export function SideChatTabContent({
       sideChatRuntimeDisplayStatus,
       sideChatSubmitMode,
     ],
-  );
-
-  const attachmentsConfig = useMemo<AttachmentsConfig>(
-    () => ({
-      items: promptDraft.attachments,
-      projectId: sourceThread.projectId,
-      isAttaching: uploadPromptAttachment.isPending,
-      error: attachmentError,
-      onAttachFiles: handleAttachFiles,
-      onRemove: promptDraft.removeAttachment,
-    }),
-    [
-      attachmentError,
-      handleAttachFiles,
-      promptDraft.attachments,
-      promptDraft.removeAttachment,
-      sourceThread.projectId,
-      uploadPromptAttachment.isPending,
-    ],
-  );
-
-  const typeaheadConfig = useMemo<TypeaheadConfig>(
-    () => ({
-      mention: {
-        suggestions: promptMentions.suggestions,
-        isLoading: promptMentions.isLoading,
-        isError: promptMentions.isError,
-        onQueryChange: promptMentions.setQuery,
-        resolveLink: resolveMentionLink,
-      },
-      command: {
-        trigger: commandSuggestions.trigger,
-        suggestions: commandSuggestions.suggestions,
-        isLoading: commandSuggestions.isLoading,
-        isError: commandSuggestions.isError,
-        hasMore: commandSuggestions.hasMore,
-        isLoadingMore: commandSuggestions.isLoadingMore,
-        loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
-      },
-    }),
-    [
-      commandSuggestions.hasMore,
-      commandSuggestions.isError,
-      commandSuggestions.isLoading,
-      commandSuggestions.isLoadingMore,
-      commandSuggestions.loadMore,
-      commandSuggestions.suggestions,
-      commandSuggestions.trigger,
-      promptMentions.isError,
-      promptMentions.isLoading,
-      promptMentions.setQuery,
-      promptMentions.suggestions,
-      resolveMentionLink,
-    ],
-  );
-
-  // Built the same shape as the main thread's executionConfig (see
-  // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
-  // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
-  // are display-only and their `onChange` is a no-op. The hook supplies the
-  // inherited display values (provider / model / reasoning / permission options).
-  const {
-    selectedProviderId,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderDisplayName,
-    selectedModel,
-    serviceTier,
-    reasoningLevel,
-    activeModel,
-    modelOptions,
-    moreModelOptions,
-    modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
-    supportsServiceTier,
-    serviceTierSupportByProvider,
-    isLoadingModels,
-  } = threadCreationOptions;
-
-  const executionConfig = useMemo<ExecutionControlsProps>(
-    () => ({
-      provider: {
-        options: providerOptions,
-        selectedId: selectedProviderId,
-        hasMultiple: hasMultipleProviders,
-        displayName: selectedProviderDisplayName,
-      },
-      model: {
-        active: activeModel,
-        selected: selectedModel,
-        options: modelOptions,
-        moreOptions: moreModelOptions,
-        loadError: modelLoadError,
-        isLoading: isLoadingModels,
-        loadFailed: modelLoadError !== null,
-        onChange: noop,
-      },
-      serviceTier: {
-        value: serviceTier,
-        onChange: noop,
-        supported: supportsServiceTier,
-        supportByProvider: serviceTierSupportByProvider,
-      },
-      reasoning: {
-        value: reasoningLevel,
-        options: reasoningOptions,
-        onChange: noop,
-      },
-    }),
-    [
-      activeModel,
-      hasMultipleProviders,
-      isLoadingModels,
-      modelLoadError,
-      modelOptions,
-      moreModelOptions,
-      providerOptions,
-      reasoningLevel,
-      reasoningOptions,
-      selectedModel,
-      selectedProviderDisplayName,
-      selectedProviderId,
-      serviceTier,
-      serviceTierSupportByProvider,
-      supportsServiceTier,
-    ],
-  );
-
-  const permissionConfig = useMemo<ExecutionPermissionConfig>(
-    () => ({
-      // Pinned to the same constant the create request uses, so the displayed
-      // label can't drift from the side chat's actual (always read-only) reach.
-      value: SIDE_CHAT_PERMISSION_MODE,
-      options: permissionModeOptions,
-      onChange: noop,
-      supported: supportsPermissionModeSelection,
-    }),
-    [permissionModeOptions, supportsPermissionModeSelection],
   );
 
   const environmentSummary = useMemo(() => {

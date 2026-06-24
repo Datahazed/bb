@@ -37,6 +37,7 @@ import {
   decodeToolCallResponsePayload,
   type BridgeToolCallRequest,
 } from "../../shared/bridge-tool-calls.js";
+import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
@@ -742,7 +743,7 @@ function buildSessionEnv(
   envOverrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
   const sessionEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...withoutBridgeRuntimeEnv(process.env),
     ...envOverrides,
     CLAUDE_CODE_ENTRYPOINT: "cli",
   };
@@ -1215,6 +1216,20 @@ async function handleThreadResume(
   const requestedProviderThreadId = params.providerThreadId ?? undefined;
 
   const existing = sessions.get(threadId);
+  if (
+    existing &&
+    requestedProviderThreadId &&
+    !existing.closing &&
+    !existing.streamEnded &&
+    existing.providerThreadId === requestedProviderThreadId
+  ) {
+    sendResult(id, {
+      threadId,
+      providerThreadId: requestedProviderThreadId,
+    });
+    return;
+  }
+
   if (existing) {
     await closeThreadSession({
       graceful: false,

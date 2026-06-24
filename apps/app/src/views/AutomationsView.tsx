@@ -120,8 +120,6 @@ export interface AutomationRowMenuItem {
   label: string;
   icon: IconName;
   destructive: boolean;
-  /** True when selecting should keep the menu open (the confirm dialog opens). */
-  preventClose: boolean;
   run: () => void;
 }
 
@@ -143,7 +141,6 @@ export function buildAutomationRowMenuItems(
           label: "Pause",
           icon: "Pause",
           destructive: false,
-          preventClose: false,
           run: () => actions.onPause(entry),
         }
       : {
@@ -151,7 +148,6 @@ export function buildAutomationRowMenuItems(
           label: "Resume",
           icon: "Play",
           destructive: false,
-          preventClose: false,
           run: () => actions.onResume(entry),
         },
     {
@@ -159,7 +155,6 @@ export function buildAutomationRowMenuItems(
       label: "Run now",
       icon: "Zap",
       destructive: false,
-      preventClose: false,
       run: () => actions.onRun(entry),
     },
     {
@@ -167,7 +162,6 @@ export function buildAutomationRowMenuItems(
       label: "Delete",
       icon: "Trash2",
       destructive: true,
-      preventClose: true,
       run: () => actions.onDelete(entry),
     },
   ];
@@ -186,10 +180,7 @@ function AutomationRowActionItems({ entry, actions }: AutomationRowProps) {
                 ? "text-destructive focus:text-destructive"
                 : undefined
             }
-            onSelect={(event) => {
-              if (item.preventClose) {
-                event.preventDefault();
-              }
+            onSelect={() => {
               item.run();
             }}
           >
