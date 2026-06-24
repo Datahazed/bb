@@ -3,6 +3,7 @@ import {
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
+  buildModelCatalogFromSessionModels,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
   findAcpThoughtLevelConfigOption,
@@ -473,6 +474,31 @@ describe("acp configOptions model catalog", () => {
         options: [],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("acp sessionModels model catalog", () => {
+  it("treats null model descriptions as missing descriptions", () => {
+    expect(
+      buildModelCatalogFromSessionModels({
+        currentModelId: "qwen-coder-plus",
+        availableModels: [
+          {
+            modelId: "qwen-coder-plus",
+            name: "Qwen Coder Plus",
+            description: null,
+          },
+        ],
+      }),
+    ).toMatchObject([
+      {
+        id: "qwen-coder-plus",
+        model: "qwen-coder-plus",
+        displayName: "Qwen Coder Plus",
+        description: "",
+        isDefault: true,
+      },
+    ]);
   });
 });
 

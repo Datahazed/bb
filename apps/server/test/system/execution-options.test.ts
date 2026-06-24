@@ -13,6 +13,12 @@ import {
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+const KNOWN_ACP_PROVIDER_IDS = [
+  "acp-opencode",
+  "acp-github-copilot",
+  "acp-qwen-code",
+] as const;
+
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {
     const catalogModel = availableModelFixture({
@@ -187,7 +193,7 @@ describe("resolveSystemExecutionOptions", () => {
         id: "host-execution-options-known-acp-installed",
       });
       const catalogModel = availableModelFixture({
-        model: "opencode/default",
+        model: "github-copilot/default",
       });
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
@@ -199,10 +205,10 @@ describe("resolveSystemExecutionOptions", () => {
               result: {
                 agents: request.command.agents.map((agent) => ({
                   ...agent,
-                  installed: agent.id === "acp-opencode",
+                  installed: agent.id === "acp-github-copilot",
                   executablePath:
-                    agent.id === "acp-opencode"
-                      ? "/opt/homebrew/bin/opencode"
+                    agent.id === "acp-github-copilot"
+                      ? "/opt/homebrew/bin/copilot"
                       : null,
                 })),
               },
@@ -223,14 +229,14 @@ describe("resolveSystemExecutionOptions", () => {
 
       const response = await resolveSystemExecutionOptions(harness.deps, {
         hostId: host.id,
-        providerId: "acp-opencode",
+        providerId: "acp-github-copilot",
       });
 
       expect(response.providers).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            id: "acp-opencode",
-            displayName: "opencode",
+            id: "acp-github-copilot",
+            displayName: "GitHub Copilot",
             available: true,
           }),
         ]),
@@ -241,16 +247,102 @@ describe("resolveSystemExecutionOptions", () => {
       );
       expect(responder.requests[1].command).toEqual({
         type: "provider.list_models",
-        providerId: "acp-opencode",
+        providerId: "acp-github-copilot",
         acpLaunchSpec: {
-          displayName: "opencode",
-          command: "opencode",
-          args: ["acp"],
+          displayName: "GitHub Copilot",
+          command: "copilot",
+          args: ["--acp", "--stdio"],
           env: {},
         },
       });
     });
   });
+
+  it.each([
+    {
+      providerId: "acp-opencode",
+      displayName: "opencode",
+      command: "opencode",
+      args: ["acp"],
+    },
+    {
+      providerId: "acp-github-copilot",
+      displayName: "GitHub Copilot",
+      command: "copilot",
+      args: ["--acp", "--stdio"],
+    },
+    {
+      providerId: "acp-qwen-code",
+      displayName: "Qwen Code",
+      command: "qwen",
+      args: ["--acp"],
+    },
+  ])(
+    "sends the known ACP launch spec for $providerId",
+    async ({ providerId, displayName, command, args }) => {
+      await withTestHarness({}, async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: `host-execution-options-known-${providerId}`,
+        });
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: (request) => {
+            if (request.command.type === "known_acp_agents.status") {
+              return {
+                ok: true,
+                result: {
+                  agents: request.command.agents.map((agent) => ({
+                    ...agent,
+                    installed: agent.id === providerId,
+                    executablePath:
+                      agent.id === providerId
+                        ? `/usr/local/bin/${command}`
+                        : null,
+                  })),
+                },
+              };
+            }
+            if (request.command.type === "provider.list_models") {
+              return {
+                ok: true,
+                result: {
+                  models: [],
+                  selectedOnlyModels: [],
+                },
+              };
+            }
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          },
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId,
+        });
+
+        expect(response.providers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: providerId,
+              displayName,
+              available: true,
+            }),
+          ]),
+        );
+        expect(responder.requests[1].command).toEqual({
+          type: "provider.list_models",
+          providerId,
+          acpLaunchSpec: {
+            displayName,
+            command,
+            args,
+            env: {},
+          },
+        });
+      });
+    },
+  );
 
   it("omits known ACP agents that the host reports missing", async () => {
     await withTestHarness({}, async (harness) => {
@@ -281,8 +373,51 @@ describe("resolveSystemExecutionOptions", () => {
         hostId: host.id,
       });
 
-      expect(providers.map((provider) => provider.id)).not.toContain(
-        "acp-opencode",
+      expect(providers.map((provider) => provider.id)).toEqual(
+        expect.not.arrayContaining([...KNOWN_ACP_PROVIDER_IDS]),
+      );
+    });
+  });
+
+  it("rejects requested providers that are not configured or available", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-provider-unavailable",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: false,
+                  executablePath: null,
+                })),
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      await expect(
+        resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "acp-gemini",
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message: 'Provider "acp-gemini" is not available.',
+        },
+      });
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status"],
       );
     });
   });
@@ -368,9 +503,9 @@ describe("resolveSystemExecutionOptions", () => {
               expect.objectContaining({ id: "acp-example-agent" }),
             ]),
           );
-          expect(
-            response.providers.map((provider) => provider.id),
-          ).not.toContain("acp-opencode");
+          expect(response.providers.map((provider) => provider.id)).toEqual(
+            expect.not.arrayContaining([...KNOWN_ACP_PROVIDER_IDS]),
+          );
           expect(response.models).toEqual([catalogModel]);
           expect(response.modelLoadError).toBeNull();
           expect(
@@ -416,8 +551,8 @@ describe("resolveSystemExecutionOptions", () => {
             expect.objectContaining({ id: "acp-example-agent" }),
           ]),
         );
-        expect(response.providers.map((provider) => provider.id)).not.toContain(
-          "acp-opencode",
+        expect(response.providers.map((provider) => provider.id)).toEqual(
+          expect.not.arrayContaining([...KNOWN_ACP_PROVIDER_IDS]),
         );
         expect(response.models).toEqual([
           expect.objectContaining({
@@ -454,6 +589,18 @@ describe("resolveSystemExecutionOptions", () => {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
+            if (request.command.type === "known_acp_agents.status") {
+              return {
+                ok: true,
+                result: {
+                  agents: request.command.agents.map((agent) => ({
+                    ...agent,
+                    installed: false,
+                    executablePath: null,
+                  })),
+                },
+              };
+            }
             if (request.command.type === "provider.list_models") {
               return {
                 ok: true,
@@ -476,8 +623,15 @@ describe("resolveSystemExecutionOptions", () => {
         expect(opencodeProviders[0].displayName).toBe("Custom opencode");
         expect(
           responder.requests.map((request) => request.command.type),
-        ).toEqual(["provider.list_models"]);
+        ).toEqual(["known_acp_agents.status", "provider.list_models"]);
         expect(responder.requests[0].command).toEqual({
+          type: "known_acp_agents.status",
+          agents: [
+            { id: "acp-github-copilot", executableName: "copilot" },
+            { id: "acp-qwen-code", executableName: "qwen" },
+          ],
+        });
+        expect(responder.requests[1].command).toEqual({
           type: "provider.list_models",
           providerId: "acp-opencode",
           acpLaunchSpec: {

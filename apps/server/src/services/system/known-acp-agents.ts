@@ -29,6 +29,22 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     env: {},
     executableName: "opencode",
   },
+  {
+    id: "acp-github-copilot",
+    displayName: "GitHub Copilot",
+    command: "copilot",
+    args: ["--acp", "--stdio"],
+    env: {},
+    executableName: "copilot",
+  },
+  {
+    id: "acp-qwen-code",
+    displayName: "Qwen Code",
+    command: "qwen",
+    args: ["--acp"],
+    env: {},
+    executableName: "qwen",
+  },
 ];
 
 export function listKnownAcpAgentExecutableQueries(): KnownAcpAgentExecutableQuery[] {

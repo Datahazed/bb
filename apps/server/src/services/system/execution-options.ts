@@ -82,6 +82,14 @@ function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   });
 }
 
+function buildProviderUnavailableError(providerId: string): ApiError {
+  return new ApiError(
+    400,
+    "invalid_request",
+    `Provider "${providerId}" is not available.`,
+  );
+}
+
 function listConfiguredSystemProviderInfos(
   customAcpAgents: CustomAcpAgent[],
   installedKnownAcpAgents: readonly KnownAcpAgent[],
@@ -322,6 +330,14 @@ export async function resolveSystemExecutionOptions(
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;
+  if (
+    query.providerId !== undefined &&
+    requestedProvider === undefined &&
+    configuredRequestedProvider === undefined
+  ) {
+    await earlyModelResultPromise?.catch(() => undefined);
+    throw buildProviderUnavailableError(query.providerId);
+  }
   const modelsProvider =
     earlyModelResultPromise !== null
       ? configuredRequestedProvider

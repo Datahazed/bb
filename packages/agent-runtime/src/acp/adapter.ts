@@ -438,11 +438,8 @@ function buildAcpApprovalDecisions(
 ): PendingInteractionApprovalDecision[] {
   const kinds = new Set(params.options.map((option) => option.kind));
   const decisions: PendingInteractionApprovalDecision[] = [];
-  if (kinds.has("allow_once")) {
+  if (kinds.has("allow_once") || kinds.has("allow_always")) {
     decisions.push("allow_once");
-  }
-  if (kinds.has("allow_always")) {
-    decisions.push("allow_for_session");
   }
   if (kinds.has("reject_once") || kinds.has("reject_always")) {
     decisions.push("deny");
@@ -1405,10 +1402,12 @@ export function createAcpProviderAdapter(
       }
       const toolCall = parsed.data.toolCall;
       const command =
-        toolCall?.kind === "execute"
-          ? (toOptionalString(toolCall.command) ??
-            toOptionalString(toolCall.title))
-          : undefined;
+        (toolCall?.kind === "execute"
+          ? toOptionalString(toolCall.command)
+          : null) ??
+        toOptionalString(toolCall?.title) ??
+        toolCall?.kind ??
+        "ACP permission request";
       return {
         requestId: request.id,
         method: request.method,
@@ -1417,23 +1416,14 @@ export function createAcpProviderAdapter(
         turnId: parsed.data.turnId,
         payload: {
           kind: "approval",
-          subject:
-            toolCall && command
-              ? {
-                  kind: "command",
-                  itemId: toolCall.toolCallId,
-                  command,
-                  cwd: null,
-                  actions: [{ type: "unknown", command }],
-                  sessionGrant: null,
-                }
-              : {
-                  kind: "permission_grant",
-                  itemId: toolCall?.toolCallId ?? "acp-permission",
-                  toolName:
-                    toOptionalString(toolCall?.title) ?? toolCall?.kind ?? null,
-                  permissions: { network: null, fileSystem: null },
-                },
+          subject: {
+            kind: "command",
+            itemId: toolCall?.toolCallId ?? "acp-permission",
+            command,
+            cwd: null,
+            actions: [{ type: "unknown", command }],
+            sessionGrant: null,
+          },
           reason: null,
           availableDecisions: buildAcpApprovalDecisions(parsed.data),
         },

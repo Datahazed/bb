@@ -78,8 +78,11 @@ bundled `bb` CLI or a standalone host daemon.
 ## Custom ACP Agents
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
-be launched as `opencode acp`.
+host. bb currently detects:
+
+- `opencode` as `acp-opencode`, launched with `opencode acp`
+- `copilot` as `acp-github-copilot`, launched with `copilot --acp --stdio`
+- `qwen` as `acp-qwen-code`, launched with `qwen --acp`
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
@@ -88,7 +91,7 @@ manual-file workflow used for custom models. After editing the file, run
 Use `customAcpAgents` for arbitrary ACP agents, or to override the launch
 command for a known provider id such as `acp-opencode`. To override
 `acp-opencode`, set `"id": "opencode"`; bb derives the provider id by adding
-the `acp-` prefix.
+the `acp-` prefix. Other known providers follow the same rule.
 
 Example:
 

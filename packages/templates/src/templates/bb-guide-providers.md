@@ -17,7 +17,8 @@ When provider and model are omitted from bb thread spawn, the project's remember
 defaults apply.
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, opencode on PATH appears as provider acp-opencode.
+host. For example, opencode, copilot, and qwen on PATH appear as providers
+acp-opencode, acp-github-copilot, and acp-qwen-code.
 
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON

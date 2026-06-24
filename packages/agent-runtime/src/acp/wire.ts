@@ -231,7 +231,7 @@ export const acpSessionModelSchema = z
   .object({
     modelId: z.string(),
     name: z.string().optional(),
-    description: z.string().optional(),
+    description: z.string().nullable().optional(),
   })
   .passthrough();
 export type AcpSessionModel = z.infer<typeof acpSessionModelSchema>;

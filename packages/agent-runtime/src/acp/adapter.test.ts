@@ -1028,12 +1028,12 @@ describe("acp adapter interactive requests", () => {
           sessionGrant: null,
         },
         reason: null,
-        availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        availableDecisions: ["allow_once", "deny"],
       },
     });
   });
 
-  it("decodes non-execute permission requests as permission grants", () => {
+  it("decodes non-execute permission requests as command approvals", () => {
     const adapter = createAdapter();
     const decoded = adapter.decodeInteractiveRequest?.({
       id: 8,
@@ -1052,10 +1052,12 @@ describe("acp adapter interactive requests", () => {
     expect(decoded?.payload).toEqual({
       kind: "approval",
       subject: {
-        kind: "permission_grant",
+        kind: "command",
         itemId: "call-2",
-        toolName: "Fetch docs",
-        permissions: { network: null, fileSystem: null },
+        command: "Fetch docs",
+        cwd: null,
+        actions: [{ type: "unknown", command: "Fetch docs" }],
+        sessionGrant: null,
       },
       reason: null,
       availableDecisions: ["allow_once", "deny"],

@@ -131,4 +131,23 @@ describe("thread execution plan input sources", () => {
       });
     });
   });
+
+  it("rejects providers that are not built in, custom ACP, or known ACP", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-source-aware-unsupported-provider",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      expect(() =>
+        resolveProjectExecutionDefaultsForCreate(harness.deps, {
+          model: "acp-default",
+          projectId: project.id,
+          providerId: "acp-gemini",
+        }),
+      ).toThrow('Provider "acp-gemini" is not supported.');
+    });
+  });
 });

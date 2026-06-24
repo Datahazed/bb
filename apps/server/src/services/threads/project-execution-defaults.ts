@@ -2,6 +2,8 @@ import {
   getProjectExecutionDefaults,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
+import { isAgentProviderId } from "@bb/agent-providers";
+import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import type {
   ProjectExecutionDefaults,
   ResolvedThreadExecutionOptions,
@@ -13,6 +15,7 @@ import type {
   ThreadCreateServiceRequestInput,
 } from "./thread-create-request.js";
 import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js";
+import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
 
 export interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
@@ -72,8 +75,21 @@ function resolveRequestedCreateExecutionValue<TValue>({
   return sources[field] === undefined ? undefined : value;
 }
 
+function isSupportedCreateProviderId(
+  deps: Pick<AppDeps, "config">,
+  providerId: string,
+): boolean {
+  return (
+    isAgentProviderId(providerId) ||
+    findKnownAcpAgentForProviderId(providerId) !== undefined ||
+    deps.config.customAcpAgents.some(
+      (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
+    )
+  );
+}
+
 export function resolveProjectExecutionDefaultsForCreate(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "config" | "db">,
   args: ResolveProjectExecutionDefaultsForCreateArgs,
 ): ResolvedProjectExecutionDefaultsForCreate {
   const storedDefaults = getProjectExecutionDefaults(deps.db, {
@@ -94,6 +110,14 @@ export function resolveProjectExecutionDefaultsForCreate(
     storedDefaults,
   });
   const { executionDefaults, providerId } = resolution;
+
+  if (!isSupportedCreateProviderId(deps, providerId)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Provider "${providerId}" is not supported.`,
+    );
+  }
 
   if (!requestedModel && !executionDefaults) {
     throw new ApiError(
