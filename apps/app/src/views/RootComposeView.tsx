@@ -1145,6 +1145,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     selectedProviderId,
     selectedThreadModel,
     serviceTier,
+    setAttachmentError,
     supportsServiceTier,
   ]);
 
