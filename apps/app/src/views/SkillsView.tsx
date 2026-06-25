@@ -323,31 +323,6 @@ const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
   plugin: "Plugin",
 };
 
-/**
- * Read-only SKILL.md body, rendered with the app's actual file viewer
- * (FilePreview) — the same component, markdown rendering, paper-wash body, and
- * frontmatter treatment used for `.md` files in threads. Content is passed
- * through verbatim; the viewer owns how frontmatter renders. The dialog supplies
- * its own title, so the viewer runs header-less. Presentational and exported so
- * stories iterate on it without the dialog's queries.
- */
-export function SkillContentPreview({ content }: { content: string }) {
-  return (
-    <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
-      <FilePreview
-        path="SKILL.md"
-        headerMode="none"
-        state={{
-          kind: "ready",
-          file: { name: "SKILL.md", contents: content },
-          lineRange: null,
-          showMarkdownModeToggle: false,
-        }}
-      />
-    </div>
-  );
-}
-
 export interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
   /** Already-fetched SKILL.md source. */
@@ -527,46 +502,62 @@ export function SkillDetailDialogView({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          {/* pr-7 keeps the action cluster clear of the dialog's ✕ close. */}
-          <div className="flex items-center gap-2 pr-7">
-            <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-base">
-              <Icon
-                name="Zap"
-                className="size-4 shrink-0 text-muted-foreground"
+          {/* Title only; actions live on the viewer's own toolbar below. pr-7
+              keeps a long title clear of the dialog's ✕ close. */}
+          <DialogTitle className="flex min-w-0 items-center gap-2 pr-7 text-base">
+            <Icon name="Zap" className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">{skill?.name}</span>
+            {skill?.provider ? (
+              <ProviderLogo
+                providerId={skill.provider}
+                className="size-3.5 shrink-0"
               />
-              <span className="min-w-0 truncate">{skill?.name}</span>
-              {skill?.provider ? (
-                <ProviderLogo
-                  providerId={skill.provider}
-                  className="size-3.5 shrink-0"
-                />
-              ) : null}
-              {skill ? (
-                <Pill variant="outline" className="ml-1 shrink-0">
-                  {SCOPE_LABELS[skill.scope]}
-                </Pill>
-              ) : null}
-            </DialogTitle>
-            <div className="flex shrink-0 items-center gap-1">
-              {headerActions}
-            </div>
-          </div>
+            ) : null}
+            {skill ? (
+              <Pill variant="outline" className="ml-1 shrink-0">
+                {SCOPE_LABELS[skill.scope]}
+              </Pill>
+            ) : null}
+          </DialogTitle>
         </DialogHeader>
 
         {isContentError ? (
           <p className="text-sm text-destructive">Failed to load the skill.</p>
         ) : isLoadingContent ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : editing ? (
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            aria-label="SKILL.md"
-            className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
         ) : (
-          <SkillContentPreview content={content} />
+          // The viewer carries its own toolbar (actions in its top-right), so
+          // they read as part of the document surface instead of crowding the
+          // dialog's ✕.
+          <div className="overflow-hidden rounded-md border border-border">
+            {editing || canManage || canOpenInEditor ? (
+              <div className="flex h-9 items-center justify-end gap-1 border-b border-border-seam bg-surface-raised px-2">
+                {headerActions}
+              </div>
+            ) : null}
+            {editing ? (
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                aria-label="SKILL.md"
+                className="h-[54dvh] w-full resize-none border-0 bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+              />
+            ) : (
+              <div className="max-h-[54dvh] overflow-auto">
+                <FilePreview
+                  path="SKILL.md"
+                  headerMode="none"
+                  state={{
+                    kind: "ready",
+                    file: { name: "SKILL.md", contents: content },
+                    lineRange: null,
+                    showMarkdownModeToggle: false,
+                  }}
+                />
+              </div>
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>
