@@ -51,10 +51,6 @@ export interface CollapsedChildActivity {
   unread: boolean;
   /** At least one unread child has reached the terminal error state. */
   unreadError: boolean;
-  /** At least one hidden child has uncommitted or unmerged git changes. */
-  gitChanges: boolean;
-  /** At least one hidden child has an associated pull request. */
-  pullRequest: boolean;
 }
 
 export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
@@ -64,32 +60,11 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   workflow: false,
   unread: false,
   unreadError: false,
-  gitChanges: false,
-  pullRequest: false,
 };
 
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
-  Pick<
-    ThreadListEntry,
-    "activity" | "environmentStatusSummary" | "hasPendingInteraction"
-  >;
-
-export function threadHasEnvironmentGitChanges(
-  thread: Pick<ThreadListEntry, "environmentStatusSummary">,
-): boolean {
-  const git = thread.environmentStatusSummary.git;
-  return git.state === "available" && git.snapshot.hasChanges;
-}
-
-export function threadHasPullRequest(
-  thread: Pick<ThreadListEntry, "environmentStatusSummary">,
-): boolean {
-  const pullRequest = thread.environmentStatusSummary.pullRequest;
-  return (
-    pullRequest.state === "available" && pullRequest.pullRequest !== null
-  );
-}
+  Pick<ThreadListEntry, "activity" | "hasPendingInteraction">;
 
 /** Rolls a child thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
@@ -101,15 +76,7 @@ export function getCollapsedChildActivity(
   let workflow = false;
   let unread = false;
   let unreadError = false;
-  let gitChanges = false;
-  let pullRequest = false;
   for (const thread of threads) {
-    if (threadHasEnvironmentGitChanges(thread)) {
-      gitChanges = true;
-    }
-    if (threadHasPullRequest(thread)) {
-      pullRequest = true;
-    }
     if (thread.hasPendingInteraction) {
       // Mirror leaf rows: a blocked thread reads as pending, not also working.
       pending = true;
@@ -135,8 +102,6 @@ export function getCollapsedChildActivity(
     workflow,
     unread,
     unreadError,
-    gitChanges,
-    pullRequest,
   };
 }
 

@@ -19,10 +19,6 @@ function makeChild(
     parentThreadId: null,
     hasPendingInteraction: false,
     activity: { activeWorkflowCount: 0 },
-    environmentStatusSummary: {
-      git: { state: "not_applicable", refreshedAt: 10 },
-      pullRequest: { state: "not_applicable", refreshedAt: 10 },
-    },
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };
@@ -132,8 +128,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
       expect(getCollapsedChildActivity([makeChild(), makeChild()])).toEqual({
         pending: false,
@@ -142,8 +136,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
     });
 
@@ -155,8 +147,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
       expect(getCollapsedChildActivity([pendingChild])).toEqual({
         pending: true,
@@ -165,8 +155,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
       expect(getCollapsedChildActivity([unreadChild])).toEqual({
         pending: false,
@@ -175,8 +163,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: true,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
       expect(getCollapsedChildActivity([unreadErrorChild])).toEqual({
         pending: false,
@@ -185,8 +171,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: true,
         unreadError: true,
-        gitChanges: false,
-        pullRequest: false,
       });
     });
 
@@ -200,8 +184,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: true,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
       expect(
         getCollapsedChildActivity([
@@ -217,8 +199,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: true,
         unreadError: true,
-        gitChanges: false,
-        pullRequest: false,
       });
     });
 
@@ -235,8 +215,6 @@ describe("thread-activity", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       });
     });
 
@@ -252,78 +230,6 @@ describe("thread-activity", () => {
         workflow: true,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
-      });
-    });
-
-    it("rolls up child git and pull request signals", () => {
-      expect(
-        getCollapsedChildActivity([
-          makeChild({
-            environmentStatusSummary: {
-              git: {
-                state: "available",
-                refreshedAt: 20,
-                snapshot: {
-                  checkout: {
-                    kind: "branch",
-                    branchName: "feature/status-signals",
-                    headSha: "abc123",
-                  },
-                  currentBranch: "feature/status-signals",
-                  defaultBranch: "main",
-                  hasChanges: true,
-                  workingTree: {
-                    fileCount: 1,
-                    insertions: 4,
-                    deletions: 1,
-                    files: [{ path: "ThreadRow.tsx", status: "M" }],
-                    hasUncommittedChanges: true,
-                    state: "dirty_uncommitted",
-                  },
-                  mergeBase: null,
-                },
-              },
-              pullRequest: { state: "not_applicable", refreshedAt: 20 },
-            },
-          }),
-          makeChild({
-            environmentStatusSummary: {
-              git: { state: "not_applicable", refreshedAt: 20 },
-              pullRequest: {
-                state: "available",
-                refreshedAt: 20,
-                pullRequest: {
-                  number: 42,
-                  title: "Show thread status signals",
-                  state: "open",
-                  url: "https://github.com/acme/bb/pull/42",
-                  baseRefName: "main",
-                  headRefName: "feature/status-signals",
-                  updatedAt: "2026-01-01T00:00:00.000Z",
-                  checks: {
-                    state: "passing",
-                    totalCount: 1,
-                    passedCount: 1,
-                    failedCount: 0,
-                    pendingCount: 0,
-                  },
-                  review: { state: "approved", reviewRequestCount: 0 },
-                  mergeability: {
-                    state: "mergeable",
-                    mergeStateStatus: "CLEAN",
-                    mergeable: "MERGEABLE",
-                  },
-                  attention: "ready_to_merge",
-                },
-              },
-            },
-          }),
-        ]),
-      ).toMatchObject({
-        gitChanges: true,
-        pullRequest: true,
       });
     });
 

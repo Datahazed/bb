@@ -381,8 +381,6 @@ describe("buildProjectThreadGroups", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       },
       childCount: 3,
     });
@@ -394,8 +392,6 @@ describe("buildProjectThreadGroups", () => {
         workflow: false,
         unread: false,
         unreadError: false,
-        gitChanges: false,
-        pullRequest: false,
       },
       childCount: 2,
     });
