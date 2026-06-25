@@ -1,7 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -15,7 +17,10 @@ import type { TimelineRow } from "@bb/server-contract";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { Button } from "@/components/ui/button.js";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
-import { HeightTransition } from "@/components/ui/height-transition.js";
+import {
+  HEIGHT_TRANSITION_DURATION_MS,
+  HEIGHT_TRANSITION_EASE_CSS,
+} from "@/components/ui/height-transition.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
@@ -251,52 +256,174 @@ export function ThreadTimelineSurface({
         />
       ) : null}
       <TimelineOngoingIndicator
-        className={TIMELINE_ONGOING_INDICATOR_CLASS}
-        details={activeThinkingDetails}
-        indicatorKey={ongoingIndicatorKey}
-        isThinking={showActiveThinking}
-        label={ongoingIndicatorLabel}
-        style={TIMELINE_ONGOING_INDICATOR_STYLE}
         visible={showOngoingIndicator}
-      />
+      >
+        <TimelineWorkingIndicator
+          key={ongoingIndicatorKey}
+          details={activeThinkingDetails}
+          isThinking={showActiveThinking}
+          label={ongoingIndicatorLabel}
+        />
+      </TimelineOngoingIndicator>
     </ConversationTimeline>
   );
 }
 
-interface TimelineOngoingIndicatorProps {
-  className?: string;
-  details: string | undefined;
-  indicatorKey: string;
-  isThinking: boolean;
-  label: string | undefined;
-  style?: CSSProperties;
+export interface TimelineOngoingIndicatorProps {
+  children: ReactNode;
   visible: boolean;
 }
 
-function TimelineOngoingIndicator({
-  className,
-  details,
-  indicatorKey,
-  isThinking,
-  label,
-  style,
+// Reserve normal-flow height so timeline enter/exit still animates, but paint
+// the indicator independently so row height animations do not drag it around.
+export function TimelineOngoingIndicator({
+  children,
   visible,
 }: TimelineOngoingIndicatorProps) {
+  const placeholderRef = useRef<HTMLDivElement>(null);
+  const visualRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const bottomAnchor = useBottomAnchoredScroll();
+
+  useLayoutEffect(() => {
+    const placeholder = placeholderRef.current;
+    const visual = visualRef.current;
+    const content = contentRef.current;
+    if (!placeholder || !visual || !content) return;
+
+    const scrollElement = bottomAnchor?.getScrollElement() ?? null;
+    let frameId: number | null = null;
+
+    const updatePlacement = () => {
+      const placeholderRect = placeholder.getBoundingClientRect();
+      visual.style.left = `${placeholderRect.left}px`;
+      visual.style.width = `${placeholderRect.width}px`;
+
+      const contentHeight = content.offsetHeight;
+      placeholder.style.height = visible ? `${contentHeight}px` : "0px";
+
+      const scrollRect = scrollElement?.getBoundingClientRect();
+      const footerHeight = readBottomAnchoredFooterHeight(scrollElement);
+      const normalTop = placeholderRect.top;
+      const scrollTop = scrollRect?.top ?? 0;
+      const scrollBottom =
+        scrollRect === undefined
+          ? window.innerHeight
+          : scrollRect.bottom - footerHeight;
+      const maxTop = scrollBottom - contentHeight;
+      const shouldClamp = bottomAnchor?.isAtBottom ?? true;
+      const placedTop = shouldClamp
+        ? Math.max(scrollTop, Math.min(normalTop, maxTop))
+        : normalTop;
+      const placeholderIntersectsScrollport =
+        placeholderRect.bottom > scrollTop && placeholderRect.top < scrollBottom;
+      const showVisual =
+        visible && (shouldClamp || placeholderIntersectsScrollport);
+
+      visual.style.top = `${placedTop}px`;
+      visual.style.opacity = showVisual ? "1" : "0";
+      visual.style.pointerEvents = showVisual ? "auto" : "none";
+    };
+
+    const schedulePlacementUpdate = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        updatePlacement();
+        // AutoHeightContainer animates row-list height in CSS; continuously
+        // sample while visible so the indicator can clamp without frame lag.
+        if (visible) {
+          schedulePlacementUpdate();
+        }
+      });
+    };
+
+    updatePlacement();
+    if (visible) {
+      schedulePlacementUpdate();
+    }
+
+    scrollElement?.addEventListener("scroll", schedulePlacementUpdate, {
+      passive: true,
+    });
+    window.addEventListener("resize", schedulePlacementUpdate);
+
+    let resizeObserver: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(schedulePlacementUpdate);
+      resizeObserver.observe(content);
+      resizeObserver.observe(placeholder);
+      if (placeholder.parentElement) {
+        resizeObserver.observe(placeholder.parentElement);
+      }
+      if (scrollElement) {
+        resizeObserver.observe(scrollElement);
+        if (scrollElement.firstElementChild) {
+          resizeObserver.observe(scrollElement.firstElementChild);
+        }
+      }
+    }
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      resizeObserver?.disconnect();
+      scrollElement?.removeEventListener("scroll", schedulePlacementUpdate);
+      window.removeEventListener("resize", schedulePlacementUpdate);
+    };
+  }, [bottomAnchor, visible]);
+
   return (
-    <HeightTransition visible={visible} className={className} style={style}>
-      <TimelineWorkingIndicator
-        key={indicatorKey}
-        details={details}
-        isThinking={isThinking}
-        label={label}
+    <>
+      <div
+        ref={placeholderRef}
+        aria-hidden="true"
+        className="pointer-events-none"
+        style={ONGOING_INDICATOR_PLACEHOLDER_STYLE}
       />
-    </HeightTransition>
+      <div
+        ref={visualRef}
+        aria-hidden={!visible}
+        style={ONGOING_INDICATOR_VISUAL_STYLE}
+      >
+        <div ref={contentRef} style={ONGOING_INDICATOR_CONTENT_STYLE}>
+          {children}
+        </div>
+      </div>
+    </>
   );
 }
 
-const TIMELINE_ONGOING_INDICATOR_CLASS = "sticky z-10";
-const TIMELINE_ONGOING_INDICATOR_STYLE = {
-  bottom: "var(--bottom-anchored-footer-height, 0px)",
+function readBottomAnchoredFooterHeight(scrollElement: HTMLElement | null) {
+  const rawValue =
+    scrollElement?.style.getPropertyValue("--bottom-anchored-footer-height") ??
+    "";
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const ONGOING_INDICATOR_PLACEHOLDER_STYLE = {
+  height: 0,
+  overflowX: "visible",
+  overflowY: "clip",
+  transition: `height ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
+  visibility: "hidden",
+} satisfies CSSProperties;
+
+const ONGOING_INDICATOR_VISUAL_STYLE = {
+  left: 0,
+  opacity: 0,
+  pointerEvents: "none",
+  position: "fixed",
+  top: 0,
+  transition: `opacity ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
+  width: 0,
+  zIndex: 10,
+} satisfies CSSProperties;
+
+const ONGOING_INDICATOR_CONTENT_STYLE = {
+  display: "flow-root",
 } satisfies CSSProperties;
 
 function LoadOlderMessagesButton({

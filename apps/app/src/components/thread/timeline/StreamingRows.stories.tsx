@@ -7,8 +7,8 @@
 // structural shapes:
 //
 //  - optimistic user message: simulates the optimistic→server row swap.
-//  - working / thinking indicator: HeightTransition enter/exit on a toggling
-//    indicator below a static rows context.
+//  - working / thinking indicator: timeline ongoing indicator enter/exit on a
+//    toggling indicator below a static rows context.
 //  - assistant messages: top-level conversation rows arriving one at a time.
 //  - assistant content streaming: a single assistant row stays mounted while
 //    its markdown body grows sentence-by-sentence through `\n\n` breaks,
@@ -25,8 +25,8 @@ import {
   ThreadTimelineRows,
   TimelineWorkingIndicator,
 } from "@/components/thread/timeline";
+import { TimelineOngoingIndicator } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
-import { HeightTransition } from "@/components/ui/height-transition.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -81,15 +81,9 @@ function PinnedTimelineStage({
             {...baseProps}
             timelineRows={rows.slice()}
           />
-          <HeightTransition
-            visible={showIndicator}
-            className="sticky z-10"
-            style={{
-              bottom: "var(--bottom-anchored-footer-height, 0px)",
-            }}
-          >
+          <TimelineOngoingIndicator visible={showIndicator}>
             {indicator}
-          </HeightTransition>
+          </TimelineOngoingIndicator>
         </ConversationTimeline>
       </PageShell>
     </div>
