@@ -20,7 +20,7 @@ or hand off to another agent.
 
 > [!NOTE]
 > bb is in active development. Core architecture is stable, but workflows
-> and surfaces are still evolving.
+> and surfaces are still evolving. Test edits may appear in draft branches.
 
 <p align="center">
   <img alt="bb desktop app showing a thread sidebar, manager conversation, and live STATUS dashboard" src="assets/app-screenshot.png" width="800">
