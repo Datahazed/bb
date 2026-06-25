@@ -113,6 +113,10 @@ export async function listHostSkills(
   const roots = await resolveSkillScanRoots({
     cwd: command.cwd,
     builtinSkillsRootPath: command.builtinSkillsRootPath,
+    // Skill listing does not surface managed-dev-app inherited roots; they are
+    // not classified as skills (see classifySkillRootKind) and `host.list_skills`
+    // carries no such field.
+    additionalSkillsRootPaths: [],
     dataDir: options.dataDir,
     homeDir,
     codexHome: resolveCodexHome(homeDir),

@@ -50,6 +50,7 @@ async function listSkills(
       providerId,
       cwd,
       builtinSkillsRootPath: fixture.builtinSkillsRootPath,
+      additionalSkillsRootPaths: [],
       dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
