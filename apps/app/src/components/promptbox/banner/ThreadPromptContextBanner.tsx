@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
@@ -11,7 +11,17 @@ import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PromptStackCard,
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_STACK_INLAY_INSET_CLASS,
+  PROMPT_STACK_INLAY_SEGMENT_CLASS,
+} from "@/components/promptbox/banner/PromptStackCard";
+import {
+  activityIconClass,
+  activityRowClass,
+  activityTextClass,
+} from "@/components/ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import {
   formatChangeSummary,
@@ -144,7 +154,8 @@ export type ThreadPromptContextBannerExpandedSection =
  * sides on the same constant means tweaking banner chrome only requires
  * updating this number in one place.
  */
-export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT = 32;
+export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT =
+  PROMPT_STACK_CARD_ROW_HEIGHT;
 
 export interface ThreadPromptContextBannerProps {
   gitSection: ThreadPromptGitSection | null;
@@ -185,6 +196,19 @@ const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
 const ENVIRONMENT_GONE_ARIA_LABEL =
   "Environment is unavailable. This thread can't run any more work.";
+const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
+const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
+  "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+const PROMPT_BANNER_ACTION_BUTTON_CLASS = cn(
+  "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs",
+  PROMPT_BANNER_ACTION_FILL_CLASS,
+  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
+);
+const PROMPT_BANNER_ACTION_SEGMENT_CLASS = cn(
+  "text-xs",
+  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
+  "focus-visible:z-10",
+);
 
 // Stable ids for aria-controls / aria-labelledby pairing between each
 // section's toggle button and its expanded body region.
@@ -216,6 +240,7 @@ function ChildThreadIcon({ className }: { className?: string }) {
 }
 
 interface SectionToggleButtonProps {
+  active?: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -228,6 +253,7 @@ interface SectionToggleButtonProps {
 }
 
 function SectionToggleButton({
+  active = false,
   id,
   controlsId,
   ariaLabel,
@@ -247,20 +273,29 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
+        active && activityRowClass("active"),
+        "flex cursor-pointer items-center text-xs transition-colors",
+        PROMPT_STACK_INLAY_SEGMENT_CLASS,
+        active
+          ? "text-foreground hover:bg-background/80"
+          : "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        isExpanded ? "text-foreground" : "text-muted-foreground",
+        !active &&
+          (isExpanded ? "text-foreground" : "text-muted-foreground"),
       )}
     >
       {icon}
       {label !== null && label !== undefined ? (
         <span
-          className="min-w-0 truncate"
+          className={cn(
+            "min-w-0 truncate",
+            active && activityTextClass("active"),
+          )}
           data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
         >
           {label}
@@ -269,14 +304,23 @@ function SectionToggleButton({
       {hideLabelInCompact &&
       compactLabel !== null &&
       compactLabel !== undefined ? (
-        <span className="min-w-0 truncate" data-promptbox-compact-label="">
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            active && activityTextClass("active"),
+          )}
+          data-promptbox-compact-label=""
+        >
           {compactLabel}
         </span>
       ) : null}
       <Icon
         name="ChevronDown"
         className={cn(
-          "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+          active
+            ? activityIconClass("active")
+            : "text-subtle-foreground",
+          "size-3.5 shrink-0 transition-transform duration-200",
           isExpanded && "rotate-180",
         )}
         aria-hidden="true"
@@ -399,6 +443,55 @@ function BannerActionSlot({
   );
 }
 
+const PromptBannerActionButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function PromptBannerActionButton(
+  { className, type = "button", ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={cn(PROMPT_BANNER_ACTION_BUTTON_CLASS, className)}
+      {...props}
+    />
+  );
+});
+
+const PromptBannerActionGroup = ({ children }: { children: ReactNode }) => (
+  <div
+    className={cn(
+      "inline-flex overflow-hidden rounded border border-border",
+      PROMPT_BANNER_ACTION_FILL_CLASS,
+    )}
+  >
+    {children}
+  </div>
+);
+
+const PromptBannerActionSegmentButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function PromptBannerActionSegmentButton(
+  { className, type = "button", ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={cn(
+        "px-1.5 py-0.5",
+        PROMPT_BANNER_ACTION_SEGMENT_CLASS,
+        className,
+      )}
+      {...props}
+    />
+  );
+});
+
 function ThreadUnarchiveTextAction({
   isPending,
   onUnarchive,
@@ -407,14 +500,12 @@ function ThreadUnarchiveTextAction({
   onUnarchive: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <PromptBannerActionButton
       onClick={onUnarchive}
       disabled={Boolean(isPending)}
-      className="inline-flex items-center whitespace-nowrap rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
     >
       {isPending ? "Unarchiving..." : "Unarchive"}
-    </button>
+    </PromptBannerActionButton>
   );
 }
 
@@ -426,14 +517,12 @@ function PullRequestReadyTextAction({
   onMarkReady: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <PromptBannerActionButton
       onClick={onMarkReady}
       disabled={Boolean(disabled)}
-      className="inline-flex items-center whitespace-nowrap rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
     >
       {disabled ? "Marking..." : "Mark ready"}
-    </button>
+    </PromptBannerActionButton>
   );
 }
 
@@ -462,26 +551,25 @@ function PullRequestMergeSplitButton({
       (action) => action.method === selectedMethod,
     ) ?? PULL_REQUEST_MERGE_ACTIONS[0];
   return (
-    <div className="inline-flex overflow-hidden rounded border border-border bg-transparent">
-      <button
-        type="button"
+    <PromptBannerActionGroup>
+      <PromptBannerActionSegmentButton
         disabled={Boolean(disabled)}
         onClick={() => onMerge(selectedAction.method)}
-        className="px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
       >
         {selectedAction.label}
-      </button>
+      </PromptBannerActionSegmentButton>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <PromptBannerActionSegmentButton
             disabled={Boolean(disabled)}
-            className="inline-flex items-center border-l border-border px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            className={cn(
+              "inline-flex items-center border-l border-border px-1 data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+            )}
             aria-label="Choose pull request merge method"
             title="Choose pull request merge method"
           >
             <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
-          </button>
+          </PromptBannerActionSegmentButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
@@ -510,7 +598,7 @@ function PullRequestMergeSplitButton({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </PromptBannerActionGroup>
   );
 }
 
@@ -539,7 +627,8 @@ function PullRequestBannerLink({
       title={pullRequest.title}
       aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
       className={cn(
-        "flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        PROMPT_STACK_INLAY_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
       )}
     >
@@ -593,6 +682,76 @@ function AnimatedBody({
   );
 }
 
+const CHILD_THREADS_HEADER_BUTTON_CLASS = activityRowClass(
+  "active",
+  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+);
+
+function childThreadsLabel(count: number): string {
+  return `${count} active child ${count === 1 ? "thread" : "threads"}`;
+}
+
+function ActiveChildThreadsCard({
+  childThreadsSection,
+  isExpanded,
+  onToggle,
+}: {
+  childThreadsSection: ThreadPromptChildThreadsSection;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = childThreadsLabel(childThreadsSection.items.length);
+  return (
+    <PromptStackCard
+      ariaLabel="Active child threads"
+      className="overflow-hidden"
+      style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
+    >
+      <div className="flex items-center">
+        <button
+          type="button"
+          id={SECTION_IDS.childThreads.toggle}
+          aria-expanded={isExpanded}
+          aria-controls={SECTION_IDS.childThreads.body}
+          aria-label={label}
+          onClick={onToggle}
+          className={CHILD_THREADS_HEADER_BUTTON_CLASS}
+        >
+          <Icon
+            name="CircleDashed"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
+            aria-hidden="true"
+          />
+          <span
+            className={activityTextClass(
+              "active",
+              "min-w-0 flex-1 truncate text-left",
+            )}
+          >
+            {label}
+          </span>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              activityIconClass("active"),
+              "size-3.5 shrink-0 transition-transform duration-200",
+              isExpanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      <AnimatedBody
+        id={SECTION_IDS.childThreads.body}
+        labelledBy={SECTION_IDS.childThreads.toggle}
+        isExpanded={isExpanded}
+      >
+        <ChildThreadsBody items={childThreadsSection.items} />
+      </AnimatedBody>
+    </PromptStackCard>
+  );
+}
+
 interface ReadOnlyContextBannerProps {
   iconName: IconName;
   statusAriaLabel: string;
@@ -622,7 +781,12 @@ function ReadOnlyContextBanner({
       className="overflow-hidden"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
+      <div
+        className={cn(
+          "flex items-center gap-0.5 text-xs text-muted-foreground",
+          PROMPT_STACK_INLAY_INSET_CLASS,
+        )}
+      >
         {parentThreadSection ? (
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
@@ -641,7 +805,10 @@ function ReadOnlyContextBanner({
           />
         ) : null}
         <div
-          className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
+          className={cn(
+            "flex min-w-0 items-center gap-1.5 text-xs",
+            PROMPT_STACK_INLAY_SEGMENT_CLASS,
+          )}
           role="status"
           aria-label={statusAriaLabel}
           title={statusAriaLabel}
@@ -738,10 +905,7 @@ export function ThreadPromptContextBanner({
     return null;
   }
   const visibleSegmentCount =
-    Number(showParentThread) +
-    Number(showChildThreads) +
-    Number(showPullRequest) +
-    Number(showGit);
+    Number(showParentThread) + Number(showPullRequest) + Number(showGit);
   const hasSingleVisibleSegment = visibleSegmentCount === 1;
   const isPullRequestAndGitOnly =
     showPullRequest && showGit && visibleSegmentCount === 2;
@@ -752,6 +916,14 @@ export function ThreadPromptContextBanner({
     expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
+  const activeChildThreadsCard =
+    showChildThreads && childThreadsSection ? (
+      <ActiveChildThreadsCard
+        childThreadsSection={childThreadsSection}
+        isExpanded={isChildThreadsExpanded}
+        onToggle={() => onToggleSection("childThreads")}
+      />
+    ) : null;
   const gitTally = showGit
     ? toChangeTally(gitSection.changedFiles.stats)
     : null;
@@ -806,7 +978,7 @@ export function ThreadPromptContextBanner({
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
   const isParentThreadOnly =
-    showParentThread && !showGit && !showChildThreads && !showPullRequest;
+    showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =
@@ -835,144 +1007,133 @@ export function ThreadPromptContextBanner({
       ) : null
     ) : null;
 
-  return (
-    <PromptStackCard
-      ariaLabel="Thread context before sending"
-      className="overflow-hidden bg-surface-recessed"
-      style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
-    >
-      <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
-        {/* Segment order: relationship metadata, active child state, GitHub PR, git status. */}
-        {showParentThread && parentThreadSection && isParentThreadOnly ? (
-          <div
-            className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
-            title={parentSectionAriaLabel(parentThreadSection)}
-          >
-            <Icon
-              name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
-              className="size-3.5 shrink-0"
-              aria-hidden="true"
-            />
-            <span className="min-w-0 truncate">
-              {PARENT_SECTION_COPY[parentThreadSection.relationship].verb}{" "}
-              <NavLink
-                to={parentThreadSection.href}
-                className="text-foreground/90 underline underline-offset-2"
-              >
-                {parentThreadSection.parentThreadTitle}
-              </NavLink>
-            </span>
-          </div>
-        ) : null}
-        {showParentThread && parentThreadSection && !isParentThreadOnly ? (
-          <SectionToggleButton
-            id={SECTION_IDS.parentThread.toggle}
-            controlsId={SECTION_IDS.parentThread.body}
-            ariaLabel={parentSectionAriaLabel(parentThreadSection)}
-            icon={
+  const compactContextBanner =
+    visibleSegmentCount > 0 ? (
+      <PromptStackCard
+        ariaLabel="Thread context before sending"
+        className="overflow-hidden bg-surface-recessed"
+        style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-0.5 text-xs text-muted-foreground",
+            PROMPT_STACK_INLAY_INSET_CLASS,
+          )}
+        >
+          {/* Segment order: relationship metadata, GitHub PR, git status. */}
+          {showParentThread && parentThreadSection && isParentThreadOnly ? (
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 text-xs",
+                PROMPT_STACK_INLAY_SEGMENT_CLASS,
+              )}
+              title={parentSectionAriaLabel(parentThreadSection)}
+            >
               <Icon
                 name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
                 className="size-3.5 shrink-0"
                 aria-hidden="true"
               />
-            }
-            label={null}
+              <span className="min-w-0 truncate">
+                {PARENT_SECTION_COPY[parentThreadSection.relationship].verb}{" "}
+                <NavLink
+                  to={parentThreadSection.href}
+                  className="text-foreground/90 underline underline-offset-2"
+                >
+                  {parentThreadSection.parentThreadTitle}
+                </NavLink>
+              </span>
+            </div>
+          ) : null}
+          {showParentThread && parentThreadSection && !isParentThreadOnly ? (
+            <SectionToggleButton
+              id={SECTION_IDS.parentThread.toggle}
+              controlsId={SECTION_IDS.parentThread.body}
+              ariaLabel={parentSectionAriaLabel(parentThreadSection)}
+              icon={
+                <Icon
+                  name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
+                  className="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+              }
+              label={null}
+              isExpanded={isParentThreadExpanded}
+              onToggle={() => onToggleSection("parentThread")}
+            />
+          ) : null}
+          {showPullRequest && pullRequest ? (
+            <PullRequestBannerLink
+              pullRequest={pullRequest}
+              hideLabelInCompact={!hasSingleVisibleSegment}
+              showLabel={showPullRequestLabel}
+              showStateLabel={hasSingleVisibleSegment}
+            />
+          ) : null}
+          {showGit && gitSummary ? (
+            <SectionToggleButton
+              id={SECTION_IDS.git.toggle}
+              controlsId={SECTION_IDS.git.body}
+              icon={
+                <Icon
+                  name="FileDiff"
+                  className="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+              }
+              label={gitSummary}
+              compactLabel={gitTally ? renderChangeSummary(gitTally) : null}
+              hideLabelInCompact={visibleSegmentCount > 2}
+              ariaLabel={`Changed files: ${gitSummaryPrefix}, ${gitSummaryText}`}
+              isExpanded={isGitExpanded}
+              onToggle={() => onToggleSection("git")}
+            />
+          ) : null}
+          {pullRequestAction}
+          {segmentAction}
+        </div>
+        {showParentThread && parentThreadSection && !isParentThreadOnly ? (
+          <AnimatedBody
+            id={SECTION_IDS.parentThread.body}
+            labelledBy={SECTION_IDS.parentThread.toggle}
             isExpanded={isParentThreadExpanded}
-            onToggle={() => onToggleSection("parentThread")}
-          />
+          >
+            <ParentThreadBody
+              parentThreadTitle={parentThreadSection.parentThreadTitle}
+              href={parentThreadSection.href}
+              relationship={parentThreadSection.relationship}
+            />
+          </AnimatedBody>
         ) : null}
-        {showChildThreads && childThreadsSection ? (
-          <SectionToggleButton
-            id={SECTION_IDS.childThreads.toggle}
-            controlsId={SECTION_IDS.childThreads.body}
-            icon={
-              <Icon
-                name="CircleDashed"
-                className="size-3.5 shrink-0 animate-spin"
-                aria-hidden="true"
-              />
-            }
-            label={`${childThreadsSection.items.length} active child ${
-              childThreadsSection.items.length === 1 ? "thread" : "threads"
-            }`}
-            hideLabelInCompact={!hasSingleVisibleSegment}
-            ariaLabel={`${childThreadsSection.items.length} active child ${
-              childThreadsSection.items.length === 1 ? "thread" : "threads"
-            }`}
-            isExpanded={isChildThreadsExpanded}
-            onToggle={() => onToggleSection("childThreads")}
-          />
-        ) : null}
-        {showPullRequest && pullRequest ? (
-          <PullRequestBannerLink
-            pullRequest={pullRequest}
-            hideLabelInCompact={!hasSingleVisibleSegment}
-            showLabel={showPullRequestLabel}
-            showStateLabel={hasSingleVisibleSegment}
-          />
-        ) : null}
-        {showGit && gitSummary ? (
-          <SectionToggleButton
-            id={SECTION_IDS.git.toggle}
-            controlsId={SECTION_IDS.git.body}
-            icon={
-              <Icon
-                name="FileDiff"
-                className="size-3.5 shrink-0"
-                aria-hidden="true"
-              />
-            }
-            label={gitSummary}
-            compactLabel={gitTally ? renderChangeSummary(gitTally) : null}
-            hideLabelInCompact={visibleSegmentCount > 2}
-            ariaLabel={`Changed files: ${gitSummaryPrefix}, ${gitSummaryText}`}
+        {showGit ? (
+          <AnimatedBody
+            id={SECTION_IDS.git.body}
+            labelledBy={SECTION_IDS.git.toggle}
             isExpanded={isGitExpanded}
-            onToggle={() => onToggleSection("git")}
-          />
+          >
+            <WorkspaceChangesList
+              files={gitSection.changedFiles.files}
+              className="max-h-32 px-3 pb-2 pt-1"
+              onFileClick={(file) =>
+                gitSection.onPromptBannerFileClick({
+                  file,
+                  section: gitSection.changedFiles,
+                })
+              }
+            />
+          </AnimatedBody>
         ) : null}
-        {pullRequestAction}
-        {segmentAction}
+      </PromptStackCard>
+    ) : null;
+
+  if (activeChildThreadsCard && compactContextBanner) {
+    return (
+      <div className="space-y-2">
+        {activeChildThreadsCard}
+        {compactContextBanner}
       </div>
-      {showParentThread && parentThreadSection && !isParentThreadOnly ? (
-        <AnimatedBody
-          id={SECTION_IDS.parentThread.body}
-          labelledBy={SECTION_IDS.parentThread.toggle}
-          isExpanded={isParentThreadExpanded}
-        >
-          <ParentThreadBody
-            parentThreadTitle={parentThreadSection.parentThreadTitle}
-            href={parentThreadSection.href}
-            relationship={parentThreadSection.relationship}
-          />
-        </AnimatedBody>
-      ) : null}
-      {showChildThreads && childThreadsSection ? (
-        <AnimatedBody
-          id={SECTION_IDS.childThreads.body}
-          labelledBy={SECTION_IDS.childThreads.toggle}
-          isExpanded={isChildThreadsExpanded}
-        >
-          <ChildThreadsBody items={childThreadsSection.items} />
-        </AnimatedBody>
-      ) : null}
-      {showGit ? (
-        <AnimatedBody
-          id={SECTION_IDS.git.body}
-          labelledBy={SECTION_IDS.git.toggle}
-          isExpanded={isGitExpanded}
-        >
-          <WorkspaceChangesList
-            files={gitSection.changedFiles.files}
-            className="max-h-32 px-3 pb-2 pt-1"
-            onFileClick={(file) =>
-              gitSection.onPromptBannerFileClick({
-                file,
-                section: gitSection.changedFiles,
-              })
-            }
-          />
-        </AnimatedBody>
-      ) : null}
-    </PromptStackCard>
-  );
+    );
+  }
+
+  return activeChildThreadsCard ?? compactContextBanner;
 }

@@ -1,21 +1,35 @@
 import { capitalize } from "@bb/thread-view";
 import { useId, useState, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
+
+export const THREAD_RENAME_DIALOG_SHELL_CLASS =
+  "max-w-[24rem] sm:gap-3 sm:p-5";
 
 export interface ThreadRenameDialogTarget {
   id: string;
   currentTitle: string;
 }
 
+export interface ThreadRenameDialogPayload {
+  title: string;
+}
+
 interface ThreadRenameDialogProps {
   target: ThreadRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
 }
 
 export function ThreadRenameDialog({
@@ -27,7 +41,10 @@ export function ThreadRenameDialog({
   const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
+      <DialogContent
+        className={THREAD_RENAME_DIALOG_SHELL_CLASS}
+        onOpenAutoFocus={handleOpenAutoFocus}
+      >
         {target ? (
           <ThreadRenameDialogContent
             key={target.id}
@@ -45,7 +62,7 @@ export function ThreadRenameDialog({
 export interface ThreadRenameDialogContentProps {
   target: ThreadRenameDialogTarget;
   pending: boolean;
-  onRename: (threadId: string, title: string) => void;
+  onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -69,7 +86,7 @@ export function ThreadRenameDialogContent({
     const trimmedTitle = validate(nextTitle);
     if (trimmedTitle === null) return;
 
-    onRename(target.id, trimmedTitle);
+    onRename(target.id, { title: trimmedTitle });
   };
 
   return (
@@ -80,8 +97,8 @@ export function ThreadRenameDialogContent({
           Choose a new name for this {label}.
         </DialogDescription>
       </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
+      <form className="space-y-3" onSubmit={handleSubmit}>
+        <div className="space-y-1.5">
           <Input
             ref={inputRef}
             id={inputId}

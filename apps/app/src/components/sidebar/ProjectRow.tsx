@@ -96,8 +96,8 @@ import { sidebarCollapsedFoldersAtom } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
+  SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -1134,7 +1134,6 @@ function EnvironmentThreadGroupHeader({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    "cursor-default",
   );
   const style = {
     paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
@@ -1165,8 +1164,6 @@ function EnvironmentThreadGroupHeader({
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
-          expandTitle="Expand worktree threads"
-          collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
           revealOnHover
         />
@@ -2133,7 +2130,7 @@ function ProjectRowComponent({
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
                 ? SIDEBAR_ROW_SELECTED_STATE_CLASS
-                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+                : SIDEBAR_ROW_STATIC_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none",
@@ -2144,7 +2141,7 @@ function ProjectRowComponent({
           >
             <span
               className={cn(
-                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
+                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground",
                 PROJECT_ROW_LEADING_SLOT_CLASS,
               )}
               aria-hidden
@@ -2160,8 +2157,6 @@ function ProjectRowComponent({
                 isCollapsed={isCollapsed}
                 expandLabel={`Expand ${project.name}`}
                 collapseLabel={`Collapse ${project.name}`}
-                expandTitle="Expand project threads"
-                collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
                 revealOnHover
               />

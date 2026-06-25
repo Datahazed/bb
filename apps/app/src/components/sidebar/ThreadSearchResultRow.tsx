@@ -9,8 +9,8 @@ import {
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
+import { formatRelativeTime } from "@/lib/relative-time";
 import {
   hasActiveWorkflowActivity,
   isBusyThread,
@@ -28,11 +28,16 @@ import {
 interface ThreadSearchResultRowProps {
   id: string;
   isActive: boolean;
-  isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
   onActive: () => void;
   onSelect: () => void;
   projectName: string | undefined;
+  /**
+   * Pre-formatted folder path (e.g. "Infra › CI") shown in place of the project
+   * when the sidebar is organized by folder. The caller derives it from the
+   * thread's folder + the Organize-by setting; absent → falls back to project.
+   */
+  folderLabel?: string | null;
   thread: ThreadListEntry;
 }
 
@@ -106,20 +111,27 @@ function getSnippetMatch(
   return matches.find((match) => !TITLE_SOURCE_KINDS.has(match.sourceKind));
 }
 
+function isNonEmptyMetadataPart(value: string | null): value is string {
+  return value !== null && value.length > 0;
+}
+
 function ThreadSearchResultRowComponent({
   id,
   isActive,
-  isArchivedGroup,
   matches,
   onActive,
   onSelect,
   projectName,
+  folderLabel,
   thread,
 }: ThreadSearchResultRowProps) {
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const title = getThreadDisplayTitle(thread);
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
+  const primaryMatch = snippetMatch ?? titleMatch;
+  const primaryText = primaryMatch?.text ?? title;
+  const primaryHighlightRanges = primaryMatch?.highlightRanges ?? [];
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
@@ -128,10 +140,26 @@ function ThreadSearchResultRowComponent({
     !hasPendingInteraction &&
     hasActiveWorkflowActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
-  const metadataParts = [
-    thread.projectId !== PERSONAL_PROJECT_ID ? projectName : undefined,
-    thread.environmentBranchName ?? thread.environmentName ?? undefined,
-  ].filter((part): part is string => part !== undefined && part.length > 0);
+  // For recents and title-only matches, the second line shows the project and
+  // when the thread was last active.
+  const projectMetadata =
+    thread.projectId !== PERSONAL_PROJECT_ID && projectName
+      ? projectName
+      : null;
+  // Folder takes the project's place on the metadata line when the sidebar is
+  // organized by folder (the caller supplies a folderLabel only then).
+  const contextLabel = folderLabel ?? projectMetadata;
+  const relativeTime = formatRelativeTime({
+    timestamp: thread.updatedAt,
+    now: Date.now(),
+  });
+  const metadataText = [
+    snippetMatch ? title : null,
+    contextLabel,
+    relativeTime,
+  ]
+    .filter(isNonEmptyMetadataPart)
+    .join(" · ");
   const handleMouseEnter = useCallback<
     MouseEventHandler<HTMLButtonElement>
   >(() => {
@@ -163,42 +191,28 @@ function ThreadSearchResultRowComponent({
       onFocus={onActive}
       onClick={onSelect}
     >
-      <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-subtle-foreground">
-        {isArchivedGroup ? (
-          <Icon name="Archive" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        ) : (
-          <Icon
-            name="MessageSquare"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        )}
-      </span>
       <span className="min-w-0 flex-1 space-y-0.5">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate">
-            <HighlightedText
-              text={title}
-              ranges={titleMatch?.highlightRanges ?? []}
-            />
-          </span>
-          {isArchivedGroup ? (
-            <span className="shrink-0 rounded-sm border border-sidebar-border px-1 py-px text-xs leading-none text-subtle-foreground">
-              Archived
-            </span>
-          ) : null}
+        <span className="block min-w-0 truncate">
+          <HighlightedText
+            text={primaryText}
+            ranges={primaryHighlightRanges}
+          />
         </span>
-        {snippetMatch ? (
-          <span className="block min-w-0 truncate text-xs leading-4 text-muted-foreground">
-            <HighlightedText
-              text={snippetMatch.text}
-              ranges={snippetMatch.highlightRanges}
+        <span
+          className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+          title={metadataText}
+        >
+          {snippetMatch ? (
+            <Icon
+              name="MessageSquare"
+              className="size-3 shrink-0 text-subtle-foreground"
+              aria-hidden="true"
             />
-          </span>
-        ) : metadataParts.length > 0 ? (
-          <span className="block min-w-0 truncate text-xs leading-4 text-muted-foreground">
-            {metadataParts.join(" / ")}
-          </span>
-        ) : null}
+          ) : contextLabel ? (
+            <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          ) : null}
+          <span className="min-w-0 truncate">{metadataText}</span>
+        </span>
       </span>
       {hasPendingInteraction || threadIsBusy ? (
         <span className="inline-flex size-4 shrink-0 items-center justify-center">

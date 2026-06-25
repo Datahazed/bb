@@ -230,11 +230,11 @@ const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "min-w-0 justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
+  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
 );
 
 const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
-  "inline-flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:opacity-50",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "w-8",
 );
@@ -780,7 +780,7 @@ export function SidebarGroupOptionsMenu({
           Organize by
         </DropdownMenuLabel>
         <SidebarGroupMenuOption
-          label="Project"
+          label="Projects"
           selected={organizationMode === "project"}
           onSelect={(event) => {
             event.preventDefault();
@@ -788,7 +788,7 @@ export function SidebarGroupOptionsMenu({
           }}
         />
         <SidebarGroupMenuOption
-          label="Folders"
+          label="Manually"
           selected={organizationMode === "chronological"}
           onSelect={(event) => {
             event.preventDefault();
@@ -901,6 +901,8 @@ interface SidebarThreadsSectionActionsProps {
 
 interface SidebarAllThreadsOverflowMenuProps {
   isCreatingFolder: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onNewFolder: () => void;
   onOpenArchivedThreads: () => void;
 }
@@ -941,19 +943,21 @@ function SidebarThreadsSectionActions({
 
 function SidebarAllThreadsOverflowMenu({
   isCreatingFolder,
+  open,
+  onOpenChange,
   onNewFolder,
   onOpenArchivedThreads,
 }: SidebarAllThreadsOverflowMenuProps) {
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
-        ariaLabel="All threads actions"
+        ariaLabel="All Threads actions"
         iconName="MoreHorizontal"
         tooltip="More actions"
       />
       <DropdownMenuContent
         align="end"
-        mobileTitle="All threads actions"
+        mobileTitle="All Threads actions"
         className="min-w-0"
       >
         <DropdownMenuItem disabled={isCreatingFolder} onSelect={onNewFolder}>
@@ -1000,7 +1004,7 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
-function TopLevelSidebarSection({
+export function TopLevelSidebarSection({
   label,
   children,
   actions,
@@ -1033,11 +1037,6 @@ function TopLevelSidebarSection({
     },
     [collapseControl],
   );
-  const handleSectionLabelClick = useCallback<
-    MouseEventHandler<HTMLDivElement>
-  >(() => {
-    collapseControl?.onToggleCollapsed();
-  }, [collapseControl]);
   const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
     (event) => {
       event.stopPropagation();
@@ -1075,7 +1074,7 @@ function TopLevelSidebarSection({
           "rounded-md pr-1 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
-        onClick={collapseControl ? handleSectionLabelClick : undefined}
+        title={label}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
@@ -1092,6 +1091,9 @@ function TopLevelSidebarSection({
             <button
               type="button"
               aria-expanded={!collapseControl.isCollapsed}
+              data-sidebar-hover-actions-mobile={
+                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+              }
               aria-label={
                 collapseControl.isCollapsed
                   ? `Expand ${label} section`
@@ -1100,7 +1102,7 @@ function TopLevelSidebarSection({
               title={undefined}
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
+                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}
@@ -1215,7 +1217,9 @@ export function ProjectListActionButtons({
             size="icon"
             variant="ghost"
             aria-label={
-              threadSearch.query.trim() ? "Clear search" : "Close search"
+              threadSearch.query.trim()
+                ? "Clear and close search"
+                : "Close search"
             }
             className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
             onClick={handleSearchClose}
@@ -1335,6 +1339,13 @@ function ProjectListComponent({
     namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
     return namesById;
   }, [sidebarNavigation]);
+  const folderNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    for (const folder of folders) {
+      namesById.set(folder.id, folder.name);
+    }
+    return namesById;
+  }, [folders]);
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
     for (const thread of threads) {
@@ -1606,11 +1617,14 @@ function ProjectListComponent({
     useState<SidebarDisplayOptionsMenuKind | null>(null);
   const [threadsDisplayOptionsMenuOpen, setThreadsDisplayOptionsMenuOpen] =
     useState<SidebarDisplayOptionsMenuKind | null>(null);
+  const [allThreadsOverflowMenuOpen, setAllThreadsOverflowMenuOpen] =
+    useState(false);
   const handleProjectsDisplayOptionsMenuOpenChange = useCallback(
     (menu: SidebarDisplayOptionsMenuKind, open: boolean) => {
       setProjectsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setThreadsDisplayOptionsMenuOpen(null);
+        setAllThreadsOverflowMenuOpen(false);
       }
     },
     [],
@@ -1620,6 +1634,17 @@ function ProjectListComponent({
       setThreadsDisplayOptionsMenuOpen(open ? menu : null);
       if (open) {
         setProjectsDisplayOptionsMenuOpen(null);
+        setAllThreadsOverflowMenuOpen(false);
+      }
+    },
+    [],
+  );
+  const handleAllThreadsOverflowMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setAllThreadsOverflowMenuOpen(open);
+      if (open) {
+        setProjectsDisplayOptionsMenuOpen(null);
+        setThreadsDisplayOptionsMenuOpen(null);
       }
     },
     [],
@@ -2034,6 +2059,8 @@ function ProjectListComponent({
       />
       <SidebarAllThreadsOverflowMenu
         isCreatingFolder={isCreateThreadFolderPending}
+        open={allThreadsOverflowMenuOpen}
+        onOpenChange={handleAllThreadsOverflowMenuOpenChange}
         onNewFolder={handleOpenCreateFolderDialog}
         onOpenArchivedThreads={handleOpenProjectlessArchivedThreads}
       />
@@ -2070,10 +2097,12 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
       renderAllThreadsSection={(content) => (
         <TopLevelSidebarSection
-          label="All threads"
+          label="All Threads"
           actions={allThreadsSectionActions}
-          actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-          actionsAlwaysVisible
+          actionsOpen={
+            projectsDisplayOptionsMenuOpen !== null ||
+            allThreadsOverflowMenuOpen
+          }
           collapseControl={{
             isCollapsed: collapsedSidebarSectionIds.has("threads"),
             onToggleCollapsed: () => toggleSidebarSectionCollapsed("threads"),
@@ -2087,7 +2116,7 @@ function ProjectListComponent({
           label="Folders"
           actions={folderSectionActions}
           actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-          actionsAlwaysVisible
+          actionsMobileAlways
         >
           {content}
         </TopLevelSidebarSection>
@@ -2153,9 +2182,11 @@ function ProjectListComponent({
           onActiveIndexChange={threadSearch.onActiveIndexChange}
           onNavigationItemsChange={threadSearch.onNavigationItemsChange}
           onSelect={threadSearch.onSelectItem}
+          folderNamesById={folderNamesById}
           projectNamesById={projectNamesById}
           query={threadSearch.query}
           recentThreads={threads}
+          showFolderLabels={isFolderOrganizationMode}
         />
       </ProjectListShell>
     );
@@ -2216,7 +2247,7 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
                   actionsOpen={projectsDisplayOptionsMenuOpen !== null}
-                  actionsAlwaysVisible
+                  actionsMobileAlways
                   collapseControl={{
                     isCollapsed: collapsedSidebarSectionIds.has("projects"),
                     onToggleCollapsed: () =>

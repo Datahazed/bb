@@ -24,6 +24,7 @@ import {
   writeHostSkill,
 } from "./command-handlers/list-skills.js";
 import {
+  browseHostDirectory,
   listHostFiles,
   listHostPaths,
   readHostFile,
@@ -228,6 +229,7 @@ const commandHandlers: CommandHandlerMap = {
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.browse_directory": browseHostDirectory,
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
   "host.delete_skill": deleteHostSkill,

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,8 +10,155 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState, type ComponentProps, type ReactElement } from "react";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+
+// ThreadTimelineRows reads route state for the search deep-link scroll, so it
+// must render inside a Router. Production and Ladle always provide one; these
+// isolated unit renders wrap the tree in a MemoryRouter.
+const toMarkup = (ui: ReactElement) =>
+  renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
+const renderWithRouter = (
+  ui: ReactElement,
+  initialEntries: ComponentProps<typeof MemoryRouter>["initialEntries"] = ["/"],
+) => render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+
+function SameThreadSearchNavigationHarness() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          navigate("/thread", {
+            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+          })
+        }
+      >
+        Open search match
+      </button>
+      <ThreadTimelineRows
+        initialExpanded={new Set(["turn_with_match"])}
+        threadId="thr_main"
+        timelineRows={[
+          turnRow({
+            id: "turn_with_match",
+            sourceSeqStart: 10,
+            sourceSeqEnd: 20,
+            children: [
+              conversationRow({
+                id: "nested_match",
+                role: "assistant",
+                text: "Nested answer containing the search result.",
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ],
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />
+    </>
+  );
+}
+
+function SearchOlderRowsHarness({
+  onLoadOlderRows,
+}: {
+  onLoadOlderRows: () => void;
+}) {
+  const [loadedOlderRows, setLoadedOlderRows] = useState(false);
+  const rows = loadedOlderRows
+    ? [
+        conversationRow({
+          id: "older_match",
+          role: "assistant",
+          text: "Older answer containing the search result.",
+          sourceSeqStart: 12,
+          sourceSeqEnd: 12,
+          threadId: "thr_main",
+        }),
+        conversationRow({
+          id: "latest_message",
+          role: "assistant",
+          text: "Latest answer.",
+          sourceSeqStart: 30,
+          sourceSeqEnd: 30,
+          threadId: "thr_main",
+        }),
+      ]
+    : [
+        conversationRow({
+          id: "latest_message",
+          role: "assistant",
+          text: "Latest answer.",
+          sourceSeqStart: 30,
+          sourceSeqEnd: 30,
+          threadId: "thr_main",
+        }),
+      ];
+
+  return (
+    <ThreadTimelineRows
+      threadId="thr_main"
+      timelineRows={rows}
+      hasOlderTimelineRows={!loadedOlderRows}
+      isLoadingOlderTimelineRows={false}
+      onLoadOlderRows={() => {
+        onLoadOlderRows();
+        setLoadedOlderRows(true);
+      }}
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+    />
+  );
+}
+
+function SearchOlderRowsFailedLoadHarness({
+  onLoadOlderRows,
+}: {
+  onLoadOlderRows: () => void;
+}) {
+  const [isLoadingOlderRows, setIsLoadingOlderRows] = useState(false);
+
+  return (
+    <>
+      <span data-testid="older-load-state">
+        {isLoadingOlderRows ? "loading" : "idle"}
+      </span>
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "latest_message",
+            role: "assistant",
+            text: "Latest answer.",
+            sourceSeqStart: 30,
+            sourceSeqEnd: 30,
+            threadId: "thr_main",
+          }),
+        ]}
+        hasOlderTimelineRows
+        isLoadingOlderTimelineRows={isLoadingOlderRows}
+        onLoadOlderRows={() => {
+          onLoadOlderRows();
+          setIsLoadingOlderRows(true);
+          return Promise.resolve().then(() => {
+            setIsLoadingOlderRows(false);
+            throw new Error("Older page failed");
+          });
+        }}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />
+    </>
+  );
+}
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
@@ -40,7 +188,7 @@ afterEach(() => {
 
 describe("ThreadTimelineRows actions", () => {
   it("renders send-to-main on assistant rows when the timeline supplies a handler", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -58,7 +206,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("hides assistant message actions inside completed turn summaries", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         initialExpanded={new Set(["turn_completed"])}
         timelineRows={[
@@ -86,7 +234,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("keeps assistant message actions visible inside pending turn rows", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         initialExpanded={new Set(["turn_pending"])}
         timelineRows={[
@@ -115,7 +263,7 @@ describe("ThreadTimelineRows actions", () => {
 
   it("passes regular user message text to add-to-chat", () => {
     const onSelectionAddToChat = vi.fn();
-    render(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -136,7 +284,7 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("hides user message add-to-chat when no add handler is supplied", () => {
-    const markup = renderToStaticMarkup(
+    const markup = toMarkup(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -161,7 +309,7 @@ describe("ThreadTimelineRows actions", () => {
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 
-    render(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
@@ -195,5 +343,200 @@ describe("ThreadTimelineRows actions", () => {
       messageText: "this earlier answer",
       sourceSeqEnd: 42,
     });
+  });
+
+  it("ignores sidebar search scroll state for a different thread", () => {
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_side_chat"
+        timelineRows={[
+          conversationRow({
+            id: "side_chat_message",
+            role: "assistant",
+            text: "Side chat answer.",
+            sourceSeqStart: 12,
+            sourceSeqEnd: 12,
+            threadId: "thr_side_chat",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          turnRow({
+            id: "turn_with_match",
+            sourceSeqStart: 10,
+            sourceSeqEnd: 20,
+            children: [
+              conversationRow({
+                id: "nested_match",
+                role: "assistant",
+                text: "Nested answer containing the search result.",
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ],
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    const parentRow = container.querySelector(
+      '[data-timeline-row-id="turn_with_match"]',
+    );
+    const nestedRow = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-timeline-row-id="nested_match"]',
+      );
+      if (row === null) {
+        throw new Error("Nested search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
+    expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+  });
+
+  it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
+    const onLoadOlderRows = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    const olderRow = await waitFor(() => {
+      const row = container.querySelector('[data-timeline-row-id="older_match"]');
+      if (row === null) {
+        throw new Error("Older search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(olderRow.classList.contains("bb-search-flash")).toBe(true),
+    );
+  });
+
+  it("does not retry failed older-row auto-loading until rows advance", async () => {
+    const onLoadOlderRows = vi.fn();
+
+    renderWithRouter(
+      <SearchOlderRowsFailedLoadHarness onLoadOlderRows={onLoadOlderRows} />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("older-load-state").textContent).toBe("idle"),
+    );
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+  });
+
+  it("forces a manually collapsed same-thread search ancestor open", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = renderWithRouter(
+      <SameThreadSearchNavigationHarness />,
+      ["/thread"],
+    );
+
+    expect(
+      container.querySelector('[data-timeline-row-id="nested_match"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-timeline-row-id="nested_match"]'),
+      ).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open search match" }));
+    const nestedRow = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-timeline-row-id="nested_match"]',
+      );
+      if (row === null) {
+        throw new Error("Nested search row was not rendered");
+      }
+      return row;
+    });
+
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
   });
 });

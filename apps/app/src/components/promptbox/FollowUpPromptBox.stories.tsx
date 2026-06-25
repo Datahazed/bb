@@ -50,12 +50,14 @@ import type {
   ExecutionControlsProps,
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
+import { PageShell } from "@/components/ui/page-shell.js";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
 };
 
 const noop = () => {};
+const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 // FollowUp commits the provider — omit `onChange` so the picker renders the
 // provider segment as locked, and pass `displayName` so the static label
@@ -229,7 +231,7 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -240,7 +242,7 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
 });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -250,7 +252,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  branchName: "bb/promptbox-stories",
+  branchName: STORY_BRANCH_NAME,
   // Worktree threads expose a "new thread in this worktree" affordance —
   // production wires it to the new-thread route. The story just needs a
   // non-null handler so the MessageSquarePlus icon renders.
@@ -428,12 +430,12 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     deletions: 24,
   },
   branch: {
-    currentBranch: "bb/promptbox-stories",
+    currentBranch: STORY_BRANCH_NAME,
     defaultBranch: "main",
   },
   checkout: {
     kind: "branch",
-    branchName: "bb/promptbox-stories",
+    branchName: STORY_BRANCH_NAME,
     headSha: null,
   },
   mergeBase: null,
@@ -578,11 +580,22 @@ type FollowUpComposerRuntimeStatus = NonNullable<
   Parameters<typeof FollowUpPromptBox>[0]["composer"]
 >["threadRuntimeDisplayStatus"];
 
-// Match production: ThreadTimelinePane's PageShell footer caps content at
-// 760px. The story's StoryRow value cell uses flex-wrap, which would
-// otherwise let the prompt box collapse to its intrinsic content width.
-function PromptStage({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-[760px]">{children}</div>;
+// Match production: ThreadTimelinePane renders FollowUpPromptBox through
+// PageShell's actual footer path. The story hides the timeline scroll area so
+// the row stays compact, but the prompt/below-prompt shell itself is real.
+function PromptStage({ children }: { children: ReactNode }) {
+  return (
+    <div className="w-full min-w-0 bg-background">
+      <PageShell
+        shellClassName="!mx-0 !mt-0 !h-auto !min-h-0 !flex-none md:!mx-0 md:!mt-0"
+        scrollAreaClassName="hidden"
+        footerClassName="chat-prompt-box"
+        footer={children}
+      >
+        <span aria-hidden="true" />
+      </PageShell>
+    </div>
+  );
 }
 
 function Row({

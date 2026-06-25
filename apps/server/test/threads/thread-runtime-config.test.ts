@@ -175,6 +175,14 @@ describe("thread runtime config", () => {
           thread,
         });
         expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(startCommand.instructions).toContain(
+          "update_environment_directory",
+        );
 
         const submitCommand = await prepareTurnSubmitCommandPayload(
           harness.deps,
@@ -189,6 +197,14 @@ describe("thread runtime config", () => {
         );
         expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
         expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(submitCommand.resumeContext.instructions).toContain(
+          "update_environment_directory",
+        );
       },
     );
   });
@@ -243,6 +259,14 @@ describe("thread runtime config", () => {
         thread,
       });
       expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+      expect(startCommand.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(startCommand.instructions).toContain(
+        "update_environment_directory",
+      );
 
       const submitCommand = await prepareTurnSubmitCommandPayload(
         harness.deps,
@@ -257,6 +281,14 @@ describe("thread runtime config", () => {
       );
       expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
       expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+      expect(submitCommand.resumeContext.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(submitCommand.resumeContext.instructions).toContain(
+        "update_environment_directory",
+      );
     });
   });
 
@@ -869,7 +901,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("resolves the workspace and host data-dir storage path without agent dynamic tools", async () => {
+  it("resolves the workspace, storage path, and environment directory dynamic tool", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime";
       seedHostSession(harness.deps, { id: hostId });
@@ -906,10 +938,20 @@ describe("thread runtime config", () => {
         `/tmp/bb-host-data/${hostId}/thread-storage/${thread.id}`,
       );
       expect(runtimeConfig.workspaceProvisionType).toBe("unmanaged");
+      expect(runtimeConfig.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+          inputSchema: expect.objectContaining({
+            required: ["path"],
+          }),
+        }),
+      ]);
       expect(runtimeConfig.instructions).toContain(
         "You are working inside bb, an agentic IDE",
       );
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.instructions).toContain(
+        "update_environment_directory",
+      );
     });
   });
 
@@ -951,7 +993,11 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.dynamicTools).toEqual([]);
+      expect(runtimeConfig.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
       expect(runtimeConfig.instructions).not.toContain(
         "bb_send_to_main_thread",
       );

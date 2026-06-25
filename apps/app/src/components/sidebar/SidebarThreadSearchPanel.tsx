@@ -19,6 +19,7 @@ import { ThreadSearchResultRow } from "./ThreadSearchResultRow";
 
 interface SidebarThreadSearchPanelProps {
   activeIndex: number;
+  folderNamesById?: ReadonlyMap<string, string>;
   isRecentsLoading: boolean;
   onActiveIndexChange: (index: number) => void;
   onNavigationItemsChange: (
@@ -28,11 +29,11 @@ interface SidebarThreadSearchPanelProps {
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
   recentThreads: readonly ThreadListEntry[];
+  showFolderLabels?: boolean;
 }
 
 interface ThreadSearchRenderableRow {
   id: string;
-  isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
   thread: ThreadListEntry;
 }
@@ -52,6 +53,24 @@ interface ThreadSearchMessageProps {
 
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
+const EMPTY_FOLDER_NAMES_BY_ID = new Map<string, string>();
+const TITLE_MATCH_KINDS = new Set<ThreadSearchMatch["sourceKind"]>([
+  "title",
+  "title_fallback",
+]);
+
+// The message (non-title) match drives the deep-link target. Mirrors the row's
+// snippet selection so clicking a result lands on the message shown in the row.
+function getMessageMatchSeq(
+  matches: readonly ThreadSearchMatch[],
+): number | null {
+  for (const match of matches) {
+    if (!TITLE_MATCH_KINDS.has(match.sourceKind) && match.sourceSeq !== null) {
+      return match.sourceSeq;
+    }
+  }
+  return null;
+}
 
 function toNavigationItem(
   row: ThreadSearchRenderableRow,
@@ -61,6 +80,7 @@ function toNavigationItem(
     optionId: getSidebarThreadSearchOptionId(row.id),
     projectId: row.thread.projectId,
     threadId: row.thread.id,
+    messageSeq: getMessageMatchSeq(row.matches),
   };
 }
 
@@ -90,17 +110,21 @@ function ThreadSearchMessage({
 
 function renderSectionRows({
   activeIndex,
+  folderNamesById,
   onActiveIndexChange,
   onSelect,
   projectNamesById,
   section,
+  showFolderLabels,
   startIndex,
 }: {
   activeIndex: number;
+  folderNamesById: ReadonlyMap<string, string>;
   onActiveIndexChange: (index: number) => void;
   onSelect: (item: SidebarThreadSearchNavigationItem) => void;
   projectNamesById: ReadonlyMap<string, string>;
   section: ThreadSearchSection;
+  showFolderLabels: boolean;
   startIndex: number;
 }) {
   if (section.rows.length === 0) {
@@ -136,8 +160,12 @@ function renderSectionRows({
               key={row.id}
               id={item.optionId}
               isActive={activeIndex === index}
-              isArchivedGroup={row.isArchivedGroup}
               matches={row.matches}
+              folderLabel={
+                showFolderLabels && row.thread.folderId
+                  ? (folderNamesById.get(row.thread.folderId) ?? "Folder")
+                  : null
+              }
               projectName={projectNamesById.get(row.thread.projectId)}
               thread={row.thread}
               onActive={() => onActiveIndexChange(index)}
@@ -152,6 +180,7 @@ function renderSectionRows({
 
 export function SidebarThreadSearchPanel({
   activeIndex,
+  folderNamesById = EMPTY_FOLDER_NAMES_BY_ID,
   isRecentsLoading,
   onActiveIndexChange,
   onNavigationItemsChange,
@@ -159,6 +188,7 @@ export function SidebarThreadSearchPanel({
   projectNamesById,
   query,
   recentThreads,
+  showFolderLabels = false,
 }: SidebarThreadSearchPanelProps) {
   const trimmedQuery = query.trim();
   const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
@@ -171,14 +201,13 @@ export function SidebarThreadSearchPanel({
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) => ({
           id: `recent:${thread.id}`,
-          isArchivedGroup: false,
           matches: EMPTY_MATCHES,
           thread,
         }));
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Recent",
           rows,
           total: rows.length,
         },
@@ -189,7 +218,7 @@ export function SidebarThreadSearchPanel({
       return [
         {
           id: "active",
-          label: "Active",
+          label: "Threads",
           rows: [],
           total: 0,
         },
@@ -205,21 +234,19 @@ export function SidebarThreadSearchPanel({
     const activeRows =
       threadSearch.data?.active.results.map((result) => ({
         id: `active:${result.thread.id}`,
-        isArchivedGroup: false,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     const archivedRows =
       threadSearch.data?.archived.results.map((result) => ({
         id: `archived:${result.thread.id}`,
-        isArchivedGroup: true,
         matches: result.matches,
         thread: result.thread,
       })) ?? [];
     return [
       {
         id: "active",
-        label: "Active",
+        label: "Threads",
         rows: activeRows,
         total: threadSearch.data?.active.total ?? 0,
       },
@@ -301,10 +328,12 @@ export function SidebarThreadSearchPanel({
       {sections.map((section) => {
         const renderedSection = renderSectionRows({
           activeIndex,
+          folderNamesById,
           onActiveIndexChange,
           onSelect,
           projectNamesById,
           section,
+          showFolderLabels,
           startIndex,
         });
         startIndex += section.rows.length;

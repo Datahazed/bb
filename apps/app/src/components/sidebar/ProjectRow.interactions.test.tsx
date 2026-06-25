@@ -100,13 +100,15 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 function renderProjectRow(
   onToggleProjectCollapsed = vi.fn(),
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
+  isActive = false,
 ) {
-  render(
+  const onToggleEnvironmentCollapsed = vi.fn();
+  const result = render(
     <MemoryRouter>
       <ProjectRow
         project={makeProject()}
         threadListState={threadListState}
-        isActive={false}
+        isActive={isActive}
         isCollapsed={false}
         compareThreads={() => 0}
         collapsedThreadIds={new Set()}
@@ -114,11 +116,11 @@ function renderProjectRow(
         isLocalPathInvalid={false}
         onToggleProjectCollapsed={onToggleProjectCollapsed}
         onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={vi.fn()}
+        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       />
     </MemoryRouter>,
   );
-  return { onToggleProjectCollapsed };
+  return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
 describe("ProjectRow interactions", () => {
@@ -143,6 +145,76 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(onToggleProjectCollapsed).toHaveBeenCalledWith("proj_test");
+  });
+
+  it("keeps hover background scoped to the project chevron", () => {
+    const { container } = renderProjectRow();
+
+    const header = container.querySelector(".bb-sidebar-hover-actions-row");
+    expect(header).not.toBeNull();
+    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
+
+    const leadingIcon = container.querySelector('[aria-hidden="true"]');
+    expect(leadingIcon?.className).not.toContain("group-hover/project-row");
+
+    expect(
+      screen.getByRole("button", { name: "Collapse Test project" }).className,
+    ).toContain("hover:bg-sidebar-accent");
+  });
+
+  it("uses selected state on active project headers without row hover", () => {
+    const { container } = renderProjectRow(
+      vi.fn(),
+      { status: "ready", threads: [] },
+      true,
+    );
+
+    const header = container.querySelector(".bb-sidebar-hover-actions-row");
+    expect(header).not.toBeNull();
+    expect(header?.className).toContain("bg-sidebar-border");
+    expect(header?.className).not.toContain("cursor-pointer");
+    expect(header?.className).not.toContain("hover:bg-sidebar-accent");
+  });
+
+  it("keeps worktree group row static and scopes collapse to the chevron", () => {
+    const { onToggleEnvironmentCollapsed } = renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            id: "thr_worktree_a",
+            environmentId: "env_test",
+            environmentName: "Feature workspace",
+            environmentBranchName: "feat/menu-close",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+          makeThread({
+            id: "thr_worktree_b",
+            environmentId: "env_test",
+            environmentName: "Feature workspace",
+            environmentBranchName: "feat/menu-close",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
+      },
+    );
+    const worktreeHeader = screen
+      .getByText("Feature workspace")
+      .closest(".bb-sidebar-hover-actions-row");
+
+    expect(worktreeHeader).not.toBeNull();
+    expect(worktreeHeader?.className).not.toContain("cursor-pointer");
+
+    fireEvent.click(screen.getByText("Feature workspace"));
+    expect(onToggleEnvironmentCollapsed).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Collapse Feature workspace threads",
+      }),
+    );
+    expect(onToggleEnvironmentCollapsed).toHaveBeenCalledWith("env_test");
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

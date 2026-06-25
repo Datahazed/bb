@@ -1,11 +1,22 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
-import { closeSession, events, threads } from "@bb/db";
+import {
+  closeSession,
+  events,
+  getEnvironment,
+  getThread,
+  listEnvironments,
+  listQueuedThreadMessages,
+  threads,
+} from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -32,6 +43,36 @@ async function postEventBatch(args: {
       events: args.events,
     }),
   });
+}
+
+async function postToolCall(args: {
+  arguments?: unknown;
+  callId?: string;
+  harness: TestAppHarness;
+  providerThreadId?: string;
+  sessionId: string;
+  threadId: string;
+  tool: string;
+  turnId?: string;
+}): Promise<Response> {
+  return args.harness.app.request("/internal/session/tool-call", {
+    method: "POST",
+    headers: internalAuthHeaders(args.harness),
+    body: JSON.stringify({
+      sessionId: args.sessionId,
+      threadId: args.threadId,
+      providerThreadId: args.providerThreadId ?? "provider-tool-call",
+      turnId: args.turnId ?? "turn-tool-call",
+      callId: args.callId ?? "call-tool-call",
+      tool: args.tool,
+      arguments: args.arguments,
+    }),
+  });
+}
+
+async function flushDeferredChildThreadNotifications(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+  await sleep(2_100);
 }
 
 describe("internal event and tool-call routes", () => {
@@ -280,6 +321,257 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("keeps active root turns queueable when a delegated child turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "active",
+      });
+
+      const eventResponse = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("root-turn"),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("delegated-child-turn"),
+              parentToolCallId: "call-delegate-agent",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-thread-main",
+              scope: turnScope("delegated-child-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(eventResponse.status).toBe(200);
+      await expect(readJson(eventResponse)).resolves.toMatchObject({
+        acceptedEvents: [
+          { eventIndex: 0, threadId: thread.id },
+          { eventIndex: 1, threadId: thread.id },
+          { eventIndex: 2, threadId: thread.id },
+        ],
+        rejectedEvents: [],
+      });
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("active");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Follow up after child turn" }],
+            mode: "queue-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+
+      expect(sendResponse.status).toBe(200);
+      await expect(readJson(sendResponse)).resolves.toEqual({ ok: true });
+      const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
+      expect(queuedRows).toHaveLength(1);
+      expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
+        {
+          mentions: [],
+          text: "Follow up after child turn",
+          type: "text",
+        },
+      ]);
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all()
+          .filter((row) => row.type === "client/turn/requested"),
+      ).toEqual([]);
+    });
+  });
+
+  it("does not activate an idle thread for a delegated child turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              scope: turnScope("delegated-child-turn"),
+              parentToolCallId: "call-delegate-agent",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              scope: turnScope("delegated-child-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("idle");
+    });
+  });
+
+  it("does not notify a parent when a child thread nested turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "active",
+      });
+      seedEvent(harness.deps, {
+        threadId: parentThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-parent-thread",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("parent-root-turn"),
+        data: {
+          providerThreadId: "provider-parent-thread",
+        },
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: parentThread.id,
+        providerId: "codex",
+        status: "active",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/started",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-root-turn"),
+            },
+          },
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/started",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-nested-turn"),
+              parentToolCallId: "call-nested-agent",
+            },
+          },
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/completed",
+              threadId: childThread.id,
+              providerThreadId: "provider-child-thread",
+              scope: turnScope("child-nested-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await flushDeferredChildThreadNotifications();
+
+      expect(
+        harness.db
+          .select()
+          .from(threads)
+          .where(eq(threads.id, childThread.id))
+          .get()?.status,
+      ).toBe("active");
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, parentThread.id))
+          .all()
+          .map((row) => row.type),
+      ).toEqual(["turn/started"]);
+    });
+  });
+
   it("does not reactivate a stopped thread when provider turn start arrives after interruption", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);
@@ -469,6 +761,228 @@ describe("internal event and tool-call routes", () => {
           .where(eq(threads.id, thread.id))
           .get(),
       ).toEqual(settledRow);
+    });
+  });
+
+  it("updates a thread to an existing environment for the requested host path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/current-environment",
+      });
+      const targetEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/existing-managed-worktree",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-existing-environment"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-existing-environment",
+        tool: "update_environment_directory",
+        arguments: { path: "/tmp/existing-managed-worktree/" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "Environment directory updated to /tmp/existing-managed-worktree",
+            ),
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        targetEnvironment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(2);
+      const storedEvents = harness.db
+        .select()
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .all();
+      expect(storedEvents.map((event) => event.type)).toEqual([
+        "turn/started",
+        "system/operation",
+      ]);
+      expect(storedEvents[1]).toMatchObject({
+        type: "system/operation",
+        scopeKind: "turn",
+        turnId: "turn-existing-environment",
+      });
+    });
+  });
+
+  it("creates an unmanaged environment for a new requested host path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/current-environment",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-new-environment"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
+
+      const responsePromise = postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-new-environment",
+        tool: "update_environment_directory",
+        arguments: { path: "/tmp/new-unmanaged-worktree" },
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.workspaceProvisionType === "unmanaged" &&
+          command.path === "/tmp/new-unmanaged-worktree",
+      );
+      if (provisionCommand.command.type !== "environment.provision") {
+        throw new Error("Expected environment.provision command");
+      }
+      expect(provisionCommand.command.initiator).toBeNull();
+
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: "/tmp/new-unmanaged-worktree",
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: "feature/new-worktree",
+        defaultBranch: "main",
+        transcript: [],
+      });
+      const response = await responsePromise;
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "Environment directory updated to /tmp/new-unmanaged-worktree",
+            ),
+          },
+        ],
+      });
+      const targetEnvironment = listEnvironments(harness.db, project.id).find(
+        (environment) => environment.path === "/tmp/new-unmanaged-worktree",
+      );
+      expect(targetEnvironment).toMatchObject({
+        hostId: host.id,
+        projectId: project.id,
+        status: "ready",
+        workspaceProvisionType: "unmanaged",
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        targetEnvironment?.id,
+      );
+      expect(
+        targetEnvironment
+          ? getEnvironment(harness.db, targetEnvironment.id)
+          : null,
+      ).toMatchObject({
+        branchName: "feature/new-worktree",
+        isGitRepo: true,
+        isWorktree: true,
+      });
+      const storedEvents = harness.db
+        .select()
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .all();
+      expect(storedEvents.map((event) => event.type)).toEqual([
+        "turn/started",
+        "system/operation",
+      ]);
+      expect(storedEvents[1]).toMatchObject({
+        scopeKind: "turn",
+        turnId: "turn-new-environment",
+      });
+    });
+  });
+
+  it("rejects relative update_environment_directory paths without changing the thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        tool: "update_environment_directory",
+        arguments: { path: "../other-checkout" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Path must be an absolute path on the current host.",
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        environment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
     });
   });
 

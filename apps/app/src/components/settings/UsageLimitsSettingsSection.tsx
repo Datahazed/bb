@@ -3,7 +3,13 @@ import type {
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSystemUsageLimits } from "@/hooks/queries/system-queries";
 import { cn } from "@/lib/utils";
 
@@ -19,13 +25,14 @@ const PROVIDERS: ProviderConfig[] = [
     key: "codex",
     name: "Codex",
     signInHint: "Run `codex` to sign in and see your usage.",
-    expiredHint: "Your Codex session expired. Run `codex`, then refresh.",
+    expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
   {
     key: "claudeCode",
     name: "Claude Code",
     signInHint: "Run `claude` to sign in and see your usage.",
-    expiredHint: "Your Claude session expired. Run `claude`, then refresh.",
+    expiredHint:
+      "Your Claude session expired. Run `claude`, then reload usage.",
   },
 ];
 
@@ -81,7 +88,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium">{window.label}</span>
+        <span className="text-xs text-foreground">{window.label}</span>
         <span className="text-xs tabular-nums text-muted-foreground">
           {window.usedPercent}% used
         </span>
@@ -107,6 +114,17 @@ interface ProviderUsageBlockProps {
   isError: boolean;
 }
 
+export interface UsageLimitsSettingsSectionContentProps {
+  usage: {
+    codex?: ProviderUsage;
+    claudeCode?: ProviderUsage;
+  };
+  isLoading: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  onRefresh: () => void;
+}
+
 function ProviderUsageBlock({
   config,
   usage,
@@ -116,9 +134,9 @@ function ProviderUsageBlock({
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{config.name}</h3>
+        <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
         {planLabel ? (
           <span className="text-xs text-muted-foreground">{planLabel}</span>
         ) : null}
@@ -143,7 +161,7 @@ function ProviderUsageBody({
     return (
       <p className="text-xs text-muted-foreground">
         Couldn&apos;t load usage right now. Make sure bb&apos;s host is
-        connected, then refresh.
+        connected, then reload usage.
       </p>
     );
   }
@@ -164,7 +182,7 @@ function ProviderUsageBody({
         );
       }
       return (
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           {usage.windows.map((window) => (
             <UsageWindowRow key={window.label} window={window} />
           ))}
@@ -185,38 +203,71 @@ function ProviderUsageBody({
   }
 }
 
-export function UsageLimitsSettingsSection() {
-  const usageQuery = useSystemUsageLimits();
-
+export function UsageLimitsSettingsSectionContent({
+  usage,
+  isLoading,
+  isError,
+  isFetching,
+  onRefresh,
+}: UsageLimitsSettingsSectionContentProps) {
   return (
     <SettingsSection
       title="Usage limits"
       description="Your Codex and Claude Code subscription usage."
       action={
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={usageQuery.isFetching}
-          onClick={() => {
-            void usageQuery.refetch();
-          }}
-        >
-          {usageQuery.isFetching ? "Refreshing…" : "Refresh"}
-        </Button>
+        <Tooltip delayDuration={300} disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground hover:text-foreground"
+              disabled={isFetching}
+              onClick={onRefresh}
+              title={undefined}
+              aria-label={
+                isFetching
+                  ? "Reloading usage data"
+                  : "Reload usage data"
+              }
+            >
+              <Icon
+                name="RotateCcw"
+                className={cn("size-3.5", isFetching && "animate-spin")}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Reload usage data</TooltipContent>
+        </Tooltip>
       }
     >
       <div className="divide-y divide-border">
         {PROVIDERS.map((config) => (
-          <div key={config.key} className="py-3 first:pt-0 last:pb-0">
+          <div key={config.key} className="py-3.5 first:pt-0 last:pb-0">
             <ProviderUsageBlock
               config={config}
-              usage={usageQuery.data?.[config.key]}
-              isLoading={usageQuery.isLoading}
-              isError={usageQuery.isError}
+              usage={usage[config.key]}
+              isLoading={isLoading}
+              isError={isError}
             />
           </div>
         ))}
       </div>
     </SettingsSection>
+  );
+}
+
+export function UsageLimitsSettingsSection() {
+  const usageQuery = useSystemUsageLimits();
+
+  return (
+    <UsageLimitsSettingsSectionContent
+      usage={usageQuery.data ?? {}}
+      isLoading={usageQuery.isLoading}
+      isError={usageQuery.isError}
+      isFetching={usageQuery.isFetching}
+      onRefresh={() => {
+        void usageQuery.refetch();
+      }}
+    />
   );
 }

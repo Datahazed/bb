@@ -71,6 +71,8 @@ import type {
   EnvironmentPullRequestResponse,
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
+  HostDirectoryListing,
+  HostDirectoryQuery,
   ProjectAttachmentContentQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
@@ -176,6 +178,7 @@ import {
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
+  hostDirectoryQuerySchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
@@ -420,6 +423,14 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<Host>(),
+    }),
+    directory: defineRoute({
+      path: "/hosts/:id/directory",
+      method: "get",
+      request: queryRequest<PathId, HostDirectoryQuery>(
+        hostDirectoryQuerySchema,
+      ),
+      response: jsonResponse<HostDirectoryListing>(),
     }),
   },
 

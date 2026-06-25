@@ -19,7 +19,6 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -45,6 +44,8 @@ import {
 } from "./sidebarThreadSearch";
 
 const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const SIDEBAR_FOOTER_ACTION_CLASS =
+  "size-8 w-8 justify-center p-0 text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -133,6 +134,17 @@ export function AppSidebar({
           projectId: item.projectId,
           threadId: item.threadId,
         }),
+        // Hand the matched message's event sequence to the timeline so it can
+        // scroll to and briefly highlight that message. Omitted for title-only
+        // matches, which just open the thread normally.
+        item.messageSeq !== null
+          ? {
+              state: {
+                searchMessageSeq: item.messageSeq,
+                searchThreadId: item.threadId,
+              },
+            }
+          : undefined,
       );
       closeOnMobile();
     },
@@ -321,23 +333,24 @@ export function AppSidebar({
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
-          <SidebarMenu className="flex-row items-center">
-            <SidebarMenuItem>
+          <SidebarMenu className="flex-row items-center gap-1">
+            <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 asChild
-                className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
-                tooltip="Settings"
                 aria-label="Settings"
+                tooltip={{ children: "Settings", hidden: false, side: "top" }}
+                className={SIDEBAR_FOOTER_ACTION_CLASS}
               >
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
+                  <span className="sr-only">Settings</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
+            <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
-                className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
-                tooltip="Send feedback"
+                className={SIDEBAR_FOOTER_ACTION_CLASS}
+                tooltip={{ children: "Feedback", hidden: false, side: "top" }}
                 aria-label="Send feedback"
                 onClick={() => {
                   closeOnMobile();
@@ -345,6 +358,7 @@ export function AppSidebar({
                 }}
               >
                 <Icon name="ChatFeedback" />
+                <span className="sr-only">Feedback</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

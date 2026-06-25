@@ -3,6 +3,12 @@ import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { Icon } from "@/components/ui/icon.js";
+import {
+  activityIconClass,
+  activityMetaClass,
+  activityRowClass,
+  activityTextClass,
+} from "@/components/ui/activity-row-styles";
 import { cn } from "@/lib/utils";
 
 const CARD_ROW_HEIGHT = 32;
@@ -32,22 +38,41 @@ function CommandDuration({ startedAt }: { startedAt: number }) {
 function CommandSummary({
   row,
   showDuration,
+  active = false,
 }: {
   row: TimelineWorkflowWorkRow;
   showDuration: boolean;
+  active?: boolean;
 }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
       {/* Verb + description truncate as one unit so the trailing controls
           ("+N more", chevron, duration) never get pushed off a narrow banner. */}
       <span className="min-w-0 truncate" title={row.description}>
-        <span className="text-muted-foreground">Running background command: </span>
-        <span className="font-medium text-foreground opacity-70">
+        <span
+          className={
+            active ? activityMetaClass("active") : "text-muted-foreground"
+          }
+        >
+          Running background command:{" "}
+        </span>
+        <span
+          className={
+            active
+              ? activityTextClass("active")
+              : "font-medium text-foreground opacity-70"
+          }
+        >
           {row.description}
         </span>
       </span>
       {showDuration ? (
-        <span className="shrink-0 text-muted-foreground">
+        <span
+          className={cn(
+            "shrink-0",
+            active ? activityMetaClass("active") : "text-muted-foreground",
+          )}
+        >
           <CommandDuration startedAt={row.startedAt} />
         </span>
       ) : null}
@@ -87,7 +112,7 @@ export function ThreadBackgroundCommandsCard({
       className="overflow-hidden"
       style={{ minHeight: CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1">
+      <div className="flex items-center">
         {hasMore ? (
           <button
             type="button"
@@ -96,21 +121,25 @@ export function ThreadBackgroundCommandsCard({
             aria-controls={BODY_ID}
             aria-label={`Background commands: ${primary.description}`}
             onClick={onToggle}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground transition-colors hover:bg-state-hover"
+            className={activityRowClass(
+              "active",
+              "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+            )}
           >
             <Icon
               name="Terminal"
-              className="size-3.5 shrink-0 text-muted-foreground"
+              className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <CommandSummary row={primary} showDuration={false} />
-            <span className="shrink-0 text-muted-foreground">
+            <CommandSummary row={primary} showDuration={false} active />
+            <span className={activityMetaClass("active", "shrink-0")}>
               +{others.length} more
             </span>
             <Icon
               name="ChevronDown"
               className={cn(
-                "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+                activityIconClass("active"),
+                "size-3.5 shrink-0 transition-transform duration-200",
                 isExpanded && "rotate-180",
               )}
               aria-hidden="true"
@@ -118,15 +147,18 @@ export function ThreadBackgroundCommandsCard({
           </button>
         ) : (
           <div
-            className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-0.5 text-xs text-foreground"
+            className={activityRowClass(
+              "active",
+              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
+            )}
             aria-label={`Background command: ${primary.description}`}
           >
             <Icon
               name="Terminal"
-              className="size-3.5 shrink-0 text-muted-foreground"
+              className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <CommandSummary row={primary} showDuration />
+            <CommandSummary row={primary} showDuration active />
           </div>
         )}
       </div>
@@ -140,7 +172,7 @@ export function ThreadBackgroundCommandsCard({
             "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
             isExpanded
               ? "grid-rows-[1fr] border-t border-border opacity-100"
-              : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
+              : "pointer-events-none grid-rows-[0fr] opacity-0",
           )}
         >
           <div className="overflow-hidden bg-popover">
@@ -148,8 +180,8 @@ export function ThreadBackgroundCommandsCard({
               {others.map((row) => (
                 <div
                   key={row.id}
-                  // px-3 (not px-2) so the icon lines up under the header icon,
-                  // which is offset by the toggle button's own px-1 padding.
+                  // px-3 matches the full-width header row's padding so the
+                  // icon lines up under the header icon.
                   className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
                 >
                   <Icon

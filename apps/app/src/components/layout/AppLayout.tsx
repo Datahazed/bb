@@ -662,6 +662,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           target={quickCreateProject.projectPathDialog.target}
           pending={quickCreateProject.isCreating}
           platform={quickCreateProject.platform}
+          hostId={quickCreateProject.hostId}
           hostName={quickCreateProject.hostName}
           onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
           onSubmit={quickCreateProject.submitProjectPath}

@@ -8,6 +8,12 @@ export interface SidebarThreadSearchNavigationItem {
   optionId: string;
   projectId: string;
   threadId: string;
+  /**
+   * Event sequence of the matched message, so selecting the result can scroll
+   * to that message in the thread. Null when the match is a title or the row is
+   * a recent (no-query) entry with no message match.
+   */
+  messageSeq: number | null;
 }
 
 export interface SidebarThreadSearchInputController {
@@ -51,6 +57,8 @@ export function haveSameSidebarThreadSearchNavigationItems(
   }
   return left.every(
     (item, index) =>
-      item.id === right[index]?.id && item.optionId === right[index]?.optionId,
+      item.id === right[index]?.id &&
+      item.optionId === right[index]?.optionId &&
+      item.messageSeq === right[index]?.messageSeq,
   );
 }
