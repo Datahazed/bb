@@ -84,6 +84,7 @@ const USER_SCROLL_INTENT_MS = 1_000;
 // ResizeObserver can fire before related flex/sidebar/prompt layout settles.
 // Re-applying briefly covers cascading layout work without an unbounded loop.
 const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
+const POINTER_SCROLL_INTENT_DISTANCE_PX = 4;
 // Throttle continuous scroll-anchor capture so a fast scroll writes the atom at
 // most this often, plus a trailing write for the final resting position.
 const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
@@ -243,6 +244,11 @@ export function BottomAnchoredScrollBody({
   const shouldStickToBottomRef = useRef(true);
   const userScrollIntentUntilRef = useRef(0);
   const pointerScrollIntentRef = useRef(false);
+  const pointerScrollCandidateRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreFramesRemainingRef = useRef(0);
   const pendingPrependAnchorRef = useRef<{
@@ -335,6 +341,7 @@ export function BottomAnchoredScrollBody({
     cancelPendingScrollRestore();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
+    pointerScrollCandidateRef.current = null;
     userDetachedFromBottomRef.current = false;
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
@@ -521,20 +528,36 @@ export function BottomAnchoredScrollBody({
     markUserScrollIntent();
   }, [markUserScrollIntent]);
 
-  const markTouchStartScrollIntent = useCallback(() => {
-    markUserScrollIntent();
-  }, [markUserScrollIntent]);
-
   const markTouchMoveScrollIntent = useCallback(() => {
     markUserScrollIntent();
   }, [markUserScrollIntent]);
 
-  const startPointerScrollIntent = useCallback(() => {
+  const startPointerScrollCandidate = useCallback((event: PointerEvent) => {
+    if (event.target !== scrollAreaRef.current) return;
+    pointerScrollCandidateRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }, []);
+
+  const markPointerMoveScrollIntent = useCallback((event: PointerEvent) => {
+    const candidate = pointerScrollCandidateRef.current;
+    if (!candidate || candidate.pointerId !== event.pointerId) return;
+    const deltaX = Math.abs(event.clientX - candidate.x);
+    const deltaY = Math.abs(event.clientY - candidate.y);
+    if (
+      deltaX < POINTER_SCROLL_INTENT_DISTANCE_PX &&
+      deltaY < POINTER_SCROLL_INTENT_DISTANCE_PX
+    ) {
+      return;
+    }
     pointerScrollIntentRef.current = true;
   }, []);
 
   const endPointerScrollIntent = useCallback(() => {
     pointerScrollIntentRef.current = false;
+    pointerScrollCandidateRef.current = null;
   }, []);
 
   const markKeyboardScrollIntent = useCallback(
@@ -700,16 +723,18 @@ export function BottomAnchoredScrollBody({
     scrollArea.addEventListener("wheel", markWheelScrollIntent, {
       passive: true,
     });
-    scrollArea.addEventListener("touchstart", markTouchStartScrollIntent, {
-      passive: true,
-    });
     scrollArea.addEventListener("touchmove", markTouchMoveScrollIntent, {
       passive: true,
     });
     // Captures scrollbar-thumb drags and other pointer-driven scrolling that
-    // can produce `scroll` without a preceding wheel/touch event. The matching
-    // window listeners clear the flag even if the pointer leaves the scrollport.
-    scrollArea.addEventListener("pointerdown", startPointerScrollIntent, {
+    // can produce `scroll` without a preceding wheel/touch event. A bare
+    // pointerdown/tap is only a candidate; it becomes scroll intent after
+    // pointer movement so layout-driven scroll events during prompt/footer
+    // clicks do not detach sticky-bottom.
+    scrollArea.addEventListener("pointerdown", startPointerScrollCandidate, {
+      passive: true,
+    });
+    window.addEventListener("pointermove", markPointerMoveScrollIntent, {
       passive: true,
     });
     window.addEventListener("pointerup", endPointerScrollIntent);
@@ -722,9 +747,9 @@ export function BottomAnchoredScrollBody({
       resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScroll);
       scrollArea.removeEventListener("wheel", markWheelScrollIntent);
-      scrollArea.removeEventListener("touchstart", markTouchStartScrollIntent);
       scrollArea.removeEventListener("touchmove", markTouchMoveScrollIntent);
-      scrollArea.removeEventListener("pointerdown", startPointerScrollIntent);
+      scrollArea.removeEventListener("pointerdown", startPointerScrollCandidate);
+      window.removeEventListener("pointermove", markPointerMoveScrollIntent);
       window.removeEventListener("pointerup", endPointerScrollIntent);
       window.removeEventListener("pointercancel", endPointerScrollIntent);
       window.removeEventListener("keydown", markKeyboardScrollIntent);
@@ -736,11 +761,11 @@ export function BottomAnchoredScrollBody({
     handleScroll,
     handleScrollAreaResize,
     markKeyboardScrollIntent,
+    markPointerMoveScrollIntent,
     markTouchMoveScrollIntent,
-    markTouchStartScrollIntent,
     markWheelScrollIntent,
     queueBottomRestore,
-    startPointerScrollIntent,
+    startPointerScrollCandidate,
   ]);
 
   return (

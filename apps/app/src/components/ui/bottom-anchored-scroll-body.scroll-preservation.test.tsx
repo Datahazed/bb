@@ -273,6 +273,146 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     });
   });
 
+  it("does not detach from bottom on pointerdown-only layout scroll", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+
+    fireEvent.pointerDown(scrollArea, {
+      pointerId: 1,
+      clientX: 12,
+      clientY: 12,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(400);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+  });
+
+  it("does not detach when pointer movement starts inside timeline content", () => {
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+
+    fireEvent.pointerDown(requireHTMLElement(rowElements.get("row-c")!), {
+      pointerId: 1,
+      clientX: 12,
+      clientY: 12,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 1,
+      clientX: 12,
+      clientY: 24,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(400);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+  });
+
+  it("does not detach from bottom on touchstart-only layout scroll", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+
+    fireEvent.touchStart(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(400);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+  });
+
+  it("still detaches when pointer movement drives the scroll", () => {
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -20,
+      bottom: 80,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
+      top: 80,
+      bottom: 180,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.pointerDown(scrollArea, {
+      pointerId: 1,
+      clientX: 12,
+      clientY: 12,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 1,
+      clientX: 12,
+      clientY: 24,
+    });
+    fireEvent.scroll(scrollArea);
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+  });
+
   it("does not restore a row when the saved anchor is at the bottom", () => {
     getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
       rowId: "",
