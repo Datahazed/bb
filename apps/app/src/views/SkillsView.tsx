@@ -183,7 +183,7 @@ export function SkillsOverview({
             VS Code / Raycast keep authoring out of the management list rather
             than stacking a teaching panel onto a list that is never empty. */}
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm leading-snug text-subtle-foreground">
             Every skill your agents can run, grouped by provider. bb skills run
             across all of them.
           </p>
