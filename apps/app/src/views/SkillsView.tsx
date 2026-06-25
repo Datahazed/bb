@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -18,8 +12,8 @@ import {
 } from "@/components/ui/dialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
+import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { Icon } from "@/components/ui/icon.js";
-import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -322,20 +316,26 @@ function stripSkillFrontmatter(content: string): string {
 }
 
 /**
- * Read-only SKILL.md body, rendered with the same markdown viewer the thread
- * file preview uses (MarkdownPreview on a faint paper wash) so a skill reads
- * like any other file in the app rather than raw monospace. Presentational and
+ * Read-only SKILL.md body, rendered with the app's actual file viewer
+ * (FilePreview) — the same component, markdown rendering, and paper-wash body
+ * used for `.md` files in threads — rather than a re-implementation. The dialog
+ * supplies its own title, so the viewer runs header-less; frontmatter is
+ * stripped so it doesn't render as a stray rule + heading. Presentational and
  * exported so stories iterate on it without the dialog's queries.
- * `@container/page` + `--md-content-w` mirror FilePreview so any wide tables
- * size against this column, not the viewport.
  */
 export function SkillContentPreview({ content }: { content: string }) {
   return (
-    <div
-      className="@container/page max-h-[60dvh] overflow-auto rounded-md border border-border bg-surface-raised px-4 py-3"
-      style={{ "--md-content-w": "100cqi" } as CSSProperties}
-    >
-      <MarkdownPreview allowHtml content={stripSkillFrontmatter(content)} />
+    <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
+      <FilePreview
+        path="SKILL.md"
+        headerMode="none"
+        state={{
+          kind: "ready",
+          file: { name: "SKILL.md", contents: stripSkillFrontmatter(content) },
+          lineRange: null,
+          showMarkdownModeToggle: false,
+        }}
+      />
     </div>
   );
 }
@@ -407,7 +407,7 @@ export function SkillDetailDialogView({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Icon name="Zap" className="size-4 text-file-accent" />
+            <Icon name="Zap" className="size-4 text-muted-foreground" />
             <span className="min-w-0 truncate">{skill?.name}</span>
             {skill?.provider ? (
               <ProviderLogo providerId={skill.provider} className="size-3.5" />
