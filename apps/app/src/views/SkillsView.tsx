@@ -451,7 +451,7 @@ export function SkillDetailDialogView({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-44"
+        className="min-w-0"
         mobileTitle="Skill actions"
       >
         {canManage ? (
