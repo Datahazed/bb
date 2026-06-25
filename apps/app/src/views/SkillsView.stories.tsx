@@ -63,12 +63,6 @@ export function Overview() {
   return <Story />;
 }
 
-// A developer with provider skills installed but no user-created bb skills yet,
-// so the teaching shows above the discoverable list.
-export function BuiltinsOnly() {
-  return <Story skills={[...defaultBbSkills, ...providerSkills]} />;
-}
-
 // The true minimum every install starts at: just the two default bb skills, plus
 // the teaching (no user-created skills yet).
 export function Empty() {

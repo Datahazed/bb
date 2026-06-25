@@ -183,6 +183,10 @@ export function SkillsOverview({
             VS Code / Raycast keep authoring out of the management list rather
             than stacking a teaching panel onto a list that is never empty. */}
         <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Every skill your agents can run, grouped by provider. bb skills run
+            across all of them.
+          </p>
           <div className="flex items-center gap-2">
             <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
               <Icon
@@ -205,10 +209,6 @@ export function SkillsOverview({
               onCreate={onCreateSkill}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            Every skill your agents can run, grouped by provider. bb skills run
-            across all of them.
-          </p>
         </div>
         {hasError ? (
           <p className="text-sm text-destructive">Failed to load skills.</p>
