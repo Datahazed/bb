@@ -1,5 +1,9 @@
 import type { SkillSummary } from "@bb/server-contract";
-import { SkillsOverview, type SkillsOverviewProps } from "./SkillsView";
+import {
+  SkillContentPreview,
+  SkillsOverview,
+  type SkillsOverviewProps,
+} from "./SkillsView";
 
 export default {
   title: "Skills",
@@ -77,4 +81,52 @@ export function Loading() {
 
 export function Error() {
   return <Story skills={[]} hasError />;
+}
+
+// The skill detail body now reuses the thread file viewer's markdown rendering
+// (MarkdownPreview) instead of raw monospace `<pre>`. Rendered at the detail
+// dialog's width with a representative SKILL.md so the rendering is iterable on
+// its own.
+const SAMPLE_SKILL_MD = `---
+name: code-review
+description: Review the current diff against our conventions.
+---
+
+# Code review
+
+Review the **current working diff** for correctness and clarity. Lead with the
+highest-severity findings; skip nits unless asked.
+
+## When to use
+
+- Before opening a PR, or when the user asks to "review my changes".
+- Not for whole-repo audits — scope to the diff.
+
+## Steps
+
+1. Run \`git diff\` and read every hunk.
+2. Group findings by severity, and cite each as \`file:line\`.
+
+\`\`\`ts
+// Flag anything that mutates shared state without a lock.
+if (!resolution.additionalSkillsRootPaths) throw new Error("unresolved");
+\`\`\`
+
+| Severity | Meaning        | Action          |
+| -------- | -------------- | --------------- |
+| P0       | Correctness    | Block the merge |
+| P1       | Latent risk    | Flag, recommend |
+| P2       | Style / polish | Optional        |
+
+> Summary first — what's wrong and where — then the detail.
+`;
+
+export function Detail() {
+  return (
+    <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
+      <div className="max-w-2xl">
+        <SkillContentPreview content={SAMPLE_SKILL_MD} />
+      </div>
+    </main>
+  );
 }

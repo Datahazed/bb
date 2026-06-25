@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -13,6 +19,7 @@ import {
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon } from "@/components/ui/icon.js";
+import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -303,6 +310,37 @@ const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
 };
 
 /**
+ * Drop a leading YAML frontmatter block before rendering. The markdown renderer
+ * doesn't understand frontmatter, so a `---\n…\n---` header would otherwise
+ * render as a stray horizontal rule plus a setext heading (the closing `---`
+ * underlines the `name:`/`description:` lines). The detail header already shows
+ * the skill's name and scope, so the frontmatter is redundant here regardless.
+ */
+function stripSkillFrontmatter(content: string): string {
+  const match = /^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
+  return match ? content.slice(match[0].length).replace(/^\s*\n/, "") : content;
+}
+
+/**
+ * Read-only SKILL.md body, rendered with the same markdown viewer the thread
+ * file preview uses (MarkdownPreview on a faint paper wash) so a skill reads
+ * like any other file in the app rather than raw monospace. Presentational and
+ * exported so stories iterate on it without the dialog's queries.
+ * `@container/page` + `--md-content-w` mirror FilePreview so any wide tables
+ * size against this column, not the viewport.
+ */
+export function SkillContentPreview({ content }: { content: string }) {
+  return (
+    <div
+      className="@container/page max-h-[60dvh] overflow-auto rounded-md border border-border bg-surface-raised px-4 py-3"
+      style={{ "--md-content-w": "100cqi" } as CSSProperties}
+    >
+      <MarkdownPreview allowHtml content={stripSkillFrontmatter(content)} />
+    </div>
+  );
+}
+
+/**
  * View a skill's SKILL.md; bb skills (manageable) can be edited inline or
  * deleted. Connected — owns the content/update/delete queries.
  */
@@ -402,9 +440,7 @@ function SkillDetailDialog({
             className="h-80 w-full resize-none rounded-md border border-input bg-card p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         ) : (
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 font-mono text-xs leading-relaxed text-foreground">
-            {content}
-          </pre>
+          <SkillContentPreview content={content} />
         )}
 
         <DialogFooter className="sm:justify-between">
