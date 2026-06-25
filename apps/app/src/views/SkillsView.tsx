@@ -434,64 +434,56 @@ export function SkillDetailDialogView({
         Delete
       </Button>
     </>
-  ) : (
-    <>
-      {canManage ? (
+  ) : canManage || canOpenInEditor ? (
+    // Read mode: a single overflow by the title (Notion/Linear-style). Edit is
+    // reached from here and happens inline; the viewer has no toolbar.
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          disabled={isLoadingContent}
-          onClick={startEditing}
+          size="icon"
+          className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+          aria-label="Skill actions"
+          title="Skill actions"
         >
-          <Icon name="Edit" className="size-4" />
-          Edit
+          <Icon name="MoreHorizontal" className="size-4" />
         </Button>
-      ) : null}
-      {canManage || canOpenInEditor ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-              aria-label="More actions"
-              title="More actions"
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-44"
+        mobileTitle="Skill actions"
+      >
+        {canManage ? (
+          <DropdownMenuItem onSelect={startEditing}>
+            <Icon name="Edit" className="size-4 text-muted-foreground" />
+            Edit
+          </DropdownMenuItem>
+        ) : null}
+        {canOpenInEditor ? (
+          <DropdownMenuItem onSelect={onOpenInEditor}>
+            <Icon
+              name="ExternalLink"
+              className="size-4 text-muted-foreground"
+            />
+            Open in editor
+          </DropdownMenuItem>
+        ) : null}
+        {canManage ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => setConfirmingDelete(true)}
             >
-              <Icon name="MoreHorizontal" className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-44"
-            mobileTitle="Skill actions"
-          >
-            {canOpenInEditor ? (
-              <DropdownMenuItem onSelect={onOpenInEditor}>
-                <Icon
-                  name="ExternalLink"
-                  className="size-4 text-muted-foreground"
-                />
-                Open in editor
-              </DropdownMenuItem>
-            ) : null}
-            {canManage ? (
-              <>
-                {canOpenInEditor ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onSelect={() => setConfirmingDelete(true)}
-                >
-                  <Icon name="Trash2" className="size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-    </>
-  );
+              <Icon name="Trash2" className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
 
   return (
     <Dialog
@@ -502,61 +494,57 @@ export function SkillDetailDialogView({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          {/* Title only; actions live on the viewer's own toolbar below. pr-7
-              keeps a long title clear of the dialog's ✕ close. */}
-          <DialogTitle className="flex min-w-0 items-center gap-2 pr-7 text-base">
-            <Icon name="Zap" className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 truncate">{skill?.name}</span>
-            {skill?.provider ? (
-              <ProviderLogo
-                providerId={skill.provider}
-                className="size-3.5 shrink-0"
+          {/* Title + a single overflow by it; pr-7 keeps the row clear of the
+              dialog's ✕ close. */}
+          <div className="flex items-center gap-2 pr-7">
+            <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-base">
+              <Icon
+                name="Zap"
+                className="size-4 shrink-0 text-muted-foreground"
               />
-            ) : null}
-            {skill ? (
-              <Pill variant="outline" className="ml-1 shrink-0">
-                {SCOPE_LABELS[skill.scope]}
-              </Pill>
-            ) : null}
-          </DialogTitle>
+              <span className="min-w-0 truncate">{skill?.name}</span>
+              {skill?.provider ? (
+                <ProviderLogo
+                  providerId={skill.provider}
+                  className="size-3.5 shrink-0"
+                />
+              ) : null}
+              {skill ? (
+                <Pill variant="outline" className="ml-1 shrink-0">
+                  {SCOPE_LABELS[skill.scope]}
+                </Pill>
+              ) : null}
+            </DialogTitle>
+            <div className="flex shrink-0 items-center gap-1">
+              {headerActions}
+            </div>
+          </div>
         </DialogHeader>
 
         {isContentError ? (
           <p className="text-sm text-destructive">Failed to load the skill.</p>
         ) : isLoadingContent ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : editing ? (
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label="SKILL.md"
+            className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
         ) : (
-          // The viewer carries its own toolbar (actions in its top-right), so
-          // they read as part of the document surface instead of crowding the
-          // dialog's ✕.
-          <div className="overflow-hidden rounded-md border border-border">
-            {editing || canManage || canOpenInEditor ? (
-              <div className="flex h-9 items-center justify-end gap-1 border-b border-border-seam bg-surface-raised px-2">
-                {headerActions}
-              </div>
-            ) : null}
-            {editing ? (
-              <textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                aria-label="SKILL.md"
-                className="h-[54dvh] w-full resize-none border-0 bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-              />
-            ) : (
-              <div className="max-h-[54dvh] overflow-auto">
-                <FilePreview
-                  path="SKILL.md"
-                  headerMode="none"
-                  state={{
-                    kind: "ready",
-                    file: { name: "SKILL.md", contents: content },
-                    lineRange: null,
-                    showMarkdownModeToggle: false,
-                  }}
-                />
-              </div>
-            )}
+          <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
+            <FilePreview
+              path="SKILL.md"
+              headerMode="none"
+              state={{
+                kind: "ready",
+                file: { name: "SKILL.md", contents: content },
+                lineRange: null,
+                showMarkdownModeToggle: false,
+              }}
+            />
           </div>
         )}
       </DialogContent>
