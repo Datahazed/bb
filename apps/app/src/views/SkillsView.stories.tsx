@@ -1,6 +1,7 @@
+import { useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
 import {
-  SkillContentPreview,
+  SkillDetailDialogView,
   SkillsOverview,
   type SkillsOverviewProps,
 } from "./SkillsView";
@@ -43,44 +44,9 @@ const bbSkills: SkillSummary[] = [
 
 const NOOP = () => {};
 
-function Story(props: Partial<SkillsOverviewProps>) {
-  return (
-    <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
-      <SkillsOverview
-        skills={props.skills ?? [...bbSkills, ...defaultBbSkills, ...providerSkills]}
-        isLoading={props.isLoading ?? false}
-        hasError={props.hasError ?? false}
-        onCreateSkill={NOOP}
-        onSelectSkill={NOOP}
-      />
-    </main>
-  );
-}
-
-// Has user-created bb skills — no teaching, full provider-grouped list. Type in
-// the search to exercise filtering and the no-match state.
-export function Overview() {
-  return <Story />;
-}
-
-// The true minimum every install starts at: just the two default bb skills, plus
-// the teaching (no user-created skills yet).
-export function Empty() {
-  return <Story skills={defaultBbSkills} />;
-}
-
-export function Loading() {
-  return <Story skills={[]} isLoading />;
-}
-
-export function Error() {
-  return <Story skills={[]} hasError />;
-}
-
-// The skill detail body now reuses the thread file viewer's markdown rendering
-// (MarkdownPreview) instead of raw monospace `<pre>`. Rendered at the detail
-// dialog's width with a representative SKILL.md so the rendering is iterable on
-// its own.
+// Sample SKILL.md shown in the popup when a row is clicked. Exercises the shared
+// markdown viewer (heading, list, code, table, blockquote) and the frontmatter
+// strip — the body should start at "Code review", not the YAML.
 const SAMPLE_SKILL_MD = `---
 name: code-review
 description: Review the current diff against our conventions.
@@ -115,12 +81,64 @@ if (!resolution.additionalSkillsRootPaths) throw new Error("unresolved");
 > Summary first — what's wrong and where — then the detail.
 `;
 
-export function Detail() {
+// Mirror SkillsView's rule: only manageable bb user/project skills expose inline
+// Edit + Delete; everything else is read-only.
+function storyCanManage(skill: SkillSummary | null): boolean {
+  return (
+    skill?.manageable === true &&
+    (skill.scope === "bb-user" || skill.scope === "bb-project")
+  );
+}
+
+// Clicking a row opens the actual detail popup (SkillDetailDialogView) seeded
+// with a sample SKILL.md — the production interaction, minus the live
+// content/save/delete queries. Shared across stories so every state can open it.
+function Story(props: Partial<SkillsOverviewProps>) {
+  const [selected, setSelected] = useState<SkillSummary | null>(null);
   return (
     <main className="flex h-screen min-w-0 flex-col p-4 md:p-5">
-      <div className="max-w-2xl">
-        <SkillContentPreview content={SAMPLE_SKILL_MD} />
-      </div>
+      <SkillsOverview
+        skills={props.skills ?? [...bbSkills, ...defaultBbSkills, ...providerSkills]}
+        isLoading={props.isLoading ?? false}
+        hasError={props.hasError ?? false}
+        onCreateSkill={NOOP}
+        onSelectSkill={setSelected}
+      />
+      <SkillDetailDialogView
+        skill={selected}
+        content={SAMPLE_SKILL_MD}
+        isLoadingContent={false}
+        isContentError={false}
+        canManage={storyCanManage(selected)}
+        canOpenInEditor={false}
+        isSaving={false}
+        isDeleting={false}
+        onClose={() => setSelected(null)}
+        onSave={() => Promise.resolve(true)}
+        onDelete={() => setSelected(null)}
+        onOpenInEditor={NOOP}
+      />
     </main>
   );
+}
+
+// Has user-created bb skills — no teaching, full provider-grouped list. Type in
+// the search to exercise filtering and the no-match state; click any row to open
+// the detail popup (manageable skills show Edit/Delete, the rest are read-only).
+export function Overview() {
+  return <Story />;
+}
+
+// The true minimum every install starts at: just the two default bb skills, plus
+// the teaching (no user-created skills yet).
+export function Empty() {
+  return <Story skills={defaultBbSkills} />;
+}
+
+export function Loading() {
+  return <Story skills={[]} isLoading />;
+}
+
+export function Error() {
+  return <Story skills={[]} hasError />;
 }

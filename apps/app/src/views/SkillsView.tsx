@@ -340,26 +340,48 @@ export function SkillContentPreview({ content }: { content: string }) {
   );
 }
 
-/**
- * View a skill's SKILL.md; bb skills (manageable) can be edited inline or
- * deleted. Connected — owns the content/update/delete queries.
- */
-function SkillDetailDialog({
-  projectId,
-  skill,
-  onClose,
-}: {
-  projectId: string;
+export interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
+  /** Already-fetched SKILL.md source. */
+  content: string;
+  isLoadingContent: boolean;
+  isContentError: boolean;
+  /** Expose inline Edit + Delete (manageable bb user/project skills only). */
+  canManage: boolean;
+  canOpenInEditor: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
   onClose: () => void;
-}) {
-  const contentQuery = useSkillContent(projectId, skill);
-  const updateSkill = useUpdateSkill(projectId);
-  const deleteSkill = useDeleteSkill(projectId);
-  // Skills live on the local host (personal project), so the SKILL.md is a real
-  // local file we can hand to the user's editor.
-  const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({ enabled: skill !== null });
+  /**
+   * Persist edited content. Resolves `true` when the save succeeded so the view
+   * leaves edit mode; `false` keeps the draft for retry.
+   */
+  onSave: (content: string) => Promise<boolean>;
+  onDelete: () => void;
+  onOpenInEditor: () => void;
+}
+
+/**
+ * Presentational skill detail popup: renders the SKILL.md (read) or an inline
+ * editor, with Edit / Delete / Open-in-editor affordances. Owns only local UI
+ * state (editing, draft, delete confirmation); all data + persistence arrive as
+ * props so it renders in stories/tests without queries. The connected
+ * {@link SkillDetailDialog} wires it to the content/update/delete queries.
+ */
+export function SkillDetailDialogView({
+  skill,
+  content,
+  isLoadingContent,
+  isContentError,
+  canManage,
+  canOpenInEditor,
+  isSaving,
+  isDeleting,
+  onClose,
+  onSave,
+  onDelete,
+  onOpenInEditor,
+}: SkillDetailDialogViewProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -369,40 +391,10 @@ function SkillDetailDialog({
     setConfirmingDelete(false);
   }, [skill?.scope, skill?.name, skill?.provider]);
 
-  const content = contentQuery.data?.content ?? "";
-  const deletableScope =
-    skill && (skill.scope === "bb-user" || skill.scope === "bb-project")
-      ? skill.scope
-      : null;
-  const canManage = skill?.manageable === true && deletableScope !== null;
-  const canOpenInEditor = skill !== null && canOpenPreferredFileTarget;
-
-  function handleOpenInEditor() {
-    if (!skill) return;
-    void openPathInPreferredFileTarget({ path: skill.filePath, lineNumber: null });
-  }
-
   async function handleSave() {
-    if (!skill || deletableScope === null) return;
-    try {
-      await updateSkill.mutateAsync({
-        scope: deletableScope,
-        name: skill.name,
-        environmentId: null,
-        content: draft,
-      });
+    if (await onSave(draft)) {
       setEditing(false);
-    } catch {
-      // Errors surface via the global handler; keep the edits for retry.
     }
-  }
-
-  function handleDelete() {
-    if (!skill || deletableScope === null) return;
-    deleteSkill.mutate(
-      { scope: deletableScope, name: skill.name, environmentId: null },
-      { onSuccess: onClose },
-    );
   }
 
   return (
@@ -428,9 +420,9 @@ function SkillDetailDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {contentQuery.isError ? (
+        {isContentError ? (
           <p className="text-sm text-destructive">Failed to load the skill.</p>
-        ) : contentQuery.isLoading ? (
+        ) : isLoadingContent ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : editing ? (
           <textarea
@@ -459,8 +451,8 @@ function SkillDetailDialog({
                   variant="outline"
                   size="sm"
                   className="text-destructive hover:text-destructive"
-                  disabled={deleteSkill.isPending}
-                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  onClick={onDelete}
                 >
                   Delete
                 </Button>
@@ -485,14 +477,14 @@ function SkillDetailDialog({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={updateSkill.isPending}
+                disabled={isSaving}
                 onClick={() => setEditing(false)}
               >
                 Cancel
               </Button>
               <Button
                 size="sm"
-                disabled={updateSkill.isPending || contentQuery.isLoading}
+                disabled={isSaving || isLoadingContent}
                 onClick={handleSave}
               >
                 Save
@@ -504,7 +496,7 @@ function SkillDetailDialog({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleOpenInEditor}
+                  onClick={onOpenInEditor}
                 >
                   <Icon name="ExternalLink" className="size-4" />
                   Open in editor
@@ -514,7 +506,7 @@ function SkillDetailDialog({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={contentQuery.isLoading}
+                  disabled={isLoadingContent}
                   onClick={() => {
                     setDraft(content);
                     setEditing(true);
@@ -531,6 +523,77 @@ function SkillDetailDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * View a skill's SKILL.md; bb skills (manageable) can be edited inline or
+ * deleted. Connected — owns the content/update/delete queries and renders
+ * {@link SkillDetailDialogView}.
+ */
+function SkillDetailDialog({
+  projectId,
+  skill,
+  onClose,
+}: {
+  projectId: string;
+  skill: SkillSummary | null;
+  onClose: () => void;
+}) {
+  const contentQuery = useSkillContent(projectId, skill);
+  const updateSkill = useUpdateSkill(projectId);
+  const deleteSkill = useDeleteSkill(projectId);
+  // Skills live on the local host (personal project), so the SKILL.md is a real
+  // local file we can hand to the user's editor.
+  const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
+    useLocalOpenTargets({ enabled: skill !== null });
+
+  const deletableScope =
+    skill && (skill.scope === "bb-user" || skill.scope === "bb-project")
+      ? skill.scope
+      : null;
+
+  return (
+    <SkillDetailDialogView
+      skill={skill}
+      content={contentQuery.data?.content ?? ""}
+      isLoadingContent={contentQuery.isLoading}
+      isContentError={contentQuery.isError}
+      canManage={skill?.manageable === true && deletableScope !== null}
+      canOpenInEditor={skill !== null && canOpenPreferredFileTarget}
+      isSaving={updateSkill.isPending}
+      isDeleting={deleteSkill.isPending}
+      onClose={onClose}
+      onSave={async (content) => {
+        if (!skill || deletableScope === null) return false;
+        try {
+          await updateSkill.mutateAsync({
+            scope: deletableScope,
+            name: skill.name,
+            environmentId: null,
+            content,
+          });
+          return true;
+        } catch {
+          // Errors surface via the global handler; keep the edits for retry.
+          return false;
+        }
+      }}
+      onDelete={() => {
+        if (!skill || deletableScope === null) return;
+        deleteSkill.mutate(
+          { scope: deletableScope, name: skill.name, environmentId: null },
+          { onSuccess: onClose },
+        );
+      }}
+      onOpenInEditor={() => {
+        if (!skill) return;
+        void openPathInPreferredFileTarget({
+          path: skill.filePath,
+          lineNumber: null,
+        });
+      }}
+    />
   );
 }
 
