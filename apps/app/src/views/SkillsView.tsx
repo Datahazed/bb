@@ -497,7 +497,7 @@ export function SkillDetailDialogView({
           {/* Title + a single overflow by it; pr-7 keeps the row clear of the
               dialog's ✕ close. */}
           <div className="flex items-center gap-2 pr-7">
-            <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-base">
+            <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
               <Icon
                 name="Zap"
                 className="size-4 shrink-0 text-muted-foreground"
