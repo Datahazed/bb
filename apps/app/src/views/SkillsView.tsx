@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button.js";
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.js";
@@ -397,6 +396,102 @@ export function SkillDetailDialogView({
     }
   }
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Focus the editor the moment editing starts, so it's truly edit-in-place.
+  useEffect(() => {
+    if (editing) {
+      textareaRef.current?.focus();
+    }
+  }, [editing]);
+
+  function startEditing() {
+    setConfirmingDelete(false);
+    setDraft(content);
+    setEditing(true);
+  }
+
+  // Actions sit next to the title, not in a split footer. Editing and
+  // delete-confirm swap this cluster in place.
+  const headerActions = editing ? (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={isSaving}
+        onClick={() => setEditing(false)}
+      >
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        disabled={isSaving || isLoadingContent}
+        onClick={handleSave}
+      >
+        Save
+      </Button>
+    </>
+  ) : confirmingDelete ? (
+    <>
+      <span className="px-1 text-xs text-muted-foreground">Delete?</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setConfirmingDelete(false)}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-destructive hover:text-destructive"
+        disabled={isDeleting}
+        onClick={onDelete}
+      >
+        Delete
+      </Button>
+    </>
+  ) : (
+    <>
+      {canOpenInEditor ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
+          aria-label="Open in editor"
+          title="Open in editor"
+          onClick={onOpenInEditor}
+        >
+          <Icon name="ExternalLink" className="size-4" />
+        </Button>
+      ) : null}
+      {canManage ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            aria-label="Edit skill"
+            title="Edit"
+            disabled={isLoadingContent}
+            onClick={startEditing}
+          >
+            <Icon name="Edit" className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:text-destructive"
+            aria-label="Delete skill"
+            title="Delete"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Icon name="Trash2" className="size-4" />
+          </Button>
+        </>
+      ) : null}
+    </>
+  );
+
   return (
     <Dialog
       open={skill !== null}
@@ -406,18 +501,30 @@ export function SkillDetailDialogView({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Icon name="Zap" className="size-4 text-muted-foreground" />
-            <span className="min-w-0 truncate">{skill?.name}</span>
-            {skill?.provider ? (
-              <ProviderLogo providerId={skill.provider} className="size-3.5" />
-            ) : null}
-            {skill ? (
-              <Pill variant="outline" className="ml-1 shrink-0">
-                {SCOPE_LABELS[skill.scope]}
-              </Pill>
-            ) : null}
-          </DialogTitle>
+          {/* pr-7 keeps the action cluster clear of the dialog's ✕ close. */}
+          <div className="flex items-center gap-2 pr-7">
+            <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-base">
+              <Icon
+                name="Zap"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0 truncate">{skill?.name}</span>
+              {skill?.provider ? (
+                <ProviderLogo
+                  providerId={skill.provider}
+                  className="size-3.5 shrink-0"
+                />
+              ) : null}
+              {skill ? (
+                <Pill variant="outline" className="ml-1 shrink-0">
+                  {SCOPE_LABELS[skill.scope]}
+                </Pill>
+              ) : null}
+            </DialogTitle>
+            <div className="flex shrink-0 items-center gap-1">
+              {headerActions}
+            </div>
+          </div>
         </DialogHeader>
 
         {isContentError ? (
@@ -426,101 +533,15 @@ export function SkillDetailDialogView({
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : editing ? (
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="SKILL.md"
-            className="h-80 w-full resize-none rounded-md border border-input bg-card p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         ) : (
           <SkillContentPreview content={content} />
         )}
-
-        <DialogFooter className="sm:justify-between">
-          {canManage && !editing ? (
-            confirmingDelete ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                Delete this skill?
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConfirmingDelete(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  disabled={isDeleting}
-                  onClick={onDelete}
-                >
-                  Delete
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setConfirmingDelete(true)}
-              >
-                <Icon name="Trash2" className="size-4" />
-                Delete
-              </Button>
-            )
-          ) : (
-            <span />
-          )}
-
-          {editing ? (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isSaving}
-                onClick={() => setEditing(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                disabled={isSaving || isLoadingContent}
-                onClick={handleSave}
-              >
-                Save
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              {canOpenInEditor ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onOpenInEditor}
-                >
-                  <Icon name="ExternalLink" className="size-4" />
-                  Open in editor
-                </Button>
-              ) : null}
-              {canManage ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isLoadingContent}
-                  onClick={() => {
-                    setDraft(content);
-                    setEditing(true);
-                  }}
-                >
-                  <Icon name="Edit" className="size-4" />
-                  Edit
-                </Button>
-              ) : (
-                <span className="text-xs text-muted-foreground">Read-only</span>
-              )}
-            </div>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
