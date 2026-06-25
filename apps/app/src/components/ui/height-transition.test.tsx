@@ -74,24 +74,21 @@ describe("AutoHeightContainer", () => {
     vi.restoreAllMocks();
   });
 
-  it("reserves footer layout immediately while animating only the row clip", () => {
+  it("keeps the row height animation unchanged and renders the footer sticky", () => {
     const view = render(
       <AutoHeightContainer footer={measuredBox(20, "Working")}>
         {measuredBox(100, "Rows")}
       </AutoHeightContainer>,
     );
 
-    const wrapper = view.container.firstElementChild;
-    expect(wrapper).toBeInstanceOf(HTMLElement);
-    const rowsClip = wrapper?.firstElementChild;
-    expect(rowsClip).toBeInstanceOf(HTMLElement);
-    const footer = wrapper?.lastElementChild;
+    const rowsWrapper = view.container.children[0];
+    expect(rowsWrapper).toBeInstanceOf(HTMLElement);
+    const footer = view.container.children[1];
     expect(footer).toBeInstanceOf(HTMLElement);
 
-    expect((wrapper as HTMLElement).style.height).toBe("120px");
-    expect((rowsClip as HTMLElement).style.height).toBe("100px");
-    expect((rowsClip as HTMLElement).style.bottom).toBe("20px");
-    expect((rowsClip as HTMLElement).style.transition).toContain("height");
+    expect((rowsWrapper as HTMLElement).style.height).toBe("100px");
+    expect((rowsWrapper as HTMLElement).style.transition).toContain("height");
+    expect((footer as HTMLElement).style.position).toBe("sticky");
     expect((footer as HTMLElement).style.bottom).toBe("0px");
 
     view.rerender(
@@ -101,8 +98,7 @@ describe("AutoHeightContainer", () => {
     );
     ResizeObserverMock.instances[0]?.trigger();
 
-    expect((wrapper as HTMLElement).style.height).toBe("180px");
-    expect((rowsClip as HTMLElement).style.height).toBe("160px");
-    expect((rowsClip as HTMLElement).style.bottom).toBe("20px");
+    expect((rowsWrapper as HTMLElement).style.height).toBe("160px");
+    expect((footer as HTMLElement).style.position).toBe("sticky");
   });
 });

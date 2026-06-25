@@ -268,11 +268,23 @@ const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
 const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
 export function AutoHeightContainer(props: AutoHeightContainerProps) {
-  if (props.footer !== undefined) {
-    return <AutoHeightContainerWithFooter {...props} footer={props.footer} />;
-  }
-
-  return <AutoHeightContainerContent {...props} />;
+  const { footer, ...contentProps } = props;
+  return (
+    <>
+      <AutoHeightContainerContent {...contentProps} />
+      {footer !== undefined ? (
+        <div
+          style={{
+            bottom: 0,
+            position: "sticky",
+            zIndex: 1,
+          }}
+        >
+          {footer}
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function AutoHeightContainerContent({
@@ -377,136 +389,6 @@ function AutoHeightContainerContent({
     >
       <div ref={innerRef} style={{ display: "flow-root" }}>
         {children}
-      </div>
-    </div>
-  );
-}
-
-function AutoHeightContainerWithFooter({
-  children,
-  className,
-  durationMs = HEIGHT_TRANSITION_DURATION_MS,
-  footer,
-}: AutoHeightContainerProps & { footer: ReactNode }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const rowsClipRef = useRef<HTMLDivElement>(null);
-  const rowsInnerRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-  const store = useStore();
-  useLayoutEffect(() => {
-    const wrapper = wrapperRef.current;
-    const rowsClip = rowsClipRef.current;
-    const rowsInner = rowsInnerRef.current;
-    const footerElement = footerRef.current;
-    if (!wrapper || !rowsClip || !rowsInner || !footerElement) return;
-
-    let lastWidth: number | null = null;
-    let pendingVisibilitySnap = false;
-    let initialSettleComplete = false;
-    let initialSettleTimerId = window.setTimeout(() => {
-      initialSettleComplete = true;
-    }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
-    const snapState: SnapState = { savedDuration: null, restoreFrame: null };
-    const deferInitialSettleComplete = () => {
-      if (initialSettleComplete) {
-        return;
-      }
-      window.clearTimeout(initialSettleTimerId);
-      initialSettleTimerId = window.setTimeout(() => {
-        initialSettleComplete = true;
-      }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
-    };
-    const applyStableFooterLayout = (snap: boolean) => {
-      const rowsHeight = rowsInner.offsetHeight;
-      const footerHeight = footerElement.offsetHeight;
-      wrapper.style.height = `${rowsHeight + footerHeight}px`;
-      rowsClip.style.bottom = `${footerHeight}px`;
-      applyHeight(rowsClip, `${rowsHeight}px`, snap, snapState);
-    };
-
-    applyStableFooterLayout(true);
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        window.clearTimeout(initialSettleTimerId);
-        cleanupSnapState(rowsClip, snapState);
-      };
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const rowsEntry = entries.find((entry) => entry.target === rowsInner);
-      const width = rowsEntry?.contentRect.width ?? rowsInner.offsetWidth;
-      const widthChanged = lastWidth !== null && width !== lastWidth;
-      lastWidth = width;
-      const layoutAnimationActive =
-        store.get(layoutAnimationInFlightCountAtom) > 0;
-      const snap =
-        widthChanged ||
-        pendingVisibilitySnap ||
-        !initialSettleComplete ||
-        layoutAnimationActive;
-      pendingVisibilitySnap = false;
-      applyStableFooterLayout(snap);
-      deferInitialSettleComplete();
-    });
-    observer.observe(rowsInner);
-    observer.observe(footerElement);
-
-    const onVisibility = () => {
-      if (document.visibilityState !== "visible") return;
-      pendingVisibilitySnap = true;
-      applyStableFooterLayout(true);
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.clearTimeout(initialSettleTimerId);
-      cleanupSnapState(rowsClip, snapState);
-    };
-  }, [store]);
-
-  return (
-    <div
-      ref={wrapperRef}
-      className={className}
-      style={{
-        position: "relative",
-      }}
-    >
-      <div
-        ref={rowsClipRef}
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          overflowX: "visible",
-          overflowY: "clip",
-          transition: `height ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
-        }}
-      >
-        <div
-          ref={rowsInnerRef}
-          style={{
-            bottom: 0,
-            display: "flow-root",
-            left: 0,
-            position: "absolute",
-            right: 0,
-          }}
-        >
-          {children}
-        </div>
-      </div>
-      <div
-        ref={footerRef}
-        style={{
-          bottom: 0,
-          left: 0,
-          position: "absolute",
-          right: 0,
-        }}
-      >
-        {footer}
       </div>
     </div>
   );
