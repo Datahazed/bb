@@ -9,6 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
@@ -317,24 +324,12 @@ const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
 };
 
 /**
- * Drop a leading YAML frontmatter block before rendering. The markdown renderer
- * doesn't understand frontmatter, so a `---\n…\n---` header would otherwise
- * render as a stray horizontal rule plus a setext heading (the closing `---`
- * underlines the `name:`/`description:` lines). The detail header already shows
- * the skill's name and scope, so the frontmatter is redundant here regardless.
- */
-function stripSkillFrontmatter(content: string): string {
-  const match = /^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
-  return match ? content.slice(match[0].length).replace(/^\s*\n/, "") : content;
-}
-
-/**
  * Read-only SKILL.md body, rendered with the app's actual file viewer
- * (FilePreview) — the same component, markdown rendering, and paper-wash body
- * used for `.md` files in threads — rather than a re-implementation. The dialog
- * supplies its own title, so the viewer runs header-less; frontmatter is
- * stripped so it doesn't render as a stray rule + heading. Presentational and
- * exported so stories iterate on it without the dialog's queries.
+ * (FilePreview) — the same component, markdown rendering, paper-wash body, and
+ * frontmatter treatment used for `.md` files in threads. Content is passed
+ * through verbatim; the viewer owns how frontmatter renders. The dialog supplies
+ * its own title, so the viewer runs header-less. Presentational and exported so
+ * stories iterate on it without the dialog's queries.
  */
 export function SkillContentPreview({ content }: { content: string }) {
   return (
@@ -344,7 +339,7 @@ export function SkillContentPreview({ content }: { content: string }) {
         headerMode="none"
         state={{
           kind: "ready",
-          file: { name: "SKILL.md", contents: stripSkillFrontmatter(content) },
+          file: { name: "SKILL.md", contents: content },
           lineRange: null,
           showMarkdownModeToggle: false,
         }}
@@ -466,42 +461,59 @@ export function SkillDetailDialogView({
     </>
   ) : (
     <>
-      {canOpenInEditor ? (
+      {canManage ? (
         <Button
           variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          aria-label="Open in editor"
-          title="Open in editor"
-          onClick={onOpenInEditor}
+          size="sm"
+          className="text-muted-foreground"
+          disabled={isLoadingContent}
+          onClick={startEditing}
         >
-          <Icon name="ExternalLink" className="size-4" />
+          <Icon name="Edit" className="size-4" />
+          Edit
         </Button>
       ) : null}
-      {canManage ? (
-        <>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground"
-            aria-label="Edit skill"
-            title="Edit"
-            disabled={isLoadingContent}
-            onClick={startEditing}
+      {canManage || canOpenInEditor ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+              aria-label="More actions"
+              title="More actions"
+            >
+              <Icon name="MoreHorizontal" className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-44"
+            mobileTitle="Skill actions"
           >
-            <Icon name="Edit" className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:text-destructive"
-            aria-label="Delete skill"
-            title="Delete"
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <Icon name="Trash2" className="size-4" />
-          </Button>
-        </>
+            {canOpenInEditor ? (
+              <DropdownMenuItem onSelect={onOpenInEditor}>
+                <Icon
+                  name="ExternalLink"
+                  className="size-4 text-muted-foreground"
+                />
+                Open in editor
+              </DropdownMenuItem>
+            ) : null}
+            {canManage ? (
+              <>
+                {canOpenInEditor ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => setConfirmingDelete(true)}
+                >
+                  <Icon name="Trash2" className="size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </>
   );
