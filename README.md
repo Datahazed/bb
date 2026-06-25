@@ -14,6 +14,8 @@ bb is an agentic IDE that can control itself. You can seamlessly
 orchestrate all of your favorite coding agents together and have them
 programmatically use bb too.
 
+This line is a harmless test edit for draft PR workflow validation.
+
 Every surface — the desktop app, web app, CLI, and HTTP API — is a first-class
 way to drive bb. Work runs in threads you can follow live, steer at any point,
 or hand off to another agent.
