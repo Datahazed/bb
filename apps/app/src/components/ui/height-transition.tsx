@@ -240,7 +240,6 @@ export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;
-  footer?: ReactNode;
 }
 
 /**
@@ -267,27 +266,7 @@ const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
 // fresh whole-timeline pixel height on each ResizeObserver tick.
 const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
-export function AutoHeightContainer(props: AutoHeightContainerProps) {
-  const { footer, ...contentProps } = props;
-  return (
-    <>
-      <AutoHeightContainerContent {...contentProps} />
-      {footer !== undefined ? (
-        <div
-          style={{
-            bottom: 0,
-            position: "sticky",
-            zIndex: 1,
-          }}
-        >
-          {footer}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function AutoHeightContainerContent({
+export function AutoHeightContainer({
   children,
   className,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,

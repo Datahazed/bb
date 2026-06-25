@@ -63,6 +63,7 @@ export interface ThreadTimelineSurfaceProps {
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
+  ongoingIndicatorPlacement?: "inline" | "hidden";
   ongoingIndicatorLabel?: string;
   isStopping?: boolean;
   stoppingAnchorAt?: number;
@@ -160,6 +161,7 @@ export function ThreadTimelineSurface({
   projectId,
   resolveMentionLink,
   showOngoingIndicator,
+  ongoingIndicatorPlacement = "inline",
   ongoingIndicatorLabel,
   isStopping = false,
   stoppingAnchorAt = 0,
@@ -195,21 +197,6 @@ export function ThreadTimelineSurface({
     onLoadOlderRows !== undefined &&
     !isThreadTimelinePending &&
     !timelineError;
-  const ongoingIndicator = (
-    <HeightTransition visible={showOngoingIndicator}>
-      <TimelineWorkingIndicator
-        key={ongoingIndicatorKey}
-        details={activeThinkingDetails}
-        isThinking={showActiveThinking}
-        label={ongoingIndicatorLabel}
-      />
-    </HeightTransition>
-  );
-  const useStableOngoingIndicator =
-    !hostConnectionNotice &&
-    !isThreadTimelinePending &&
-    !timelineError &&
-    timelineRowsWithPendingStop.length > 0;
 
   return (
     <ConversationTimeline className="flex-1">
@@ -252,7 +239,6 @@ export function ThreadTimelineSurface({
           unreadDividerAutoScroll={unreadDividerAutoScroll}
           unreadDividerPlacement={unreadDividerPlacement}
           workspaceRootPath={workspaceRootPath}
-          footer={useStableOngoingIndicator ? ongoingIndicator : undefined}
         />
       ) : null}
       {hostConnectionNotice ? (
@@ -265,9 +251,73 @@ export function ThreadTimelineSurface({
           }
         />
       ) : null}
-      {useStableOngoingIndicator ? null : ongoingIndicator}
+      {ongoingIndicatorPlacement === "inline" ? (
+        <TimelineOngoingIndicator
+          details={activeThinkingDetails}
+          indicatorKey={ongoingIndicatorKey}
+          isThinking={showActiveThinking}
+          label={ongoingIndicatorLabel}
+          visible={showOngoingIndicator}
+        />
+      ) : null}
     </ConversationTimeline>
   );
+}
+
+interface TimelineOngoingIndicatorProps {
+  details: string | undefined;
+  indicatorKey: string;
+  isThinking: boolean;
+  label: string | undefined;
+  visible: boolean;
+}
+
+export function TimelineOngoingIndicator({
+  details,
+  indicatorKey,
+  isThinking,
+  label,
+  visible,
+}: TimelineOngoingIndicatorProps) {
+  return (
+    <HeightTransition visible={visible}>
+      <TimelineWorkingIndicator
+        key={indicatorKey}
+        details={details}
+        isThinking={isThinking}
+        label={label}
+      />
+    </HeightTransition>
+  );
+}
+
+interface BuildTimelineOngoingIndicatorPropsArgs {
+  activeThinking: ActiveThinking | null;
+  ongoingIndicatorLabel?: string;
+  showOngoingIndicator: boolean;
+}
+
+export function buildTimelineOngoingIndicatorProps({
+  activeThinking,
+  ongoingIndicatorLabel,
+  showOngoingIndicator,
+}: BuildTimelineOngoingIndicatorPropsArgs): TimelineOngoingIndicatorProps {
+  const showActiveThinking =
+    activeThinking !== null && ongoingIndicatorLabel === undefined;
+  const activeThinkingText = activeThinking?.text.trim() ?? "";
+  return {
+    details:
+      showActiveThinking && activeThinkingText.length > 0
+        ? activeThinking?.text
+        : undefined,
+    indicatorKey:
+      showActiveThinking && activeThinking
+        ? activeThinking.id
+        : (ongoingIndicatorLabel ?? "working"),
+    isThinking: showActiveThinking,
+    label: ongoingIndicatorLabel,
+    visible: showOngoingIndicator,
+  };
 }
 
 function LoadOlderMessagesButton({

@@ -73,6 +73,9 @@ function PinnedTimelineStage({
         scrollBehavior="bottom-anchor"
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
+        footer={
+          <HeightTransition visible={showIndicator}>{indicator}</HeightTransition>
+        }
         maxWidthClassName="max-w-none"
       >
         <ConversationTimeline className="flex-1">
@@ -80,11 +83,6 @@ function PinnedTimelineStage({
             key={`cycle-${cycle}`}
             {...baseProps}
             timelineRows={rows.slice()}
-            footer={
-              <HeightTransition visible={showIndicator}>
-                {indicator}
-              </HeightTransition>
-            }
           />
         </ConversationTimeline>
       </PageShell>
