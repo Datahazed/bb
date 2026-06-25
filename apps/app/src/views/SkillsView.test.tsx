@@ -23,6 +23,7 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
       hasError={props.hasError ?? false}
       onCreateSkill={props.onCreateSkill ?? (() => {})}
       onSelectSkill={props.onSelectSkill ?? (() => {})}
+      onRetry={props.onRetry}
     />,
   );
 }
@@ -77,9 +78,11 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain("Start from an example");
   });
 
-  it("shows a destructive error state", () => {
-    const markup = render({ skills: [], hasError: true });
-    expect(markup).toContain("Failed to load skills.");
-    expect(markup).toContain("text-destructive");
+  it("shows a recoverable error state with a retry", () => {
+    const markup = render({ skills: [], hasError: true, onRetry: () => {} });
+    // Apostrophe is HTML-escaped in static markup, so match the stable fragment.
+    expect(markup).toContain("load skills.");
+    expect(markup).toContain("Retry");
+    expect(markup).toContain('role="alert"');
   });
 });

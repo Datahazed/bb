@@ -131,6 +131,8 @@ export interface SkillsOverviewProps {
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
+  /** Refetch after a load failure — gives the error state a way out. */
+  onRetry?: () => void;
 }
 
 /**
@@ -143,6 +145,7 @@ export function SkillsOverview({
   hasError,
   onCreateSkill,
   onSelectSkill,
+  onRetry,
 }: SkillsOverviewProps) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -204,7 +207,18 @@ export function SkillsOverview({
           </div>
         </div>
         {hasError ? (
-          <p className="text-sm text-destructive">Failed to load skills.</p>
+          // Failure is direction, not a dead end: say what happened plainly and
+          // offer the way out, kept calm rather than alarmist.
+          <EmptyStatePanel role="alert" className="py-6">
+            <div className="flex flex-col items-center gap-2">
+              <span>Couldn't load skills.</span>
+              {onRetry ? (
+                <Button variant="outline" size="sm" onClick={onRetry}>
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          </EmptyStatePanel>
         ) : isLoading ? (
           <div className="space-y-px" aria-busy aria-label="Loading skills">
             {[
@@ -648,6 +662,7 @@ export function SkillsView() {
         hasError={hasError}
         onCreateSkill={handleCreateSkill}
         onSelectSkill={setSelectedSkill}
+        onRetry={() => void skillsQuery.refetch()}
       />
       <SkillDetailDialog
         projectId={PERSONAL_PROJECT_ID}

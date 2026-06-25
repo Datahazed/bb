@@ -103,6 +103,7 @@ function Story(props: Partial<SkillsOverviewProps>) {
         hasError={props.hasError ?? false}
         onCreateSkill={NOOP}
         onSelectSkill={setSelected}
+        onRetry={NOOP}
       />
       <SkillDetailDialogView
         skill={selected}
