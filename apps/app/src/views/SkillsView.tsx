@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button.js";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.js";
@@ -394,12 +395,63 @@ export function SkillDetailDialogView({
     setEditing(true);
   }
 
-  // Actions sit next to the title, not in a split footer. Editing and
-  // delete-confirm swap this cluster in place.
-  const headerActions = editing ? (
+  // Read mode: a single overflow by the title (Notion/Linear-style). Edit is
+  // reached from here and happens inline; the viewer has no toolbar.
+  const overflowMenu =
+    canManage || canOpenInEditor ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            aria-label="Skill actions"
+            title="Skill actions"
+          >
+            <Icon name="MoreHorizontal" className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="min-w-0"
+          mobileTitle="Skill actions"
+        >
+          {canManage ? (
+            <DropdownMenuItem onSelect={startEditing}>
+              <Icon name="Edit" className="size-4 text-muted-foreground" />
+              Edit
+            </DropdownMenuItem>
+          ) : null}
+          {canOpenInEditor ? (
+            <DropdownMenuItem onSelect={onOpenInEditor}>
+              <Icon
+                name="ExternalLink"
+                className="size-4 text-muted-foreground"
+              />
+              Open in editor
+            </DropdownMenuItem>
+          ) : null}
+          {canManage ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => setConfirmingDelete(true)}
+              >
+                <Icon name="Trash2" className="size-4" />
+                Delete
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
+  // Edit (Cancel/Save) and delete-confirm actions live in the modal footer.
+  const footerActions = editing ? (
     <>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         disabled={isSaving}
         onClick={() => setEditing(false)}
@@ -416,16 +468,18 @@ export function SkillDetailDialogView({
     </>
   ) : confirmingDelete ? (
     <>
-      <span className="px-1 text-xs text-muted-foreground">Delete?</span>
+      <span className="mr-auto self-center text-xs text-muted-foreground">
+        Delete this skill?
+      </span>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setConfirmingDelete(false)}
       >
         Cancel
       </Button>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         className="text-destructive hover:text-destructive"
         disabled={isDeleting}
@@ -434,55 +488,6 @@ export function SkillDetailDialogView({
         Delete
       </Button>
     </>
-  ) : canManage || canOpenInEditor ? (
-    // Read mode: a single overflow by the title (Notion/Linear-style). Edit is
-    // reached from here and happens inline; the viewer has no toolbar.
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-          aria-label="Skill actions"
-          title="Skill actions"
-        >
-          <Icon name="MoreHorizontal" className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="min-w-0"
-        mobileTitle="Skill actions"
-      >
-        {canManage ? (
-          <DropdownMenuItem onSelect={startEditing}>
-            <Icon name="Edit" className="size-4 text-muted-foreground" />
-            Edit
-          </DropdownMenuItem>
-        ) : null}
-        {canOpenInEditor ? (
-          <DropdownMenuItem onSelect={onOpenInEditor}>
-            <Icon
-              name="ExternalLink"
-              className="size-4 text-muted-foreground"
-            />
-            Open in editor
-          </DropdownMenuItem>
-        ) : null}
-        {canManage ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => setConfirmingDelete(true)}
-            >
-              <Icon name="Trash2" className="size-4" />
-              Delete
-            </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
   ) : null;
 
   return (
@@ -516,7 +521,7 @@ export function SkillDetailDialogView({
               ) : null}
             </DialogTitle>
             <div className="flex shrink-0 items-center gap-1">
-              {headerActions}
+              {editing || confirmingDelete ? null : overflowMenu}
             </div>
           </div>
         </DialogHeader>
@@ -547,6 +552,8 @@ export function SkillDetailDialogView({
             />
           </div>
         )}
+
+        {footerActions ? <DialogFooter>{footerActions}</DialogFooter> : null}
       </DialogContent>
     </Dialog>
   );
