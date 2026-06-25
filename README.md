@@ -10,6 +10,8 @@
 
 [![npm version](https://img.shields.io/npm/v/bb-app.svg)](https://www.npmjs.com/package/bb-app)
 
+Test edit for draft PR workflow validation.
+
 bb is an agentic IDE that can control itself. You can seamlessly
 orchestrate all of your favorite coding agents together and have them
 programmatically use bb too.
