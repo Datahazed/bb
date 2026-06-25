@@ -1,5 +1,10 @@
 import { useStore } from "jotai";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
@@ -138,6 +143,7 @@ export interface HeightTransitionProps {
   children: ReactNode;
   durationMs?: number;
   className?: string;
+  style?: CSSProperties;
 }
 
 /**
@@ -154,6 +160,7 @@ export function HeightTransition({
   children,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,
   className,
+  style,
 }: HeightTransitionProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -209,6 +216,7 @@ export function HeightTransition({
       ref={wrapperRef}
       className={className}
       style={{
+        ...style,
         // Clip vertically (so intermediate heights during the animation
         // don't leak content past the wrapper) without turning the wrapper
         // into a horizontal scroll container — `overflow-y: hidden` would

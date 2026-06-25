@@ -32,12 +32,20 @@ const SCROLL_AREA_HEIGHT = 100;
 class ResizeObserverMock implements ResizeObserver {
   static instances: ResizeObserverMock[] = [];
   readonly callback: ResizeObserverCallback;
+  readonly observedElements: Element[] = [];
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     ResizeObserverMock.instances.push(this);
   }
-  observe() {}
-  unobserve() {}
+  observe(target: Element) {
+    this.observedElements.push(target);
+  }
+  unobserve(target: Element) {
+    const index = this.observedElements.indexOf(target);
+    if (index !== -1) {
+      this.observedElements.splice(index, 1);
+    }
+  }
   disconnect() {}
   trigger() {
     this.callback([], this);
@@ -181,6 +189,27 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.classList.contains("overflow-x-hidden")).toBe(true);
     expect(scrollContent.classList.contains("min-w-0")).toBe(true);
     expect(contentColumn.classList.contains("min-w-0")).toBe(true);
+  });
+
+  it("exposes the footer height as a sticky bottom offset", () => {
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a"],
+    });
+    const scrollContent = requireHTMLElement(scrollArea.firstElementChild);
+    const footerElement = requireHTMLElement(scrollContent.lastElementChild);
+    const resizeObserver = getLatestResizeObserver();
+    Object.defineProperty(footerElement, "offsetHeight", {
+      configurable: true,
+      value: 42,
+    });
+
+    resizeObserver.trigger();
+
+    expect(resizeObserver.observedElements).toContain(footerElement);
+    expect(
+      scrollArea.style.getPropertyValue("--bottom-anchored-footer-height"),
+    ).toBe("42px");
   });
 
   it("captures the top-most visible row when scrolled mid-timeline", () => {

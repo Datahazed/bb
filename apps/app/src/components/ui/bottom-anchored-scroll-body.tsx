@@ -241,6 +241,7 @@ export function BottomAnchoredScrollBody({
   const store = useStore();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const userScrollIntentUntilRef = useRef(0);
   const pointerScrollIntentRef = useRef(false);
@@ -274,6 +275,15 @@ export function BottomAnchoredScrollBody({
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const getScrollElement = useCallback(() => scrollAreaRef.current, []);
+
+  const updateFooterHeightVariable = useCallback(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+    scrollArea.style.setProperty(
+      "--bottom-anchored-footer-height",
+      `${footerRef.current?.offsetHeight ?? 0}px`,
+    );
+  }, []);
 
   const cancelPendingScrollRestore = useCallback(() => {
     pendingScrollRestoreRef.current = null;
@@ -705,17 +715,27 @@ export function BottomAnchoredScrollBody({
     };
   }, [flushScrollAnchorCapture]);
 
+  useLayoutEffect(() => {
+    updateFooterHeightVariable();
+  });
+
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     const scrollContent = scrollContentRef.current;
+    const footerElement = footerRef.current;
     if (!scrollArea || !scrollContent) return;
 
     let resizeObserver: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(handleScrollAreaResize);
+      resizeObserver = new ResizeObserver(() => {
+        updateFooterHeightVariable();
+        handleScrollAreaResize();
+      });
       resizeObserver.observe(scrollArea);
       resizeObserver.observe(scrollContent);
+      if (footerElement) resizeObserver.observe(footerElement);
     }
+    updateFooterHeightVariable();
 
     scrollArea.addEventListener("scroll", handleScroll, {
       passive: true,
@@ -766,6 +786,7 @@ export function BottomAnchoredScrollBody({
     markWheelScrollIntent,
     queueBottomRestore,
     startPointerScrollCandidate,
+    updateFooterHeightVariable,
   ]);
 
   return (
@@ -797,7 +818,9 @@ export function BottomAnchoredScrollBody({
               <div className="scroll-bottom-anchor" aria-hidden />
             </div>
             {footer ? (
-              <div className="sticky bottom-0 z-20 shrink-0">{footer}</div>
+              <div ref={footerRef} className="sticky bottom-0 z-20 shrink-0">
+                {footer}
+              </div>
             ) : null}
           </div>
         </div>

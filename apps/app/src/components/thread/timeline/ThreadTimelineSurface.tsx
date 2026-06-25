@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import type {
@@ -63,7 +64,6 @@ export interface ThreadTimelineSurfaceProps {
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
-  ongoingIndicatorPlacement?: "inline" | "hidden";
   ongoingIndicatorLabel?: string;
   isStopping?: boolean;
   stoppingAnchorAt?: number;
@@ -161,7 +161,6 @@ export function ThreadTimelineSurface({
   projectId,
   resolveMentionLink,
   showOngoingIndicator,
-  ongoingIndicatorPlacement = "inline",
   ongoingIndicatorLabel,
   isStopping = false,
   stoppingAnchorAt = 0,
@@ -251,36 +250,40 @@ export function ThreadTimelineSurface({
           }
         />
       ) : null}
-      {ongoingIndicatorPlacement === "inline" ? (
-        <TimelineOngoingIndicator
-          details={activeThinkingDetails}
-          indicatorKey={ongoingIndicatorKey}
-          isThinking={showActiveThinking}
-          label={ongoingIndicatorLabel}
-          visible={showOngoingIndicator}
-        />
-      ) : null}
+      <TimelineOngoingIndicator
+        className={TIMELINE_ONGOING_INDICATOR_CLASS}
+        details={activeThinkingDetails}
+        indicatorKey={ongoingIndicatorKey}
+        isThinking={showActiveThinking}
+        label={ongoingIndicatorLabel}
+        style={TIMELINE_ONGOING_INDICATOR_STYLE}
+        visible={showOngoingIndicator}
+      />
     </ConversationTimeline>
   );
 }
 
 interface TimelineOngoingIndicatorProps {
+  className?: string;
   details: string | undefined;
   indicatorKey: string;
   isThinking: boolean;
   label: string | undefined;
+  style?: CSSProperties;
   visible: boolean;
 }
 
-export function TimelineOngoingIndicator({
+function TimelineOngoingIndicator({
+  className,
   details,
   indicatorKey,
   isThinking,
   label,
+  style,
   visible,
 }: TimelineOngoingIndicatorProps) {
   return (
-    <HeightTransition visible={visible}>
+    <HeightTransition visible={visible} className={className} style={style}>
       <TimelineWorkingIndicator
         key={indicatorKey}
         details={details}
@@ -291,34 +294,10 @@ export function TimelineOngoingIndicator({
   );
 }
 
-interface BuildTimelineOngoingIndicatorPropsArgs {
-  activeThinking: ActiveThinking | null;
-  ongoingIndicatorLabel?: string;
-  showOngoingIndicator: boolean;
-}
-
-export function buildTimelineOngoingIndicatorProps({
-  activeThinking,
-  ongoingIndicatorLabel,
-  showOngoingIndicator,
-}: BuildTimelineOngoingIndicatorPropsArgs): TimelineOngoingIndicatorProps {
-  const showActiveThinking =
-    activeThinking !== null && ongoingIndicatorLabel === undefined;
-  const activeThinkingText = activeThinking?.text.trim() ?? "";
-  return {
-    details:
-      showActiveThinking && activeThinkingText.length > 0
-        ? activeThinking?.text
-        : undefined,
-    indicatorKey:
-      showActiveThinking && activeThinking
-        ? activeThinking.id
-        : (ongoingIndicatorLabel ?? "working"),
-    isThinking: showActiveThinking,
-    label: ongoingIndicatorLabel,
-    visible: showOngoingIndicator,
-  };
-}
+const TIMELINE_ONGOING_INDICATOR_CLASS = "sticky z-10";
+const TIMELINE_ONGOING_INDICATOR_STYLE = {
+  bottom: "var(--bottom-anchored-footer-height, 0px)",
+} satisfies CSSProperties;
 
 function LoadOlderMessagesButton({
   isLoadingOlderTimelineRows,

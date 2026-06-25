@@ -3,8 +3,6 @@ import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/t
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
-  buildTimelineOngoingIndicatorProps,
-  TimelineOngoingIndicator,
   ThreadTimelineSurface,
   type HostConnectionNotice,
   type ThreadTimelineSurfaceProps,
@@ -60,19 +58,6 @@ export function ThreadTimelinePane({
   unreadDividerPlacement,
   workspaceRootPath,
 }: ThreadTimelinePaneProps) {
-  const timelineFooter = (
-    <>
-      <TimelineOngoingIndicator
-        {...buildTimelineOngoingIndicatorProps({
-          activeThinking,
-          ongoingIndicatorLabel,
-          showOngoingIndicator,
-        })}
-      />
-      {footer}
-    </>
-  );
-
   return (
     <div
       data-thread-window=""
@@ -86,7 +71,7 @@ export function ThreadTimelinePane({
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
-        footer={timelineFooter}
+        footer={footer}
         scrollOverlay={<ThreadTableOfContents timelineRows={timelineRows} />}
       >
         <ThreadTimelineSurface
@@ -110,7 +95,6 @@ export function ThreadTimelinePane({
           projectId={projectId}
           resolveMentionLink={resolveMentionLink}
           showOngoingIndicator={showOngoingIndicator}
-          ongoingIndicatorPlacement="hidden"
           ongoingIndicatorLabel={ongoingIndicatorLabel}
           isStopping={isStopping}
           stoppingAnchorAt={stoppingAnchorAt}
