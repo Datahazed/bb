@@ -195,6 +195,21 @@ export function ThreadTimelineSurface({
     onLoadOlderRows !== undefined &&
     !isThreadTimelinePending &&
     !timelineError;
+  const ongoingIndicator = (
+    <HeightTransition visible={showOngoingIndicator}>
+      <TimelineWorkingIndicator
+        key={ongoingIndicatorKey}
+        details={activeThinkingDetails}
+        isThinking={showActiveThinking}
+        label={ongoingIndicatorLabel}
+      />
+    </HeightTransition>
+  );
+  const useStableOngoingIndicator =
+    !hostConnectionNotice &&
+    !isThreadTimelinePending &&
+    !timelineError &&
+    timelineRowsWithPendingStop.length > 0;
 
   return (
     <ConversationTimeline className="flex-1">
@@ -237,6 +252,7 @@ export function ThreadTimelineSurface({
           unreadDividerAutoScroll={unreadDividerAutoScroll}
           unreadDividerPlacement={unreadDividerPlacement}
           workspaceRootPath={workspaceRootPath}
+          footer={useStableOngoingIndicator ? ongoingIndicator : undefined}
         />
       ) : null}
       {hostConnectionNotice ? (
@@ -249,14 +265,7 @@ export function ThreadTimelineSurface({
           }
         />
       ) : null}
-      <HeightTransition visible={showOngoingIndicator}>
-        <TimelineWorkingIndicator
-          key={ongoingIndicatorKey}
-          details={activeThinkingDetails}
-          isThinking={showActiveThinking}
-          label={ongoingIndicatorLabel}
-        />
-      </HeightTransition>
+      {useStableOngoingIndicator ? null : ongoingIndicator}
     </ConversationTimeline>
   );
 }

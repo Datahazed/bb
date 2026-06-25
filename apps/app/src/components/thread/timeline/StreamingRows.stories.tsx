@@ -80,10 +80,12 @@ function PinnedTimelineStage({
             key={`cycle-${cycle}`}
             {...baseProps}
             timelineRows={rows.slice()}
+            footer={
+              <HeightTransition visible={showIndicator}>
+                {indicator}
+              </HeightTransition>
+            }
           />
-          <HeightTransition visible={showIndicator}>
-            {indicator}
-          </HeightTransition>
         </ConversationTimeline>
       </PageShell>
     </div>

@@ -119,6 +119,12 @@ export interface ThreadTimelineRowsProps {
    */
   initialExpanded?: ReadonlySet<string>;
   /**
+   * Stable tail rendered below the rows while the row list itself animates
+   * upward from the bottom. Used for the ongoing "Working..." indicator so
+   * streaming rows do not push it through normal flow.
+   */
+  footer?: ReactNode;
+  /**
    * Whether the rendered thread may spawn a child thread (depth-cap policy from
    * the thread response). When false the per-message Fork action renders
    * disabled. Omit when the spawn policy is unknown (treated as not allowed).
@@ -1906,7 +1912,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   return (
     <TimelineRendererStaticContext.Provider value={staticContextValue}>
       <TimelineTurnStateContext.Provider value={turnStateContextValue}>
-        <AutoHeightContainer>
+        <AutoHeightContainer footer={props.footer}>
           <TimelineRowsList
             hasOlderTimelineRows={props.hasOlderTimelineRows}
             isLoadingOlderTimelineRows={props.isLoadingOlderTimelineRows}
