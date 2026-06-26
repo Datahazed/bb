@@ -13,6 +13,10 @@ export interface GetActiveSessionByIdArgs {
   sessionId: string;
 }
 
+export interface GetSessionByIdArgs {
+  sessionId: string;
+}
+
 export interface GetMostRecentlyUpdatedConnectedHostIdArgs {
   hostType?: HostType;
 }
@@ -218,6 +222,19 @@ export function getActiveSessionById(
           gt(hostDaemonSessions.leaseExpiresAt, Date.now()),
         ),
       )
+      .get() ?? null
+  );
+}
+
+export function getSessionById(
+  db: SessionReadConnection,
+  args: GetSessionByIdArgs,
+) {
+  return (
+    db
+      .select()
+      .from(hostDaemonSessions)
+      .where(eq(hostDaemonSessions.id, args.sessionId))
       .get() ?? null
   );
 }

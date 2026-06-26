@@ -406,6 +406,7 @@ export {
   getActiveSessionById,
   getLatestSessionForHost,
   getMostRecentlyUpdatedConnectedHostId,
+  getSessionById,
   heartbeatSession,
   listLatestSessionsForHosts,
   listConnectedHostIds,

@@ -10,6 +10,7 @@ import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import {
   getInactiveSessionLogFields,
   requireAuthorizedActiveSession,
+  requireAuthorizedOpenSession,
 } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
@@ -107,7 +108,7 @@ export function onDaemonSocketMessage(
   }
 
   try {
-    const session = requireAuthorizedActiveSession(deps.db, {
+    const session = requireAuthorizedOpenSession(deps.db, {
       hostId: args.hostId,
       sessionId: args.sessionId,
     });

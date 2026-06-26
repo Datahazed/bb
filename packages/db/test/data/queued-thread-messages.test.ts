@@ -247,6 +247,63 @@ describe("queued thread messages", () => {
     }
   });
 
+  it("does not release stale queued message claims protected by a live owner", () => {
+    const { db, thread } = setup();
+    const nowSpy = vi.spyOn(Date, "now");
+    try {
+      nowSpy.mockReturnValue(1_000);
+      const protectedQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id,
+        content: defaultInput,
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+      const releasableQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id,
+        content: altInput,
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+      const protectedClaim = claimQueuedThreadMessage(
+        db,
+        noopNotifier,
+        protectedQueuedMessage.id,
+      );
+      const releasableClaim = claimQueuedThreadMessage(
+        db,
+        noopNotifier,
+        releasableQueuedMessage.id,
+      );
+      if (!protectedClaim || !releasableClaim) {
+        throw new Error("Expected queued message claims");
+      }
+
+      nowSpy.mockReturnValue(10_000);
+      expect(
+        releaseStaleQueuedMessageClaims(db, noopNotifier, {
+          claimedBefore: 5_000,
+          protectedClaimTokens: [protectedClaim.claimToken],
+        }),
+      ).toBe(1);
+
+      expect(getQueuedThreadMessage(db, protectedQueuedMessage.id)?.claimToken).toBe(
+        protectedClaim.claimToken,
+      );
+      expect(
+        getQueuedThreadMessage(db, releasableQueuedMessage.id)?.claimToken,
+      ).toBeNull();
+      expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
+        releasableQueuedMessage.id,
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it("claims the oldest queued message first", () => {
     const { db, thread } = setup();
     const nowSpy = vi.spyOn(Date, "now");

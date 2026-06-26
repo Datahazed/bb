@@ -15,6 +15,8 @@ import {
 } from "../../ws/hub.js";
 import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
+const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
+
 export interface CallHostOnlineRpcArgs<
   TCommand extends HostDaemonRpcCommand,
 > {
@@ -79,7 +81,7 @@ async function callHostOnlineRpcWithRetry(
       ) {
         throwOnlineRpcError(error);
       }
-      await ensureHostSessionReadyForWork(deps, { hostId: args.hostId });
+      await waitForRetryableHostRpcTransport(deps, args.hostId);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });
@@ -99,6 +101,18 @@ async function callHostOnlineRpcWithRetry(
   }
 
   return parseHostDaemonRpcResultForCommand(args.command, response.result);
+}
+
+async function waitForRetryableHostRpcTransport(
+  deps: WorkSessionDeps,
+  hostId: string,
+): Promise<void> {
+  await ensureHostSessionReadyForWork(deps, { hostId });
+  if (deps.hub.hasDaemonForHost(hostId)) {
+    return;
+  }
+  await deps.hub.waitForDaemonForHost(hostId, HOST_DAEMON_REGISTRATION_WAIT_MS);
+  await ensureHostSessionReadyForWork(deps, { hostId });
 }
 
 function requestHostOnlineRpcResponse(

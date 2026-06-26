@@ -619,6 +619,48 @@ describe("sweepExpiredLeases", () => {
     expect(spy.notifyThread).not.toHaveBeenCalled();
   });
 
+  it("does not close expired sessions that are protected by a live daemon websocket", () => {
+    const { db, host } = setup();
+
+    const session = openSession(db, noopNotifier, {
+      hostId: host.id,
+      instanceId: "inst-1",
+      hostName: "test-host",
+      hostType: "persistent",
+      dataDir: "/tmp/test-host-data",
+      protocolVersion: 1,
+      heartbeatIntervalMs: 10_000,
+      leaseTimeoutMs: 30_000,
+    });
+
+    const now = Date.now();
+    db.update(hostDaemonSessions)
+      .set({ leaseExpiresAt: now - 1000 })
+      .where(eq(hostDaemonSessions.id, session.id))
+      .run();
+
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyProject: vi.fn(),
+      notifyHost: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+
+    const result = sweepExpiredLeases(db, spy, now, [session.id]);
+
+    expect(result.sessionsClosed).toBe(0);
+    expect(result.expiredHostIds).toEqual([]);
+    expect(result.expiredSessionIds).toEqual([]);
+    const updatedSession = db
+      .select()
+      .from(hostDaemonSessions)
+      .where(eq(hostDaemonSessions.id, session.id))
+      .get();
+    expect(updatedSession?.status).toBe("active");
+    expect(spy.notifyHost).not.toHaveBeenCalled();
+  });
+
   it("does not error idle threads on lease expiry", () => {
     const { db, host, project } = setup();
 

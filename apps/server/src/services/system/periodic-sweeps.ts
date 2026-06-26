@@ -509,8 +509,14 @@ function runClosedSessionPruneSweep(
 
 function runExpiredLeaseSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
 ): void {
-  const expiredLeases = sweepExpiredLeases(deps.db, deps.hub);
+  const expiredLeases = sweepExpiredLeases(
+    deps.db,
+    deps.hub,
+    now,
+    deps.hub.listDaemonSessionIds(),
+  );
   handleExpiredHostSessionLeases(deps, { expiredLeases });
 }
 

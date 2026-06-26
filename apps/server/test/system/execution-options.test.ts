@@ -537,6 +537,45 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
+  it("logs model load fallback errors without stack-bearing err objects", async () => {
+    await withTestHarness(async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-concise-model-log",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "command_failed",
+            errorMessage: "model list failed",
+          },
+        },
+      });
+
+      await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+
+      const providerModelWarning = warn.mock.calls.find(
+        ([, message]) => message === "Failed to resolve provider models",
+      );
+      expect(providerModelWarning).toBeDefined();
+      expect(providerModelWarning?.[0]).toMatchObject({
+        errorCode: "command_failed",
+        errorMessage: "model list failed",
+        errorRetryable: false,
+        errorStatus: 502,
+        hostId: host.id,
+        providerId: "codex",
+      });
+      expect(providerModelWarning?.[0]).not.toHaveProperty("err");
+    });
+  });
+
   it("includes custom ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness(
       {

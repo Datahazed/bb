@@ -4,6 +4,7 @@ import {
   sql,
   lt,
   inArray,
+  notInArray,
 } from "drizzle-orm";
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
@@ -351,19 +352,24 @@ export function sweepExpiredLeases(
   db: DbConnection,
   notifier: DbNotifier,
   now?: number,
+  protectedSessionIds: readonly string[] = [],
 ): SweepExpiredLeasesResult {
   const currentTime = now ?? Date.now();
+  const whereClauses = [
+    eq(hostDaemonSessions.status, "active"),
+    lt(hostDaemonSessions.leaseExpiresAt, currentTime),
+  ];
+  if (protectedSessionIds.length > 0) {
+    whereClauses.push(
+      notInArray(hostDaemonSessions.id, [...protectedSessionIds]),
+    );
+  }
 
   // Find active sessions past their lease
   const expiredSessions = db
     .select()
     .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.status, "active"),
-        lt(hostDaemonSessions.leaseExpiresAt, currentTime),
-      ),
-    )
+    .where(and(...whereClauses))
     .all();
 
   if (expiredSessions.length === 0) {

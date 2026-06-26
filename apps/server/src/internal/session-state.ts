@@ -1,5 +1,9 @@
 import { eq } from "drizzle-orm";
-import { getActiveSessionById, hostDaemonSessions } from "@bb/db";
+import {
+  getActiveSessionById,
+  getSessionById,
+  hostDaemonSessions,
+} from "@bb/db";
 import type { DbConnection, HostDaemonSessionRow } from "@bb/db";
 import { ApiError } from "../errors.js";
 import { getAuthenticatedDaemon } from "./auth.js";
@@ -52,6 +56,25 @@ export function requireAuthorizedActiveSession(
   args: RequireAuthorizedActiveSessionArgs,
 ) {
   const session = requireActiveSession(db, args.sessionId);
+  if (session.hostId !== args.hostId) {
+    throw new ApiError(
+      403,
+      "invalid_request",
+      "Session does not belong to the authenticated host",
+    );
+  }
+
+  return session;
+}
+
+export function requireAuthorizedOpenSession(
+  db: DbConnection,
+  args: RequireAuthorizedActiveSessionArgs,
+) {
+  const session = getSessionById(db, { sessionId: args.sessionId });
+  if (!session || session.status !== "active") {
+    throw new ApiError(401, "inactive_session", "Session is not active");
+  }
   if (session.hostId !== args.hostId) {
     throw new ApiError(
       403,
