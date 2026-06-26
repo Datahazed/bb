@@ -17,6 +17,12 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  UpdateAutomationRequest,
+  SkillListResponse,
+  DeleteSkillRequest,
+  SkillContentResponse,
+  UpdateSkillRequest,
+  SkillScope,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -683,6 +689,91 @@ export async function deleteAutomation({
   await requestVoid(
     apiClient.projects[":id"].automations[":automationId"].$delete({
       param: { id: projectId, automationId },
+    }),
+  );
+}
+
+export async function updateAutomation({
+  projectId,
+  automationId,
+  patch,
+}: AutomationRef & { patch: UpdateAutomationRequest }): Promise<Automation> {
+  return request<Automation>(
+    apiClient.projects[":id"].automations[":automationId"].$patch({
+      param: { id: projectId, automationId },
+      json: patch,
+    }),
+  );
+}
+
+interface ListProjectSkillsArgs {
+  projectId: string;
+  environmentId: string | null;
+  signal?: AbortSignal;
+}
+
+export async function listProjectSkills({
+  projectId,
+  environmentId,
+  signal,
+}: ListProjectSkillsArgs): Promise<SkillListResponse> {
+  return request<SkillListResponse>(
+    apiClient.projects[":id"].skills.$get(
+      {
+        param: { id: projectId },
+        query: { environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function deleteProjectSkill(
+  projectId: string,
+  body: DeleteSkillRequest,
+): Promise<void> {
+  await requestVoid(
+    apiClient.projects[":id"].skills.$delete({
+      param: { id: projectId },
+      json: body,
+    }),
+  );
+}
+
+interface GetSkillContentArgs {
+  projectId: string;
+  scope: SkillScope;
+  name: string;
+  environmentId: string | null;
+  signal?: AbortSignal;
+}
+
+export async function getSkillContent({
+  projectId,
+  scope,
+  name,
+  environmentId,
+  signal,
+}: GetSkillContentArgs): Promise<SkillContentResponse> {
+  return request<SkillContentResponse>(
+    apiClient.projects[":id"].skills.content.$get(
+      {
+        param: { id: projectId },
+        query: { scope, name, environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function updateSkillContent(
+  projectId: string,
+  body: UpdateSkillRequest,
+): Promise<{ filePath: string }> {
+  return request<{ filePath: string }>(
+    apiClient.projects[":id"].skills.content.$patch({
+      param: { id: projectId },
+      json: body,
     }),
   );
 }

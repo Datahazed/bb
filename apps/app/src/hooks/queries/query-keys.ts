@@ -64,6 +64,8 @@ export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const AUTOMATIONS_QUERY_KEY = "automations";
 export const AUTOMATION_DETAIL_QUERY_KEY = "automationDetail";
 export const AUTOMATION_RUNS_QUERY_KEY = "automationRuns";
+export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
+export const SKILL_CONTENT_QUERY_KEY = "skillContent";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -1105,4 +1107,16 @@ export function allAutomationDetailQueryKeyPrefix(): AllAutomationDetailQueryKey
 
 export function allAutomationRunsQueryKeyPrefix(): AllAutomationRunsQueryKeyPrefix {
   return [AUTOMATION_RUNS_QUERY_KEY];
+}
+
+export function projectSkillsQueryKey(projectId: string) {
+  return [PROJECT_SKILLS_QUERY_KEY, projectId] as const;
+}
+
+export function skillContentQueryKey(
+  projectId: string,
+  scope: string,
+  name: string,
+) {
+  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name] as const;
 }

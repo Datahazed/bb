@@ -26,6 +26,9 @@ interface PromptBoxActionsMenuProps {
   onAction: (action: PromptBoxAction) => void;
 }
 
+// Skill creation always targets a bb skill (the only manageable scope). The
+// loop-prompt constant lives in `@/lib/loop-prompt` (main's refactor).
+export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
 export const LOOP_PROMPT_ACTION: PromptBoxAction = {
   kind: "loop",
   command: { trigger: "/", name: "loop", trailingText: " " },

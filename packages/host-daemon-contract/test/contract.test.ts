@@ -198,6 +198,22 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.list_skills": {
+    skills: [
+      {
+        name: "review",
+        description: "Review the current diff",
+        filePath: "/home/user/.bb/skills/review/SKILL.md",
+        rootKind: "bb-data-dir",
+      },
+    ],
+  },
+  "host.delete_skill": {
+    deletedPath: "/home/user/.bb/skills/review",
+  },
+  "host.write_skill": {
+    filePath: "/home/user/.bb/skills/review/SKILL.md",
+  },
   "host.list_branches": {
     branches: ["main"],
     branchesTruncated: false,

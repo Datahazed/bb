@@ -314,6 +314,110 @@ export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
 });
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 
+/**
+ * Product scope of a discovered skill, derived server-side from the daemon's raw
+ * `(provider, rootKind)`. bb scopes are provider-agnostic; `claude-*` split by
+ * project/user; Codex collapses to one read-only scope (its discovery has no
+ * user/project split); `plugin` covers provider plugin skills.
+ */
+export const skillScopeSchema = z.enum([
+  "bb-builtin",
+  "bb-user",
+  "bb-project",
+  "claude-user",
+  "claude-project",
+  "codex",
+  "plugin",
+]);
+export type SkillScope = z.infer<typeof skillScopeSchema>;
+
+/** Command-surface provider a skill is discovered under. */
+export const skillProviderSchema = z.enum(["claude-code", "codex"]);
+export type SkillProvider = z.infer<typeof skillProviderSchema>;
+
+export const skillSummarySchema = z.object({
+  /** Invocation name (parent dir / frontmatter `name`). */
+  name: z.string(),
+  description: z.string().nullable(),
+  /**
+   * `null` for provider-agnostic bb scopes — a bb skill is discovered under both
+   * providers, so it is listed once with `provider: null` (de-duped on path).
+   */
+  provider: skillProviderSchema.nullable(),
+  scope: skillScopeSchema,
+  /** Absolute path to the SKILL.md (backs the read-only View). */
+  filePath: z.string(),
+  /** `true` only for `bb-user` / `bb-project`; every other scope is read-only. */
+  manageable: z.boolean(),
+});
+export type SkillSummary = z.infer<typeof skillSummarySchema>;
+
+export const skillListResponseSchema = z.object({
+  skills: z.array(skillSummarySchema),
+});
+export type SkillListResponse = z.infer<typeof skillListResponseSchema>;
+
+/** Skills listing is project-level; only the workspace needs scoping. */
+export const projectSkillsQuerySchema = z.object({
+  /**
+   * Required + nullable, mirroring {@link projectFilesQuerySchema}: an
+   * environment id scopes discovery to that workspace; `null` (empty string on
+   * the wire) uses the project's default source.
+   */
+  environmentId: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.string().min(1).nullable(),
+  ),
+});
+export type ProjectSkillsQuery = z.infer<typeof projectSkillsQuerySchema>;
+
+/** Only bb scopes are deletable; the server re-validates before the daemon. */
+export const deletableSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
+
+export const deleteSkillRequestSchema = z
+  .object({
+    scope: deletableSkillScopeSchema,
+    name: z.string().min(1),
+    /**
+     * Workspace to resolve `<cwd>/.bb/skills` for a `bb-project` delete; `null`
+     * uses the project's default source. The server resolves the absolute path —
+     * a client `filePath` is never accepted.
+     */
+    environmentId: z.string().min(1).nullable(),
+  })
+  .strict();
+export type DeleteSkillRequest = z.infer<typeof deleteSkillRequestSchema>;
+
+/** View any skill's SKILL.md. Identity (scope + name; scope determines the
+ * provider) is resolved server-side to the authoritative `filePath`; a client
+ * path is never accepted. */
+export const projectSkillContentQuerySchema = z.object({
+  scope: skillScopeSchema,
+  name: z.string().min(1),
+  environmentId: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.string().min(1).nullable(),
+  ),
+});
+export type ProjectSkillContentQuery = z.infer<
+  typeof projectSkillContentQuerySchema
+>;
+
+export const skillContentResponseSchema = z.object({ content: z.string() });
+export type SkillContentResponse = z.infer<typeof skillContentResponseSchema>;
+
+/** Edit a bb skill's SKILL.md (only bb scopes are writable). */
+export const updateSkillRequestSchema = z
+  .object({
+    scope: deletableSkillScopeSchema,
+    name: z.string().min(1),
+    environmentId: z.string().min(1).nullable(),
+    content: z.string().min(1).max(1_000_000),
+  })
+  .strict();
+export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;
+
 export const projectResponseSchema = projectSchema.extend({
   sources: z.array(projectSourceSchema),
 });

@@ -48,6 +48,12 @@ import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/th
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
+  deleteProjectSkill,
+  listProjectSkills,
+  readProjectSkill,
+  writeProjectSkill,
+} from "../services/skills/skill-listing.js";
+import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
@@ -637,6 +643,83 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         query: query.query,
       }),
     );
+  });
+
+  get(routes.skills, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: query.environmentId,
+      projectId,
+    });
+    const skills = await listProjectSkills(deps, { workspace });
+    return context.json({ skills });
+  });
+
+  del(routes.deleteSkill, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: payload.environmentId,
+      projectId,
+    });
+    // bb-project skills live under `<cwd>/.bb/skills`; without a resolvable
+    // workspace there is nothing to delete (and the daemon would reject it).
+    if (payload.scope === "bb-project" && workspace.cwd === null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "No workspace resolved for this project's skills",
+      );
+    }
+    const deletedPath = await deleteProjectSkill(deps, {
+      scope: payload.scope,
+      name: payload.name,
+      workspace,
+    });
+    return context.json({ deletedPath });
+  });
+
+  get(routes.skillContent, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: query.environmentId,
+      projectId,
+    });
+    const content = await readProjectSkill(deps, {
+      scope: query.scope,
+      name: query.name,
+      workspace,
+    });
+    return context.json({ content });
+  });
+
+  patch(routes.updateSkill, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: payload.environmentId,
+      projectId,
+    });
+    if (payload.scope === "bb-project" && workspace.cwd === null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "No workspace resolved for this project's skills",
+      );
+    }
+    const filePath = await writeProjectSkill(deps, {
+      scope: payload.scope,
+      name: payload.name,
+      content: payload.content,
+      workspace,
+    });
+    return context.json({ filePath });
   });
 
   get(routes.branches, async (context, query) => {

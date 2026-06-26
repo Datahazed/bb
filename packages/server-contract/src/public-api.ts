@@ -92,6 +92,12 @@ import type {
   ProjectListQuery,
   ProjectPathsQuery,
   ProjectResponse,
+  ProjectSkillsQuery,
+  DeleteSkillRequest,
+  SkillListResponse,
+  ProjectSkillContentQuery,
+  SkillContentResponse,
+  UpdateSkillRequest,
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
@@ -193,6 +199,10 @@ import {
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
+  projectSkillsQuerySchema,
+  deleteSkillRequestSchema,
+  projectSkillContentQuerySchema,
+  updateSkillRequestSchema,
   promptHistoryQuerySchema,
   reorderPinnedThreadRequestSchema,
   reorderProjectRequestSchema,
@@ -356,6 +366,38 @@ export const publicApiRoutes = {
         projectCommandsQuerySchema,
       ),
       response: jsonResponse<CommandListResponse>(),
+    }),
+    skills: defineRoute({
+      path: "/projects/:id/skills",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectSkillsQuery>(
+        projectSkillsQuerySchema,
+      ),
+      response: jsonResponse<SkillListResponse>(),
+    }),
+    deleteSkill: defineRoute({
+      path: "/projects/:id/skills",
+      method: "delete",
+      request: jsonRequest<PathProjectId, DeleteSkillRequest>(
+        deleteSkillRequestSchema,
+      ),
+      response: jsonResponse<{ deletedPath: string }>(),
+    }),
+    skillContent: defineRoute({
+      path: "/projects/:id/skills/content",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectSkillContentQuery>(
+        projectSkillContentQuerySchema,
+      ),
+      response: jsonResponse<SkillContentResponse>(),
+    }),
+    updateSkill: defineRoute({
+      path: "/projects/:id/skills/content",
+      method: "patch",
+      request: jsonRequest<PathProjectId, UpdateSkillRequest>(
+        updateSkillRequestSchema,
+      ),
+      response: jsonResponse<{ filePath: string }>(),
     }),
     branches: defineRoute({
       path: "/projects/:id/branches",

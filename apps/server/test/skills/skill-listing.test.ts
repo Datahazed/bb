@@ -1,0 +1,159 @@
+import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
+import type { SkillProvider } from "@bb/server-contract";
+import { describe, expect, it } from "vitest";
+import {
+  assembleSkillList,
+  mapSkillScope,
+} from "../../src/services/skills/skill-listing.js";
+
+describe("mapSkillScope", () => {
+  const cases: Array<{
+    provider: SkillProvider;
+    rootKind: SkillRootKind;
+    scope: string;
+    listedProvider: SkillProvider | null;
+    manageable: boolean;
+  }> = [
+    {
+      provider: "claude-code",
+      rootKind: "bb-project",
+      scope: "bb-project",
+      listedProvider: null,
+      manageable: true,
+    },
+    {
+      provider: "codex",
+      rootKind: "bb-project",
+      scope: "bb-project",
+      listedProvider: null,
+      manageable: true,
+    },
+    {
+      provider: "claude-code",
+      rootKind: "bb-data-dir",
+      scope: "bb-user",
+      listedProvider: null,
+      manageable: true,
+    },
+    {
+      provider: "claude-code",
+      rootKind: "bb-builtin",
+      scope: "bb-builtin",
+      listedProvider: null,
+      manageable: false,
+    },
+    {
+      provider: "claude-code",
+      rootKind: "provider-project",
+      scope: "claude-project",
+      listedProvider: "claude-code",
+      manageable: false,
+    },
+    {
+      provider: "claude-code",
+      rootKind: "provider-user",
+      scope: "claude-user",
+      listedProvider: "claude-code",
+      manageable: false,
+    },
+    {
+      provider: "codex",
+      rootKind: "provider-project",
+      scope: "codex",
+      listedProvider: "codex",
+      manageable: false,
+    },
+    {
+      provider: "codex",
+      rootKind: "provider-user",
+      scope: "codex",
+      listedProvider: "codex",
+      manageable: false,
+    },
+    {
+      provider: "claude-code",
+      rootKind: "plugin",
+      scope: "plugin",
+      listedProvider: "claude-code",
+      manageable: false,
+    },
+    {
+      provider: "codex",
+      rootKind: "plugin",
+      scope: "plugin",
+      listedProvider: "codex",
+      manageable: false,
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(`maps (${testCase.provider}, ${testCase.rootKind}) → ${testCase.scope}`, () => {
+      expect(mapSkillScope(testCase.provider, testCase.rootKind)).toEqual({
+        scope: testCase.scope,
+        provider: testCase.listedProvider,
+        manageable: testCase.manageable,
+      });
+    });
+  }
+});
+
+describe("assembleSkillList", () => {
+  function discovered(
+    name: string,
+    rootKind: SkillRootKind,
+    filePath: string,
+  ): DiscoveredSkill {
+    return { name, description: null, rootKind, filePath };
+  }
+
+  it("de-dupes a bb skill discovered under both providers", () => {
+    const bb = discovered(
+      "shared",
+      "bb-data-dir",
+      "/data/skills/shared/SKILL.md",
+    );
+    const result = assembleSkillList([
+      { provider: "claude-code", skills: [bb] },
+      { provider: "codex", skills: [bb] },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      name: "shared",
+      provider: null,
+      scope: "bb-user",
+    });
+  });
+
+  it("keeps provider-specific skills distinct and sorts by scope then name", () => {
+    const result = assembleSkillList([
+      {
+        provider: "claude-code",
+        skills: [
+          discovered(
+            "zed",
+            "provider-user",
+            "/home/.claude/skills/zed/SKILL.md",
+          ),
+          discovered("alpha", "bb-project", "/cwd/.bb/skills/alpha/SKILL.md"),
+        ],
+      },
+      {
+        provider: "codex",
+        skills: [
+          discovered(
+            "zed",
+            "provider-user",
+            "/home/.codex/skills/zed/SKILL.md",
+          ),
+        ],
+      },
+    ]);
+    // bb-project sorts before claude-user before codex; the two `zed` skills are
+    // distinct files under different providers.
+    expect(result.map((skill) => [skill.scope, skill.name])).toEqual([
+      ["bb-project", "alpha"],
+      ["claude-user", "zed"],
+      ["codex", "zed"],
+    ]);
+  });
+});

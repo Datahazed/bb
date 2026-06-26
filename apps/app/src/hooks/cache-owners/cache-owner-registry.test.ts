@@ -178,6 +178,10 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "terminalsQueryKey",
     "threadsQueryKey",
   ],
+  "hooks/cache-owners/skills-cache-effects.ts": [
+    "projectSkillsQueryKey",
+    "skillContentQueryKey",
+  ],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allAutomationDetailQueryKeyPrefix",
     "allAutomationRunsQueryKeyPrefix",
