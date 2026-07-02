@@ -4,6 +4,7 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  UpdateAutomationRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { invalidateAutomationMutationQueries } from "@/hooks/cache-owners/automation-cache-effects";
@@ -138,6 +139,27 @@ export function useDeleteAutomation() {
       api.deleteAutomation(request),
     onSuccess: (_data, variables) => {
       invalidateAutomationMutationQueries({ ...variables, queryClient });
+    },
+  });
+}
+
+interface UpdateAutomationMutationRequest extends AutomationMutationRequest {
+  patch: UpdateAutomationRequest;
+}
+
+export function useUpdateAutomation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<Automation, Error, UpdateAutomationMutationRequest>({
+    meta: { errorMessage: "Failed to update loop." },
+    mutationFn: (request: UpdateAutomationMutationRequest) =>
+      api.updateAutomation(request),
+    onSuccess: (_data, variables) => {
+      invalidateAutomationMutationQueries({
+        projectId: variables.projectId,
+        automationId: variables.automationId,
+        queryClient,
+      });
     },
   });
 }

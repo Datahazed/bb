@@ -268,7 +268,7 @@ export function SkillsOverview({
                     type="button"
                     onClick={() => toggleGroup(group.key)}
                     aria-expanded={!isCollapsed}
-                    className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
+                    className="flex w-full items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
                   >
                     <Icon
                       name="ChevronRight"
@@ -406,7 +406,6 @@ export function SkillDetailDialogView({
             size="icon"
             className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
             aria-label="Skill actions"
-            title="Skill actions"
           >
             <Icon name="MoreHorizontal" className="size-4" />
           </Button>

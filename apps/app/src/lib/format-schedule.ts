@@ -21,17 +21,57 @@ export interface CompletedOneShotAutomationArgs {
   runCount: number;
 }
 
+const DAY_ABBREVIATION: Record<string, string> = {
+  Sunday: "Sun",
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+};
+
 /**
- * Human-readable recurrence for a cron expression, e.g.
- * "At 09:00 AM, Monday through Friday". Falls back to a neutral label rather
- * than surfacing the raw cron string when the expression can't be parsed.
+ * Compact human-readable recurrence for a cron expression, tuned for dense
+ * lists: "9AM Mon-Fri", "5PM Fri", "Every 15 min". Post-processes cronstrue's
+ * verbose phrasing. Falls back to a neutral label when the expression can't be
+ * parsed.
  */
 export function formatCronCadence(cron: string): string {
+  let text: string;
   try {
-    return cronstrueToString(cron, { verbose: false });
+    text = cronstrueToString(cron, { verbose: false });
   } catch {
     return "Custom schedule";
   }
+  return (
+    text
+      // Drop cronstrue's leading "At " ("At 09:00 AM, …").
+      .replace(/^At /, "")
+      // Compact clock times: "09:00 AM" -> "9AM", "09:30 PM" -> "9:30PM".
+      .replace(
+        /\b0?(\d{1,2}):(\d{2})\s*(AM|PM)\b/g,
+        (_all, hour, minute, meridiem) =>
+          minute === "00"
+            ? `${hour}${meridiem}`
+            : `${hour}:${minute}${meridiem}`,
+      )
+      // Abbreviate day names to three letters.
+      .replace(
+        /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/g,
+        (day) => DAY_ABBREVIATION[day] ?? day,
+      )
+      // Ranges, list joins, and filler.
+      .replace(/ through /g, "-")
+      .replace(/,? only on /g, " ")
+      .replace(/,? and /g, ", ")
+      // Units.
+      .replace(/\bminutes?\b/g, "min")
+      .replace(/\bseconds?\b/g, "sec")
+      // Collapse the comma between the time and the day spec into a space.
+      .replace(/([AP]M),\s+/g, "$1 ")
+      .trim()
+  );
 }
 
 export function formatAutomationTrigger(trigger: AutomationTrigger): string {

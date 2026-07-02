@@ -904,6 +904,42 @@ export function appendThreadOwnershipChangeEvent(
   });
 }
 
+export interface AppendAutomationCreatedEventArgs {
+  threadId: string;
+  automationId: string;
+  projectId: string;
+  automationName: string;
+  environmentId?: string | null;
+}
+
+/**
+ * Append an informational system row to the thread whose agent just created a
+ * loop, linking the loop's name to its detail page. Best-effort: callers should
+ * not fail the loop creation if this throws.
+ */
+export function appendAutomationCreatedEvent(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: AppendAutomationCreatedEventArgs,
+): number {
+  return appendThreadEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId ?? null,
+    type: "system/operation",
+    scope: threadScope(),
+    data: {
+      operation: "automation_created",
+      operationId: createEventId(),
+      status: "completed",
+      message: `Created loop “${args.automationName}”`,
+      metadata: {
+        automationId: args.automationId,
+        projectId: args.projectId,
+        automationName: args.automationName,
+      },
+    },
+  });
+}
+
 export function appendThreadOwnershipChangeEventInTransaction(
   deps: ThreadEventTransactionDeps,
   args: AppendThreadOwnershipChangeEventArgs,

@@ -71,8 +71,9 @@ function renderContent(
         runsError={overrides.runsError ?? false}
         onPause={overrides.onPause ?? NOOP}
         onResume={overrides.onResume ?? NOOP}
-        onRun={overrides.onRun ?? NOOP}
         onDelete={overrides.onDelete ?? NOOP}
+        onSave={overrides.onSave ?? (() => Promise.resolve())}
+        savePending={overrides.savePending ?? false}
         actionsPending={overrides.actionsPending ?? false}
       />
     </MemoryRouter>,
@@ -80,57 +81,71 @@ function renderContent(
 }
 
 describe("AutomationDetailContent", () => {
-  it("renders the header with name, Script and API pills", () => {
+  it("renders the loop name with the next-run line (no mode/status pills)", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("Disk space watchdog");
-    expect(markup).toContain(">Script<");
-    expect(markup).toContain(">API<");
+    expect(markup).toContain("Next run");
+    expect(markup).not.toContain(">Script<");
+    expect(markup).not.toContain(">API<");
   });
 
   it("renders the config summary with schedule, execution, and environment", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("America/New_York");
-    expect(markup).toContain("bash disk.sh");
+    // Script execution: interpreter · file · timeout.
+    expect(markup).toContain("disk.sh");
     expect(markup).toContain("30s timeout");
-    expect(markup).toContain("Personal workspace");
+    // Environment uses the composer's vocabulary + icon: "Local" on a laptop.
+    expect(markup).toContain("Local");
+    expect(markup).toContain('data-icon="Laptop"');
   });
 
-  it("shows a Pause icon button for an enabled automation and Resume for a paused one", () => {
-    const enabled = renderContent({
+  it("shows a readable permission label, not the raw mode", () => {
+    const markup = renderContent({
+      automation: makeAutomation({
+        execution: {
+          mode: "agent",
+          prompt: "Summarize.",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: "readonly",
+        },
+      }),
+    });
+    expect(markup).toContain("Read-only");
+    expect(markup).not.toContain(">readonly<");
+  });
+
+  it("shows next run and moves edit/pause/delete into an actions menu", () => {
+    const markup = renderContent({
       automation: makeAutomation({ enabled: true }),
     });
-    expect(enabled).toContain('aria-label="Pause"');
-    expect(enabled).toContain('data-icon="Pause"');
-    expect(enabled).not.toContain('aria-label="Resume"');
+    expect(markup).toContain("Next run");
+    // The ⋯ trigger is present; its menu (Edit / Pause / Delete) is portaled, so
+    // the items themselves aren't in static markup.
+    expect(markup).toMatch(/aria-label="[^"]* actions"/);
+    expect(markup).not.toContain(">Edit<");
+    expect(markup).not.toContain(">Delete<");
+    // No Run now here (the overview runs loops), no "Active" label.
+    expect(markup).not.toContain("Run now");
+    expect(markup).not.toContain(">Active<");
+  });
 
+  it("reads Paused in the next-run line when disabled", () => {
     const paused = renderContent({
       automation: makeAutomation({ enabled: false }),
     });
-    expect(paused).toContain('aria-label="Resume"');
-    expect(paused).toContain('data-icon="Play"');
-    expect(paused).not.toContain('aria-label="Pause"');
+    // Pause/resume now lives in the actions menu (portaled); the visible paused
+    // signal is the next-run line.
+    expect(paused).toContain("Paused");
   });
 
-  it("does not show Resume for a completed one-shot automation", () => {
+  it("has no top-level View thread action (it lives per-run in the history)", () => {
     const markup = renderContent({
-      automation: makeAutomation({
-        enabled: false,
-        trigger: { triggerType: "once", runAt: 1_700_000_000_000 },
-        nextRunAt: null,
-        runCount: 1,
-      }),
+      automation: makeAutomation({ lastRunThreadId: "thr_latest" }),
     });
-    expect(markup).not.toContain('aria-label="Resume"');
-    expect(markup).not.toContain('aria-label="Pause"');
-    expect(markup).toContain('aria-label="Run now"');
-  });
-
-  it("renders Run now and Delete icon actions", () => {
-    const markup = renderContent({ automation: makeAutomation() });
-    expect(markup).toContain('aria-label="Run now"');
-    expect(markup).toContain('data-icon="Zap"');
-    expect(markup).toContain('aria-label="Delete automation"');
-    expect(markup).toContain('data-icon="Trash2"');
+    // The header no longer carries a View thread button, even with a last run.
+    expect(markup).not.toContain('aria-label="View thread"');
   });
 
   it("renders a succeeded script run with its captured output and exit code", () => {
@@ -164,7 +179,9 @@ describe("AutomationDetailContent", () => {
     const markup = renderContent({
       runs: [makeRun({ id: "run_silent", output: null })],
     });
-    expect(markup).toContain("Succeeded · silent");
+    // The status glyph carries "Succeeded" (via aria-label); the silent note
+    // lives in the detail line now that rows have no status text.
+    expect(markup).toContain('aria-label="Succeeded"');
     expect(markup).toContain("silent gate");
   });
 
@@ -193,20 +210,23 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain("View thread");
   });
 
-  it("shows a skip reason for skipped runs", () => {
+  it("links a script run that escalated to its spawned thread", () => {
     const markup = renderContent({
       runs: [
         makeRun({
-          id: "run_skip",
-          status: "skipped",
-          output: null,
-          exitCode: null,
-          skipReason: "wakeAgent gate returned false",
+          id: "run_escalate",
+          runMode: "script",
+          threadId: "thr_spawned",
+          output: "2 flaky suites detected. Spawned a fixer thread.",
+          exitCode: 0,
         }),
       ],
     });
-    expect(markup).toContain("Skipped");
-    expect(markup).toContain("wakeAgent gate returned false");
+    // A script escalation shows BOTH its exit code and a link to the thread it
+    // spawned (an agent run, by contrast, reads just "View thread").
+    expect(markup).toContain("exit 0");
+    expect(markup).toContain('href="/threads/thr_spawned"');
+    expect(markup).toContain("View spawned thread");
   });
 
   it("shows the empty run-history state", () => {
@@ -214,9 +234,10 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain("No runs yet.");
   });
 
-  it("shows a loading run-history state", () => {
+  it("shows a loading run-history skeleton", () => {
     const markup = renderContent({ runs: [], runsLoading: true });
-    expect(markup).toContain("Loading...");
+    expect(markup).toContain('aria-label="Loading runs"');
+    expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("No runs yet.");
   });
 

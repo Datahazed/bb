@@ -1,5 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeAutomationRun, createManualRun } from "@bb/db";
+import { closeAutomationRun, createManualRun, listEvents } from "@bb/db";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -140,6 +142,38 @@ describe("automations routes", () => {
       `/api/v1/projects/${projectId}/automations`,
     );
     expect(await afterDelete.json()).toHaveLength(0);
+  });
+
+  function automationCreatedEvents(threadId: string) {
+    return listEvents(harness.db, { threadId })
+      .filter((row) => row.type === "system/operation")
+      .map((row) => JSON.parse(row.data) as { operation: string; metadata?: unknown })
+      .filter((data) => data.operation === "automation_created");
+  }
+
+  it("drops a 'Created loop' notice into the thread whose agent created it", async () => {
+    const thread = seedThread(harness, { projectId });
+    const res = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ createdByThreadId: thread.id }),
+    );
+    expect(res.status).toBe(201);
+    const created = await res.json();
+
+    const events = automationCreatedEvents(thread.id);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.metadata).toEqual({
+      automationId: created.id,
+      projectId,
+      automationName: "Daily digest",
+    });
+  });
+
+  it("emits no notice for a loop created without a source thread", async () => {
+    const thread = seedThread(harness, { projectId });
+    const res = await post(`/projects/${projectId}/automations`, createBody());
+    expect(res.status).toBe(201);
+    expect(automationCreatedEvents(thread.id)).toHaveLength(0);
   });
 
   it("stores an inline script under the data dir and returns scriptFile", async () => {
@@ -324,6 +358,93 @@ describe("automations routes", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("invalid_request");
+  });
+
+  it("updates a script automation's inline script, interpreter, and timeout", async () => {
+    const createRes = await post(
+      `/projects/${projectId}/automations`,
+      createBody({ name: "Watchdog", execution: agentExecution() }),
+    );
+    const created = await createRes.json();
+    expect(created.execution.mode).toBe("script");
+    const scriptFile = created.execution.scriptFile as string;
+
+    const newScript = "echo 'updated script body'\nexit 0\n";
+    const updateRes = await patch(
+      `/projects/${projectId}/automations/${created.id}`,
+      {
+        execution: {
+          mode: "script",
+          script: newScript,
+          interpreter: "sh",
+          timeoutMs: 45_000,
+        },
+      },
+    );
+    expect(updateRes.status).toBe(200);
+    const updated = await updateRes.json();
+    expect(updated.execution.mode).toBe("script");
+    expect(updated.execution.interpreter).toBe("sh");
+    expect(updated.execution.timeoutMs).toBe(45_000);
+    // PATCH/list responses never carry inline content; only scriptFile.
+    expect(updated.execution.script).toBeUndefined();
+    expect(updated.execution.scriptFile).toBe(scriptFile);
+
+    // The file on disk was rewritten with the new content...
+    const onDisk = await readFile(
+      join(harness.config.dataDir, "automation-scripts", created.id, scriptFile),
+      "utf8",
+    );
+    expect(onDisk).toBe(newScript);
+
+    // ...and the single-automation GET surfaces it so the edit form can pre-fill.
+    const getRes = await harness.app.request(
+      `/api/v1/projects/${projectId}/automations/${created.id}`,
+    );
+    const fetched = await getRes.json();
+    expect(fetched.execution.script).toBe(newScript);
+  });
+
+  it("blocks updating an automation to a script execution when script runs are disabled", async () => {
+    const gatedHarness = await createTestAppHarness({
+      automationsAllowScriptRuns: false,
+    });
+    try {
+      const host = seedHost(gatedHarness);
+      const gatedProjectId = seedProjectWithSource(gatedHarness, {
+        hostId: host.id,
+        name: "Gated",
+        path: "/tmp/bb-automations-gated-patch",
+      }).project.id;
+
+      // Agent create is allowed under the gate.
+      const createRes = await gatedHarness.app.request(
+        `/api/v1/projects/${gatedProjectId}/automations`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(createBody()),
+        },
+      );
+      expect(createRes.status).toBe(201);
+      const created = await createRes.json();
+
+      // Converting it to a script execution must be gated the same as create.
+      const patchRes = await gatedHarness.app.request(
+        `/api/v1/projects/${gatedProjectId}/automations/${created.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            execution: { mode: "script", script: "echo hi", interpreter: "bash" },
+          }),
+        },
+      );
+      expect(patchRes.status).toBe(403);
+      expect((await patchRes.json()).code).toBe("invalid_request");
+    } finally {
+      await gatedHarness.cleanup();
+    }
   });
 
   it("blocks creating a script automation when script runs are disabled", async () => {

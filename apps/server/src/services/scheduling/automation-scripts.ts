@@ -1,4 +1,5 @@
-import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import type { AutomationScriptInterpreter } from "@bb/domain";
 import { resolveContainedPath } from "@bb/process-utils";
@@ -52,6 +53,10 @@ export function resolveInterpreterCommand(
 /**
  * Persist inline script content under `<dataDir>/automation-scripts/<id>/` and
  * return the stored relative file name. Sanitizes the file name and writes 0o700.
+ *
+ * Writes via a temp file + atomic `rename` so an update that rewrites an existing
+ * script (e.g. from the detail page) is atomic w.r.t. a concurrent run: a reader
+ * sees either the complete old or complete new content, never a truncated file.
  */
 export async function writeInlineAutomationScript(args: {
   dataDir: string;
@@ -64,8 +69,30 @@ export async function writeInlineAutomationScript(args: {
   );
   const dir = automationScriptDir(args.dataDir, args.automationId);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, storedName), args.content, { mode: 0o700 });
+  const target = join(dir, storedName);
+  const tmp = join(dir, `.${storedName}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(tmp, args.content, { mode: 0o700 });
+    await rename(tmp, target);
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw error;
+  }
   return storedName;
+}
+
+/**
+ * Read an automation's stored inline script content, enforcing the same
+ * containment as the run path. Used to surface the current script in the detail
+ * response so the edit form can pre-fill it.
+ */
+export async function readInlineAutomationScript(args: {
+  dataDir: string;
+  automationId: string;
+  scriptFile: string;
+}): Promise<string> {
+  const scriptPath = await resolveAutomationScriptPath(args);
+  return readFile(scriptPath, "utf8");
 }
 
 /**

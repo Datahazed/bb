@@ -5,7 +5,7 @@ import type { Automation } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   AutomationsOverview,
-  buildAutomationRowMenuItems,
+  buildAutomationRowActions,
   type AutomationRowActions,
   type AutomationsOverviewProps,
 } from "./AutomationsView";
@@ -62,8 +62,8 @@ function makeEntry(
 const NOOP = () => {};
 
 const NOOP_ACTIONS: AutomationRowActions = {
-  onPause: NOOP,
-  onResume: NOOP,
+  onOpen: NOOP,
+  onEdit: NOOP,
   onRun: NOOP,
   onDelete: NOOP,
 };
@@ -81,11 +81,11 @@ function renderOverview(
         hasInitialLoadError={props.hasInitialLoadError ?? false}
         actions={props.actions ?? NOOP_ACTIONS}
         onCreateAutomation={props.onCreateAutomation ?? NOOP}
+        onRetry={props.onRetry}
       />
     </MemoryRouter>,
   );
 }
-
 
 describe("AutomationsOverview", () => {
   it("leaves the page title to the app chrome", () => {
@@ -93,10 +93,9 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Automations<");
   });
 
-  it("groups automations by status into Active and Paused sections", () => {
+  it("lists personal (projectless) loops flat, enabled before paused", () => {
     const markup = renderOverview({
       entries: [
-        makeEntry(makeAutomation({ id: "auto_active", name: "Active one" })),
         makeEntry(
           makeAutomation({
             id: "auto_paused",
@@ -105,39 +104,32 @@ describe("AutomationsOverview", () => {
             nextRunAt: null,
           }),
         ),
+        makeEntry(makeAutomation({ id: "auto_active", name: "Active one" })),
       ],
     });
 
-    expect(markup).toContain(">Active<");
-    expect(markup).toContain(">Paused<");
+    // Personal == projectless: no folder header, just a flat list.
+    expect(markup).not.toContain(">Personal<");
     expect(markup).toContain("Active one");
     expect(markup).toContain("Paused one");
-    // Enabled automations render the next-run label; paused ones read "Paused".
-    expect(markup).toContain("Next ");
+    // Enabled loops sort above paused ones.
+    expect(markup.indexOf("Active one")).toBeLessThan(
+      markup.indexOf("Paused one"),
+    );
+    // Hover-revealed direct action buttons (run/edit/delete). Pause/resume now
+    // lives in the detail drawer, not on the row.
+    expect(markup).toContain("Run now: Active one");
+    expect(markup).not.toContain("Pause: Active one");
   });
 
-  it("renders the API badge only for agent-origin automations", () => {
-    const apiMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "agent" }))],
-    });
-    expect(apiMarkup).toContain(">API<");
-
-    const humanMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "human" }))],
-    });
-    expect(humanMarkup).not.toContain(">API<");
-
-    const appMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation({ origin: "app" }))],
-    });
-    expect(appMarkup).not.toContain(">API<");
-  });
-
-  it("renders the Script badge only for script-mode automations", () => {
-    const scriptMarkup = renderOverview({
+  it("renders cadence and last-run health on the row, not mode/origin badges", () => {
+    const markup = renderOverview({
       entries: [
         makeEntry(
           makeAutomation({
+            origin: "agent",
+            lastRunAt: 1_700_000_000_000,
+            lastRunStatus: "failed",
             execution: {
               mode: "script",
               scriptFile: "watchdog.sh",
@@ -148,50 +140,59 @@ describe("AutomationsOverview", () => {
         ),
       ],
     });
-    expect(scriptMarkup).toContain(">Script<");
-
-    const agentMarkup = renderOverview({
-      entries: [makeEntry(makeAutomation())],
-    });
-    expect(agentMarkup).not.toContain(">Script<");
+    // mode/origin are no longer surfaced as row badges
+    expect(markup).not.toContain(">API<");
+    expect(markup).not.toContain(">Script<");
+    // cadence (human-readable cron) on line two, and the failed last-run glyph
+    expect(markup).toContain("Mon-Fri");
+    expect(markup).toContain("Last run failed");
   });
 
-  it("omits the personal project label and shows real project names", () => {
+  it("headers real projects but leaves personal loops flat", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
-          makeAutomation({ id: "auto_personal", projectId: PERSONAL_PROJECT_ID }),
+          makeAutomation({
+            id: "auto_personal",
+            projectId: PERSONAL_PROJECT_ID,
+          }),
           { id: PERSONAL_PROJECT_ID, name: "Personal" },
         ),
-        makeEntry(
-          makeAutomation({ id: "auto_app", projectId: "proj_app" }),
-          { id: "proj_app", name: "App" },
-        ),
+        makeEntry(makeAutomation({ id: "auto_app", projectId: "proj_app" }), {
+          id: "proj_app",
+          name: "App",
+        }),
       ],
     });
 
-    expect(markup).not.toContain(">Personal<");
+    // Real projects get a folder header; personal stays headerless.
     expect(markup).toContain(">App<");
+    expect(markup).not.toContain(">Personal<");
   });
 
-  it("shows the empty state when there are no automations", () => {
+  it("teaches create-via-prompt when there are no automations", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("No automations yet.");
+    expect(markup).toContain("Start from an example");
+    expect(markup).toContain("Flaky-test sweep");
   });
 
-  it("shows a muted loading state", () => {
+  it("shows a loading skeleton", () => {
     const markup = renderOverview({ entries: [], isLoading: true });
-    expect(markup).toContain("Loading...");
-    expect(markup).not.toContain("No automations yet.");
+    expect(markup).toContain('aria-label="Loading loops"');
+    expect(markup).toContain("animate-pulse");
+    expect(markup).not.toContain("Start from an example");
   });
 
-  it("shows a destructive error state", () => {
+  it("shows a recoverable error state with a retry", () => {
     const markup = renderOverview({
       entries: [],
       hasInitialLoadError: true,
+      onRetry: () => {},
     });
-    expect(markup).toContain("Failed to load automations.");
-    expect(markup).toContain("text-destructive");
+    // Apostrophe is HTML-escaped in static markup, so match the stable fragment.
+    expect(markup).toContain("load loops.");
+    expect(markup).toContain("Retry");
+    expect(markup).toContain('role="alert"');
   });
 
   it("links each row name to its automation detail route", () => {
@@ -203,86 +204,56 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain('href="/automations/proj_app/auto_link"');
   });
 
-  it("renders a per-row actions trigger", () => {
+  it("renders direct per-row action buttons, no overflow menu", () => {
     const markup = renderOverview({
       entries: [makeEntry(makeAutomation({ name: "Watcher" }))],
     });
-    expect(markup).toContain("Watcher actions");
+    expect(markup).toContain("Run now: Watcher");
+    expect(markup).toContain("Edit: Watcher");
+    expect(markup).toContain("Delete: Watcher");
+    expect(markup).not.toContain("Watcher actions");
   });
 
-  it("renders a single create-via-chat button without a script option", () => {
+  it("renders a single create button without a script option", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("Create via chat");
+    expect(markup).toContain("New loop");
     expect(markup).not.toContain("Script automation");
     expect(markup).not.toContain("Agent automation");
   });
 });
 
-describe("buildAutomationRowMenuItems", () => {
+describe("buildAutomationRowActions", () => {
   const ACTIONS: AutomationRowActions = NOOP_ACTIONS;
 
-  it("offers Pause for an enabled automation", () => {
-    const items = buildAutomationRowMenuItems(
+  it("offers run, edit, and a destructive delete (pause/resume is in the drawer)", () => {
+    const built = buildAutomationRowActions(
       makeEntry(makeAutomation({ enabled: true })),
       ACTIONS,
     );
-    const labels = items.map((item) => item.label);
-    expect(labels).toContain("Pause");
-    expect(labels).not.toContain("Resume");
+    expect(built.map((action) => action.label)).toEqual([
+      "Run now",
+      "Edit",
+      "Delete",
+    ]);
+    const deleteAction = built.find((action) => action.key === "delete");
+    expect(deleteAction?.destructive).toBe(true);
   });
 
-  it("offers Resume for a paused automation", () => {
-    const items = buildAutomationRowMenuItems(
-      makeEntry(makeAutomation({ enabled: false })),
-      ACTIONS,
-    );
-    const labels = items.map((item) => item.label);
-    expect(labels).toContain("Resume");
-    expect(labels).not.toContain("Pause");
-  });
-
-  it("does not offer Resume for a completed one-shot automation", () => {
-    const items = buildAutomationRowMenuItems(
-      makeEntry(
-        makeAutomation({
-          enabled: false,
-          trigger: { triggerType: "once", runAt: 1_700_000_000_000 },
-          nextRunAt: null,
-          runCount: 1,
-        }),
-      ),
-      ACTIONS,
-    );
-    const labels = items.map((item) => item.label);
-    expect(labels).not.toContain("Resume");
-    expect(labels).not.toContain("Pause");
-    expect(labels).toContain("Run now");
-  });
-
-  it("always offers Run now and a destructive Delete", () => {
-    const items = buildAutomationRowMenuItems(makeEntry(makeAutomation()), ACTIONS);
-    const labels = items.map((item) => item.label);
-    expect(labels).toContain("Run now");
-    const deleteItem = items.find((item) => item.key === "delete");
-    expect(deleteItem?.label).toBe("Delete");
-    expect(deleteItem?.destructive).toBe(true);
-  });
-
-  it("routes each item to its action handler", () => {
+  it("routes each action to its handler", () => {
     const calls: string[] = [];
     const actions: AutomationRowActions = {
-      onPause: () => calls.push("pause"),
-      onResume: () => calls.push("resume"),
+      onOpen: () => calls.push("open"),
+      onEdit: () => calls.push("edit"),
       onRun: () => calls.push("run"),
       onDelete: () => calls.push("delete"),
     };
-    const items = buildAutomationRowMenuItems(
+    const actionsList = buildAutomationRowActions(
       makeEntry(makeAutomation({ enabled: true })),
       actions,
     );
-    for (const item of items) {
-      item.run();
+    for (const action of actionsList) {
+      action.run();
     }
-    expect(calls).toEqual(["pause", "run", "delete"]);
+    expect(calls).toEqual(["run", "edit", "delete"]);
   });
 });

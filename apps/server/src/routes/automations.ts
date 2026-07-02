@@ -37,8 +37,10 @@ import {
 } from "../services/scheduling/automation-config.js";
 import {
   deleteAutomationScriptDir,
+  readInlineAutomationScript,
   writeInlineAutomationScript,
 } from "../services/scheduling/automation-scripts.js";
+import { appendAutomationCreatedEvent } from "../services/threads/thread-events.js";
 import { executeAgentRun, executeScriptRun } from "../services/scheduling/automation-run.js";
 import {
   computeNextScheduledTime,
@@ -247,17 +249,60 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
       nextRunAt,
     });
 
+    // When an agent created this loop from a thread, drop a "View loop" notice
+    // into that thread's timeline. Best-effort: never fail the create on it.
+    if (payload.createdByThreadId) {
+      try {
+        appendAutomationCreatedEvent(deps, {
+          threadId: payload.createdByThreadId,
+          automationId: created.id,
+          projectId,
+          automationName: created.name,
+        });
+      } catch {
+        // Notice is non-critical; the loop was created successfully.
+      }
+    }
+
     return context.json(toAutomationResponse(created), 201);
   });
 
-  get(routes.get, (context) => {
+  get(routes.get, async (context) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
     const automation = requireProjectAutomation(deps, {
       projectId,
       automationId: context.req.param("automationId"),
     });
-    return context.json(toAutomationResponse(automation));
+    const response = toAutomationResponse(automation);
+    // The detail page is the only surface that edits a script, so enrich just
+    // this single-automation GET (not list/overview) with the stored inline
+    // content. The response schema already permits `script`; list/overview stay
+    // lean and avoid a per-row disk read.
+    if (
+      response.execution.mode === "script" &&
+      response.execution.scriptFile !== undefined
+    ) {
+      try {
+        const script = await readInlineAutomationScript({
+          dataDir: deps.config.dataDir,
+          automationId: automation.id,
+          scriptFile: response.execution.scriptFile,
+        });
+        if (script.length > 0) {
+          return context.json({
+            ...response,
+            execution: { ...response.execution, script },
+          });
+        }
+      } catch (error) {
+        deps.logger.warn(
+          { automationId: automation.id, err: error },
+          "Could not read inline script for automation detail",
+        );
+      }
+    }
+    return context.json(response);
   });
 
   patch(routes.update, async (context, payload: UpdateAutomationRequest) => {

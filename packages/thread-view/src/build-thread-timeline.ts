@@ -1,6 +1,7 @@
 import type {
   ThreadContextWindowUsage,
   TimelineActivityIntent,
+  TimelineAutomationCreated,
   TimelineConversationAttachments,
   TimelineFileChange,
   TimelineParentChange,
@@ -204,6 +205,12 @@ interface BuildParentChangeSystemRowArgs {
   message: TimelineOperationMessage;
 }
 
+interface BuildAutomationCreatedSystemRowArgs {
+  base: TimelineRowBase;
+  automationCreated: TimelineAutomationCreated;
+  message: TimelineOperationMessage;
+}
+
 const ROOT_TIMELINE_ROW_ID_PREFIX = "";
 
 type TimelineOperationMessage = Extract<
@@ -216,12 +223,13 @@ type TimelineWorkflowMessage = Extract<
 >;
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "parent-change"
+  "parent-change" | "automation-created"
 >;
 
 function operationKindForMessage(
   message: TimelineOperationMessage,
   parentChange: TimelineParentChange | null,
+  automationCreated: TimelineAutomationCreated | null,
 ): TimelineSystemOperationKind {
   switch (message.opType) {
     case "compaction":
@@ -232,6 +240,7 @@ function operationKindForMessage(
     case "deprecation":
       return message.opType;
     case "operation":
+      if (automationCreated !== null) return "automation-created";
       return parentChange !== null ? "parent-change" : "generic";
     default:
       return assertNever(message.opType);
@@ -269,6 +278,26 @@ function parentChangeForMessage(
   }
 }
 
+function automationCreatedForMessage(
+  message: TimelineOperationMessage,
+): TimelineAutomationCreated | null {
+  if (
+    message.opType !== "operation" ||
+    message.threadOperation?.operation !== "automation_created"
+  ) {
+    return null;
+  }
+  const metadata = message.threadOperation.metadata;
+  if (metadata === null) {
+    return null;
+  }
+  return {
+    automationId: metadata.automationId,
+    projectId: metadata.projectId,
+    automationName: metadata.automationName,
+  };
+}
+
 function buildGenericOperationSystemRow({
   base,
   message,
@@ -304,6 +333,25 @@ function buildParentChangeSystemRow({
     title: message.title,
     detail: buildTimelineOperationDetail(message),
     status,
+    completedAt: message.completedAt,
+  };
+}
+
+function buildAutomationCreatedSystemRow({
+  base,
+  automationCreated,
+  message,
+}: BuildAutomationCreatedSystemRowArgs): TimelineSystemRow {
+  return {
+    ...base,
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "automation-created",
+    automationCreated,
+    title: message.title,
+    // The title + "View loop" link carry the whole message; no body block.
+    detail: null,
+    status: message.status ?? null,
     completedAt: message.completedAt,
   };
 }
@@ -716,8 +764,30 @@ function convertMessage(
       ];
     case "operation": {
       const parentChange = parentChangeForMessage(message);
-      const operationKind = operationKindForMessage(message, parentChange);
+      const automationCreated = automationCreatedForMessage(message);
+      const operationKind = operationKindForMessage(
+        message,
+        parentChange,
+        automationCreated,
+      );
       const base = buildTimelineRowBase(message, options.rowIdPrefix);
+      if (operationKind === "automation-created") {
+        return automationCreated !== null
+          ? [
+              buildAutomationCreatedSystemRow({
+                base,
+                automationCreated,
+                message,
+              }),
+            ]
+          : [
+              buildGenericOperationSystemRow({
+                base,
+                message,
+                operationKind: "generic",
+              }),
+            ];
+      }
       if (operationKind === "parent-change") {
         return parentChange !== null
           ? [

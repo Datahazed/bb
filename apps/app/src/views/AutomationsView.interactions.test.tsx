@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Automation } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -53,11 +47,11 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
 describe("AutomationsOverview interactions", () => {
   afterEach(cleanup);
 
-  it("closes the row actions menu after selecting delete", async () => {
+  it("invokes delete when the Delete action is clicked", () => {
     const automation = makeAutomation();
     const actions: AutomationRowActions = {
-      onPause: vi.fn(),
-      onResume: vi.fn(),
+      onOpen: vi.fn(),
+      onEdit: vi.fn(),
       onRun: vi.fn(),
       onDelete: vi.fn(),
     };
@@ -79,18 +73,50 @@ describe("AutomationsOverview interactions", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Daily standup digest actions" }),
-      { button: 0 },
+    // Direct icon button now — no overflow menu.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete: Daily standup digest" }),
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     expect(actions.onDelete).toHaveBeenCalledWith({
       automation,
       project: { id: PERSONAL_PROJECT_ID, name: "Personal" },
     });
-    await waitFor(() => {
-      expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+  });
+
+  it("opens the detail drawer on a plain row-name click", () => {
+    const automation = makeAutomation();
+    const onOpen = vi.fn();
+    const actions: AutomationRowActions = {
+      onOpen,
+      onEdit: vi.fn(),
+      onRun: vi.fn(),
+      onDelete: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <AutomationsOverview
+          entries={[
+            {
+              automation,
+              project: { id: PERSONAL_PROJECT_ID, name: "Personal" },
+            },
+          ]}
+          isLoading={false}
+          hasInitialLoadError={false}
+          actions={actions}
+          onCreateAutomation={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    // Plain click opens the drawer instead of navigating to the detail route.
+    fireEvent.click(screen.getByRole("link", { name: automation.name }));
+
+    expect(onOpen).toHaveBeenCalledWith({
+      automation,
+      project: { id: PERSONAL_PROJECT_ID, name: "Personal" },
     });
   });
 });
