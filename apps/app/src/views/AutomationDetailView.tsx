@@ -64,6 +64,7 @@ import {
   formatCronCadence,
 } from "@/lib/format-schedule";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { getAutomationsRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 
@@ -208,6 +209,11 @@ function ExecutionSummary({ automation }: { automation: Automation }) {
       <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {ProviderLogo ? <ProviderLogo className="size-3.5 shrink-0" /> : null}
         {execution.model}
+        {execution.reasoningLevel ? (
+          <Pill variant="outline" className="text-muted-foreground">
+            {REASONING_LABELS[execution.reasoningLevel]}
+          </Pill>
+        ) : null}
         <Pill variant="outline" className="text-muted-foreground">
           {PERMISSION_LABEL[execution.permissionMode] ??
             execution.permissionMode}
@@ -455,6 +461,7 @@ function AgentAutomationEditComposer({
       resetKey: editSessionKey,
       initialProviderId: execution.providerId,
       initialModel: execution.model,
+      initialReasoningLevel: execution.reasoningLevel,
       initialPermissionMode: execution.permissionMode,
     },
     draftScope: {
@@ -518,6 +525,8 @@ function AgentAutomationEditComposer({
   const selectedProviderId =
     threadCreationOptions.selectedProviderId || execution.providerId;
   const selectedModel = threadCreationOptions.selectedModel || execution.model;
+  const selectedReasoningLevel =
+    threadCreationOptions.reasoningLevel || execution.reasoningLevel;
   const selectedPermissionMode =
     threadCreationOptions.permissionMode || execution.permissionMode;
   const canSave =
@@ -539,6 +548,7 @@ function AgentAutomationEditComposer({
         prompt: composer.message,
         providerId: selectedProviderId,
         model: selectedModel,
+        reasoningLevel: selectedReasoningLevel,
         permissionMode: selectedPermissionMode,
         ...(execution.targetThreadId
           ? { targetThreadId: execution.targetThreadId }
@@ -565,6 +575,7 @@ function AgentAutomationEditComposer({
     onSaved,
     promptDraft,
     selectedModel,
+    selectedReasoningLevel,
     selectedPermissionMode,
     selectedProviderId,
     timezone,
@@ -662,6 +673,8 @@ interface AutomationDetailContentProps {
   onEdit?: () => void;
   /** Shows a "back to Loops" link above the title (full page only). */
   backHref?: string;
+  /** Optional route state for the back link. Used only by edit-opened details. */
+  backState?: { openAutomationId: string };
 }
 
 /**
@@ -683,6 +696,7 @@ export function AutomationDetailContent({
   initialEditing,
   onEdit,
   backHref,
+  backState,
 }: AutomationDetailContentProps) {
   const [editing, setEditing] = useState(initialEditing ?? false);
   const [editSessionKey, setEditSessionKey] = useState(0);
@@ -769,9 +783,14 @@ export function AutomationDetailContent({
         {backHref ? (
           <Link
             to={backHref}
+            state={backState}
             className="-mb-2 inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            <Icon name="ChevronLeft" className="size-3.5 shrink-0" aria-hidden />
+            <Icon
+              name="ChevronLeft"
+              className="size-3.5 shrink-0"
+              aria-hidden
+            />
             Loops
           </Link>
         ) : null}
@@ -784,6 +803,7 @@ export function AutomationDetailContent({
             <div className="flex shrink-0 items-center gap-2">
               <Switch
                 checked={automation.enabled}
+                className="h-4 w-7 data-[state=checked]:bg-success [&>span]:size-3 [&>span[data-state=checked]]:translate-x-3"
                 onCheckedChange={() =>
                   automation.enabled ? onPause() : onResume()
                 }
@@ -1156,6 +1176,7 @@ export function AutomationDetailView() {
         actionsPending={actionsPending}
         initialEditing={editIntent}
         backHref={getAutomationsRoutePath()}
+        backState={editIntent ? { openAutomationId: automation.id } : undefined}
       />
       <ConfirmDeleteDialog
         open={deleteDialog.isOpen}

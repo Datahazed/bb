@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -50,6 +51,17 @@ const PROVIDER_ORDER: readonly (SkillProvider | null)[] = [
   "claude-code",
   "codex",
 ];
+const SKILL_ROW_HEIGHT_REM = 1.75;
+const SKILL_VISIBLE_ROW_COUNT = 15;
+const SKILL_ROW_GAP_PX = 1;
+const SKILL_LIST_VERTICAL_PADDING_REM = 0.5;
+const SKILL_LIST_MAX_HEIGHT = `calc(${
+  SKILL_ROW_HEIGHT_REM * SKILL_VISIBLE_ROW_COUNT +
+  SKILL_LIST_VERTICAL_PADDING_REM
+}rem + ${SKILL_ROW_GAP_PX * (SKILL_VISIBLE_ROW_COUNT - 1)}px)`;
+const skillListViewportStyle = {
+  maxHeight: SKILL_LIST_MAX_HEIGHT,
+} satisfies CSSProperties;
 
 function providerLabel(providerId: SkillProvider | null): string {
   if (providerId === null) {
@@ -115,7 +127,7 @@ function SkillRow({
       type="button"
       onClick={onSelect}
       title={skill.description ?? skill.name}
-      className="flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded px-2 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <Icon
         name="Zap"
@@ -290,7 +302,10 @@ export function SkillsOverview({
                     </span>
                   </button>
                   {isCollapsed ? null : (
-                    <div className="max-h-[max(16rem,60dvh)] overflow-y-auto border-t border-border-seam p-1">
+                    <div
+                      className="overflow-y-auto border-t border-border-seam p-1"
+                      style={skillListViewportStyle}
+                    >
                       <div className="flex flex-col gap-px">
                         {group.skills.map((skill) => (
                           <SkillRow

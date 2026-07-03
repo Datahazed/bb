@@ -39,6 +39,7 @@ function createBody(overrides: Record<string, unknown> = {}) {
       prompt: "Summarize.",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "low",
       permissionMode: "readonly",
     },
     environment: { type: "host", workspace: { type: "personal" } },
@@ -94,6 +95,7 @@ describe("automations routes", () => {
     expect(created.enabled).toBe(true);
     expect(created.nextRunAt).toBeGreaterThan(Date.now());
     expect(created.execution.mode).toBe("agent");
+    expect(created.execution.reasoningLevel).toBe("low");
     const automationId = created.id;
 
     const getRes = await harness.app.request(

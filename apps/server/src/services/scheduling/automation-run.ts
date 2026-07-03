@@ -155,6 +155,9 @@ export async function executeAgentRun(
       input: [{ type: "text", text: args.execution.prompt, mentions: [] }],
       providerId: args.execution.providerId,
       model: args.execution.model,
+      ...(args.execution.reasoningLevel
+        ? { reasoningLevel: args.execution.reasoningLevel }
+        : {}),
       permissionMode: args.execution.permissionMode,
       origin: "automation",
       startedOnBehalfOf: null,

@@ -50,9 +50,8 @@ vi.mock(import("./automation-scripts.js"), async (orig) => ({
   resolveAutomationScriptPath: async () => "/tmp/scripts/auto/run.sh",
 }));
 
-const { executeAgentRun, executeScriptRun } = await import(
-  "./automation-run.js"
-);
+const { executeAgentRun, executeScriptRun } =
+  await import("./automation-run.js");
 
 const testLogger = {
   debug(): void {},
@@ -89,6 +88,7 @@ const AGENT_EXECUTION = {
   prompt: "do the thing",
   providerId: "codex",
   model: "gpt-5",
+  reasoningLevel: "low" as const,
   permissionMode: "readonly" as const,
 };
 const ENVIRONMENT = {
@@ -255,6 +255,10 @@ describe("executeAgentRun target-thread reuse", () => {
 
     expect(createThreadFromRequest).toHaveBeenCalledTimes(1);
     expect(sendThreadMessage).not.toHaveBeenCalled();
+    expect(createThreadFromRequest.mock.calls[0]?.[1]).toMatchObject({
+      model: "gpt-5",
+      reasoningLevel: "low",
+    });
     expect(getAutomationRun(db, run.id)?.threadId).toBe(spawned.id);
   });
 });

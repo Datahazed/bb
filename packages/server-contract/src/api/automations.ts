@@ -6,6 +6,7 @@ import {
   automationRunTriggerValues,
   automationScriptInterpreterValues,
   permissionModeSchema,
+  reasoningLevelSchema,
 } from "@bb/domain";
 import { environmentArgsSchema } from "./shared.js";
 
@@ -50,6 +51,7 @@ export const automationAgentExecutionSchema = z.object({
   prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH),
   providerId: z.string().min(1),
   model: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema,
   targetThreadId: z.string().min(1).optional(),
 });

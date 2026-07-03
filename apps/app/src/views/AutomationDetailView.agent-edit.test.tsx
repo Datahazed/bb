@@ -9,7 +9,11 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
-import { PERSONAL_PROJECT_ID, type PermissionMode } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type PermissionMode,
+  type ReasoningLevel,
+} from "@bb/domain";
 import type {
   Automation,
   SystemExecutionOptionsResponse,
@@ -64,6 +68,7 @@ vi.mock("@/components/promptbox/ExecutionControls", () => ({
   ExecutionControls: ({
     model,
     provider,
+    reasoning,
   }: {
     model: {
       moreOptions: readonly { label: string; value: string }[];
@@ -75,6 +80,11 @@ vi.mock("@/components/promptbox/ExecutionControls", () => ({
       onChange?: (value: string) => void;
       options?: readonly { label: string; value: string }[];
       selectedId?: string;
+    };
+    reasoning: {
+      onChange: (value: ReasoningLevel) => void;
+      options: readonly { label: string; value: ReasoningLevel }[];
+      value: ReasoningLevel;
     };
   }) => (
     <div>
@@ -95,6 +105,19 @@ vi.mock("@/components/promptbox/ExecutionControls", () => ({
         onChange={(event) => model.onChange(event.target.value)}
       >
         {[...model.options, ...model.moreOptions].map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Reasoning"
+        value={reasoning.value}
+        onChange={(event) =>
+          reasoning.onChange(event.target.value as ReasoningLevel)
+        }
+      >
+        {reasoning.options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
@@ -213,6 +236,7 @@ function executionOptionsResponse(
             displayName: "Claude Sonnet",
             description: "",
             supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "" },
               { reasoningEffort: "medium", description: "" },
             ],
             defaultReasoningEffort: "medium",
@@ -224,6 +248,7 @@ function executionOptionsResponse(
             displayName: "Claude Opus",
             description: "",
             supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "" },
               { reasoningEffort: "medium", description: "" },
             ],
             defaultReasoningEffort: "medium",
@@ -237,6 +262,7 @@ function executionOptionsResponse(
             displayName: "GPT-5",
             description: "",
             supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "" },
               { reasoningEffort: "medium", description: "" },
             ],
             defaultReasoningEffort: "medium",
@@ -323,6 +349,9 @@ describe("AutomationDetailContent agent editing", () => {
     fireEvent.change(screen.getByLabelText("Permission mode"), {
       target: { value: "workspace-write" },
     });
+    fireEvent.change(screen.getByLabelText("Reasoning"), {
+      target: { value: "low" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -342,6 +371,7 @@ describe("AutomationDetailContent agent editing", () => {
         prompt: "Summarize yesterday and flag blockers.",
         providerId: "claude-code",
         model: "claude-opus",
+        reasoningLevel: "low",
         permissionMode: "workspace-write",
       },
     });

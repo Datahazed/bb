@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   Automation,
@@ -50,6 +50,15 @@ interface AutomationProjectGroup {
   projectId: string;
   projectName: string;
   entries: AutomationOverviewEntry[];
+}
+
+function getOpenAutomationIdFromState(state: unknown): string | null {
+  if (state === null || typeof state !== "object") {
+    return null;
+  }
+  const openAutomationId = (state as { openAutomationId?: unknown })
+    .openAutomationId;
+  return typeof openAutomationId === "string" ? openAutomationId : null;
 }
 
 /** Per-row action callbacks, supplied by the container so the presentational
@@ -444,6 +453,7 @@ export function AutomationsOverview({
 export function AutomationsView() {
   const automationsQuery = useAutomations();
   const navigate = useNavigate();
+  const location = useLocation();
   const runAutomation = useRunAutomation();
   const deleteAutomation = useDeleteAutomation();
   const deleteDialog = useDialogState<AutomationOverviewEntry>();
@@ -455,6 +465,7 @@ export function AutomationsView() {
   // The pane is mounted only while a loop is selected.
   const [detailEntry, setDetailEntry] =
     useState<AutomationOverviewEntry | null>(null);
+  const consumedOpenAutomationLocationKeyRef = useRef<string | null>(null);
   // Bumped on every open so the pane's detail content remounts fresh when
   // switching to another loop.
   const [detailSession, setDetailSession] = useState(0);
@@ -480,9 +491,27 @@ export function AutomationsView() {
 
   const data: AutomationsOverviewResponse | undefined = automationsQuery.data;
   const entries = data?.automations ?? [];
+  const openAutomationId = getOpenAutomationIdFromState(location.state);
   const hasInitialLoadError = automationsQuery.isError && data === undefined;
   const isLoading =
     automationsQuery.isFetching && data === undefined && !hasInitialLoadError;
+
+  useEffect(() => {
+    if (
+      !openAutomationId ||
+      consumedOpenAutomationLocationKeyRef.current === location.key
+    ) {
+      return;
+    }
+    const entry = entries.find(
+      (candidate) => candidate.automation.id === openAutomationId,
+    );
+    if (!entry) {
+      return;
+    }
+    consumedOpenAutomationLocationKeyRef.current = location.key;
+    openDetail(entry);
+  }, [entries, location.key, openAutomationId, openDetail]);
 
   const actions: AutomationRowActions = {
     onOpen: useCallback(
