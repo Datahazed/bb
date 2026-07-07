@@ -176,6 +176,12 @@ export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
 export const systemAgentActivityResponseSchema = z.object({
   /** Threads currently starting, active, or stopping. */
   busyThreadCount: z.number().int().min(0),
+  /**
+   * Idle threads holding queued follow-ups the auto-send sweep is about to
+   * start. Not busy yet, but a restart now would orphan that work, so update
+   * tooling treats them as busy.
+   */
+  queuedThreadCount: z.number().int().min(0),
 });
 export type SystemAgentActivityResponse = z.infer<
   typeof systemAgentActivityResponseSchema

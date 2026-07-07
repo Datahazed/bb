@@ -84,6 +84,29 @@ function availableToastTitle(latestVersion: string): string {
   return `bb-app ${latestVersion} available`;
 }
 
+/**
+ * Reload into the post-update frontend, but only once the just-restarted
+ * server actually serves the app shell — reloading mid-restart fails module
+ * fetches, which never retry and strand a blank page (index.html's boot
+ * watchdog is the second line of defense).
+ */
+async function reloadWhenShellServable(): Promise<void> {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      const response = await fetch("/", { cache: "no-store" });
+      if (response.ok) {
+        break;
+      }
+    } catch {
+      // Server still restarting; retry below.
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1_000);
+    });
+  }
+  window.location.reload();
+}
+
 function scheduledUpdateToastId(targetVersion: string): string {
   return `bb-update-scheduled:${targetVersion}`;
 }
@@ -217,7 +240,7 @@ export function useUpdateAvailableToast(): void {
         } catch {
           // Reload anyway; only the announcement is lost.
         }
-        window.location.reload();
+        void reloadWhenShellServable();
         return;
       }
       if (

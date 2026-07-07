@@ -22,10 +22,10 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
-import { countBusyThreads, isServerAtRest } from "./agent-activity.js";
+import { countBusyThreads, countQueuedIdleThreads } from "./agent-activity.js";
 import type { AppVersionService } from "./app-version.js";
 
-const DEFAULT_POLL_INTERVAL_MS = 15_000;
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
 // Shared with the desktop shell's deferred relaunch; see the constant's doc.
 const DEFAULT_QUIET_PERIOD_MS = BB_UPDATE_QUIET_PERIOD_MS;
 const STAGING_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -258,10 +258,16 @@ export function createSelfUpdateService(
       idleSince = null;
       return;
     }
-    // "Update now": scheduled while nothing was running and nothing is
-    // queued to start — no mid-chain gap to protect, so skip the quiet
-    // period. Once any busy agent has been seen, the full period applies.
-    if (!busyObservedSinceArm && isServerAtRest(db)) {
+    // A queued follow-up the auto-send sweep is about to start counts as
+    // busy: a restart now would orphan it. Checking it directly is what lets
+    // the quiet period stay short.
+    if (countQueuedIdleThreads(db) > 0) {
+      idleSince = null;
+      return;
+    }
+    // At rest with no busy agent seen since arming ("Update now" while
+    // idle): nothing to protect, skip the quiet period entirely.
+    if (!busyObservedSinceArm) {
       triggerExitForSwap();
       return;
     }

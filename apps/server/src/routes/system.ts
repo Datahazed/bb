@@ -19,7 +19,10 @@ import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
-import { countBusyThreads } from "../services/system/agent-activity.js";
+import {
+  countBusyThreads,
+  countQueuedIdleThreads,
+} from "../services/system/agent-activity.js";
 import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
@@ -173,6 +176,9 @@ export function registerSystemRoutes(
   );
 
   get(routes.agentActivity, (context) =>
-    context.json({ busyThreadCount: countBusyThreads(deps.db) }),
+    context.json({
+      busyThreadCount: countBusyThreads(deps.db),
+      queuedThreadCount: countQueuedIdleThreads(deps.db),
+    }),
   );
 }

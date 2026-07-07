@@ -29,14 +29,10 @@ export function countBusyThreads(db: DbQueryConnection): number {
 }
 
 /**
- * True when a restart right now cannot interrupt or orphan agent work: no
- * busy threads, and no idle thread holding queued messages that the 10s
- * auto-send sweep is about to start. This is the gate for skipping the
- * update quiet period entirely ("Update now").
+ * Idle threads holding queued messages that the 10s auto-send sweep is about
+ * to start: not busy yet, but a restart now would orphan that follow-up. The
+ * update watchers treat these as busy.
  */
-export function isServerAtRest(db: DbConnection): boolean {
-  return (
-    countBusyThreads(db) === 0 &&
-    listIdleThreadsWithQueuedMessages(db).length === 0
-  );
+export function countQueuedIdleThreads(db: DbConnection): number {
+  return listIdleThreadsWithQueuedMessages(db).length;
 }

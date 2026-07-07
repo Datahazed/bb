@@ -43,6 +43,7 @@ describe("GET /api/v1/system/agents/activity", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         busyThreadCount: 3,
+        queuedThreadCount: 0,
       });
     });
   });

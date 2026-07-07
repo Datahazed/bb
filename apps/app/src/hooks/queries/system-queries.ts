@@ -144,10 +144,14 @@ export function useSystemAgentActivity(options?: QueryOptions) {
 /**
  * Busy/idle for the update toasts, with the shared safe default: unknown
  * activity reads as busy, since deferring is always the harmless choice.
+ * Queued follow-ups count as busy — an update would orphan them, so
+ * "Update now" would not actually be immediate.
  */
 export function useAgentsBusy(options?: QueryOptions): boolean {
   const { data } = useSystemAgentActivity(options);
-  return data === undefined ? true : data.busyThreadCount > 0;
+  return data === undefined
+    ? true
+    : data.busyThreadCount > 0 || data.queuedThreadCount > 0;
 }
 
 function useApplySelfUpdateState() {

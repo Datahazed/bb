@@ -28,11 +28,13 @@ export const BB_SELF_UPDATE_PROTOCOL_ENV_NAME = "BB_SELF_UPDATE_PROTOCOL";
 /**
  * How long agents must stay continuously idle before a deferred update
  * applies. Shared by the server's idle watcher and the desktop shell's
- * deferred relaunch so the two policies cannot drift. Sized to comfortably
- * exceed the 10s queued-message auto-send sweep, whose dispatch gaps make a
- * mid-chain thread look momentarily idle.
+ * deferred relaunch so the two policies cannot drift. Queued follow-ups —
+ * the main way a mid-chain thread looks momentarily idle — are checked
+ * directly on every tick rather than insured against with time, so this
+ * only needs to cover work with no DB trace yet (e.g. an automation
+ * reacting to a turn completing a beat after the thread goes idle).
  */
-export const BB_UPDATE_QUIET_PERIOD_MS = 45_000;
+export const BB_UPDATE_QUIET_PERIOD_MS = 10_000;
 
 export const selfUpdateSentinelSchema = z.object({
   /** bb-app version staged and ready to swap to. */

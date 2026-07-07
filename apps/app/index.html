@@ -81,6 +81,30 @@
   </head>
   <body class="bb-app-shell">
     <div id="root"></div>
+    <script>
+      // Boot watchdog: a transient asset failure (e.g. reloading right as the
+      // server restarts after a self-update) leaves module scripts failed with
+      // no retry and the page blank forever. If the app has not mounted after
+      // 10s, reload once; the one-shot flag prevents a reload loop when the
+      // failure is persistent.
+      (function () {
+        var RETRY_FLAG = "bb:boot-watchdog:retried";
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.childElementCount > 0) {
+            try { sessionStorage.removeItem(RETRY_FLAG); } catch (e) {}
+            return;
+          }
+          try {
+            if (sessionStorage.getItem(RETRY_FLAG) === "true") return;
+            sessionStorage.setItem(RETRY_FLAG, "true");
+          } catch (e) {
+            return;
+          }
+          window.location.reload();
+        }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

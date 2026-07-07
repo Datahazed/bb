@@ -2,12 +2,14 @@ import { z } from "zod";
 import { BB_UPDATE_QUIET_PERIOD_MS } from "@bb/config/self-update";
 import type { DesktopAutoUpdateLogger } from "./desktop-auto-update.js";
 
-const DEFERRED_INSTALL_POLL_INTERVAL_MS = 15_000;
+const DEFERRED_INSTALL_POLL_INTERVAL_MS = 5_000;
 const ACTIVITY_FETCH_TIMEOUT_MS = 5_000;
 
 const agentActivityResponseSchema = z
   .object({
     busyThreadCount: z.number().int().min(0),
+    // Absent on older servers; treated as 0.
+    queuedThreadCount: z.number().int().min(0).optional(),
   })
   .passthrough();
 
@@ -79,7 +81,7 @@ export function createDeferredInstallController(
     }
   }
 
-  async function fetchBusyThreadCount(activityUrl: string): Promise<number> {
+  async function fetchBusyWorkCount(activityUrl: string): Promise<number> {
     const controller = new AbortController();
     const timeoutHandle = setTimeout(
       () => controller.abort(),
@@ -93,8 +95,12 @@ export function createDeferredInstallController(
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      return agentActivityResponseSchema.parse(await response.json())
-        .busyThreadCount;
+      const activity = agentActivityResponseSchema.parse(
+        await response.json(),
+      );
+      // Queued follow-ups the sweep is about to start count as busy: a
+      // relaunch now would orphan them.
+      return activity.busyThreadCount + (activity.queuedThreadCount ?? 0);
     } finally {
       clearTimeout(timeoutHandle);
     }
@@ -122,16 +128,16 @@ export function createDeferredInstallController(
       return;
     }
 
-    let busyThreadCount: number;
+    let busyWorkCount: number;
     try {
-      busyThreadCount = await fetchBusyThreadCount(probe.activityUrl);
+      busyWorkCount = await fetchBusyWorkCount(probe.activityUrl);
     } catch {
       // Unreachable server counts as busy: don't relaunch on missing data.
       idleSince = null;
       return;
     }
 
-    if (busyThreadCount > 0) {
+    if (busyWorkCount > 0) {
       idleSince = null;
       return;
     }
