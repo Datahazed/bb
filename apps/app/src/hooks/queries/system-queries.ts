@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toRecord } from "@bb/core-ui";
 import type {
-  SystemAgentActivityResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemSelfUpdateMode,
@@ -15,7 +14,6 @@ import { applySelfUpdateStateToVersionCache } from "@/hooks/cache-owners/system-
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
-  systemAgentActivityQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
@@ -115,23 +113,6 @@ export function useSystemVersion(options?: QueryOptions) {
       query.state.data?.selfUpdate.scheduled != null
         ? SCHEDULED_SELF_UPDATE_REFETCH_MS
         : false,
-  });
-}
-
-/** Poll cadence for the update toast's busy/idle action label. */
-const AGENT_ACTIVITY_REFETCH_MS = 15_000;
-
-/**
- * Live agent load, used to pick "Update now" vs "Update when agents finish"
- * on the update toast. Only enabled while that choice is on screen.
- */
-export function useSystemAgentActivity(options?: QueryOptions) {
-  return useQuery<SystemAgentActivityResponse>({
-    queryKey: systemAgentActivityQueryKey(),
-    queryFn: ({ signal }) => api.getSystemAgentActivity(signal),
-    enabled: options?.enabled ?? true,
-    refetchInterval: AGENT_ACTIVITY_REFETCH_MS,
-    staleTime: 5_000,
   });
 }
 

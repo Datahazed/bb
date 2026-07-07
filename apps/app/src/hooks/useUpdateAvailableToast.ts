@@ -6,9 +6,9 @@ import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   useCancelSelfUpdate,
   useScheduleSelfUpdate,
-  useSystemAgentActivity,
   useSystemVersion,
 } from "./queries/system-queries";
+import { useAnyAgentWorking } from "./queries/sidebar-navigation-query";
 
 const DISMISSED_STORAGE_KEY_PREFIX = "bb:update-toast:dismissed:";
 
@@ -124,9 +124,10 @@ export function useUpdateAvailableToast(): void {
   const { data } = useSystemVersion();
   const scheduleSelfUpdate = useScheduleSelfUpdate();
   const cancelSelfUpdate = useCancelSelfUpdate();
-  // Live agent load decides the action label: "Update now" when nothing is
-  // running, "Update when agents finish" otherwise. Only polled while the
-  // choice is actually on screen.
+  // The action label follows the sidebar's live running spinners (same
+  // push-updated cache), so the toast never contradicts what the user sees.
+  // "Update now" when nothing is working, "Update when agents finish"
+  // otherwise; unknown reads as busy since deferring is the safe default.
   const activityEnabled =
     getBbDesktopInfo() === null &&
     data !== undefined &&
@@ -134,12 +135,8 @@ export function useUpdateAvailableToast(): void {
     data.updateAvailable &&
     data.selfUpdate.capable &&
     data.selfUpdate.scheduled === null;
-  const { data: agentActivity } = useSystemAgentActivity({
-    enabled: activityEnabled,
-  });
-  // Unknown activity reads as busy: the deferred label is the safe default.
   const agentsBusy =
-    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
+    useAnyAgentWorking({ enabled: activityEnabled }) ?? true;
   const shownForVersionRef = useRef<string | null>(null);
   /** id of the scheduled-update toast currently on screen (version + phase). */
   const scheduledToastKeyRef = useRef<string | null>(null);
@@ -337,18 +334,15 @@ export function useUpdateAvailableToast(): void {
 export function useDesktopUpdateAvailableToast(): void {
   const [desktopApi, setDesktopApi] = useState<BbDesktopApi | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<BbDesktopInfo | null>(null);
-  // The SPA in the desktop shell talks to the shell-owned server, so the same
-  // activity endpoint decides "Relaunch now" vs the deferred option.
+  // The SPA in the desktop shell renders the shell-owned server's sidebar, so
+  // the same live cache decides "Relaunch now" vs the deferred option.
   const activityEnabled =
     desktopInfo !== null &&
     desktopInfo.updateDownloaded &&
     (desktopInfo.deferredInstall ?? null) === null &&
     desktopInfo.canDeferInstall === true;
-  const { data: agentActivity } = useSystemAgentActivity({
-    enabled: activityEnabled,
-  });
   const agentsBusy =
-    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
+    useAnyAgentWorking({ enabled: activityEnabled }) ?? true;
   const shownForVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
