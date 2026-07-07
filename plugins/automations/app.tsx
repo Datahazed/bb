@@ -1032,9 +1032,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "automations",
     title: "Automations",
-    // Matches the original ProjectList Automations row (Icon name="Clock");
-    // the host resolves this hint through its own Icon set to the same glyph.
-    icon: "Clock",
+    icon: "TimeSchedule",
     path: PANEL_PATH,
     component: AutomationsPanel,
   });

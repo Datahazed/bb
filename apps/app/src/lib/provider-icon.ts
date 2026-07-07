@@ -6,8 +6,8 @@ import {
 import type { ComponentType } from "react";
 import { createElement } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
+import { CodexIcon } from "@/components/icons/CodexIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
-import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
@@ -20,9 +20,8 @@ interface ProviderIconInfo {
   ariaLabel: string;
 }
 
-const GenericAcpIcon: ComponentType<{ className?: string }> = ({
-  className,
-}) => createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
+const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
+  createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
 // Brand icons for well-known ACP agents, keyed by slug (the provider id with
 // the `acp-` prefix stripped). Unknown ACP agents fall back to the generic
@@ -61,7 +60,7 @@ export function getProviderIconInfo(
   switch (providerId) {
     case "codex":
       return {
-        icon: OpenAiIcon,
+        icon: CodexIcon,
         ariaLabel: providerInfo.displayName,
       };
     case "claude-code":
@@ -82,4 +81,26 @@ export function getProviderIconInfo(
     default:
       return undefined;
   }
+}
+
+export function getProviderIconColorClass(providerId: string): string {
+  if (providerId === "codex") {
+    return "";
+  }
+  if (providerId === "claude-code") {
+    return "text-[#D97757]";
+  }
+  if (providerId === "pi") {
+    return "text-[#6D5DFB]";
+  }
+  if (providerId === "acp-cursor") {
+    return "text-[#111827] dark:text-[#F5F5F5]";
+  }
+  if (providerId === "acp-opencode") {
+    return "text-[#2563EB]";
+  }
+  if (providerId === "acp-omp") {
+    return "text-[#9333EA]";
+  }
+  return "text-foreground";
 }

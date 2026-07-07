@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -20,21 +22,27 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { appToast } from "@/components/ui/app-toast";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@bb/shared-ui/pill";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
-import { getProviderIconInfo } from "@/lib/provider-icon";
+import {
+  getProviderIconColorClass,
+  getProviderIconInfo,
+} from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import {
   useDeleteSkill,
   useProjectSkills,
   useSkillContent,
   useUpdateSkill,
 } from "@/hooks/queries/skills-queries";
+import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 interface SkillProviderGroup {
@@ -62,6 +70,128 @@ const SKILL_LIST_MAX_HEIGHT = `calc(${
 const skillListViewportStyle = {
   maxHeight: SKILL_LIST_MAX_HEIGHT,
 } satisfies CSSProperties;
+
+export interface RegistrySkill {
+  id: string;
+  source: string;
+  skillId: string;
+  name: string;
+  installs: number;
+  installUrl: string | null;
+  url: string;
+  topic: string;
+  summary: string | null;
+  worksWith: string[];
+}
+
+type RegistryScope = "user" | "project";
+type RegistryProvider = "claude-code" | "codex";
+const EMPTY_REGISTRY_PROVIDER_SET = new Set<RegistryProvider>();
+const DEFAULT_PROVIDER_STATUS: Record<RegistryProvider, boolean> = {
+  "claude-code": false,
+  codex: false,
+};
+
+const REGISTRY_PROVIDERS = [
+  { id: "claude-code", cliKey: "claudeCode", label: "Claude Code" },
+  { id: "codex", cliKey: "codex", label: "Codex" },
+] as const satisfies readonly {
+  id: RegistryProvider;
+  cliKey: "claudeCode" | "codex";
+  label: string;
+}[];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseRegistrySkills(value: unknown): RegistrySkill[] {
+  if (!isRecord(value) || !Array.isArray(value.skills)) return [];
+  return value.skills.filter((skill): skill is RegistrySkill => {
+    if (!isRecord(skill)) return false;
+    return (
+      typeof skill.id === "string" &&
+      typeof skill.source === "string" &&
+      typeof skill.skillId === "string" &&
+      typeof skill.name === "string" &&
+      typeof skill.installs === "number" &&
+      (skill.installUrl === null || typeof skill.installUrl === "string") &&
+      typeof skill.url === "string" &&
+      typeof skill.topic === "string" &&
+      (skill.summary === null || typeof skill.summary === "string") &&
+      Array.isArray(skill.worksWith) &&
+      skill.worksWith.every((provider) => typeof provider === "string")
+    );
+  });
+}
+
+async function fetchRegistrySkills(query: string): Promise<RegistrySkill[]> {
+  const params = new URLSearchParams();
+  if (query.trim().length > 0) params.set("q", query.trim());
+  const suffix = params.toString();
+  const response = await fetch(
+    `/api/v1/skills-registry${suffix ? `?${suffix}` : ""}`,
+  );
+  if (!response.ok) throw new Error("Failed to load skills registry");
+  return parseRegistrySkills(await response.json());
+}
+
+async function installRegistrySkill(args: {
+  skill: RegistrySkill;
+  scope: RegistryScope;
+  providers: RegistryProvider[];
+}) {
+  const response = await fetch("/api/v1/skills-registry/install", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: args.skill.source,
+      skillId: args.skill.skillId,
+      scope: args.scope,
+      providers: args.providers,
+      projectId: PERSONAL_PROJECT_ID,
+    }),
+  });
+  const body = (await response.json().catch(() => null)) as {
+    ok?: unknown;
+    message?: unknown;
+  } | null;
+  if (!response.ok || body?.ok !== true) {
+    throw new Error(
+      typeof body?.message === "string" ? body.message : "Skill install failed",
+    );
+  }
+  return body;
+}
+
+function normalizeSkillName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-");
+}
+
+function formatRegistrySource(source: string): string {
+  const githubPrefix = "github.com/";
+  return source.startsWith(githubPrefix)
+    ? source.slice(githubPrefix.length)
+    : source;
+}
+
+function formatInstallCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+  return String(count);
+}
+
+function providerStatusFromCli(
+  data: ProviderCliStatusResponse | undefined,
+): Record<RegistryProvider, boolean> {
+  return {
+    "claude-code": data?.claudeCode?.installed === true,
+    codex: data?.codex?.installed === true,
+  };
+}
 
 function providerLabel(providerId: SkillProvider | null): string {
   if (providerId === null) {
@@ -98,7 +228,7 @@ export function groupSkillsByProvider(
   });
 }
 
-function ProviderLogo({
+export function ProviderLogo({
   providerId,
   className,
 }: {
@@ -110,7 +240,11 @@ function ProviderLogo({
     return null;
   }
   const LogoIcon = info.icon;
-  return <LogoIcon className={className} />;
+  return (
+    <LogoIcon
+      className={cn(getProviderIconColorClass(providerId), className)}
+    />
+  );
 }
 
 /** Calm, typeahead-style row: skill icon + name + muted description. Clicking
@@ -144,15 +278,182 @@ function SkillRow({
   );
 }
 
+function StatusDot({ tone }: { tone: "success" | "muted" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-1.5 shrink-0 rounded-full",
+        tone === "success" ? "bg-success" : "bg-muted-foreground/50",
+      )}
+    />
+  );
+}
+
+function registryProviderLabel(providerId: RegistryProvider): string {
+  return (
+    REGISTRY_PROVIDERS.find((provider) => provider.id === providerId)?.label ??
+    providerId
+  );
+}
+
+function RegistrySkillRow({
+  skill,
+  installedProviders,
+  providerStatus,
+  scope,
+  onScopeChange,
+  onInstall,
+  onSelect,
+  pending,
+}: {
+  skill: RegistrySkill;
+  installedProviders: ReadonlySet<RegistryProvider>;
+  providerStatus: Record<RegistryProvider, boolean>;
+  scope: RegistryScope;
+  onScopeChange: (scope: RegistryScope) => void;
+  onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
+  onSelect: (skill: RegistrySkill) => void;
+  pending: boolean;
+}) {
+  const configuredProviders = REGISTRY_PROVIDERS.filter(
+    (provider) => providerStatus[provider.id],
+  ).map((provider) => provider.id);
+  const remainingProviders = configuredProviders.filter(
+    (provider) => !installedProviders.has(provider),
+  );
+  const isInstalled = installedProviders.size > 0;
+  const defaultProviders = isInstalled
+    ? remainingProviders
+    : configuredProviders;
+  const statusLabel = isInstalled
+    ? "Installed"
+    : configuredProviders.length > 0
+      ? "Available"
+      : "No provider";
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-state-hover">
+      <Icon name="Zap" className="size-3.5 shrink-0 text-muted-foreground" />
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={() => onSelect(skill)}
+        title={skill.summary ?? skill.name}
+      >
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="truncate text-foreground">{skill.name}</span>
+          <span className="truncate text-subtle-foreground">
+            {formatRegistrySource(skill.source)}
+          </span>
+        </span>
+        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-subtle-foreground">
+          <span>{formatInstallCount(skill.installs)} installs</span>
+          <span>{skill.topic}</span>
+          <span className="truncate">
+            Works with {skill.worksWith.join(", ")}
+          </span>
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+        <StatusDot tone={isInstalled ? "success" : "muted"} />
+        {statusLabel}
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 px-2 text-xs"
+        disabled={pending || defaultProviders.length === 0}
+        onClick={() => onInstall(skill, [...defaultProviders])}
+      >
+        {isInstalled ? "Add provider" : "Install"}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground"
+            aria-label={`${skill.name} install options`}
+          >
+            <Icon name="ChevronDown" className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-56"
+          mobileTitle={`${skill.name} install options`}
+        >
+          {(["user", "project"] as const).map((option) => (
+            <DropdownMenuItem
+              key={option}
+              onSelect={() => onScopeChange(option)}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2 capitalize">
+                <StatusDot tone={scope === option ? "success" : "muted"} />
+                {option}
+              </span>
+              <span className="text-xs text-muted-foreground">scope</span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          {REGISTRY_PROVIDERS.map((provider) => {
+            const configured = providerStatus[provider.id];
+            const installed = installedProviders.has(provider.id);
+            return (
+              <DropdownMenuItem
+                key={provider.id}
+                disabled={!configured || pending || installed}
+                onSelect={() => onInstall(skill, [provider.id])}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <StatusDot tone={configured ? "success" : "muted"} />
+                  <ProviderLogo
+                    providerId={provider.id}
+                    className="size-3.5 shrink-0"
+                  />
+                  <span>{provider.label}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {installed ? "Installed" : configured ? scope : "Disabled"}
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export interface SkillsOverviewProps {
   skills: readonly SkillSummary[];
   isLoading: boolean;
   hasError: boolean;
+  query?: string;
+  registrySkills?: readonly RegistrySkill[];
+  registryIsLoading?: boolean;
+  registryHasError?: boolean;
+  registryScope?: RegistryScope;
+  providerStatus?: Record<RegistryProvider, boolean>;
+  pendingRegistrySkillId?: string | null;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
+  onSelectRegistrySkill?: (skill: RegistrySkill) => void;
+  onQueryChange?: (query: string) => void;
+  onRegistryScopeChange?: (scope: RegistryScope) => void;
+  onInstallRegistrySkill?: (
+    skill: RegistrySkill,
+    providers: RegistryProvider[],
+  ) => void;
+  getInstalledProvidersForRegistrySkill?: (
+    skill: RegistrySkill,
+  ) => ReadonlySet<RegistryProvider>;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
+  onRetryRegistry?: () => void;
 }
 
 /**
@@ -163,11 +464,23 @@ export function SkillsOverview({
   skills,
   isLoading,
   hasError,
+  query = "",
+  registrySkills = [],
+  registryIsLoading = false,
+  registryHasError = false,
+  registryScope = "user",
+  providerStatus = DEFAULT_PROVIDER_STATUS,
+  pendingRegistrySkillId = null,
   onCreateSkill,
   onSelectSkill,
+  onSelectRegistrySkill = () => {},
+  onQueryChange = () => {},
+  onRegistryScopeChange = () => {},
+  onInstallRegistrySkill = () => {},
+  getInstalledProvidersForRegistrySkill = () => EMPTY_REGISTRY_PROVIDER_SET,
   onRetry,
+  onRetryRegistry,
 }: SkillsOverviewProps) {
-  const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const toggleGroup = useCallback((key: string) => {
     setCollapsed((prev) => {
@@ -208,7 +521,7 @@ export function SkillsOverview({
               aria-label="Search skills"
               placeholder="Search skills"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => onQueryChange(event.target.value)}
               autoComplete="off"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
@@ -297,7 +610,7 @@ export function SkillsOverview({
                     </button>
                     {isCollapsed ? null : (
                       <div
-                        className="overflow-y-auto border-t border-border-seam p-1"
+                        className="overflow-y-auto p-1"
                         style={skillListViewportStyle}
                       >
                         <div className="flex flex-col gap-px">
@@ -316,8 +629,225 @@ export function SkillsOverview({
               })}
             </div>
           )}
+          {registryHasError ? (
+            <EmptyStatePanel role="alert" className="py-6">
+              <div className="flex flex-col items-center gap-2">
+                <span>Couldn't load skills.sh.</span>
+                {onRetryRegistry ? (
+                  <Button variant="outline" size="sm" onClick={onRetryRegistry}>
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            </EmptyStatePanel>
+          ) : registryIsLoading ? (
+            <div
+              className="space-y-px"
+              aria-busy
+              aria-label="Loading skills.sh"
+            >
+              {["w-36", "w-48", "w-28"].map((nameWidth) => (
+                <div
+                  key={nameWidth}
+                  className="flex items-center gap-1.5 px-2 py-1.5"
+                >
+                  <Skeleton className="size-3.5 rounded" />
+                  <Skeleton className={cn("h-3", nameWidth)} />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              ))}
+            </div>
+          ) : registrySkills.length > 0 ? (
+            <section className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
+              <div className="flex items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground">
+                <Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />
+                <span className="font-medium">skills.sh</span>
+                <span className="text-subtle-foreground">
+                  {registrySkills.length}
+                </span>
+              </div>
+              <div
+                className="overflow-y-auto p-1"
+                style={skillListViewportStyle}
+              >
+                <div className="flex flex-col gap-px">
+                  {registrySkills.map((skill) => (
+                    <RegistrySkillRow
+                      key={skill.id}
+                      skill={skill}
+                      installedProviders={getInstalledProvidersForRegistrySkill(
+                        skill,
+                      )}
+                      providerStatus={providerStatus}
+                      scope={registryScope}
+                      pending={pendingRegistrySkillId === skill.id}
+                      onScopeChange={onRegistryScopeChange}
+                      onInstall={onInstallRegistrySkill}
+                      onSelect={onSelectRegistrySkill}
+                    />
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : normalizedQuery === "" ? null : (
+            <EmptyStatePanel className="py-6">
+              {`No skills.sh resources match "${query}"`}
+            </EmptyStatePanel>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+function RegistrySkillDetailView({
+  skill,
+  installedProviders,
+  providerStatus,
+  scope,
+  pending,
+  onBack,
+  onScopeChange,
+  onInstall,
+}: {
+  skill: RegistrySkill;
+  installedProviders: ReadonlySet<RegistryProvider>;
+  providerStatus: Record<RegistryProvider, boolean>;
+  scope: RegistryScope;
+  pending: boolean;
+  onBack: () => void;
+  onScopeChange: (scope: RegistryScope) => void;
+  onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
+}) {
+  const configuredProviders = REGISTRY_PROVIDERS.filter(
+    (provider) => providerStatus[provider.id],
+  ).map((provider) => provider.id);
+  const remainingProviders = configuredProviders.filter(
+    (provider) => !installedProviders.has(provider),
+  );
+  const isInstalled = installedProviders.size > 0;
+  const defaultProviders = isInstalled
+    ? remainingProviders
+    : configuredProviders;
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-muted-foreground hover:text-foreground"
+        onClick={onBack}
+      >
+        <Icon name="ChevronLeft" className="size-3.5" />
+        Skills
+      </Button>
+      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
+        <div className="flex min-w-0 items-start gap-3">
+          <Icon
+            name="Zap"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+          <div className="min-w-0 flex-1 space-y-1">
+            <h1 className="truncate text-base font-semibold">{skill.name}</h1>
+            <p className="truncate text-xs text-muted-foreground">
+              {formatRegistrySource(skill.source)}
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <StatusDot tone={isInstalled ? "success" : "muted"} />
+            {isInstalled ? "Installed" : "Available"}
+          </span>
+        </div>
+        {skill.summary ? (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {skill.summary}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span>{formatInstallCount(skill.installs)} installs</span>
+          <span>{skill.topic}</span>
+          <span>Works with {skill.worksWith.join(", ")}</span>
+          {installedProviders.size > 0 ? (
+            <span>
+              Installed on{" "}
+              {[...installedProviders].map(registryProviderLabel).join(", ")}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md bg-surface-recessed p-0.5">
+            {(["user", "project"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={cn(
+                  "h-7 rounded px-2 text-xs capitalize",
+                  scope === option
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground",
+                )}
+                onClick={() => onScopeChange(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending || defaultProviders.length === 0}
+            onClick={() => onInstall(skill, [...defaultProviders])}
+          >
+            {isInstalled ? "Add provider" : "Install"}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-8"
+                aria-label={`${skill.name} provider picker`}
+              >
+                <Icon name="ChevronDown" className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-56"
+              mobileTitle={`${skill.name} providers`}
+            >
+              {REGISTRY_PROVIDERS.map((provider) => {
+                const configured = providerStatus[provider.id];
+                const installed = installedProviders.has(provider.id);
+                return (
+                  <DropdownMenuItem
+                    key={provider.id}
+                    disabled={!configured || pending || installed}
+                    onSelect={() => onInstall(skill, [provider.id])}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <StatusDot tone={configured ? "success" : "muted"} />
+                      <ProviderLogo
+                        providerId={provider.id}
+                        className="size-3.5 shrink-0"
+                      />
+                      <span>{provider.label}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {installed
+                        ? "Installed"
+                        : configured
+                          ? scope
+                          : "Disabled"}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
     </div>
   );
 }
@@ -639,12 +1169,67 @@ function SkillDetailDialog({
 
 export function SkillsLibrary() {
   const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [registryScope, setRegistryScope] = useState<RegistryScope>("user");
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? [];
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
+  const primaryHost = usePrimaryHost();
+  const providerCliStatus = useHostProviderCliStatus({
+    hostId: primaryHost?.id ?? null,
+    enabled: primaryHost !== null,
+  });
+  const providerStatus = useMemo(
+    () => providerStatusFromCli(providerCliStatus.data),
+    [providerCliStatus.data],
+  );
+  const registryQuery = useQuery({
+    queryKey: ["skills-registry", query.trim()],
+    queryFn: () => fetchRegistrySkills(query),
+    staleTime: 60_000,
+  });
+  const registryInstall = useMutation({
+    mutationFn: installRegistrySkill,
+    onSuccess: () => {
+      appToast.success("Skill installed");
+      void skillsQuery.refetch();
+    },
+    onError: (error) => {
+      appToast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
   const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
+  const [selectedRegistrySkill, setSelectedRegistrySkill] =
+    useState<RegistrySkill | null>(null);
+  const installedProvidersForRegistrySkill = useCallback(
+    (skill: RegistrySkill): ReadonlySet<RegistryProvider> => {
+      const names = new Set([
+        normalizeSkillName(skill.skillId),
+        normalizeSkillName(skill.name),
+      ]);
+      return new Set(
+        REGISTRY_PROVIDERS.flatMap((provider) =>
+          skills.some(
+            (installedSkill) =>
+              installedSkill.provider === provider.id &&
+              names.has(normalizeSkillName(installedSkill.name)),
+          )
+            ? [provider.id]
+            : [],
+        ),
+      );
+    },
+    [skills],
+  );
+  const installRegistry = useCallback(
+    (skill: RegistrySkill, providers: RegistryProvider[]) => {
+      if (providers.length === 0) return;
+      registryInstall.mutate({ skill, scope: registryScope, providers });
+    },
+    [registryInstall, registryScope],
+  );
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -660,16 +1245,52 @@ export function SkillsLibrary() {
     },
     [navigate],
   );
+  const pendingRegistrySkillId =
+    registryInstall.isPending && registryInstall.variables
+      ? registryInstall.variables.skill.id
+      : null;
   return (
     <>
-      <SkillsOverview
-        skills={skills}
-        isLoading={isLoading}
-        hasError={hasError}
-        onCreateSkill={handleCreateSkill}
-        onSelectSkill={setSelectedSkill}
-        onRetry={() => void skillsQuery.refetch()}
-      />
+      {selectedRegistrySkill ? (
+        <RegistrySkillDetailView
+          skill={selectedRegistrySkill}
+          installedProviders={installedProvidersForRegistrySkill(
+            selectedRegistrySkill,
+          )}
+          providerStatus={providerStatus}
+          scope={registryScope}
+          pending={pendingRegistrySkillId === selectedRegistrySkill.id}
+          onBack={() => setSelectedRegistrySkill(null)}
+          onScopeChange={setRegistryScope}
+          onInstall={installRegistry}
+        />
+      ) : (
+        <SkillsOverview
+          skills={skills}
+          isLoading={isLoading}
+          hasError={hasError}
+          query={query}
+          registrySkills={registryQuery.data ?? []}
+          registryIsLoading={
+            registryQuery.isFetching && registryQuery.data === undefined
+          }
+          registryHasError={registryQuery.isError}
+          registryScope={registryScope}
+          providerStatus={providerStatus}
+          pendingRegistrySkillId={pendingRegistrySkillId}
+          onCreateSkill={handleCreateSkill}
+          onSelectSkill={setSelectedSkill}
+          onSelectRegistrySkill={setSelectedRegistrySkill}
+          onQueryChange={setQuery}
+          onRegistryScopeChange={setRegistryScope}
+          onInstallRegistrySkill={installRegistry}
+          getInstalledProvidersForRegistrySkill={
+            installedProvidersForRegistrySkill
+          }
+          onRetry={() => void skillsQuery.refetch()}
+          onRetryRegistry={() => void registryQuery.refetch()}
+        />
+      )}
       <SkillDetailDialog
         projectId={PERSONAL_PROJECT_ID}
         skill={selectedSkill}

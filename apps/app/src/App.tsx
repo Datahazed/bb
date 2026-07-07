@@ -144,10 +144,7 @@ function AppRoutes() {
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
             element={<ToolsView />}
           />
-          <Route
-            path={AUTOMATIONS_ROUTE_PATH}
-            element={<AutomationsPluginRedirect />}
-          />
+          <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={AUTOMATION_DETAIL_ROUTE_PATH}
             element={<AutomationsPluginRedirect />}
@@ -158,7 +155,7 @@ function AppRoutes() {
           />
           <Route
             path={LEGACY_AUTOMATIONS_ROUTE_PATH}
-            element={<AutomationsPluginRedirect />}
+            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
           />
           <Route
             path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}

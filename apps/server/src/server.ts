@@ -22,6 +22,7 @@ import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerUiRoutes } from "./routes/ui.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
+import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -301,7 +302,10 @@ export function createApp(
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    const appSurface = resolveRequestAppSurface(context, deps.config.appSurface);
+    const appSurface = resolveRequestAppSurface(
+      context,
+      deps.config.appSurface,
+    );
     return runWithTelemetryAppSurface(appSurface, next);
   });
   app.use(
@@ -393,6 +397,7 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginRoutes(publicApi, deps, pluginService);
+  registerSkillsRegistryRoutes(publicApi, deps);
   const uiSource = options?.appDir
     ? createUiSourceService({
         dataDir: deps.config.dataDir,
