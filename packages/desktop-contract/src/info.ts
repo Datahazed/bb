@@ -4,14 +4,6 @@ import type { BbDesktopPopoutApi } from "./popout.js";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
-/** A pending "relaunch when agents finish" deferred update install. */
-export const bbDesktopDeferredInstallSchema = z.object({
-  requestedAt: isoUtcDateTimeSchema,
-});
-export type BbDesktopDeferredInstall = z.infer<
-  typeof bbDesktopDeferredInstallSchema
->;
-
 export const bbDesktopInfoSchema = z.object({
   lastCheckedAt: isoUtcDateTimeSchema.nullable(),
   latestVersion: z.string().min(1).nullable(),
@@ -27,10 +19,10 @@ export const bbDesktopInfoSchema = z.object({
    */
   canDeferInstall: z.boolean().optional(),
   /**
-   * The pending deferred install, or null when none is scheduled. Absent on
+   * True while a "relaunch when agents finish" install is pending. Absent on
    * desktop shells that predate deferred installs.
    */
-  deferredInstall: bbDesktopDeferredInstallSchema.nullable().optional(),
+  deferredInstall: z.boolean().optional(),
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 

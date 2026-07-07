@@ -55,7 +55,7 @@ describe("desktop deferred install controller", () => {
   it("refuses to defer without a downloaded update or an owned runtime", () => {
     const noUpdate = createHarness({ updateDownloaded: () => false });
     expect(noUpdate.controller.request()).toBe(false);
-    expect(noUpdate.controller.getState()).toBeNull();
+    expect(noUpdate.controller.isPending()).toBe(false);
 
     const noRuntime = createHarness({ hasProbe: false });
     expect(noRuntime.controller.canDefer()).toBe(false);
@@ -65,9 +65,7 @@ describe("desktop deferred install controller", () => {
   it("relaunches after agents stay idle for the quiet period", async () => {
     const harness = createHarness();
     expect(harness.controller.request()).toBe(true);
-    expect(harness.controller.getState()).toEqual({
-      requestedAt: expect.any(String),
-    });
+    expect(harness.controller.isPending()).toBe(true);
 
     await vi.waitFor(() => {
       expect(harness.installUpdate).toHaveBeenCalledTimes(1);
@@ -96,15 +94,15 @@ describe("desktop deferred install controller", () => {
   it("cancel clears the deferral and stops polling", async () => {
     let busy = 1;
     const harness = createHarness({ busyCounts: () => busy });
-    const changes: Array<ReturnType<typeof harness.controller.getState>> = [];
+    const changes: boolean[] = [];
     harness.controller.subscribe(() => {
-      changes.push(harness.controller.getState());
+      changes.push(harness.controller.isPending());
     });
 
     harness.controller.request();
     harness.controller.cancel();
-    expect(harness.controller.getState()).toBeNull();
-    expect(changes.at(-1)).toBeNull();
+    expect(harness.controller.isPending()).toBe(false);
+    expect(changes.at(-1)).toBe(false);
 
     busy = 0;
     await new Promise((resolve) => setTimeout(resolve, 80));
@@ -121,7 +119,7 @@ describe("desktop deferred install controller", () => {
 
     downloaded = false;
     await vi.waitFor(() => {
-      expect(harness.controller.getState()).toBeNull();
+      expect(harness.controller.isPending()).toBe(false);
     });
     expect(harness.installUpdate).not.toHaveBeenCalled();
   });

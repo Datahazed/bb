@@ -128,7 +128,6 @@ export type SystemSelfUpdateScheduleRequest = z.infer<
  */
 export const systemSelfUpdateScheduledSchema = z.object({
   targetVersion: z.string(),
-  requestedAt: z.string(),
   phase: z.enum(["staging", "waiting"]),
   mode: systemSelfUpdateModeSchema,
 });

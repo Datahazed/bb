@@ -112,14 +112,6 @@ async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
   }
 }
 
-async function invokeInstallUpdate(): Promise<void> {
-  try {
-    await ipcRenderer.invoke(BB_DESKTOP_INSTALL_UPDATE_CHANNEL);
-  } catch {
-    return;
-  }
-}
-
 async function invokeVoidChannel(channel: string): Promise<void> {
   try {
     await ipcRenderer.invoke(channel);
@@ -270,7 +262,7 @@ const bbDesktopApi: BbDesktopApi = {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
   },
   installUpdate() {
-    return invokeInstallUpdate();
+    return invokeVoidChannel(BB_DESKTOP_INSTALL_UPDATE_CHANNEL);
   },
   installUpdateWhenIdle() {
     return invokeVoidChannel(BB_DESKTOP_INSTALL_UPDATE_WHEN_IDLE_CHANNEL);

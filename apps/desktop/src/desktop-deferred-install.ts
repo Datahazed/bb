@@ -1,14 +1,8 @@
 import { z } from "zod";
-import type { BbDesktopDeferredInstall } from "@bb/desktop-contract";
+import { BB_UPDATE_QUIET_PERIOD_MS } from "@bb/config/self-update";
 import type { DesktopAutoUpdateLogger } from "./desktop-auto-update.js";
 
 const DEFERRED_INSTALL_POLL_INTERVAL_MS = 15_000;
-/**
- * How long the owned runtime must report zero busy agents before the shell
- * relaunches. Mirrors the server's own update-when-idle quiet period so a
- * queued follow-up or automation handoff doesn't get interrupted.
- */
-const DEFERRED_INSTALL_QUIET_PERIOD_MS = 45_000;
 const ACTIVITY_FETCH_TIMEOUT_MS = 5_000;
 
 const agentActivityResponseSchema = z
@@ -45,7 +39,8 @@ export interface DeferredInstallController {
   /** True when a deferred install can be offered (owned runtime present). */
   canDefer(): boolean;
   cancel(): void;
-  getState(): BbDesktopDeferredInstall | null;
+  /** True while a deferred install is pending. */
+  isPending(): boolean;
   /** Returns true when the deferral was accepted and polling started. */
   request(): boolean;
   stop(): void;
@@ -58,9 +53,9 @@ export function createDeferredInstallController(
   const fetchImpl = args.fetchImpl ?? fetch;
   const now = args.now ?? (() => Date.now());
   const pollIntervalMs = args.pollIntervalMs ?? DEFERRED_INSTALL_POLL_INTERVAL_MS;
-  const quietPeriodMs = args.quietPeriodMs ?? DEFERRED_INSTALL_QUIET_PERIOD_MS;
+  const quietPeriodMs = args.quietPeriodMs ?? BB_UPDATE_QUIET_PERIOD_MS;
 
-  let state: BbDesktopDeferredInstall | null = null;
+  let pending = false;
   let idleSince: number | null = null;
   let pollHandle: ReturnType<typeof setInterval> | null = null;
   let installing = false;
@@ -78,8 +73,8 @@ export function createDeferredInstallController(
       pollHandle = null;
     }
     idleSince = null;
-    if (state !== null) {
-      state = null;
+    if (pending) {
+      pending = false;
       notify();
     }
   }
@@ -106,7 +101,7 @@ export function createDeferredInstallController(
   }
 
   async function tick(): Promise<void> {
-    if (state === null || installing) {
+    if (!pending || installing) {
       return;
     }
     if (!args.isUpdateDownloaded()) {
@@ -168,22 +163,22 @@ export function createDeferredInstallController(
       return args.getProbe() !== null;
     },
     cancel(): void {
-      if (state !== null) {
+      if (pending) {
         args.logger.info("Deferred desktop install cancelled by user.");
       }
       clear();
     },
-    getState(): BbDesktopDeferredInstall | null {
-      return state;
+    isPending(): boolean {
+      return pending;
     },
     request(): boolean {
       if (!args.isUpdateDownloaded() || args.getProbe() === null) {
         return false;
       }
-      if (state !== null) {
+      if (pending) {
         return true;
       }
-      state = { requestedAt: new Date(now()).toISOString() };
+      pending = true;
       idleSince = null;
       pollHandle = setInterval(() => {
         void tick();

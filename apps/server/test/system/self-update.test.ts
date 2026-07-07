@@ -205,7 +205,6 @@ describe("self-update service", () => {
     const state = await harness.service.schedule("when-idle");
     expect(state.scheduled).toEqual({
       targetVersion: TARGET_VERSION,
-      requestedAt: expect.any(String),
       phase: "staging",
       mode: "when-idle",
     });
@@ -382,7 +381,6 @@ describe("self-update service", () => {
     await harness.service.resume();
     expect(harness.service.getState().scheduled).toEqual({
       targetVersion: TARGET_VERSION,
-      requestedAt: expect.any(String),
       phase: "waiting",
       mode: "when-idle",
     });

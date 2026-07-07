@@ -6,6 +6,7 @@ import semver from "semver";
 import { z } from "zod";
 import {
   BB_SELF_UPDATE_EXIT_CODE,
+  BB_UPDATE_QUIET_PERIOD_MS,
   formatSelfUpdateSentinelPath,
   formatSelfUpdateStagingDir,
   formatSelfUpdateStagingRoot,
@@ -25,12 +26,8 @@ import { countBusyThreads, isServerAtRest } from "./agent-activity.js";
 import type { AppVersionService } from "./app-version.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
-/**
- * How long the server must see zero busy agents before it exits for the swap.
- * Covers the gaps where a thread is momentarily idle between a finished turn
- * and a queued follow-up or automation-triggered turn starting.
- */
-const DEFAULT_QUIET_PERIOD_MS = 45_000;
+// Shared with the desktop shell's deferred relaunch; see the constant's doc.
+const DEFAULT_QUIET_PERIOD_MS = BB_UPDATE_QUIET_PERIOD_MS;
 const STAGING_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const INSTALL_LOG_TAIL_CHARS = 2_000;
 
@@ -82,7 +79,6 @@ export function resolveNpmInvocation(env: NodeJS.ProcessEnv): {
   const npmExecPath = env.npm_execpath;
   if (
     npmExecPath !== undefined &&
-    /\.(c|m)?js$/.test(npmExecPath) &&
     /(^|\/)npm(-cli)?\.(c|m)?js$/.test(npmExecPath)
   ) {
     return { command: process.execPath, argsPrefix: [npmExecPath] };
@@ -365,7 +361,7 @@ export function createSelfUpdateService(
       // Re-read the mode: an "Update now" click may have escalated the
       // schedule while npm was installing.
       const mode = scheduled?.mode ?? "when-idle";
-      scheduled = { targetVersion, requestedAt, phase: "waiting", mode };
+      scheduled = { targetVersion, phase: "waiting", mode };
       if (mode === "now") {
         logger.info(
           { targetVersion },
@@ -431,8 +427,9 @@ export function createSelfUpdateService(
     }
 
     lastError = null;
+    // Only persisted in the sentinel, as provenance for data-dir debugging.
     const requestedAt = new Date(now()).toISOString();
-    scheduled = { targetVersion, requestedAt, phase: "staging", mode };
+    scheduled = { targetVersion, phase: "staging", mode };
     const generation = scheduleGeneration;
     void stageAndArm(targetVersion, requestedAt, generation);
     return getState();
@@ -494,7 +491,6 @@ export function createSelfUpdateService(
         // when-idle rather than surprise-restarting agents after a crash.
         scheduled = {
           targetVersion: sentinel.targetVersion,
-          requestedAt: sentinel.requestedAt,
           phase: "waiting",
           mode: "when-idle",
         };

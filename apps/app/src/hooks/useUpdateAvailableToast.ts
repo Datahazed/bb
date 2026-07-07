@@ -4,9 +4,9 @@ import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import type { SystemSelfUpdateScheduled } from "@bb/server-contract";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
+  useAgentsBusy,
   useCancelSelfUpdate,
   useScheduleSelfUpdate,
-  useSystemAgentActivity,
   useSystemVersion,
 } from "./queries/system-queries";
 
@@ -134,12 +134,7 @@ export function useUpdateAvailableToast(): void {
     data.updateAvailable &&
     data.selfUpdate.capable &&
     data.selfUpdate.scheduled === null;
-  const { data: agentActivity } = useSystemAgentActivity({
-    enabled: activityEnabled,
-  });
-  // Unknown activity reads as busy: the deferred label is the safe default.
-  const agentsBusy =
-    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
+  const agentsBusy = useAgentsBusy({ enabled: activityEnabled });
   const shownForVersionRef = useRef<string | null>(null);
   /** id of the scheduled-update toast currently on screen (version + phase). */
   const scheduledToastKeyRef = useRef<string | null>(null);
@@ -342,13 +337,9 @@ export function useDesktopUpdateAvailableToast(): void {
   const activityEnabled =
     desktopInfo !== null &&
     desktopInfo.updateDownloaded &&
-    (desktopInfo.deferredInstall ?? null) === null &&
+    desktopInfo.deferredInstall !== true &&
     desktopInfo.canDeferInstall === true;
-  const { data: agentActivity } = useSystemAgentActivity({
-    enabled: activityEnabled,
-  });
-  const agentsBusy =
-    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
+  const agentsBusy = useAgentsBusy({ enabled: activityEnabled });
   const shownForVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -395,8 +386,7 @@ export function useDesktopUpdateAvailableToast(): void {
       return;
     }
 
-    const deferredInstall = desktopInfo.deferredInstall ?? null;
-    if (deferredInstall !== null) {
+    if (desktopInfo.deferredInstall === true) {
       const deferredKey = `${latestVersion}:deferred`;
       if (shownForVersionRef.current === deferredKey) {
         return;

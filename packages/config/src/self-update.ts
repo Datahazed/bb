@@ -16,13 +16,23 @@ import { z } from "zod";
 export const BB_SELF_UPDATE_EXIT_CODE = 75;
 
 /**
- * Env var the bb-app launcher sets on the server child to advertise that it
- * understands the self-update protocol. Absent under `bb-server`, dev runs,
- * and the desktop shell (which updates through electron-updater instead), so
- * old launchers can never be asked to perform a swap they don't understand.
+ * Env var the bb-app launcher sets (truthy) on the server child to advertise
+ * that it understands the self-update protocol. Absent under `bb-server`,
+ * dev runs, and the desktop shell (which updates through electron-updater
+ * instead), so old launchers can never be asked to perform a swap they don't
+ * understand. The server parses it as a boolean, so the value carries no
+ * version information — a protocol change needs a new variable.
  */
 export const BB_SELF_UPDATE_PROTOCOL_ENV_NAME = "BB_SELF_UPDATE_PROTOCOL";
-export const BB_SELF_UPDATE_PROTOCOL_VERSION = "1";
+
+/**
+ * How long agents must stay continuously idle before a deferred update
+ * applies. Shared by the server's idle watcher and the desktop shell's
+ * deferred relaunch so the two policies cannot drift. Sized to comfortably
+ * exceed the 10s queued-message auto-send sweep, whose dispatch gaps make a
+ * mid-chain thread look momentarily idle.
+ */
+export const BB_UPDATE_QUIET_PERIOD_MS = 45_000;
 
 export const selfUpdateSentinelSchema = z.object({
   /** bb-app version staged and ready to swap to. */
@@ -61,8 +71,4 @@ export function formatStagedPackageRoot(
     "node_modules",
     "bb-app",
   );
-}
-
-export function parseSelfUpdateSentinel(value: unknown): SelfUpdateSentinel {
-  return selfUpdateSentinelSchema.parse(value);
 }

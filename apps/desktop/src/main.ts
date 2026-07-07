@@ -411,7 +411,7 @@ function getCurrentDesktopInfo(): BbDesktopInfo | null {
   return {
     ...merged,
     canDeferInstall: deferredInstallController?.canDefer() ?? false,
-    deferredInstall: deferredInstallController?.getState() ?? null,
+    deferredInstall: deferredInstallController?.isPending() ?? false,
   };
 }
 

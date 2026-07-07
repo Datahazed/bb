@@ -24,7 +24,6 @@ import {
 import {
   BB_SELF_UPDATE_EXIT_CODE,
   BB_SELF_UPDATE_PROTOCOL_ENV_NAME,
-  BB_SELF_UPDATE_PROTOCOL_VERSION,
   formatSelfUpdateSentinelPath,
   selfUpdateSentinelSchema,
   type SelfUpdateSentinel,
@@ -2194,7 +2193,7 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     NODE_ENV: "production",
   };
   if (args.selfUpdateProtocol) {
-    env[BB_SELF_UPDATE_PROTOCOL_ENV_NAME] = BB_SELF_UPDATE_PROTOCOL_VERSION;
+    env[BB_SELF_UPDATE_PROTOCOL_ENV_NAME] = "1";
   } else {
     delete env[BB_SELF_UPDATE_PROTOCOL_ENV_NAME];
   }
@@ -2698,14 +2697,110 @@ export async function terminateManagedFullStackProcesses(
   await Promise.all(terminationPromises);
 }
 
+/**
+ * The context and start closures supervision currently launches from. A
+ * successful self-update swap replaces all three, so later crash restarts
+ * relaunch the updated version.
+ */
+interface SupervisedStack {
+  context: BbAppStartContext;
+  startDaemon: StartManagedProcess;
+  startServer: StartManagedProcess;
+}
+
+/** Restart one child from the current stack. False means shutdown began. */
+async function restartFromStack(
+  args: SuperviseFullStackProcessesArgs,
+  stack: SupervisedStack,
+  processName: ManagedProcessName,
+): Promise<boolean> {
+  const restarted = await restartManagedProcess({
+    context: stack.context,
+    delayMilliseconds: args.delayMilliseconds,
+    isShutdownRequested: args.isShutdownRequested,
+    processName,
+    start: processName === "server" ? stack.startServer : stack.startDaemon,
+  });
+  return restarted !== null;
+}
+
+type SelfUpdateSwapOutcome =
+  | "rolled-back"
+  | "shutdown"
+  | "swapped"
+  | "unusable";
+
+/**
+ * Handle a server exit that requested a self-update: consume the sentinel and
+ * restart both children from the staged version, mutating the stack on
+ * success. A staged version that fails to start is torn down and the current
+ * version restarted ("rolled-back"); "unusable" means there was nothing valid
+ * to swap to and the caller should restart the server normally.
+ */
+async function applySelfUpdateSwap(
+  args: SuperviseFullStackProcessesArgs,
+  stack: SupervisedStack,
+): Promise<SelfUpdateSwapOutcome> {
+  const swap = (await args.trySelfUpdateSwap?.()) ?? null;
+  if (args.isShutdownRequested()) {
+    return "shutdown";
+  }
+  if (swap === null) {
+    return "unusable";
+  }
+
+  log(
+    yellow("!"),
+    `Server stopped for a self-update - switching to bb-app ${swap.context.appVersion}`,
+  );
+  const daemonRun = args.processes.daemonRun;
+  if (daemonRun !== null) {
+    await daemonRun.terminate("SIGTERM");
+    if (args.processes.daemonRun === daemonRun) {
+      args.processes.daemonRun = null;
+    }
+  }
+
+  beginStep(`Starting bb-app ${swap.context.appVersion}`);
+  try {
+    await swap.startServer();
+    await swap.startDaemon();
+    stack.context = swap.context;
+    stack.startServer = swap.startServer;
+    stack.startDaemon = swap.startDaemon;
+    endStep(green("✓"), `Updated to bb-app ${swap.context.appVersion}`);
+    return "swapped";
+  } catch {
+    endStep(
+      red("✗"),
+      `bb-app ${swap.context.appVersion} failed to start - restarting the current version`,
+    );
+    // A half-started new stack may be running (e.g. server healthy but
+    // daemon failed); tear it down before restarting the old version.
+    await terminateManagedFullStackProcesses({
+      processes: args.processes,
+      signal: "SIGTERM",
+    });
+    args.processes.serverRun = null;
+    args.processes.daemonRun = null;
+    if (!(await restartFromStack(args, stack, "server"))) {
+      return "shutdown";
+    }
+    if (!(await restartFromStack(args, stack, "daemon"))) {
+      return "shutdown";
+    }
+    return "rolled-back";
+  }
+}
+
 export async function superviseFullStackProcesses(
   args: SuperviseFullStackProcessesArgs,
 ): Promise<FullStackSupervisionResult> {
-  // Mutable: a successful self-update swap replaces the start context and
-  // closures, so later crash restarts relaunch the updated version.
-  let context = args.context;
-  let startServer = args.startServer;
-  let startDaemon = args.startDaemon;
+  const stack: SupervisedStack = {
+    context: args.context,
+    startDaemon: args.startDaemon,
+    startServer: args.startServer,
+  };
 
   while (!args.isShutdownRequested()) {
     const serverRun = args.processes.serverRun;
@@ -2719,126 +2814,47 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
 
-    if (
-      exitedProcess.processName === "server" &&
-      exitedProcess.result.code === BB_SELF_UPDATE_EXIT_CODE &&
-      args.trySelfUpdateSwap !== undefined
-    ) {
+    const exitedName = exitedProcess.processName;
+    if (exitedName === "server") {
       if (args.processes.serverRun === serverRun) {
         args.processes.serverRun = null;
       }
-      const swap = await args.trySelfUpdateSwap();
-      if (args.isShutdownRequested()) {
+    } else if (args.processes.daemonRun === daemonRun) {
+      args.processes.daemonRun = null;
+    }
+
+    if (
+      exitedName === "server" &&
+      exitedProcess.result.code === BB_SELF_UPDATE_EXIT_CODE &&
+      args.trySelfUpdateSwap !== undefined
+    ) {
+      const outcome = await applySelfUpdateSwap(args, stack);
+      if (outcome === "shutdown") {
         return "shutdown";
       }
-      if (swap !== null) {
-        log(
-          yellow("!"),
-          `Server stopped for a self-update - switching to bb-app ${swap.context.appVersion}`,
-        );
-        await daemonRun.terminate("SIGTERM");
-        if (args.processes.daemonRun === daemonRun) {
-          args.processes.daemonRun = null;
-        }
-        beginStep(`Starting bb-app ${swap.context.appVersion}`);
-        try {
-          await swap.startServer();
-          await swap.startDaemon();
-          context = swap.context;
-          startServer = swap.startServer;
-          startDaemon = swap.startDaemon;
-          endStep(green("✓"), `Updated to bb-app ${swap.context.appVersion}`);
-          continue;
-        } catch {
-          endStep(
-            red("✗"),
-            `bb-app ${swap.context.appVersion} failed to start - restarting the current version`,
-          );
-          // A half-started new stack may be running (e.g. server healthy but
-          // daemon failed); tear it down before restarting the old version.
-          await terminateManagedFullStackProcesses({
-            processes: args.processes,
-            signal: "SIGTERM",
-          });
-          args.processes.serverRun = null;
-          args.processes.daemonRun = null;
-          const restartedServer = await restartManagedProcess({
-            context,
-            delayMilliseconds: args.delayMilliseconds,
-            isShutdownRequested: args.isShutdownRequested,
-            processName: "server",
-            start: startServer,
-          });
-          if (restartedServer === null) {
-            return "shutdown";
-          }
-          const restartedDaemon = await restartManagedProcess({
-            context,
-            delayMilliseconds: args.delayMilliseconds,
-            isShutdownRequested: args.isShutdownRequested,
-            processName: "daemon",
-            start: startDaemon,
-          });
-          if (restartedDaemon === null) {
-            return "shutdown";
-          }
-          continue;
-        }
+      if (outcome !== "unusable") {
+        continue;
       }
       log(
         yellow("!"),
         "Server exited for a self-update but no staged update was usable - restarting server",
       );
-      // Fall through to the normal restart path below.
     } else {
       log(
         yellow("!"),
-        `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
+        `${formatManagedProcessLabel(exitedName)} exited with ${formatProcessExitResult(
           exitedProcess.result,
-        )} - restarting ${formatManagedProcessLabel(exitedProcess.processName)}`,
+        )} - restarting ${formatManagedProcessLabel(exitedName)}`,
       );
     }
 
-    if (exitedProcess.processName === "server") {
-      if (args.processes.serverRun === serverRun) {
-        args.processes.serverRun = null;
-      }
-      await args.delayMilliseconds({
-        ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
-      });
-      if (args.isShutdownRequested()) {
-        return "shutdown";
-      }
-      const restartedServer = await restartManagedProcess({
-        context,
-        delayMilliseconds: args.delayMilliseconds,
-        isShutdownRequested: args.isShutdownRequested,
-        processName: "server",
-        start: startServer,
-      });
-      if (restartedServer === null) {
-        return "shutdown";
-      }
-      continue;
-    }
-
-    if (args.processes.daemonRun === daemonRun) {
-      args.processes.daemonRun = null;
-    }
     await args.delayMilliseconds({
       ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
     });
     if (args.isShutdownRequested()) {
       return "shutdown";
     }
-    const restartedDaemon = await restartManagedProcess({
-      context,
-      delayMilliseconds: args.delayMilliseconds,
-      isShutdownRequested: args.isShutdownRequested,
-      processName: "daemon",
-      start: startDaemon,
-    });
-    if (restartedDaemon === null) {
+    if (!(await restartFromStack(args, stack, exitedName))) {
       return "shutdown";
     }
   }
