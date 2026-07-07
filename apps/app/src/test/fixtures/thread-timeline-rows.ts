@@ -227,11 +227,10 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface NonOperationSystemRowArgs
-  extends Omit<
-    SystemRowArgs,
-    "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
-  > {
+export interface NonOperationSystemRowArgs extends Omit<
+  SystemRowArgs,
+  "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
+> {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
 
@@ -1037,7 +1036,7 @@ export function systemRow({
       automationCreated: automationCreated ?? {
         automationId: "auto_fixture",
         projectId: "proj_fixture",
-        automationName: "Fixture loop",
+        automationName: "Fixture automation",
       },
     };
   }

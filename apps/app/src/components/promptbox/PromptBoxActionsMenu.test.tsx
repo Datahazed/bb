@@ -3,9 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  LOOP_PROMPT_ACTION,
   PromptBoxActionsMenu,
-  withLoopPromptAction,
   type PromptBoxAction,
 } from "./PromptBoxActionsMenu";
 
@@ -23,7 +21,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "plan", trailingText: " " },
     text: "/plan ",
   },
-  LOOP_PROMPT_ACTION,
 ];
 
 async function openPromptActionsMenu() {
@@ -33,20 +30,13 @@ async function openPromptActionsMenu() {
 }
 
 describe("PromptBoxActionsMenu", () => {
-  it("appends the Loop action to provider actions", () => {
-    expect(withLoopPromptAction([])).toEqual([LOOP_PROMPT_ACTION]);
-    expect(withLoopPromptAction(promptActions)).toEqual(promptActions);
-  });
-
   it("does not render when no prompt actions are provided", () => {
     render(<PromptBoxActionsMenu onAction={() => {}} />);
 
-    expect(
-      screen.queryByRole("button", { name: "Prompt actions" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
   });
 
-  it("renders Skills, Plan, Goal, and Loop rows in compact order", async () => {
+  it("renders Skills, Plan, and Goal rows in compact order", async () => {
     render(
       <PromptBoxActionsMenu actions={promptActions} onAction={() => {}} />,
     );
@@ -59,12 +49,9 @@ describe("PromptBoxActionsMenu", () => {
 
     await openPromptActionsMenu();
 
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Skills",
-      "Plan",
-      "Goal",
-      "Loop",
-    ]);
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Skills", "Plan", "Goal"]);
     expect(screen.queryByRole("menuitem", { name: "Apps" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Create App" })).toBeNull();
   });
@@ -83,7 +70,9 @@ describe("PromptBoxActionsMenu", () => {
 
   it("fires the selected action", async () => {
     const onAction = vi.fn();
-    render(<PromptBoxActionsMenu actions={promptActions} onAction={onAction} />);
+    render(
+      <PromptBoxActionsMenu actions={promptActions} onAction={onAction} />,
+    );
 
     await openPromptActionsMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Plan" }));
@@ -93,15 +82,5 @@ describe("PromptBoxActionsMenu", () => {
       command: { trigger: "/", name: "plan", trailingText: " " },
       text: "/plan ",
     });
-  });
-
-  it("fires the Loop action", async () => {
-    const onAction = vi.fn();
-    render(<PromptBoxActionsMenu actions={promptActions} onAction={onAction} />);
-
-    await openPromptActionsMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Loop" }));
-
-    expect(onAction).toHaveBeenCalledWith(LOOP_PROMPT_ACTION);
   });
 });

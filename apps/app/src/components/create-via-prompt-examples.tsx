@@ -8,9 +8,11 @@ import {
 } from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
-import { CREATE_LOOP_PROMPT } from "@/lib/loop-prompt";
+import { CREATE_AUTOMATION_PROMPT } from "@/lib/automation-prompt";
 
-export type CreateViaPromptKind = "skill" | "loop";
+export type CreateViaPromptKind = "skill" | "plugin" | "automation";
+
+export const CREATE_PLUGIN_PROMPT = "Create a new bb plugin that ";
 
 interface Example {
   label: string;
@@ -26,7 +28,7 @@ interface KindConfig {
 
 // The description completes the prompt prefix, so each card both teaches and
 // seeds the composer. Skills are standard Agent Skills whose bb edge is being
-// cross-provider; loops are cheap scripts that escalate to threads.
+// cross-provider; automations run scripts and can escalate to threads.
 const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   skill: {
     prefix: CREATE_SKILL_PROMPT,
@@ -34,41 +36,63 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
       "Write a skill once, and every agent in bb can run it, whatever the provider.",
     examples: [
       {
-        label: "Repro & fix",
+        label: "PR review",
         description:
-          "turns a bug report into a failing test, then makes it pass",
+          "reviews a GitHub PR, checks changed files, runs focused tests, and returns blocking findings first",
       },
       {
-        label: "Scaffold to our patterns",
+        label: "Release notes",
         description:
-          "scaffolds a new component with its test and story to match our conventions",
+          "turns merged PRs into concise customer-facing release notes with links and risk notes",
       },
       {
-        label: "Onboard to a subsystem",
+        label: "Incident debug",
         description:
-          "traces how a feature works across the codebase and writes an explainer",
+          "collects logs, recent deploys, and failing checks before proposing the smallest fix",
       },
     ],
   },
-  loop: {
-    prefix: CREATE_LOOP_PROMPT,
+  plugin: {
+    prefix: CREATE_PLUGIN_PROMPT,
     explainer:
-      "Pay for agents only when there's real work, and fan a problem out across many threads in parallel.",
+      "Add app surfaces, commands, background work, or agent tools through a plugin.",
     examples: [
       {
-        label: "Flaky-test sweep",
+        label: "GitHub triage",
         description:
-          "run nightly, find flaky tests with a script, and spawn a fixer thread for each one",
+          "adds a GitHub panel that lists assigned PRs and lets agents open review threads",
       },
       {
-        label: "Silent health watch",
+        label: "Slack notifier",
         description:
-          "check the app every 15 minutes with a cheap script and spawn a thread only when something breaks",
+          "adds a background service that posts thread failures to a configured Slack webhook",
       },
       {
-        label: "Error sentinel",
+        label: "Project commands",
         description:
-          "poll the error dashboard hourly and spawn a triage thread only on a new spike",
+          "adds bb CLI commands for the team's deploy and rollback workflow",
+      },
+    ],
+  },
+  automation: {
+    prefix: CREATE_AUTOMATION_PROMPT,
+    explainer:
+      "Run scripts on a schedule and spawn agent threads only when there is real work.",
+    examples: [
+      {
+        label: "CI failure triage",
+        description:
+          "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
+      },
+      {
+        label: "Dependency drift",
+        description:
+          "checks weekly for stale dependencies and opens an update thread when risk is low",
+      },
+      {
+        label: "Release readiness",
+        description:
+          "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
       },
     ],
   },
@@ -108,8 +132,7 @@ export interface CreateViaPromptExamplesProps {
 }
 
 /**
- * Teaching panel for the Loops empty state: a one-line explainer plus clickable
- * example cards that seed the create-via-prompt composer.
+ * Empty-state examples that seed the create-via-prompt composer.
  */
 export function CreateViaPromptExamples({
   kind,
@@ -145,7 +168,7 @@ export function CreateViaPromptExamples({
 
 export interface CreateWithTemplatesButtonProps {
   kind: CreateViaPromptKind;
-  /** Main-button text, e.g. "New loop" or "New bb skill". */
+  /** Main-button text, e.g. "New automation" or "New bb skill". */
   label: string;
   /** Blank when called with no argument; seeded when given an example prompt. */
   onCreate: (prompt?: string) => void;
@@ -154,7 +177,7 @@ export interface CreateWithTemplatesButtonProps {
 /**
  * Split (combo) button: the left half creates a blank one immediately; the right
  * half opens a menu of example templates that seed the composer. Shared by the
- * Skills and Loops library toolbars.
+ * Skills and Automations library toolbars.
  */
 export function CreateWithTemplatesButton({
   kind,

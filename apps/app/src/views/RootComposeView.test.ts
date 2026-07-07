@@ -27,6 +27,7 @@ import {
   restorePromptDraftAfterOptionChange,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposePanelThreadId,
+  shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
@@ -78,6 +79,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
+    originPluginId: null,
     childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
@@ -209,9 +211,9 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({
         focusPrompt: true,
-        initialPrompt: "Create a new bb loop to ",
+        initialPrompt: "Create a new bb automation to ",
       }),
-    ).toBe("Create a new bb loop to ");
+    ).toBe("Create a new bb automation to ");
   });
 
   it("returns null when no usable initialPrompt is present", () => {
@@ -223,6 +225,23 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({ initialPrompt: 42 }),
     ).toBeNull();
+  });
+});
+
+describe("shouldReplaceInitialPromptFromLocationState", () => {
+  it("returns true only for explicit replacement seed intents", () => {
+    expect(
+      shouldReplaceInitialPromptFromLocationState({
+        initialPrompt: "Create a new bb skill to review PRs.",
+        replaceInitialPrompt: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldReplaceInitialPromptFromLocationState({
+        initialPrompt: "Create a new bb skill to review PRs.",
+      }),
+    ).toBe(false);
+    expect(shouldReplaceInitialPromptFromLocationState(null)).toBe(false);
   });
 });
 
@@ -255,8 +274,9 @@ describe("readRootComposeFolderTargetFromLocationState", () => {
   });
 
   it("clears the folder target for an unusable folder id", () => {
-    expect(readRootComposeFolderTargetFromLocationState({ folderId: "" }))
-      .toEqual({ kind: "clear" });
+    expect(
+      readRootComposeFolderTargetFromLocationState({ folderId: "" }),
+    ).toEqual({ kind: "clear" });
   });
 
   it("returns null when no folder target instruction is present", () => {
@@ -511,9 +531,9 @@ describe("shouldStartComposingFromLocationState", () => {
   it("ignores non-focus navigation state", () => {
     expect(shouldStartComposingFromLocationState(null)).toBe(false);
     expect(shouldStartComposingFromLocationState({})).toBe(false);
-    expect(
-      shouldStartComposingFromLocationState({ focusPrompt: false }),
-    ).toBe(false);
+    expect(shouldStartComposingFromLocationState({ focusPrompt: false })).toBe(
+      false,
+    );
   });
 });
 

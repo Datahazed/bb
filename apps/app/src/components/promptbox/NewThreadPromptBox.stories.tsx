@@ -13,7 +13,6 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import { LOOP_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { Button } from "@/components/ui/button";
@@ -123,7 +122,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {
@@ -156,7 +154,10 @@ function PromptStage({ children }: PromptStageProps) {
 
 function UnsupportedCodexCliBanner() {
   return (
-    <PromptStackCard ariaLabel="Codex update needed" className="overflow-hidden">
+    <PromptStackCard
+      ariaLabel="Codex update needed"
+      className="overflow-hidden"
+    >
       <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
         <Icon
           name="Info"
@@ -306,7 +307,7 @@ function ModelLoadFailedRow() {
 
 function UnsupportedCodexCliRow() {
   const { value, mentionRanges, onChange } = useControlledValue(
-    "Create a loop that checks the release until CI passes.",
+    "Create an automation that checks the release until CI passes.",
   );
   return (
     <PromptStage>

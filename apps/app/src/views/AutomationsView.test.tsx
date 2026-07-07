@@ -93,7 +93,7 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Automations<");
   });
 
-  it("lists personal (projectless) loops flat, enabled before paused", () => {
+  it("lists personal (projectless) automations flat, enabled before paused", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
@@ -112,7 +112,7 @@ describe("AutomationsOverview", () => {
     expect(markup).not.toContain(">Personal<");
     expect(markup).toContain("Active one");
     expect(markup).toContain("Paused one");
-    // Enabled loops sort above paused ones.
+    // Enabled automations sort above paused ones.
     expect(markup.indexOf("Active one")).toBeLessThan(
       markup.indexOf("Paused one"),
     );
@@ -148,7 +148,7 @@ describe("AutomationsOverview", () => {
     expect(markup).toContain("Last run failed");
   });
 
-  it("headers real projects but leaves personal loops flat", () => {
+  it("headers real projects but leaves personal automations flat", () => {
     const markup = renderOverview({
       entries: [
         makeEntry(
@@ -173,12 +173,12 @@ describe("AutomationsOverview", () => {
   it("teaches create-via-prompt when there are no automations", () => {
     const markup = renderOverview({ entries: [] });
     expect(markup).toContain("Start from an example");
-    expect(markup).toContain("Flaky-test sweep");
+    expect(markup).toContain("CI failure triage");
   });
 
   it("shows a loading skeleton", () => {
     const markup = renderOverview({ entries: [], isLoading: true });
-    expect(markup).toContain('aria-label="Loading loops"');
+    expect(markup).toContain('aria-label="Loading automations"');
     expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("Start from an example");
   });
@@ -190,7 +190,7 @@ describe("AutomationsOverview", () => {
       onRetry: () => {},
     });
     // Apostrophe is HTML-escaped in static markup, so match the stable fragment.
-    expect(markup).toContain("load loops.");
+    expect(markup).toContain("load automations.");
     expect(markup).toContain("Retry");
     expect(markup).toContain('role="alert"');
   });
@@ -201,7 +201,7 @@ describe("AutomationsOverview", () => {
         makeEntry(makeAutomation({ id: "auto_link", projectId: "proj_app" })),
       ],
     });
-    expect(markup).toContain('href="/automations/proj_app/auto_link"');
+    expect(markup).toContain('href="/tools/automations/proj_app/auto_link"');
   });
 
   it("renders direct per-row action buttons, no overflow menu", () => {
@@ -216,7 +216,7 @@ describe("AutomationsOverview", () => {
 
   it("renders a single create button without a script option", () => {
     const markup = renderOverview({ entries: [] });
-    expect(markup).toContain("New loop");
+    expect(markup).toContain("New automation");
     expect(markup).not.toContain("Script automation");
     expect(markup).not.toContain("Agent automation");
   });

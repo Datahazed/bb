@@ -19,11 +19,11 @@ import { AutomationDetailContent } from "./AutomationDetailView.js";
 
 interface AutomationDetailPaneProps {
   /**
-   * The overview's copy of the selected loop; renders instantly while the detail
-   * query refreshes, and supplies the ids the pane fetches by.
+   * The overview's copy of the selected automation; renders instantly while the
+   * detail query refreshes, and supplies the ids the pane fetches by.
    */
   automation: Automation;
-  /** Bumped per open so the detail content remounts fresh when switching loops. */
+  /** Bumped per open so detail content remounts fresh when switching items. */
   sessionKey?: number;
   /** Edit lives on the roomy full page; the pane's Edit action navigates there. */
   onEdit: () => void;
@@ -31,11 +31,12 @@ interface AutomationDetailPaneProps {
 }
 
 /**
- * Docked right-side detail pane — a read-only glance at a loop. Selecting a row
- * opens this inline beside the list (no scrim, list stays interactive). Editing
- * is a deliberate, roomier task, so the pane's Edit action navigates to the
- * full-page `/automations/:id` route rather than cramming a form in here. The
- * full page (also the deep-link target) reuses the same `AutomationDetailContent`.
+ * Docked right-side detail pane — a read-only glance at an automation.
+ * Selecting a row opens this inline beside the list (no scrim, list stays
+ * interactive). Editing is a deliberate, roomier task, so the pane's Edit
+ * action navigates to the full-page detail route rather than cramming a form in
+ * here. The full page (also the deep-link target) reuses the same
+ * `AutomationDetailContent`.
  */
 export function AutomationDetailPane({
   automation,
@@ -124,7 +125,7 @@ export function AutomationDetailPane({
         onOpenChange={deleteDialog.onOpenChange}
       >
         <ConfirmDeleteDialogContent
-          title="Delete loop?"
+          title="Delete automation?"
           description={`"${current.name}" and its run history will be permanently removed. This can't be undone.`}
           confirmLabel="Delete"
           pending={deleteAutomation.isPending}

@@ -41,7 +41,10 @@ import {
   writeInlineAutomationScript,
 } from "../services/scheduling/automation-scripts.js";
 import { appendAutomationCreatedEvent } from "../services/threads/thread-events.js";
-import { executeAgentRun, executeScriptRun } from "../services/scheduling/automation-run.js";
+import {
+  executeAgentRun,
+  executeScriptRun,
+} from "../services/scheduling/automation-run.js";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
@@ -206,66 +209,69 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
     return context.json(responses);
   });
 
-  post(routes.create, async (context, payload: ResolvedCreateAutomationRequest) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-    const now = Date.now();
-    validateTrigger(payload.trigger, now);
-    assertNotRecursiveCreation(deps, payload.createdByThreadId);
-    assertScriptRunsAllowed(deps, payload.execution);
+  post(
+    routes.create,
+    async (context, payload: ResolvedCreateAutomationRequest) => {
+      const projectId = context.req.param("id");
+      requirePublicProject(deps.db, projectId);
+      const now = Date.now();
+      validateTrigger(payload.trigger, now);
+      assertNotRecursiveCreation(deps, payload.createdByThreadId);
+      assertScriptRunsAllowed(deps, payload.execution);
 
-    const nextRunAt = payload.enabled
-      ? computeNextRunAt(payload.trigger, now)
-      : null;
+      const nextRunAt = payload.enabled
+        ? computeNextRunAt(payload.trigger, now)
+        : null;
 
-    // Pre-generate the id so any inline script is written under it BEFORE the
-    // row exists. This makes create atomic: the row is inserted exactly once,
-    // already pointing at the stored scriptFile — no insert→write→update window
-    // where the sweep could read an inline-script row or a write failure could
-    // leave an enabled, scheduled, script-less automation behind.
-    const automationId = createAutomationId();
-    const storedExecution = await resolveStoredExecution(deps, {
-      automationId,
-      execution: payload.execution,
-    });
+      // Pre-generate the id so any inline script is written under it BEFORE the
+      // row exists. This makes create atomic: the row is inserted exactly once,
+      // already pointing at the stored scriptFile — no insert→write→update window
+      // where the sweep could read an inline-script row or a write failure could
+      // leave an enabled, scheduled, script-less automation behind.
+      const automationId = createAutomationId();
+      const storedExecution = await resolveStoredExecution(deps, {
+        automationId,
+        execution: payload.execution,
+      });
 
-    const created = createAutomation(deps.db, deps.hub, {
-      id: automationId,
-      projectId,
-      name: payload.name,
-      enabled: payload.enabled,
-      triggerType: payload.trigger.triggerType,
-      triggerConfig: serializeAutomationTrigger(payload.trigger),
-      runMode: storedExecution.mode,
-      execution: serializeAutomationExecution(storedExecution),
-      environment: serializeAutomationEnvironment(payload.environment),
-      autoArchive: payload.autoArchive,
-      origin: payload.origin,
-      createdByThreadId: payload.createdByThreadId ?? null,
-      targetThreadId:
-        storedExecution.mode === "agent"
-          ? (storedExecution.targetThreadId ?? null)
-          : null,
-      nextRunAt,
-    });
+      const created = createAutomation(deps.db, deps.hub, {
+        id: automationId,
+        projectId,
+        name: payload.name,
+        enabled: payload.enabled,
+        triggerType: payload.trigger.triggerType,
+        triggerConfig: serializeAutomationTrigger(payload.trigger),
+        runMode: storedExecution.mode,
+        execution: serializeAutomationExecution(storedExecution),
+        environment: serializeAutomationEnvironment(payload.environment),
+        autoArchive: payload.autoArchive,
+        origin: payload.origin,
+        createdByThreadId: payload.createdByThreadId ?? null,
+        targetThreadId:
+          storedExecution.mode === "agent"
+            ? (storedExecution.targetThreadId ?? null)
+            : null,
+        nextRunAt,
+      });
 
-    // When an agent created this loop from a thread, drop a "View loop" notice
-    // into that thread's timeline. Best-effort: never fail the create on it.
-    if (payload.createdByThreadId) {
-      try {
-        appendAutomationCreatedEvent(deps, {
-          threadId: payload.createdByThreadId,
-          automationId: created.id,
-          projectId,
-          automationName: created.name,
-        });
-      } catch {
-        // Notice is non-critical; the loop was created successfully.
+      // When an agent created this automation from a thread, drop a "View automation" notice
+      // into that thread's timeline. Best-effort: never fail the create on it.
+      if (payload.createdByThreadId) {
+        try {
+          appendAutomationCreatedEvent(deps, {
+            threadId: payload.createdByThreadId,
+            automationId: created.id,
+            projectId,
+            automationName: created.name,
+          });
+        } catch {
+          // Notice is non-critical; the automation was created successfully.
+        }
       }
-    }
 
-    return context.json(toAutomationResponse(created), 201);
-  });
+      return context.json(toAutomationResponse(created), 201);
+    },
+  );
 
   get(routes.get, async (context) => {
     const projectId = context.req.param("id");

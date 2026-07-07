@@ -1411,7 +1411,7 @@ function mapParentChangeSystemTitle(
 }
 
 /**
- * "Created loop {name}" with the loop name linked to its detail page. Built from
+ * "Created automation {name}" with the automation name linked to its detail page. Built from
  * the row's structured `automationCreated` payload (not the flat title), so the
  * name stays linkable without parsing.
  */
@@ -1422,8 +1422,8 @@ function mapAutomationCreatedSystemTitle(
   const name = automationName.trim();
   return makeTitle({
     segments: [
-      segment("Created loop", { accent: "muted" }),
-      segment(name.length > 0 ? name : "loop", {
+      segment("Created automation", { accent: "muted" }),
+      segment(name.length > 0 ? name : "automation", {
         em: true,
         truncate: true,
         link: { kind: "automation", projectId, automationId },

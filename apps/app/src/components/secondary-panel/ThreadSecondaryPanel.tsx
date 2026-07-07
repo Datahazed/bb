@@ -203,6 +203,7 @@ function resolveActiveFixedPanel({
       return "thread-info";
     case "git-diff":
       return canUseGitUi ? "git-diff" : "thread-info";
+    case "plugin-panel":
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":

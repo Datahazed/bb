@@ -52,7 +52,7 @@ const PROVIDER_ORDER: readonly (SkillProvider | null)[] = [
   "codex",
 ];
 const SKILL_ROW_HEIGHT_REM = 1.75;
-const SKILL_VISIBLE_ROW_COUNT = 15;
+const SKILL_VISIBLE_ROW_COUNT = 10;
 const SKILL_ROW_GAP_PX = 1;
 const SKILL_LIST_VERTICAL_PADDING_REM = 0.5;
 const SKILL_LIST_MAX_HEIGHT = `calc(${
@@ -190,142 +190,135 @@ export function SkillsOverview({
     );
     return groupSkillsByProvider(filtered);
   }, [skills, normalizedQuery]);
-
   return (
-    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
-      <div className="space-y-4">
-        {/* One library of every skill across providers. You search and manage
+    <div className="space-y-4">
+      {/* One library of every skill across providers. You search and manage
             here; creating a bb skill is a single template-based action, the way
             VS Code / Raycast keep authoring out of the management list rather
             than stacking a teaching panel onto a list that is never empty. */}
-        <div className="space-y-2">
-          <p className="text-sm leading-snug text-subtle-foreground">
-            Every skill your agents can run, grouped by provider. bb skills run
-            across all of them.
-          </p>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
-              <Icon
-                name="Search"
-                className="size-3.5 shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-              <input
-                aria-label="Search skills"
-                placeholder="Search skills"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoComplete="off"
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-            </div>
-            <CreateWithTemplatesButton
-              kind="skill"
-              label="New bb skill"
-              onCreate={onCreateSkill}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
+            <Icon
+              name="Search"
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <input
+              aria-label="Search skills"
+              placeholder="Search skills"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoComplete="off"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
+          <CreateWithTemplatesButton
+            kind="skill"
+            label="New bb skill"
+            onCreate={onCreateSkill}
+          />
         </div>
-        {hasError ? (
-          // Failure is direction, not a dead end: say what happened plainly and
-          // offer the way out, kept calm rather than alarmist.
-          <EmptyStatePanel role="alert" className="py-6">
-            <div className="flex flex-col items-center gap-2">
-              <span>Couldn't load skills.</span>
-              {onRetry ? (
-                <Button variant="outline" size="sm" onClick={onRetry}>
-                  Retry
-                </Button>
-              ) : null}
-            </div>
-          </EmptyStatePanel>
-        ) : isLoading ? (
-          <div className="space-y-px" aria-busy aria-label="Loading skills">
-            {[
-              ["w-28", "w-48"],
-              ["w-36", "w-40"],
-              ["w-24", "w-56"],
-              ["w-32", "w-44"],
-              ["w-40", "w-52"],
-              ["w-28", "w-44"],
-            ].map(([nameWidth, descWidth]) => (
-              <div
-                key={`${nameWidth}-${descWidth}`}
-                className="flex items-center gap-1.5 px-2 py-1.5"
-              >
-                <Skeleton className="size-3.5 rounded" />
-                <Skeleton className={cn("h-3", nameWidth)} />
-                <Skeleton className={cn("h-3", descWidth)} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <>
-            {groups.length === 0 ? (
-              normalizedQuery === "" ? null : (
-                <EmptyStatePanel className="py-6">
-                  {`No skills match "${query}"`}
-                </EmptyStatePanel>
-              )
-            ) : (
-              <div className="space-y-2">
-            {groups.map((group) => {
-              const isCollapsed = collapsed.has(group.key);
-              return (
-                <section
-                  key={group.key}
-                  className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground"
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.key)}
-                    aria-expanded={!isCollapsed}
-                    className="flex w-full items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
-                  >
-                    <Icon
-                      name="ChevronRight"
-                      className={cn(
-                        "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
-                        !isCollapsed && "rotate-90",
-                      )}
-                      aria-hidden
-                    />
-                    {group.providerId ? (
-                      <ProviderLogo
-                        providerId={group.providerId}
-                        className="size-3.5"
-                      />
-                    ) : null}
-                    <span className="font-medium">{group.label}</span>
-                    <span className="text-subtle-foreground">
-                      {group.skills.length}
-                    </span>
-                  </button>
-                  {isCollapsed ? null : (
-                    <div
-                      className="overflow-y-auto border-t border-border-seam p-1"
-                      style={skillListViewportStyle}
-                    >
-                      <div className="flex flex-col gap-px">
-                        {group.skills.map((skill) => (
-                          <SkillRow
-                            key={`${group.key}-${skill.scope}-${skill.name}`}
-                            skill={skill}
-                            onSelect={() => onSelectSkill(skill)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </section>
-              );
-            })}
-              </div>
-            )}
-          </>
-        )}
       </div>
-    </PageShell>
+      {hasError ? (
+        // Failure is direction, not a dead end: say what happened plainly and
+        // offer the way out, kept calm rather than alarmist.
+        <EmptyStatePanel role="alert" className="py-6">
+          <div className="flex flex-col items-center gap-2">
+            <span>Couldn't load skills.</span>
+            {onRetry ? (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        </EmptyStatePanel>
+      ) : isLoading ? (
+        <div className="space-y-px" aria-busy aria-label="Loading skills">
+          {[
+            ["w-28", "w-48"],
+            ["w-36", "w-40"],
+            ["w-24", "w-56"],
+            ["w-32", "w-44"],
+            ["w-40", "w-52"],
+            ["w-28", "w-44"],
+          ].map(([nameWidth, descWidth]) => (
+            <div
+              key={`${nameWidth}-${descWidth}`}
+              className="flex items-center gap-1.5 px-2 py-1.5"
+            >
+              <Skeleton className="size-3.5 rounded" />
+              <Skeleton className={cn("h-3", nameWidth)} />
+              <Skeleton className={cn("h-3", descWidth)} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {groups.length === 0 ? (
+            normalizedQuery === "" ? null : (
+              <EmptyStatePanel className="py-6">
+                {`No skills match "${query}"`}
+              </EmptyStatePanel>
+            )
+          ) : (
+            <div className="space-y-2">
+              {groups.map((group) => {
+                const isCollapsed = collapsed.has(group.key);
+                return (
+                  <section
+                    key={group.key}
+                    className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={!isCollapsed}
+                      className="flex w-full items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
+                    >
+                      <Icon
+                        name="ChevronRight"
+                        className={cn(
+                          "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+                          !isCollapsed && "rotate-90",
+                        )}
+                        aria-hidden
+                      />
+                      {group.providerId ? (
+                        <ProviderLogo
+                          providerId={group.providerId}
+                          className="size-3.5"
+                        />
+                      ) : null}
+                      <span className="font-medium">{group.label}</span>
+                      <span className="text-subtle-foreground">
+                        {group.skills.length}
+                      </span>
+                    </button>
+                    {isCollapsed ? null : (
+                      <div
+                        className="overflow-y-auto border-t border-border-seam p-1"
+                        style={skillListViewportStyle}
+                      >
+                        <div className="flex flex-col gap-px">
+                          {group.skills.map((skill) => (
+                            <SkillRow
+                              key={`${group.key}-${skill.scope}-${skill.name}`}
+                              skill={skill}
+                              onSelect={() => onSelectSkill(skill)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -644,7 +637,7 @@ function SkillDetailDialog({
   );
 }
 
-export function SkillsView() {
+export function SkillsLibrary() {
   const navigate = useNavigate();
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? [];
@@ -660,6 +653,7 @@ export function SkillsView() {
         state: {
           focusPrompt: true,
           initialPrompt: prompt ?? CREATE_SKILL_PROMPT,
+          replaceInitialPrompt: true,
           createDraftKind: "skill",
         },
       });
@@ -682,5 +676,13 @@ export function SkillsView() {
         onClose={() => setSelectedSkill(null)}
       />
     </>
+  );
+}
+
+export function SkillsView() {
+  return (
+    <PageShell contentClassName="pt-4 md:pt-5" maxWidthClassName="max-w-5xl">
+      <SkillsLibrary />
+    </PageShell>
   );
 }

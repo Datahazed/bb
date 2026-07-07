@@ -349,7 +349,7 @@ function buildAutomationCreatedSystemRow({
     operationKind: "automation-created",
     automationCreated,
     title: message.title,
-    // The title + "View loop" link carry the whole message; no body block.
+    // The title + "View automation" link carry the whole message; no body block.
     detail: null,
     status: message.status ?? null,
     completedAt: message.completedAt,

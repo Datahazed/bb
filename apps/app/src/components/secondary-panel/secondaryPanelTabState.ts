@@ -96,6 +96,7 @@ export function isSecondaryFileTab(
     case "terminal":
     case "new-tab":
     case "side-chat":
+    case "plugin-panel":
       return true;
     case "thread-info":
     case "git-diff":
@@ -415,6 +416,7 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "new-tab":
       case "side-chat":
       case "thread-storage-file-preview":
+      case "plugin-panel":
         displayable.push(tab);
         break;
       case "thread-info":

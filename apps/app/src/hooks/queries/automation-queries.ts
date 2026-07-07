@@ -151,7 +151,7 @@ export function useUpdateAutomation() {
   const queryClient = useQueryClient();
 
   return useMutation<Automation, Error, UpdateAutomationMutationRequest>({
-    meta: { errorMessage: "Failed to update loop." },
+    meta: { errorMessage: "Failed to update automation." },
     mutationFn: (request: UpdateAutomationMutationRequest) =>
       api.updateAutomation(request),
     onSuccess: (_data, variables) => {

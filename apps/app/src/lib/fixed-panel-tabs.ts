@@ -17,9 +17,7 @@ import {
   type FixedPanelTabsState,
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
-import {
-  type ThreadSecondaryPanel,
-} from "./thread-secondary-panel";
+import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
 
 const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
 
@@ -82,22 +80,13 @@ function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
     : disabledFixedPanelTabsStateAtom;
 }
 
-function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {
-  switch (panel) {
-    case "thread-info":
-      return createThreadInfoFixedPanelTab().id;
-    case "git-diff":
-      return createGitDiffFixedPanelTab().id;
-  }
+function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
+  if (panel === "git-diff") return createGitDiffFixedPanelTab();
+  return createThreadInfoFixedPanelTab();
 }
 
-function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
-  switch (panel) {
-    case "thread-info":
-      return createThreadInfoFixedPanelTab();
-    case "git-diff":
-      return createGitDiffFixedPanelTab();
-  }
+function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {
+  return buildSecondaryPanelTab(panel).id;
 }
 
 function findActiveTerminalTab(

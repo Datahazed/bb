@@ -22,6 +22,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -33,9 +34,8 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
-  getAutomationsRoutePath,
   getRootComposeRoutePath,
-  getSkillsRoutePath,
+  getToolsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -78,7 +78,7 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isAutomationsView, isSkillsView } = useRouteState();
+  const { isToolsView } = useRouteState();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
@@ -165,14 +165,9 @@ export function AppSidebar({
     });
   }, [closeOnMobile, navigate]);
 
-  const handleOpenAutomations = useCallback(() => {
+  const handleOpenTools = useCallback(() => {
     closeOnMobile();
-    void navigate(getAutomationsRoutePath());
-  }, [closeOnMobile, navigate]);
-
-  const handleOpenSkills = useCallback(() => {
-    closeOnMobile();
-    void navigate(getSkillsRoutePath());
+    void navigate(getToolsRoutePath());
   }, [closeOnMobile, navigate]);
 
   const handleThreadSearchKeyDown = useCallback<
@@ -304,10 +299,8 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
-            onOpenSkills={handleOpenSkills}
-            isSkillsActive={isSkillsView}
-            onOpenAutomations={handleOpenAutomations}
-            isAutomationsActive={isAutomationsView}
+            onOpenTools={handleOpenTools}
+            isToolsActive={isToolsView}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
@@ -319,6 +312,7 @@ export function AppSidebar({
             }}
           />
         </div>
+        <PluginNavSidebarItems onNavigate={closeOnMobile} />
         <SidebarContent>
           <ProjectList
             onNewProject={

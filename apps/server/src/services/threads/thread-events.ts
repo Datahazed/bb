@@ -914,8 +914,8 @@ export interface AppendAutomationCreatedEventArgs {
 
 /**
  * Append an informational system row to the thread whose agent just created a
- * loop, linking the loop's name to its detail page. Best-effort: callers should
- * not fail the loop creation if this throws.
+ * automation, linking the automation's name to its detail page. Best-effort:
+ * callers should not fail the automation creation if this throws.
  */
 export function appendAutomationCreatedEvent(
   deps: Pick<AppDeps, "db" | "hub">,
@@ -930,7 +930,7 @@ export function appendAutomationCreatedEvent(
       operation: "automation_created",
       operationId: createEventId(),
       status: "completed",
-      message: `Created loop “${args.automationName}”`,
+      message: `Created automation “${args.automationName}”`,
       metadata: {
         automationId: args.automationId,
         projectId: args.projectId,

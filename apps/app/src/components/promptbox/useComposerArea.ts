@@ -21,7 +21,6 @@ import {
   type ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   useThreadCreationOptions,
   type UseThreadCreationOptionsResult,
@@ -120,13 +119,11 @@ interface UseComposerAreaBaseOptions {
   permission: ComposerAreaPermissionConfig;
 }
 
-export interface UseComposerAreaComponentLocalOptions
-  extends UseComposerAreaBaseOptions {
+export interface UseComposerAreaComponentLocalOptions extends UseComposerAreaBaseOptions {
   creationOptions: UseComponentLocalCreationOptions;
 }
 
-export interface UseComposerAreaNewThreadOptions
-  extends UseComposerAreaBaseOptions {
+export interface UseComposerAreaNewThreadOptions extends UseComposerAreaBaseOptions {
   creationOptions: UseNewThreadCreationOptions;
 }
 
@@ -174,7 +171,9 @@ export function useComposerArea(
   options: UseComposerAreaNewThreadOptions,
 ): UseComposerAreaResult<CreateExecutionInputSources>;
 export function useComposerArea(
-  options: UseComposerAreaComponentLocalOptions | UseComposerAreaNewThreadOptions,
+  options:
+    | UseComposerAreaComponentLocalOptions
+    | UseComposerAreaNewThreadOptions,
 ): UseComposerAreaResult<ScopedExecutionInputSources> {
   const {
     attachments,
@@ -227,10 +226,7 @@ export function useComposerArea(
         : mentions,
     [mentions, threadCreationOptions.environmentSelectionValue],
   );
-  const promptMentions = usePromptMentions(
-    mentionsProjectId,
-    resolvedMentions,
-  );
+  const promptMentions = usePromptMentions(mentionsProjectId, resolvedMentions);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -239,10 +235,7 @@ export function useComposerArea(
     () => buildProviderPromptActionProps(selectedProviderComposerActions),
     [selectedProviderComposerActions],
   );
-  const promptActions = useMemo(
-    () => withLoopPromptAction(providerPromptActions.promptActions),
-    [providerPromptActions.promptActions],
-  );
+  const promptActions = providerPromptActions.promptActions;
   const providerPromptActionProps = useMemo(
     () => ({ promptActions }),
     [promptActions],

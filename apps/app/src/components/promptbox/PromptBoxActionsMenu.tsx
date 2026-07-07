@@ -11,7 +11,7 @@ import { Icon, type IconName } from "@/components/ui/icon.js";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
-export type PromptBoxActionKind = "skills" | "plan" | "goal" | "loop";
+export type PromptBoxActionKind = "skills" | "plan" | "goal";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -26,20 +26,13 @@ interface PromptBoxActionsMenuProps {
   onAction: (action: PromptBoxAction) => void;
 }
 
-// Skill creation always targets a bb skill (the only manageable scope). The
-// loop-prompt constant lives in `@/lib/loop-prompt` (main's refactor).
+// Skill creation always targets a bb skill (the only manageable scope).
 export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
-export const LOOP_PROMPT_ACTION: PromptBoxAction = {
-  kind: "loop",
-  command: { trigger: "/", name: "loop", trailingText: " " },
-  text: "/loop ",
-};
 
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
   "skills",
   "plan",
   "goal",
-  "loop",
 ];
 
 const PROMPT_ACTION_PRESENTATION = {
@@ -55,23 +48,10 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Goal",
     icon: "Target",
   },
-  loop: {
-    label: "Loop",
-    icon: "Repeat",
-  },
 } as const satisfies Record<
   PromptBoxActionKind,
   { label: string; icon: IconName }
 >;
-
-export function withLoopPromptAction(
-  actions: readonly PromptBoxAction[],
-): PromptBoxAction[] {
-  if (actions.some((action) => action.kind === "loop")) {
-    return [...actions];
-  }
-  return [...actions, LOOP_PROMPT_ACTION];
-}
 
 function orderedPromptActions(
   actions: readonly PromptBoxAction[],

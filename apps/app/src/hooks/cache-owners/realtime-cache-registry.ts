@@ -87,6 +87,13 @@ import {
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
 } from "../queries/query-keys";
+import { allPluginContributionsQueryKeyPrefix } from "../queries/plugin-contribution-queries";
+import {
+  allPluginListQueryKeyPrefix,
+  allPluginSettingsViewQueryKeyPrefix,
+} from "../queries/plugin-settings-queries";
+import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
+import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
 import { uiSourceStatusQueryKey } from "../queries/ui-source-queries";
 import {
   getProjectListInvalidationQueryKeys,
@@ -418,6 +425,18 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
+    ],
+  },
+  // Plugin load/dispose/enable/disable/reload changes the host-rendered
+  // contributions (thread actions, slash commands, mention providers), the
+  // Settings plugin list/forms, and the per-plugin useSettings() values.
+  // It also drives the live frontend-bundle reconcile (re-import changed
+  // bundles, drop removed ones) — a side effect, not a query invalidation.
+  "plugins-changed": {
+    dirty: [
+      dirtyPluginContributionQueries,
+      dirtyPluginManagementQueries,
+      reconcilePluginFrontendBundles,
     ],
   },
   // The live page reload after a UI-source rebuild is owned entirely by the
@@ -882,4 +901,26 @@ function dirtySystemExecutionOptionQueries(): QueryKey[] {
 
 function dirtyUiSourceStatusQueries(): QueryKey[] {
   return [uiSourceStatusQueryKey()];
+}
+
+function dirtyPluginContributionQueries(): QueryKey[] {
+  return [allPluginContributionsQueryKeyPrefix()];
+}
+
+function dirtyPluginManagementQueries(): QueryKey[] {
+  return [
+    allPluginListQueryKeyPrefix(),
+    allPluginSettingsViewQueryKeyPrefix(),
+    allPluginSettingsQueryKeyPrefix(),
+  ];
+}
+
+/**
+ * Live frontend reload (plugin design §5.1): re-import changed plugin
+ * bundles and replace their slot registrations wholesale. Debounced +
+ * serialized inside plugin-frontend; touches the slot store, not the query
+ * cache, hence the void return.
+ */
+function reconcilePluginFrontendBundles(): void {
+  schedulePluginFrontendReconcile();
 }

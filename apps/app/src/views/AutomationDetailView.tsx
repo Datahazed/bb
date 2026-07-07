@@ -105,10 +105,10 @@ function isSilentRun(run: AutomationRun): boolean {
 }
 
 /**
- * Run status glyph, reusing the sidebar thread-status vocabulary so a loop run
- * reads like a thread in the sidebar: a muted spinner while running, the sidebar
- * success dot when done, and a destructive CircleX on failure. No bespoke
- * run-status icons.
+ * Run status glyph, reusing the sidebar thread-status vocabulary so an
+ * automation run reads like a thread in the sidebar: a muted spinner while
+ * running, the sidebar success dot when done, and a destructive CircleX on
+ * failure. No bespoke run-status icons.
  */
 function RunStatusGlyph({ status }: { status: AutomationRun["status"] }) {
   switch (status) {
@@ -199,7 +199,8 @@ const PERMISSION_LABEL: Record<string, string> = {
 
 /**
  * Execution shown the way the prompt box shows it: provider logo + model, with
- * the permission mode as a chip. Script loops show interpreter/file/timeout.
+ * the permission mode as a chip. Script automations show
+ * interpreter/file/timeout.
  */
 function ExecutionSummary({ automation }: { automation: Automation }) {
   const { execution } = automation;
@@ -431,7 +432,7 @@ function automationComposerEnvironmentId(
 }
 
 /**
- * Form-local composer for editing an agent loop. It reuses the prompt-box
+ * Form-local composer for editing an agent automation. It reuses the prompt-box
  * editor internals plus execution controls, but owns a form save payload rather
  * than thread submission state.
  */
@@ -671,7 +672,7 @@ interface AutomationDetailContentProps {
    * Omit it (as the full page does) to edit in place.
    */
   onEdit?: () => void;
-  /** Shows a "back to Loops" link above the title (full page only). */
+  /** Shows a "back to Automations" link above the title (full page only). */
   backHref?: string;
   /** Optional route state for the back link. Used only by edit-opened details. */
   backState?: { openAutomationId: string };
@@ -791,7 +792,7 @@ export function AutomationDetailContent({
               className="size-3.5 shrink-0"
               aria-hidden
             />
-            Loops
+            Automations
           </Link>
         ) : null}
         <div className="min-w-0">
@@ -875,7 +876,7 @@ export function AutomationDetailContent({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     className="h-8 text-sm"
-                    aria-label="Loop name"
+                    aria-label="Automation name"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1056,8 +1057,8 @@ export function AutomationDetailContent({
               {automation.enabled
                 ? automation.nextRunAt !== null
                   ? `Runs appear here after the next trigger, ${formatRunTimestamp(automation.nextRunAt)}.`
-                  : "Runs appear here once the loop is scheduled."
-                : "Resume the loop to schedule its first run."}
+                  : "Runs appear here once the automation is scheduled."
+                : "Resume the automation to schedule its first run."}
             </EmptyStatePanel>
           ) : (
             <div className="rounded-lg border border-border bg-card px-3.5">
@@ -1144,7 +1145,7 @@ export function AutomationDetailView() {
     return (
       <PageShell contentClassName="pt-4 md:pt-5">
         <div className="mx-auto w-full max-w-3xl">
-          <p className="text-sm text-destructive">Failed to load loop.</p>
+          <p className="text-sm text-destructive">Failed to load automation.</p>
         </div>
       </PageShell>
     );
@@ -1183,7 +1184,7 @@ export function AutomationDetailView() {
         onOpenChange={deleteDialog.onOpenChange}
       >
         <ConfirmDeleteDialogContent
-          title="Delete loop?"
+          title="Delete automation?"
           description={`"${automation.name}" and its run history will be permanently removed. This can't be undone.`}
           confirmLabel="Delete"
           pending={deleteAutomation.isPending}

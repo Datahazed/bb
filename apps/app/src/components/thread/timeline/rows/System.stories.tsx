@@ -297,10 +297,10 @@ const parentChangeTransfer: TimelineRow = systemRow({
 });
 
 // system/operation with operation="automation_created". The projector routes
-// this to the automation-created row variant, which links the loop name to its
-// detail page. Emitted when an agent creates a loop from this thread.
+// this to the automation-created row variant, which links the automation name to its
+// detail page. Emitted when an agent creates an automation from this thread.
 const automationCreated: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:automation-created:evt_loop",
+  id: "thr_wxmxksux4w:op:automation-created:evt_automation",
   threadId: "thr_wxmxksux4w",
   turnId: null,
   sourceSeqStart: 18,
@@ -309,7 +309,7 @@ const automationCreated: TimelineRow = systemRow({
   createdAt: 1777890000000,
   systemKind: "operation",
   operationKind: "automation-created",
-  title: "Created loop “Disk space watchdog”",
+  title: "Created automation “Disk space watchdog”",
   detail: null,
   status: "completed",
   completedAt: 1777890000000,
@@ -514,7 +514,7 @@ export function Operations() {
       </StoryRow>
       <StoryRow
         label="automation-created"
-        hint="agent created a loop from this thread; the loop name links to its detail"
+        hint="agent created an automation from this thread; the automation name links to its detail"
       >
         <TimelineStage>
           <ThreadTimelineRows

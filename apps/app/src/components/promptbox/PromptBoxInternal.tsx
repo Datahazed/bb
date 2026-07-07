@@ -24,6 +24,7 @@ import {
 import type {
   ActiveTrigger,
   CommandMenuState,
+  ComposerCommandSuggestion,
   MentionMenuState,
   ProviderCommandSuggestion,
   PromptMentionSuggestion,
@@ -35,6 +36,7 @@ import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-t
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
@@ -198,7 +200,7 @@ export interface TypeaheadMentionConfig {
  */
 export interface TypeaheadCommandConfig {
   trigger: PromptMentionCommandTrigger | null;
-  suggestions: readonly ProviderCommandSuggestion[];
+  suggestions: readonly ComposerCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
   hasMore: boolean;
@@ -1636,7 +1638,8 @@ export function PromptBoxInternal({
     !commandLoading &&
     !commandError &&
     commandSuggestions.length === 0;
-  const showTypeaheadMenu = activeTrigger !== null && !isCommandTriggerLiteral;
+  const showTypeaheadMenu =
+    activeTrigger !== null && !isCommandTriggerLiteral;
 
   const typeaheadMenuState: TypeaheadMenuState =
     activeTriggerKind === "command"
@@ -2569,6 +2572,7 @@ export function PromptBoxInternal({
             onAction={applyPromptAction}
           />
           {footerStart}
+          <PluginComposerAccessories />
         </div>
         <div className="flex shrink-0 flex-row items-center gap-1">
           <Button

@@ -136,9 +136,7 @@ function createThreadOperationMetadata(
   };
 }
 
-function threadInterruptedTitle(
-  reason: SystemThreadInterruptedReason,
-): string {
+function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
   switch (reason) {
     case "manual-stop":
       return "Stopped manually";
@@ -218,7 +216,7 @@ export function threadOperationTitle(
       return ownershipChangeOperationTitle(meta, threadName);
     case "automation_created": {
       const name = meta.metadata?.automationName?.trim();
-      return name ? `Created loop “${name}”` : "Created a loop";
+      return name ? `Created automation “${name}”` : "Created an automation";
     }
     case "other":
       return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${

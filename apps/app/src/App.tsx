@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
@@ -14,6 +14,7 @@ import {
   useUpdateAvailableToast,
 } from "./hooks/useUpdateAvailableToast";
 import { useUiSourceStatusToast } from "./hooks/useUiSourceStatusToast";
+import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
@@ -21,7 +22,11 @@ import {
   AUTOMATIONS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PLUGIN_PANEL_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
@@ -29,6 +34,9 @@ import {
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "./components/ui/icon";
 import {
@@ -44,19 +52,9 @@ const SettingsView = lazy(() =>
     default: m.SettingsView,
   })),
 );
-const AutomationsView = lazy(() =>
-  import("./views/AutomationsView").then((m) => ({
-    default: m.AutomationsView,
-  })),
-);
-const AutomationDetailView = lazy(() =>
-  import("./views/AutomationDetailView").then((m) => ({
-    default: m.AutomationDetailView,
-  })),
-);
-const SkillsView = lazy(() =>
-  import("./views/SkillsView").then((m) => ({
-    default: m.SkillsView,
+const ToolsView = lazy(() =>
+  import("./views/ToolsView").then((m) => ({
+    default: m.ToolsView,
   })),
 );
 const ProjectSettingsView = lazy(() =>
@@ -72,6 +70,11 @@ const ArchivedThreadsView = lazy(() =>
 const PopoutChatView = lazy(() =>
   import("./views/PopoutChatView").then((m) => ({
     default: m.PopoutChatView,
+  })),
+);
+const PluginPanelView = lazy(() =>
+  import("./views/PluginPanelView").then((m) => ({
+    default: m.PluginPanelView,
   })),
 );
 
@@ -101,6 +104,18 @@ function PopoutRouteFallback() {
   );
 }
 
+function LegacyAutomationDetailRedirect() {
+  const { projectId = "", automationId = "" } = useParams();
+  return (
+    <Navigate
+      to={`/tools/automations/${encodeURIComponent(projectId)}/${encodeURIComponent(
+        automationId,
+      )}`}
+      replace
+    />
+  );
+}
+
 function AppRoutes() {
   return (
     <AppLayout>
@@ -109,14 +124,29 @@ function AppRoutes() {
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
-            path={AUTOMATIONS_ROUTE_PATH}
-            element={<AutomationsView />}
+            path={TOOLS_ROUTE_PATH}
+            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
+          />
+          <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
+          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
+            element={<ToolsView />}
+          />
+          <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={LEGACY_SKILLS_ROUTE_PATH}
+            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
           <Route
-            path={AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<AutomationDetailView />}
+            path={LEGACY_AUTOMATIONS_ROUTE_PATH}
+            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
           />
-          <Route path={SKILLS_ROUTE_PATH} element={<SkillsView />} />
+          <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
+            element={<LegacyAutomationDetailRedirect />}
+          />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}
@@ -141,6 +171,7 @@ function AppRoutes() {
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
+          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
           <Route
             path="*"
             element={<Navigate to={APP_ROOT_ROUTE_PATH} replace />}
@@ -168,6 +199,8 @@ export function App() {
   // Reconcile the favicon tint with the server-stored appearance (and migrate
   // any legacy localStorage-only preference on first load).
   useFaviconColorSync();
+  // Load plugin frontend bundles once the `plugins` experiment resolves.
+  usePluginFrontendBoot();
 
   return (
     <QuickCreateProjectProvider>

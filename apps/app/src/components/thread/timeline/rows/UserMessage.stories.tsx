@@ -46,7 +46,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
     case "thread":
       return `/projects/proj_demo/threads/${link.threadId}`;
     case "automation":
-      return `/automations/${link.projectId}/${link.automationId}`;
+      return `/tools/automations/${link.projectId}/${link.automationId}`;
   }
 }
 
@@ -861,11 +861,7 @@ export function ParentChildSystemMessages() {
   return (
     <StoryCard>
       {parentChildSystemMessageFixtures.map((fixture) => (
-        <StoryRow
-          key={fixture.label}
-          label={fixture.label}
-          hint={fixture.hint}
-        >
+        <StoryRow key={fixture.label} label={fixture.label} hint={fixture.hint}>
           <TimelineStage>
             <ConversationMessageContent
               role="user"

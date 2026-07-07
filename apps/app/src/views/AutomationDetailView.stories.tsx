@@ -113,17 +113,16 @@ const agentRuns: AutomationRun[] = [
   }),
 ];
 
-// A script loop that escalates: a cheap script ticks on schedule and stays
-// silent when there's nothing to do, but spawns an agent thread when it finds
-// real work — the Hermes "script -> agent on escalation" shape.
+// A script automation that stays quiet until it finds work, then opens an agent
+// thread with the failure context.
 const escalatingScriptAutomation = makeAutomation({
-  id: "auto_flaky_sweep",
-  name: "Flaky-test sweep",
+  id: "auto_ci_failure_triage",
+  name: "CI failure triage",
   projectId: PROJECT_IDS.bb,
   origin: "agent",
   execution: {
     mode: "script",
-    scriptFile: "flaky-sweep.sh",
+    scriptFile: "ci-failure-triage.sh",
     interpreter: "bash",
     timeoutMs: 120_000,
   },
@@ -219,7 +218,7 @@ export function RunsError() {
   return <Story runs={[]} runsError />;
 }
 
-// A script loop that exercises the less-common config — an inline `sh` script in
+// A script automation that exercises the less-common config — an inline `sh` script in
 // a reused environment — paired with a run history that hits every run-row state
 // in one pane: running, succeeded, failed, a silent (no-output) run, an agent
 // run with a thread, a script run that spawned a thread, and a long error.
@@ -307,7 +306,7 @@ const allStatesRuns: AutomationRun[] = [
   }),
 ];
 
-// Agent loop that fills the rest of the config surface: Claude Code, full access,
+// Agent automation that fills the rest of the config surface: Claude Code, full access,
 // an unmanaged workspace, an "app"-created origin, and auto-archive on.
 const agentAllOptionsAutomation = makeAutomation({
   id: "auto_all_opts",
@@ -340,20 +339,20 @@ export function AgentAllOptions() {
   return <Story automation={agentAllOptionsAutomation} runs={agentRuns} />;
 }
 
-/** The full-page edit form for a script loop (opened via the Edit action). */
+/** The full-page edit form for a script automation (opened via the Edit action). */
 export function Editing() {
   return <Story automation={allStatesAutomation} initialEditing />;
 }
 
-/** Script loop mid-save: the Cancel + Save changes buttons are disabled. */
+/** Script automation mid-save: the Cancel + Save changes buttons are disabled. */
 export function EditingScriptSaving() {
   return <Story automation={allStatesAutomation} initialEditing savePending />;
 }
 
 /**
- * Editing an agent loop — the richer composer: prompt editor, provider/model +
+ * Editing an agent automation — the richer composer: prompt editor, provider/model +
  * permission pickers, and auto-archive. Wrapped in the model-picker seeder so the
- * pickers populate (this loop is Claude Code · full access · auto-archive on).
+ * pickers populate (this automation is Claude Code · full access · auto-archive on).
  */
 export function EditingAgent() {
   return (
@@ -367,7 +366,7 @@ export function EditingAgent() {
   );
 }
 
-/** Agent loop mid-save: the composer's Save action is disabled. */
+/** Agent automation mid-save: the composer's Save action is disabled. */
 export function EditingAgentSaving() {
   return (
     <ModelPickerStoryQueryProvider>

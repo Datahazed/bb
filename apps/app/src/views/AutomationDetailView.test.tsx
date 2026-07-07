@@ -81,7 +81,7 @@ function renderContent(
 }
 
 describe("AutomationDetailContent", () => {
-  it("renders the loop name with the next-run line (no mode/status pills)", () => {
+  it("renders the automation name with the next-run line (no mode/status pills)", () => {
     const markup = renderContent({ automation: makeAutomation() });
     expect(markup).toContain("Disk space watchdog");
     expect(markup).toContain("Next run");
@@ -126,7 +126,7 @@ describe("AutomationDetailContent", () => {
     expect(markup).toMatch(/aria-label="[^"]* actions"/);
     expect(markup).not.toContain(">Edit<");
     expect(markup).not.toContain(">Delete<");
-    // No Run now here (the overview runs loops), no "Active" label.
+    // No Run now here (the overview runs automations), no "Active" label.
     expect(markup).not.toContain("Run now");
     expect(markup).not.toContain(">Active<");
   });

@@ -29,6 +29,7 @@ import {
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   createThreadRecord,
   getThreadSafe,
@@ -38,7 +39,10 @@ import {
   resolveStableThreadRequestEnvironment,
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
-import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
+import {
+  resolveCreateThreadEnvironment,
+  resolveProjectDefaultThreadEnvironment,
+} from "./thread-default-policy.js";
 import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
@@ -455,12 +459,48 @@ async function createProvisioningThread(
 
 export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
-  requestInput: ThreadCreateServiceRequestInput,
+  rawRequestInput: ThreadCreateServiceRequestInput,
 ) {
   const project = requirePublicProjectForThreadCreate(
     deps,
-    requestInput.projectId,
+    rawRequestInput.projectId,
   );
+  if (rawRequestInput.origin === "plugin") {
+    if (rawRequestInput.originPluginId === undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        'originPluginId is required when origin is "plugin"',
+      );
+    }
+  } else if (rawRequestInput.originPluginId !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      'originPluginId requires origin "plugin"',
+    );
+  }
+  // Resolve the server-owned "project-default" environment marker into a
+  // concrete environment before any workspace/provisioning logic runs.
+  const requestInput = {
+    ...rawRequestInput,
+    environment:
+      rawRequestInput.environment.type === "project-default"
+        ? resolveProjectDefaultThreadEnvironment(deps, {
+            projectId: rawRequestInput.projectId,
+          })
+        : rawRequestInput.environment,
+  };
+  // Plugin mentions resolve once at send time (plugin design §4.9): each
+  // unique mention becomes an agent-only context input appended after the
+  // user's message; a resolve failure throws a 422 before the thread is
+  // created.
+  const pluginMentionContext = await resolvePluginMentionContextInputs(
+    requestInput.input,
+  );
+  if (pluginMentionContext.length > 0) {
+    requestInput.input = [...requestInput.input, ...pluginMentionContext];
+  }
   assertProjectWorkspaceCompatibility(project, requestInput);
   const originKind =
     requestInput.originKind ?? requestInput.childOrigin ?? null;

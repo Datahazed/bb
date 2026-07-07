@@ -1,20 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
+  getAutomationDetailRoutePath,
+  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
+  getPluginDetailRoutePath,
+  getPluginsRoutePath,
   getPopoutRoutePath,
   getPopoutThreadRoutePath,
   getProjectArchivedRoutePath,
   getProjectlessArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
+  getSkillsRoutePath,
   getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
+  getToolsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
+  LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   resolveRouteHref,
   ROOT_COMPOSE_ROUTE_PATH,
+  ROUTE_PATTERNS,
 } from "./route-paths";
 
 describe("route path helpers", () => {
@@ -78,6 +88,92 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
+  });
+
+  it("builds and recognizes the Tools routes", () => {
+    expect(getToolsRoutePath()).toBe("/tools");
+    expect(getSkillsRoutePath()).toBe("/tools/skills");
+    expect(getPluginsRoutePath()).toBe("/tools/plugins");
+    expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
+      "/tools/plugins/github",
+    );
+    expect(getAutomationsRoutePath()).toBe("/tools/automations");
+    expect(
+      getAutomationDetailRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/tools/automations/proj_standard/auto_standard");
+
+    for (const path of [
+      "/tools",
+      "/tools/skills",
+      "/tools/plugins",
+      "/tools/plugins/github",
+      "/tools/automations",
+      "/tools/automations/proj_standard/auto_standard",
+    ]) {
+      expect(isRoutePath({ path })).toBe(true);
+    }
+  });
+
+  it("keeps old Skills and Automations paths recognizable for redirects", () => {
+    expect(LEGACY_SKILLS_ROUTE_PATH).toBe("/skills");
+    expect(LEGACY_AUTOMATIONS_ROUTE_PATH).toBe("/automations");
+    expect(LEGACY_AUTOMATION_DETAIL_ROUTE_PATH).toBe(
+      "/automations/:projectId/:automationId",
+    );
+    expect(isRoutePath({ path: "/skills" })).toBe(true);
+    expect(isRoutePath({ path: "/automations" })).toBe(true);
+    expect(
+      isRoutePath({ path: "/automations/proj_standard/auto_standard" }),
+    ).toBe(true);
+  });
+
+  it("recognizes every declared route pattern's concrete example", () => {
+    const examplesByPattern = new Map<string, string>([
+      ["/", "/"],
+      ["/auth/callback", "/auth/callback"],
+      ["/popout", "/popout"],
+      ["/popout/threads/:threadId", "/popout/threads/thr_personal"],
+      [
+        "/popout/projects/:projectId/threads/:threadId",
+        "/popout/projects/proj_standard/threads/thr_standard",
+      ],
+      ["/settings", "/settings"],
+      ["/tools", "/tools"],
+      ["/tools/skills", "/tools/skills"],
+      ["/tools/plugins", "/tools/plugins"],
+      ["/tools/plugins/:pluginId", "/tools/plugins/github"],
+      ["/tools/automations", "/tools/automations"],
+      [
+        "/tools/automations/:projectId/:automationId",
+        "/tools/automations/proj_standard/auto_standard",
+      ],
+      ["/skills", "/skills"],
+      ["/automations", "/automations"],
+      [
+        "/automations/:projectId/:automationId",
+        "/automations/proj_standard/auto_standard",
+      ],
+      ["/projects/:projectId", "/projects/proj_standard"],
+      ["/archived", "/archived"],
+      ["/projects/:projectId/settings", "/projects/proj_standard/settings"],
+      ["/projects/:projectId/archived", "/projects/proj_standard/archived"],
+      ["/threads/:threadId", "/threads/thr_personal"],
+      [
+        "/projects/:projectId/threads/:threadId",
+        "/projects/proj_standard/threads/thr_standard",
+      ],
+      ["/plugins/:pluginId/:panelPath", "/plugins/github/pulls"],
+    ]);
+
+    expect([...examplesByPattern.keys()].sort()).toEqual(
+      [...ROUTE_PATTERNS].sort(),
+    );
+    for (const [pattern, example] of examplesByPattern) {
+      expect(isRoutePath({ path: example }), pattern).toBe(true);
+    }
   });
 
   it("recognizes the desktop popout route", () => {

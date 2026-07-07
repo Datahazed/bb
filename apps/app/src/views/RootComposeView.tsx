@@ -15,6 +15,7 @@ import {
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
+  type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadListEntry,
@@ -36,7 +37,6 @@ import {
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
@@ -65,6 +65,8 @@ import { Button } from "@/components/ui/button.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -82,9 +84,7 @@ import {
 } from "@/hooks/queries/project-queries";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
-import {
-  useHostProviderCliStatus,
-} from "@/hooks/queries/system-queries";
+import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -130,6 +130,7 @@ import {
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
+  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
 } from "@/lib/bb-desktop";
@@ -178,6 +179,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
@@ -575,6 +577,17 @@ export function readInitialPromptFromLocationState(
   return null;
 }
 
+export function shouldReplaceInitialPromptFromLocationState(
+  state: unknown,
+): boolean {
+  return (
+    state !== null &&
+    typeof state === "object" &&
+    "replaceInitialPrompt" in state &&
+    state.replaceInitialPrompt === true
+  );
+}
+
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
   if (thread.environmentId === null) return false;
   return (
@@ -747,7 +760,9 @@ export function buildRootComposeTerminalSessions({
   environmentTerminalSessions,
   globalTerminalSessions,
   terminalTarget,
-}: BuildRootComposeTerminalSessionsArgs): readonly TerminalSession[] | undefined {
+}: BuildRootComposeTerminalSessionsArgs):
+  | readonly TerminalSession[]
+  | undefined {
   if (terminalTarget?.kind === "environment") {
     return environmentTerminalSessions;
   }
@@ -917,7 +932,9 @@ export function RootComposeView(props: RootComposeViewProps) {
   const primaryHost = useMemo(() => {
     const hosts = hostsQuery.data;
     if (!hosts || hosts.length === 0) return null;
-    return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
+    return (
+      hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null
+    );
   }, [hostsQuery.data]);
   const primaryHostId = primaryHost?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
@@ -1230,15 +1247,27 @@ export function RootComposeView(props: RootComposeViewProps) {
   // empty so it never clobbers an in-progress draft, then cleared from
   // location.state so a refresh starts from the persisted draft.
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
+  const replaceInitialPrompt = promptDraft.setDraft;
   useEffect(() => {
     const initialPrompt = readInitialPromptFromLocationState(location.state);
     if (initialPrompt === null) return;
-    seedInitialPrompt({ text: initialPrompt, mentions: [], attachments: [] });
+    const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
+    if (shouldReplaceInitialPromptFromLocationState(location.state)) {
+      replaceInitialPrompt(nextDraft);
+    } else {
+      seedInitialPrompt(nextDraft);
+    }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
     });
-  }, [location.search, location.state, navigate, seedInitialPrompt]);
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    replaceInitialPrompt,
+    seedInitialPrompt,
+  ]);
 
   // Worktree picker options come from the project's unarchived threads.
   // Threads on managed or unmanaged worktrees with a non-null environmentId
@@ -1603,108 +1632,129 @@ export function RootComposeView(props: RootComposeViewProps) {
     [projectId, promptDraft, uploadPromptAttachment],
   );
 
-  const submitPrompt = useCallback(async () => {
-    const submittedDraft = {
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    };
-    const submittedInput = promptDraftToInput(submittedDraft);
-    if (!projectId || !selectedProviderId || !selectedThreadModel) {
-      return;
-    }
-
-    setAttachmentError(null);
-
-    if (
-      submittedInput.length === 0 ||
-      createThread.isPending ||
-      isCodexCliVersionBlocked ||
-      managedWorktreeAvailabilityPending ||
-      managedWorktreeUnavailable ||
-      (forkSeed === null && !selectedEnvironment)
-    ) {
-      return;
-    }
-
-    try {
-      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
-        isForkDraft: forkSeed !== null,
-        navigateToThreadAfterCreate,
-      });
-      const request =
-        forkSeed !== null
-          ? buildForkThreadRequest({
-              ...forkSeed,
-              input: submittedInput,
-              model: selectedThreadModel,
-              permissionMode,
-              reasoningLevel,
-              serviceTier: supportsServiceTier ? serviceTier : undefined,
-            })
-          : selectedEnvironment !== null
-            ? {
-                input: submittedInput,
-                projectId,
-                providerId: selectedProviderId,
-                model: selectedThreadModel,
-                ...(rootComposeFolderId
-                  ? { folderId: rootComposeFolderId }
-                  : {}),
-                ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-                reasoningLevel,
-                permissionMode,
-                executionInputSources,
-                environment: selectedEnvironment,
-              }
-            : null;
-      if (request === null) {
+  // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
+  // results (design §4.9) submit through the same thread-creation path
+  // without touching what the user has typed.
+  const submitPromptInternal = useCallback(
+    async (inputsOverride: PromptInput[] | null) => {
+      const submittedDraft =
+        inputsOverride === null
+          ? {
+              text: promptDraft.text,
+              mentions: promptDraft.mentions,
+              attachments: promptDraft.attachments,
+            }
+          : null;
+      const submittedInput =
+        submittedDraft !== null
+          ? promptDraftToInput(submittedDraft)
+          : (inputsOverride ?? []);
+      if (!projectId || !selectedProviderId || !selectedThreadModel) {
         return;
       }
-      const thread = await createThread.mutateAsync(request);
-      setLastCreatedThreadId(thread.id);
-      clearReuseEnvironment();
-      setForkSeed(null);
-      setRootComposeFolderId(null);
-      promptDraft.clearIfCurrentMatches(submittedDraft);
-      if (props.surface === "popout") {
-        props.onThreadCreated({
-          projectId: thread.projectId,
-          threadId: thread.id,
+
+      setAttachmentError(null);
+
+      if (
+        submittedInput.length === 0 ||
+        createThread.isPending ||
+        isCodexCliVersionBlocked ||
+        managedWorktreeAvailabilityPending ||
+        managedWorktreeUnavailable ||
+        (forkSeed === null && !selectedEnvironment)
+      ) {
+        return;
+      }
+
+      try {
+        const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+          isForkDraft: forkSeed !== null,
+          navigateToThreadAfterCreate,
         });
-      } else if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
+        const request =
+          forkSeed !== null
+            ? buildForkThreadRequest({
+                ...forkSeed,
+                input: submittedInput,
+                model: selectedThreadModel,
+                permissionMode,
+                reasoningLevel,
+                serviceTier: supportsServiceTier ? serviceTier : undefined,
+              })
+            : selectedEnvironment !== null
+              ? {
+                  input: submittedInput,
+                  projectId,
+                  providerId: selectedProviderId,
+                  model: selectedThreadModel,
+                  ...(rootComposeFolderId
+                    ? { folderId: rootComposeFolderId }
+                    : {}),
+                  ...(supportsServiceTier && serviceTier
+                    ? { serviceTier }
+                    : {}),
+                  reasoningLevel,
+                  permissionMode,
+                  executionInputSources,
+                  environment: selectedEnvironment,
+                }
+              : null;
+        if (request === null) {
+          return;
+        }
+        const thread = await createThread.mutateAsync(request);
+        setLastCreatedThreadId(thread.id);
+        clearReuseEnvironment();
+        setForkSeed(null);
+        setRootComposeFolderId(null);
+        if (submittedDraft !== null) {
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+        }
+        if (props.surface === "popout") {
+          props.onThreadCreated({
             projectId: thread.projectId,
             threadId: thread.id,
-          }),
-        );
+          });
+        } else if (shouldNavigateToCreatedThread) {
+          navigate(
+            getThreadRoutePath({
+              projectId: thread.projectId,
+              threadId: thread.id,
+            }),
+          );
+        }
+      } catch {
+        // Global mutation error handling already surfaced the failure.
       }
-    } catch {
-      // Global mutation error handling already surfaced the failure.
-    }
-  }, [
-    clearReuseEnvironment,
-    createThread,
-    executionInputSources,
-    forkSeed,
-    isCodexCliVersionBlocked,
-    managedWorktreeAvailabilityPending,
-    managedWorktreeUnavailable,
-    navigate,
-    navigateToThreadAfterCreate,
-    permissionMode,
-    projectId,
-    props,
-    promptDraft,
-    reasoningLevel,
-    rootComposeFolderId,
-    selectedEnvironment,
-    selectedProviderId,
-    selectedThreadModel,
-    serviceTier,
-    supportsServiceTier,
-  ]);
+    },
+    [
+      clearReuseEnvironment,
+      createThread,
+      executionInputSources,
+      forkSeed,
+      isCodexCliVersionBlocked,
+      managedWorktreeAvailabilityPending,
+      managedWorktreeUnavailable,
+      navigate,
+      navigateToThreadAfterCreate,
+      permissionMode,
+      projectId,
+      props,
+      promptDraft,
+      reasoningLevel,
+      rootComposeFolderId,
+      selectedEnvironment,
+      selectedProviderId,
+      selectedThreadModel,
+      serviceTier,
+      supportsServiceTier,
+    ],
+  );
+
+  const submitPrompt = useCallback(
+    () => submitPromptInternal(null),
+    [submitPromptInternal],
+  );
 
   const isSubmitDisabled =
     !selectedProviderId ||
@@ -1765,7 +1815,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const providerPromptActionProps = useMemo(
     () => ({
-      promptActions: withLoopPromptAction(providerPromptActions.promptActions),
+      promptActions: providerPromptActions.promptActions,
     }),
     [providerPromptActions.promptActions],
   );
@@ -1904,21 +1954,20 @@ export function RootComposeView(props: RootComposeViewProps) {
   const shouldUseRootStorageViewerForActiveTab =
     rawActiveRootStorageFileThreadId !== null &&
     rawActiveRootStorageFileThreadId === rootPanelThreadId;
-  const {
-    threadStorageRootPath: activeStorageThreadStorageRootPath,
-  } = useThreadStorageViewer({
-    activePath: null,
-    fileListEnabled:
-      props.surface === "page" &&
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab,
-    filePreviewEnabled: false,
-    threadId:
-      rawActiveRootStorageFileThreadId !== null &&
-      !shouldUseRootStorageViewerForActiveTab
-        ? rawActiveRootStorageFileThreadId
-        : undefined,
-  });
+  const { threadStorageRootPath: activeStorageThreadStorageRootPath } =
+    useThreadStorageViewer({
+      activePath: null,
+      fileListEnabled:
+        props.surface === "page" &&
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab,
+      filePreviewEnabled: false,
+      threadId:
+        rawActiveRootStorageFileThreadId !== null &&
+        !shouldUseRootStorageViewerForActiveTab
+          ? rawActiveRootStorageFileThreadId
+          : undefined,
+    });
   const activeStorageFileRootPath = shouldUseRootStorageViewerForActiveTab
     ? rootThreadStorageRootPath
     : activeStorageThreadStorageRootPath;
@@ -1949,7 +1998,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({
-        environmentTerminalSessions: environmentTerminalsListQuery.data?.sessions,
+        environmentTerminalSessions:
+          environmentTerminalsListQuery.data?.sessions,
         globalTerminalSessions: globalTerminalsListQuery.data?.sessions,
         terminalTarget: rootPanelTerminalTarget,
       }),
@@ -1959,8 +2009,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
-  const terminalSessions =
-    loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
   const activeTerminalCount = useMemo(
     () =>
@@ -1975,6 +2024,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
   const {
+    activePluginPanelTab,
     activeHostFileEnvironmentId,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -2079,13 +2129,12 @@ export function RootComposeView(props: RootComposeViewProps) {
   const closeRootSecondaryPanel = useCallback(() => {
     setRootSecondaryPanelForSurface(null);
   }, [setRootSecondaryPanelForSurface]);
-  const openRootSecondaryPanel =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        setRootSecondaryPanelForSurface(panel);
-      },
-      [setRootSecondaryPanelForSurface],
-    );
+  const openRootSecondaryPanel = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      setRootSecondaryPanelForSurface(panel);
+    },
+    [setRootSecondaryPanelForSurface],
+  );
   const toggleRootPersistedSecondaryPanel = useCallback(() => {
     if (isPersistedSecondaryPanelOpen) {
       closeRootSecondaryPanel();
@@ -2258,11 +2307,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [browserTabIds, openBrowserTabAndReveal]);
   const renderBrowserDeck = useCallback(
-    ({
-      canShowNativeBrowserView,
-    }: {
-      canShowNativeBrowserView: boolean;
-    }) => {
+    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
       if (rootPanelThreadId === null) {
         return null;
       }
@@ -2311,14 +2356,13 @@ export function RootComposeView(props: RootComposeViewProps) {
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        clearActiveFileTabs();
-        openSecondaryPanel(panel);
-      },
-      [clearActiveFileTabs, openSecondaryPanel],
-    );
+  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
+    (panel) => {
+      clearActiveFileTabs();
+      openSecondaryPanel(panel);
+    },
+    [clearActiveFileTabs, openSecondaryPanel],
+  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -2405,6 +2449,59 @@ export function RootComposeView(props: RootComposeViewProps) {
       rootPanelTerminalTarget,
     ],
   );
+  const handleCloseWindowRequest = useCallback(() => {
+    // Gate on the visible panel state, not the persisted flag: on compact
+    // viewports the drawer can be dismissed while tabs stay persisted, and
+    // Cmd+W must not consume hidden tabs.
+    if (!isSecondaryPanelOpen) {
+      return false;
+    }
+    if (
+      activeFixedSecondaryTab !== null &&
+      isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      // A lone new-tab placeholder respawns on close (an effect reopens one
+      // whenever the panel would otherwise be empty), so hide the panel
+      // instead of churning the placeholder.
+      if (
+        activeFixedSecondaryTab.kind === "new-tab" &&
+        fixedPanelTabsState.secondary.tabs.length === 1
+      ) {
+        closeSecondaryPanel();
+        return true;
+      }
+      if (activeFixedSecondaryTab.kind === "terminal") {
+        handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+      } else {
+        closeTab(activeFixedSecondaryTab.id);
+      }
+      return true;
+    }
+    // No closable tab is active: hide the panel before letting the next
+    // Cmd+W close the window.
+    closeSecondaryPanel();
+    return true;
+  }, [
+    activeFixedSecondaryTab,
+    closeSecondaryPanel,
+    closeTab,
+    fixedPanelTabsState.secondary.tabs,
+    handleCloseTerminalTab,
+    isSecondaryPanelOpen,
+  ]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -2509,6 +2606,25 @@ export function RootComposeView(props: RootComposeViewProps) {
                   name="SideChat"
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
                   aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "plugin-panel":
+            // Plugin panel tabs are opened from a thread's launcher; the root
+            // panel offers no plugin actions, but its persisted state must
+            // still render any tab kind without crashing.
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <PluginIcon
+                  pluginId={tab.pluginId}
+                  icon={null}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
                 />
               ),
               statusLabel: null,
@@ -2812,6 +2928,11 @@ export function RootComposeView(props: RootComposeViewProps) {
           state={{ kind: "loading" }}
         />
       )
+    ) : activePluginPanelTab ? (
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        threadId={rootPanelThreadId}
+      />
     ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const rootPanelMetadataContent = useMemo(

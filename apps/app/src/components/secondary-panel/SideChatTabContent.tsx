@@ -34,7 +34,6 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { withLoopPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
   type QueuedMessageGroupBoundaryRequest,
@@ -396,10 +395,7 @@ export function SideChatTabContent({
       ),
     [threadCreationOptions.selectedProviderComposerActions],
   );
-  const promptActions = useMemo(
-    () => withLoopPromptAction(providerPromptActions.promptActions),
-    [providerPromptActions.promptActions],
-  );
+  const promptActions = providerPromptActions.promptActions;
   const commandSuggestions = useCommandSuggestions({
     projectId: sourceThread.projectId,
     providerId: sourceThread.providerId,
@@ -462,9 +458,8 @@ export function SideChatTabContent({
   // opened from the new-tab page (those fork from the thread tip).
   const triggerMessageText = tab.sourceMessageText.trim();
   const hasTriggerMessage = triggerMessageText.length > 0;
-  const triggerMessageIsSingleFence = isSingleFencedCodeBlock(
-    triggerMessageText,
-  );
+  const triggerMessageIsSingleFence =
+    isSingleFencedCodeBlock(triggerMessageText);
 
   const sourceEnvironmentReady =
     sourceThread.environmentId === null || sourceEnvironment !== null;

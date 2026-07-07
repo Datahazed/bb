@@ -1704,8 +1704,7 @@ function TimelineRowsList({
 }: TimelineRowsListProps) {
   const { threadId } = useTimelineRendererStaticContext();
   const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
-  const stableSearchExpandedRowIds =
-    useStableReadonlySet(searchExpandedRowIds);
+  const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
     isLoadingOlderRows: isLoadingOlderTimelineRows,
@@ -1795,7 +1794,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   });
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      // Loop links carry their own project + automation id, so they resolve
+      // Automation links carry their own project + automation id, so they resolve
       // regardless of the timeline's project context.
       if (link.kind === "automation") {
         return getAutomationDetailRoutePath({

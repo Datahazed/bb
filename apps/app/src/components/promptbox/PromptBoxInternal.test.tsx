@@ -20,7 +20,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
-import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -50,7 +49,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  LOOP_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -139,7 +137,10 @@ function PromptBoxFocusOnMountHarness() {
   }, []);
 
   return (
-    <PromptBoxInternal {...createPromptBoxProps()} promptBoxRef={promptBoxRef} />
+    <PromptBoxInternal
+      {...createPromptBoxProps()}
+      promptBoxRef={promptBoxRef}
+    />
   );
 }
 
@@ -207,9 +208,7 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
-      [],
-    );
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
     return (
       <PromptBoxInternal
         value={value}
@@ -449,13 +448,17 @@ describe("PromptBoxInternal controlled value sync", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
       const view = render(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={0} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={0}
+        />,
       );
 
       await waitForPromptFocus();
 
       view.rerender(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={1} />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
+          historyResetKey={1}
+        />,
       );
 
       await waitForPromptFocus();
@@ -490,18 +493,13 @@ describe("PromptBoxInternal controlled value sync", () => {
 
   it("applies an added quote before focus-end insertion can edit the old document", () => {
     const onChange = vi.fn();
-    const view = render(
-      <PromptBoxRaceHarness onChange={onChange} value="" />,
-    );
+    const view = render(<PromptBoxRaceHarness onChange={onChange} value="" />);
 
     view.rerender(
       <PromptBoxRaceHarness onChange={onChange} value={"> selected text\n"} />,
     );
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 
   it("places focus-end insertion below an added quote", async () => {
@@ -528,10 +526,7 @@ describe("PromptBoxInternal controlled value sync", () => {
       promptBoxRef.current?.insertTextAtCursor("reply");
     });
 
-    expect(onChange).toHaveBeenLastCalledWith(
-      "> selected text\n\nreply",
-      [],
-    );
+    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
   });
 });
 
@@ -576,8 +571,10 @@ describe("PromptBoxInternal zen mode layout", () => {
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
-          value: Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`)
-            .join("\n"),
+          value: Array.from(
+            { length: 40 },
+            (_, index) => `Line ${index + 1}`,
+          ).join("\n"),
           zenMode: { storageKey },
         })}
       />,
@@ -599,9 +596,8 @@ describe("PromptBoxInternal zen mode layout", () => {
       );
     });
 
-    const footerRow =
-      screen.getByRole("button", { name: "Attach files" }).parentElement
-        ?.parentElement;
+    const footerRow = screen.getByRole("button", { name: "Attach files" })
+      .parentElement?.parentElement;
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
     window.localStorage.removeItem(storageKey);
@@ -747,30 +743,6 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("inserts loop mode as a command pill", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Loop");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/loop".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "loop",
-          source: "command",
-          origin: "user",
-          label: "loop",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
   it("does not duplicate command text immediately before the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Start /goal ");
 
@@ -836,9 +808,9 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("pastes prompt action command tokens as goal, plan, and loop pills", async () => {
+  it("pastes prompt action command tokens as goal and plan pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text = "/plan inspect first\n/goal finish the change\n/loop keep checking";
+    const text = "/plan inspect first\n/goal finish the change";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);
@@ -871,19 +843,6 @@ describe("PromptBoxInternal prompt actions", () => {
           argumentHint: null,
         },
       },
-      {
-        start: "/plan inspect first\n/goal finish the change\n".length,
-        end: "/plan inspect first\n/goal finish the change\n/loop".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "loop",
-          source: "command",
-          origin: "user",
-          label: "loop",
-          argumentHint: null,
-        },
-      },
     ]);
   });
 
@@ -901,40 +860,12 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
-  it("replaces a just-selected goal action with loop at the cursor", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("");
-
-    await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Goal");
-    await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
-    await waitForPromptFocus();
-
-    await selectPromptAction("Loop");
-
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
-    expect(latestChange(changes)?.mentions).toEqual([
-      {
-        start: 0,
-        end: "/loop".length,
-        resource: {
-          kind: "command",
-          trigger: "/",
-          name: "loop",
-          source: "command",
-          origin: "user",
-          label: "loop",
-          argumentHint: null,
-        },
-      },
-    ]);
-  });
-
-  it("selects loop from slash typeahead as a command pill", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("/lo", {
+  it("selects a slash typeahead command as a command pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/re", {
       commandSuggestions: [
         {
           kind: "command",
-          name: "loop",
+          name: "review",
           source: "command",
           origin: "user",
           description: null,
@@ -944,20 +875,20 @@ describe("PromptBoxInternal prompt actions", () => {
     });
 
     await focusPromptEnd(promptBoxRef);
-    await selectCommandSuggestion("loop");
+    await selectCommandSuggestion("review");
 
-    await waitFor(() => expect(latestValue(changes)).toBe("/loop "));
+    await waitFor(() => expect(latestValue(changes)).toBe("/review "));
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
-        end: "/loop".length,
+        end: "/review".length,
         resource: {
           kind: "command",
           trigger: "/",
-          name: "loop",
+          name: "review",
           source: "command",
           origin: "user",
-          label: "loop",
+          label: "review",
           argumentHint: null,
         },
       },

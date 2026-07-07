@@ -179,10 +179,8 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenSkills?: () => void;
-  isSkillsActive?: boolean;
-  onOpenAutomations?: () => void;
-  isAutomationsActive?: boolean;
+  onOpenTools?: () => void;
+  isToolsActive?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -228,7 +226,9 @@ interface LocalSourcePathTarget {
   projectId: string;
 }
 
-const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
+// Exported for the plugin nav entries, which render as sibling rows of the
+// Automations action and must match its look exactly.
+export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_BASE_CLASS,
   LIST_HOVER_TRANSITION,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
@@ -1189,10 +1189,8 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenSkills,
-  isSkillsActive = false,
-  onOpenAutomations,
-  isAutomationsActive = false,
+  onOpenTools,
+  isToolsActive = false,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -1274,36 +1272,20 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
-      {onOpenSkills ? (
+      {onOpenTools ? (
         <Button
           type="button"
           size="sm"
           variant="ghost"
           className={cn(
             PROJECT_LIST_ACTION_BUTTON_CLASS,
-            isSkillsActive && "bg-sidebar-accent text-sidebar-foreground",
+            isToolsActive && "bg-sidebar-accent text-sidebar-foreground",
           )}
-          aria-current={isSkillsActive ? "page" : undefined}
-          onClick={onOpenSkills}
+          aria-current={isToolsActive ? "page" : undefined}
+          onClick={onOpenTools}
         >
-          <Icon name="Zap" />
-          <span className="min-w-0 flex-1 truncate text-left">Skills</span>
-        </Button>
-      ) : null}
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            PROJECT_LIST_ACTION_BUTTON_CLASS,
-            isAutomationsActive && "bg-sidebar-accent text-sidebar-foreground",
-          )}
-          aria-current={isAutomationsActive ? "page" : undefined}
-          onClick={onOpenAutomations}
-        >
-          <Icon name="Repeat" />
-          <span className="min-w-0 flex-1 truncate text-left">Loops</span>
+          <Icon name="Toolbox" />
+          <span className="min-w-0 flex-1 truncate text-left">Tools</span>
         </Button>
       ) : null}
     </div>

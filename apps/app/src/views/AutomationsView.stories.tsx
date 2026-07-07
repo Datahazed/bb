@@ -356,7 +356,7 @@ const sampleEntries: AutomationOverviewEntry[] = [
   ),
 ];
 
-/** A short, plausible run history ending in the loop's current status. */
+/** A short, plausible run history ending in the automation's current status. */
 function runsFor(a: Automation): AutomationRun[] {
   if (a.lastRunStatus === null) {
     return [];
@@ -391,7 +391,13 @@ function runsFor(a: Automation): AutomationRun[] {
           : isScript
             ? "OK · 0 warnings"
             : "Posted the summary to #eng.",
-      exitCode: isScript ? (status === "failed" ? 1 : running ? null : 0) : null,
+      exitCode: isScript
+        ? status === "failed"
+          ? 1
+          : running
+            ? null
+            : 0
+        : null,
       scheduledFor: startedAt,
       startedAt,
       finishedAt,
@@ -498,7 +504,7 @@ export function Overview() {
         }}
       >
         <ConfirmDeleteDialogContent
-          title="Delete loop?"
+          title="Delete automation?"
           description={
             pendingDelete
               ? `"${pendingDelete.automation.name}" and its run history will be permanently removed. This can't be undone.`

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -23,7 +23,7 @@ import {
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
-import { CREATE_LOOP_PROMPT } from "@/lib/loop-prompt";
+import { CREATE_AUTOMATION_PROMPT } from "@/lib/automation-prompt";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomations,
@@ -64,7 +64,7 @@ function getOpenAutomationIdFromState(state: unknown): string | null {
 /** Per-row action callbacks, supplied by the container so the presentational
  * overview stays free of mutation hooks (and renderable in tests). */
 export interface AutomationRowActions {
-  /** Open the detail pane for a loop (plain row-name click). */
+  /** Open the detail pane for an automation (plain row-name click). */
   onOpen: (entry: AutomationOverviewEntry) => void;
   /** Open the detail pane straight into edit mode. */
   onEdit: (entry: AutomationOverviewEntry) => void;
@@ -84,18 +84,19 @@ export interface AutomationsOverviewProps {
   isLoading: boolean;
   hasInitialLoadError: boolean;
   actions: AutomationRowActions;
-  /** Opens the composer to create a loop, optionally seeded with a full prompt. */
+  /** Opens the composer to create an automation, optionally seeded with a full prompt. */
   onCreateAutomation: (prompt?: string) => void;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
-  /** Id of the loop open in the docked pane, so its row shows as selected. */
+  /** Id of the automation open in the docked pane, so its row shows selected. */
   selectedId?: string | null;
 }
 
 /**
- * Group loops by the project they belong to, in the order projects first
- * appear. Within a project, enabled loops sort above paused ones. The overview
- * aggregates loops across every project, so the project is the row's context.
+ * Group automations by the project they belong to, in the order projects first
+ * appear. Within a project, enabled automations sort above paused ones. The
+ * overview aggregates automations across every project, so the project is the
+ * row's context.
  */
 function groupAutomationsByProject(
   entries: readonly AutomationOverviewEntry[],
@@ -312,8 +313,9 @@ export function AutomationsOverview({
       return next;
     });
   }, []);
-  // Personal == projectless in bb: render those loops flat (no header), like the
-  // sidebar does for personal threads. Only real projects get a folder header.
+  // Personal == projectless in bb: render those automations flat (no header),
+  // like the sidebar does for personal threads. Only real projects get a folder
+  // header.
   const personalGroup =
     groups.find((group) => group.projectId === PERSONAL_PROJECT_ID) ?? null;
   const projectGroups = groups.filter(
@@ -332,8 +334,8 @@ export function AutomationsOverview({
                 aria-hidden
               />
               <input
-                aria-label="Search loops"
-                placeholder="Search loops"
+                aria-label="Search automations"
+                placeholder="Search automations"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 autoComplete="off"
@@ -341,13 +343,17 @@ export function AutomationsOverview({
               />
             </div>
             <CreateWithTemplatesButton
-              kind="loop"
-              label="New loop"
+              kind="automation"
+              label="New automation"
               onCreate={onCreateAutomation}
             />
           </div>
           {isLoading ? (
-            <div className="space-y-0.5" aria-busy aria-label="Loading loops">
+            <div
+              className="space-y-0.5"
+              aria-busy
+              aria-label="Loading automations"
+            >
               {["w-44", "w-36", "w-52", "w-40", "w-48"].map((nameWidth) => (
                 <div
                   key={nameWidth}
@@ -371,7 +377,7 @@ export function AutomationsOverview({
             // offer the way out, kept calm rather than alarmist.
             <EmptyStatePanel role="alert" className="py-6">
               <div className="flex flex-col items-center gap-2">
-                <span>Couldn't load loops.</span>
+                <span>Couldn't load automations.</span>
                 {onRetry ? (
                   <Button variant="outline" size="sm" onClick={onRetry}>
                     Retry
@@ -381,12 +387,12 @@ export function AutomationsOverview({
             </EmptyStatePanel>
           ) : isEmpty ? (
             <CreateViaPromptExamples
-              kind="loop"
+              kind="automation"
               onCreate={onCreateAutomation}
             />
           ) : groups.length === 0 ? (
             <EmptyStatePanel className="py-6">
-              {`No loops match "${query}"`}
+              {`No automations match "${query}"`}
             </EmptyStatePanel>
           ) : (
             <div className="space-y-4">
@@ -450,7 +456,7 @@ export function AutomationsOverview({
   );
 }
 
-export function AutomationsView() {
+export function AutomationsLibrary() {
   const automationsQuery = useAutomations();
   const navigate = useNavigate();
   const location = useLocation();
@@ -462,12 +468,12 @@ export function AutomationsView() {
   const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
 
   // Docked detail pane: selecting a row opens the detail inline beside the list.
-  // The pane is mounted only while a loop is selected.
+  // The pane is mounted only while an automation is selected.
   const [detailEntry, setDetailEntry] =
     useState<AutomationOverviewEntry | null>(null);
   const consumedOpenAutomationLocationKeyRef = useRef<string | null>(null);
   // Bumped on every open so the pane's detail content remounts fresh when
-  // switching to another loop.
+  // switching to another automation.
   const [detailSession, setDetailSession] = useState(0);
   const openDetail = useCallback((entry: AutomationOverviewEntry) => {
     setDetailEntry(entry);
@@ -490,7 +496,7 @@ export function AutomationsView() {
   );
 
   const data: AutomationsOverviewResponse | undefined = automationsQuery.data;
-  const entries = data?.automations ?? [];
+  const entries = useMemo(() => data?.automations ?? [], [data?.automations]);
   const openAutomationId = getOpenAutomationIdFromState(location.state);
   const hasInitialLoadError = automationsQuery.isError && data === undefined;
   const isLoading =
@@ -558,8 +564,9 @@ export function AutomationsView() {
       navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
-          initialPrompt: prompt ?? CREATE_LOOP_PROMPT,
-          createDraftKind: "loop",
+          initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
+          replaceInitialPrompt: true,
+          createDraftKind: "automation",
         },
       });
     },
@@ -567,7 +574,7 @@ export function AutomationsView() {
   );
 
   return (
-    <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div className="min-w-0 flex-1">
         <AutomationsOverview
           entries={entries}
@@ -592,7 +599,7 @@ export function AutomationsView() {
         onOpenChange={deleteDialog.onOpenChange}
       >
         <ConfirmDeleteDialogContent
-          title="Delete loop?"
+          title="Delete automation?"
           description={
             deleteDialog.target
               ? `"${deleteDialog.target.automation.name}" and its run history will be permanently removed. This can't be undone.`
@@ -604,6 +611,14 @@ export function AutomationsView() {
           onCancel={closeDeleteDialog}
         />
       </ConfirmDeleteDialog>
+    </div>
+  );
+}
+
+export function AutomationsView() {
+  return (
+    <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
+      <AutomationsLibrary />
     </div>
   );
 }

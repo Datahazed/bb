@@ -53,6 +53,7 @@ import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialo
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
+import { PluginThreadActions } from "@/components/thread/PluginThreadActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
@@ -120,6 +121,11 @@ import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import {
+  PluginPanelTabContent,
+  usePluginPanelActions,
+} from "@/components/plugin/PluginPanelActions";
 import { Icon } from "@/components/ui/icon.js";
 import {
   getBbDesktopInfo,
@@ -146,6 +152,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
+import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
@@ -551,6 +558,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     activeWorkspaceFilePath,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
+    activePluginPanelTab,
     activeSideChatTabId,
     activateSideChatTab,
     browserTabs,
@@ -560,6 +568,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     closeSideChatTab,
     isNewTabActive,
     openTab,
+    openPluginPanel,
     openSideChat,
     openExistingSideChatTab,
     orderedSecondaryFileTabs,
@@ -574,6 +583,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
+  });
+  const pluginPanelActions = usePluginPanelActions({
+    openPluginPanel,
+    threadId,
   });
   useThreadOpenFileSignal({
     threadId,
@@ -1152,6 +1165,51 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [closeTerminal, removeFixedTerminalTab, threadId],
   );
+  const handleCloseWindowRequest = useCallback(() => {
+    // Gate on the visible panel state, not the persisted flag: on compact
+    // viewports the drawer can be dismissed while tabs stay persisted, and
+    // Cmd+W must not consume hidden tabs.
+    if (!isSecondaryPanelOpen) {
+      return false;
+    }
+    if (
+      activeFixedSecondaryTab !== null &&
+      isSecondaryFileTab(activeFixedSecondaryTab)
+    ) {
+      if (activeFixedSecondaryTab.kind === "terminal") {
+        handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+      } else if (activeFixedSecondaryTab.kind === "side-chat") {
+        closeSideChatTab(activeFixedSecondaryTab.id);
+      } else {
+        closeTab(activeFixedSecondaryTab.id);
+      }
+      return true;
+    }
+    // No closable tab is active (e.g. thread-info or git-diff): hide the
+    // panel before letting the next Cmd+W close the window.
+    closeSecondaryPanel();
+    return true;
+  }, [
+    activeFixedSecondaryTab,
+    closeSecondaryPanel,
+    closeSideChatTab,
+    closeTab,
+    handleCloseTerminalTab,
+    isSecondaryPanelOpen,
+  ]);
+  useEffect(() => {
+    if (props.surface !== "page") {
+      return;
+    }
+    const desktopInfo = getBbDesktopInfo();
+    if (
+      desktopInfo === null ||
+      desktopInfo.onCloseWindowRequest === undefined
+    ) {
+      return;
+    }
+    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
+  }, [handleCloseWindowRequest, props.surface]);
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
@@ -1278,6 +1336,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               statusLabel: null,
               onSelect: () => activateSideChatTab(tab.id),
               onClose: () => closeSideChatTab(tab.id),
+            };
+          case "plugin-panel":
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <PluginIcon
+                  pluginId={tab.pluginId}
+                  icon={null}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+              onClose: () => closeTab(tab.id),
             };
         }
       },
@@ -1970,6 +2044,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         activeTerminalCount={activeTerminalCount}
         onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
         onToggleSecondaryPanel={toggleSecondaryPanel}
+        pluginActions={<PluginThreadActions threadId={thread.id} />}
         threadHeaderGitActions={gitActions.threadHeaderGitActions}
         threadTitle={threadTitle}
         workspaceOpenButton={workspaceOpenButton}
@@ -2053,6 +2128,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
+      pluginActions={pluginPanelActions}
     />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
@@ -2088,6 +2164,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       onSelectionAddToChat={handleSelectionAddToChat}
       threadId={thread.id}
     />
+  ) : activePluginPanelTab ? (
+    <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   // Side-chat tabs, like browser tabs, keep a live conversation surface mounted

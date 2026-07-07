@@ -15,10 +15,20 @@ export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
   "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
-export const AUTOMATIONS_ROUTE_PATH = "/automations";
-export const AUTOMATION_DETAIL_ROUTE_PATH =
+export const TOOLS_ROUTE_PATH = "/tools";
+export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
+export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
+export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
+export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
+export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
+  "/tools/automations/:projectId/:automationId";
+export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
+export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
-export const SKILLS_ROUTE_PATH = "/skills";
+export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
+export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
+export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
+export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -27,6 +37,7 @@ export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
+export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -70,6 +81,24 @@ export function getSkillsRoutePath(): string {
   return SKILLS_ROUTE_PATH;
 }
 
+export function getToolsRoutePath(): string {
+  return TOOLS_ROUTE_PATH;
+}
+
+export function getPluginsRoutePath(): string {
+  return TOOLS_PLUGINS_ROUTE_PATH;
+}
+
+export interface PluginDetailRoutePathArgs {
+  pluginId: string;
+}
+
+export function getPluginDetailRoutePath({
+  pluginId,
+}: PluginDetailRoutePathArgs): string {
+  return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+}
+
 export interface AutomationDetailRoutePathArgs {
   projectId: string;
   automationId: string;
@@ -79,7 +108,7 @@ export function getAutomationDetailRoutePath({
   projectId,
   automationId,
 }: AutomationDetailRoutePathArgs): string {
-  return `/automations/${projectId}/${automationId}`;
+  return `/tools/automations/${projectId}/${automationId}`;
 }
 
 export function getPopoutRoutePath(): string {
@@ -129,6 +158,19 @@ export function getFolderArchivedRoutePath(folderId: string): string {
   )}`;
 }
 
+export interface PluginPanelRoutePathArgs {
+  pluginId: string;
+  /** The nav panel's registered `path` segment (validated: [a-zA-Z0-9_-]+). */
+  path: string;
+}
+
+export function getPluginPanelRoutePath({
+  pluginId,
+  path,
+}: PluginPanelRoutePathArgs): string {
+  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+}
+
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`
@@ -150,14 +192,22 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
-  AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
+  TOOLS_SKILLS_ROUTE_PATH,
+  TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATIONS_ROUTE_PATH,
+  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  PLUGIN_PANEL_ROUTE_PATH,
 ];
 
 export const ROUTE_PATTERNS = baseRoutePatterns;

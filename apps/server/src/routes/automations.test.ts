@@ -25,7 +25,7 @@ const AGENT_TRIGGER = {
 function agentExecution() {
   return {
     mode: "script" as const,
-    script: 'echo \'{"wakeAgent": false}\'',
+    script: "echo '{\"wakeAgent\": false}'",
     interpreter: "bash" as const,
   };
 }
@@ -107,7 +107,7 @@ describe("automations routes", () => {
     const listRes = await harness.app.request(
       `/api/v1/projects/${projectId}/automations`,
     );
-    expect((await listRes.json())).toHaveLength(1);
+    expect(await listRes.json()).toHaveLength(1);
 
     const updateRes = await patch(
       `/projects/${projectId}/automations/${automationId}`,
@@ -149,11 +149,14 @@ describe("automations routes", () => {
   function automationCreatedEvents(threadId: string) {
     return listEvents(harness.db, { threadId })
       .filter((row) => row.type === "system/operation")
-      .map((row) => JSON.parse(row.data) as { operation: string; metadata?: unknown })
+      .map(
+        (row) =>
+          JSON.parse(row.data) as { operation: string; metadata?: unknown },
+      )
       .filter((data) => data.operation === "automation_created");
   }
 
-  it("drops a 'Created loop' notice into the thread whose agent created it", async () => {
+  it("drops a 'Created automation' notice into the thread whose agent created it", async () => {
     const thread = seedThread(harness, { projectId });
     const res = await post(
       `/projects/${projectId}/automations`,
@@ -171,7 +174,7 @@ describe("automations routes", () => {
     });
   });
 
-  it("emits no notice for a loop created without a source thread", async () => {
+  it("emits no notice for an automation created without a source thread", async () => {
     const thread = seedThread(harness, { projectId });
     const res = await post(`/projects/${projectId}/automations`, createBody());
     expect(res.status).toBe(201);
@@ -217,7 +220,9 @@ describe("automations routes", () => {
   it("rejects a one-shot run time in the past", async () => {
     const res = await post(
       `/projects/${projectId}/automations`,
-      createBody({ trigger: { triggerType: "once", runAt: Date.now() - 1_000 } }),
+      createBody({
+        trigger: { triggerType: "once", runAt: Date.now() - 1_000 },
+      }),
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -394,7 +399,12 @@ describe("automations routes", () => {
 
     // The file on disk was rewritten with the new content...
     const onDisk = await readFile(
-      join(harness.config.dataDir, "automation-scripts", created.id, scriptFile),
+      join(
+        harness.config.dataDir,
+        "automation-scripts",
+        created.id,
+        scriptFile,
+      ),
       "utf8",
     );
     expect(onDisk).toBe(newScript);
@@ -438,7 +448,11 @@ describe("automations routes", () => {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            execution: { mode: "script", script: "echo hi", interpreter: "bash" },
+            execution: {
+              mode: "script",
+              script: "echo hi",
+              interpreter: "bash",
+            },
           }),
         },
       );
