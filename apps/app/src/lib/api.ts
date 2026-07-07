@@ -45,6 +45,7 @@ import type {
   SendQueuedMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendMessageRequest,
+  SystemAgentActivityResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
@@ -1744,6 +1745,14 @@ export async function getSystemVersion(
 ): Promise<SystemVersionResponse> {
   return request<SystemVersionResponse>(
     apiClient.system.version.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function getSystemAgentActivity(
+  signal?: AbortSignal,
+): Promise<SystemAgentActivityResponse> {
+  return request<SystemAgentActivityResponse>(
+    apiClient.system.agents.activity.$get({}, requestOptions(signal)),
   );
 }
 

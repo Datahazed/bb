@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toRecord } from "@bb/core-ui";
 import type {
+  SystemAgentActivityResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemSelfUpdateMode,
@@ -14,6 +15,7 @@ import { applySelfUpdateStateToVersionCache } from "@/hooks/cache-owners/system-
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
+  systemAgentActivityQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
@@ -113,6 +115,29 @@ export function useSystemVersion(options?: QueryOptions) {
       query.state.data?.selfUpdate.scheduled != null
         ? SCHEDULED_SELF_UPDATE_REFETCH_MS
         : false,
+  });
+}
+
+/**
+ * Poll cadence for the update toast's busy/idle action label. 1s keeps the
+ * label effectively live; the endpoint is a single indexed count on a small
+ * table, and the poll only runs while the update choice is on screen (an
+ * update is available, capable, and not yet scheduled or dismissed).
+ */
+const AGENT_ACTIVITY_REFETCH_MS = 1_000;
+
+/**
+ * Live agent load, used to pick "Update now" vs "Update when agents finish"
+ * on the update toast. Unlike the sidebar's thread cache this counts every
+ * thread — side-chats and archived included — so the label is global truth.
+ */
+export function useSystemAgentActivity(options?: QueryOptions) {
+  return useQuery<SystemAgentActivityResponse>({
+    queryKey: systemAgentActivityQueryKey(),
+    queryFn: ({ signal }) => api.getSystemAgentActivity(signal),
+    enabled: options?.enabled ?? true,
+    refetchInterval: AGENT_ACTIVITY_REFETCH_MS,
+    staleTime: 0,
   });
 }
 
