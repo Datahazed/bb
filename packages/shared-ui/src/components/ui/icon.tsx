@@ -106,6 +106,9 @@ import {
   ZapIcon,
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
+  ArrowReloadHorizontalIcon,
+  ElectricPlugsIcon,
+  TimeScheduleIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../../lib/utils";
 
@@ -195,9 +198,12 @@ const ICON_MAP = {
   Pin: PinIcon,
   PinOff: PinOffIcon,
   Play: PlayIcon,
+  Plug: ElectricPlugsIcon,
   Plus: PlusSignIcon,
+  Reload: ArrowReloadHorizontalIcon,
   Repeat: RepeatIcon,
   RotateCcw: Refresh01Icon,
+  Schedule: TimeScheduleIcon,
   Rows2: LayoutTwoRowIcon,
   Search: Search01Icon,
   Sent: SentIcon,

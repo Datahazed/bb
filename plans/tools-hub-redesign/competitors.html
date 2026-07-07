@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Competitive landscape — Tools Hub · bb</title>
+<link rel="stylesheet" href="tools.css" />
+<style>
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 32px 22px 90px; }
+  .floatbar { position: fixed; top: 14px; right: 18px; z-index: 30; display: flex; gap: 6px; }
+  .crumbs { display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--muted-foreground); margin-bottom: 18px; }
+  .crumbs a { text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  .dirhead h1 { font-size: 1.7rem; letter-spacing: -.02em; font-weight: 600; margin-bottom: 6px; }
+  .dirhead p { font-size: var(--text-sm); color: var(--muted-foreground); max-width: 76ch; line-height: 1.55; }
+  .thesis { display: flex; gap: 12px; padding: 16px 18px; margin-top: 18px; border: 1px solid var(--surface-selected-border); border-radius: var(--radius-lg); background: var(--surface-selected); }
+  .thesis .icon { color: var(--foreground); flex: none; margin-top: 2px; }
+  .thesis b { font-weight: 600; }
+  .sectlabel { font-size: var(--text-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--subtle-foreground); margin: 34px 0 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--text-2xs); color: var(--muted-foreground); margin-bottom: 10px; }
+  .legend b { color: var(--foreground); }
+  .scroll-x { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .cmp { width: 100%; border-collapse: collapse; font-size: var(--text-xs); min-width: 920px; }
+  .cmp th, .cmp td { text-align: left; padding: 9px 11px; vertical-align: top; line-height: 1.4; }
+  .cmp thead th { background: var(--surface-recessed-solid); font-weight: 600; color: var(--muted-foreground); white-space: nowrap; position: sticky; top: 0; }
+  .cmp tbody tr:nth-child(even) td, .cmp tbody tr:nth-child(even) th { background: var(--surface-raised); }
+  .cmp tbody th { font-weight: 600; white-space: nowrap; }
+  .cmp tbody th .plat { display: block; font-weight: 400; color: var(--subtle-foreground); font-size: var(--text-2xs); margin-top: 2px; }
+  .cmp td.c { text-align: center; white-space: nowrap; }
+  .cmp .q { display: block; font-size: var(--text-2xs); color: var(--subtle-foreground); margin-top: 1px; font-weight: 400; }
+  .cmp tbody tr.bb td, .cmp tbody tr.bb th { background: var(--surface-selected); }
+  .cmp tr.dead th, .cmp tr.dead td { opacity: .62; }
+  .yes { color: var(--success); font-weight: 700; }
+  .part { color: var(--attention); font-weight: 700; }
+  .none { color: var(--muted-foreground); font-weight: 700; }
+  .col-hi { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+  .profiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .prof { padding: 14px 15px; }
+  .prof h3 { font-size: var(--text-sm); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .prof .plat { font-size: var(--text-2xs); color: var(--subtle-foreground); font-weight: 400; }
+  .prof p { font-size: var(--text-xs); color: var(--muted-foreground); margin-top: 6px; line-height: 1.5; }
+  .prof a { color: var(--muted-foreground); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  .take { display: grid; gap: 10px; }
+  .take .item { display: flex; gap: 12px; padding: 13px 15px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+  .take .item .n { flex: none; width: 22px; height: 22px; border-radius: 999px; background: var(--foreground); color: var(--background); font-size: var(--text-2xs); font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .take .item .h { font-size: var(--text-sm); font-weight: 600; }
+  .take .item p { font-size: var(--text-xs); color: var(--muted-foreground); margin-top: 3px; line-height: 1.5; }
+  .take .item .src { color: var(--subtle-foreground); }
+  .note { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); font-size: var(--text-xs); color: var(--muted-foreground); margin-top: 14px; }
+  .note .icon { color: var(--attention); flex: none; margin-top: 1px; }
+  @media (max-width:760px){ .profiles { grid-template-columns: 1fr; } .dirhead h1 { font-size: 1.4rem; } }
+</style>
+</head>
+<body>
+<div class="floatbar">
+  <a class="btn ghost sm" href="index.html"><i data-icon="chev-left"></i>Proposals</a>
+  <button class="btn outline sm" data-theme-toggle aria-label="Toggle theme"><i data-icon="sun"></i>Theme</button>
+</div>
+
+<div class="wrap">
+  <div class="crumbs"><a href="index.html">Tools Hub proposals</a><i data-icon="chev-right" data-icon-class="icon-sm"></i><span>Competitive landscape</span></div>
+  <div class="dirhead">
+    <h1>How competitors handle extensibility</h1>
+    <p>Ten competitors, sorted by how they surface skills, scheduled runs, plugins, and MCP servers. Some unify <em>capability discovery</em> into one hub (Cursor, Roo, Kilo, Cline); others ship real <em>scheduled automations</em> (Cursor, Devin, Tembo, Superset, Factory, Terragon). Almost no one does both in one place — and no one makes it card-based.</p>
+    <div class="thesis">
+      <i data-icon="sparkle"></i>
+      <div><b>The opening for bb.</b> The category is converging on unified extensibility hubs — Cursor’s “Customize” page is the most complete, and Roo/Kilo unified MCP + modes. But those hubs are <b>filtered chip-tab lists, not card overviews</b>, and <b>none fold scheduled automations — with run history — into the hub</b> (even Cursor keeps Automations on a separate page). A <b>card-based, manage-first</b> hub that treats automations as a first-class kind is the unclaimed combination — and bb already owns every primitive.</div>
+    </div>
+  </div>
+
+  <div class="sectlabel">Extensibility surfaces, side by side</div>
+  <div class="legend">
+    <span><b class="yes">●</b> dedicated management UI</span>
+    <span><b class="part">◐</b> partial / config-file / in flux</span>
+    <span><b class="none">—</b> none</span>
+    <span class="subtle">Watch <b>Automations</b> &amp; <b>Unified hub</b> — only Cursor &amp; bb light both, and only bb puts automations <em>in</em> the hub.</span>
+  </div>
+  <div class="scroll-x">
+    <table class="cmp">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Navigation model</th>
+          <th>Skills / commands</th>
+          <th class="col-hi">Automations<br><span class="q">(scheduled)</span></th>
+          <th>Plugins / ext</th>
+          <th>MCP / integrations</th>
+          <th class="col-hi">Unified<br><span class="q">tools hub</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Conductor<span class="plat">macOS</span></th>
+          <td>Status-grouped workspace sidebar → composer/diff/checks</td>
+          <td class="c"><span class="part">◐</span><span class="q">.md files</span></td>
+          <td class="c col-hi"><span class="none">—</span></td>
+          <td class="c"><span class="none">—</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">status only</span></td>
+          <td class="c col-hi"><span class="none">—</span></td>
+        </tr>
+        <tr>
+          <th>Emdash<span class="plat">OSS desktop</span></th>
+          <td>Sidebar + <b>Library</b>; Cmd+K; card grids</td>
+          <td class="c"><span class="yes">●</span><span class="q">Library cards</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">+ history</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">agent plugins</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">40+ catalog</span></td>
+          <td class="c col-hi"><span class="part">◐</span><span class="q">Prompts+Skills+MCP</span></td>
+        </tr>
+        <tr>
+          <th>Superset<span class="plat">macOS + CLI</span></th>
+          <td>Worktree sidebar + Files/Changes/Review tabs</td>
+          <td class="c"><span class="part">◐</span><span class="q">/ in chat</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">RRule cron</span></td>
+          <td class="c"><span class="none">—</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">read-only</span></td>
+          <td class="c col-hi"><span class="none">—</span></td>
+        </tr>
+        <tr>
+          <th>Tembo<span class="plat">web + mac</span></th>
+          <td>Session-list dashboard; Cmd+K; two-pane diff</td>
+          <td class="c"><span class="yes">●</span><span class="q">upload+config</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">sched+webhook</span></td>
+          <td class="c"><span class="none">—</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">suggested gallery</span></td>
+          <td class="c col-hi"><span class="none">—</span><span class="q">separate pages</span></td>
+        </tr>
+        <tr>
+          <th>Devin<span class="plat">web·Slack·IDE</span></th>
+          <td>Session sidebar (folders) + two-pane; Desktop Board+List</td>
+          <td class="c"><span class="yes">●</span><span class="q">Playbooks+Knowledge</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">Schedules page</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">VS Code+ACP</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">Marketplace+OAuth</span></td>
+          <td class="c col-hi"><span class="none">—</span><span class="q">separate sub-pages</span></td>
+        </tr>
+        <tr>
+          <th>Factory<span class="plat">CLI·desktop·web</span></th>
+          <td>CLI palette + Mission Control (workers list + detail)</td>
+          <td class="c"><span class="yes">●</span><span class="q">/skills /droids</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">cron (web)</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">plugin marketplace</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">registry 40+</span></td>
+          <td class="c col-hi"><span class="part">◐</span><span class="q">plugins bundle</span></td>
+        </tr>
+        <tr>
+          <th>Cline<span class="plat">IDE·CLI·Kanban</span></th>
+          <td>Chat sidebar + Plan/Act toggle; Kanban web app</td>
+          <td class="c"><span class="part">◐</span><span class="q">no custom modes</span></td>
+          <td class="c col-hi"><span class="none">—</span><span class="q">CLI/CI only</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">MCP app-store</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">1-click, ratings</span></td>
+          <td class="c col-hi"><span class="none">—</span><span class="q">MCP-only</span></td>
+        </tr>
+        <tr class="dead">
+          <th>Roo Code<span class="plat">shut down 5/26</span></th>
+          <td>Chat panel + mode dropdown; top-bar tool icons</td>
+          <td class="c"><span class="yes">●</span><span class="q">modes + custom</span></td>
+          <td class="c col-hi"><span class="none">—</span><span class="q">3rd-party only</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">marketplace</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">marketplace+view</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">MCPs + Modes</span></td>
+        </tr>
+        <tr>
+          <th>Kilo Code<span class="plat">VS Code·JB·CLI</span></th>
+          <td>Chat panel + agent selector; tabbed Settings</td>
+          <td class="c"><span class="yes">●</span><span class="q">Agents UI</span></td>
+          <td class="c col-hi"><span class="none">—</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">Kilo Marketplace</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">in flux (rebuild)</span></td>
+          <td class="c col-hi"><span class="part">◐</span><span class="q">classic ● / rebuilt ◐</span></td>
+        </tr>
+        <tr>
+          <th>Cursor<span class="plat">desktop·web·mobile</span></th>
+          <td>Agents sidebar list + two-pane; <b>Customize</b> hub (chip-tabs)</td>
+          <td class="c"><span class="yes">●</span><span class="q">Skills tab</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">cron; separate page</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">Plugins + market</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">MCPs tab + market</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">no automations</span></td>
+        </tr>
+        <tr>
+          <th>Multica<span class="plat">OSS · agents platform</span></th>
+          <td>Issue board — “agents as teammates”; assign / track; squads + leader routing</td>
+          <td class="c"><span class="yes">●</span><span class="q">reusable skills</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">autopilots cron/webhook</span></td>
+          <td class="c"><span class="none">—</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">runtimes</span></td>
+          <td class="c col-hi"><span class="part">◐</span><span class="q">task board, not capability hub</span></td>
+        </tr>
+        <tr class="bb">
+          <th>bb<span class="plat">this proposal</span></th>
+          <td>Sidebar + new top-level <b>Tools</b> entry → one card hub</td>
+          <td class="c"><span class="yes">●</span><span class="q">cards by provider</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">+ run history</span></td>
+          <td class="c"><span class="yes">●</span><span class="q">enable + settings</span></td>
+          <td class="c"><span class="part">◐</span><span class="q">connect → 4th kind</span></td>
+          <td class="c col-hi"><span class="yes">●</span><span class="q">all kinds, 1 system</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note"><i data-icon="alert" data-icon-class="icon-sm"></i><span><b>Cursor</b> and <b>Multica</b> come closest — Cursor unifies a chip-tab “Customize” list but keeps Automations on a separate page; Multica bundles reusable skills + cron/webhook autopilots, but as an <b>issue board</b> (“agents as teammates”), not a card-based capability hub. Roo/Kilo unify capability discovery but have no scheduler; Devin/Tembo/Superset/Factory/Terragon schedule but scatter their surfaces. bb’s proposal is still the only <b>card-based</b> hub that treats <b>skills, automations, and plugins</b> as one kind-system — automations included.</span></div>
+
+  <div class="sectlabel">The products, in brief</div>
+  <div class="profiles">
+    <div class="card prof">
+      <h3><span>Conductor</span> <span class="plat">conductor.build</span></h3>
+      <p>Parallel isolated workspaces on macOS. Strong <b>status lifecycle</b> (backlog→done) but no extensibility hub — slash commands are files, MCP is inherited config. <a href="https://www.conductor.build/docs/">docs</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Emdash</span> <span class="plat">github · YC W26</span></h3>
+      <p>The <b>closest to a hub</b>: a “Library” unifies Prompts + Skills + MCP as catalog cards with cross-agent sync — but Automations and agent-plugins live elsewhere. <a href="https://emdash.sh/docs/library/skills">skills</a> · <a href="https://www.emdash.sh/docs/library/mcp">MCP</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Superset</span> <span class="plat">superset.sh</span></h3>
+      <p>The <b>strongest scheduler</b> (RFC-5545 RRule, Pause / Run-now / history, CLI/MCP-dispatchable) — but run <em>outcomes</em> aren’t shown and skills/MCP have no UI. <a href="https://docs.superset.sh/automations">automations</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Tembo</span> <span class="plat">tembo.io</span></h3>
+      <p>Pivoted from Postgres to orchestration. Dashboard-uploaded Skills, schedule/webhook Automations, and a suggested-MCP gallery — three separate surfaces. <a href="https://www.tembo.io/changelog">changelog</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Devin</span> <span class="plat">Cognition</span></h3>
+      <p>Most mature: <b>Playbooks</b> (+ Community Gallery), <b>Knowledge</b>, a card-based <b>MCP Marketplace</b> (one-click OAuth), and a <b>Schedules</b> page — each its own Settings sub-page. <a href="https://cognition.com/blog/mcp-marketplace">MCP</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Factory</span> <span class="plat">factory.ai · Droids</span></h3>
+      <p>A real <b>plugin marketplace</b> (Browse/Installed/Marketplaces) bundling skills+commands+droids+MCP+hooks, plus a 40+ MCP registry and cron automations — but split across per-type CLI modals. <a href="https://docs.factory.ai/cli/configuration/plugins.md">plugins</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Cline</span> <span class="plat">cline.bot</span></h3>
+      <p>Pioneered the <b>one-click MCP marketplace</b> (app-store: categories, featured, ratings/downloads, auto-install) — but MCP-only; modes are just Plan/Act; orchestration is a separate Kanban app. <a href="https://cline.bot/blog/introducing-the-mcp-marketplace-clines-new-app-store">MCP store</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Roo Code</span> <span class="plat">shut down May 2026</span></h3>
+      <p>Had the clearest <b>unified marketplace</b> — one tabbed panel listing <b>MCPs and Modes</b> with search, type filter, and “installed only.” The best precedent — but the extension was retired for a cloud pivot. <a href="https://roocodeinc.github.io/Roo-Code/features/marketplace">marketplace</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Kilo Code</span> <span class="plat">kilo.ai</span></h3>
+      <p>Classic era unified Skills + MCP + Modes in one marketplace (Roo lineage); the 2026 rebuild fragmented it and pushed MCP back toward config files. <a href="https://github.com/Kilo-Org/kilo-marketplace">marketplace repo</a></p>
+    </div>
+    <div class="card prof">
+      <h3><span>Cursor</span> <span class="plat">Cloud Agents</span></h3>
+      <p>The <b>most complete unified hub</b>: a 3.9 “Customize” page spans Plugins / MCPs / Skills / Subagents / Rules / Commands / Hooks with search, marketplace, and scope — plus cron <b>Automations</b>. But it’s a chip-tab <em>list</em>, and Automations sits on its own page, outside the hub. <a href="https://cursor.com/docs/cloud-agent/automations">automations</a></p>
+    </div>
+    <div class="card prof" style="background:var(--surface-selected);border-color:var(--surface-selected-border)">
+      <h3><span>bb — the opening</span> <span class="plat">this proposal</span></h3>
+      <p>bb already has skills, automations, plugins, and MCP (via <span class="mono">connect</span>). The unmade move: <b>one Tools entry</b>, one card idiom, one status system — a manager <em>and</em> a future marketplace, scheduler included.</p>
+    </div>
+  </div>
+
+  <div class="sectlabel">Where bb’s Tools hub wins</div>
+  <div class="take">
+    <div class="item"><span class="n">1</span><div><div class="h">Automations belong in the hub, with real run outcomes</div><p>Every unified hub (Cursor, Roo, Kilo, Cline) omits scheduling; every scheduler (Cursor, Superset, Devin, Tembo, Factory, Terragon) puts it on a separate page — and Superset can’t even show a run’s success/failure. A bb automation card + detail with live status, pause, and full run history <em>inside</em> the same hub is unmatched. <span class="src">— all fourteen</span></p></div></div>
+    <div class="item"><span class="n">2</span><div><div class="h">Manage what you own, not just browse a store</div><p>The marketplaces are discovery surfaces (install MCP/modes). bb’s hub leads with <em>your</em> installed skills, automations, and plugins as one uniformly-managed set — scope, enable/disable, edit — then adds browse. <span class="src">— Roo, Cline, Kilo</span></p></div></div>
+    <div class="item"><span class="n">3</span><div><div class="h">Config files become first-class cards</div><p>Slash commands as <span class="mono">.md</span> files (Conductor, Superset) and MCP as config (Kilo rebuild) mean “edit a file and hope.” bb makes each a browsable card with status and scope. <span class="src">— Conductor, Superset, Kilo</span></p></div></div>
+  </div>
+
+  <div class="sectlabel">Three ideas worth borrowing</div>
+  <div class="take">
+    <div class="item"><span class="n">A</span><div><div class="h">Cline / Devin one-click install → the “browse &amp; add” state</div><p>App-store cards with ratings, one-click install, and auto-OAuth are exactly Direction A’s proposed marketplace grid — adopt for the future Connections (MCP) kind.</p></div></div>
+    <div class="item"><span class="n">B</span><div><div class="h">Cursor’s scope switcher + Roo’s “installed only” filter</div><p>Cursor’s personal / team / workspace scope switch and Roo’s type filter + “installed only” toggle are the cleanest precedents for switching kinds and separating <em>installed</em> from <em>browse</em> within one hub.</p></div></div>
+    <div class="item"><span class="n">C</span><div><div class="h">Superset RRule + Devin Run-now + real history</div><p>Pair a true recurrence primitive with Pause / Run-now / run-once and a first-class run log — the automation detail page the directions already sketch, done better than any single competitor.</p></div></div>
+  </div>
+
+  <div class="note"><i data-icon="alert" data-icon-class="icon-sm"></i><span>Coverage: ~30 products scanned, including the shared catalog — <b>Synara, Orca, Superconductor, Herdr, HumanLayer/CodeLayer, Omnigent, Paseo, T3 Code, Traycer, Flue</b>, plus Terragon, Amp, Charlie, Async, Vibe Kanban, Crystal, Claude Squad, Uzi, Cmux/Manaflow. The eleven with real extensibility UIs are in the table; the rest are worktree/session orchestrators or agent frameworks whose extensibility is config-file-based (skills/MCP as files) or single-type — none presents skills + automations + plugins as one card-based, automations-inclusive hub. Details from official docs / GitHub / changelogs, inferences labelled. bb’s row reflects this repo + the proposal.</span></div>
+</div>
+<script src="tools.js"></script>
+</body>
+</html>

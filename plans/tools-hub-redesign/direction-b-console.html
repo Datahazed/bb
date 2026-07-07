@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction B · Two-Pane Console — Tools Hub</title>
+<link rel="stylesheet" href="tools.css" />
+<style>
+  .page { max-width: 1080px; margin: 0 auto; padding: 28px 22px 90px; }
+  .floatbar { position: fixed; top: 14px; right: 18px; z-index: 30; display: flex; gap: 6px; }
+  .crumbs { display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--muted-foreground); margin-bottom: 18px; }
+  .crumbs a { text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  .dirhead h1 { font-size: 1.7rem; letter-spacing: -.02em; font-weight: 600; margin-bottom: 6px; }
+  .dirhead p { font-size: var(--text-sm); color: var(--muted-foreground); max-width: 68ch; line-height: 1.55; }
+  .frame-label { display: flex; align-items: center; gap: 10px; margin: 34px 0 12px; font-size: var(--text-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--subtle-foreground); }
+  .frame-label .line { flex: 1; height: 1px; background: transparent; }
+  .frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .contentframe { background: var(--background); }
+  .caption { font-size: var(--text-xs); color: var(--muted-foreground); margin: 8px 2px 0; }
+
+  /* Direction B — the .console fills the content area under the pagehead */
+  .content > .console { flex: 1 1 auto; min-height: 0; height: auto; }
+  .consoleframe .content { height: 540px; }
+  .listhead { display: flex; align-items: center; gap: 6px; padding: 2px 4px 6px; font-size: var(--text-2xs); letter-spacing: .04em; text-transform: uppercase; color: var(--subtle-foreground); }
+  .listhead .line { flex: 1; height: 1px; background: transparent; }
+
+  /* compact, card-like list rows: a real .card, but dense and horizontal */
+  .lcard { flex-direction: row; align-items: center; gap: 10px; padding: 9px 10px; cursor: pointer; }
+  .lcard .title { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--foreground); }
+  .lcard .sub { font-size: var(--text-2xs); color: var(--subtle-foreground); margin-top: 1px; }
+  .lcard .dotsub { display: flex; align-items: center; gap: 5px; }
+  .lcard .chev { color: var(--subtle-foreground); display: flex; flex: none; }
+
+  /* states rendered as the narrow left list pane */
+  .statecols { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .statelist { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .statepad { padding: 22px 16px; }
+  @media (max-width:760px){ .statecols{ grid-template-columns:1fr } }
+</style>
+</head>
+<body>
+<div class="floatbar">
+  <a class="btn ghost sm" href="index.html"><i data-icon="chev-left"></i>Proposals</a>
+  <button class="btn outline sm" data-theme-toggle aria-label="Toggle theme"><i data-icon="sun"></i>Theme</button>
+</div>
+
+<div class="page">
+  <div class="crumbs"><a href="index.html">Tools Hub proposals</a><i data-icon="chev-right" data-icon-class="icon-sm"></i><span>Direction B</span></div>
+  <div class="dirhead">
+    <h1>B · Two-Pane Console</h1>
+    <p>A pinned left list and an in-place detail pane — like VS Code’s explorer + editor or a macOS split-view: pick a kind, scan a compact card list, and manage the selected Tool on the right with no navigation round-trips. Draws on VS Code, Apple’s split views, and Raycast’s in-app detail.</p>
+  </div>
+
+  <!-- ===================================== SKILLS CONSOLE (full app frame) -->
+  <div class="frame-label"><span>Overview · two-pane console — select a card, detail loads in place</span><span class="line"></span></div>
+  <div class="frame">
+    <div class="app">
+      <!-- sidebar with the new top-level Tools entry -->
+      <nav class="railbar" aria-label="Primary">
+        <div class="rail-actions">
+          <div class="rail-item"><i data-icon="plus"></i><span class="grow">New thread</span></div>
+          <div class="rail-item"><i data-icon="search"></i><span class="grow">Search</span><span class="t-2xs subtle">⌘K</span></div>
+          <div class="rail-item" aria-current="page"><i data-icon="toolbox"></i><span class="grow">Tools</span></div>
+        </div>
+        <div class="rail-section">Projects</div>
+        <div class="rail-project"><i data-icon="folder" data-icon-class="icon-sm"></i><span class="grow truncate">personal</span></div>
+        <div class="rail-project"><i data-icon="folder" data-icon-class="icon-sm"></i><span class="grow truncate">bb</span></div>
+        <div class="rail-project"><i data-icon="folder" data-icon-class="icon-sm"></i><span class="grow truncate">moss</span></div>
+        <div class="rail-spacer"></div>
+        <div class="rail-foot">
+          <button class="btn icon-only ghost sm" aria-label="Settings"><i data-icon="settings"></i></button>
+          <button class="btn icon-only ghost sm" aria-label="Feedback"><i data-icon="msg"></i></button>
+        </div>
+      </nav>
+
+      <!-- content -->
+      <div class="content">
+        <div class="pagehead">
+          <div class="segmented" role="tablist" aria-label="Tools">
+            <button role="tab" aria-selected="true"><i data-icon="zap"></i>Skills<span class="count">18</span></button>
+            <button role="tab" aria-selected="false"><i data-icon="clock"></i>Automations<span class="count">5</span></button>
+            <button role="tab" aria-selected="false"><i data-icon="puzzle"></i>Plugins<span class="count">6</span></button>
+          </div>
+          <div class="grow"></div>
+          <div class="field focus-ring" style="width:180px"><i data-icon="search" data-icon-class="icon-sm"></i><input placeholder="Search skills" aria-label="Search skills"/></div>
+          <button class="btn solid sm"><i data-icon="plus"></i>New…</button>
+        </div>
+
+        <div class="console" data-console>
+          <!-- LEFT: compact card list -->
+          <div class="list" role="listbox" aria-label="Skills">
+            <div class="listhead"><span>Skills</span><span class="line"></span><span>8</span></div>
+
+            <article class="card interactive lcard selected" data-item="deep-research">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">deep-research</a><div class="sub mono truncate">bb · user</div></div>
+              <button class="btn icon-only ghost sm above" aria-label="More options for deep-research"><i data-icon="more"></i></button>
+            </article>
+
+            <article class="card interactive lcard" data-item="architect">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">architect</a><div class="sub mono truncate">bb · built-in</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+
+            <article class="card interactive lcard" data-item="design">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">design</a><div class="sub mono truncate">bb · built-in</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+
+            <article class="card interactive lcard" data-item="crit">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">crit</a><div class="sub mono truncate">bb · built-in</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+
+            <article class="card interactive lcard" data-item="merge-ready">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">merge-ready</a><div class="sub mono truncate">bb · built-in</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+
+            <article class="card interactive lcard" data-item="prototype">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">prototype</a><div class="sub mono truncate">bb · user</div></div>
+              <button class="btn icon-only ghost sm above" aria-label="More options for prototype"><i data-icon="more"></i></button>
+            </article>
+
+            <div class="listhead" style="margin-top:4px"><span>Claude Code</span><span class="line"></span><span>2</span></div>
+
+            <article class="card interactive lcard" data-item="frontend-design">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">frontend-design</a><div class="sub mono truncate">Claude · user</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+
+            <article class="card interactive lcard" data-item="security-review">
+              <span class="chip md skill"><i data-icon="zap"></i></span>
+              <div class="grow"><a class="stretch title truncate" href="#">security-review</a><div class="sub mono truncate">Claude · user</div></div>
+              <span class="chev"><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+            </article>
+          </div>
+
+          <!-- RIGHT: detail in place -->
+          <div class="detail">
+            <!-- deep-research (selected, editable) — full body per Direction A -->
+            <div data-pane="deep-research">
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">deep-research</h1><span class="pill secondary sm">editable</span></div>
+                  <div class="t-xs muted">Fan-out web searches, verify claims, and synthesize a cited report.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · user</span>
+                <span class="m mono"><i data-icon="folder"></i>~/.bb/skills/deep-research/SKILL.md</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Deep Research</h4>
+                  <p>A harness for multi-source, fact-checked research. Fan out web searches, fetch sources, adversarially verify claims, then synthesize a cited report.</p>
+                  <h4>## When to use</h4>
+                  <p>When the user wants a deep, multi-source report. If the question is underspecified, ask 2–3 clarifying questions first, then weave the answers into the query.</p>
+                  <span class="codeblock">args: "&lt;refined research question&gt;"</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- architect (read-only) -->
+            <div data-pane="architect" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">architect</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Architect product capabilities as cohesive systems instead of isolated features.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · built-in</span>
+                <span class="m"><i data-icon="external"></i>bundled</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Architect</h4>
+                  <p>Architect product capabilities as cohesive systems instead of isolated features. Challenge complexity, prefer existing primitives, and design for extensibility, lifecycle, and AI/automation compatibility.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- design (read-only) -->
+            <div data-pane="design" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">design</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Design product features and workflows that are simple, powerful, and intuitive.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · built-in</span>
+                <span class="m"><i data-icon="external"></i>bundled</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Design</h4>
+                  <p>Turn a goal or rough idea into user flows, screen states, and edge cases. Prefer the simplest model that stays powerful, and make the tradeoffs behind each decision explicit.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- crit (read-only) -->
+            <div data-pane="crit" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">crit</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Review proposed product, UX, and UI designs like a senior product designer.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · built-in</span>
+                <span class="m"><i data-icon="external"></i>bundled</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Crit</h4>
+                  <p>Evaluate what works and what fails before proposing redesigns. Score a proposed product, UX, or UI design against clear heuristics and give specific, senior-level feedback.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- merge-ready (read-only) -->
+            <div data-pane="merge-ready" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">merge-ready</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Get the current branch’s PR green and mergeable — commit, push, drive CI.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · built-in</span>
+                <span class="m"><i data-icon="external"></i>bundled</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Merge Ready</h4>
+                  <p>Commit, push, open or update the PR, resolve conflicts, and drive CI from red to green until the branch is mergeable. Stops short of the actual merge — it preps, then asks.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- prototype (editable) -->
+            <div data-pane="prototype" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">prototype</h1><span class="pill secondary sm">editable</span></div>
+                  <div class="t-xs muted">Run a UI prototyping session in Ladle, iterating on a design before build.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>provider-agnostic</span>
+                <span class="m"><i data-icon="toolbox"></i>bb · user</span>
+                <span class="m mono"><i data-icon="folder"></i>~/.bb/skills/prototype/SKILL.md</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Prototype</h4>
+                  <p>Iterate on color, type, spacing, layout, and states directly in the app’s Ladle stories until a direction is locked, then hand off to a build skill to implement it for real.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- frontend-design (read-only, Claude Code) -->
+            <div data-pane="frontend-design" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">frontend-design</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Guidance for distinctive, intentional visual design when building new UI.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>claude-code</span>
+                <span class="m"><i data-icon="toolbox"></i>Claude · user</span>
+                <span class="m mono"><i data-icon="folder"></i>~/.claude/skills/frontend-design/SKILL.md</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Frontend Design</h4>
+                  <p>Help with aesthetic direction, typography, and choices that don’t read as templated defaults when building new UI or reshaping an existing one.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- security-review (read-only, Claude Code) -->
+            <div data-pane="security-review" hidden>
+              <div class="row-gap" style="gap:12px">
+                <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+                <div class="grow">
+                  <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">security-review</h1><span class="pill outline sm">read-only</span></div>
+                  <div class="t-xs muted">Complete a security review of the pending changes on the current branch.</div>
+                </div>
+                <button class="btn outline sm"><i data-icon="edit"></i>Duplicate to edit</button>
+                <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+              </div>
+              <div class="metastrip">
+                <span class="m"><i data-icon="sparkle"></i>claude-code</span>
+                <span class="m"><i data-icon="toolbox"></i>Claude · user</span>
+                <span class="m mono"><i data-icon="folder"></i>~/.claude/skills/security-review/SKILL.md</span>
+              </div>
+              <div class="section" style="border-top:0;padding-top:4px">
+                <h3>Instructions <span class="t-2xs subtle mono" style="font-weight:400">SKILL.md</span></h3>
+                <div class="readme">
+                  <h4># Security Review</h4>
+                  <p>Surface injection, authorization, secret-handling, and unsafe-boundary risks in the pending diff, each with a concrete remediation.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">Two-pane console: the kind switch and a compact card list stay pinned on the left; selecting a card swaps its detail into the right pane <strong>in place</strong> — no back-and-forth, no pogo-sticking. The persistent <span class="mono">.card.selected</span> highlight keeps your place. Fastest layout for managing and hopping between Tools; it trades width for that speed and stacks to a single pane below 720px.</p>
+
+  <!-- ================================================= AUTOMATIONS CONSOLE -->
+  <div class="frame-label"><span>Automations · same shell, list carries run-state + Switch</span><span class="line"></span></div>
+  <div class="frame contentframe consoleframe">
+    <div class="content">
+      <div class="pagehead">
+        <div class="segmented" role="tablist" aria-label="Tools">
+          <button role="tab" aria-selected="false"><i data-icon="zap"></i>Skills<span class="count">18</span></button>
+          <button role="tab" aria-selected="true"><i data-icon="clock"></i>Automations<span class="count">5</span></button>
+          <button role="tab" aria-selected="false"><i data-icon="puzzle"></i>Plugins<span class="count">6</span></button>
+        </div>
+        <div class="grow"></div>
+        <div class="field focus-ring" style="width:180px"><i data-icon="search" data-icon-class="icon-sm"></i><input placeholder="Search automations" aria-label="Search automations"/></div>
+        <button class="btn solid sm"><i data-icon="plus"></i>New…</button>
+      </div>
+
+      <div class="console" data-console>
+        <!-- LEFT -->
+        <div class="list" role="listbox" aria-label="Automations">
+          <div class="listhead"><span class="row-gap" style="gap:6px"><span class="dot ok"></span>Active</span><span class="line"></span><span>3</span></div>
+
+          <article class="card interactive lcard selected" data-item="nightly-pr">
+            <span class="chip md automation"><i data-icon="sparkle"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">Nightly PR babysit</a><div class="sub dotsub"><span class="dot run"></span><span class="truncate">Running now · 9PM daily</span></div></div>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="Nightly PR babysit enabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="weekly-usage">
+            <span class="chip md automation"><i data-icon="terminal"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">Weekly usage report</a><div class="sub dotsub"><span class="dot error"></span><span class="truncate">Failed · exit 1 · 8AM Mon</span></div></div>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="Weekly usage report enabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="dependency-check">
+            <span class="chip md automation"><i data-icon="sparkle"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">Dependency update check</a><div class="sub dotsub"><span class="dot ok"></span><span class="truncate">Succeeded · next Jul 8, 6AM</span></div></div>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="Dependency update check enabled"></button>
+          </article>
+
+          <div class="listhead" style="margin-top:4px"><span class="row-gap" style="gap:6px"><span class="dot muted"></span>Paused</span><span class="line"></span><span>2</span></div>
+
+          <article class="card interactive lcard" data-item="inbox-triage" style="opacity:.9">
+            <span class="chip md neutral"><i data-icon="sparkle"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">Inbox triage</a><div class="sub dotsub"><span class="dot muted"></span><span class="truncate">Paused · was 7AM daily</span></div></div>
+            <button class="switch above" role="switch" aria-checked="false" aria-label="Inbox triage paused"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="backup-snapshots" style="opacity:.9">
+            <span class="chip md neutral"><i data-icon="terminal"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">Backup snapshots</a><div class="sub dotsub"><span class="dot muted"></span><span class="truncate">Paused · was 2AM daily</span></div></div>
+            <button class="switch above" role="switch" aria-checked="false" aria-label="Backup snapshots paused"></button>
+          </article>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="detail">
+          <!-- Nightly PR babysit (selected) — full body per Direction A -->
+          <div data-pane="nightly-pr">
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg automation"><i data-icon="sparkle" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">Nightly PR babysit</h1><span class="row-gap" style="gap:5px"><span class="dot run"></span><span class="t-xs" style="color:var(--success)">Running now</span></span></div>
+                <div class="t-xs muted">Agent · reviews open PRs, nudges CI, reports back each night.</div>
+              </div>
+              <button class="btn outline sm"><i data-icon="play"></i>Run now</button>
+              <button class="btn outline sm"><i data-icon="pause"></i>Pause</button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="clock"></i>9PM daily · America/New_York</span>
+              <span class="m"><i data-icon="sparkle"></i>Agent · codex / gpt-5.4 · workspace-write</span>
+              <span class="m"><i data-icon="repeat"></i>Next Jul 8, 9:00 PM</span>
+            </div>
+            <div class="section">
+              <h3>Prompt</h3>
+              <div class="readme"><p style="margin:0">Review every open PR on the bb repo. For each: check CI, summarize failures, and post a one-line status. If a PR is green and approved, comment “ready to merge”. Report a digest to this thread.</p></div>
+            </div>
+            <div class="section">
+              <h3>Run history</h3>
+              <div class="run"><span class="dot run"></span><span class="status ok grow">Running · started 0:42 ago</span><span class="muted mono">manual</span></div>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · 6 PRs reviewed</span><span class="muted mono">Jul 6, 9:00 PM</span></div>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · 5 PRs reviewed</span><span class="muted mono">Jul 5, 9:00 PM</span></div>
+              <div class="run"><i data-icon="alert" data-icon-class="icon-sm"></i><span class="status fail grow">Failed · provider timeout</span><span class="muted mono">Jul 4, 9:00 PM</span></div>
+            </div>
+          </div>
+
+          <!-- Weekly usage report (script, failed) -->
+          <div data-pane="weekly-usage" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg automation"><i data-icon="terminal" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">Weekly usage report</h1><span class="row-gap" style="gap:5px"><span class="dot error"></span><span class="t-xs" style="color:var(--destructive-text)">Failed · exit 1</span></span></div>
+                <div class="t-xs muted">Script · bash · rolls up thread + token usage into a Moss note.</div>
+              </div>
+              <button class="btn outline sm"><i data-icon="play"></i>Run now</button>
+              <button class="btn outline sm"><i data-icon="pause"></i>Pause</button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="clock"></i>8AM Mon · America/New_York</span>
+              <span class="m"><i data-icon="terminal"></i>Script · bash</span>
+              <span class="m"><i data-icon="repeat"></i>Next Jul 13, 8:00 AM</span>
+            </div>
+            <div class="section">
+              <h3>Command</h3>
+              <span class="codeblock">bb usage report --week --out ~/Moss/Notes/usage.md</span>
+            </div>
+            <div class="section">
+              <h3>Run history</h3>
+              <div class="run"><i data-icon="alert" data-icon-class="icon-sm"></i><span class="status fail grow">Failed · exit 1 · Moss note locked</span><span class="muted mono">Jul 6, 8:00 AM</span></div>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · note updated</span><span class="muted mono">Jun 29, 8:00 AM</span></div>
+            </div>
+          </div>
+
+          <!-- Dependency update check (agent, succeeded) -->
+          <div data-pane="dependency-check" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg automation"><i data-icon="sparkle" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">Dependency update check</h1><span class="row-gap" style="gap:5px"><span class="dot ok"></span><span class="t-xs muted">Succeeded · silent</span></span></div>
+                <div class="t-xs muted">Agent · scans for outdated deps and opens a PR when safe.</div>
+              </div>
+              <button class="btn outline sm"><i data-icon="play"></i>Run now</button>
+              <button class="btn outline sm"><i data-icon="pause"></i>Pause</button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="clock"></i>6AM Sun · America/New_York</span>
+              <span class="m"><i data-icon="sparkle"></i>Agent · claude / opus-4.8 · workspace-write</span>
+              <span class="m"><i data-icon="repeat"></i>Next Jul 8, 6:00 AM</span>
+            </div>
+            <div class="section">
+              <h3>Prompt</h3>
+              <div class="readme"><p style="margin:0">Scan the lockfile for outdated dependencies. For low-risk patch/minor bumps that pass the test suite, open a single grouped PR. Skip majors and anything with a failing build.</p></div>
+            </div>
+            <div class="section">
+              <h3>Run history</h3>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · nothing to update</span><span class="muted mono">Jul 6, 6:00 AM</span></div>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · 1 PR opened</span><span class="muted mono">Jun 29, 6:00 AM</span></div>
+            </div>
+          </div>
+
+          <!-- Inbox triage (paused) -->
+          <div data-pane="inbox-triage" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg neutral"><i data-icon="sparkle" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">Inbox triage</h1><span class="pill secondary sm">Paused</span></div>
+                <div class="t-xs muted">Agent · summarizes new mentions and drafts replies for review.</div>
+              </div>
+              <button class="btn solid sm"><i data-icon="play"></i>Resume</button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="clock"></i>was 7AM daily · America/New_York</span>
+              <span class="m"><i data-icon="sparkle"></i>Agent · claude / opus-4.8 · API</span>
+              <span class="m"><i data-icon="repeat"></i>Paused — no next run</span>
+            </div>
+            <div class="section">
+              <h3>Prompt</h3>
+              <div class="readme"><p style="margin:0">Summarize new mentions across connected inboxes and draft a reply for each. Post the drafts to this thread for review — never send automatically.</p></div>
+            </div>
+            <div class="section">
+              <h3>Run history</h3>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · 4 drafts</span><span class="muted mono">Jun 30, 7:00 AM</span></div>
+            </div>
+          </div>
+
+          <!-- Backup snapshots (paused, script) -->
+          <div data-pane="backup-snapshots" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg neutral"><i data-icon="terminal" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">Backup snapshots</h1><span class="pill secondary sm">Paused</span></div>
+                <div class="t-xs muted">Script · node · snapshots the workspace db nightly to cold storage.</div>
+              </div>
+              <button class="btn solid sm"><i data-icon="play"></i>Resume</button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="clock"></i>was 2AM daily · America/New_York</span>
+              <span class="m"><i data-icon="terminal"></i>Script · node</span>
+              <span class="m"><i data-icon="repeat"></i>Paused — no next run</span>
+            </div>
+            <div class="section">
+              <h3>Command</h3>
+              <span class="codeblock">node scripts/snapshot.js --db workspace --dest s3://bb-cold</span>
+            </div>
+            <div class="section">
+              <h3>Run history</h3>
+              <div class="run"><i data-icon="check" data-icon-class="icon-sm"></i><span class="status ok grow">Succeeded · 1.2 GB snapshot</span><span class="muted mono">Jun 28, 2:00 AM</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">Same shell, Automations kind: the list carries the run-state dot, schedule, and enable Switch; the right pane swaps to Prompt (or Command for scripts) + Run history in place. You can Run now / Pause / Resume the selected automation without ever leaving the list.</p>
+
+  <!-- ===================================================== PLUGINS CONSOLE -->
+  <div class="frame-label"><span>Plugins · list is id · version · status · Switch; detail edits Settings + Permissions</span><span class="line"></span></div>
+  <div class="frame contentframe consoleframe">
+    <div class="content">
+      <div class="pagehead">
+        <div class="segmented" role="tablist" aria-label="Tools">
+          <button role="tab" aria-selected="false"><i data-icon="zap"></i>Skills<span class="count">18</span></button>
+          <button role="tab" aria-selected="false"><i data-icon="clock"></i>Automations<span class="count">5</span></button>
+          <button role="tab" aria-selected="true"><i data-icon="puzzle"></i>Plugins<span class="count">6</span></button>
+        </div>
+        <div class="grow"></div>
+        <div class="field focus-ring" style="width:180px"><i data-icon="search" data-icon-class="icon-sm"></i><input placeholder="Search plugins" aria-label="Search plugins"/></div>
+        <button class="btn solid sm"><i data-icon="plus"></i>New…</button>
+      </div>
+
+      <div class="console" data-console>
+        <!-- LEFT -->
+        <div class="list" role="listbox" aria-label="Plugins">
+          <div class="listhead"><span>Installed</span><span class="line"></span><span>6</span></div>
+
+          <article class="card interactive lcard" data-item="automations">
+            <span class="chip md plugin"><i data-icon="puzzle"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">automations</a><div class="sub mono truncate">v1.2.0</div></div>
+            <span class="pill secondary sm">running</span>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="automations enabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="connect">
+            <span class="chip md plugin"><i data-icon="external"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">connect</a><div class="sub mono truncate">v0.9.0</div></div>
+            <span class="pill secondary sm">running</span>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="connect enabled"></button>
+          </article>
+
+          <article class="card interactive lcard selected" data-item="simple-notes">
+            <span class="chip md plugin"><i data-icon="edit"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">simple-notes</a><div class="sub mono truncate">v0.1.0</div></div>
+            <span class="pill outline sm">needs config</span>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="simple-notes enabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="posthog-dashboard">
+            <span class="chip md plugin"><i data-icon="alert"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">posthog-dashboard</a><div class="sub mono truncate">v2.0.1</div></div>
+            <span class="pill destructive sm">error</span>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="posthog-dashboard enabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="markdown-editor" style="opacity:.9">
+            <span class="chip md neutral"><i data-icon="edit"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">markdown-editor</a><div class="sub mono truncate">v0.3.0</div></div>
+            <span class="pill outline sm">disabled</span>
+            <button class="switch above" role="switch" aria-checked="false" aria-label="markdown-editor disabled"></button>
+          </article>
+
+          <article class="card interactive lcard" data-item="dataviz">
+            <span class="chip md plugin"><i data-icon="workflow"></i></span>
+            <div class="grow"><a class="stretch title truncate" href="#">dataviz</a><div class="sub mono truncate">v1.0.4</div></div>
+            <span class="pill secondary sm">running</span>
+            <button class="switch above" role="switch" aria-checked="true" aria-label="dataviz enabled"></button>
+          </article>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="detail">
+          <!-- simple-notes (selected) — full body per Direction A -->
+          <div data-pane="simple-notes">
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg plugin"><i data-icon="edit" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">simple-notes</h1><span class="pill outline sm">needs configuration</span></div>
+                <div class="t-xs muted">A minimal notes panel for capturing thoughts alongside a thread.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="simple-notes enabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v0.1.0</span>
+              <span class="m"><i data-icon="external"></i>builtin</span>
+            </div>
+            <div class="section">
+              <h3>Settings</h3>
+              <div class="setting"><div><div class="label">Notes folder</div><div class="help">Where notes are written. Required before the panel can render.</div></div><div class="field focus-ring" style="width:220px"><i data-icon="folder" data-icon-class="icon-sm"></i><input placeholder="~/Notes" aria-label="Notes folder"/></div></div>
+              <div class="setting"><div><div class="label">Open on new thread</div><div class="help">Show the notes panel automatically when a thread starts.</div></div><button class="switch" role="switch" aria-checked="false" aria-label="Open on new thread"></button></div>
+            </div>
+            <div class="section">
+              <h3>Permissions</h3>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="shield" data-icon-class="icon-sm"></i><span class="grow">Read &amp; write files in the notes folder</span><span class="muted mono">read / write</span></div>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="terminal" data-icon-class="icon-sm"></i><span class="grow">Contribute a panel to the thread view</span><span class="muted mono">ui</span></div>
+            </div>
+          </div>
+
+          <!-- automations plugin -->
+          <div data-pane="automations" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg plugin"><i data-icon="puzzle" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">automations</h1><span class="pill secondary sm">running</span></div>
+                <div class="t-xs muted">Schedule agent and script runs; the engine behind the Automations tab.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="automations enabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v1.2.0</span>
+              <span class="m"><i data-icon="external"></i>builtin</span>
+            </div>
+            <div class="section">
+              <h3>Permissions</h3>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="clock" data-icon-class="icon-sm"></i><span class="grow">Register and run scheduled jobs</span><span class="muted mono">cron</span></div>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="sparkle" data-icon-class="icon-sm"></i><span class="grow">Spawn agent threads on a schedule</span><span class="muted mono">spawn</span></div>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="terminal" data-icon-class="icon-sm"></i><span class="grow">Contribute the Automations tab</span><span class="muted mono">ui</span></div>
+            </div>
+          </div>
+
+          <!-- connect plugin -->
+          <div data-pane="connect" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg plugin"><i data-icon="external" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">connect</h1><span class="pill secondary sm">running</span></div>
+                <div class="t-xs muted">Link external accounts and expose them to threads as tools.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="connect enabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v0.9.0</span>
+              <span class="m"><i data-icon="external"></i>builtin</span>
+            </div>
+            <div class="section">
+              <h3>Settings</h3>
+              <div class="setting"><div><div class="label">Connected accounts</div><div class="help">Accounts exposed to threads as callable tools.</div></div><span class="pill secondary sm">3 linked</span></div>
+              <div class="setting"><div><div class="label">Require approval per call</div><div class="help">Ask before a thread uses a connected account.</div></div><button class="switch" role="switch" aria-checked="true" aria-label="Require approval per call"></button></div>
+            </div>
+            <div class="section">
+              <h3>Permissions</h3>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="shield" data-icon-class="icon-sm"></i><span class="grow">Store OAuth tokens for linked accounts</span><span class="muted mono">secrets</span></div>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="external" data-icon-class="icon-sm"></i><span class="grow">Make network requests on your behalf</span><span class="muted mono">network</span></div>
+            </div>
+          </div>
+
+          <!-- posthog-dashboard plugin (error) -->
+          <div data-pane="posthog-dashboard" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg plugin"><i data-icon="alert" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">posthog-dashboard</h1><span class="pill destructive sm">error</span></div>
+                <div class="t-xs muted">Error-dashboard review. Failed to start: missing API key.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="posthog-dashboard enabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v2.0.1</span>
+              <span class="m"><i data-icon="external"></i>community</span>
+            </div>
+            <div class="section" style="border-top:0;padding-top:4px">
+              <div class="empty alert" role="alert" style="padding:16px 18px">
+                <span class="chip lg neutral" style="color:var(--destructive-text)"><i data-icon="alert" data-icon-class="icon-lg"></i></span>
+                <div><div class="t-sm medium" style="color:var(--foreground)">Failed to start</div><div style="margin-top:2px">Set <span class="mono">POSTHOG_API_KEY</span> below, then re-enable the plugin.</div></div>
+                <button class="btn outline sm"><i data-icon="refresh"></i>Retry</button>
+              </div>
+            </div>
+            <div class="section">
+              <h3>Settings</h3>
+              <div class="setting"><div><div class="label">PostHog API key</div><div class="help">Required to read the error dashboard.</div></div><div class="field focus-ring" style="width:220px"><i data-icon="shield" data-icon-class="icon-sm"></i><input placeholder="phc_…" aria-label="PostHog API key"/></div></div>
+            </div>
+          </div>
+
+          <!-- markdown-editor plugin (disabled) -->
+          <div data-pane="markdown-editor" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg neutral"><i data-icon="edit" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">markdown-editor</h1><span class="pill outline sm">disabled</span></div>
+                <div class="t-xs muted">Rich markdown editing surface for notes and specs.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="false" aria-label="markdown-editor disabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v0.3.0</span>
+              <span class="m"><i data-icon="external"></i>builtin</span>
+            </div>
+            <div class="section">
+              <h3>Settings</h3>
+              <div class="setting"><div><div class="label">Live preview</div><div class="help">Render markdown side-by-side while editing.</div></div><button class="switch" role="switch" aria-checked="true" aria-label="Live preview"></button></div>
+            </div>
+            <div class="section">
+              <h3>Permissions</h3>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="terminal" data-icon-class="icon-sm"></i><span class="grow">Contribute an editor panel to the thread view</span><span class="muted mono">ui</span></div>
+            </div>
+          </div>
+
+          <!-- dataviz plugin -->
+          <div data-pane="dataviz" hidden>
+            <div class="row-gap" style="gap:12px">
+              <span class="chip lg plugin"><i data-icon="workflow" data-icon-class="icon-lg"></i></span>
+              <div class="grow">
+                <div class="row-gap" style="gap:8px"><h1 class="t-base semibold">dataviz</h1><span class="pill secondary sm">running</span></div>
+                <div class="t-xs muted">Chart and dashboard rendering for thread artifacts.</div>
+              </div>
+              <button class="switch" role="switch" aria-checked="true" aria-label="dataviz enabled"></button>
+              <button class="btn icon-only outline sm" aria-label="More"><i data-icon="more"></i></button>
+            </div>
+            <div class="metastrip">
+              <span class="m"><i data-icon="puzzle"></i>v1.0.4</span>
+              <span class="m"><i data-icon="external"></i>builtin</span>
+            </div>
+            <div class="section">
+              <h3>Settings</h3>
+              <div class="setting"><div><div class="label">Default palette</div><div class="help">Applied to charts rendered from thread artifacts.</div></div><span class="pill secondary sm">brand</span></div>
+            </div>
+            <div class="section">
+              <h3>Permissions</h3>
+              <div class="run" style="border:0;padding:6px 0"><i data-icon="terminal" data-icon-class="icon-sm"></i><span class="grow">Render charts into the thread view</span><span class="muted mono">ui</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">Plugins kind: each row shows id · version · status · Switch; the detail pane edits Settings and reviews Permissions next to the list. Enable/disable is reachable both from the list and the detail header, and nothing navigates away.</p>
+
+  <!-- ============================================================= STATES -->
+  <div class="frame-label"><span>States · as they render inside the left list pane</span><span class="line"></span></div>
+  <div class="statecols">
+    <div>
+      <div class="frame contentframe"><div class="statelist">
+        <article class="card lcard">
+          <span class="skeleton" style="width:28px;height:28px;border-radius:8px"></span>
+          <div class="grow"><span class="skeleton" style="display:block;width:60%;height:11px"></span><span class="skeleton" style="display:block;width:36%;height:9px;margin-top:6px"></span></div>
+          <span class="skeleton" style="width:34px;height:20px;border-radius:999px"></span>
+        </article>
+        <article class="card lcard">
+          <span class="skeleton" style="width:28px;height:28px;border-radius:8px"></span>
+          <div class="grow"><span class="skeleton" style="display:block;width:50%;height:11px"></span><span class="skeleton" style="display:block;width:42%;height:9px;margin-top:6px"></span></div>
+          <span class="skeleton" style="width:34px;height:20px;border-radius:999px"></span>
+        </article>
+        <article class="card lcard">
+          <span class="skeleton" style="width:28px;height:28px;border-radius:8px"></span>
+          <div class="grow"><span class="skeleton" style="display:block;width:66%;height:11px"></span><span class="skeleton" style="display:block;width:30%;height:9px;margin-top:6px"></span></div>
+          <span class="skeleton" style="width:34px;height:20px;border-radius:999px"></span>
+        </article>
+        <article class="card lcard">
+          <span class="skeleton" style="width:28px;height:28px;border-radius:8px"></span>
+          <div class="grow"><span class="skeleton" style="display:block;width:44%;height:11px"></span><span class="skeleton" style="display:block;width:38%;height:9px;margin-top:6px"></span></div>
+          <span class="skeleton" style="width:34px;height:20px;border-radius:999px"></span>
+        </article>
+      </div></div>
+      <p class="caption">Loading — skeleton compact cards (bb <span class="mono">Skeleton</span> on <span class="mono">--surface-selected</span>) hold the list’s shape, no layout shift when the real rows arrive.</p>
+    </div>
+    <div>
+      <div class="frame contentframe"><div class="statepad"><div class="empty">
+        <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+        <div><div class="t-sm medium" style="color:var(--foreground)">No skills yet</div><div style="margin-top:2px">Skills are reusable methods your agents can invoke.</div></div>
+        <button class="btn solid sm"><i data-icon="chat-add"></i>Create a skill</button>
+      </div></div></div>
+      <p class="caption">Empty — dashed <span class="mono">EmptyStatePanel</span> fills the list column, one useful first action. Distinct copy per kind.</p>
+    </div>
+    <div>
+      <div class="frame contentframe"><div class="statepad"><div class="empty alert" role="alert">
+        <span class="chip lg neutral" style="color:var(--destructive-text)"><i data-icon="alert" data-icon-class="icon-lg"></i></span>
+        <div><div class="t-sm medium" style="color:var(--foreground)">Couldn’t load Tools</div><div style="margin-top:2px">The host daemon didn’t respond. Your Tools are unchanged.</div></div>
+        <button class="btn outline sm"><i data-icon="refresh"></i>Retry</button>
+      </div></div></div>
+      <p class="caption">Error — states what happened, what was preserved, and how to recover.</p>
+    </div>
+    <div>
+      <div class="frame contentframe"><div class="statepad"><div class="empty">
+        <span class="chip lg neutral"><i data-icon="search" data-icon-class="icon-lg"></i></span>
+        <div><div class="t-sm medium" style="color:var(--foreground)">No Tools match “webhook”</div><div style="margin-top:2px">Try a different term, or clear the search.</div></div>
+        <button class="btn outline sm">Clear search</button>
+      </div></div></div>
+      <p class="caption">No results — separated from the empty-yet state, because the recovery is different. Below 720px the two panes collapse to one, so these are also the whole-screen states on mobile.</p>
+    </div>
+  </div>
+</div>
+<script src="tools.js"></script>
+</body>
+</html>

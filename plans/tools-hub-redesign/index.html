@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tools Hub — design proposals · bb PR #407</title>
+<link rel="stylesheet" href="tools.css" />
+<style>
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  .floatbar { position: fixed; top: 16px; right: 20px; z-index: 20; display: flex; gap: 6px; }
+  .eyebrow { font-size: var(--text-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground); }
+  .hero h1 { font-size: 2.4rem; line-height: 1.08; letter-spacing: -.02em; font-weight: 600; margin: 10px 0 12px; }
+  .hero .lede { font-size: var(--text-base); line-height: 1.6; color: var(--muted-foreground); max-width: 62ch; }
+  .rule { height: 0; margin: 30px 0; }
+  .kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .kindcard { padding: 16px; }
+  .kindcard .chip { margin-bottom: 12px; }
+  .kindcard h3 { font-size: var(--text-sm); font-weight: 600; }
+  .kindcard p { font-size: var(--text-xs); color: var(--muted-foreground); margin-top: 4px; line-height: 1.5; }
+  .kindcard .meta { margin-top: 12px; font-size: var(--text-2xs); color: var(--subtle-foreground); font-family: var(--font-mono); }
+  .sectlabel { font-size: var(--text-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--subtle-foreground); margin-bottom: 14px; }
+  .grammar { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .props { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 22px; font-size: var(--text-sm); }
+  .props .p { display: flex; gap: 8px; padding: 6px 0; }
+  .props .p .icon { color: var(--muted-foreground); margin-top: 1px; }
+  .proposals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .proposal { padding: 0; overflow: hidden; text-decoration: none; }
+  .proposal .thumb { height: 120px; background: var(--surface-recessed-solid); display: block; position: relative; }
+  .proposal .thumb .mini { position: absolute; inset: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); display: grid; overflow: hidden; }
+  .proposal .body { padding: 14px 15px 16px; }
+  .proposal h3 { font-size: var(--text-sm); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .proposal p { font-size: var(--text-xs); color: var(--muted-foreground); margin-top: 6px; line-height: 1.5; }
+  .proposal .tradeoff { margin-top: 10px; font-size: var(--text-2xs); color: var(--subtle-foreground); }
+  .cite { columns: 2; column-gap: 34px; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .cite a { color: var(--muted-foreground); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+  .cite li { break-inside: avoid; padding: 3px 0; }
+  .note { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); font-size: var(--text-xs); color: var(--muted-foreground); }
+  .note .icon { color: var(--attention); flex: none; margin-top: 1px; }
+  /* mini wireframe fills for thumbs */
+  .mini.a { grid-template-columns: 1fr 1fr 1fr; gap: 5px; padding: 7px; }
+  .mini.a i { background: var(--muted); border-radius: 3px; display: block; }
+  .mini.b { grid-template-columns: 34% 1fr; }
+  .mini.b .l { background: var(--surface-recessed-solid); }
+  .mini.b .r { padding: 6px; } .mini.b .r i { display:block; height:5px; background: var(--muted); border-radius: 2px; margin-bottom: 5px; }
+  .mini.b .r i:first-child { width: 50%; height: 8px; }
+  .mini.c { padding: 7px; gap: 5px; } .mini.c i { display:block; height: 15px; background: var(--muted); border-radius: 3px; }
+  @media (max-width: 760px) { .kinds, .grammar, .proposals { grid-template-columns: 1fr; } .props, .cite { columns: 1; grid-template-columns: 1fr; } .hero h1 { font-size: 1.9rem; } }
+</style>
+</head>
+<body>
+<div class="floatbar">
+  <button class="btn outline sm" data-theme-toggle aria-label="Toggle theme"><i data-icon="sun"></i><span>Theme</span></button>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">bb · PR #407 · design proposals</div>
+    <h1>The Tools hub</h1>
+    <p class="lede">One place to find and manage everything that extends bb — <strong>Skills</strong>, <strong>Automations</strong>, and <strong>Plugins</strong>. Today these are three unrelated surfaces. This proposal treats them as one primitive — a <em>Tool</em> — so three data shapes read through a single page grammar and one status vocabulary.</p>
+  </header>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">One primitive, three kinds</div>
+    <div class="kinds">
+      <div class="card kindcard">
+        <span class="chip lg skill"><i data-icon="zap" data-icon-class="icon-lg"></i></span>
+        <h3>Skills</h3>
+        <p>Reusable know-how a model can invoke. Authored as <code>SKILL.md</code> on disk; some are read-only (built-in / provider), some you own and edit.</p>
+        <div class="meta">provider · scope · path</div>
+      </div>
+      <div class="card kindcard">
+        <span class="chip lg automation"><i data-icon="clock" data-icon-class="icon-lg"></i></span>
+        <h3>Automations</h3>
+        <p>Scheduled or triggered delegated work — an agent prompt or a script that runs on a cron. Active or paused; each keeps a run history.</p>
+        <div class="meta">schedule · next run · last status</div>
+      </div>
+      <div class="card kindcard">
+        <span class="chip lg plugin"><i data-icon="puzzle" data-icon-class="icon-lg"></i></span>
+        <h3>Plugins</h3>
+        <p>Installed packages that contribute panels, commands, and settings. Enable, disable, and configure through a declarative settings form.</p>
+        <div class="meta">version · status · settings</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">Shared page grammar</div>
+    <div class="grammar">
+      <div class="card" style="padding:16px">
+        <h3 class="t-sm semibold" style="margin-bottom:10px">Every Overview</h3>
+        <div class="props" style="grid-template-columns:1fr">
+          <div class="p"><i data-icon="search" data-icon-class="icon-sm"></i><span>Header: title + count, search, <span class="mono t-xs">New…</span>, sort</span></div>
+          <div class="p"><i data-icon="folder" data-icon-class="icon-sm"></i><span>Card collection, grouped where it means something</span></div>
+          <div class="p"><i data-icon="check" data-icon-class="icon-sm"></i><span>Same card anatomy across kinds; only metadata differs</span></div>
+          <div class="p"><i data-icon="sparkle" data-icon-class="icon-sm"></i><span>States: loading · empty · error · no-results</span></div>
+        </div>
+      </div>
+      <div class="card" style="padding:16px">
+        <h3 class="t-sm semibold" style="margin-bottom:10px">Every Detail</h3>
+        <div class="props" style="grid-template-columns:1fr">
+          <div class="p"><i data-icon="chev-left" data-icon-class="icon-sm"></i><span>Back link to its overview</span></div>
+          <div class="p"><i data-icon="toolbox" data-icon-class="icon-sm"></i><span>Header: icon · name · status · primary action · <span class="mono">⋯</span></span></div>
+          <div class="p"><i data-icon="settings" data-icon-class="icon-sm"></i><span>Kind-specific body: README / config / permissions / runs</span></div>
+          <div class="p"><i data-icon="repeat" data-icon-class="icon-sm"></i><span>One status system, placed by kind — Skills show scope (read-only / editable); Automations &amp; Plugins toggle Enabled · Paused · Error</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">Three directions to compare</div>
+    <div class="proposals">
+      <a class="card interactive proposal" href="direction-a-gallery.html">
+        <span class="thumb"><span class="mini a"><i></i><i></i><i></i><i></i><i></i><i></i></span></span>
+        <span class="body">
+          <h3>A · Marketplace Gallery <i data-icon="chev-right" data-icon-class="icon-sm"></i></h3>
+          <p>Top segmented tabs, a rich responsive card grid, full-page detail with a metadata rail. Discovery-forward.</p>
+          <div class="tradeoff">Tradeoff: most browsable; full-page detail risks pogo-sticking when managing many items.</div>
+        </span>
+      </a>
+      <a class="card interactive proposal" href="direction-b-console.html">
+        <span class="thumb"><span class="mini b"><span class="l"></span><span class="r"><i></i><i></i><i></i><i></i></span></span></span>
+        <span class="body">
+          <h3>B · Two-Pane Console <i data-icon="chev-right" data-icon-class="icon-sm"></i></h3>
+          <p>A kind-rail plus a compact card list on the left; the selected Tool's detail opens in place on the right. Manage-forward.</p>
+          <div class="tradeoff">Tradeoff: fastest to manage and hop between items; needs horizontal width.</div>
+        </span>
+      </a>
+      <a class="card interactive proposal" href="direction-c-system-list.html">
+        <span class="thumb"><span class="mini c"><i></i><i></i><i></i></span></span>
+        <span class="body">
+          <h3>C · Quiet System List <i data-icon="chev-right" data-icon-class="icon-sm"></i></h3>
+          <p>Shallow left sub-nav; wide, calm card rows grouped by status; full-page stacked detail. Settings-native.</p>
+          <div class="tradeoff">Tradeoff: calmest and most consistent with bb; lowest “discover something new” energy.</div>
+        </span>
+      </a>
+    </div>
+    <div class="note" style="margin-top:14px"><i data-icon="sparkle" data-icon-class="icon-sm"></i><span><strong>Recommendation.</strong> Ship <strong>B’s two-pane shell</strong> as the manage surface — no pogo-sticking, and bb users already know the pattern from VS Code — rendering list items in <strong>C’s calm card style</strong>. A’s gallery grid also powers <strong>Browse</strong> — the skills.sh registry — where one-click install lands a skill across every provider. One card, one status system, three kinds, plus a registry.</span></div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">Competitive landscape</div>
+    <a class="card interactive" href="competitors.html" style="padding:16px 18px">
+      <span class="between"><span class="t-sm semibold">How ~19 agent tools handle extensibility</span><i data-icon="chev-right" data-icon-class="icon-sm"></i></span>
+      <p class="t-xs muted" style="margin-top:6px">Conductor · Emdash · Superset · Tembo · Devin · Factory · Cline · Roo · Kilo · Cursor (+ Terragon / Amp / Charlie / Async / Vibe Kanban / Crystal / Claude Squad / Uzi / Cmux). The finding: unified hubs are emerging, but none are card-based and none fold in scheduled automations with run history — the combination bb’s Tools hub would own.</p>
+    </a>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">Grounded in real components</div>
+    <p class="t-sm muted" style="max-width:70ch;margin-bottom:14px">Every color is a real bb token (the <span class="mono t-xs">--canvas</span>/<span class="mono t-xs">--ink</span> mix system from <span class="mono t-xs">theme.css</span>), rendered in light and dark. Components — <span class="mono t-xs">Card</span>, <span class="mono t-xs">Pill</span>, <span class="mono t-xs">Switch</span>, <span class="mono t-xs">StatusDot</span>, <span class="mono t-xs">EmptyStatePanel</span>, <span class="mono t-xs">Skeleton</span> — and the data fields (<span class="mono t-xs">SkillSummary</span>, <span class="mono t-xs">AutomationResponse</span>, <span class="mono t-xs">PluginListItem</span>) mirror PR #407. Anything net-new is labelled <span class="pill outline sm">proposed</span>.</p>
+    <div class="note"><i data-icon="sparkle" data-icon-class="icon-sm"></i><span>These are static wireframes, not the built UI. Per-kind accent color is deliberate: the Tools hub is the one surface where color earns its place — telling Skills, Automations, and Plugins apart at a glance — while the rest of bb stays monochrome. The Skills area indexes the <strong>skills.sh</strong> registry — a <strong>Browse</strong> mode with one-click install (<span class="mono">npx skills add owner/repo</span>) across your configured providers.</span></div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <div class="sectlabel">Research the directions draw on</div>
+    <ul class="cite">
+      <li><a href="https://www.nngroup.com/articles/cards-component/">NN/g — Cards: when cards beat lists</a></li>
+      <li><a href="https://www.nngroup.com/articles/pogo-sticking/">NN/g — No More Pogo Sticking</a></li>
+      <li><a href="https://www.nngroup.com/articles/vertical-nav/">NN/g — Left-side vertical navigation</a></li>
+      <li><a href="https://www.nngroup.com/articles/toggle-switch-guidelines/">NN/g — Toggle-switch guidelines</a></li>
+      <li><a href="https://developer.apple.com/design/human-interface-guidelines/split-views">Apple HIG — Split views</a></li>
+      <li><a href="https://developer.apple.com/design/human-interface-guidelines/sidebars">Apple HIG — Sidebars (≤2 levels)</a></li>
+      <li><a href="https://polaris-react.shopify.com/components/lists/resource-list">Polaris — Resource list vs data table</a></li>
+      <li><a href="https://carbondesignsystem.com/components/tile/usage/">Carbon — Clickable tile</a></li>
+      <li><a href="https://code.visualstudio.com/docs/configure/extensions/extension-marketplace">VS Code — Extensions & contributions</a></li>
+      <li><a href="https://www.raycast.com/raycast/github">Raycast — Commands tab on detail</a></li>
+      <li><a href="https://vercel.com/docs/integrations/install-an-integration/manage-integrations-reference">Vercel — Permissions vocabulary</a></li>
+      <li><a href="https://inclusive-components.design/cards/">Inclusive Components — Accessible cards</a></li>
+    </ul>
+  </section>
+</div>
+<script src="tools.js"></script>
+</body>
+</html>
