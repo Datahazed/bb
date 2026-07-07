@@ -9,7 +9,13 @@ import {
   formatSelfUpdateStagingDir,
   formatStagedPackageRoot,
 } from "@bb/config/self-update";
-import { projects, threads } from "@bb/db";
+import {
+  environments,
+  hosts,
+  projects,
+  queuedThreadMessages,
+  threads,
+} from "@bb/db";
 import type { ThreadStatus } from "@bb/domain";
 import type { SystemVersionInfo } from "@bb/server-contract";
 import { initDb } from "../../src/db.js";
@@ -26,6 +32,7 @@ const TARGET_VERSION = "0.0.11";
 
 interface HarnessOverrides {
   latestVersion?: string | null;
+  quietPeriodMs?: number;
   selfUpdateProtocol?: boolean;
   runStagingInstall?: (args: StagingInstallArgs) => Promise<void>;
 }
@@ -102,20 +109,64 @@ async function createHarness(overrides: HarnessOverrides = {}) {
     prepareShutdown,
     exitProcess,
     pollIntervalMs: 5,
-    quietPeriodMs: 25,
+    quietPeriodMs: overrides.quietPeriodMs ?? 25,
     runStagingInstall,
   };
   const service = createSelfUpdateService(serviceArgs);
   cleanups.push(async () => service.stop());
 
-  function insertThread(id: string, status: ThreadStatus): void {
+  function insertThread(
+    id: string,
+    status: ThreadStatus,
+    environmentId?: string,
+  ): void {
     db.insert(threads)
       .values({
         id,
         projectId: "proj_1",
         providerId: "test-provider",
         status,
+        environmentId: environmentId ?? null,
         latestAttentionAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  }
+
+  /** An idle thread holding a queued follow-up the auto-send sweep would start. */
+  function insertIdleThreadWithQueuedMessage(threadId: string): void {
+    db.insert(hosts)
+      .values({
+        id: "host_1",
+        name: "Test Host",
+        type: "persistent",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .run();
+    db.insert(environments)
+      .values({
+        id: `env_${threadId}`,
+        projectId: "proj_1",
+        hostId: "host_1",
+        workspaceProvisionType: "unmanaged",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    insertThread(threadId, "idle", `env_${threadId}`);
+    db.insert(queuedThreadMessages)
+      .values({
+        id: `qmsg_${threadId}`,
+        threadId,
+        content: "queued follow-up",
+        model: "test/mock-model",
+        reasoningLevel: "medium",
+        permissionMode: "workspace-write",
+        serviceTier: "standard",
+        sortKey: "V",
         createdAt: now,
         updatedAt: now,
       })
@@ -130,6 +181,7 @@ async function createHarness(overrides: HarnessOverrides = {}) {
     dataDir,
     db,
     exitProcess,
+    insertIdleThreadWithQueuedMessage,
     insertThread,
     prepareShutdown,
     service,
@@ -147,8 +199,9 @@ async function waitForWaitingPhase(
 }
 
 describe("self-update service", () => {
-  it("stages the update, writes the sentinel, and exits once agents stay idle", async () => {
-    const harness = await createHarness();
+  it("stages, writes the sentinel, and exits immediately when nothing is running or queued", async () => {
+    // A quiet period far longer than the test proves the at-rest fast path.
+    const harness = await createHarness({ quietPeriodMs: 60_000 });
     const state = await harness.service.schedule();
     expect(state.scheduled).toEqual({
       targetVersion: TARGET_VERSION,
@@ -167,6 +220,27 @@ describe("self-update service", () => {
       );
     });
     expect(harness.prepareShutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not skip the quiet period while a queued follow-up is pending", async () => {
+    const harness = await createHarness({ quietPeriodMs: 60_000 });
+    harness.insertIdleThreadWithQueuedMessage("thr_queued");
+    await harness.service.schedule();
+    await waitForWaitingPhase(harness.service);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(harness.exitProcess).not.toHaveBeenCalled();
+  });
+
+  it("does not skip the quiet period once agents have been seen working", async () => {
+    const harness = await createHarness({ quietPeriodMs: 60_000 });
+    harness.insertThread("thr_busy", "active");
+    await harness.service.schedule();
+    await waitForWaitingPhase(harness.service);
+
+    harness.setThreadStatus("thr_busy", "idle");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(harness.exitProcess).not.toHaveBeenCalled();
   });
 
   it("waits for busy threads to finish before exiting", async () => {

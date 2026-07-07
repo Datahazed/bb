@@ -6,6 +6,7 @@ import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   useCancelSelfUpdate,
   useScheduleSelfUpdate,
+  useSystemAgentActivity,
   useSystemVersion,
 } from "./queries/system-queries";
 
@@ -103,6 +104,22 @@ export function useUpdateAvailableToast(): void {
   const { data } = useSystemVersion();
   const scheduleSelfUpdate = useScheduleSelfUpdate();
   const cancelSelfUpdate = useCancelSelfUpdate();
+  // Live agent load decides the action label: "Update now" when nothing is
+  // running, "Update when agents finish" otherwise. Only polled while the
+  // choice is actually on screen.
+  const activityEnabled =
+    getBbDesktopInfo() === null &&
+    data !== undefined &&
+    !data.isDevelopment &&
+    data.updateAvailable &&
+    data.selfUpdate.capable &&
+    data.selfUpdate.scheduled === null;
+  const { data: agentActivity } = useSystemAgentActivity({
+    enabled: activityEnabled,
+  });
+  // Unknown activity reads as busy: the deferred label is the safe default.
+  const agentsBusy =
+    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
   const shownForVersionRef = useRef<string | null>(null);
   /** id of the scheduled-update toast currently on screen (version + phase). */
   const scheduledToastKeyRef = useRef<string | null>(null);
@@ -193,7 +210,12 @@ export function useUpdateAvailableToast(): void {
     if (latestVersion === null) {
       return;
     }
-    if (shownForVersionRef.current === latestVersion) {
+    // Keyed on busy state too, so the action label flips live when agents
+    // start or finish while the toast is up.
+    const availableKey = selfUpdate.capable
+      ? `${latestVersion}:${agentsBusy ? "busy" : "idle"}`
+      : latestVersion;
+    if (shownForVersionRef.current === availableKey) {
       return;
     }
     if (
@@ -202,10 +224,10 @@ export function useUpdateAvailableToast(): void {
         storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
       })
     ) {
-      shownForVersionRef.current = latestVersion;
+      shownForVersionRef.current = availableKey;
       return;
     }
-    shownForVersionRef.current = latestVersion;
+    shownForVersionRef.current = availableKey;
     const availableToastId = `bb-update-available:${latestVersion}`;
     appToast.message("bb-app update available", {
       id: availableToastId,
@@ -216,7 +238,9 @@ export function useUpdateAvailableToast(): void {
       ...(selfUpdate.capable
         ? {
             action: {
-              label: "Update when agents finish",
+              // Same endpoint either way; the server skips the wait when
+              // nothing is running or queued. The label just tells the truth.
+              label: agentsBusy ? "Update when agents finish" : "Update now",
               onClick: () => {
                 scheduleMutate(undefined, {
                   onError: (error) => {
@@ -248,12 +272,24 @@ export function useUpdateAvailableToast(): void {
         });
       },
     });
-  }, [data, scheduleMutate, cancelMutate]);
+  }, [data, agentsBusy, scheduleMutate, cancelMutate]);
 }
 
 export function useDesktopUpdateAvailableToast(): void {
   const [desktopApi, setDesktopApi] = useState<BbDesktopApi | null>(null);
   const [desktopInfo, setDesktopInfo] = useState<BbDesktopInfo | null>(null);
+  // The SPA in the desktop shell talks to the shell-owned server, so the same
+  // activity endpoint decides "Relaunch now" vs the deferred option.
+  const activityEnabled =
+    desktopInfo !== null &&
+    desktopInfo.updateDownloaded &&
+    (desktopInfo.deferredInstall ?? null) === null &&
+    desktopInfo.canDeferInstall === true;
+  const { data: agentActivity } = useSystemAgentActivity({
+    enabled: activityEnabled,
+  });
+  const agentsBusy =
+    agentActivity === undefined ? true : agentActivity.busyThreadCount > 0;
   const shownForVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -323,11 +359,13 @@ export function useDesktopUpdateAvailableToast(): void {
     }
 
     // Only offer "when agents finish" when the shell owns a local runtime a
-    // relaunch would interrupt and is new enough to support deferral.
+    // relaunch would interrupt, it's new enough to support deferral, and
+    // agents are actually working; at rest a plain relaunch loses nothing.
     const canDefer =
       desktopInfo.canDeferInstall === true &&
-      typeof desktopApi.installUpdateWhenIdle === "function";
-    const readyKey = `${latestVersion}:ready`;
+      typeof desktopApi.installUpdateWhenIdle === "function" &&
+      agentsBusy;
+    const readyKey = `${latestVersion}:ready:${canDefer ? "busy" : "idle"}`;
     if (shownForVersionRef.current === readyKey) {
       return;
     }
@@ -361,5 +399,5 @@ export function useDesktopUpdateAvailableToast(): void {
           }
         : {}),
     });
-  }, [desktopApi, desktopInfo]);
+  }, [desktopApi, desktopInfo, agentsBusy]);
 }

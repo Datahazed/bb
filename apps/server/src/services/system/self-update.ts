@@ -13,14 +13,14 @@ import {
   selfUpdateSentinelSchema,
   type SelfUpdateSentinel,
 } from "@bb/config/self-update";
-import type { DbQueryConnection } from "@bb/db";
+import type { DbConnection } from "@bb/db";
 import type {
   SystemSelfUpdateScheduled,
   SystemSelfUpdateState,
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
-import { countBusyThreads } from "./agent-activity.js";
+import { countBusyThreads, isServerAtRest } from "./agent-activity.js";
 import type { AppVersionService } from "./app-version.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
@@ -59,7 +59,7 @@ export interface CreateSelfUpdateServiceArgs {
     ServerRuntimeConfig,
     "appVersion" | "dataDir" | "isDevelopment" | "selfUpdateProtocol"
   >;
-  db: DbQueryConnection;
+  db: DbConnection;
   logger: ServerLogger;
   /** Runs the graceful server shutdown before the process exits for the swap. */
   prepareShutdown: () => Promise<void>;
@@ -206,6 +206,9 @@ export function createSelfUpdateService(
   let scheduled: SystemSelfUpdateScheduled | null = null;
   let lastError: string | null = null;
   let idleSince: number | null = null;
+  // Set once any busy agent is seen after arming; from then on the full
+  // quiet period applies (mid-chain idle gaps look like rest otherwise).
+  let busyObservedSinceArm = false;
   let watcherHandle: ReturnType<typeof setInterval> | null = null;
   let exiting = false;
   // Bumped on cancel/re-schedule so an in-flight staging install of a stale
@@ -233,6 +236,7 @@ export function createSelfUpdateService(
       return;
     }
     idleSince = null;
+    busyObservedSinceArm = false;
     watcherHandle = setInterval(() => {
       try {
         watcherTick();
@@ -253,7 +257,15 @@ export function createSelfUpdateService(
       return;
     }
     if (hasBusyThreads()) {
+      busyObservedSinceArm = true;
       idleSince = null;
+      return;
+    }
+    // "Update now": scheduled while nothing was running and nothing is
+    // queued to start — no mid-chain gap to protect, so skip the quiet
+    // period. Once any busy agent has been seen, the full period applies.
+    if (!busyObservedSinceArm && isServerAtRest(db)) {
+      triggerExitForSwap();
       return;
     }
     if (idleSince === null) {
