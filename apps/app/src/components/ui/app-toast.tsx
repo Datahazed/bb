@@ -34,6 +34,9 @@ export interface AppToastOptions
   action?: Action;
   cancel?: Action;
   description?: ReactNode;
+  /** Render a corner close button. For persistent toasts whose button slots
+   * are taken by real actions, so plain dismissal stays one click. */
+  showCloseButton?: boolean;
 }
 
 export interface AppToastContentProps {
@@ -41,6 +44,7 @@ export interface AppToastContentProps {
   cancel?: Action;
   description?: ReactNode;
   id?: number | string;
+  showCloseButton?: boolean;
   title: ReactNode;
   tone: AppToastTone;
 }
@@ -123,6 +127,7 @@ export function AppToastContent({
   cancel,
   description,
   id,
+  showCloseButton,
   title,
   tone,
 }: AppToastContentProps) {
@@ -133,6 +138,20 @@ export function AppToastContent({
     <div
       className="relative w-[var(--width,356px)] max-w-[calc(100vw-32px)] rounded-md border border-border bg-popover px-4 py-3 text-popover-foreground shadow-sm max-[600px]:w-[calc(100vw-32px)]"
     >
+      {showCloseButton ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="Dismiss"
+          className="absolute right-1.5 top-1.5 size-6 p-0 text-muted-foreground"
+          onClick={() => {
+            dismissToast(id);
+          }}
+        >
+          <Icon name="X" className="size-3.5" />
+        </Button>
+      ) : null}
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-foreground">
           <Icon
@@ -189,6 +208,7 @@ function showAppToast({
     className,
     description,
     duration,
+    showCloseButton,
     ...sonnerOptions
   } = options ?? {};
   const nextDuration =
@@ -201,6 +221,7 @@ function showAppToast({
         cancel={cancel}
         description={description}
         id={id}
+        showCloseButton={showCloseButton}
         title={title}
         tone={tone}
       />

@@ -78,27 +78,21 @@ function clearDismissedForVersion(args: VersionDismissalArgs): void {
   }
 }
 
-function appUpdateDescription(latestVersion: string): string {
-  return `${latestVersion} is available. Restart bb-app to update.`;
+function availableToastTitle(latestVersion: string): string {
+  return `bb-app ${latestVersion} available`;
 }
 
 function scheduledUpdateToastId(targetVersion: string): string {
   return `bb-update-scheduled:${targetVersion}`;
 }
 
-function scheduledUpdateDescription(
-  scheduled: SystemSelfUpdateScheduled,
-): string {
+function scheduledUpdateTitle(scheduled: SystemSelfUpdateScheduled): string {
   if (scheduled.mode === "now") {
     return `Updating to ${scheduled.targetVersion} now…`;
   }
   return scheduled.phase === "staging"
     ? `Preparing update to ${scheduled.targetVersion}…`
-    : `bb will update to ${scheduled.targetVersion} once no agents are running.`;
-}
-
-function desktopReadyToastDescription(latestVersion: string): string {
-  return `bb desktop ${latestVersion} is ready to install.`;
+    : `Updating to ${scheduled.targetVersion} when idle`;
 }
 
 function desktopDeferredToastId(latestVersion: string): string {
@@ -125,7 +119,7 @@ export function useUpdateAvailableToast(): void {
   const scheduleSelfUpdate = useScheduleSelfUpdate();
   const cancelSelfUpdate = useCancelSelfUpdate();
   // Live agent load decides the action label: "Update now" when nothing is
-  // running, "Update when agents finish" otherwise. Only polled while the
+  // running, "Update when idle" otherwise. Only polled while the
   // choice is actually on screen.
   const activityEnabled =
     getBbDesktopInfo() === null &&
@@ -176,10 +170,11 @@ export function useUpdateAvailableToast(): void {
       }
       scheduledToastKeyRef.current = toastKey;
       const toastId = scheduledUpdateToastId(scheduled.targetVersion);
-      appToast.message("bb-app update scheduled", {
+      appToast.message(scheduledUpdateTitle(scheduled), {
         id: toastId,
-        description: scheduledUpdateDescription(scheduled),
         duration: Infinity,
+        // X hides the toast; the update itself continues.
+        showCloseButton: true,
         cancel: {
           label: "Cancel update",
           onClick: () => {
@@ -261,20 +256,17 @@ export function useUpdateAvailableToast(): void {
         storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
       });
     };
-    appToast.message("bb-app update available", {
+    appToast.message(availableToastTitle(latestVersion), {
       id: availableToastId,
-      description: selfUpdate.capable
-        ? `${latestVersion} is available.`
-        : appUpdateDescription(latestVersion),
       duration: Infinity,
+      // The corner X is the dismissal; it routes through onDismiss below.
+      showCloseButton: true,
       ...(selfUpdate.capable
         ? agentsBusy
           ? {
-              // Both choices while agents work: defer (safe default) or an
-              // explicit immediate update that interrupts them. Dismissal
-              // falls back to swiping the toast away.
+              // Defer (safe default) or explicitly interrupt running agents.
               action: {
-                label: "Update when agents finish",
+                label: "Update when idle",
                 onClick: () => {
                   scheduleUpdate("when-idle");
                 },
@@ -296,29 +288,8 @@ export function useUpdateAvailableToast(): void {
                   scheduleUpdate("when-idle");
                 },
               },
-              cancel: {
-                label: "Dismiss",
-                onClick: () => {
-                  markDismissedForVersion({
-                    latestVersion,
-                    storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
-                  });
-                  appToast.dismiss(availableToastId);
-                },
-              },
             }
-        : {
-            cancel: {
-              label: "Dismiss",
-              onClick: () => {
-                markDismissedForVersion({
-                  latestVersion,
-                  storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
-                });
-                appToast.dismiss(availableToastId);
-              },
-            },
-          }),
+        : { description: "Restart bb-app to update." }),
       onDismiss: () => {
         markDismissedForVersion({
           latestVersion,
@@ -393,10 +364,11 @@ export function useDesktopUpdateAvailableToast(): void {
       }
       shownForVersionRef.current = deferredKey;
       appToast.dismiss(`bb-desktop-update-ready:${latestVersion}`);
-      appToast.message("Desktop update scheduled", {
+      appToast.message(`Relaunching to ${latestVersion} when idle`, {
         id: desktopDeferredToastId(latestVersion),
-        description: `bb desktop will relaunch to ${latestVersion} once no agents are running.`,
         duration: Infinity,
+        // X hides the toast; the deferred relaunch itself continues.
+        showCloseButton: true,
         cancel: {
           label: "Cancel update",
           onClick: () => {
@@ -407,7 +379,7 @@ export function useDesktopUpdateAvailableToast(): void {
       return;
     }
 
-    // Only offer "when agents finish" when the shell owns a local runtime a
+    // Only offer "Relaunch when idle" when the shell owns a local runtime a
     // relaunch would interrupt, it's new enough to support deferral, and
     // agents are actually working; at rest a plain relaunch loses nothing.
     const canDefer =
@@ -420,13 +392,13 @@ export function useDesktopUpdateAvailableToast(): void {
     }
     shownForVersionRef.current = readyKey;
     appToast.dismiss(desktopDeferredToastId(latestVersion));
-    appToast.message("Desktop update ready", {
+    appToast.message(`bb desktop ${latestVersion} ready`, {
       id: `bb-desktop-update-ready:${latestVersion}`,
-      description: desktopReadyToastDescription(latestVersion),
       duration: Infinity,
+      showCloseButton: true,
       action: canDefer
         ? {
-            label: "Relaunch when agents finish",
+            label: "Relaunch when idle",
             onClick: () => {
               deferDesktopUpdate({ desktopApi, latestVersion });
             },
