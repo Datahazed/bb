@@ -61,6 +61,23 @@ function markDismissedForVersion(args: VersionDismissalArgs): void {
   }
 }
 
+/**
+ * Scheduling dismisses the toast programmatically, which also fires
+ * onDismiss and records a dismissal; clear it so cancelling the schedule
+ * brings the update offer back.
+ */
+function clearDismissedForVersion(args: VersionDismissalArgs): void {
+  const storage = getLocalStorage();
+  if (storage === null) {
+    return;
+  }
+  try {
+    storage.removeItem(`${args.storageKeyPrefix}${args.latestVersion}`);
+  } catch {
+    // Ignore; worst case the toast stays hidden until reload.
+  }
+}
+
 function appUpdateDescription(latestVersion: string): string {
   return `${latestVersion} is available. Restart bb-app to update.`;
 }
@@ -72,6 +89,9 @@ function scheduledUpdateToastId(targetVersion: string): string {
 function scheduledUpdateDescription(
   scheduled: SystemSelfUpdateScheduled,
 ): string {
+  if (scheduled.mode === "now") {
+    return `Updating to ${scheduled.targetVersion} now…`;
+  }
   return scheduled.phase === "staging"
     ? `Preparing update to ${scheduled.targetVersion}…`
     : `bb will update to ${scheduled.targetVersion} once no agents are running.`;
@@ -155,7 +175,7 @@ export function useUpdateAvailableToast(): void {
       // Allow the "update available" toast to come back if this schedule is
       // cancelled later.
       shownForVersionRef.current = null;
-      const toastKey = `${scheduled.targetVersion}:${scheduled.phase}`;
+      const toastKey = `${scheduled.targetVersion}:${scheduled.phase}:${scheduled.mode}`;
       if (scheduledToastKeyRef.current === toastKey) {
         return;
       }
@@ -229,6 +249,23 @@ export function useUpdateAvailableToast(): void {
     }
     shownForVersionRef.current = availableKey;
     const availableToastId = `bb-update-available:${latestVersion}`;
+    const scheduleUpdate = (mode: "when-idle" | "now"): void => {
+      scheduleMutate(mode, {
+        onError: (error) => {
+          appToast.error("Could not schedule the update", {
+            description:
+              error instanceof Error ? error.message : String(error),
+          });
+        },
+      });
+      appToast.dismiss(availableToastId);
+      // Programmatic dismissal above also fires onDismiss; scheduling is not
+      // a dismissal, so undo the recorded one.
+      clearDismissedForVersion({
+        latestVersion,
+        storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
+      });
+    };
     appToast.message("bb-app update available", {
       id: availableToastId,
       description: selfUpdate.capable
@@ -236,35 +273,57 @@ export function useUpdateAvailableToast(): void {
         : appUpdateDescription(latestVersion),
       duration: Infinity,
       ...(selfUpdate.capable
-        ? {
-            action: {
-              // Same endpoint either way; the server skips the wait when
-              // nothing is running or queued. The label just tells the truth.
-              label: agentsBusy ? "Update when agents finish" : "Update now",
+        ? agentsBusy
+          ? {
+              // Both choices while agents work: defer (safe default) or an
+              // explicit immediate update that interrupts them. Dismissal
+              // falls back to swiping the toast away.
+              action: {
+                label: "Update when agents finish",
+                onClick: () => {
+                  scheduleUpdate("when-idle");
+                },
+              },
+              cancel: {
+                label: "Update now",
+                onClick: () => {
+                  scheduleUpdate("now");
+                },
+              },
+            }
+          : {
+              // At rest, when-idle's fast path already applies immediately —
+              // and unlike mode "now" it still backs off if an agent starts
+              // during staging.
+              action: {
+                label: "Update now",
+                onClick: () => {
+                  scheduleUpdate("when-idle");
+                },
+              },
+              cancel: {
+                label: "Dismiss",
+                onClick: () => {
+                  markDismissedForVersion({
+                    latestVersion,
+                    storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
+                  });
+                  appToast.dismiss(availableToastId);
+                },
+              },
+            }
+        : {
+            cancel: {
+              label: "Dismiss",
               onClick: () => {
-                scheduleMutate(undefined, {
-                  onError: (error) => {
-                    appToast.error("Could not schedule the update", {
-                      description:
-                        error instanceof Error ? error.message : String(error),
-                    });
-                  },
+                markDismissedForVersion({
+                  latestVersion,
+                  storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
                 });
                 appToast.dismiss(availableToastId);
               },
             },
-          }
-        : {}),
-      cancel: {
-        label: "Dismiss",
-        onClick: () => {
-          markDismissedForVersion({
-            latestVersion,
-            storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
-          });
-          appToast.dismiss(availableToastId);
-        },
-      },
+          }),
       onDismiss: () => {
         markDismissedForVersion({
           latestVersion,

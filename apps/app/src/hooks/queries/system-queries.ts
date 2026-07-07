@@ -4,6 +4,7 @@ import type {
   SystemAgentActivityResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
+  SystemSelfUpdateMode,
   SystemSelfUpdateState,
   SystemVersionResponse,
 } from "@bb/server-contract";
@@ -144,7 +145,7 @@ function useApplySelfUpdateState() {
 export function useScheduleSelfUpdate() {
   const applySelfUpdateState = useApplySelfUpdateState();
   return useMutation({
-    mutationFn: () => api.scheduleSelfUpdate(),
+    mutationFn: (mode: SystemSelfUpdateMode) => api.scheduleSelfUpdate(mode),
     onSuccess: applySelfUpdateState,
   });
 }

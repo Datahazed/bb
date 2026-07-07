@@ -15,6 +15,7 @@ import {
 } from "@bb/config/self-update";
 import type { DbConnection } from "@bb/db";
 import type {
+  SystemSelfUpdateMode,
   SystemSelfUpdateScheduled,
   SystemSelfUpdateState,
 } from "@bb/server-contract";
@@ -46,7 +47,7 @@ export type RunStagingInstallFn = (args: StagingInstallArgs) => Promise<void>;
 
 export interface SelfUpdateService {
   getState(): SystemSelfUpdateState;
-  schedule(): Promise<SystemSelfUpdateState>;
+  schedule(mode: SystemSelfUpdateMode): Promise<SystemSelfUpdateState>;
   cancel(): Promise<SystemSelfUpdateState>;
   /** Adopt a sentinel left by a previous run and clean stale staged installs. */
   resume(): Promise<void>;
@@ -361,7 +362,18 @@ export function createSelfUpdateService(
         stagedPackageRoot,
         requestedAt,
       });
-      scheduled = { targetVersion, requestedAt, phase: "waiting" };
+      // Re-read the mode: an "Update now" click may have escalated the
+      // schedule while npm was installing.
+      const mode = scheduled?.mode ?? "when-idle";
+      scheduled = { targetVersion, requestedAt, phase: "waiting", mode };
+      if (mode === "now") {
+        logger.info(
+          { targetVersion },
+          "Self-update staged - applying immediately at user request",
+        );
+        triggerExitForSwap();
+        return;
+      }
       logger.info(
         { targetVersion },
         "Self-update staged - waiting for agents to finish",
@@ -384,7 +396,9 @@ export function createSelfUpdateService(
     }
   }
 
-  async function schedule(): Promise<SystemSelfUpdateState> {
+  async function schedule(
+    mode: SystemSelfUpdateMode,
+  ): Promise<SystemSelfUpdateState> {
     if (!capable) {
       throw new ApiError(
         409,
@@ -398,6 +412,18 @@ export function createSelfUpdateService(
     }
     const targetVersion = versionInfo.latestVersion;
     if (scheduled !== null && scheduled.targetVersion === targetVersion) {
+      // "Update now" escalates a pending schedule; the reverse never
+      // downgrades an explicit immediate request.
+      if (mode === "now" && scheduled.mode === "when-idle") {
+        scheduled = { ...scheduled, mode: "now" };
+        if (scheduled.phase === "waiting") {
+          logger.info(
+            { targetVersion },
+            "Applying scheduled self-update immediately at user request",
+          );
+          triggerExitForSwap();
+        }
+      }
       return getState();
     }
     if (scheduled !== null) {
@@ -406,7 +432,7 @@ export function createSelfUpdateService(
 
     lastError = null;
     const requestedAt = new Date(now()).toISOString();
-    scheduled = { targetVersion, requestedAt, phase: "staging" };
+    scheduled = { targetVersion, requestedAt, phase: "staging", mode };
     const generation = scheduleGeneration;
     void stageAndArm(targetVersion, requestedAt, generation);
     return getState();
@@ -464,10 +490,13 @@ export function createSelfUpdateService(
           .catch(() => false);
       }
       if (targetIsNewer && stagedVersionMatches) {
+        // The sentinel does not persist the mode; resume conservatively as
+        // when-idle rather than surprise-restarting agents after a crash.
         scheduled = {
           targetVersion: sentinel.targetVersion,
           requestedAt: sentinel.requestedAt,
           phase: "waiting",
+          mode: "when-idle",
         };
         logger.info(
           { targetVersion: sentinel.targetVersion },

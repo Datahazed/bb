@@ -164,8 +164,8 @@ export function registerSystemRoutes(
     }),
   );
 
-  post(routes.scheduleSelfUpdate, async (context) =>
-    context.json(await deps.selfUpdate.schedule()),
+  post(routes.scheduleSelfUpdate, async (context, payload) =>
+    context.json(await deps.selfUpdate.schedule(payload.mode)),
   );
 
   del(routes.cancelSelfUpdate, async (context) =>

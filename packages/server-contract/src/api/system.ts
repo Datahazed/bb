@@ -106,14 +106,31 @@ export const themeCatalogResponseSchema = z.object({
 export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
 /**
- * A scheduled "update when agents finish" self-update.
+ * How a scheduled self-update applies: `when-idle` waits for agents to
+ * finish; `now` applies as soon as staging completes, interrupting any
+ * running agents (the user explicitly chose that).
+ */
+export const systemSelfUpdateModeSchema = z.enum(["when-idle", "now"]);
+export type SystemSelfUpdateMode = z.infer<typeof systemSelfUpdateModeSchema>;
+
+export const systemSelfUpdateScheduleRequestSchema = z.object({
+  mode: systemSelfUpdateModeSchema,
+});
+export type SystemSelfUpdateScheduleRequest = z.infer<
+  typeof systemSelfUpdateScheduleRequestSchema
+>;
+
+/**
+ * A scheduled self-update.
  * `staging` = npm install of the target version is still running;
- * `waiting` = staged and ready, waiting for all agents to go idle.
+ * `waiting` = staged and ready, waiting for all agents to go idle
+ * (mode `now` skips `waiting` and applies straight after staging).
  */
 export const systemSelfUpdateScheduledSchema = z.object({
   targetVersion: z.string(),
   requestedAt: z.string(),
   phase: z.enum(["staging", "waiting"]),
+  mode: systemSelfUpdateModeSchema,
 });
 export type SystemSelfUpdateScheduled = z.infer<
   typeof systemSelfUpdateScheduledSchema

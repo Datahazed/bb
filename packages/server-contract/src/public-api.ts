@@ -107,6 +107,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemAgentActivityResponse,
   SystemProviderInfo,
+  SystemSelfUpdateScheduleRequest,
   SystemSelfUpdateState,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -200,6 +201,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemSelfUpdateScheduleRequestSchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -1050,13 +1052,17 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemVersionResponse>(),
     }),
-    // "Update when agents finish": stage the latest bb-app version and apply
-    // it once no agents are running. POST schedules (idempotent per version);
-    // DELETE cancels a pending schedule. Both return the resulting state.
+    // Stage the latest bb-app version and apply it either once no agents are
+    // running (mode "when-idle") or as soon as it is staged (mode "now",
+    // interrupting running agents). POST schedules (idempotent per version;
+    // re-posting "now" escalates a waiting schedule); DELETE cancels a
+    // pending schedule. Both return the resulting state.
     scheduleSelfUpdate: defineRoute({
       path: "/system/update/schedule",
       method: "post",
-      request: noRequest(),
+      request: jsonRequest<EmptyInput, SystemSelfUpdateScheduleRequest>(
+        systemSelfUpdateScheduleRequestSchema,
+      ),
       response: jsonResponse<SystemSelfUpdateState>(),
     }),
     cancelSelfUpdate: defineRoute({

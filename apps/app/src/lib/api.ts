@@ -49,6 +49,7 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemSelfUpdateMode,
   SystemSelfUpdateState,
   SystemVersionResponse,
   TimelinePaginationCursor,
@@ -1755,9 +1756,11 @@ export async function getSystemAgentActivity(
   );
 }
 
-export async function scheduleSelfUpdate(): Promise<SystemSelfUpdateState> {
+export async function scheduleSelfUpdate(
+  mode: SystemSelfUpdateMode,
+): Promise<SystemSelfUpdateState> {
   return request<SystemSelfUpdateState>(
-    apiClient.system.update.schedule.$post({}),
+    apiClient.system.update.schedule.$post({ json: { mode } }),
   );
 }
 

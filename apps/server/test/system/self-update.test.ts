@@ -202,11 +202,12 @@ describe("self-update service", () => {
   it("stages, writes the sentinel, and exits immediately when nothing is running or queued", async () => {
     // A quiet period far longer than the test proves the at-rest fast path.
     const harness = await createHarness({ quietPeriodMs: 60_000 });
-    const state = await harness.service.schedule();
+    const state = await harness.service.schedule("when-idle");
     expect(state.scheduled).toEqual({
       targetVersion: TARGET_VERSION,
       requestedAt: expect.any(String),
       phase: "staging",
+      mode: "when-idle",
     });
 
     await waitForWaitingPhase(harness.service);
@@ -225,17 +226,49 @@ describe("self-update service", () => {
   it("does not skip the quiet period while a queued follow-up is pending", async () => {
     const harness = await createHarness({ quietPeriodMs: 60_000 });
     harness.insertIdleThreadWithQueuedMessage("thr_queued");
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await waitForWaitingPhase(harness.service);
 
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(harness.exitProcess).not.toHaveBeenCalled();
   });
 
+  it("mode now applies straight after staging even while agents are busy", async () => {
+    const harness = await createHarness({ quietPeriodMs: 60_000 });
+    harness.insertThread("thr_busy", "active");
+    const state = await harness.service.schedule("now");
+    expect(state.scheduled?.mode).toBe("now");
+
+    await vi.waitFor(() => {
+      expect(harness.exitProcess).toHaveBeenCalledWith(
+        BB_SELF_UPDATE_EXIT_CODE,
+      );
+    });
+    await expect(
+      stat(formatSelfUpdateSentinelPath(harness.dataDir)),
+    ).resolves.toBeDefined();
+  });
+
+  it("update-now escalates a deferred schedule that is waiting on agents", async () => {
+    const harness = await createHarness({ quietPeriodMs: 60_000 });
+    harness.insertThread("thr_busy", "active");
+    await harness.service.schedule("when-idle");
+    await waitForWaitingPhase(harness.service);
+    expect(harness.exitProcess).not.toHaveBeenCalled();
+
+    const state = await harness.service.schedule("now");
+    expect(state.scheduled?.mode).toBe("now");
+    await vi.waitFor(() => {
+      expect(harness.exitProcess).toHaveBeenCalledWith(
+        BB_SELF_UPDATE_EXIT_CODE,
+      );
+    });
+  });
+
   it("does not skip the quiet period once agents have been seen working", async () => {
     const harness = await createHarness({ quietPeriodMs: 60_000 });
     harness.insertThread("thr_busy", "active");
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await waitForWaitingPhase(harness.service);
 
     harness.setThreadStatus("thr_busy", "idle");
@@ -246,7 +279,7 @@ describe("self-update service", () => {
   it("waits for busy threads to finish before exiting", async () => {
     const harness = await createHarness();
     harness.insertThread("thr_busy", "active");
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await waitForWaitingPhase(harness.service);
 
     // Comfortably past the quiet period while the thread is still active.
@@ -264,7 +297,7 @@ describe("self-update service", () => {
   it("does not exit while any agent is busy, even across handoffs", async () => {
     const harness = await createHarness();
     harness.insertThread("thr_gate", "active");
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await waitForWaitingPhase(harness.service);
 
     // One agent finishes while another starts in the same instant: the
@@ -285,7 +318,7 @@ describe("self-update service", () => {
   it("cancel removes the sentinel and staged install and stops the watcher", async () => {
     const harness = await createHarness();
     harness.insertThread("thr_busy", "active");
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await waitForWaitingPhase(harness.service);
 
     const state = await harness.service.cancel();
@@ -308,7 +341,7 @@ describe("self-update service", () => {
         throw new Error("npm exploded");
       },
     });
-    await harness.service.schedule();
+    await harness.service.schedule("when-idle");
     await vi.waitFor(() => {
       expect(harness.service.getState().scheduled).toBeNull();
     });
@@ -320,12 +353,12 @@ describe("self-update service", () => {
 
   it("rejects scheduling when no update is available or when not capable", async () => {
     const upToDate = await createHarness({ latestVersion: CURRENT_VERSION });
-    await expect(upToDate.service.schedule()).rejects.toMatchObject({
+    await expect(upToDate.service.schedule("when-idle")).rejects.toMatchObject({
       body: { code: "no_update_available" },
     });
 
     const incapable = await createHarness({ selfUpdateProtocol: false });
-    await expect(incapable.service.schedule()).rejects.toBeInstanceOf(ApiError);
+    await expect(incapable.service.schedule("when-idle")).rejects.toBeInstanceOf(ApiError);
     expect(incapable.service.getState().capable).toBe(false);
   });
 
@@ -351,6 +384,7 @@ describe("self-update service", () => {
       targetVersion: TARGET_VERSION,
       requestedAt: expect.any(String),
       phase: "waiting",
+      mode: "when-idle",
     });
 
     harness.setThreadStatus("thr_busy", "idle");
