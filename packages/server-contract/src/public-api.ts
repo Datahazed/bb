@@ -105,7 +105,9 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemAgentActivityResponse,
   SystemProviderInfo,
+  SystemSelfUpdateState,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
@@ -1047,6 +1049,27 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemVersionResponse>(),
+    }),
+    // "Update when agents finish": stage the latest bb-app version and apply
+    // it once no agents are running. POST schedules (idempotent per version);
+    // DELETE cancels a pending schedule. Both return the resulting state.
+    scheduleSelfUpdate: defineRoute({
+      path: "/system/update/schedule",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<SystemSelfUpdateState>(),
+    }),
+    cancelSelfUpdate: defineRoute({
+      path: "/system/update/schedule",
+      method: "delete",
+      request: noRequest(),
+      response: jsonResponse<SystemSelfUpdateState>(),
+    }),
+    agentActivity: defineRoute({
+      path: "/system/agents/activity",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemAgentActivityResponse>(),
     }),
   },
 

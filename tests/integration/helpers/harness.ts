@@ -31,6 +31,7 @@ import {
 } from "../../../apps/server/src/services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
+import { createSelfUpdateService } from "../../../apps/server/src/services/system/self-update.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
 import type {
@@ -229,6 +230,7 @@ async function startIntegrationServer(
     inheritedSkillsRootPaths: [],
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
+    selfUpdateProtocol: false,
     serverPort: 0,
     threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
@@ -270,6 +272,13 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const selfUpdate = createSelfUpdateService({
+    appVersion,
+    config,
+    db,
+    logger: testLogger,
+    prepareShutdown: () => Promise.resolve(),
+  });
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
@@ -280,6 +289,7 @@ async function startIntegrationServer(
     logger: testLogger,
     machineAuth,
     pendingInteractions,
+    selfUpdate,
     telemetry,
     terminalSessions,
     watchInterests,

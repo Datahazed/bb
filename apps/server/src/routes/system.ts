@@ -19,6 +19,7 @@ import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
+import { countBusyThreads } from "../services/system/agent-activity.js";
 import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
@@ -37,7 +38,7 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
@@ -157,6 +158,21 @@ export function registerSystemRoutes(
   });
 
   get(routes.version, async (context) =>
-    context.json(await deps.appVersion.getSystemVersion()),
+    context.json({
+      ...(await deps.appVersion.getSystemVersion()),
+      selfUpdate: deps.selfUpdate.getState(),
+    }),
+  );
+
+  post(routes.scheduleSelfUpdate, async (context) =>
+    context.json(await deps.selfUpdate.schedule()),
+  );
+
+  del(routes.cancelSelfUpdate, async (context) =>
+    context.json(await deps.selfUpdate.cancel()),
+  );
+
+  get(routes.agentActivity, (context) =>
+    context.json({ busyThreadCount: countBusyThreads(deps.db) }),
   );
 }

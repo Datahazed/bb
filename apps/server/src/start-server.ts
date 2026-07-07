@@ -13,6 +13,7 @@ import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
+import { createSelfUpdateService } from "./services/system/self-update.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
   runPeriodicSweeps,
@@ -175,6 +176,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
     openAiApiKey: serverConfig.OPENAI_API_KEY,
+    selfUpdateProtocol: serverConfig.BB_SELF_UPDATE_PROTOCOL,
     serverPort: serverConfig.BB_SERVER_PORT,
     threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
@@ -235,6 +237,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
+  // Late-bound so the self-update exit path can run the same graceful
+  // shutdown as SIGTERM; runShutdown is defined after the listener exists.
+  const selfUpdateShutdown = { run: (): Promise<void> => Promise.resolve() };
+  const selfUpdate = createSelfUpdateService({
+    appVersion,
+    config: runtimeConfig,
+    db,
+    logger,
+    prepareShutdown: () => selfUpdateShutdown.run(),
+  });
+
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     {
       appVersion,
@@ -246,6 +259,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       logger,
       machineAuth,
       pendingInteractions,
+      selfUpdate,
       telemetry,
       terminalSessions,
       watchInterests,
@@ -313,6 +327,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      selfUpdate.stop();
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });
@@ -336,5 +351,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   process.once("SIGTERM", () => {
     void runShutdown().finally(() => process.exit(0));
+  });
+
+  selfUpdateShutdown.run = runShutdown;
+  // Adopt a schedule that survived a restart and prune stale staged installs.
+  void selfUpdate.resume().catch((error) => {
+    logger.warn({ err: error }, "Self-update resume failed");
   });
 }

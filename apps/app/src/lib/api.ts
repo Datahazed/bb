@@ -48,6 +48,7 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemSelfUpdateState,
   SystemVersionResponse,
   TimelinePaginationCursor,
   SystemVoiceTranscriptionResponse,
@@ -1742,6 +1743,18 @@ export async function getSystemVersion(
 ): Promise<SystemVersionResponse> {
   return request<SystemVersionResponse>(
     apiClient.system.version.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function scheduleSelfUpdate(): Promise<SystemSelfUpdateState> {
+  return request<SystemSelfUpdateState>(
+    apiClient.system.update.schedule.$post({}),
+  );
+}
+
+export async function cancelSelfUpdate(): Promise<SystemSelfUpdateState> {
+  return request<SystemSelfUpdateState>(
+    apiClient.system.update.schedule.$delete({}),
   );
 }
 

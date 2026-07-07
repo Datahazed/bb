@@ -26,10 +26,12 @@ import {
   type BbDesktopTheme,
 } from "@bb/desktop-contract";
 import {
+  BB_DESKTOP_CANCEL_DEFERRED_INSTALL_CHANNEL,
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+  BB_DESKTOP_INSTALL_UPDATE_WHEN_IDLE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
@@ -113,6 +115,14 @@ async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
 async function invokeInstallUpdate(): Promise<void> {
   try {
     await ipcRenderer.invoke(BB_DESKTOP_INSTALL_UPDATE_CHANNEL);
+  } catch {
+    return;
+  }
+}
+
+async function invokeVoidChannel(channel: string): Promise<void> {
+  try {
+    await ipcRenderer.invoke(channel);
   } catch {
     return;
   }
@@ -246,6 +256,12 @@ const bbDesktopApi: BbDesktopApi = {
   get updateDownloaded() {
     return currentInfo.updateDownloaded;
   },
+  get canDeferInstall() {
+    return currentInfo.canDeferInstall;
+  },
+  get deferredInstall() {
+    return currentInfo.deferredInstall;
+  },
   version: currentInfo.version,
   checkForUpdates() {
     return invokeDesktopInfo(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL);
@@ -255,6 +271,12 @@ const bbDesktopApi: BbDesktopApi = {
   },
   installUpdate() {
     return invokeInstallUpdate();
+  },
+  installUpdateWhenIdle() {
+    return invokeVoidChannel(BB_DESKTOP_INSTALL_UPDATE_WHEN_IDLE_CHANNEL);
+  },
+  cancelDeferredInstall() {
+    return invokeVoidChannel(BB_DESKTOP_CANCEL_DEFERRED_INSTALL_CHANNEL);
   },
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe {
     listeners.add(listener);

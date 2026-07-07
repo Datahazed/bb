@@ -16,6 +16,7 @@ import {
   BB_INHERITED_SKILLS_ROOTS_ENV,
   BB_INFERENCE_ENV,
   BB_POSTHOG_API_KEY_ENV,
+  BB_SELF_UPDATE_PROTOCOL_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
@@ -45,6 +46,8 @@ export interface ServerConfig
   BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
   BB_POSTHOG_API_KEY: string;
+  /** True when the parent bb-app launcher supports the self-update swap. */
+  BB_SELF_UPDATE_PROTOCOL: boolean;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
@@ -131,6 +134,12 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
       definition: BB_POSTHOG_API_KEY_ENV,
+      env: loader.env,
+    }),
+    BB_SELF_UPDATE_PROTOCOL: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: false,
+      definition: BB_SELF_UPDATE_PROTOCOL_ENV,
       env: loader.env,
     }),
     BB_TELEMETRY: readEnvVarWithDefault({

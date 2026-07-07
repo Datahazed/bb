@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
+  SystemSelfUpdateState,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
+import { applySelfUpdateStateToVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
@@ -96,12 +98,43 @@ export function useSystemConfig(options?: QueryOptions) {
   });
 }
 
+/** Poll cadence while a scheduled self-update is pending, so the UI notices
+ * staging failures and the post-update version bump. */
+const SCHEDULED_SELF_UPDATE_REFETCH_MS = 30_000;
+
 export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
     queryFn: ({ signal }) => api.getSystemVersion(signal),
     enabled: options?.enabled ?? true,
     ...SERVER_SESSION_QUERY_POLICY,
+    refetchInterval: (query) =>
+      query.state.data?.selfUpdate.scheduled != null
+        ? SCHEDULED_SELF_UPDATE_REFETCH_MS
+        : false,
+  });
+}
+
+function useApplySelfUpdateState() {
+  const queryClient = useQueryClient();
+  return (selfUpdate: SystemSelfUpdateState): void => {
+    applySelfUpdateStateToVersionCache({ queryClient, selfUpdate });
+  };
+}
+
+export function useScheduleSelfUpdate() {
+  const applySelfUpdateState = useApplySelfUpdateState();
+  return useMutation({
+    mutationFn: () => api.scheduleSelfUpdate(),
+    onSuccess: applySelfUpdateState,
+  });
+}
+
+export function useCancelSelfUpdate() {
+  const applySelfUpdateState = useApplySelfUpdateState();
+  return useMutation({
+    mutationFn: () => api.cancelSelfUpdate(),
+    onSuccess: applySelfUpdateState,
   });
 }
 

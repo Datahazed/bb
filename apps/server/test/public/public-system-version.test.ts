@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { SystemVersionResponse } from "@bb/server-contract";
+import type {
+  SystemVersionInfo,
+  SystemVersionResponse,
+} from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
-function createStubAppVersionService(response: SystemVersionResponse) {
+function createStubAppVersionService(response: SystemVersionInfo) {
   return {
-    async getSystemVersion(): Promise<SystemVersionResponse> {
+    async getSystemVersion(): Promise<SystemVersionInfo> {
       return response;
     },
   };
 }
 
 describe("GET /api/v1/system/version", () => {
-  it("returns the response from the app-version service", async () => {
-    const expected: SystemVersionResponse = {
+  it("returns the app-version info plus the self-update state", async () => {
+    const versionInfo: SystemVersionInfo = {
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
       source: "npm",
@@ -23,12 +26,15 @@ describe("GET /api/v1/system/version", () => {
     };
     await withTestHarness({
       appVersion: "0.0.5",
-      appVersionService: createStubAppVersionService(expected),
+      appVersionService: createStubAppVersionService(versionInfo),
       isDevelopment: false,
     }, async (harness) => {
       const response = await harness.app.request("/api/v1/system/version");
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual(expected);
+      await expect(readJson(response)).resolves.toEqual({
+        ...versionInfo,
+        selfUpdate: { capable: false, scheduled: null, lastError: null },
+      });
     });
   });
 
@@ -51,6 +57,7 @@ describe("GET /api/v1/system/version", () => {
       expect(body.isDevelopment).toBe(true);
       expect(body.updateAvailable).toBe(false);
       expect(body.latestVersion).toBeNull();
+      expect(body.selfUpdate.capable).toBe(false);
     });
   });
 });

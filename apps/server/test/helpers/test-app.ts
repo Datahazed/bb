@@ -14,6 +14,7 @@ import {
   type AppVersionService,
 } from "../../src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
+import { createSelfUpdateService } from "../../src/services/system/self-update.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
@@ -129,6 +130,7 @@ export async function createTestAppHarness(
     inferenceModel: "test/mock-model",
     isDevelopment: true,
     openAiApiKey: "test-openai-key",
+    selfUpdateProtocol: false,
     serverPort: 3334,
     threadStorageRootPath: resolveThreadStorageRootPath({
       dataDir,
@@ -169,6 +171,13 @@ export async function createTestAppHarness(
       config,
       logger: testLogger,
     });
+  const selfUpdate = createSelfUpdateService({
+    appVersion,
+    config,
+    db,
+    logger: testLogger,
+    prepareShutdown: () => Promise.resolve(),
+  });
   const deps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
@@ -179,6 +188,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    selfUpdate,
     telemetry,
     terminalSessions,
     watchInterests,

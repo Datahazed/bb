@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
+import type { SystemSelfUpdateScheduled } from "@bb/server-contract";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
-import { useSystemVersion } from "./queries/system-queries";
+import {
+  useCancelSelfUpdate,
+  useScheduleSelfUpdate,
+  useSystemVersion,
+} from "./queries/system-queries";
 
 const DISMISSED_STORAGE_KEY_PREFIX = "bb:update-toast:dismissed:";
 
@@ -59,8 +64,24 @@ function appUpdateDescription(latestVersion: string): string {
   return `${latestVersion} is available. Restart bb-app to update.`;
 }
 
+function scheduledUpdateToastId(targetVersion: string): string {
+  return `bb-update-scheduled:${targetVersion}`;
+}
+
+function scheduledUpdateDescription(
+  scheduled: SystemSelfUpdateScheduled,
+): string {
+  return scheduled.phase === "staging"
+    ? `Preparing update to ${scheduled.targetVersion}…`
+    : `bb will update to ${scheduled.targetVersion} once no agents are running.`;
+}
+
 function desktopReadyToastDescription(latestVersion: string): string {
   return `bb desktop ${latestVersion} is ready to install.`;
+}
+
+function desktopDeferredToastId(latestVersion: string): string {
+  return `bb-desktop-update-deferred:${latestVersion}`;
 }
 
 function relaunchDesktopUpdate(args: DesktopToastActionArgs): void {
@@ -68,9 +89,29 @@ function relaunchDesktopUpdate(args: DesktopToastActionArgs): void {
   appToast.dismiss(`bb-desktop-update-ready:${args.latestVersion}`);
 }
 
+function deferDesktopUpdate(args: DesktopToastActionArgs): void {
+  void args.desktopApi.installUpdateWhenIdle?.().catch(() => undefined);
+  appToast.dismiss(`bb-desktop-update-ready:${args.latestVersion}`);
+}
+
+function cancelDeferredDesktopUpdate(args: DesktopToastActionArgs): void {
+  void args.desktopApi.cancelDeferredInstall?.().catch(() => undefined);
+  appToast.dismiss(desktopDeferredToastId(args.latestVersion));
+}
+
 export function useUpdateAvailableToast(): void {
   const { data } = useSystemVersion();
+  const scheduleSelfUpdate = useScheduleSelfUpdate();
+  const cancelSelfUpdate = useCancelSelfUpdate();
   const shownForVersionRef = useRef<string | null>(null);
+  /** id of the scheduled-update toast currently on screen (version + phase). */
+  const scheduledToastKeyRef = useRef<string | null>(null);
+  /** Target of the schedule we last saw, to detect completion and failure. */
+  const watchedTargetVersionRef = useRef<string | null>(null);
+  const reportedErrorRef = useRef<string | null>(null);
+
+  const scheduleMutate = scheduleSelfUpdate.mutate;
+  const cancelMutate = cancelSelfUpdate.mutate;
 
   useEffect(() => {
     if (!data) {
@@ -82,6 +123,69 @@ export function useUpdateAvailableToast(): void {
     if (data.isDevelopment) {
       return;
     }
+
+    const { selfUpdate } = data;
+    const watchedTargetVersion = watchedTargetVersionRef.current;
+
+    if (selfUpdate.scheduled !== null) {
+      const scheduled = selfUpdate.scheduled;
+      watchedTargetVersionRef.current = scheduled.targetVersion;
+      reportedErrorRef.current = null;
+      // The plain "update available" toast is superseded by the scheduled one.
+      if (data.latestVersion !== null) {
+        appToast.dismiss(`bb-update-available:${data.latestVersion}`);
+      }
+      // Allow the "update available" toast to come back if this schedule is
+      // cancelled later.
+      shownForVersionRef.current = null;
+      const toastKey = `${scheduled.targetVersion}:${scheduled.phase}`;
+      if (scheduledToastKeyRef.current === toastKey) {
+        return;
+      }
+      scheduledToastKeyRef.current = toastKey;
+      const toastId = scheduledUpdateToastId(scheduled.targetVersion);
+      appToast.message("bb-app update scheduled", {
+        id: toastId,
+        description: scheduledUpdateDescription(scheduled),
+        duration: Infinity,
+        cancel: {
+          label: "Cancel update",
+          onClick: () => {
+            cancelMutate();
+            appToast.dismiss(toastId);
+          },
+        },
+      });
+      return;
+    }
+
+    scheduledToastKeyRef.current = null;
+
+    if (watchedTargetVersion !== null) {
+      appToast.dismiss(scheduledUpdateToastId(watchedTargetVersion));
+      if (data.currentVersion === watchedTargetVersion) {
+        watchedTargetVersionRef.current = null;
+        appToast.success("bb-app updated", {
+          description: `bb is now running ${data.currentVersion}.`,
+        });
+        return;
+      }
+      if (
+        selfUpdate.lastError !== null &&
+        reportedErrorRef.current !== selfUpdate.lastError
+      ) {
+        watchedTargetVersionRef.current = null;
+        reportedErrorRef.current = selfUpdate.lastError;
+        appToast.error("bb-app update failed", {
+          description: selfUpdate.lastError,
+        });
+        return;
+      }
+      // Cancelled (here or from another client): fall through so the plain
+      // "update available" toast can show again.
+      watchedTargetVersionRef.current = null;
+    }
+
     if (!data.updateAvailable) {
       return;
     }
@@ -102,10 +206,31 @@ export function useUpdateAvailableToast(): void {
       return;
     }
     shownForVersionRef.current = latestVersion;
+    const availableToastId = `bb-update-available:${latestVersion}`;
     appToast.message("bb-app update available", {
-      id: `bb-update-available:${latestVersion}`,
-      description: appUpdateDescription(latestVersion),
+      id: availableToastId,
+      description: selfUpdate.capable
+        ? `${latestVersion} is available.`
+        : appUpdateDescription(latestVersion),
       duration: Infinity,
+      ...(selfUpdate.capable
+        ? {
+            action: {
+              label: "Update when agents finish",
+              onClick: () => {
+                scheduleMutate(undefined, {
+                  onError: (error) => {
+                    appToast.error("Could not schedule the update", {
+                      description:
+                        error instanceof Error ? error.message : String(error),
+                    });
+                  },
+                });
+                appToast.dismiss(availableToastId);
+              },
+            },
+          }
+        : {}),
       cancel: {
         label: "Dismiss",
         onClick: () => {
@@ -113,7 +238,7 @@ export function useUpdateAvailableToast(): void {
             latestVersion,
             storageKeyPrefix: DISMISSED_STORAGE_KEY_PREFIX,
           });
-          appToast.dismiss(`bb-update-available:${latestVersion}`);
+          appToast.dismiss(availableToastId);
         },
       },
       onDismiss: () => {
@@ -123,7 +248,7 @@ export function useUpdateAvailableToast(): void {
         });
       },
     });
-  }, [data]);
+  }, [data, scheduleMutate, cancelMutate]);
 }
 
 export function useDesktopUpdateAvailableToast(): void {
@@ -174,20 +299,67 @@ export function useDesktopUpdateAvailableToast(): void {
     if (latestVersion === null) {
       return;
     }
-    if (shownForVersionRef.current === latestVersion) {
+
+    const deferredInstall = desktopInfo.deferredInstall ?? null;
+    if (deferredInstall !== null) {
+      const deferredKey = `${latestVersion}:deferred`;
+      if (shownForVersionRef.current === deferredKey) {
+        return;
+      }
+      shownForVersionRef.current = deferredKey;
+      appToast.dismiss(`bb-desktop-update-ready:${latestVersion}`);
+      appToast.message("Desktop update scheduled", {
+        id: desktopDeferredToastId(latestVersion),
+        description: `bb desktop will relaunch to ${latestVersion} once no agents are running.`,
+        duration: Infinity,
+        cancel: {
+          label: "Cancel update",
+          onClick: () => {
+            cancelDeferredDesktopUpdate({ desktopApi, latestVersion });
+          },
+        },
+      });
       return;
     }
-    shownForVersionRef.current = latestVersion;
+
+    // Only offer "when agents finish" when the shell owns a local runtime a
+    // relaunch would interrupt and is new enough to support deferral.
+    const canDefer =
+      desktopInfo.canDeferInstall === true &&
+      typeof desktopApi.installUpdateWhenIdle === "function";
+    const readyKey = `${latestVersion}:ready`;
+    if (shownForVersionRef.current === readyKey) {
+      return;
+    }
+    shownForVersionRef.current = readyKey;
+    appToast.dismiss(desktopDeferredToastId(latestVersion));
     appToast.message("Desktop update ready", {
       id: `bb-desktop-update-ready:${latestVersion}`,
       description: desktopReadyToastDescription(latestVersion),
       duration: Infinity,
-      action: {
-        label: "Relaunch",
-        onClick: () => {
-          relaunchDesktopUpdate({ desktopApi, latestVersion });
-        },
-      },
+      action: canDefer
+        ? {
+            label: "Relaunch when agents finish",
+            onClick: () => {
+              deferDesktopUpdate({ desktopApi, latestVersion });
+            },
+          }
+        : {
+            label: "Relaunch",
+            onClick: () => {
+              relaunchDesktopUpdate({ desktopApi, latestVersion });
+            },
+          },
+      ...(canDefer
+        ? {
+            cancel: {
+              label: "Relaunch now",
+              onClick: () => {
+                relaunchDesktopUpdate({ desktopApi, latestVersion });
+              },
+            },
+          }
+        : {}),
     });
   }, [desktopApi, desktopInfo]);
 }

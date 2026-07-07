@@ -1,6 +1,6 @@
 import semver from "semver";
 import { z } from "zod";
-import type { SystemVersionResponse } from "@bb/server-contract";
+import type { SystemVersionInfo } from "@bb/server-contract";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
 
 const NPM_LATEST_URL = "https://registry.npmjs.org/bb-app/latest";
@@ -15,7 +15,7 @@ const npmLatestResponseSchema = z
   .passthrough();
 
 export interface AppVersionService {
-  getSystemVersion(): Promise<SystemVersionResponse>;
+  getSystemVersion(): Promise<SystemVersionInfo>;
 }
 
 export interface CreateAppVersionServiceArgs {
@@ -116,8 +116,8 @@ export function createAppVersionService(
   }
 
   return {
-    async getSystemVersion(): Promise<SystemVersionResponse> {
-      const baseResponse: SystemVersionResponse = {
+    async getSystemVersion(): Promise<SystemVersionInfo> {
+      const baseResponse: SystemVersionInfo = {
         currentVersion: config.appVersion,
         latestVersion: null,
         source: "npm",

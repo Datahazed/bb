@@ -84,10 +84,16 @@ import {
   type DesktopAutoUpdateService,
 } from "./desktop-auto-update.js";
 import {
+  createDeferredInstallController,
+  type DeferredInstallController,
+} from "./desktop-deferred-install.js";
+import {
+  BB_DESKTOP_CANCEL_DEFERRED_INSTALL_CHANNEL,
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+  BB_DESKTOP_INSTALL_UPDATE_WHEN_IDLE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
@@ -273,6 +279,7 @@ let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
+let deferredInstallController: DeferredInstallController | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
 let logViewerIpcHandlersInstalled = false;
@@ -394,10 +401,18 @@ function mergeDesktopUpdateInfo(
 }
 
 function getCurrentDesktopInfo(): BbDesktopInfo | null {
-  return mergeDesktopUpdateInfo({
+  const merged = mergeDesktopUpdateInfo({
     autoInfo: desktopAutoUpdateService?.getInfo() ?? null,
     feedInfo: desktopUpdateService?.getInfo() ?? null,
   });
+  if (merged === null) {
+    return null;
+  }
+  return {
+    ...merged,
+    canDeferInstall: deferredInstallController?.canDefer() ?? false,
+    deferredInstall: deferredInstallController?.getState() ?? null,
+  };
 }
 
 function sendDesktopInfoChanged(): void {
@@ -1120,10 +1135,25 @@ function handleBeforeQuit(event: Event): void {
   });
 }
 
+async function quitAndInstallDesktopUpdate(): Promise<void> {
+  if (desktopAutoUpdateService === null) {
+    return;
+  }
+  if (!desktopAutoUpdateService.getInfo().updateDownloaded) {
+    desktopAutoUpdateService.installUpdate();
+    return;
+  }
+  quitting = true;
+  stoppingForQuit = true;
+  await finishQuit();
+  desktopAutoUpdateService.installUpdate();
+}
+
 async function finishQuit(): Promise<void> {
   stopPopoutConfigSync();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
+  deferredInstallController?.stop();
   desktopBrowserViewManager?.destroyAll();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
@@ -1141,17 +1171,13 @@ function registerDesktopUpdateIpc(): void {
     return getCurrentDesktopInfo();
   });
   ipcMain.handle(BB_DESKTOP_INSTALL_UPDATE_CHANNEL, async () => {
-    if (desktopAutoUpdateService === null) {
-      return;
-    }
-    if (!desktopAutoUpdateService.getInfo().updateDownloaded) {
-      desktopAutoUpdateService.installUpdate();
-      return;
-    }
-    quitting = true;
-    stoppingForQuit = true;
-    await finishQuit();
-    desktopAutoUpdateService.installUpdate();
+    await quitAndInstallDesktopUpdate();
+  });
+  ipcMain.handle(BB_DESKTOP_INSTALL_UPDATE_WHEN_IDLE_CHANNEL, () => {
+    deferredInstallController?.request();
+  });
+  ipcMain.handle(BB_DESKTOP_CANCEL_DEFERRED_INSTALL_CHANNEL, () => {
+    deferredInstallController?.cancel();
   });
   // Renderer pushes the resolved bb theme so the NSWindow appearance —
   // traffic lights and inactive title-bar chrome — follows bb's theme
@@ -1593,10 +1619,32 @@ async function runDesktopApp(): Promise<void> {
     logger: createDesktopLogger(),
     updater: createElectronAutoUpdaterAdapter(autoUpdater),
   });
+  deferredInstallController = createDeferredInstallController({
+    getProbe: () => {
+      // Only a shell-owned runtime dies with the shell; relaunching while
+      // attached to a remote server never interrupts agents.
+      if (currentRuntime?.ownership !== "spawned") {
+        return null;
+      }
+      return {
+        activityUrl: new URL(
+          "/api/v1/system/agents/activity",
+          currentRuntime.serverUrl,
+        ).toString(),
+      };
+    },
+    isUpdateDownloaded: () =>
+      desktopAutoUpdateService?.getInfo().updateDownloaded ?? false,
+    installUpdate: () => quitAndInstallDesktopUpdate(),
+    logger: createDesktopLogger(),
+  });
   desktopUpdateService.subscribe(() => {
     sendDesktopInfoChanged();
   });
   desktopAutoUpdateService.subscribe(() => {
+    sendDesktopInfoChanged();
+  });
+  deferredInstallController.subscribe(() => {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();

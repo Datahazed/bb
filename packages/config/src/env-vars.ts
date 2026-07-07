@@ -214,6 +214,13 @@ export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_SELF_UPDATE_PROTOCOL_ENV = defineEnvVar<boolean>({
+  description:
+    "Set by the bb-app launcher on the server child to advertise that it understands the self-update swap protocol. Internal; not a user knob.",
+  name: "BB_SELF_UPDATE_PROTOCOL",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   description:
     "Permanent placeholder feature flag. Non-functional keep-alive so the flag system has at least one entry; do not gate behavior on it.",

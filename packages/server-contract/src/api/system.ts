@@ -105,7 +105,34 @@ export const themeCatalogResponseSchema = z.object({
 });
 export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
-export const systemVersionResponseSchema = z.object({
+/**
+ * A scheduled "update when agents finish" self-update.
+ * `staging` = npm install of the target version is still running;
+ * `waiting` = staged and ready, waiting for all agents to go idle.
+ */
+export const systemSelfUpdateScheduledSchema = z.object({
+  targetVersion: z.string(),
+  requestedAt: z.string(),
+  phase: z.enum(["staging", "waiting"]),
+});
+export type SystemSelfUpdateScheduled = z.infer<
+  typeof systemSelfUpdateScheduledSchema
+>;
+
+export const systemSelfUpdateStateSchema = z.object({
+  /**
+   * True when the server runs under a bb-app launcher that can perform the
+   * staged-version swap. False under dev, standalone bb-server, and desktop.
+   */
+  capable: z.boolean(),
+  scheduled: systemSelfUpdateScheduledSchema.nullable(),
+  /** Most recent schedule/staging failure since boot, or null. */
+  lastError: z.string().nullable(),
+});
+export type SystemSelfUpdateState = z.infer<typeof systemSelfUpdateStateSchema>;
+
+/** Version/update info owned by the app-version service (no self-update state). */
+export const systemVersionInfoSchema = z.object({
   /** Version of the running bb-app package, read from package.json. */
   currentVersion: z.string(),
   /** Latest version published to npm, or null when the lookup is unavailable. */
@@ -119,7 +146,24 @@ export const systemVersionResponseSchema = z.object({
   /** Command users should run to upgrade. Server-owned product policy. */
   upgradeCommand: z.string(),
 });
+export type SystemVersionInfo = z.infer<typeof systemVersionInfoSchema>;
+
+export const systemVersionResponseSchema = systemVersionInfoSchema.extend({
+  selfUpdate: systemSelfUpdateStateSchema,
+});
 export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
+
+/**
+ * Live agent load, for update tooling that must wait for agents to finish
+ * (the desktop shell's deferred relaunch polls this).
+ */
+export const systemAgentActivityResponseSchema = z.object({
+  /** Threads currently starting, active, or stopping. */
+  busyThreadCount: z.number().int().min(0),
+});
+export type SystemAgentActivityResponse = z.infer<
+  typeof systemAgentActivityResponseSchema
+>;
 
 export const systemConfigReloadResponseSchema = z.object({
   ok: z.literal(true),

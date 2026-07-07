@@ -4,6 +4,14 @@ import type { BbDesktopPopoutApi } from "./popout.js";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
+/** A pending "relaunch when agents finish" deferred update install. */
+export const bbDesktopDeferredInstallSchema = z.object({
+  requestedAt: isoUtcDateTimeSchema,
+});
+export type BbDesktopDeferredInstall = z.infer<
+  typeof bbDesktopDeferredInstallSchema
+>;
+
 export const bbDesktopInfoSchema = z.object({
   lastCheckedAt: isoUtcDateTimeSchema.nullable(),
   latestVersion: z.string().min(1).nullable(),
@@ -12,6 +20,17 @@ export const bbDesktopInfoSchema = z.object({
   updateAvailable: z.boolean(),
   updateDownloaded: z.boolean(),
   version: z.string().min(1),
+  /**
+   * True when relaunching would interrupt agents on a shell-owned local
+   * runtime, so a deferred "relaunch when agents finish" install is offered.
+   * Absent on desktop shells that predate deferred installs.
+   */
+  canDeferInstall: z.boolean().optional(),
+  /**
+   * The pending deferred install, or null when none is scheduled. Absent on
+   * desktop shells that predate deferred installs.
+   */
+  deferredInstall: bbDesktopDeferredInstallSchema.nullable().optional(),
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 
@@ -40,6 +59,14 @@ export interface BbDesktopApi extends BbDesktopInfo {
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
+  /**
+   * Defer the downloaded update: the main process polls the owned runtime and
+   * relaunches once no agents have been running for a quiet period. Optional
+   * for desktop shells that predate deferred installs.
+   */
+  installUpdateWhenIdle?(): Promise<void>;
+  /** Cancel a pending deferred install. Optional like installUpdateWhenIdle. */
+  cancelDeferredInstall?(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
   /**
    * Subscribe to native desktop requests to open the current thread's secondary

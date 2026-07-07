@@ -10,6 +10,7 @@ import type { PendingInteractionLifecycle } from "./services/interactions/pendin
 import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
+import type { SelfUpdateService } from "./services/system/self-update.js";
 import type { TelemetryService } from "./services/system/telemetry.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
@@ -31,6 +32,8 @@ export interface ServerRuntimeConfig {
   inferenceModel: string;
   isDevelopment: boolean;
   openAiApiKey: string;
+  /** True when the parent bb-app launcher supports the self-update swap. */
+  selfUpdateProtocol: boolean;
   serverPort: number;
   threadStorageRootPath: string;
   transcriptionModel: string;
@@ -54,6 +57,7 @@ export interface AppDeps {
 export interface ServerAppDeps extends AppDeps {
   appVersion: AppVersionService;
   bbAppManagedConfig: BbAppManagedConfigReloader;
+  selfUpdate: SelfUpdateService;
 }
 
 export type LifecycleDeps = Pick<

@@ -46,7 +46,9 @@ import type {
   ManagedProcessRun,
   NamedProcessExitResult,
   ProcessExitResult,
+  SelfUpdateSwap,
 } from "../src/launcher.js";
+import { BB_SELF_UPDATE_EXIT_CODE } from "@bb/config/self-update";
 
 interface DelayArgs {
   ms: number;
@@ -268,6 +270,43 @@ function createFakeSupervisor(): FakeSupervisor {
       return shutdownRequested;
     },
   };
+}
+
+interface FakeSwapTarget {
+  daemonRuns: FakeManagedProcessRun[];
+  serverRuns: FakeManagedProcessRun[];
+  swap: SelfUpdateSwap;
+}
+
+function createFakeSwapTarget(supervisor: FakeSupervisor): FakeSwapTarget {
+  const serverRuns: FakeManagedProcessRun[] = [];
+  const daemonRuns: FakeManagedProcessRun[] = [];
+  const swap: SelfUpdateSwap = {
+    context: {
+      ...createTestStartContext(),
+      appVersion: "9.9.9-updated",
+      packageRoot: "/tmp/bb-app-test/self-update/9.9.9-updated",
+    },
+    startServer: async () => {
+      const run = new FakeManagedProcessRun({
+        id: `updated-server-${serverRuns.length + 1}`,
+        processName: "server",
+      });
+      serverRuns.push(run);
+      supervisor.processes.serverRun = run;
+      return run;
+    },
+    startDaemon: async () => {
+      const run = new FakeManagedProcessRun({
+        id: `updated-daemon-${daemonRuns.length + 1}`,
+        processName: "daemon",
+      });
+      daemonRuns.push(run);
+      supervisor.processes.daemonRun = run;
+      return run;
+    },
+  };
+  return { daemonRuns, serverRuns, swap };
 }
 
 async function waitForProcessReplacement(
@@ -1306,6 +1345,147 @@ describe("bb-app launcher", () => {
     expect(supervisor.daemonRuns).toHaveLength(2);
     expect(nextDaemonRun).toBe(supervisor.daemonRuns[1]);
     expect(supervisor.daemonRuns[1]?.running).toBe(true);
+
+    await expect(stopFakeSupervisor(supervisor, supervision)).resolves.toBe(
+      "shutdown",
+    );
+  });
+
+  it("swaps both children to the staged version on the self-update exit code", async () => {
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    const initialDaemonRun = supervisor.daemonRuns[0];
+    const updated = createFakeSwapTarget(supervisor);
+    let swapCalls = 0;
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: immediateDelay,
+      isShutdownRequested: supervisor.shutdownRequested,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+      trySelfUpdateSwap: async () => {
+        swapCalls += 1;
+        return updated.swap;
+      },
+    });
+
+    initialServerRun.exitWith({
+      code: BB_SELF_UPDATE_EXIT_CODE,
+      signal: null,
+    });
+    const swappedServerRun = await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.serverRun,
+      previousRun: initialServerRun,
+    });
+    const swappedDaemonRun = await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.daemonRun,
+      previousRun: initialDaemonRun,
+    });
+
+    expect(swapCalls).toBe(1);
+    expect(initialDaemonRun.terminationSignals).toEqual(["SIGTERM"]);
+    expect(swappedServerRun).toBe(updated.serverRuns[0]);
+    expect(swappedDaemonRun).toBe(updated.daemonRuns[0]);
+    // The original closures were not used to restart anything.
+    expect(supervisor.serverRuns).toHaveLength(1);
+    expect(supervisor.daemonRuns).toHaveLength(1);
+
+    // A later crash restarts the *updated* version.
+    updated.serverRuns[0].exitWith({ code: 1, signal: null });
+    await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.serverRun,
+      previousRun: updated.serverRuns[0],
+    });
+    expect(updated.serverRuns).toHaveLength(2);
+    expect(supervisor.serverRuns).toHaveLength(1);
+
+    await expect(stopFakeSupervisor(supervisor, supervision)).resolves.toBe(
+      "shutdown",
+    );
+  });
+
+  it("restarts the server normally when the self-update swap is unavailable", async () => {
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    const initialDaemonRun = supervisor.daemonRuns[0];
+    let swapCalls = 0;
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: immediateDelay,
+      isShutdownRequested: supervisor.shutdownRequested,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+      trySelfUpdateSwap: async () => {
+        swapCalls += 1;
+        return null;
+      },
+    });
+
+    initialServerRun.exitWith({
+      code: BB_SELF_UPDATE_EXIT_CODE,
+      signal: null,
+    });
+    await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.serverRun,
+      previousRun: initialServerRun,
+    });
+
+    expect(swapCalls).toBe(1);
+    expect(supervisor.serverRuns).toHaveLength(2);
+    expect(supervisor.daemonRuns).toHaveLength(1);
+    expect(initialDaemonRun.running).toBe(true);
+
+    await expect(stopFakeSupervisor(supervisor, supervision)).resolves.toBe(
+      "shutdown",
+    );
+  });
+
+  it("restores the current version when the staged version fails to start", async () => {
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    const initialDaemonRun = supervisor.daemonRuns[0];
+    const updated = createFakeSwapTarget(supervisor);
+    const failingSwap: SelfUpdateSwap = {
+      context: updated.swap.context,
+      startServer: async () => {
+        throw new Error("staged server never became healthy");
+      },
+      startDaemon: updated.swap.startDaemon,
+    };
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: immediateDelay,
+      isShutdownRequested: supervisor.shutdownRequested,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+      trySelfUpdateSwap: async () => failingSwap,
+    });
+
+    initialServerRun.exitWith({
+      code: BB_SELF_UPDATE_EXIT_CODE,
+      signal: null,
+    });
+    await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.serverRun,
+      previousRun: initialServerRun,
+    });
+    await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.daemonRun,
+      previousRun: initialDaemonRun,
+    });
+
+    // The old daemon was stopped for the swap, then the *current* version's
+    // closures restarted both children.
+    expect(initialDaemonRun.terminationSignals).toEqual(["SIGTERM"]);
+    expect(supervisor.serverRuns).toHaveLength(2);
+    expect(supervisor.daemonRuns).toHaveLength(2);
+    expect(updated.serverRuns).toHaveLength(0);
+    expect(updated.daemonRuns).toHaveLength(0);
+    expect(supervisor.processes.serverRun).toBe(supervisor.serverRuns[1]);
+    expect(supervisor.processes.daemonRun).toBe(supervisor.daemonRuns[1]);
 
     await expect(stopFakeSupervisor(supervisor, supervision)).resolves.toBe(
       "shutdown",

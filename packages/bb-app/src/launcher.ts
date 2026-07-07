@@ -16,9 +16,19 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
+  APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
   APP_SURFACE_WEB,
+  parseAppSurface,
 } from "@bb/config/app-surface";
+import {
+  BB_SELF_UPDATE_EXIT_CODE,
+  BB_SELF_UPDATE_PROTOCOL_ENV_NAME,
+  BB_SELF_UPDATE_PROTOCOL_VERSION,
+  formatSelfUpdateSentinelPath,
+  selfUpdateSentinelSchema,
+  type SelfUpdateSentinel,
+} from "@bb/config/self-update";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
   bbAppManagedEnvFileSchema,
@@ -337,6 +347,19 @@ interface RestartManagedProcessArgs {
   start: StartManagedProcess;
 }
 
+/** Replacement start context + closures for a staged self-update. */
+export interface SelfUpdateSwap {
+  context: BbAppStartContext;
+  startDaemon: StartManagedProcess;
+  startServer: StartManagedProcess;
+}
+
+/**
+ * Consumes the self-update sentinel (if any) and returns the swap to the
+ * staged version, or null when there is nothing valid to swap to.
+ */
+export type TrySelfUpdateSwapFn = () => Promise<SelfUpdateSwap | null>;
+
 export interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
@@ -344,6 +367,8 @@ export interface SuperviseFullStackProcessesArgs {
   processes: ManagedFullStackProcesses;
   startDaemon: StartManagedProcess;
   startServer: StartManagedProcess;
+  /** Absent when the caller does not support self-update (tests, futures). */
+  trySelfUpdateSwap?: TrySelfUpdateSwapFn;
 }
 
 export interface TerminateManagedFullStackProcessesArgs {
@@ -400,6 +425,12 @@ interface CreateSharedEnvArgs {
 interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  /**
+   * Whether this launcher will honor the self-update swap protocol for the
+   * spawned server. False for standalone bb-server (no supervision) and when
+   * running under the desktop shell (electron-updater owns updates there).
+   */
+  selfUpdateProtocol: boolean;
 }
 
 interface CreateServerBaseEnvArgs {
@@ -1109,7 +1140,23 @@ export function resolveBbAppStartContext(
   args: ResolveBbAppStartContextArgs,
 ): BbAppStartContext {
   const entrypointDir = dirname(fileURLToPath(args.entrypointUrl));
-  const packageRoot = resolve(entrypointDir, "..");
+  return resolveBbAppStartContextFromPackageRoot({
+    env: args.env,
+    homeDir: args.homeDir,
+    packageRoot: resolve(entrypointDir, ".."),
+  });
+}
+
+export interface ResolveBbAppStartContextFromPackageRootArgs {
+  env: NodeJS.ProcessEnv;
+  homeDir: string;
+  packageRoot: string;
+}
+
+export function resolveBbAppStartContextFromPackageRoot(
+  args: ResolveBbAppStartContextFromPackageRootArgs,
+): BbAppStartContext {
+  const packageRoot = args.packageRoot;
   const dataDir = resolveDataDir({ env: args.env, homeDir: args.homeDir });
   const serverPort = resolvePort({
     defaultPort: BB_PROD_SERVER_PORT,
@@ -1822,6 +1869,30 @@ async function pathExists(pathToCheck: string): Promise<boolean> {
   }
 }
 
+/**
+ * Read and delete the self-update sentinel. One-shot on purpose: a swap that
+ * fails must not retry on the next server exit, or a broken staged install
+ * would wedge the restart loop.
+ */
+async function consumeSelfUpdateSentinel(
+  dataDir: string,
+): Promise<SelfUpdateSentinel | null> {
+  const sentinelPath = formatSelfUpdateSentinelPath(dataDir);
+  let rawContents: string;
+  try {
+    rawContents = await readFile(sentinelPath, "utf8");
+  } catch {
+    return null;
+  }
+  await unlink(sentinelPath).catch(() => undefined);
+  try {
+    return selfUpdateSentinelSchema.parse(JSON.parse(rawContents));
+  } catch {
+    log(yellow("!"), "Ignoring malformed self-update sentinel");
+    return null;
+  }
+}
+
 async function readPersistedHostId(dataDir: string): Promise<string | null> {
   try {
     const value = (
@@ -2113,7 +2184,7 @@ function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
 }
 
 function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: APP_SURFACE_WEB,
@@ -2122,6 +2193,12 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     BB_SERVER_PORT: String(args.context.serverPort),
     NODE_ENV: "production",
   };
+  if (args.selfUpdateProtocol) {
+    env[BB_SELF_UPDATE_PROTOCOL_ENV_NAME] = BB_SELF_UPDATE_PROTOCOL_VERSION;
+  } else {
+    delete env[BB_SELF_UPDATE_PROTOCOL_ENV_NAME];
+  }
+  return env;
 }
 
 function createDaemonEnv(
@@ -2296,6 +2373,7 @@ Usage:
     env: createServerEnv({
       context: runtime.context,
       env: runtime.serverEnv,
+      selfUpdateProtocol: false,
     }),
     stdio: "inherit",
   });
@@ -2623,6 +2701,12 @@ export async function terminateManagedFullStackProcesses(
 export async function superviseFullStackProcesses(
   args: SuperviseFullStackProcessesArgs,
 ): Promise<FullStackSupervisionResult> {
+  // Mutable: a successful self-update swap replaces the start context and
+  // closures, so later crash restarts relaunch the updated version.
+  let context = args.context;
+  let startServer = args.startServer;
+  let startDaemon = args.startDaemon;
+
   while (!args.isShutdownRequested()) {
     const serverRun = args.processes.serverRun;
     const daemonRun = args.processes.daemonRun;
@@ -2635,12 +2719,85 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
 
-    log(
-      yellow("!"),
-      `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
-        exitedProcess.result,
-      )} - restarting ${formatManagedProcessLabel(exitedProcess.processName)}`,
-    );
+    if (
+      exitedProcess.processName === "server" &&
+      exitedProcess.result.code === BB_SELF_UPDATE_EXIT_CODE &&
+      args.trySelfUpdateSwap !== undefined
+    ) {
+      if (args.processes.serverRun === serverRun) {
+        args.processes.serverRun = null;
+      }
+      const swap = await args.trySelfUpdateSwap();
+      if (args.isShutdownRequested()) {
+        return "shutdown";
+      }
+      if (swap !== null) {
+        log(
+          yellow("!"),
+          `Server stopped for a self-update - switching to bb-app ${swap.context.appVersion}`,
+        );
+        await daemonRun.terminate("SIGTERM");
+        if (args.processes.daemonRun === daemonRun) {
+          args.processes.daemonRun = null;
+        }
+        beginStep(`Starting bb-app ${swap.context.appVersion}`);
+        try {
+          await swap.startServer();
+          await swap.startDaemon();
+          context = swap.context;
+          startServer = swap.startServer;
+          startDaemon = swap.startDaemon;
+          endStep(green("✓"), `Updated to bb-app ${swap.context.appVersion}`);
+          continue;
+        } catch {
+          endStep(
+            red("✗"),
+            `bb-app ${swap.context.appVersion} failed to start - restarting the current version`,
+          );
+          // A half-started new stack may be running (e.g. server healthy but
+          // daemon failed); tear it down before restarting the old version.
+          await terminateManagedFullStackProcesses({
+            processes: args.processes,
+            signal: "SIGTERM",
+          });
+          args.processes.serverRun = null;
+          args.processes.daemonRun = null;
+          const restartedServer = await restartManagedProcess({
+            context,
+            delayMilliseconds: args.delayMilliseconds,
+            isShutdownRequested: args.isShutdownRequested,
+            processName: "server",
+            start: startServer,
+          });
+          if (restartedServer === null) {
+            return "shutdown";
+          }
+          const restartedDaemon = await restartManagedProcess({
+            context,
+            delayMilliseconds: args.delayMilliseconds,
+            isShutdownRequested: args.isShutdownRequested,
+            processName: "daemon",
+            start: startDaemon,
+          });
+          if (restartedDaemon === null) {
+            return "shutdown";
+          }
+          continue;
+        }
+      }
+      log(
+        yellow("!"),
+        "Server exited for a self-update but no staged update was usable - restarting server",
+      );
+      // Fall through to the normal restart path below.
+    } else {
+      log(
+        yellow("!"),
+        `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
+          exitedProcess.result,
+        )} - restarting ${formatManagedProcessLabel(exitedProcess.processName)}`,
+      );
+    }
 
     if (exitedProcess.processName === "server") {
       if (args.processes.serverRun === serverRun) {
@@ -2653,11 +2810,11 @@ export async function superviseFullStackProcesses(
         return "shutdown";
       }
       const restartedServer = await restartManagedProcess({
-        context: args.context,
+        context,
         delayMilliseconds: args.delayMilliseconds,
         isShutdownRequested: args.isShutdownRequested,
         processName: "server",
-        start: args.startServer,
+        start: startServer,
       });
       if (restartedServer === null) {
         return "shutdown";
@@ -2675,11 +2832,11 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
     const restartedDaemon = await restartManagedProcess({
-      context: args.context,
+      context,
       delayMilliseconds: args.delayMilliseconds,
       isShutdownRequested: args.isShutdownRequested,
       processName: "daemon",
-      start: args.startDaemon,
+      start: startDaemon,
     });
     if (restartedDaemon === null) {
       return "shutdown";
@@ -2774,9 +2931,15 @@ export async function runBbApp(
 
   const context = runtime.context;
   const outputBuffer = createOutputBuffer();
+  // Desktop owns updates through electron-updater; advertising the swap
+  // protocol there would fork the runtime version away from the bundle.
+  const selfUpdateProtocol =
+    parseAppSurface(runtime.env[APP_SURFACE_ENV_NAME] ?? "") !==
+    APP_SURFACE_DESKTOP;
   const serverEnv = createServerEnv({
     context,
     env: runtime.serverEnv,
+    selfUpdateProtocol,
   });
   const sharedEnv = createSharedEnv({
     context,
@@ -2883,6 +3046,57 @@ export async function runBbApp(
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
 
+    const trySelfUpdateSwap: TrySelfUpdateSwapFn = async () => {
+      const sentinel = await consumeSelfUpdateSentinel(context.dataDir);
+      if (sentinel === null) {
+        return null;
+      }
+      try {
+        // Resolve symlinks (e.g. /tmp -> /private/tmp on macOS): the daemon
+        // bundle only runs its main() when argv[1] string-equals its own
+        // resolved module path, so a symlinked spawn path exits silently.
+        const stagedPackageRoot = realpathSync(sentinel.stagedPackageRoot);
+        const stagedVersion = readBbAppPackageVersion(stagedPackageRoot);
+        if (stagedVersion !== sentinel.targetVersion) {
+          throw new Error(
+            `staged version ${stagedVersion} does not match target ${sentinel.targetVersion}`,
+          );
+        }
+        const stagedContext = resolveBbAppStartContextFromPackageRoot({
+          env: runtime.env,
+          homeDir: homedir(),
+          packageRoot: stagedPackageRoot,
+        });
+        assertBbAppArtifacts(stagedContext);
+        const stagedServerEnv = createServerEnv({
+          context: stagedContext,
+          env: runtime.serverEnv,
+          selfUpdateProtocol,
+        });
+        return {
+          context: stagedContext,
+          startServer: () =>
+            startFullStackServerProcess({
+              context: stagedContext,
+              env: stagedServerEnv,
+              outputBuffer,
+              processes,
+            }),
+          startDaemon: () =>
+            startFullStackDaemonProcess({
+              autoJoinEnv,
+              context: stagedContext,
+              outputBuffer,
+              processes,
+            }),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log(yellow("!"), `Ignoring staged self-update: ${message}`);
+        return null;
+      }
+    };
+
     outputBuffer.flush();
     const supervisionResult = await superviseFullStackProcesses({
       context,
@@ -2891,6 +3105,7 @@ export async function runBbApp(
       processes,
       startDaemon,
       startServer,
+      trySelfUpdateSwap,
     });
     await completeFullStackSupervision({ shutdownPromise, supervisionResult });
   } catch (error) {

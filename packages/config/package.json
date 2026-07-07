@@ -73,6 +73,11 @@
       "types": "./src/runtime.ts",
       "default": "./src/runtime.ts"
     },
+    "./self-update": {
+      "source": "./src/self-update.ts",
+      "types": "./src/self-update.ts",
+      "default": "./src/self-update.ts"
+    },
     "./objects": {
       "source": "./src/objects.ts",
       "types": "./src/objects.ts",
