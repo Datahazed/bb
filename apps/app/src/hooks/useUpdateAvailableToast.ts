@@ -11,6 +11,8 @@ import {
 } from "./queries/system-queries";
 
 const DISMISSED_STORAGE_KEY_PREFIX = "bb:update-toast:dismissed:";
+/** Set just before the post-update reload so the fresh page can announce it. */
+const UPDATED_SESSION_KEY = "bb:update-toast:completed";
 
 interface VersionDismissalArgs {
   latestVersion: string;
@@ -139,6 +141,22 @@ export function useUpdateAvailableToast(): void {
   const scheduleMutate = scheduleSelfUpdate.mutate;
   const cancelMutate = cancelSelfUpdate.mutate;
 
+  // Announce a completed update after the post-update reload, from the fresh
+  // bundle. Session storage survives the reload but not the tab.
+  useEffect(() => {
+    try {
+      const updatedVersion = sessionStorage.getItem(UPDATED_SESSION_KEY);
+      if (updatedVersion !== null) {
+        sessionStorage.removeItem(UPDATED_SESSION_KEY);
+        appToast.success("bb-app updated", {
+          description: `bb is now running ${updatedVersion}.`,
+        });
+      }
+    } catch {
+      // Session storage may be unavailable; skip the announcement.
+    }
+  }, []);
+
   useEffect(() => {
     if (!data) {
       return;
@@ -192,9 +210,14 @@ export function useUpdateAvailableToast(): void {
       appToast.dismiss(scheduledUpdateToastId(watchedTargetVersion));
       if (data.currentVersion === watchedTargetVersion) {
         watchedTargetVersionRef.current = null;
-        appToast.success("bb-app updated", {
-          description: `bb is now running ${data.currentVersion}.`,
-        });
+        // The page is still running the pre-update frontend bundle; reload to
+        // pick up the new one. The session flag re-announces after reload.
+        try {
+          sessionStorage.setItem(UPDATED_SESSION_KEY, data.currentVersion);
+        } catch {
+          // Reload anyway; only the announcement is lost.
+        }
+        window.location.reload();
         return;
       }
       if (
