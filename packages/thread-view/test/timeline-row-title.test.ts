@@ -373,7 +373,7 @@ function automationCreatedSystemRow(): TimelineSystemRow {
       projectId: "proj_x",
       automationName: "Daily digest",
     },
-    title: "Created loop “Daily digest”",
+    title: "Created automation “Daily digest”",
     detail: null,
     status: "completed",
     completedAt: 1,
@@ -820,9 +820,9 @@ describe("buildTimelineRowTitle", () => {
       DEFAULT_OPTIONS,
     );
 
-    expect(title.plain).toBe("Created loop Daily digest");
+    expect(title.plain).toBe("Created automation Daily digest");
     expect(title.segments.map((s) => s.text)).toEqual([
-      "Created loop",
+      "Created automation",
       "Daily digest",
     ]);
     // The connector is muted; the loop name is the emphasized, linked target.

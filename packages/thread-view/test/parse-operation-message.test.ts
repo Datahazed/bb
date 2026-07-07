@@ -146,14 +146,20 @@ describe("parseOperationMessage operation titles", () => {
       expect(
         ownershipTitle(
           "assign",
-          { nextParentThreadTitle: "Release manager", previousParentThreadTitle: null },
+          {
+            nextParentThreadTitle: "Release manager",
+            previousParentThreadTitle: null,
+          },
           THREAD_NAME,
         ),
       ).toBe("Fix auth bug assigned to Release manager");
       expect(
         ownershipTitle(
           "release",
-          { nextParentThreadTitle: null, previousParentThreadTitle: "Release manager" },
+          {
+            nextParentThreadTitle: null,
+            previousParentThreadTitle: "Release manager",
+          },
           THREAD_NAME,
         ),
       ).toBe("Fix auth bug released from Release manager");
@@ -198,13 +204,13 @@ describe("parseOperationMessage operation titles", () => {
       return message;
     }
 
-    it("titles the row with the created loop's name and parses its ids", () => {
+    it("titles the row with the created automation's name and parses its ids", () => {
       const message = automationCreatedMessage({
         automationId: "auto_123",
         projectId: "proj_x",
         automationName: "Daily digest",
       });
-      expect(message.title).toBe("Created loop “Daily digest”");
+      expect(message.title).toBe("Created automation “Daily digest”");
       expect(message.threadOperation).toEqual({
         operation: "automation_created",
         rawOperation: "automation_created",
@@ -221,7 +227,7 @@ describe("parseOperationMessage operation titles", () => {
 
     it("falls back to a generic title when metadata is malformed", () => {
       const message = automationCreatedMessage({ automationId: "auto_123" });
-      expect(message.title).toBe("Created a loop");
+      expect(message.title).toBe("Created an automation");
       if (message.threadOperation?.operation !== "automation_created") {
         throw new Error("expected automation_created operation");
       }

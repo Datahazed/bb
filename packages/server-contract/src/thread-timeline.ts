@@ -215,7 +215,7 @@ export type TimelineParentChangeSystemRow = z.infer<
   typeof timelineParentChangeSystemRowSchema
 >;
 
-// The loop a thread's agent created; the row links its name to the loop detail.
+// The automation a thread's agent created; the row links its name to the detail.
 export const timelineAutomationCreatedSchema = z.object({
   automationId: z.string(),
   projectId: z.string(),

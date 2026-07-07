@@ -10,6 +10,7 @@ import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
+import { ConnectTunnelService } from "./services/connect/tunnel-service.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
@@ -118,14 +119,12 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
   });
-  const db = initDb(serverConfig.databasePath, { logger });
-  const hub = new NotificationHub();
-  const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const terminalSessions = new TerminalSessionLifecycle({
-    db,
-    hub,
+  const db = initDb(serverConfig.databasePath, {
+    dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
+  const hub = new NotificationHub();
+  const watchInterests = new WatchInterestCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -167,7 +166,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const runtimeConfig: ServerRuntimeConfig = {
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
-    automationsAllowScriptRuns: serverConfig.BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     customAcpAgents: [],
     customModels: [],
@@ -189,6 +187,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_DEV_APP_PORT !== undefined) {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
+  // Constructed after runtimeConfig: host_path terminals gate their target
+  // host through the Multi-machine experiment, which needs config.dataDir to
+  // resolve the primary host.
+  const terminalSessions = new TerminalSessionLifecycle({
+    config: runtimeConfig,
+    db,
+    hub,
+    logger,
+  });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
     hub,
@@ -224,6 +231,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   pendingInteractions.start();
 
+  // Server-hosted connect tunnel: proxies relayed requests to this server's own
+  // loopback (which serves the SPA + /api + /ws). Started after the socket is
+  // listening; it reconnects from a stored credential if the server was paired.
+  const connectTunnel = new ConnectTunnelService({
+    dataDir: serverConfig.BB_DATA_DIR,
+    loopbackBaseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
+    logger,
+  });
+
   const appVersion = createAppVersionService({
     config: runtimeConfig,
     logger,
@@ -234,6 +250,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       appVersion,
       bbAppManagedConfig,
       config: runtimeConfig,
+      connectTunnel,
       db,
       hub,
       lifecycleDedupers,
@@ -283,6 +300,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     "Server listening",
   );
   telemetry.capture({ name: "app_started" });
+
+  // Reconnect the connect tunnel now that the loopback origin is accepting
+  // requests (no-op unless the server was previously paired).
+  connectTunnel.start();
 
   // Plugins load after the listener is up: they are additive, and a slow
   // plugin must not delay serving. Bind the loopback SDK first so bb.sdk is

@@ -62,3 +62,33 @@ Making your repo work with bb:
 
   bb environment squash-merge <id>        Squash-merge into a target branch
     --merge-base-branch <branch>          Target branch (required)
+
+Hosts:
+
+  Every environment lives on a host (a machine running the bb host daemon).
+
+  bb host list                            List hosts with connection status and last-seen time
+
+  Pass a host id to `bb thread spawn --host <id>` to run a thread on a
+  specific connected machine; omit it to use the local primary host.
+  Targeting a non-primary host requires the "Multi-machine" experiment
+  (Settings → Experiments); when it is off such requests are rejected.
+
+Remote access (bb connect):
+
+  Expose this bb server at <handle>.getbb.app so you can reach it from any
+  browser. Claim a handle at https://getbb.app and copy the connect command it
+  generates, then run it here to pair:
+
+  bb connect --code <code> --server https://<handle>.getbb.app
+    --code <code>          One-time pairing code from the dashboard
+    --server <url>         https://<handle>.getbb.app (from the dashboard)
+
+  Pairing returns immediately: the bb SERVER redeems the code, stores the
+  credential in its data dir, and holds the tunnel itself — so it stays up as
+  long as bb is running and reconnects on restart (no foreground process).
+  Without an installed bb, pair via npm:
+  `npx -p bb-app@latest bb connect --code <code> --server <url>`.
+
+  bb connect status                       Show the server's connect status
+  bb connect off                          Disconnect and forget the pairing

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 
-import { registerAutomationCommands } from "../commands/automation.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
 import { registerManagerCommands } from "../commands/manager.js";
@@ -22,7 +21,6 @@ import {
 // apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
 // CLI commands shadowing core bb commands. Update both together.
 const RESERVED_BB_CLI_COMMANDS = [
-  "automation",
   "environment",
   "guide",
   "help",
@@ -45,7 +43,6 @@ function buildProgram(): Command {
   registerManagerCommands(program, getUrl);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
-  registerAutomationCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
   registerUiCommands(program, getUrl);
   registerPluginCommands(program, getUrl);

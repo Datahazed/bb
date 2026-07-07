@@ -3,32 +3,32 @@ import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
-import { Button } from "@/components/ui/button.js";
+import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.js";
+} from "@bb/shared-ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+} from "@bb/shared-ui/dropdown-menu";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { Pill } from "@/components/ui/pill.js";
+import { Pill } from "@bb/shared-ui/pill";
 import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   useDeleteSkill,
   useProjectSkills,

@@ -6,6 +6,7 @@ import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import type { ConnectTunnelService } from "./services/connect/tunnel-service.js";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
@@ -21,13 +22,6 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 export interface ServerRuntimeConfig {
   appVersion: string;
   appSurface: AppSurface;
-  /**
-   * Operator gate for script-mode automations (which execute arbitrary host
-   * commands). DEFAULT ENABLED so the feature works out of the box; set
-   * BB_AUTOMATIONS_ALLOW_SCRIPT_RUNS=false to forbid creating new script
-   * automations (400) and to skip/fail script runs at execution time.
-   */
-  automationsAllowScriptRuns: boolean;
   builtinSkillsRootPath: string;
   customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
@@ -47,6 +41,7 @@ export interface ServerRuntimeConfig {
 
 export interface AppDeps {
   config: ServerRuntimeConfig;
+  connectTunnel: ConnectTunnelService;
   db: DbConnection;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;

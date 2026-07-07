@@ -26,6 +26,8 @@ export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
+export const AUTOMATIONS_PLUGIN_ID = "automations";
+export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
 export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
@@ -37,7 +39,8 @@ export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
-export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath";
+// Trailing splat: the remainder is the panel's `subPath` (empty at the root).
+export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -108,7 +111,9 @@ export function getAutomationDetailRoutePath({
   projectId,
   automationId,
 }: AutomationDetailRoutePathArgs): string {
-  return `/tools/automations/${projectId}/${automationId}`;
+  return `/tools/automations/${encodeURIComponent(
+    projectId,
+  )}/${encodeURIComponent(automationId)}`;
 }
 
 export function getPopoutRoutePath(): string {
@@ -162,13 +167,25 @@ export interface PluginPanelRoutePathArgs {
   pluginId: string;
   /** The nav panel's registered `path` segment (validated: [a-zA-Z0-9_-]+). */
   path: string;
+  /** Location inside the panel; segments are encoded, slashes preserved. */
+  subPath?: string;
 }
 
 export function getPluginPanelRoutePath({
   pluginId,
   path,
+  subPath,
 }: PluginPanelRoutePathArgs): string {
-  return `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+  const root = `/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(path)}`;
+  if (subPath === undefined || subPath === "") {
+    return root;
+  }
+  const encoded = subPath
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return encoded.length > 0 ? `${root}/${encoded}` : root;
 }
 
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
@@ -192,6 +209,12 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
+  PROJECT_SETTINGS_ROUTE_PATH,
+  PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
+  THREAD_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
@@ -201,12 +224,6 @@ const baseRoutePatterns: readonly string[] = [
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
-  LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
-  PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
-  PROJECT_ARCHIVED_ROUTE_PATH,
-  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
-  THREAD_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 ];
 

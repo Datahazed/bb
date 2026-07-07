@@ -10,7 +10,7 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   SidebarInset,
   SidebarProvider,
@@ -19,7 +19,6 @@ import {
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
-import { useAutomationDetail } from "@/hooks/queries/automation-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   getLatestPendingInteraction,
@@ -30,7 +29,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -53,12 +52,12 @@ import {
 } from "@/lib/bb-desktop";
 import {
   getAutomationsRoutePath,
-  getPluginsRoutePath,
-  getSkillsRoutePath,
   getLegacyProjectComposeRoutePath,
+  getPluginsRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
+  getSkillsRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
@@ -253,6 +252,8 @@ interface AppHeaderProps {
    * the shared header shows plugin logo + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
+  /** The panel route's splat remainder ("" at the panel root). */
+  pluginPanelSubPath?: string;
   meta: {
     title: string;
     subtitle?: string;
@@ -268,6 +269,7 @@ function AppHeader({
   projectId,
   project,
   pluginPanel,
+  pluginPanelSubPath,
   meta,
 }: AppHeaderProps) {
   const headerBreadcrumbs = meta.breadcrumbs;
@@ -333,7 +335,10 @@ function AppHeader({
   ) : null;
 
   const actions = pluginPanel ? (
-    <PluginPanelHeaderActions panel={pluginPanel} />
+    <PluginPanelHeaderActions
+      panel={pluginPanel}
+      subPath={pluginPanelSubPath ?? ""}
+    />
   ) : usesProjectChromeStyle &&
     projectId &&
     !isProjectlessProjectId(projectId) ? (
@@ -398,20 +403,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     isArchivedView,
     isSettingsView,
     isRootView,
-    isAutomationDetailView,
-    automationId,
-    automationProjectId,
   } = useRouteState();
-  const { data: automationDetail } = useAutomationDetail(
-    automationProjectId ?? "",
-    automationId ?? "",
-    { enabled: isAutomationDetailView },
-  );
-  const automationName = automationDetail?.name ?? "Automation";
-  const toolsPluginDetailMatch = matchPath(
-    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
@@ -490,15 +482,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     (location.pathname === "/tools" || location.pathname.startsWith("/tools/")
       ? routeTitles["/tools"]
       : undefined);
+  const toolsPluginDetailMatch = matchPath(
+    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
   const toolsBreadcrumbs = (() => {
     const toolsCrumb = { label: "Tools", to: getSkillsRoutePath() };
-    if (isAutomationDetailView) {
-      return [
-        toolsCrumb,
-        { label: "Automations", to: getAutomationsRoutePath() },
-        { label: automationName },
-      ];
-    }
     if (toolsPluginDetailMatch) {
       return [
         toolsCrumb,
@@ -513,7 +502,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       location.pathname === "/tools/automations" ||
       location.pathname === "/automations"
     ) {
-      return [toolsCrumb, { label: "Automations" }];
+      return [
+        toolsCrumb,
+        { label: "Automations", to: getAutomationsRoutePath() },
+      ];
     }
     if (
       location.pathname === "/tools" ||
@@ -582,9 +574,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (pluginPanel) {
       return pluginPanel.title;
-    }
-    if (isAutomationDetailView) {
-      return `${automationName} · Automations · Tools`;
     }
     if (toolsPluginDetailMatch) {
       return `${toolsPluginDetailMatch.params.pluginId ?? "Plugin"} · Plugins · Tools`;
@@ -742,6 +731,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   projectId={projectId}
                   project={project}
                   pluginPanel={pluginPanel}
+                  pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
                   meta={meta}
                 />
               ) : null}

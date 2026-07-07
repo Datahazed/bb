@@ -1,18 +1,12 @@
-import {
-  Link,
-  matchPath,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   CREATE_PLUGIN_PROMPT,
   CreateWithTemplatesButton,
 } from "@/components/create-via-prompt-examples";
-import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { Pill } from "@/components/ui/pill.js";
-import { Skeleton } from "@/components/ui/skeleton.js";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Pill } from "@bb/shared-ui/pill";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   PluginRow,
   pluginStatusPillVariant,
@@ -23,16 +17,13 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import {
-  AUTOMATION_DETAIL_ROUTE_PATH,
   getAutomationsRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
   getSkillsRoutePath,
 } from "@/lib/route-paths";
-import { cn } from "@/lib/utils";
-import { AutomationDetailView } from "./AutomationDetailView";
-import { AutomationsLibrary } from "./AutomationsView";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
 
 type ToolsTabId = "skills" | "plugins" | "automations";
@@ -289,8 +280,6 @@ export function ToolsView() {
   const location = useLocation();
   const { pluginId } = useParams<{ pluginId?: string }>();
   const activeTab = getToolsTab(location.pathname);
-  const isAutomationDetail =
-    matchPath(AUTOMATION_DETAIL_ROUTE_PATH, location.pathname) !== null;
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
@@ -309,13 +298,6 @@ export function ToolsView() {
         ) : null}
         {activeTab === "plugins" ? (
           <PluginsToolView pluginId={pluginId} />
-        ) : null}
-        {activeTab === "automations" ? (
-          isAutomationDetail ? (
-            <AutomationDetailView />
-          ) : (
-            <AutomationsLibrary />
-          )
         ) : null}
       </div>
     </div>

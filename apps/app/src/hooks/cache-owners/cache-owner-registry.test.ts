@@ -64,11 +64,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueuedMessagesQueryKey",
     "threadTimelineQueryKey",
   ],
-  "hooks/cache-owners/automation-cache-effects.ts": [
-    "automationDetailQueryKey",
-    "automationRunsQueryKey",
-    "automationsQueryKey",
-  ],
   "hooks/cache-owners/cache-invalidation-groups.ts": [
     "allProjectPathsQueryKeyPrefix",
     "allProjectSourceBranchesQueryKeyPrefix",
@@ -152,10 +147,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
-    "allAutomationDetailQueryKeyPrefix",
-    "allAutomationRunsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
-    "automationsQueryKey",
     "allThreadStorageFilePreviewQueryKeyPrefix",
     "allThreadStorageFilesQueryKeyPrefix",
     "allThreadStoragePathsQueryKeyPrefix",
@@ -183,8 +175,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "skillContentQueryKey",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
-    "allAutomationDetailQueryKeyPrefix",
-    "allAutomationRunsQueryKeyPrefix",
     "allEnvironmentDiffFilesQueryKeyPrefix",
     "allEnvironmentDiffPatchQueryKeyPrefix",
     "allEnvironmentFilePreviewQueryKeyPrefix",
@@ -206,7 +196,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allThreadStoragePathsQueryKeyPrefix",
     "allThreadTimelineQueryKeyPrefix",
     "allThreadTimelineTurnSummaryDetailsQueryKeyPrefix",
-    "automationsQueryKey",
     "hostsQueryKey",
     "hostPathExistenceQueryKeyPrefix",
     "projectsQueryKey",

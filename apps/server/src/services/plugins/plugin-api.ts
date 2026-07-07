@@ -177,7 +177,7 @@ export interface PluginAgentToolRecord {
  * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
  */
 export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  "automation",
+  // "automation" is intentionally absent: the builtin automations plugin owns it.
   "environment",
   "guide",
   "help",
@@ -409,6 +409,7 @@ export function createPluginApi(options: {
     "thread.created": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.deleted": [],
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();

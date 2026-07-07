@@ -119,7 +119,8 @@ simply unavailable.
 
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
-be launched as `opencode acp`.
+be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
+and can be launched as `omp acp`.
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
@@ -225,6 +226,32 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
+## Multi-Machine
+
+Running threads on hosts other than the local primary (`bb thread spawn
+--host <id>`; ids from `bb host list`) is gated behind the "Multi-machine"
+experiment (Settings → Experiments, off by default). While the experiment is
+off, execution requests that target a non-primary host are rejected with
+`multi_machine_disabled`. The bb connect remote-access surfaces are gated by
+the same experiment as they land.
+
+## bb connect
+
+`bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
+server for browser access at `<handle>.getbb.app` (claim a handle and copy the
+command at https://getbb.app). Pairing is a thin call to the server's
+`POST /connect/pair` route: **the server** redeems the code, stores the durable
+credential under its data dir (`connect.json`), and holds the connect tunnel
+itself — dialing the gate, proxying relayed requests to its own loopback (which
+serves the SPA + `/api` + `/ws`), and reconnecting with capped backoff. The
+tunnel therefore lives as long as the bb server runs and re-establishes on
+restart; there is no foreground client. Pair from a machine without an installed
+bb via `npx -p bb-app@latest bb connect …`. `bb connect status` shows the
+server's connect state and `bb connect off` disconnects and clears the pairing.
+
+The tunnel client lives in `apps/server` (`services/connect/`); the CLI and app
+only drive the `/connect/*` routes.
+
 ## Plugins
 
 Plugins are gated behind the "Plugins" experiment (Settings → Experiments, off
@@ -247,7 +274,9 @@ Plugin state lives under the data dir:
 
 `bb plugin install npm:<name>@<version>` requires `npm` on PATH (packages are
 installed with `--ignore-scripts`); `git:<url>@<ref>` requires `git`. Local
-path installs register the directory in place and never delete it. Plugins are
+path installs register the directory in place and never delete it. Builtin
+plugins use `builtin:<name>`, ship with bb, and remain available when the
+Plugins experiment is off unless removed. Plugins are
 full-trust code running inside the bb server process: they can read all local
 bb data, including other plugins' secrets.
 

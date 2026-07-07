@@ -13,16 +13,6 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
-  Automation,
-  AutomationRunListResponse,
-  AutomationRunResponse,
-  AutomationsOverviewResponse,
-  UpdateAutomationRequest,
-  SkillListResponse,
-  DeleteSkillRequest,
-  SkillContentResponse,
-  UpdateSkillRequest,
-  SkillScope,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -95,6 +85,11 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
+  SkillListResponse,
+  DeleteSkillRequest,
+  SkillContentResponse,
+  UpdateSkillRequest,
+  SkillScope,
 } from "@bb/server-contract";
 import {
   providerCliInstallEventSchema,
@@ -591,193 +586,6 @@ export async function deleteProject(id: string): Promise<void> {
   await requestVoid(apiClient.projects[":id"].$delete({ param: { id } }));
 }
 
-export async function listAutomations(
-  signal?: AbortSignal,
-): Promise<AutomationsOverviewResponse> {
-  return request<AutomationsOverviewResponse>(
-    apiClient.automations.$get(undefined, requestOptions(signal)),
-  );
-}
-
-interface AutomationRef {
-  projectId: string;
-  automationId: string;
-}
-
-interface GetAutomationArgs extends AutomationRef {
-  signal?: AbortSignal;
-}
-
-interface ListAutomationRunsArgs extends AutomationRef {
-  limit?: number;
-  cursor?: string;
-  signal?: AbortSignal;
-}
-
-export async function getAutomation({
-  projectId,
-  automationId,
-  signal,
-}: GetAutomationArgs): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].$get(
-      { param: { id: projectId, automationId } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function listAutomationRuns({
-  projectId,
-  automationId,
-  limit,
-  cursor,
-  signal,
-}: ListAutomationRunsArgs): Promise<AutomationRunListResponse> {
-  return request<AutomationRunListResponse>(
-    apiClient.projects[":id"].automations[":automationId"].runs.$get(
-      {
-        param: { id: projectId, automationId },
-        query: {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
-          ...(cursor ? { cursor } : {}),
-        },
-      },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function pauseAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].pause.$post({
-      param: { id: projectId, automationId },
-    }),
-  );
-}
-
-export async function resumeAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].resume.$post({
-      param: { id: projectId, automationId },
-    }),
-  );
-}
-
-export async function runAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<AutomationRunResponse> {
-  return request<AutomationRunResponse>(
-    apiClient.projects[":id"].automations[":automationId"].run.$post({
-      param: { id: projectId, automationId },
-      json: {},
-    }),
-  );
-}
-
-export async function deleteAutomation({
-  projectId,
-  automationId,
-}: AutomationRef): Promise<void> {
-  await requestVoid(
-    apiClient.projects[":id"].automations[":automationId"].$delete({
-      param: { id: projectId, automationId },
-    }),
-  );
-}
-
-export async function updateAutomation({
-  projectId,
-  automationId,
-  patch,
-}: AutomationRef & { patch: UpdateAutomationRequest }): Promise<Automation> {
-  return request<Automation>(
-    apiClient.projects[":id"].automations[":automationId"].$patch({
-      param: { id: projectId, automationId },
-      json: patch,
-    }),
-  );
-}
-
-interface ListProjectSkillsArgs {
-  projectId: string;
-  environmentId: string | null;
-  signal?: AbortSignal;
-}
-
-export async function listProjectSkills({
-  projectId,
-  environmentId,
-  signal,
-}: ListProjectSkillsArgs): Promise<SkillListResponse> {
-  return request<SkillListResponse>(
-    apiClient.projects[":id"].skills.$get(
-      {
-        param: { id: projectId },
-        query: { environmentId: environmentId ?? "" },
-      },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function deleteProjectSkill(
-  projectId: string,
-  body: DeleteSkillRequest,
-): Promise<void> {
-  await requestVoid(
-    apiClient.projects[":id"].skills.$delete({
-      param: { id: projectId },
-      json: body,
-    }),
-  );
-}
-
-interface GetSkillContentArgs {
-  projectId: string;
-  scope: SkillScope;
-  name: string;
-  environmentId: string | null;
-  signal?: AbortSignal;
-}
-
-export async function getSkillContent({
-  projectId,
-  scope,
-  name,
-  environmentId,
-  signal,
-}: GetSkillContentArgs): Promise<SkillContentResponse> {
-  return request<SkillContentResponse>(
-    apiClient.projects[":id"].skills.content.$get(
-      {
-        param: { id: projectId },
-        query: { scope, name, environmentId: environmentId ?? "" },
-      },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function updateSkillContent(
-  projectId: string,
-  body: UpdateSkillRequest,
-): Promise<{ filePath: string }> {
-  return request<{ filePath: string }>(
-    apiClient.projects[":id"].skills.content.$patch({
-      param: { id: projectId },
-      json: body,
-    }),
-  );
-}
-
 export async function addProjectSource(
   projectId: string,
   req: CreateProjectSourceRequest,
@@ -926,6 +734,78 @@ export async function listProjectCommands(
       },
       requestOptions(args.signal),
     ),
+  );
+}
+
+interface ListProjectSkillsArgs {
+  projectId: string;
+  environmentId: string | null;
+  signal?: AbortSignal;
+}
+
+export async function listProjectSkills({
+  projectId,
+  environmentId,
+  signal,
+}: ListProjectSkillsArgs): Promise<SkillListResponse> {
+  return request<SkillListResponse>(
+    apiClient.projects[":id"].skills.$get(
+      {
+        param: { id: projectId },
+        query: { environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function deleteProjectSkill(
+  projectId: string,
+  body: DeleteSkillRequest,
+): Promise<void> {
+  await requestVoid(
+    apiClient.projects[":id"].skills.$delete({
+      param: { id: projectId },
+      json: body,
+    }),
+  );
+}
+
+interface GetSkillContentArgs {
+  projectId: string;
+  scope: SkillScope;
+  name: string;
+  environmentId: string | null;
+  signal?: AbortSignal;
+}
+
+export async function getSkillContent({
+  projectId,
+  scope,
+  name,
+  environmentId,
+  signal,
+}: GetSkillContentArgs): Promise<SkillContentResponse> {
+  return request<SkillContentResponse>(
+    apiClient.projects[":id"].skills.content.$get(
+      {
+        param: { id: projectId },
+        query: { scope, name, environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function updateSkillContent(
+  projectId: string,
+  body: UpdateSkillRequest,
+): Promise<{ filePath: string }> {
+  return request<{ filePath: string }>(
+    apiClient.projects[":id"].skills.content.$patch({
+      param: { id: projectId },
+      json: body,
+    }),
   );
 }
 

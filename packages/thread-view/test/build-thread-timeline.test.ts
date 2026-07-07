@@ -1605,11 +1605,11 @@ describe("buildThreadTimelineFromEvents", () => {
     },
   );
 
-  it("projects an automation_created operation into a linkable loop row", () => {
+  it("projects an automation_created operation into a linkable automation row", () => {
     const rows = buildTimelineRows(
       [
         systemOperationEvent({
-          message: 'Created loop "Daily digest"',
+          message: 'Created automation "Daily digest"',
           operation: "automation_created",
           metadata: {
             automationId: "auto_123",
@@ -1627,7 +1627,7 @@ describe("buildThreadTimelineFromEvents", () => {
       expect.objectContaining({
         operationKind: "automation-created",
         systemKind: "operation",
-        title: "Created loop “Daily digest”",
+        title: "Created automation “Daily digest”",
         detail: null,
         automationCreated: {
           automationId: "auto_123",
@@ -1642,7 +1642,7 @@ describe("buildThreadTimelineFromEvents", () => {
     const rows = buildTimelineRows(
       [
         systemOperationEvent({
-          message: "Created a loop",
+          message: "Created an automation",
           operation: "automation_created",
           metadata: { automationId: "auto_123" },
           seq: 1,

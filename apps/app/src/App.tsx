@@ -18,14 +18,15 @@ import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
-  AUTH_CALLBACK_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
-  SKILLS_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
-  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTH_CALLBACK_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
-  LEGACY_SKILLS_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
@@ -33,12 +34,14 @@ import {
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
+  getPluginPanelRoutePath,
 } from "./lib/route-paths";
-import { Icon } from "./components/ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_SHADOW_MARGIN,
@@ -104,13 +107,21 @@ function PopoutRouteFallback() {
   );
 }
 
-function LegacyAutomationDetailRedirect() {
-  const { projectId = "", automationId = "" } = useParams();
+function AutomationsPluginRedirect() {
+  const { projectId, automationId } = useParams<{
+    projectId?: string;
+    automationId?: string;
+  }>();
+  const subPath =
+    projectId && automationId ? `${projectId}/${automationId}` : "";
+
   return (
     <Navigate
-      to={`/tools/automations/${encodeURIComponent(projectId)}/${encodeURIComponent(
-        automationId,
-      )}`}
+      to={getPluginPanelRoutePath({
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+        subPath,
+      })}
       replace
     />
   );
@@ -133,19 +144,25 @@ function AppRoutes() {
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
             element={<ToolsView />}
           />
-          <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={AUTOMATIONS_ROUTE_PATH}
+            element={<AutomationsPluginRedirect />}
+          />
+          <Route
+            path={AUTOMATION_DETAIL_ROUTE_PATH}
+            element={<AutomationsPluginRedirect />}
+          />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
           <Route
             path={LEGACY_AUTOMATIONS_ROUTE_PATH}
-            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
+            element={<AutomationsPluginRedirect />}
           />
-          <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<LegacyAutomationDetailRedirect />}
+            element={<AutomationsPluginRedirect />}
           />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}

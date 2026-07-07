@@ -165,7 +165,7 @@ describe("route path helpers", () => {
         "/projects/:projectId/threads/:threadId",
         "/projects/proj_standard/threads/thr_standard",
       ],
-      ["/plugins/:pluginId/:panelPath", "/plugins/github/pulls"],
+      ["/plugins/:pluginId/:panelPath/*", "/plugins/github/pulls"],
     ]);
 
     expect([...examplesByPattern.keys()].sort()).toEqual(

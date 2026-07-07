@@ -25,6 +25,7 @@ import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedu
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
+import { ConnectTunnelService } from "../../../apps/server/src/services/connect/tunnel-service.js";
 import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
@@ -216,17 +217,9 @@ async function startIntegrationServer(
   const db = initDb(":memory:");
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const terminalSessions = new TerminalSessionLifecycle({
-    attachTimeoutMs: 50,
-    db,
-    hub,
-    logger: testLogger,
-    openTimeoutMs: 50,
-  });
   const config: ServerRuntimeConfig = {
     appSurface: "web",
     appVersion: "0.0.0-dev",
-    automationsAllowScriptRuns: true,
     builtinSkillsRootPath,
     customAcpAgents: [],
     customModels: [],
@@ -242,6 +235,14 @@ async function startIntegrationServer(
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
   };
+  const terminalSessions = new TerminalSessionLifecycle({
+    attachTimeoutMs: 50,
+    config,
+    db,
+    hub,
+    logger: testLogger,
+    openTimeoutMs: 50,
+  });
   const machineAuth = await createMachineAuthService({
     dataDir: serverDataDir,
     db,
@@ -270,10 +271,16 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const connectTunnel = new ConnectTunnelService({
+    dataDir: serverDataDir,
+    loopbackBaseUrl: `http://127.0.0.1:${config.serverPort}`,
+    logger: testLogger,
+  });
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
     config,
+    connectTunnel,
     db,
     hub,
     lifecycleDedupers,
