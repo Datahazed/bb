@@ -552,10 +552,19 @@ function OverviewRow({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
+  const automationIcon =
+    automation.execution.mode === "script"
+      ? "ComputerTerminal01"
+      : "ArrowReloadHorizontal";
 
   return (
     <div className="group flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-state-hover">
       <StatusDot enabled={automation.enabled} />
+      <Icon
+        name={automationIcon}
+        className="size-4 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
       <button
         type="button"
         onClick={() => onNavigate(route)}
@@ -780,14 +789,14 @@ function RunRow({
         ) : null}
       </div>
       {run.skipReason ? (
-        <p className="border-t border-border-seam px-3 py-2 text-xs text-muted-foreground">
+        <p className="mx-3 mb-2 rounded-md border border-border bg-surface-recessed px-3 py-2 text-xs text-muted-foreground">
           {run.skipReason}
         </p>
       ) : null}
       {showOutput ? (
         <pre
           className={cn(
-            "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
+            "mx-3 mb-3 whitespace-pre-wrap rounded-md border border-border bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
             run.error ? "text-destructive" : "text-foreground",
             silent && "italic text-subtle-foreground",
           )}
@@ -880,12 +889,21 @@ function DetailView({
     runCount: automation.runCount,
   });
   const environmentLabel = describeEnvironment(automation.execution);
+  const automationIcon =
+    automation.execution.mode === "script"
+      ? "ComputerTerminal01"
+      : "ArrowReloadHorizontal";
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <StatusDot enabled={automation.enabled} />
+          <Icon
+            name={automationIcon}
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
           <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
             {automation.name}
           </h1>

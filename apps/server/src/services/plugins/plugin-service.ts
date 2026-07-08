@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -153,7 +154,7 @@ export interface PluginListEntry {
   rootDir: string;
   version: string;
   enabled: boolean;
-  /** Manifest description (package.json), null when not currently loaded. */
+  /** Manifest description (package.json), null when absent or unreadable. */
   description: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
@@ -764,6 +765,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
   const appBundles = new Map<string, PluginAppBundleSnapshot>();
+  // Disabled plugins do not execute their factory, but their manifest still
+  // carries useful inventory metadata such as descriptions.
+  const manifestSnapshots = new Map<string, PluginManifest>();
   // Logo snapshots (light + optional dark variant), refreshed alongside
   // appBundles on every load. Entries are only servable (and only advertised
   // via logoUrl/logoDarkUrl) while the plugin is in `loaded` — same honest
@@ -1263,6 +1267,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   async function loadOne(row: InstalledPluginRow): Promise<void> {
     if (!row.enabled) {
+      try {
+        manifestSnapshots.set(row.id, await readPluginManifest(row.rootDir));
+      } catch {
+        manifestSnapshots.delete(row.id);
+      }
       setStatus(row.id, "disabled");
       return;
     }
@@ -1296,7 +1305,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     let manifest: PluginManifest;
     try {
       manifest = await readPluginManifest(row.rootDir);
+      manifestSnapshots.set(row.id, manifest);
     } catch (error) {
+      manifestSnapshots.delete(row.id);
       setStatus(
         row.id,
         "error",
@@ -1868,6 +1879,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.hub.notifySystem(["plugins-changed"]);
   }
 
+  function readManifestDescription(rootDir: string): string | null {
+    try {
+      const parsed = JSON.parse(
+        readFileSync(join(rootDir, "package.json"), "utf8"),
+      ) as { description?: unknown };
+      const description = parsed.description;
+      return typeof description === "string" && description.trim().length > 0
+        ? description
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     return listInstalledPlugins(deps.db)
@@ -1882,7 +1907,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           rootDir: row.rootDir,
           version: row.version,
           enabled: row.enabled,
-          description: loaded.get(row.id)?.manifest.description ?? null,
+          description:
+            loaded.get(row.id)?.manifest.description ??
+            manifestSnapshots.get(row.id)?.description ??
+            readManifestDescription(row.rootDir) ??
+            null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -2002,6 +2031,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       agentToolProblems.delete(id);
       appBundles.delete(id);
       logos.delete(id);
+      manifestSnapshots.delete(id);
       const removed = row
         ? isBuiltinSource(row.source)
           ? markInstalledPluginRemoved(deps.db, id)

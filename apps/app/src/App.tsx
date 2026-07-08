@@ -19,8 +19,6 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
-  AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
   AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
@@ -39,7 +37,7 @@ import {
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
-  getPluginPanelRoutePath,
+  getAutomationDetailRoutePath,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -107,21 +105,18 @@ function PopoutRouteFallback() {
   );
 }
 
-function AutomationsPluginRedirect() {
+function LegacyAutomationDetailRedirect() {
   const { projectId, automationId } = useParams<{
     projectId?: string;
     automationId?: string;
   }>();
-  const subPath =
-    projectId && automationId ? `${projectId}/${automationId}` : "";
 
+  if (!projectId || !automationId) {
+    return <Navigate to={AUTOMATIONS_ROUTE_PATH} replace />;
+  }
   return (
     <Navigate
-      to={getPluginPanelRoutePath({
-        pluginId: AUTOMATIONS_PLUGIN_ID,
-        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
-        subPath,
-      })}
+      to={getAutomationDetailRoutePath({ projectId, automationId })}
       replace
     />
   );
@@ -145,10 +140,7 @@ function AppRoutes() {
             element={<ToolsView />}
           />
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
-          <Route
-            path={AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<AutomationsPluginRedirect />}
-          />
+          <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
@@ -159,7 +151,7 @@ function AppRoutes() {
           />
           <Route
             path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<AutomationsPluginRedirect />}
+            element={<LegacyAutomationDetailRedirect />}
           />
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}

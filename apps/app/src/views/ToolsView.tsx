@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { useMutation } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import {
@@ -8,28 +9,26 @@ import {
   CreateWithTemplatesButton,
 } from "@/components/create-via-prompt-examples";
 import { appToast } from "@/components/ui/app-toast";
+import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Pill } from "@bb/shared-ui/pill";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
-import { PluginRow } from "@/components/settings/PluginsSettingsSection";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useProjectSkills } from "@/hooks/queries/skills-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import { CREATE_AUTOMATION_PROMPT } from "@/lib/automation-prompt";
 import {
-  formatScheduleStatusLabel,
-  isCompletedOneShotAutomation,
-  type AutomationTrigger,
-} from "@/lib/format-schedule";
-import { callPluginRpc } from "@/lib/plugin-sdk-hooks";
+  createDiffWorker,
+  getDiffWorkerPoolSize,
+} from "@/lib/diff-worker-pool";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  getAutomationDetailRoutePath,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
   getAutomationsRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
@@ -38,6 +37,12 @@ import {
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ProviderLogo, SkillsLibrary } from "./SkillsView";
+
+const WORKER_POOL_OPTIONS = {
+  workerFactory: createDiffWorker,
+  poolSize: getDiffWorkerPoolSize(),
+};
+const HIGHLIGHTER_OPTIONS = {};
 
 type ToolsTabId = "skills" | "plugins" | "automations";
 
@@ -74,128 +79,6 @@ function getToolsTab(pathname: string): ToolsTabId {
   return "skills";
 }
 
-type AutomationRunStatus = "running" | "succeeded" | "failed" | "skipped";
-type AutomationExecution =
-  | { mode: "agent" }
-  | { mode: "script"; script?: string; scriptFile?: string };
-
-interface AutomationSummary {
-  id: string;
-  projectId: string;
-  name: string;
-  enabled: boolean;
-  trigger: AutomationTrigger;
-  execution: AutomationExecution;
-  origin: "human" | "app" | "agent";
-  nextRunAt: number | null;
-  runCount: number;
-  lastRunStatus: AutomationRunStatus | null;
-}
-
-interface AutomationOverviewEntry {
-  automation: AutomationSummary;
-  project: { id: string; name: string };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseAutomationTrigger(value: unknown): AutomationTrigger | null {
-  if (!isRecord(value)) return null;
-  if (
-    value.triggerType === "schedule" &&
-    typeof value.cron === "string" &&
-    typeof value.timezone === "string"
-  ) {
-    return {
-      triggerType: "schedule",
-      cron: value.cron,
-      timezone: value.timezone,
-    };
-  }
-  if (value.triggerType === "once" && typeof value.runAt === "number") {
-    return { triggerType: "once", runAt: value.runAt };
-  }
-  return null;
-}
-
-function parseAutomationExecution(value: unknown): AutomationExecution | null {
-  if (!isRecord(value)) return null;
-  if (value.mode === "agent") return { mode: "agent" };
-  if (value.mode === "script") {
-    return {
-      mode: "script",
-      ...(typeof value.script === "string" ? { script: value.script } : {}),
-      ...(typeof value.scriptFile === "string"
-        ? { scriptFile: value.scriptFile }
-        : {}),
-    };
-  }
-  return null;
-}
-
-function parseAutomation(value: unknown): AutomationSummary | null {
-  if (!isRecord(value)) return null;
-  const trigger = parseAutomationTrigger(value.trigger);
-  const execution = parseAutomationExecution(value.execution);
-  if (
-    typeof value.id !== "string" ||
-    typeof value.projectId !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.enabled !== "boolean" ||
-    trigger === null ||
-    execution === null ||
-    (value.origin !== "human" &&
-      value.origin !== "app" &&
-      value.origin !== "agent") ||
-    !(value.nextRunAt === null || typeof value.nextRunAt === "number") ||
-    typeof value.runCount !== "number" ||
-    !(
-      value.lastRunStatus === null ||
-      value.lastRunStatus === "running" ||
-      value.lastRunStatus === "succeeded" ||
-      value.lastRunStatus === "failed" ||
-      value.lastRunStatus === "skipped"
-    )
-  ) {
-    return null;
-  }
-  return {
-    id: value.id,
-    projectId: value.projectId,
-    name: value.name,
-    enabled: value.enabled,
-    trigger,
-    execution,
-    origin: value.origin,
-    nextRunAt: value.nextRunAt,
-    runCount: value.runCount,
-    lastRunStatus: value.lastRunStatus,
-  };
-}
-
-function parseAutomationOverview(value: unknown): AutomationOverviewEntry[] {
-  if (!isRecord(value) || !Array.isArray(value.automations)) return [];
-  return value.automations.flatMap((entry) => {
-    if (!isRecord(entry) || !isRecord(entry.project)) return [];
-    const automation = parseAutomation(entry.automation);
-    if (
-      automation === null ||
-      typeof entry.project.id !== "string" ||
-      typeof entry.project.name !== "string"
-    ) {
-      return [];
-    }
-    return [
-      {
-        automation,
-        project: { id: entry.project.id, name: entry.project.name },
-      },
-    ];
-  });
-}
-
 function StatusDot({
   tone,
 }: {
@@ -212,6 +95,38 @@ function StatusDot({
         tone === "muted" && "bg-muted-foreground/50",
       )}
     />
+  );
+}
+
+function StatusLabel({
+  tone,
+  children,
+}: {
+  tone: "success" | "warning" | "error" | "muted";
+  children: string;
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <StatusDot tone={tone} />
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function ResourceTaxonomy({
+  items,
+}: {
+  items: readonly { label: string; value: ReactNode }[];
+}) {
+  return (
+    <dl className="grid gap-2 rounded-md border border-border bg-surface-recessed p-3 text-xs sm:grid-cols-3">
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <dt className="text-subtle-foreground">{item.label}</dt>
+          <dd className="mt-0.5 min-w-0 text-foreground">{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -314,7 +229,11 @@ function PluginListRow({
             {plugin.enabled ? plugin.status : "disabled"}
           </span>
         </span>
-        {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
+        {plugin.description !== null && plugin.description.length > 0 ? (
+          <span className="mt-1 block truncate text-xs text-subtle-foreground">
+            {plugin.description}
+          </span>
+        ) : plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
           <span className="mt-1 block truncate text-xs text-subtle-foreground">
             {plugin.statusDetail}
           </span>
@@ -343,7 +262,7 @@ function PluginListRow({
 
 interface ProviderInstalledPlugin {
   name: string;
-  provider: SkillProvider;
+  providers: SkillProvider[];
   skillCount: number;
   description: string | null;
 }
@@ -362,32 +281,43 @@ function providerPluginNameFromSkill(skillName: string): string | null {
 function providerPluginsFromSkills(
   skills: readonly SkillSummary[],
 ): ProviderInstalledPlugin[] {
-  const byKey = new Map<string, ProviderInstalledPlugin>();
+  const byKey = new Map<
+    string,
+    {
+      name: string;
+      providers: Set<SkillProvider>;
+      skills: Set<string>;
+      description: string | null;
+    }
+  >();
   for (const skill of skills) {
     if (skill.scope !== "plugin" || skill.provider === null) continue;
     const name = providerPluginNameFromSkill(skill.name);
     if (name === null) continue;
-    const key = `${skill.provider}:${name}`;
-    const existing = byKey.get(key);
+    const existing = byKey.get(name);
     if (existing) {
-      existing.skillCount += 1;
+      existing.providers.add(skill.provider);
+      existing.skills.add(`${skill.provider}:${skill.name}`);
       if (existing.description === null && skill.description) {
         existing.description = skill.description;
       }
       continue;
     }
-    byKey.set(key, {
+    byKey.set(name, {
       name,
-      provider: skill.provider,
-      skillCount: 1,
+      providers: new Set([skill.provider]),
+      skills: new Set([`${skill.provider}:${skill.name}`]),
       description: skill.description,
     });
   }
-  return [...byKey.values()].sort(
-    (left, right) =>
-      left.provider.localeCompare(right.provider) ||
-      left.name.localeCompare(right.name),
-  );
+  return [...byKey.values()]
+    .map((plugin) => ({
+      name: plugin.name,
+      providers: [...plugin.providers].sort(),
+      skillCount: plugin.skills.size,
+      description: plugin.description,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function ProviderInstalledPluginRow({
@@ -397,14 +327,24 @@ function ProviderInstalledPluginRow({
 }) {
   return (
     <div className="flex min-w-0 items-start gap-2 rounded-md px-3 py-2 text-left">
-      <ProviderLogo providerId={plugin.provider} className="size-4 shrink-0" />
+      <Icon
+        name="ElectricPlugs"
+        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="truncate text-sm font-medium text-foreground">
             {plugin.name}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {PROVIDER_LABELS[plugin.provider]} plugin
+          <span className="inline-flex items-center gap-1">
+            {plugin.providers.map((provider) => (
+              <ProviderLogo
+                key={provider}
+                providerId={provider}
+                className="size-3.5 shrink-0"
+              />
+            ))}
           </span>
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <StatusDot tone="success" />
@@ -417,81 +357,14 @@ function ProviderInstalledPluginRow({
           </span>
         ) : (
           <span className="mt-1 block text-xs text-subtle-foreground">
+            {plugin.providers
+              .map((provider) => PROVIDER_LABELS[provider])
+              .join(", ")}
+            {" · "}
             {plugin.skillCount} {plugin.skillCount === 1 ? "skill" : "skills"}
           </span>
         )}
       </span>
-    </div>
-  );
-}
-
-function AutomationListRow({
-  entry,
-  pending,
-  onToggle,
-}: {
-  entry: AutomationOverviewEntry;
-  pending: boolean;
-  onToggle: (entry: AutomationOverviewEntry) => void;
-}) {
-  const { automation, project } = entry;
-  const completedOneShot = isCompletedOneShotAutomation({
-    enabled: automation.enabled,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-  });
-  const detailPath = getAutomationDetailRoutePath({
-    projectId: automation.projectId,
-    automationId: automation.id,
-  });
-  return (
-    <div className="group flex min-w-0 items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-state-hover">
-      <Icon
-        name={
-          automation.execution.mode === "script"
-            ? "ComputerTerminal01"
-            : "ArrowReloadHorizontal"
-        }
-        className="size-4 shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-      <StatusDot tone={automation.enabled ? "success" : "muted"} />
-      <Link
-        to={detailPath}
-        className="min-w-0 flex-1 truncate rounded-sm text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        {automation.name}
-      </Link>
-      {project.id === PERSONAL_PROJECT_ID ? null : (
-        <Pill variant="outline" className="shrink-0">
-          {project.name}
-        </Pill>
-      )}
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {formatScheduleStatusLabel({
-          enabled: automation.enabled,
-          nextRunAt: automation.nextRunAt,
-          trigger: automation.trigger,
-          runCount: automation.runCount,
-        })}
-      </span>
-      <Switch
-        checked={automation.enabled}
-        disabled={pending || completedOneShot}
-        aria-label={`${automation.enabled ? "Pause" : "Resume"} ${automation.name}`}
-        onCheckedChange={() => onToggle(entry)}
-      />
-      <Link
-        to={detailPath}
-        aria-label={`Open ${automation.name}`}
-        className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <Icon
-          name="ChevronRight"
-          className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-          aria-hidden
-        />
-      </Link>
     </div>
   );
 }
@@ -512,116 +385,60 @@ function PluginsLoadingRows() {
   );
 }
 
-function AutomationsLoadingRows() {
-  return (
-    <div className="space-y-0.5" aria-busy aria-label="Loading automations">
-      {["w-40", "w-56", "w-32"].map((nameWidth) => (
-        <div key={nameWidth} className="flex items-center gap-2 px-3 py-2">
-          <Skeleton className="size-4 shrink-0 rounded" />
-          <Skeleton className="size-1.5 shrink-0 rounded-full" />
-          <Skeleton className={cn("h-3.5", nameWidth)} />
-          <Skeleton className="ml-auto h-3 w-24" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function AutomationsToolView() {
-  const navigate = useNavigate();
-  const automationsQuery = useQuery({
-    queryKey: ["tools-hub", "automations-overview"],
-    queryFn: async () =>
-      parseAutomationOverview(
-        await callPluginRpc(
-          fetch,
-          AUTOMATIONS_PLUGIN_ID,
-          "automations_overview",
-        ),
-      ),
-    staleTime: 15_000,
-  });
-  const automationToggle = useMutation({
-    mutationFn: async (entry: AutomationOverviewEntry) => {
-      await callPluginRpc(
-        fetch,
-        AUTOMATIONS_PLUGIN_ID,
-        entry.automation.enabled ? "automations_pause" : "automations_resume",
-        {
-          projectId: entry.automation.projectId,
-          automationId: entry.automation.id,
-        },
-      );
-    },
-    onSuccess: () => void automationsQuery.refetch(),
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
-    },
-  });
-  const entries = automationsQuery.data ?? [];
-  const pendingAutomationId =
-    automationToggle.isPending && automationToggle.variables
-      ? automationToggle.variables.automation.id
-      : null;
-  const isLoading =
-    automationsQuery.isFetching && automationsQuery.data === undefined;
-  const handleCreateAutomation = (prompt?: string) => {
-    navigate(getRootComposeRoutePath(), {
-      state: {
-        focusPrompt: true,
-        initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
-        replaceInitialPrompt: true,
-        createDraftKind: "automation",
-      },
-    });
-  };
-  const createButton = (
-    <div className="flex justify-end">
-      <CreateWithTemplatesButton
-        kind="automation"
-        label="New automation"
-        onCreate={handleCreateAutomation}
-      />
-    </div>
+  const { projectId, automationId } = useParams<{
+    projectId?: string;
+    automationId?: string;
+  }>();
+  const { navPanels } = usePluginSlots();
+  const panel =
+    navPanels.find(
+      (candidate) =>
+        candidate.pluginId === AUTOMATIONS_PLUGIN_ID &&
+        candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
+    ) ?? null;
+  const subPath =
+    projectId && automationId ? `${projectId}/${automationId}` : "";
+
+  if (panel === null) {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
+          <EmptyStatePanel className="rounded-lg p-6 text-sm">
+            Automations are still loading, or the automations plugin is not
+            available.
+          </EmptyStatePanel>
+        </div>
+      </div>
+    );
+  }
+
+  const slotMount = (
+    <PluginSlotMount
+      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+      pluginId={panel.pluginId}
+      slotKind="navPanel"
+      slotId={panel.id}
+    >
+      <panel.component subPath={subPath} />
+    </PluginSlotMount>
   );
+  const mount =
+    typeof Worker === "undefined" ? (
+      slotMount
+    ) : (
+      <WorkerPoolContextProvider
+        poolOptions={WORKER_POOL_OPTIONS}
+        highlighterOptions={HIGHLIGHTER_OPTIONS}
+      >
+        {slotMount}
+      </WorkerPoolContextProvider>
+    );
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        {automationsQuery.isError ? (
-          <>
-            {createButton}
-            <EmptyStatePanel role="alert" className="py-6">
-              Couldn't load automations.
-            </EmptyStatePanel>
-          </>
-        ) : isLoading ? (
-          <>
-            {createButton}
-            <AutomationsLoadingRows />
-          </>
-        ) : entries.length === 0 ? (
-          <>
-            {createButton}
-            <EmptyStatePanel className="py-6">
-              No automations yet.
-            </EmptyStatePanel>
-          </>
-        ) : (
-          <>
-            {createButton}
-            <div className="space-y-0.5">
-              {entries.map((entry) => (
-                <AutomationListRow
-                  key={entry.automation.id}
-                  entry={entry}
-                  pending={pendingAutomationId === entry.automation.id}
-                  onToggle={(target) => automationToggle.mutate(target)}
-                />
-              ))}
-            </div>
-          </>
-        )}
+      <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
+        {mount}
       </div>
     </div>
   );
@@ -630,9 +447,13 @@ function AutomationsToolView() {
 function PluginDetail({
   isLoading,
   plugin,
+  pending,
+  onToggle,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
+  pending: boolean;
+  onToggle: (plugin: PluginListItem) => void;
 }) {
   if (isLoading) {
     return <PluginsLoadingRows />;
@@ -646,15 +467,58 @@ function PluginDetail({
 
   return (
     <div className="space-y-4">
-      <Link
-        to={getPluginsRoutePath()}
-        className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      <Button
+        asChild
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 w-fit px-2 text-muted-foreground hover:text-foreground"
       >
-        <Icon name="ChevronLeft" className="size-3.5 shrink-0" aria-hidden />
-        Plugins
-      </Link>
-      <div className="rounded-md border border-border">
-        <PluginRow plugin={plugin} />
+        <Link to={getPluginsRoutePath()}>
+          <Icon name="ChevronLeft" className="size-3.5" />
+          Plugins
+        </Link>
+      </Button>
+      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
+        <div className="flex min-w-0 items-start gap-3">
+          <PluginListLogo plugin={plugin} />
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <h1 className="truncate text-base font-semibold">{plugin.id}</h1>
+              <span className="text-xs text-muted-foreground">
+                v{plugin.version}
+              </span>
+              <StatusLabel tone={pluginStatusTone(plugin)}>
+                {plugin.enabled ? plugin.status : "disabled"}
+              </StatusLabel>
+            </div>
+            {plugin.description ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {plugin.description}
+              </p>
+            ) : plugin.statusDetail ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {plugin.statusDetail}
+              </p>
+            ) : null}
+          </div>
+          <Switch
+            checked={plugin.enabled}
+            disabled={pending}
+            aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
+            onCheckedChange={() => onToggle(plugin)}
+          />
+        </div>
+        <ResourceTaxonomy
+          items={[
+            { label: "Kind", value: "bb plugin" },
+            {
+              label: "Status",
+              value: plugin.enabled ? plugin.status : "disabled",
+            },
+            { label: "Version", value: plugin.version },
+          ]}
+        />
       </div>
     </div>
   );
@@ -721,7 +585,14 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4">
         {pluginId !== undefined ? (
-          <PluginDetail isLoading={isLoading} plugin={selectedPlugin} />
+          <PluginDetail
+            isLoading={isLoading}
+            plugin={selectedPlugin}
+            pending={
+              selectedPlugin !== null && pendingPluginId === selectedPlugin.id
+            }
+            onToggle={(target) => pluginToggle.mutate(target)}
+          />
         ) : listQuery.isError ? (
           <>
             {createButton}
@@ -746,10 +617,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
             {createButton}
             <div className="space-y-0.5">
               {providerPlugins.map((plugin) => (
-                <ProviderInstalledPluginRow
-                  key={`${plugin.provider}:${plugin.name}`}
-                  plugin={plugin}
-                />
+                <ProviderInstalledPluginRow key={plugin.name} plugin={plugin} />
               ))}
               {plugins.map((plugin) => (
                 <PluginListRow

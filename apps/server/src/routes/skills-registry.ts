@@ -37,6 +37,48 @@ interface SkillsApiSkill {
   url: string;
 }
 
+const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
+  {
+    id: "vercel-labs/skills/find-skills",
+    source: "vercel-labs/skills",
+    skillId: "find-skills",
+    name: "find-skills",
+    installs: 2_384_417,
+    installUrl: "https://github.com/vercel-labs/skills",
+    url: "https://www.skills.sh/vercel-labs/skills/find-skills",
+    topic: "Agent workflows",
+    summary:
+      "Discover and install specialized agent skills from the open ecosystem.",
+    worksWith: ["Claude Code", "Codex"],
+  },
+  {
+    id: "anthropics/skills/frontend-design",
+    source: "anthropics/skills",
+    skillId: "frontend-design",
+    name: "frontend-design",
+    installs: 635_858,
+    installUrl: "https://github.com/anthropics/skills",
+    url: "https://www.skills.sh/anthropics/skills/frontend-design",
+    topic: "Design & UI",
+    summary: "Build distinctive, production-grade frontend interfaces.",
+    worksWith: ["Claude Code", "Codex"],
+  },
+  {
+    id: "vercel-labs/agent-skills/vercel-react-best-practices",
+    source: "vercel-labs/agent-skills",
+    skillId: "vercel-react-best-practices",
+    name: "vercel-react-best-practices",
+    installs: 532_556,
+    installUrl: "https://github.com/vercel-labs/agent-skills",
+    url: "https://www.skills.sh/vercel-labs/agent-skills/vercel-react-best-practices",
+    topic: "React",
+    summary: "Apply React and Next.js implementation conventions.",
+    worksWith: ["Claude Code", "Codex"],
+  },
+];
+
+let lastRegistrySkills: RegistrySkill[] | null = null;
+
 function decodeHtml(value: string): string {
   return value
     .replaceAll("&amp;", "&")
@@ -205,7 +247,21 @@ async function listRegistrySkills(query: string): Promise<RegistrySkill[]> {
       summary: null,
       worksWith: ["Claude Code", "Codex"],
     })) ?? (await fetchPublicDirectorySkills(query));
-  return hydrateDetails(skills);
+  const hydrated = await hydrateDetails(skills);
+  lastRegistrySkills = hydrated;
+  return hydrated;
+}
+
+function filterRegistryFallback(query: string): RegistrySkill[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const fallback = lastRegistrySkills ?? [...FALLBACK_REGISTRY_SKILLS];
+  return normalizedQuery.length === 0
+    ? fallback
+    : fallback.filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(normalizedQuery) ||
+          skill.source.toLowerCase().includes(normalizedQuery),
+      );
 }
 
 function parseProviders(value: unknown): SkillInstallProvider[] {
@@ -282,7 +338,17 @@ function runSkillsInstall(args: {
 export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
   app.get("/skills-registry", async (context) => {
     const query = context.req.query("q") ?? "";
-    return context.json({ skills: await listRegistrySkills(query) });
+    try {
+      return context.json({ skills: await listRegistrySkills(query) });
+    } catch (error) {
+      deps.logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "skills.sh registry fetch failed; using fallback data",
+      );
+      return context.json({ skills: filterRegistryFallback(query) });
+    }
   });
 
   app.post("/skills-registry/install", async (context) => {

@@ -17,6 +17,10 @@ import {
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
 import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getAutomationDetailRoutePath,
+  getAutomationsRoutePath,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
@@ -90,7 +94,11 @@ export async function fetchPluginSdkSettings(
     ok?: unknown;
     values?: unknown;
   } | null;
-  if (body?.ok !== true || typeof body.values !== "object" || body.values === null) {
+  if (
+    body?.ok !== true ||
+    typeof body.values !== "object" ||
+    body.values === null
+  ) {
     return null;
   }
   const values: Record<string, string | boolean> = {};
@@ -173,7 +181,9 @@ export function useBbNavigate(): BbNavigate {
       // path when the lookup fails.
       void getThread(threadId)
         .then((thread) =>
-          navigate(getThreadRoutePath({ projectId: thread.projectId, threadId })),
+          navigate(
+            getThreadRoutePath({ projectId: thread.projectId, threadId }),
+          ),
         )
         .catch(() => navigate(`/threads/${threadId}`));
     },
@@ -187,6 +197,24 @@ export function useBbNavigate(): BbNavigate {
   );
   const toPluginPanel = useCallback(
     (path: string, options?: { subPath?: string; replace?: boolean }) => {
+      if (
+        pluginId === AUTOMATIONS_PLUGIN_ID &&
+        path === AUTOMATIONS_PLUGIN_PANEL_PATH
+      ) {
+        const parts = (options?.subPath ?? "")
+          .split("/")
+          .filter((part) => part.length > 0);
+        const [projectId, automationId] = parts;
+        const target =
+          projectId !== undefined && automationId !== undefined
+            ? getAutomationDetailRoutePath({
+                projectId,
+                automationId,
+              })
+            : getAutomationsRoutePath();
+        void navigate(target, options?.replace ? { replace: true } : undefined);
+        return;
+      }
       void navigate(
         getPluginPanelRoutePath({
           pluginId,

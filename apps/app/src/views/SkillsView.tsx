@@ -7,13 +7,6 @@ import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -86,6 +79,7 @@ export interface RegistrySkill {
 
 type RegistryScope = "user" | "project";
 type RegistryProvider = "claude-code" | "codex";
+const EMPTY_SKILLS: readonly SkillSummary[] = [];
 const EMPTY_REGISTRY_PROVIDER_SET = new Set<RegistryProvider>();
 const DEFAULT_PROVIDER_STATUS: Record<RegistryProvider, boolean> = {
   "claude-code": false,
@@ -616,7 +610,7 @@ export function SkillsOverview({
                         <div className="flex flex-col gap-px">
                           {group.skills.map((skill) => (
                             <SkillRow
-                              key={`${group.key}-${skill.scope}-${skill.name}`}
+                              key={`${group.key}-${skill.scope}-${skill.name}-${skill.filePath}`}
                               skill={skill}
                               onSelect={() => onSelectSkill(skill)}
                             />
@@ -884,11 +878,11 @@ export interface SkillDetailDialogViewProps {
 }
 
 /**
- * Presentational skill detail popup: renders the SKILL.md (read) or an inline
+ * Presentational skill detail page: renders the SKILL.md (read) or an inline
  * editor, with Edit / Delete / Open-in-editor affordances. Owns only local UI
  * state (editing, draft, delete confirmation); all data + persistence arrive as
  * props so it renders in stories/tests without queries. The connected
- * {@link SkillDetailDialog} wires it to the content/update/delete queries.
+ * {@link SkillDetailPage} wires it to the content/update/delete queries.
  */
 export function SkillDetailDialogView({
   skill,
@@ -984,7 +978,7 @@ export function SkillDetailDialogView({
       </DropdownMenu>
     ) : null;
 
-  // Edit (Cancel/Save) and delete-confirm actions live in the modal footer.
+  // Edit (Cancel/Save) and delete-confirm actions live below the preview.
   const footerActions = editing ? (
     <>
       <Button
@@ -1027,46 +1021,85 @@ export function SkillDetailDialogView({
     </>
   ) : null;
 
+  if (skill === null) return null;
+
   return (
-    <Dialog
-      open={skill !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          {/* Title + a single overflow by it; pr-7 keeps the row clear of the
-              dialog's ✕ close. */}
-          <div className="flex items-center gap-2 pr-7">
-            <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
-              <Icon
-                name="Zap"
-                className="size-4 shrink-0 text-muted-foreground"
-              />
-              <span className="min-w-0 truncate">{skill?.name}</span>
-              {skill?.provider ? (
+    <div className="mx-auto w-full max-w-3xl space-y-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-muted-foreground hover:text-foreground"
+        onClick={onClose}
+      >
+        <Icon name="ChevronLeft" className="size-3.5" />
+        Skills
+      </Button>
+      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
+        <div className="flex min-w-0 items-start gap-3">
+          <Icon
+            name="Zap"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <h1 className="truncate text-base font-semibold">{skill.name}</h1>
+              {skill.provider ? (
                 <ProviderLogo
                   providerId={skill.provider}
                   className="size-3.5 shrink-0"
                 />
               ) : null}
-              {skill ? (
-                <Pill variant="outline" className="ml-1 shrink-0">
-                  {SCOPE_LABELS[skill.scope]}
-                </Pill>
-              ) : null}
-            </DialogTitle>
-            <div className="flex shrink-0 items-center gap-1">
-              {editing || confirmingDelete ? null : overflowMenu}
+              <Pill variant="outline" className="shrink-0">
+                {SCOPE_LABELS[skill.scope]}
+              </Pill>
+            </div>
+            {skill.description ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {skill.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {editing || confirmingDelete ? null : overflowMenu}
+          </div>
+        </div>
+
+        <div className="grid gap-2 rounded-md border border-border bg-surface-recessed p-3 text-xs sm:grid-cols-3">
+          <div className="min-w-0">
+            <div className="text-subtle-foreground">Kind</div>
+            <div className="mt-0.5 truncate text-foreground">Skill</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-subtle-foreground">Provider</div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-foreground">
+              {skill.provider ? (
+                <>
+                  <ProviderLogo
+                    providerId={skill.provider}
+                    className="size-3.5 shrink-0"
+                  />
+                  <span className="truncate">
+                    {providerLabel(skill.provider)}
+                  </span>
+                </>
+              ) : (
+                <span className="truncate">bb</span>
+              )}
             </div>
           </div>
-        </DialogHeader>
+          <div className="min-w-0">
+            <div className="text-subtle-foreground">Scope</div>
+            <div className="mt-0.5 truncate text-foreground">
+              {SCOPE_LABELS[skill.scope]}
+            </div>
+          </div>
+        </div>
 
         {isContentError ? (
           <p className="text-sm text-destructive">Failed to load the skill.</p>
         ) : isLoadingContent ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : editing ? (
           <textarea
             ref={textareaRef}
@@ -1090,9 +1123,11 @@ export function SkillDetailDialogView({
           </div>
         )}
 
-        {footerActions ? <DialogFooter>{footerActions}</DialogFooter> : null}
-      </DialogContent>
-    </Dialog>
+        {footerActions ? (
+          <div className="flex justify-end gap-2">{footerActions}</div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -1101,7 +1136,7 @@ export function SkillDetailDialogView({
  * deleted. Connected — owns the content/update/delete queries and renders
  * {@link SkillDetailDialogView}.
  */
-function SkillDetailDialog({
+function SkillDetailPage({
   projectId,
   skill,
   onClose,
@@ -1172,7 +1207,7 @@ export function SkillsLibrary() {
   const [query, setQuery] = useState("");
   const [registryScope, setRegistryScope] = useState<RegistryScope>("user");
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
-  const skills = skillsQuery.data?.skills ?? [];
+  const skills = skillsQuery.data?.skills ?? EMPTY_SKILLS;
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
@@ -1251,7 +1286,13 @@ export function SkillsLibrary() {
       : null;
   return (
     <>
-      {selectedRegistrySkill ? (
+      {selectedSkill ? (
+        <SkillDetailPage
+          projectId={PERSONAL_PROJECT_ID}
+          skill={selectedSkill}
+          onClose={() => setSelectedSkill(null)}
+        />
+      ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
           installedProviders={installedProvidersForRegistrySkill(
@@ -1291,11 +1332,6 @@ export function SkillsLibrary() {
           onRetryRegistry={() => void registryQuery.refetch()}
         />
       )}
-      <SkillDetailDialog
-        projectId={PERSONAL_PROJECT_ID}
-        skill={selectedSkill}
-        onClose={() => setSelectedSkill(null)}
-      />
     </>
   );
 }
