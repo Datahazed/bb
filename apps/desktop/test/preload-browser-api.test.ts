@@ -43,6 +43,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
+import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -69,9 +70,13 @@ const electronMock = vi.hoisted(() => {
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
+  const exposedNames: string[] = [];
   let currentPopoutThread: BbDesktopPopoutThreadChangedPayload = null;
   let exposedApi: BbDesktopApi | null = null;
   let exposedName: string | null = null;
+  let exposedSpellcheckApi: {
+    getCorrectionContext(word: string): unknown;
+  } | null = null;
 
   return {
     get exposedApi() {
@@ -80,12 +85,18 @@ const electronMock = vi.hoisted(() => {
     get exposedName() {
       return exposedName;
     },
+    exposedNames,
+    get exposedSpellcheckApi() {
+      return exposedSpellcheckApi;
+    },
     invokeCalls,
     listeners,
     sendCalls,
     reset(): void {
       exposedApi = null;
       exposedName = null;
+      exposedSpellcheckApi = null;
+      exposedNames.length = 0;
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
@@ -95,9 +106,18 @@ const electronMock = vi.hoisted(() => {
       currentPopoutThread = thread;
     },
     contextBridge: {
-      exposeInMainWorld(name: string, api: BbDesktopApi): void {
-        exposedName = name;
-        exposedApi = api;
+      exposeInMainWorld(name: string, api: unknown): void {
+        exposedNames.push(name);
+        if (name === "bbDesktop") {
+          exposedName = name;
+          exposedApi = api as BbDesktopApi;
+          return;
+        }
+        if (name !== "bbDesktop") {
+          exposedSpellcheckApi = api as {
+            getCorrectionContext(word: string): unknown;
+          };
+        }
       },
     },
     ipcRenderer: {
@@ -117,12 +137,21 @@ const electronMock = vi.hoisted(() => {
         sendCalls.push({ channel, payload });
       },
     },
+    webFrame: {
+      getWordSuggestions(word: string): string[] {
+        return word === "recieve" ? ["receive", "relieve"] : [];
+      },
+      isWordMisspelled(word: string): boolean {
+        return word === "recieve";
+      },
+    },
   };
 });
 
 vi.mock("electron", () => ({
   contextBridge: electronMock.contextBridge,
   ipcRenderer: electronMock.ipcRenderer,
+  webFrame: electronMock.webFrame,
 }));
 
 interface EmitIpcPayloadArgs {
@@ -154,6 +183,27 @@ function emitIpcPayload(args: EmitIpcPayloadArgs): void {
 }
 
 describe("desktop preload browser API", () => {
+  it("exposes a narrow spellcheck helper for desktop context menus", async () => {
+    await loadPreload();
+
+    expect(electronMock.exposedNames).toContain(
+      BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+    );
+    expect(electronMock.exposedSpellcheckApi).not.toBeNull();
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("recieve"),
+    ).toEqual({
+      dictionarySuggestions: ["receive", "relieve"],
+      misspelledWord: "recieve",
+    });
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("receive"),
+    ).toBeNull();
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("two words"),
+    ).toBeNull();
+  });
+
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const api = await loadPreload();
     const attachRequest = {

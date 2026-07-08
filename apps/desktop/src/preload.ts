@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
@@ -62,6 +62,10 @@ import {
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
+import {
+  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+  type BbDesktopSpellcheckApi,
+} from "./desktop-spellcheck-contract.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -128,6 +132,31 @@ const closeWindowRequestListeners =
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
 const popoutThreadChangedListeners =
   new Set<BbDesktopPopoutThreadChangedHandler>();
+
+function normalizeSpellcheckWord(word: string): string | null {
+  const normalized = word.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 80 ||
+    /\s/u.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+const bbSpellcheckApi: BbDesktopSpellcheckApi = {
+  getCorrectionContext(word) {
+    const normalized = normalizeSpellcheckWord(word);
+    if (normalized === null || !webFrame.isWordMisspelled(normalized)) {
+      return null;
+    }
+    return {
+      dictionarySuggestions: webFrame.getWordSuggestions(normalized),
+      misspelledWord: normalized,
+    };
+  },
+};
 
 const bbBrowserApi: BbDesktopBrowserApi = {
   attach(request): void {
@@ -328,7 +357,8 @@ ipcRenderer.on(
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   (_event, payload: unknown) => {
-    const parsed = bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
+    const parsed =
+      bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
     if (!parsed.success) {
       return;
     }
@@ -366,4 +396,8 @@ ipcRenderer.on(
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 
+contextBridge.exposeInMainWorld(
+  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+  bbSpellcheckApi,
+);
 contextBridge.exposeInMainWorld("bbDesktop", bbDesktopApi);
