@@ -53,6 +53,7 @@ const CREATE_TEMPLATES = [
 
 type ToolsTabId = "skills" | "plugins" | "automations";
 type ProviderId = "bb" | "codex" | "claude-code";
+type ProviderFilterId = ProviderId | "all";
 
 interface ToolTab {
   id: ToolsTabId;
@@ -86,6 +87,18 @@ const TOOL_TABS: readonly ToolTab[] = [
   { id: "plugins", label: "Plugins", icon: "ElectricPlugs" },
   { id: "automations", label: "Automations", icon: "TimeSchedule" },
 ];
+const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
+  "all",
+  "bb",
+  "codex",
+  "claude-code",
+];
+const PROVIDER_FILTER_LABELS: Record<ProviderFilterId, string> = {
+  all: "All providers",
+  bb: "bb",
+  codex: "Codex",
+  "claude-code": "Claude Code",
+};
 
 const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
   {
@@ -290,38 +303,56 @@ function AutomationRowActions() {
   );
 }
 
+function providerBucketsForSections(
+  sections: readonly ResourceSectionFixture[],
+): ReadonlySet<ProviderId> {
+  const providers = new Set<ProviderId>();
+  for (const section of sections) {
+    for (const row of section.rows) {
+      providers.add(row.provider ?? section.provider ?? "bb");
+    }
+  }
+  return providers;
+}
+
 function StoryListControls({
   provider,
   sort,
   direction,
+  availableProviders,
   onProviderChange,
   onSortChange,
 }: {
-  provider: ProviderId | "all";
+  provider: ProviderFilterId;
   sort: "provider" | "alpha";
   direction: "asc" | "desc";
-  onProviderChange: (provider: ProviderId | "all") => void;
+  availableProviders: ReadonlySet<ProviderId>;
+  onProviderChange: (provider: ProviderFilterId) => void;
   onSortChange: (sort: "provider" | "alpha") => void;
 }) {
+  const providerSortDisabled = availableProviders.size <= 1;
   return (
     <>
       <ResourceOptionMenu
         label="Provider"
         icon="Layers"
         value={provider}
-        options={[
-          { id: "all", label: "All providers" },
-          { id: "bb", label: "bb" },
-          { id: "codex", label: "Codex" },
-          { id: "claude-code", label: "Claude Code" },
-        ]}
-        onChange={(value) => onProviderChange(value as ProviderId | "all")}
+        options={PROVIDER_FILTERS.map((id) => ({
+          id,
+          label: PROVIDER_FILTER_LABELS[id],
+          disabled: id !== "all" && !availableProviders.has(id),
+        }))}
+        onChange={(value) => onProviderChange(value as ProviderFilterId)}
       />
       <ResourceSortMenu
         value={sort}
         direction={direction}
         options={[
-          { id: "provider", label: "Provider" },
+          {
+            id: "provider",
+            label: "Provider",
+            disabled: providerSortDisabled,
+          },
           { id: "alpha", label: "Alphabetical" },
         ]}
         onChange={(value) => onSortChange(value as "provider" | "alpha")}
@@ -437,7 +468,7 @@ function ResourceRowsList({
 }: {
   sections: readonly ResourceSectionFixture[];
   query: string;
-  providerFilter: ProviderId | "all";
+  providerFilter: ProviderFilterId;
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
   fallbackIcon: IconName;
@@ -708,10 +739,12 @@ function AutomationsList({
 
 function SkillsTab() {
   const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderId | "all">("all");
+  const [provider, setProvider] = useState<ProviderFilterId>("all");
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const providerBuckets = providerBucketsForSections(SKILL_SECTIONS);
   function updateSort(nextSort: "provider" | "alpha") {
+    if (nextSort === "provider" && providerBuckets.size <= 1) return;
     if (nextSort === sort) {
       setDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
@@ -730,6 +763,7 @@ function SkillsTab() {
             provider={provider}
             sort={sort}
             direction={direction}
+            availableProviders={providerBuckets}
             onProviderChange={setProvider}
             onSortChange={updateSort}
           />
@@ -757,10 +791,12 @@ function SkillsTab() {
 
 function PluginsTab() {
   const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderId | "all">("all");
+  const [provider, setProvider] = useState<ProviderFilterId>("all");
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const providerBuckets = providerBucketsForSections(PLUGIN_SECTIONS);
   function updateSort(nextSort: "provider" | "alpha") {
+    if (nextSort === "provider" && providerBuckets.size <= 1) return;
     if (nextSort === sort) {
       setDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
@@ -779,6 +815,7 @@ function PluginsTab() {
             provider={provider}
             sort={sort}
             direction={direction}
+            availableProviders={providerBuckets}
             onProviderChange={setProvider}
             onSortChange={updateSort}
           />
@@ -809,7 +846,11 @@ function AutomationsTab() {
   const [location, setLocation] = useState("all");
   const [sort, setSort] = useState<"location" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const locationBucketCount = new Set(
+    AUTOMATION_ROWS.map((row) => `${row.project ?? ""}/${row.folder ?? ""}`),
+  ).size;
   function updateSort(nextSort: "location" | "alpha") {
+    if (nextSort === "location" && locationBucketCount <= 1) return;
     if (nextSort === sort) {
       setDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
@@ -841,7 +882,11 @@ function AutomationsTab() {
               value={sort}
               direction={direction}
               options={[
-                { id: "location", label: "Project / folder" },
+                {
+                  id: "location",
+                  label: "Project / folder",
+                  disabled: locationBucketCount <= 1,
+                },
                 { id: "alpha", label: "Alphabetical" },
               ]}
               onChange={(value) => updateSort(value as "location" | "alpha")}

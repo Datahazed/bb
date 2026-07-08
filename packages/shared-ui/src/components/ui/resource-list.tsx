@@ -153,7 +153,10 @@ export function ResourceOptionMenu({
               key={option.id}
               disabled={option.disabled}
               onSelect={(event) => {
-                if (selected) event.preventDefault();
+                if (selected || option.disabled) {
+                  event.preventDefault();
+                  return;
+                }
                 onChange(option.id);
               }}
               className="flex items-center justify-between gap-3"
@@ -208,7 +211,10 @@ export function ResourceSortMenu({
               key={option.id}
               disabled={option.disabled}
               onSelect={(event) => {
-                if (selected) event.preventDefault();
+                if (selected || option.disabled) {
+                  event.preventDefault();
+                  return;
+                }
                 onChange(option.id);
               }}
               className="flex items-center justify-between gap-3"

@@ -1,7 +1,18 @@
+// @vitest-environment jsdom
+
+import {
+  cleanup,
+  fireEvent,
+  render as renderDom,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SkillSummary } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SkillsOverview } from "./SkillsView";
+
+afterEach(cleanup);
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
   return {
@@ -44,6 +55,39 @@ describe("SkillsOverview", () => {
       markup.indexOf("claude-skill"),
     );
     expect(markup).not.toContain('aria-expanded="true"');
+  });
+
+  it("disables provider filters that have no matching skills", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "codex-skill",
+            provider: "codex",
+            scope: "codex",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Provider" }));
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("menuitem", { name: "Claude Code" })
+          .getAttribute("aria-disabled"),
+      ).toBe("true");
+    });
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Codex" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
   });
 
   it("renders a New bb skill create action", () => {

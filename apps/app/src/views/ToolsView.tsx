@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
@@ -264,6 +264,13 @@ const PROVIDER_LABELS: Record<SkillProvider, string> = {
 type ToolProviderFilter = "all" | "bb" | SkillProvider;
 type ToolSortMode = "provider" | "alpha";
 type ToolSortDirection = "asc" | "desc";
+
+const TOOL_PROVIDER_FILTERS: readonly ToolProviderFilter[] = [
+  "all",
+  "bb",
+  "claude-code",
+  "codex",
+];
 
 function toolProviderLabel(provider: ToolProviderFilter): string {
   if (provider === "all") return "All providers";
@@ -831,20 +838,39 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     () => buildPluginRows({ plugins, providerPlugins }),
     [plugins, providerPlugins],
   );
-  const providerOptions = useMemo(() => {
-    const providers = new Set<ToolProviderFilter>(["all"]);
+  const providerCounts = useMemo(() => {
+    const counts = new Map<ToolProviderFilter, number>();
     for (const row of pluginRows) {
       if (row.kind === "provider") {
-        row.providers.forEach((provider) => providers.add(provider));
+        for (const provider of row.providers) {
+          counts.set(provider, (counts.get(provider) ?? 0) + 1);
+        }
       } else {
-        providers.add("bb");
+        counts.set("bb", (counts.get("bb") ?? 0) + 1);
       }
     }
-    return [...providers].map((provider) => ({
+    return counts;
+  }, [pluginRows]);
+  const providerBucketCount = providerCounts.size;
+  const providerOptions = useMemo(() => {
+    return TOOL_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: toolProviderLabel(provider),
+      disabled: provider !== "all" && !providerCounts.has(provider),
     }));
-  }, [pluginRows]);
+  }, [providerCounts]);
+  useEffect(() => {
+    if (providerFilter === "all") return;
+    if (!providerCounts.has(providerFilter)) {
+      setProviderFilter("all");
+    }
+  }, [providerCounts, providerFilter]);
+  useEffect(() => {
+    if (sortMode === "provider" && providerBucketCount <= 1) {
+      setSortMode("alpha");
+      setSortDirection("asc");
+    }
+  }, [providerBucketCount, sortMode]);
   const visiblePluginRows = useMemo(() => {
     return pluginRows
       .filter((row) => {
@@ -882,6 +908,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
+      if (nextSort === "provider" && providerBucketCount <= 1) return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
@@ -889,7 +916,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       setSortMode(nextSort);
       setSortDirection("asc");
     },
-    [sortMode],
+    [providerBucketCount, sortMode],
   );
   const pluginToggle = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
@@ -958,7 +985,11 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
               value={sortMode}
               direction={sortDirection}
               options={[
-                { id: "provider", label: "Provider" },
+                {
+                  id: "provider",
+                  label: "Provider",
+                  disabled: providerBucketCount <= 1,
+                },
                 { id: "alpha", label: "Alphabetical" },
               ]}
               onChange={handleSortChange}

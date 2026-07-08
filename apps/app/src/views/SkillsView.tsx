@@ -219,6 +219,13 @@ type ResourceProviderFilter = "all" | "bb" | SkillProvider;
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
+const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
+  "all",
+  "bb",
+  "claude-code",
+  "codex",
+];
+
 function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
   return skill.provider ?? "bb";
 }
@@ -729,16 +736,34 @@ export function SkillsOverview({
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
   const normalizedQuery = query.trim().toLowerCase();
-  const providerOptions = useMemo(() => {
-    const providers = new Set<ResourceProviderFilter>(["all"]);
+  const providerCounts = useMemo(() => {
+    const counts = new Map<ResourceProviderFilter, number>();
     for (const skill of skills) {
-      providers.add(skillProviderFilterId(skill));
+      const provider = skillProviderFilterId(skill);
+      counts.set(provider, (counts.get(provider) ?? 0) + 1);
     }
-    return [...providers].map((provider) => ({
+    return counts;
+  }, [skills]);
+  const providerBucketCount = providerCounts.size;
+  const providerOptions = useMemo(() => {
+    return RESOURCE_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider),
+      disabled: provider !== "all" && !providerCounts.has(provider),
     }));
-  }, [skills]);
+  }, [providerCounts]);
+  useEffect(() => {
+    if (providerFilter === "all") return;
+    if (!providerCounts.has(providerFilter)) {
+      setProviderFilter("all");
+    }
+  }, [providerCounts, providerFilter]);
+  useEffect(() => {
+    if (sortMode === "provider" && providerBucketCount <= 1) {
+      setSortMode("alpha");
+      setSortDirection("asc");
+    }
+  }, [providerBucketCount, sortMode]);
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       if (
@@ -772,6 +797,7 @@ export function SkillsOverview({
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
+      if (nextSort === "provider" && providerBucketCount <= 1) return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
@@ -779,7 +805,7 @@ export function SkillsOverview({
       setSortMode(nextSort);
       setSortDirection("asc");
     },
-    [sortMode],
+    [providerBucketCount, sortMode],
   );
   return (
     <div className="space-y-4">
@@ -802,7 +828,11 @@ export function SkillsOverview({
               value={sortMode}
               direction={sortDirection}
               options={[
-                { id: "provider", label: "Provider" },
+                {
+                  id: "provider",
+                  label: "Provider",
+                  disabled: providerBucketCount <= 1,
+                },
                 { id: "alpha", label: "Alphabetical" },
               ]}
               onChange={handleSortChange}

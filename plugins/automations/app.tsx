@@ -844,6 +844,15 @@ function OverviewView({
   );
 
   const normalizedQuery = query.trim().toLowerCase();
+  const locationCounts = useMemo(() => {
+    const counts = new Map<AutomationLocationFilter, number>();
+    for (const entry of entries ?? []) {
+      const location = automationLocationFilterId(entry);
+      counts.set(location, (counts.get(location) ?? 0) + 1);
+    }
+    return counts;
+  }, [entries]);
+  const locationBucketCount = locationCounts.size;
   const locationOptions = useMemo(() => {
     const options = new Map<AutomationLocationFilter, string>([
       ["all", "All locations"],
@@ -856,6 +865,18 @@ function OverviewView({
     }
     return [...options].map(([id, label]) => ({ id, label }));
   }, [entries]);
+  useEffect(() => {
+    if (locationFilter === "all") return;
+    if (!locationCounts.has(locationFilter)) {
+      setLocationFilter("all");
+    }
+  }, [locationCounts, locationFilter]);
+  useEffect(() => {
+    if (sortMode === "location" && locationBucketCount <= 1) {
+      setSortMode("alpha");
+      setSortDirection("asc");
+    }
+  }, [locationBucketCount, sortMode]);
   const filteredEntries = useMemo(() => {
     if (entries === null) return [];
     return entries.filter((entry) => {
@@ -892,6 +913,7 @@ function OverviewView({
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "location" && nextSort !== "alpha") return;
+      if (nextSort === "location" && locationBucketCount <= 1) return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
@@ -899,7 +921,7 @@ function OverviewView({
       setSortMode(nextSort);
       setSortDirection("asc");
     },
-    [sortMode],
+    [locationBucketCount, sortMode],
   );
 
   let body: ReactNode;
@@ -958,7 +980,11 @@ function OverviewView({
               value={sortMode}
               direction={sortDirection}
               options={[
-                { id: "location", label: "Project / folder" },
+                {
+                  id: "location",
+                  label: "Project / folder",
+                  disabled: locationBucketCount <= 1,
+                },
                 { id: "alpha", label: "Alphabetical" },
               ]}
               onChange={handleSortChange}
