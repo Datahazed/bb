@@ -51,8 +51,7 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     description: typeof item.description === "string" ? item.description : null,
     // Absent on older servers → no logo, never a dropped row.
     logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
-    logoDarkUrl:
-      typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
+    logoDarkUrl: typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
   };
 }
 
@@ -190,14 +189,22 @@ export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
   return ["plugin-settings-view"];
 }
 
-/** Installed plugins, fetched only while the `plugins` experiment is on. */
-export function usePluginList() {
+/**
+ * Installed plugins. Settings keeps the experiment gate; the Tools hub can opt
+ * in because builtin and already-installed plugins are still real resources
+ * even when new plugin installation is disabled.
+ */
+export function usePluginList(options?: {
+  includeExperimentDisabled?: boolean;
+}) {
   const systemConfig = useSystemConfig();
   const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
+  const shouldFetch =
+    pluginsEnabled || options?.includeExperimentDisabled === true;
   return useQuery({
-    queryKey: pluginListQueryKey(pluginsEnabled),
+    queryKey: pluginListQueryKey(shouldFetch),
     queryFn: () => fetchPluginList(fetch),
-    enabled: pluginsEnabled,
+    enabled: shouldFetch,
     staleTime: 30_000,
   });
 }

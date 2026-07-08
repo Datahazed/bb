@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   getAutomationDetailRoutePath,
+  getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
+  getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getPopoutRoutePath,
@@ -11,7 +13,9 @@ import {
   getProjectArchivedRoutePath,
   getProjectlessArchivedRoutePath,
   getProjectSettingsRoutePath,
+  getRegistrySkillDetailRoutePath,
   getRootComposeRoutePath,
+  getSkillDetailRoutePath,
   getSkillsRoutePath,
   getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
@@ -93,11 +97,25 @@ describe("route path helpers", () => {
   it("builds and recognizes the Tools routes", () => {
     expect(getToolsRoutePath()).toBe("/tools");
     expect(getSkillsRoutePath()).toBe("/tools/skills");
+    expect(
+      getSkillDetailRoutePath({
+        scope: "bb-user",
+        providerId: null,
+        skillName: "review-loop",
+      }),
+    ).toBe("/tools/skills/installed/bb-user/bb/review-loop");
+    expect(
+      getRegistrySkillDetailRoutePath({
+        registrySkillId: "moss-skills/moss-notes",
+      }),
+    ).toBe("/tools/skills/registry/moss-skills%2Fmoss-notes");
     expect(getPluginsRoutePath()).toBe("/tools/plugins");
+    expect(getPluginBrowseRoutePath()).toBe("/tools/plugins/browse");
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
       "/tools/plugins/github",
     );
     expect(getAutomationsRoutePath()).toBe("/tools/automations");
+    expect(getAutomationBrowseRoutePath()).toBe("/tools/automations/browse");
     expect(
       getAutomationDetailRoutePath({
         projectId: "proj_standard",
@@ -108,9 +126,13 @@ describe("route path helpers", () => {
     for (const path of [
       "/tools",
       "/tools/skills",
+      "/tools/skills/installed/bb-user/bb/review-loop",
+      "/tools/skills/registry/moss-skills%2Fmoss-notes",
       "/tools/plugins",
+      "/tools/plugins/browse",
       "/tools/plugins/github",
       "/tools/automations",
+      "/tools/automations/browse",
       "/tools/automations/proj_standard/auto_standard",
     ]) {
       expect(isRoutePath({ path })).toBe(true);
@@ -143,9 +165,19 @@ describe("route path helpers", () => {
       ["/settings", "/settings"],
       ["/tools", "/tools"],
       ["/tools/skills", "/tools/skills"],
+      [
+        "/tools/skills/installed/:scope/:providerId/:skillName",
+        "/tools/skills/installed/bb-user/bb/review-loop",
+      ],
+      [
+        "/tools/skills/registry/:registrySkillId",
+        "/tools/skills/registry/moss-skills%2Fmoss-notes",
+      ],
       ["/tools/plugins", "/tools/plugins"],
+      ["/tools/plugins/browse", "/tools/plugins/browse"],
       ["/tools/plugins/:pluginId", "/tools/plugins/github"],
       ["/tools/automations", "/tools/automations"],
+      ["/tools/automations/browse", "/tools/automations/browse"],
       [
         "/tools/automations/:projectId/:automationId",
         "/tools/automations/proj_standard/auto_standard",

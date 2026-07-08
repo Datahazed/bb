@@ -17,9 +17,16 @@ export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
 export const SETTINGS_ROUTE_PATH = "/settings";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
+export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
+  "/tools/skills/installed/:scope/:providerId/:skillName";
+export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
+export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
+  "/tools/skills/registry/:registrySkillId";
 export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
+export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/tools/plugins/browse";
 export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
 export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
+export const TOOLS_AUTOMATION_BROWSE_ROUTE_PATH = "/tools/automations/browse";
 export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
@@ -84,12 +91,50 @@ export function getSkillsRoutePath(): string {
   return SKILLS_ROUTE_PATH;
 }
 
+export function getRegistrySkillsRoutePath(): string {
+  return TOOLS_REGISTRY_SKILLS_ROUTE_PATH;
+}
+
+export interface SkillDetailRoutePathArgs {
+  scope: string;
+  providerId: string | null;
+  skillName: string;
+}
+
+export function getSkillDetailRoutePath({
+  scope,
+  providerId,
+  skillName,
+}: SkillDetailRoutePathArgs): string {
+  return `${TOOLS_SKILLS_ROUTE_PATH}/installed/${encodeURIComponent(
+    scope,
+  )}/${encodeURIComponent(providerId ?? "bb")}/${encodeURIComponent(
+    skillName,
+  )}`;
+}
+
+export interface RegistrySkillDetailRoutePathArgs {
+  registrySkillId: string;
+}
+
+export function getRegistrySkillDetailRoutePath({
+  registrySkillId,
+}: RegistrySkillDetailRoutePathArgs): string {
+  return `${TOOLS_SKILLS_ROUTE_PATH}/registry/${encodeURIComponent(
+    registrySkillId,
+  )}`;
+}
+
 export function getToolsRoutePath(): string {
   return TOOLS_ROUTE_PATH;
 }
 
 export function getPluginsRoutePath(): string {
   return TOOLS_PLUGINS_ROUTE_PATH;
+}
+
+export function getPluginBrowseRoutePath(): string {
+  return TOOLS_PLUGIN_BROWSE_ROUTE_PATH;
 }
 
 export interface PluginDetailRoutePathArgs {
@@ -114,6 +159,10 @@ export function getAutomationDetailRoutePath({
   return `/tools/automations/${encodeURIComponent(
     projectId,
   )}/${encodeURIComponent(automationId)}`;
+}
+
+export function getAutomationBrowseRoutePath(): string {
+  return TOOLS_AUTOMATION_BROWSE_ROUTE_PATH;
 }
 
 export function getPopoutRoutePath(): string {
@@ -217,9 +266,13 @@ const baseRoutePatterns: readonly string[] = [
   THREAD_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATIONS_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,

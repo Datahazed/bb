@@ -50,12 +50,21 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: {
-      get(args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0]): Promise<unknown>;
-      list(args?: Parameters<BbPluginApi["sdk"]["projects"]["list"]>[0]): Promise<unknown>;
+      get(
+        args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0],
+      ): Promise<unknown>;
+      list(
+        args?: Parameters<BbPluginApi["sdk"]["projects"]["list"]>[0],
+      ): Promise<unknown>;
+      sidebarBootstrap?: () => Promise<unknown>;
     };
     threads: {
-      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      get(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+      ): Promise<unknown>;
+      send(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+      ): Promise<unknown>;
       spawn(
         args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
       ): Promise<unknown>;
@@ -69,9 +78,15 @@ export interface AutomationService {
   get(input: { projectId: string; automationId: string }): AutomationResponse;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
-  delete(input: { projectId: string; automationId: string }): Promise<{ ok: true }>;
+  delete(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<{ ok: true }>;
   pause(input: { projectId: string; automationId: string }): AutomationResponse;
-  resume(input: { projectId: string; automationId: string }): AutomationResponse;
+  resume(input: {
+    projectId: string;
+    automationId: string;
+  }): AutomationResponse;
   run(input: RunAutomationInput): Promise<AutomationRunRpcResponse>;
   runs(input: ResolvedAutomationRunsInput): AutomationRunListResponse;
 }
@@ -175,10 +190,15 @@ async function projectNameById(
   bb: Pick<ServiceApi, "sdk" | "log">,
 ): Promise<Map<string, string>> {
   try {
-    const projects = projectSummaryListSchema.parse(await bb.sdk.projects.list());
+    const projects = projectSummaryListSchema.parse(
+      await bb.sdk.projects.list(),
+    );
     return new Map(
       projects
-        .filter((project) => project.deletedAt === undefined || project.deletedAt === null)
+        .filter(
+          (project) =>
+            project.deletedAt === undefined || project.deletedAt === null,
+        )
         .map((project) => [project.id, project.name ?? project.id]),
     );
   } catch (error) {
@@ -192,15 +212,92 @@ async function projectNameById(
 }
 
 const projectAvailableSchema = z.object({ id: z.string() }).passthrough();
-const projectSummaryListSchema = z.array(
-  z
-    .object({
-      id: z.string(),
-      name: z.string().optional(),
-      deletedAt: z.number().nullable().optional(),
-    })
-    .passthrough(),
-);
+const projectSummarySchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    deletedAt: z.number().nullable().optional(),
+  })
+  .passthrough();
+const projectSummaryListSchema = z.array(projectSummarySchema);
+const folderSummarySchema = z
+  .object({
+    id: z.string(),
+    name: z.string().min(1),
+  })
+  .passthrough();
+const sidebarBootstrapSummarySchema = z
+  .object({
+    folders: z.array(folderSummarySchema),
+    projects: z.array(projectSummarySchema),
+    personalProject: projectSummarySchema,
+  })
+  .passthrough();
+
+async function overviewLookups(
+  bb: Pick<ServiceApi, "sdk" | "log">,
+): Promise<{ folders: Map<string, string>; projects: Map<string, string> }> {
+  const { sidebarBootstrap } = bb.sdk.projects;
+  if (sidebarBootstrap === undefined) {
+    return { folders: new Map(), projects: await projectNameById(bb) };
+  }
+  try {
+    const bootstrap = sidebarBootstrapSummarySchema.parse(
+      await sidebarBootstrap(),
+    );
+    return {
+      folders: new Map(
+        bootstrap.folders.map((folder) => [folder.id, folder.name]),
+      ),
+      projects: new Map(
+        [bootstrap.personalProject, ...bootstrap.projects]
+          .filter(
+            (project) =>
+              project.deletedAt === undefined || project.deletedAt === null,
+          )
+          .map((project) => [project.id, project.name ?? project.id]),
+      ),
+    };
+  } catch (error) {
+    bb.log.warn(
+      `Failed to load sidebar bootstrap for automations overview: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return { folders: new Map(), projects: await projectNameById(bb) };
+  }
+}
+
+const automationTargetThreadSchema = z
+  .object({
+    folderId: z.string().nullable(),
+  })
+  .passthrough();
+
+async function automationFolderForRow(
+  bb: Pick<ServiceApi, "sdk" | "log">,
+  folders: ReadonlyMap<string, string>,
+  row: AutomationRow,
+): Promise<{ id: string; name: string } | null> {
+  if (row.targetThreadId === null) return null;
+  try {
+    const thread = automationTargetThreadSchema.parse(
+      await bb.sdk.threads.get({ threadId: row.targetThreadId }),
+    );
+    if (thread.folderId === null) return null;
+    return {
+      id: thread.folderId,
+      name: folders.get(thread.folderId) ?? thread.folderId,
+    };
+  } catch (error) {
+    bb.log.warn(
+      `Failed to resolve target thread folder for automation ${row.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
 
 async function requireProjectAvailable(
   bb: Pick<ServiceApi, "sdk">,
@@ -228,31 +325,40 @@ export function createAutomationService(args: {
 
   return {
     async overview() {
-      const projects = await projectNameById(bb);
-      const automations = listAllAutomations(db).flatMap((row) => {
-        const projectName = projects.get(row.projectId);
-        if (projects.size > 0 && projectName === undefined) return [];
-        try {
-          return [
-            {
-              automation: toAutomationResponse(row),
-              project: { id: row.projectId, name: projectName ?? row.projectId },
-            },
-          ];
-        } catch (error) {
-          bb.log.warn(
-            `Skipping malformed automation ${row.id}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          return [];
-        }
-      });
+      const { folders, projects } = await overviewLookups(bb);
+      const rows = listAllAutomations(db);
+      const automations = (
+        await Promise.all(
+          rows.map(async (row) => {
+            const projectName = projects.get(row.projectId);
+            if (projects.size > 0 && projectName === undefined) return null;
+            try {
+              return {
+                automation: toAutomationResponse(row),
+                project: {
+                  id: row.projectId,
+                  name: projectName ?? row.projectId,
+                },
+                folder: await automationFolderForRow(bb, folders, row),
+              };
+            } catch (error) {
+              bb.log.warn(
+                `Skipping malformed automation ${row.id}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+              return null;
+            }
+          }),
+        )
+      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
       return automationsOverviewResponseSchema.parse({ automations });
     },
 
     list(input) {
-      return listAutomationsForProject(db, input.projectId).map(toAutomationResponse);
+      return listAutomationsForProject(db, input.projectId).map(
+        toAutomationResponse,
+      );
     },
 
     get(input) {
@@ -302,7 +408,9 @@ export function createAutomationService(args: {
       if (input.trigger !== undefined) {
         validateTrigger(input.trigger, now);
         patch.trigger = input.trigger;
-        patch.nextRunAt = current.enabled ? computeNextRunAt(input.trigger, now) : null;
+        patch.nextRunAt = current.enabled
+          ? computeNextRunAt(input.trigger, now)
+          : null;
       }
       if (input.execution !== undefined) {
         assertScriptRunsAllowed(allowScriptRuns, input.execution);
@@ -325,7 +433,10 @@ export function createAutomationService(args: {
     async delete(input) {
       const automation = requireProjectAutomation(db, input);
       deleteAutomation(db, input);
-      await deleteAutomationScriptDir({ dataDir: pluginDataDir, automationId: automation.id });
+      await deleteAutomationScriptDir({
+        dataDir: pluginDataDir,
+        automationId: automation.id,
+      });
       publishAutomationChange(bb, input.projectId, [
         "automations-changed",
         "automation-runs-changed",
@@ -434,7 +545,8 @@ export function createAutomationService(args: {
       const last = page[page.length - 1];
       return automationRunListResponseSchema.parse({
         runs: page.map(toAutomationRunResponse),
-        nextCursor: hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
+        nextCursor:
+          hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
       });
     },
   };

@@ -60,7 +60,12 @@ import {
   getSkillsRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -232,7 +237,9 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/tools": { title: "Tools" },
   "/tools/skills": { title: "Tools" },
   "/tools/plugins": { title: "Tools" },
+  "/tools/plugins/browse": { title: "Tools" },
   "/tools/automations": { title: "Tools" },
+  "/tools/automations/browse": { title: "Tools" },
   "/automations": { title: "Tools" },
   "/skills": { title: "Tools" },
 };
@@ -486,13 +493,71 @@ export function AppLayout({ children }: AppLayoutProps) {
     TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
     location.pathname,
   );
+  const toolsSkillDetailMatch = matchPath(
+    TOOLS_SKILL_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsRegistrySkillDetailMatch = matchPath(
+    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const isToolsPluginBrowse = Boolean(
+    matchPath(TOOLS_PLUGIN_BROWSE_ROUTE_PATH, location.pathname),
+  );
+  const toolsAutomationDetailMatch = matchPath(
+    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const isToolsAutomationBrowse = Boolean(
+    matchPath(TOOLS_AUTOMATION_BROWSE_ROUTE_PATH, location.pathname),
+  );
   const toolsBreadcrumbs = (() => {
     const toolsCrumb = { label: "Tools", to: getSkillsRoutePath() };
+    if (toolsSkillDetailMatch) {
+      return [
+        toolsCrumb,
+        { label: "Skills", to: getSkillsRoutePath() },
+        { label: toolsSkillDetailMatch.params.skillName ?? "Skill" },
+      ];
+    }
+    if (toolsRegistrySkillDetailMatch) {
+      return [
+        toolsCrumb,
+        { label: "Skills", to: getSkillsRoutePath() },
+        {
+          label:
+            toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh",
+        },
+      ];
+    }
+    if (isToolsPluginBrowse) {
+      return [
+        toolsCrumb,
+        { label: "Plugins", to: getPluginsRoutePath() },
+        { label: "Browse" },
+      ];
+    }
     if (toolsPluginDetailMatch) {
       return [
         toolsCrumb,
         { label: "Plugins", to: getPluginsRoutePath() },
         { label: toolsPluginDetailMatch.params.pluginId ?? "Plugin" },
+      ];
+    }
+    if (isToolsAutomationBrowse) {
+      return [
+        toolsCrumb,
+        { label: "Automations", to: getAutomationsRoutePath() },
+        { label: "Browse" },
+      ];
+    }
+    if (toolsAutomationDetailMatch) {
+      return [
+        toolsCrumb,
+        { label: "Automations", to: getAutomationsRoutePath() },
+        {
+          label: toolsAutomationDetailMatch.params.automationId ?? "Automation",
+        },
       ];
     }
     if (location.pathname === "/tools/plugins") {
@@ -575,8 +640,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
+    if (toolsSkillDetailMatch) {
+      return `${toolsSkillDetailMatch.params.skillName ?? "Skill"} · Skills · Tools`;
+    }
+    if (toolsRegistrySkillDetailMatch) {
+      return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills · Tools`;
+    }
+    if (isToolsPluginBrowse) {
+      return "Browse plugins · Tools";
+    }
     if (toolsPluginDetailMatch) {
       return `${toolsPluginDetailMatch.params.pluginId ?? "Plugin"} · Plugins · Tools`;
+    }
+    if (isToolsAutomationBrowse) {
+      return "Browse automations · Tools";
+    }
+    if (toolsAutomationDetailMatch) {
+      return `${toolsAutomationDetailMatch.params.automationId ?? "Automation"} · Automations · Tools`;
     }
     if (toolsBreadcrumbs) {
       const currentTool = toolsBreadcrumbs[toolsBreadcrumbs.length - 1]?.label;

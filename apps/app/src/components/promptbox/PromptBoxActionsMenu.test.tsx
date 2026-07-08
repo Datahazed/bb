@@ -52,6 +52,11 @@ describe("PromptBoxActionsMenu", () => {
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual(["Skills", "Plan", "Goal"]);
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Skills" })
+        .querySelector('[data-icon="Zap"]'),
+    ).not.toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Apps" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Create App" })).toBeNull();
   });

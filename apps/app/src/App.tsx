@@ -34,9 +34,14 @@ import {
   SETTINGS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   getAutomationDetailRoutePath,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
@@ -134,12 +139,29 @@ function AppRoutes() {
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
           <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
+          <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
+            element={<ToolsView />}
+          />
+          <Route
+            path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
+            element={<ToolsView />}
+          />
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
+            element={<ToolsView />}
+          />
           <Route
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
             element={<ToolsView />}
           />
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
+            element={<ToolsView />}
+          />
           <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}

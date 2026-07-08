@@ -6,8 +6,8 @@ import {
 import type { ComponentType } from "react";
 import { createElement } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
-import { CodexIcon } from "@/components/icons/CodexIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
+import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
@@ -60,7 +60,7 @@ export function getProviderIconInfo(
   switch (providerId) {
     case "codex":
       return {
-        icon: CodexIcon,
+        icon: OpenAiIcon,
         ariaLabel: providerInfo.displayName,
       };
     case "claude-code":
@@ -85,7 +85,7 @@ export function getProviderIconInfo(
 
 export function getProviderIconColorClass(providerId: string): string {
   if (providerId === "codex") {
-    return "";
+    return "text-foreground";
   }
   if (providerId === "claude-code") {
     return "text-[#D97757]";

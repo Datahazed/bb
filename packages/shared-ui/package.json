@@ -189,6 +189,11 @@
       "types": "./src/components/ui/progress.tsx",
       "default": "./src/components/ui/progress.tsx"
     },
+    "./resource-list": {
+      "source": "./src/components/ui/resource-list.tsx",
+      "types": "./src/components/ui/resource-list.tsx",
+      "default": "./src/components/ui/resource-list.tsx"
+    },
     "./radio-group": {
       "source": "./src/components/ui/radio-group.tsx",
       "types": "./src/components/ui/radio-group.tsx",

@@ -41,6 +41,10 @@ export type ProjectCreateResult = PublicApiOutput<"/projects", "$post">;
 export type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
 export type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
 export type ProjectListResult = PublicApiOutput<"/projects", "$get">;
+export type ProjectSidebarBootstrapResult = PublicApiOutput<
+  "/sidebar-bootstrap",
+  "$get"
+>;
 export type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
 export type ProjectSourceAddResult = PublicApiOutput<
   "/projects/:id/sources",
@@ -66,6 +70,7 @@ export interface ProjectsArea {
   delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
   get(args: ProjectGetArgs): Promise<ProjectGetResult>;
   list(args?: ProjectListArgs): Promise<ProjectListResult>;
+  sidebarBootstrap(): Promise<ProjectSidebarBootstrapResult>;
   sources: ProjectSourcesArea;
   update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }
@@ -154,6 +159,9 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           query: input,
         }),
       );
+    },
+    async sidebarBootstrap() {
+      return transport.readJson(transport.api.v1["sidebar-bootstrap"].$get());
     },
     sources,
     async update(input) {

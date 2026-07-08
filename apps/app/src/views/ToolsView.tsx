@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
@@ -7,9 +7,25 @@ import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import {
   CREATE_PLUGIN_PROMPT,
   CreateWithTemplatesButton,
+  getCreateExamples,
 } from "@/components/create-via-prompt-examples";
 import { appToast } from "@/components/ui/app-toast";
 import { Button } from "@bb/shared-ui/button";
+import {
+  ResourceBrowseCard,
+  ResourceDetailPage,
+  ResourceMeta,
+  ResourceOptionMenu,
+  ResourceOverflowMenu,
+  ResourceProperty,
+  ResourcePropertyList,
+  ResourceRow,
+  ResourceSortMenu,
+  ResourceSourceItem,
+  ResourceSourceShelf,
+  ResourceStatus,
+  ResourceToolbar,
+} from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -29,7 +45,9 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
+  getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
@@ -79,57 +97,6 @@ function getToolsTab(pathname: string): ToolsTabId {
   return "skills";
 }
 
-function StatusDot({
-  tone,
-}: {
-  tone: "success" | "warning" | "error" | "muted";
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        tone === "success" && "bg-success",
-        tone === "warning" && "bg-warning",
-        tone === "error" && "bg-destructive",
-        tone === "muted" && "bg-muted-foreground/50",
-      )}
-    />
-  );
-}
-
-function StatusLabel({
-  tone,
-  children,
-}: {
-  tone: "success" | "warning" | "error" | "muted";
-  children: string;
-}) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <StatusDot tone={tone} />
-      <span className="truncate">{children}</span>
-    </span>
-  );
-}
-
-function ResourceTaxonomy({
-  items,
-}: {
-  items: readonly { label: string; value: ReactNode }[];
-}) {
-  return (
-    <dl className="grid gap-2 rounded-md border border-border bg-surface-recessed p-3 text-xs sm:grid-cols-3">
-      {items.map((item) => (
-        <div key={item.label} className="min-w-0">
-          <dt className="text-subtle-foreground">{item.label}</dt>
-          <dd className="mt-0.5 min-w-0 text-foreground">{item.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 function pluginStatusTone(
   plugin: PluginListItem,
 ): "success" | "warning" | "error" | "muted" {
@@ -176,6 +143,42 @@ function ToolsTabs({ activeTab }: { activeTab: ToolsTabId }) {
   );
 }
 
+function ToolsBodyFallback() {
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full rounded-md" />
+          <Skeleton className="h-24 w-full rounded-md" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToolsTabBody({
+  activeTab,
+  pluginId,
+}: {
+  activeTab: ToolsTabId;
+  pluginId: string | undefined;
+}) {
+  if (activeTab === "skills") {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
+          <SkillsLibrary />
+        </div>
+      </div>
+    );
+  }
+  if (activeTab === "plugins") {
+    return <PluginsToolView pluginId={pluginId} />;
+  }
+  return <AutomationsToolView />;
+}
+
 function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
   const theme = usePreferredTheme();
   const logoUrl =
@@ -192,13 +195,7 @@ function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
       />
     );
   }
-  return (
-    <Icon
-      name="ElectricPlugs"
-      className="size-4 shrink-0 text-muted-foreground"
-      aria-hidden
-    />
-  );
+  return <BbMark />;
 }
 
 function PluginListRow({
@@ -210,53 +207,44 @@ function PluginListRow({
   pending: boolean;
   onToggle: (plugin: PluginListItem) => void;
 }) {
+  const navigate = useNavigate();
+  const detailPath = getPluginDetailRoutePath({ pluginId: plugin.id });
+  const description =
+    plugin.description !== null && plugin.description.length > 0
+      ? plugin.description
+      : plugin.statusDetail;
   return (
-    <div className="group flex min-w-0 items-start gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-state-hover">
-      <PluginListLogo plugin={plugin} />
-      <Link
-        to={getPluginDetailRoutePath({ pluginId: plugin.id })}
-        className="min-w-0 flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate text-sm font-medium text-foreground">
-            {plugin.id}
-          </span>
-          <span className="text-xs text-muted-foreground">
+    <ResourceRow
+      leading={<PluginListLogo plugin={plugin} />}
+      title={
+        <>
+          {plugin.id}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
             v{plugin.version}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusDot tone={pluginStatusTone(plugin)} />
-            {plugin.enabled ? plugin.status : "disabled"}
-          </span>
-        </span>
-        {plugin.description !== null && plugin.description.length > 0 ? (
-          <span className="mt-1 block truncate text-xs text-subtle-foreground">
-            {plugin.description}
-          </span>
-        ) : plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-          <span className="mt-1 block truncate text-xs text-subtle-foreground">
-            {plugin.statusDetail}
-          </span>
-        ) : null}
-      </Link>
-      <Switch
-        checked={plugin.enabled}
-        disabled={pending}
-        aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
-        onCheckedChange={() => onToggle(plugin)}
-      />
-      <Link
-        to={getPluginDetailRoutePath({ pluginId: plugin.id })}
-        aria-label={`Open ${plugin.id}`}
-        className="mt-0.5 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <Icon
-          name="ChevronRight"
-          className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-          aria-hidden
+        </>
+      }
+      description={description}
+      onOpen={() => void navigate(detailPath)}
+      actions={
+        <ResourceOverflowMenu
+          label={`${plugin.id} actions`}
+          disabled={pending}
+          items={[
+            {
+              label: plugin.enabled ? "Disable" : "Enable",
+              icon: plugin.enabled ? "Pause" : "Play",
+              onSelect: () => onToggle(plugin),
+            },
+            {
+              label: "Open",
+              icon: "ChevronRight",
+              onSelect: () => void navigate(detailPath),
+            },
+          ]}
         />
-      </Link>
-    </div>
+      }
+    />
   );
 }
 
@@ -264,6 +252,7 @@ interface ProviderInstalledPlugin {
   name: string;
   providers: SkillProvider[];
   skillCount: number;
+  skillNames: string[];
   description: string | null;
 }
 
@@ -272,10 +261,57 @@ const PROVIDER_LABELS: Record<SkillProvider, string> = {
   codex: "Codex",
 };
 
+type ToolProviderFilter = "all" | "bb" | SkillProvider;
+type ToolSortMode = "provider" | "alpha";
+type ToolSortDirection = "asc" | "desc";
+
+function toolProviderLabel(provider: ToolProviderFilter): string {
+  if (provider === "all") return "All providers";
+  if (provider === "bb") return "bb";
+  return PROVIDER_LABELS[provider];
+}
+
+function compareProviderFilters(
+  left: Exclude<ToolProviderFilter, "all">,
+  right: Exclude<ToolProviderFilter, "all">,
+): number {
+  return toolProviderLabel(left).localeCompare(toolProviderLabel(right));
+}
+
+function applyToolSortDirection(
+  result: number,
+  direction: ToolSortDirection,
+): number {
+  return direction === "asc" ? result : -result;
+}
+
+function BbMark({ className = "size-4" }: { className?: string }) {
+  return (
+    <img
+      src="/bb-mark.svg"
+      alt=""
+      aria-hidden="true"
+      className={cn(className, "object-contain dark:invert")}
+    />
+  );
+}
+
 function providerPluginNameFromSkill(skillName: string): string | null {
   const separatorIndex = skillName.indexOf(":");
   if (separatorIndex <= 0) return null;
   return skillName.slice(0, separatorIndex);
+}
+
+const PROVIDER_PLUGIN_ROUTE_PREFIX = "provider:";
+
+function getProviderPluginRouteId(pluginName: string): string {
+  return `${PROVIDER_PLUGIN_ROUTE_PREFIX}${pluginName}`;
+}
+
+function getProviderPluginNameFromRouteId(pluginId: string): string | null {
+  return pluginId.startsWith(PROVIDER_PLUGIN_ROUTE_PREFIX)
+    ? pluginId.slice(PROVIDER_PLUGIN_ROUTE_PREFIX.length)
+    : null;
 }
 
 function providerPluginsFromSkills(
@@ -287,6 +323,7 @@ function providerPluginsFromSkills(
       name: string;
       providers: Set<SkillProvider>;
       skills: Set<string>;
+      skillNames: Set<string>;
       description: string | null;
     }
   >();
@@ -298,6 +335,7 @@ function providerPluginsFromSkills(
     if (existing) {
       existing.providers.add(skill.provider);
       existing.skills.add(`${skill.provider}:${skill.name}`);
+      existing.skillNames.add(skill.name);
       if (existing.description === null && skill.description) {
         existing.description = skill.description;
       }
@@ -307,6 +345,7 @@ function providerPluginsFromSkills(
       name,
       providers: new Set([skill.provider]),
       skills: new Set([`${skill.provider}:${skill.name}`]),
+      skillNames: new Set([skill.name]),
       description: skill.description,
     });
   }
@@ -315,6 +354,7 @@ function providerPluginsFromSkills(
       name: plugin.name,
       providers: [...plugin.providers].sort(),
       skillCount: plugin.skills.size,
+      skillNames: [...plugin.skillNames].sort(),
       description: plugin.description,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -325,47 +365,47 @@ function ProviderInstalledPluginRow({
 }: {
   plugin: ProviderInstalledPlugin;
 }) {
+  const navigate = useNavigate();
+  const detailPath = getPluginDetailRoutePath({
+    pluginId: getProviderPluginRouteId(plugin.name),
+  });
+  const description =
+    plugin.description ??
+    `${plugin.providers
+      .map((provider) => PROVIDER_LABELS[provider])
+      .join(", ")} · ${plugin.skillCount} ${
+      plugin.skillCount === 1 ? "skill" : "skills"
+    }`;
   return (
-    <div className="flex min-w-0 items-start gap-2 rounded-md px-3 py-2 text-left">
-      <Icon
-        name="ElectricPlugs"
-        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate text-sm font-medium text-foreground">
-            {plugin.name}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            {plugin.providers.map((provider) => (
-              <ProviderLogo
-                key={provider}
-                providerId={provider}
-                className="size-3.5 shrink-0"
-              />
-            ))}
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusDot tone="success" />
-            Installed
-          </span>
+    <ResourceRow
+      leading={
+        <span className="flex -space-x-1">
+          {plugin.providers.slice(0, 2).map((provider) => (
+            <ProviderLogo
+              key={provider}
+              providerId={provider}
+              className="size-4 rounded-sm bg-background"
+            />
+          ))}
         </span>
-        {plugin.description ? (
-          <span className="mt-1 block truncate text-xs text-subtle-foreground">
-            {plugin.description}
-          </span>
-        ) : (
-          <span className="mt-1 block text-xs text-subtle-foreground">
-            {plugin.providers
-              .map((provider) => PROVIDER_LABELS[provider])
-              .join(", ")}
-            {" · "}
-            {plugin.skillCount} {plugin.skillCount === 1 ? "skill" : "skills"}
-          </span>
-        )}
-      </span>
-    </div>
+      }
+      title={plugin.name}
+      description={description}
+      onOpen={() => void navigate(detailPath)}
+      actions={
+        <Link
+          to={detailPath}
+          aria-label={`Open ${plugin.name}`}
+          className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Icon
+            name="ChevronRight"
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+        </Link>
+      }
+    />
   );
 }
 
@@ -385,7 +425,66 @@ function PluginsLoadingRows() {
   );
 }
 
+type PluginToolRow =
+  | {
+      kind: "bb";
+      id: string;
+      name: string;
+      provider: "bb";
+      description: string;
+      plugin: PluginListItem;
+    }
+  | {
+      kind: "provider";
+      id: string;
+      name: string;
+      provider: SkillProvider;
+      providers: readonly SkillProvider[];
+      description: string;
+      plugin: ProviderInstalledPlugin;
+    };
+
+function buildPluginRows({
+  plugins,
+  providerPlugins,
+}: {
+  plugins: readonly PluginListItem[];
+  providerPlugins: readonly ProviderInstalledPlugin[];
+}): PluginToolRow[] {
+  return [
+    ...plugins.map(
+      (plugin): PluginToolRow => ({
+        kind: "bb",
+        id: `bb:${plugin.id}`,
+        name: plugin.id,
+        provider: "bb",
+        description: plugin.description ?? plugin.statusDetail ?? "",
+        plugin,
+      }),
+    ),
+    ...providerPlugins.map((plugin): PluginToolRow => {
+      const provider = plugin.providers[0] ?? "codex";
+      return {
+        kind: "provider",
+        id: `provider:${plugin.name}`,
+        name: plugin.name,
+        provider,
+        providers: plugin.providers,
+        description:
+          plugin.description ??
+          `${plugin.providers
+            .map((providerId) => PROVIDER_LABELS[providerId])
+            .join(", ")} · ${plugin.skillCount} ${
+            plugin.skillCount === 1 ? "skill" : "skills"
+          }`,
+        plugin,
+      };
+    }),
+  ];
+}
+
 function AutomationsToolView() {
+  const location = useLocation();
   const { projectId, automationId } = useParams<{
     projectId?: string;
     automationId?: string;
@@ -398,7 +497,11 @@ function AutomationsToolView() {
         candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
     ) ?? null;
   const subPath =
-    projectId && automationId ? `${projectId}/${automationId}` : "";
+    location.pathname === getAutomationBrowseRoutePath()
+      ? "browse"
+      : projectId && automationId
+        ? `${projectId}/${automationId}`
+        : "";
 
   if (panel === null) {
     return (
@@ -466,72 +569,327 @@ function PluginDetail({
   }
 
   return (
-    <div className="space-y-4">
-      <Button
-        asChild
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 w-fit px-2 text-muted-foreground hover:text-foreground"
-      >
-        <Link to={getPluginsRoutePath()}>
-          <Icon name="ChevronLeft" className="size-3.5" />
-          Plugins
-        </Link>
-      </Button>
-      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
-        <div className="flex min-w-0 items-start gap-3">
-          <PluginListLogo plugin={plugin} />
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h1 className="truncate text-base font-semibold">{plugin.id}</h1>
-              <span className="text-xs text-muted-foreground">
-                v{plugin.version}
-              </span>
-              <StatusLabel tone={pluginStatusTone(plugin)}>
-                {plugin.enabled ? plugin.status : "disabled"}
-              </StatusLabel>
-            </div>
-            {plugin.description ? (
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {plugin.description}
-              </p>
-            ) : plugin.statusDetail ? (
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {plugin.statusDetail}
-              </p>
-            ) : null}
-          </div>
+    <ResourceDetailPage
+      leading={<PluginListLogo plugin={plugin} />}
+      title={plugin.id}
+      status={
+        <ResourceStatus tone={pluginStatusTone(plugin)}>
+          {plugin.enabled ? plugin.status : "disabled"}
+        </ResourceStatus>
+      }
+      meta={
+        <ResourceMeta
+          items={[
+            "bb plugin",
+            `v${plugin.version}`,
+            plugin.enabled ? plugin.status : "disabled",
+          ]}
+        />
+      }
+      description={plugin.description ?? plugin.statusDetail}
+      actions={
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <Switch
             checked={plugin.enabled}
             disabled={pending}
             aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
             onCheckedChange={() => onToggle(plugin)}
           />
-        </div>
-        <ResourceTaxonomy
+          {plugin.enabled ? "Enabled" : "Disabled"}
+        </label>
+      }
+    >
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          Details
+        </p>
+        <ResourcePropertyList>
+          <ResourceProperty label="Kind">bb plugin</ResourceProperty>
+          <ResourceProperty label="Status">
+            {plugin.enabled ? plugin.status : "disabled"}
+          </ResourceProperty>
+          <ResourceProperty label="Version">{plugin.version}</ResourceProperty>
+          {plugin.statusDetail ? (
+            <ResourceProperty label="Status detail">
+              {plugin.statusDetail}
+            </ResourceProperty>
+          ) : null}
+        </ResourcePropertyList>
+      </section>
+    </ResourceDetailPage>
+  );
+}
+
+function ProviderPluginDetail({
+  plugin,
+}: {
+  plugin: ProviderInstalledPlugin | null;
+}) {
+  if (plugin === null) {
+    return (
+      <EmptyStatePanel className="py-6">Plugin not found.</EmptyStatePanel>
+    );
+  }
+
+  return (
+    <ResourceDetailPage
+      leading={
+        <Icon
+          name="ElectricPlugs"
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+      }
+      title={plugin.name}
+      status={
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex items-center gap-1">
+            {plugin.providers.map((provider) => (
+              <ProviderLogo
+                key={provider}
+                providerId={provider}
+                className="size-4 shrink-0"
+              />
+            ))}
+          </span>
+          <ResourceStatus tone="success">Installed</ResourceStatus>
+        </span>
+      }
+      meta={
+        <ResourceMeta
           items={[
-            { label: "Kind", value: "bb plugin" },
-            {
-              label: "Status",
-              value: plugin.enabled ? plugin.status : "disabled",
-            },
-            { label: "Version", value: plugin.version },
+            "Provider plugin",
+            plugin.providers
+              .map((provider) => PROVIDER_LABELS[provider])
+              .join(", "),
+            `${plugin.skillCount} ${plugin.skillCount === 1 ? "skill" : "skills"}`,
           ]}
         />
-      </div>
-    </div>
+      }
+      description={plugin.description}
+    >
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          Skills
+        </p>
+        <div className="space-y-1">
+          {plugin.skillNames.map((skillName) => (
+            <div
+              key={skillName}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
+            >
+              <Icon
+                name="Zap"
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate">{skillName}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </ResourceDetailPage>
+  );
+}
+
+function PluginBrowseCard({
+  example,
+  onCreate,
+}: {
+  example: ReturnType<typeof getCreateExamples>["examples"][number];
+  onCreate: (prompt?: string) => void;
+}) {
+  return (
+    <ResourceBrowseCard
+      leading={
+        <Icon
+          name="ElectricPlugs"
+          className="size-5 text-muted-foreground"
+          aria-hidden
+        />
+      }
+      title={example.label}
+      meta="Starter template"
+      description={example.description}
+      tags={["bb plugin", "installable", "template"]}
+      action={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => onCreate(example.prompt)}
+        >
+          Use template
+        </Button>
+      }
+      onOpen={() => onCreate(example.prompt)}
+    />
+  );
+}
+
+function PluginBrowseShelf({
+  onCreate,
+}: {
+  onCreate: (prompt?: string) => void;
+}) {
+  const { examples } = getCreateExamples("plugin");
+  return (
+    <ResourceSourceShelf
+      label="Browse plugins"
+      count={examples.length}
+      leading={
+        <Icon
+          name="ElectricPlugs"
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+      }
+      action={
+        <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
+          <Link to={getPluginBrowseRoutePath()}>
+            Browse all
+            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+          </Link>
+        </Button>
+      }
+    >
+      {examples.map((example) => (
+        <ResourceSourceItem key={example.label}>
+          <PluginBrowseCard example={example} onCreate={onCreate} />
+        </ResourceSourceItem>
+      ))}
+    </ResourceSourceShelf>
+  );
+}
+
+function PluginBrowsePage({
+  onCreate,
+}: {
+  onCreate: (prompt?: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const { examples } = getCreateExamples("plugin");
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleExamples = examples.filter((example) =>
+    [example.label, example.description]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery),
+  );
+
+  return (
+    <>
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search plugin templates"
+        onSearchChange={setQuery}
+        action={
+          <CreateWithTemplatesButton
+            kind="plugin"
+            label="New plugin"
+            onCreate={onCreate}
+          />
+        }
+      />
+      {visibleExamples.length === 0 ? (
+        <EmptyStatePanel className="py-6">
+          No plugin templates match "{query}".
+        </EmptyStatePanel>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleExamples.map((example) => (
+            <PluginBrowseCard
+              key={example.label}
+              example={example}
+              onCreate={onCreate}
+            />
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const navigate = useNavigate();
-  const listQuery = usePluginList();
+  const location = useLocation();
+  const [query, setQuery] = useState("");
+  const [providerFilter, setProviderFilter] =
+    useState<ToolProviderFilter>("all");
+  const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
+  const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
+  const listQuery = usePluginList({ includeExperimentDisabled: true });
   const plugins = listQuery.data ?? [];
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const providerPlugins = useMemo(
     () => providerPluginsFromSkills(skillsQuery.data?.skills ?? []),
     [skillsQuery.data],
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const pluginRows = useMemo(
+    () => buildPluginRows({ plugins, providerPlugins }),
+    [plugins, providerPlugins],
+  );
+  const providerOptions = useMemo(() => {
+    const providers = new Set<ToolProviderFilter>(["all"]);
+    for (const row of pluginRows) {
+      if (row.kind === "provider") {
+        row.providers.forEach((provider) => providers.add(provider));
+      } else {
+        providers.add("bb");
+      }
+    }
+    return [...providers].map((provider) => ({
+      id: provider,
+      label: toolProviderLabel(provider),
+    }));
+  }, [pluginRows]);
+  const visiblePluginRows = useMemo(() => {
+    return pluginRows
+      .filter((row) => {
+        if (providerFilter !== "all") {
+          if (row.kind === "provider") {
+            if (!row.providers.includes(providerFilter as SkillProvider)) {
+              return false;
+            }
+          } else if (providerFilter !== "bb") {
+            return false;
+          }
+        }
+        if (normalizedQuery.length === 0) return true;
+        return [
+          row.name,
+          row.description,
+          toolProviderLabel(row.provider),
+          row.kind === "bb"
+            ? row.plugin.version
+            : row.plugin.skillNames.join(" "),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((left, right) => {
+        const base =
+          sortMode === "provider"
+            ? compareProviderFilters(left.provider, right.provider) ||
+              left.name.localeCompare(right.name)
+            : left.name.localeCompare(right.name);
+        return applyToolSortDirection(base, sortDirection);
+      });
+  }, [normalizedQuery, pluginRows, providerFilter, sortDirection, sortMode]);
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      if (nextSort !== "provider" && nextSort !== "alpha") return;
+      if (nextSort === sortMode) {
+        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortMode(nextSort);
+      setSortDirection("asc");
+    },
+    [sortMode],
   );
   const pluginToggle = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
@@ -552,13 +910,21 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     pluginId !== undefined
       ? (plugins.find((plugin) => plugin.id === pluginId) ?? null)
       : null;
+  const selectedProviderPluginName =
+    pluginId !== undefined ? getProviderPluginNameFromRouteId(pluginId) : null;
+  const selectedProviderPlugin =
+    selectedProviderPluginName !== null
+      ? (providerPlugins.find(
+          (plugin) => plugin.name === selectedProviderPluginName,
+        ) ?? null)
+      : null;
   const isProviderPluginsLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined;
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
       : null;
-  const hasPluginRows = plugins.length > 0 || providerPlugins.length > 0;
+  const hasPluginRows = pluginRows.length > 0;
   const handleCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
       state: {
@@ -569,64 +935,119 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       },
     });
   };
+  const isBrowsePage = location.pathname === getPluginBrowseRoutePath();
 
-  const createButton =
-    pluginId === undefined ? (
-      <div className="flex justify-end">
-        <CreateWithTemplatesButton
-          kind="plugin"
-          label="New plugin"
-          onCreate={handleCreatePlugin}
-        />
-      </div>
+  const toolbar =
+    pluginId === undefined && !isBrowsePage ? (
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search plugins"
+        onSearchChange={setQuery}
+        controls={
+          <>
+            <ResourceOptionMenu
+              label="Provider"
+              icon="Layers"
+              value={providerFilter}
+              options={providerOptions}
+              onChange={(value) =>
+                setProviderFilter(value as ToolProviderFilter)
+              }
+            />
+            <ResourceSortMenu
+              value={sortMode}
+              direction={sortDirection}
+              options={[
+                { id: "provider", label: "Provider" },
+                { id: "alpha", label: "Alphabetical" },
+              ]}
+              onChange={handleSortChange}
+            />
+          </>
+        }
+        action={
+          <CreateWithTemplatesButton
+            kind="plugin"
+            label="New plugin"
+            onCreate={handleCreatePlugin}
+          />
+        }
+      />
     ) : null;
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        {pluginId !== undefined ? (
-          <PluginDetail
-            isLoading={isLoading}
-            plugin={selectedPlugin}
-            pending={
-              selectedPlugin !== null && pendingPluginId === selectedPlugin.id
-            }
-            onToggle={(target) => pluginToggle.mutate(target)}
-          />
+        {isBrowsePage ? (
+          <PluginBrowsePage onCreate={handleCreatePlugin} />
+        ) : pluginId !== undefined ? (
+          selectedProviderPluginName !== null ? (
+            isProviderPluginsLoading ? (
+              <PluginsLoadingRows />
+            ) : (
+              <ProviderPluginDetail plugin={selectedProviderPlugin} />
+            )
+          ) : (
+            <PluginDetail
+              isLoading={isLoading}
+              plugin={selectedPlugin}
+              pending={
+                selectedPlugin !== null && pendingPluginId === selectedPlugin.id
+              }
+              onToggle={(target) => pluginToggle.mutate(target)}
+            />
+          )
         ) : listQuery.isError ? (
           <>
-            {createButton}
+            {toolbar}
             <EmptyStatePanel role="alert" className="py-6">
               Couldn't load plugins.
             </EmptyStatePanel>
           </>
         ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
           <>
-            {createButton}
+            {toolbar}
+            <PluginBrowseShelf onCreate={handleCreatePlugin} />
             <PluginsLoadingRows />
           </>
         ) : !hasPluginRows ? (
           <>
-            {createButton}
+            {toolbar}
+            <PluginBrowseShelf onCreate={handleCreatePlugin} />
             <EmptyStatePanel className="py-6">
               No plugins installed.
             </EmptyStatePanel>
           </>
+        ) : visiblePluginRows.length === 0 ? (
+          <>
+            {toolbar}
+            <PluginBrowseShelf onCreate={handleCreatePlugin} />
+            <EmptyStatePanel className="py-6">
+              {normalizedQuery === ""
+                ? "No plugins match this provider."
+                : `No plugins match "${query}"`}
+            </EmptyStatePanel>
+          </>
         ) : (
           <>
-            {createButton}
+            {toolbar}
+            <PluginBrowseShelf onCreate={handleCreatePlugin} />
             <div className="space-y-0.5">
-              {providerPlugins.map((plugin) => (
-                <ProviderInstalledPluginRow key={plugin.name} plugin={plugin} />
-              ))}
-              {plugins.map((plugin) => (
-                <PluginListRow
-                  key={plugin.id}
-                  plugin={plugin}
-                  pending={pendingPluginId === plugin.id}
-                  onToggle={(target) => pluginToggle.mutate(target)}
-                />
-              ))}
+              {visiblePluginRows.map((row) =>
+                row.kind === "provider" ? (
+                  <ProviderInstalledPluginRow
+                    key={row.id}
+                    plugin={row.plugin}
+                  />
+                ) : (
+                  <PluginListRow
+                    key={row.id}
+                    plugin={row.plugin}
+                    pending={pendingPluginId === row.plugin.id}
+                    onToggle={(target) => pluginToggle.mutate(target)}
+                  />
+                ),
+              )}
             </div>
           </>
         )}
@@ -648,17 +1069,9 @@ export function ToolsView() {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {activeTab === "skills" ? (
-          <div className="h-full overflow-y-auto">
-            <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
-              <SkillsLibrary />
-            </div>
-          </div>
-        ) : null}
-        {activeTab === "plugins" ? (
-          <PluginsToolView pluginId={pluginId} />
-        ) : null}
-        {activeTab === "automations" ? <AutomationsToolView /> : null}
+        <Suspense fallback={<ToolsBodyFallback />}>
+          <ToolsTabBody activeTab={activeTab} pluginId={pluginId} />
+        </Suspense>
       </div>
     </div>
   );

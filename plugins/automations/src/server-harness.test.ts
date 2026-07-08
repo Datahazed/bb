@@ -8,6 +8,7 @@ import {
 import plugin from "./server.js";
 import {
   automationListResponseSchema,
+  automationsOverviewResponseSchema,
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
@@ -17,6 +18,7 @@ const PROJECT_ID = "proj_test";
 const MISSING_PROJECT_ID = "proj_missing";
 const DELETED_PROJECT_ID = "proj_deleted";
 const THREAD_ID = "thr_target";
+const FOLDER_ID = "fld_reviews";
 
 const rpcMethods = [
   "automations_overview",
@@ -47,6 +49,20 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
         async list() {
           return [project()];
         },
+        async sidebarBootstrap() {
+          return {
+            folders: [
+              {
+                id: FOLDER_ID,
+                name: "Reviews",
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            ],
+            projects: [project()],
+            personalProject: project("proj_personal"),
+          };
+        },
       },
       hosts: {
         async list() {
@@ -59,6 +75,7 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
             id: threadId,
             archivedAt: null,
             deletedAt: null,
+            folderId: threadId === THREAD_ID ? FOLDER_ID : null,
             status: "idle",
           };
         },
@@ -102,7 +119,9 @@ async function createAgentAutomation(
   harness: FakePluginHost["harness"],
   options: {
     name?: string;
-    trigger?: ReturnType<typeof oneShotTrigger> | { triggerType: "schedule"; cron: string; timezone: string };
+    trigger?:
+      | ReturnType<typeof oneShotTrigger>
+      | { triggerType: "schedule"; cron: string; timezone: string };
     targetThreadId?: string;
   } = {},
 ) {
@@ -142,9 +161,9 @@ describe("automations server plugin harness", () => {
 
     expect([...harness.registrations.rpcMethods].sort()).toEqual(rpcMethods);
     expect(harness.registrations.cli?.name).toBe("automation");
-    expect(harness.registrations.services.map((service) => service.name)).toEqual([
-      "automation-sweep",
-    ]);
+    expect(
+      harness.registrations.services.map((service) => service.name),
+    ).toEqual(["automation-sweep"]);
     expect(harness.registrations.threadEventHandlers).toMatchObject({
       "thread.idle": 1,
       "thread.failed": 1,
@@ -161,11 +180,24 @@ describe("automations server plugin harness", () => {
     const host = await bootAutomationsPlugin();
     const { harness } = host;
 
-    const created = await createAgentAutomation(harness, { name: "RPC agent" });
+    const created = await createAgentAutomation(harness, {
+      name: "RPC agent",
+      targetThreadId: THREAD_ID,
+    });
     const listed = automationListResponseSchema.parse(
       await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
     );
     expect(listed.map((automation) => automation.id)).toContain(created.id);
+    const overview = automationsOverviewResponseSchema.parse(
+      await harness.callRpc("automations_overview"),
+    );
+    expect(overview.automations).toContainEqual(
+      expect.objectContaining({
+        automation: expect.objectContaining({ id: created.id }),
+        project: { id: PROJECT_ID, name: "Test Project" },
+        folder: { id: FOLDER_ID, name: "Reviews" },
+      }),
+    );
 
     const found = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
@@ -262,7 +294,11 @@ describe("automations server plugin harness", () => {
       )[0]?.id,
     ).toBe(created.id);
 
-    const errorResult = await harness.runCli(["create", "--project", PROJECT_ID]);
+    const errorResult = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+    ]);
     expect(errorResult.exitCode).toBe(1);
     expect(errorResult.stderr).toContain("Provide an execution mode");
 
@@ -351,7 +387,10 @@ describe("automations server plugin harness", () => {
       threadId: "thr_spawned",
     });
     expect(signalKinds(host)).toEqual(
-      expect.arrayContaining(["automations-changed", "automation-runs-changed"]),
+      expect.arrayContaining([
+        "automations-changed",
+        "automation-runs-changed",
+      ]),
     );
 
     await harness.dispose();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -17,16 +17,36 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { appToast } from "@/components/ui/app-toast";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
+import {
+  ResourceBrowseCard,
+  ResourceDetailPage,
+  ResourceMeta,
+  ResourceOptionMenu,
+  ResourceOverflowMenu,
+  ResourceProperty,
+  ResourcePropertyList,
+  ResourceRow,
+  ResourceSortMenu,
+  ResourceSourceItem,
+  ResourceSourceShelf,
+  ResourceStatus,
+  ResourceToolbar,
+} from "@bb/shared-ui/resource-list";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { Pill } from "@bb/shared-ui/pill";
-import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
+import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import {
   getProviderIconColorClass,
   getProviderIconInfo,
 } from "@/lib/provider-icon";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getRegistrySkillDetailRoutePath,
+  getRegistrySkillsRoutePath,
+  getRootComposeRoutePath,
+  getSkillDetailRoutePath,
+  getSkillsRoutePath,
+} from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import {
@@ -38,31 +58,22 @@ import {
 import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
-interface SkillProviderGroup {
-  /** Group key: the provider id, or "bb" for provider-agnostic bb skills. */
-  key: string;
-  label: string;
-  providerId: SkillProvider | null;
-  skills: SkillSummary[];
+const SKILL_PROVIDER_ROUTE_IDS = ["bb", "claude-code", "codex"] as const;
+
+function isSkillScope(
+  value: string | undefined,
+): value is SkillSummary["scope"] {
+  return value !== undefined && value in SCOPE_LABELS;
 }
 
-// bb-agnostic skills first, then each provider.
-const PROVIDER_ORDER: readonly (SkillProvider | null)[] = [
-  null,
-  "claude-code",
-  "codex",
-];
-const SKILL_ROW_HEIGHT_REM = 1.75;
-const SKILL_VISIBLE_ROW_COUNT = 10;
-const SKILL_ROW_GAP_PX = 1;
-const SKILL_LIST_VERTICAL_PADDING_REM = 0.5;
-const SKILL_LIST_MAX_HEIGHT = `calc(${
-  SKILL_ROW_HEIGHT_REM * SKILL_VISIBLE_ROW_COUNT +
-  SKILL_LIST_VERTICAL_PADDING_REM
-}rem + ${SKILL_ROW_GAP_PX * (SKILL_VISIBLE_ROW_COUNT - 1)}px)`;
-const skillListViewportStyle = {
-  maxHeight: SKILL_LIST_MAX_HEIGHT,
-} satisfies CSSProperties;
+function isSkillProviderRouteId(
+  value: string | undefined,
+): value is (typeof SKILL_PROVIDER_ROUTE_IDS)[number] {
+  return (
+    value !== undefined &&
+    SKILL_PROVIDER_ROUTE_IDS.some((providerId) => providerId === value)
+  );
+}
 
 export interface RegistrySkill {
   id: string;
@@ -94,6 +105,16 @@ const REGISTRY_PROVIDERS = [
   cliKey: "claudeCode" | "codex";
   label: string;
 }[];
+
+const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
+  "bb-builtin": "bb · built-in",
+  "bb-user": "bb · user",
+  "bb-project": "bb · project",
+  "claude-user": "Claude · user",
+  "claude-project": "Claude · project",
+  codex: "Codex",
+  plugin: "Plugin",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -194,32 +215,32 @@ function providerLabel(providerId: SkillProvider | null): string {
   return getProviderIconInfo(providerId)?.ariaLabel ?? providerId;
 }
 
-/**
- * Group skills by the provider surface they're discovered under. bb-agnostic
- * skills (`provider: null`) collapse into a single "bb" group, listed last.
- */
-export function groupSkillsByProvider(
-  skills: readonly SkillSummary[],
-): SkillProviderGroup[] {
-  const byKey = new Map<string, SkillProviderGroup>();
-  for (const skill of skills) {
-    const key = skill.provider ?? "bb";
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.skills.push(skill);
-      continue;
-    }
-    byKey.set(key, {
-      key,
-      label: providerLabel(skill.provider),
-      providerId: skill.provider,
-      skills: [skill],
-    });
-  }
-  return PROVIDER_ORDER.flatMap((provider) => {
-    const group = byKey.get(provider ?? "bb");
-    return group ? [group] : [];
-  });
+type ResourceProviderFilter = "all" | "bb" | SkillProvider;
+type ResourceSortMode = "provider" | "alpha";
+type ResourceSortDirection = "asc" | "desc";
+
+function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
+  return skill.provider ?? "bb";
+}
+
+function providerFilterLabel(provider: ResourceProviderFilter): string {
+  if (provider === "all") return "All providers";
+  if (provider === "bb") return "bb";
+  return providerLabel(provider);
+}
+
+function compareNullableProvider(
+  left: SkillProvider | null,
+  right: SkillProvider | null,
+): number {
+  return providerLabel(left).localeCompare(providerLabel(right));
+}
+
+function applySortDirection(
+  result: number,
+  direction: ResourceSortDirection,
+): number {
+  return direction === "asc" ? result : -result;
 }
 
 export function ProviderLogo({
@@ -241,8 +262,28 @@ export function ProviderLogo({
   );
 }
 
-/** Calm, typeahead-style row: skill icon + name + muted description. Clicking
- * views the skill. */
+function BbLogo({ className = "size-4" }: { className?: string }) {
+  return (
+    <img
+      src="/bb-mark.svg"
+      alt=""
+      aria-hidden="true"
+      className={cn(className, "object-contain dark:invert")}
+    />
+  );
+}
+
+function SkillLeading({ skill }: { skill: SkillSummary }) {
+  if (skill.provider !== null) {
+    return <ProviderLogo providerId={skill.provider} className="size-4" />;
+  }
+  return <BbLogo />;
+}
+
+function skillDescription(skill: SkillSummary): string {
+  return skill.description ?? SCOPE_LABELS[skill.scope];
+}
+
 function SkillRow({
   skill,
   onSelect,
@@ -250,28 +291,30 @@ function SkillRow({
   skill: SkillSummary;
   onSelect: () => void;
 }) {
+  const description = skillDescription(skill);
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      title={skill.description ?? skill.name}
-      className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded px-2 text-left text-xs hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <Icon
-        name="Zap"
-        className="size-3.5 shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-      <span className="truncate text-foreground">{skill.name}</span>
-      {skill.description ? (
-        <span className="truncate text-subtle-foreground [flex-shrink:9999]">
-          {skill.description}
-        </span>
-      ) : null}
-    </button>
+    <ResourceRow
+      leading={<SkillLeading skill={skill} />}
+      title={skill.name}
+      description={description}
+      onOpen={onSelect}
+      actions={
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`Open ${skill.name}`}
+          className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Icon
+            name="ChevronRight"
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+        </button>
+      }
+    />
   );
 }
-
 function StatusDot({ tone }: { tone: "success" | "muted" }) {
   return (
     <span
@@ -291,7 +334,7 @@ function registryProviderLabel(providerId: RegistryProvider): string {
   );
 }
 
-function RegistrySkillRow({
+function RegistrySkillSourceItem({
   skill,
   installedProviders,
   providerStatus,
@@ -326,97 +369,300 @@ function RegistrySkillRow({
       ? "Available"
       : "No provider";
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-state-hover">
-      <Icon name="Zap" className="size-3.5 shrink-0 text-muted-foreground" />
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={() => onSelect(skill)}
-        title={skill.summary ?? skill.name}
-      >
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="truncate text-foreground">{skill.name}</span>
-          <span className="truncate text-subtle-foreground">
-            {formatRegistrySource(skill.source)}
-          </span>
-        </span>
-        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-subtle-foreground">
-          <span>{formatInstallCount(skill.installs)} installs</span>
-          <span>{skill.topic}</span>
-          <span className="truncate">
-            Works with {skill.worksWith.join(", ")}
-          </span>
-        </span>
-      </button>
-      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-        <StatusDot tone={isInstalled ? "success" : "muted"} />
-        {statusLabel}
-      </span>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 px-2 text-xs"
-        disabled={pending || defaultProviders.length === 0}
-        onClick={() => onInstall(skill, [...defaultProviders])}
-      >
-        {isInstalled ? "Add provider" : "Install"}
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+    <ResourceBrowseCard
+      leading={
+        <Icon name="Zap" className="size-5 text-muted-foreground" aria-hidden />
+      }
+      title={skill.name}
+      meta={formatRegistrySource(skill.source)}
+      description={
+        skill.summary ??
+        `Works with ${skill.worksWith.join(", ")}. ${formatInstallCount(
+          skill.installs,
+        )} installs.`
+      }
+      tags={[
+        `${formatInstallCount(skill.installs)} installs`,
+        skill.topic,
+        ...skill.worksWith,
+      ]}
+      state={
+        <ResourceStatus tone={isInstalled ? "success" : "muted"}>
+          {statusLabel}
+        </ResourceStatus>
+      }
+      onOpen={() => onSelect(skill)}
+      action={
+        <>
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 text-muted-foreground"
-            aria-label={`${skill.name} install options`}
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-xs"
+            disabled={pending || defaultProviders.length === 0}
+            onClick={() => onInstall(skill, [...defaultProviders])}
           >
-            <Icon name="ChevronDown" className="size-3.5" />
+            {isInstalled ? "Add provider" : "Install"}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-56"
-          mobileTitle={`${skill.name} install options`}
-        >
-          {(["user", "project"] as const).map((option) => (
-            <DropdownMenuItem
-              key={option}
-              onSelect={() => onScopeChange(option)}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2 capitalize">
-                <StatusDot tone={scope === option ? "success" : "muted"} />
-                {option}
-              </span>
-              <span className="text-xs text-muted-foreground">scope</span>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          {REGISTRY_PROVIDERS.map((provider) => {
-            const configured = providerStatus[provider.id];
-            const installed = installedProviders.has(provider.id);
-            return (
-              <DropdownMenuItem
-                key={provider.id}
-                disabled={!configured || pending || installed}
-                onSelect={() => onInstall(skill, [provider.id])}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0 text-muted-foreground"
+                aria-label={`${skill.name} install options`}
               >
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <StatusDot tone={configured ? "success" : "muted"} />
-                  <ProviderLogo
-                    providerId={provider.id}
-                    className="size-3.5 shrink-0"
-                  />
-                  <span>{provider.label}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {installed ? "Installed" : configured ? scope : "Disabled"}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                <Icon name="ChevronDown" className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-56"
+              mobileTitle={`${skill.name} install options`}
+            >
+              {(["user", "project"] as const).map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onSelect={() => onScopeChange(option)}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2 capitalize">
+                    <StatusDot tone={scope === option ? "success" : "muted"} />
+                    {option}
+                  </span>
+                  <span className="text-xs text-muted-foreground">scope</span>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              {REGISTRY_PROVIDERS.map((provider) => {
+                const configured = providerStatus[provider.id];
+                const installed = installedProviders.has(provider.id);
+                return (
+                  <DropdownMenuItem
+                    key={provider.id}
+                    disabled={!configured || pending || installed}
+                    onSelect={() => onInstall(skill, [provider.id])}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <StatusDot tone={configured ? "success" : "muted"} />
+                      <ProviderLogo
+                        providerId={provider.id}
+                        className="size-3.5 shrink-0"
+                      />
+                      <span>{provider.label}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {installed
+                        ? "Installed"
+                        : configured
+                          ? scope
+                          : "Disabled"}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      }
+    />
+  );
+}
+
+function RegistrySkillsSource({
+  skills,
+  isLoading,
+  hasError,
+  query,
+  scope,
+  providerStatus,
+  pendingSkillId,
+  browseAction,
+  onRetry,
+  onScopeChange,
+  onInstall,
+  onSelect,
+  getInstalledProviders,
+}: {
+  skills: readonly RegistrySkill[];
+  isLoading: boolean;
+  hasError: boolean;
+  query: string;
+  scope: RegistryScope;
+  providerStatus: Record<RegistryProvider, boolean>;
+  pendingSkillId: string | null;
+  browseAction?: ReactNode;
+  onRetry?: () => void;
+  onScopeChange: (scope: RegistryScope) => void;
+  onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
+  onSelect: (skill: RegistrySkill) => void;
+  getInstalledProviders: (
+    skill: RegistrySkill,
+  ) => ReadonlySet<RegistryProvider>;
+}) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (hasError) {
+    return (
+      <EmptyStatePanel role="alert" className="py-6">
+        <div className="flex flex-col items-center gap-2">
+          <span>Couldn't load skills.sh.</span>
+          {onRetry ? (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      </EmptyStatePanel>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <ResourceSourceShelf
+        label="Browse skills.sh"
+        leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+      >
+        {["w-36", "w-48", "w-28"].map((nameWidth) => (
+          <ResourceSourceItem key={nameWidth}>
+            <div className="flex items-center gap-1.5 px-3 py-2">
+              <Skeleton className="size-4 rounded" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className={cn("h-3.5", nameWidth)} />
+                <Skeleton className="h-3 w-40" />
+              </div>
+              <Skeleton className="h-7 w-16" />
+            </div>
+          </ResourceSourceItem>
+        ))}
+      </ResourceSourceShelf>
+    );
+  }
+
+  if (skills.length === 0) {
+    if (normalizedQuery === "") return null;
+    return (
+      <EmptyStatePanel className="py-6">
+        {`No skills.sh resources match "${query}"`}
+      </EmptyStatePanel>
+    );
+  }
+
+  return (
+    <ResourceSourceShelf
+      label="Browse skills.sh"
+      count={skills.length}
+      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+      action={browseAction}
+    >
+      {skills.map((skill) => (
+        <ResourceSourceItem key={skill.id}>
+          <RegistrySkillSourceItem
+            skill={skill}
+            installedProviders={getInstalledProviders(skill)}
+            providerStatus={providerStatus}
+            scope={scope}
+            pending={pendingSkillId === skill.id}
+            onScopeChange={onScopeChange}
+            onInstall={onInstall}
+            onSelect={onSelect}
+          />
+        </ResourceSourceItem>
+      ))}
+    </ResourceSourceShelf>
+  );
+}
+
+function RegistrySkillsBrowsePage({
+  skills,
+  isLoading,
+  hasError,
+  query,
+  scope,
+  providerStatus,
+  pendingSkillId,
+  onRetry,
+  onQueryChange,
+  onScopeChange,
+  onInstall,
+  onSelect,
+  getInstalledProviders,
+}: {
+  skills: readonly RegistrySkill[];
+  isLoading: boolean;
+  hasError: boolean;
+  query: string;
+  scope: RegistryScope;
+  providerStatus: Record<RegistryProvider, boolean>;
+  pendingSkillId: string | null;
+  onRetry?: () => void;
+  onQueryChange: (query: string) => void;
+  onScopeChange: (scope: RegistryScope) => void;
+  onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
+  onSelect: (skill: RegistrySkill) => void;
+  getInstalledProviders: (
+    skill: RegistrySkill,
+  ) => ReadonlySet<RegistryProvider>;
+}) {
+  return (
+    <div className="space-y-4">
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search skills.sh"
+        onSearchChange={onQueryChange}
+      />
+      {hasError ? (
+        <EmptyStatePanel role="alert" className="py-6">
+          <div className="flex flex-col items-center gap-2">
+            <span>Couldn't load skills.sh.</span>
+            {onRetry ? (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        </EmptyStatePanel>
+      ) : isLoading ? (
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-busy>
+          {["w-36", "w-44", "w-32", "w-40", "w-28", "w-48"].map((nameWidth) => (
+            <div
+              key={nameWidth}
+              className="min-h-40 rounded-md border border-border bg-background p-3"
+            >
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-9 rounded-md" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className={cn("h-3.5", nameWidth)} />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <Skeleton className="mt-4 h-3 w-full" />
+              <Skeleton className="mt-2 h-3 w-3/4" />
+            </div>
+          ))}
+        </div>
+      ) : skills.length === 0 ? (
+        <EmptyStatePanel className="py-6">
+          {query.trim().length === 0
+            ? "No skills.sh resources available."
+            : `No skills.sh resources match "${query}"`}
+        </EmptyStatePanel>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {skills.map((skill) => (
+            <RegistrySkillSourceItem
+              key={skill.id}
+              skill={skill}
+              installedProviders={getInstalledProviders(skill)}
+              providerStatus={providerStatus}
+              scope={scope}
+              pending={pendingSkillId === skill.id}
+              onScopeChange={onScopeChange}
+              onInstall={onInstall}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -432,6 +678,7 @@ export interface SkillsOverviewProps {
   registryScope?: RegistryScope;
   providerStatus?: Record<RegistryProvider, boolean>;
   pendingRegistrySkillId?: string | null;
+  registryBrowseAction?: ReactNode;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
@@ -465,6 +712,7 @@ export function SkillsOverview({
   registryScope = "user",
   providerStatus = DEFAULT_PROVIDER_STATUS,
   pendingRegistrySkillId = null,
+  registryBrowseAction,
   onCreateSkill,
   onSelectSkill,
   onSelectRegistrySkill = () => {},
@@ -475,58 +723,115 @@ export function SkillsOverview({
   onRetry,
   onRetryRegistry,
 }: SkillsOverviewProps) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const toggleGroup = useCallback((key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
+  const [providerFilter, setProviderFilter] =
+    useState<ResourceProviderFilter>("all");
+  const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
+  const [sortDirection, setSortDirection] =
+    useState<ResourceSortDirection>("asc");
   const normalizedQuery = query.trim().toLowerCase();
-  const groups = useMemo(() => {
-    const filtered = skills.filter(
-      (skill) =>
+  const providerOptions = useMemo(() => {
+    const providers = new Set<ResourceProviderFilter>(["all"]);
+    for (const skill of skills) {
+      providers.add(skillProviderFilterId(skill));
+    }
+    return [...providers].map((provider) => ({
+      id: provider,
+      label: providerFilterLabel(provider),
+    }));
+  }, [skills]);
+  const visibleSkills = useMemo(() => {
+    const filtered = skills.filter((skill) => {
+      if (
+        providerFilter !== "all" &&
+        skillProviderFilterId(skill) !== providerFilter
+      ) {
+        return false;
+      }
+      return (
         normalizedQuery === "" ||
-        skill.name.toLowerCase().includes(normalizedQuery) ||
-        (skill.description ?? "").toLowerCase().includes(normalizedQuery),
-    );
-    return groupSkillsByProvider(filtered);
-  }, [skills, normalizedQuery]);
+        [
+          skill.name,
+          skill.description ?? "",
+          providerLabel(skill.provider),
+          SCOPE_LABELS[skill.scope],
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery)
+      );
+    });
+    return [...filtered].sort((left, right) => {
+      const base =
+        sortMode === "provider"
+          ? compareNullableProvider(left.provider, right.provider) ||
+            left.name.localeCompare(right.name)
+          : left.name.localeCompare(right.name);
+      return applySortDirection(base, sortDirection);
+    });
+  }, [normalizedQuery, providerFilter, skills, sortDirection, sortMode]);
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      if (nextSort !== "provider" && nextSort !== "alpha") return;
+      if (nextSort === sortMode) {
+        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortMode(nextSort);
+      setSortDirection("asc");
+    },
+    [sortMode],
+  );
   return (
     <div className="space-y-4">
-      {/* One library of every skill across providers. You search and manage
-            here; creating a bb skill is a single template-based action, the way
-            VS Code / Raycast keep authoring out of the management list rather
-            than stacking a teaching panel onto a list that is never empty. */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 transition-shadow focus-within:ring-1 focus-within:ring-border">
-            <Icon
-              name="Search"
-              className="size-3.5 shrink-0 text-muted-foreground"
-              aria-hidden
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search skills"
+        onSearchChange={onQueryChange}
+        controls={
+          <>
+            <ResourceOptionMenu
+              label="Provider"
+              icon="Layers"
+              value={providerFilter}
+              options={providerOptions}
+              onChange={(value) =>
+                setProviderFilter(value as ResourceProviderFilter)
+              }
             />
-            <input
-              aria-label="Search skills"
-              placeholder="Search skills"
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              autoComplete="off"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            <ResourceSortMenu
+              value={sortMode}
+              direction={sortDirection}
+              options={[
+                { id: "provider", label: "Provider" },
+                { id: "alpha", label: "Alphabetical" },
+              ]}
+              onChange={handleSortChange}
             />
-          </div>
+          </>
+        }
+        action={
           <CreateWithTemplatesButton
             kind="skill"
             label="New bb skill"
             onCreate={onCreateSkill}
           />
-        </div>
-      </div>
+        }
+      />
+      <RegistrySkillsSource
+        skills={registrySkills}
+        isLoading={registryIsLoading}
+        hasError={registryHasError}
+        query={query}
+        scope={registryScope}
+        providerStatus={providerStatus}
+        pendingSkillId={pendingRegistrySkillId}
+        browseAction={registryBrowseAction}
+        onRetry={onRetryRegistry}
+        onScopeChange={onRegistryScopeChange}
+        onInstall={onInstallRegistrySkill}
+        onSelect={onSelectRegistrySkill}
+        getInstalledProviders={getInstalledProvidersForRegistrySkill}
+      />
       {hasError ? (
         // Failure is direction, not a dead end: say what happened plainly and
         // offer the way out, kept calm rather than alarmist.
@@ -560,135 +865,24 @@ export function SkillsOverview({
             </div>
           ))}
         </div>
+      ) : visibleSkills.length === 0 ? (
+        normalizedQuery === "" && providerFilter === "all" ? null : (
+          <EmptyStatePanel className="py-6">
+            {normalizedQuery === ""
+              ? "No skills match this provider."
+              : `No skills match "${query}"`}
+          </EmptyStatePanel>
+        )
       ) : (
-        <>
-          {groups.length === 0 ? (
-            normalizedQuery === "" ? null : (
-              <EmptyStatePanel className="py-6">
-                {`No skills match "${query}"`}
-              </EmptyStatePanel>
-            )
-          ) : (
-            <div className="space-y-2">
-              {groups.map((group) => {
-                const isCollapsed = collapsed.has(group.key);
-                return (
-                  <section
-                    key={group.key}
-                    className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.key)}
-                      aria-expanded={!isCollapsed}
-                      className="flex w-full items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
-                    >
-                      <Icon
-                        name="ChevronRight"
-                        className={cn(
-                          "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
-                          !isCollapsed && "rotate-90",
-                        )}
-                        aria-hidden
-                      />
-                      {group.providerId ? (
-                        <ProviderLogo
-                          providerId={group.providerId}
-                          className="size-3.5"
-                        />
-                      ) : null}
-                      <span className="font-medium">{group.label}</span>
-                      <span className="text-subtle-foreground">
-                        {group.skills.length}
-                      </span>
-                    </button>
-                    {isCollapsed ? null : (
-                      <div
-                        className="overflow-y-auto p-1"
-                        style={skillListViewportStyle}
-                      >
-                        <div className="flex flex-col gap-px">
-                          {group.skills.map((skill) => (
-                            <SkillRow
-                              key={`${group.key}-${skill.scope}-${skill.name}-${skill.filePath}`}
-                              skill={skill}
-                              onSelect={() => onSelectSkill(skill)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          )}
-          {registryHasError ? (
-            <EmptyStatePanel role="alert" className="py-6">
-              <div className="flex flex-col items-center gap-2">
-                <span>Couldn't load skills.sh.</span>
-                {onRetryRegistry ? (
-                  <Button variant="outline" size="sm" onClick={onRetryRegistry}>
-                    Retry
-                  </Button>
-                ) : null}
-              </div>
-            </EmptyStatePanel>
-          ) : registryIsLoading ? (
-            <div
-              className="space-y-px"
-              aria-busy
-              aria-label="Loading skills.sh"
-            >
-              {["w-36", "w-48", "w-28"].map((nameWidth) => (
-                <div
-                  key={nameWidth}
-                  className="flex items-center gap-1.5 px-2 py-1.5"
-                >
-                  <Skeleton className="size-3.5 rounded" />
-                  <Skeleton className={cn("h-3", nameWidth)} />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              ))}
-            </div>
-          ) : registrySkills.length > 0 ? (
-            <section className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-              <div className="flex items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground">
-                <Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />
-                <span className="font-medium">skills.sh</span>
-                <span className="text-subtle-foreground">
-                  {registrySkills.length}
-                </span>
-              </div>
-              <div
-                className="overflow-y-auto p-1"
-                style={skillListViewportStyle}
-              >
-                <div className="flex flex-col gap-px">
-                  {registrySkills.map((skill) => (
-                    <RegistrySkillRow
-                      key={skill.id}
-                      skill={skill}
-                      installedProviders={getInstalledProvidersForRegistrySkill(
-                        skill,
-                      )}
-                      providerStatus={providerStatus}
-                      scope={registryScope}
-                      pending={pendingRegistrySkillId === skill.id}
-                      onScopeChange={onRegistryScopeChange}
-                      onInstall={onInstallRegistrySkill}
-                      onSelect={onSelectRegistrySkill}
-                    />
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : normalizedQuery === "" ? null : (
-            <EmptyStatePanel className="py-6">
-              {`No skills.sh resources match "${query}"`}
-            </EmptyStatePanel>
-          )}
-        </>
+        <div className="space-y-0.5">
+          {visibleSkills.map((skill) => (
+            <SkillRow
+              key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+              skill={skill}
+              onSelect={() => onSelectSkill(skill)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -700,7 +894,6 @@ function RegistrySkillDetailView({
   providerStatus,
   scope,
   pending,
-  onBack,
   onScopeChange,
   onInstall,
 }: {
@@ -709,7 +902,6 @@ function RegistrySkillDetailView({
   providerStatus: Record<RegistryProvider, boolean>;
   scope: RegistryScope;
   pending: boolean;
-  onBack: () => void;
   onScopeChange: (scope: RegistryScope) => void;
   onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
 }) {
@@ -724,51 +916,22 @@ function RegistrySkillDetailView({
     ? remainingProviders
     : configuredProviders;
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2 text-muted-foreground hover:text-foreground"
-        onClick={onBack}
-      >
-        <Icon name="ChevronLeft" className="size-3.5" />
-        Skills
-      </Button>
-      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
-        <div className="flex min-w-0 items-start gap-3">
-          <Icon
-            name="Zap"
-            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-          />
-          <div className="min-w-0 flex-1 space-y-1">
-            <h1 className="truncate text-base font-semibold">{skill.name}</h1>
-            <p className="truncate text-xs text-muted-foreground">
-              {formatRegistrySource(skill.source)}
-            </p>
-          </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusDot tone={isInstalled ? "success" : "muted"} />
-            {isInstalled ? "Installed" : "Available"}
-          </span>
-        </div>
-        {skill.summary ? (
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {skill.summary}
-          </p>
-        ) : null}
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{formatInstallCount(skill.installs)} installs</span>
-          <span>{skill.topic}</span>
-          <span>Works with {skill.worksWith.join(", ")}</span>
-          {installedProviders.size > 0 ? (
-            <span>
-              Installed on{" "}
-              {[...installedProviders].map(registryProviderLabel).join(", ")}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <ResourceDetailPage
+      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
+      title={skill.name}
+      status={
+        <ResourceStatus tone={isInstalled ? "success" : "muted"}>
+          {isInstalled ? "Installed" : "Available"}
+        </ResourceStatus>
+      }
+      meta={
+        <ResourceMeta
+          items={["skills.sh", formatRegistrySource(skill.source), skill.topic]}
+        />
+      }
+      description={skill.summary}
+      actions={
+        <>
           <div className="flex rounded-md bg-surface-recessed p-0.5">
             {(["user", "project"] as const).map((option) => (
               <button
@@ -840,21 +1003,30 @@ function RegistrySkillDetailView({
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          Details
+        </p>
+        <ResourcePropertyList>
+          <ResourceProperty label="Installs">
+            {formatInstallCount(skill.installs)}
+          </ResourceProperty>
+          <ResourceProperty label="Works with">
+            {skill.worksWith.join(", ")}
+          </ResourceProperty>
+          {installedProviders.size > 0 ? (
+            <ResourceProperty label="Installed on">
+              {[...installedProviders].map(registryProviderLabel).join(", ")}
+            </ResourceProperty>
+          ) : null}
+        </ResourcePropertyList>
+      </section>
+    </ResourceDetailPage>
   );
 }
-
-const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
-  "bb-builtin": "bb · built-in",
-  "bb-user": "bb · user",
-  "bb-project": "bb · project",
-  "claude-user": "Claude · user",
-  "claude-project": "Claude · project",
-  codex: "Codex",
-  plugin: "Plugin",
-};
 
 export interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
@@ -867,7 +1039,6 @@ export interface SkillDetailDialogViewProps {
   canOpenInEditor: boolean;
   isSaving: boolean;
   isDeleting: boolean;
-  onClose: () => void;
   /**
    * Persist edited content. Resolves `true` when the save succeeded so the view
    * leaves edit mode; `false` keeps the draft for retry.
@@ -893,7 +1064,6 @@ export function SkillDetailDialogView({
   canOpenInEditor,
   isSaving,
   isDeleting,
-  onClose,
   onSave,
   onDelete,
   onOpenInEditor,
@@ -927,59 +1097,7 @@ export function SkillDetailDialogView({
     setEditing(true);
   }
 
-  // Read mode: a single overflow by the title (Notion/Linear-style). Edit is
-  // reached from here and happens inline; the viewer has no toolbar.
-  const overflowMenu =
-    canManage || canOpenInEditor ? (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-            aria-label="Skill actions"
-          >
-            <Icon name="MoreHorizontal" className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="min-w-0"
-          mobileTitle="Skill actions"
-        >
-          {canManage ? (
-            <DropdownMenuItem onSelect={startEditing}>
-              <Icon name="Edit" className="size-4 text-muted-foreground" />
-              Edit
-            </DropdownMenuItem>
-          ) : null}
-          {canOpenInEditor ? (
-            <DropdownMenuItem onSelect={onOpenInEditor}>
-              <Icon
-                name="ExternalLink"
-                className="size-4 text-muted-foreground"
-              />
-              Open in editor
-            </DropdownMenuItem>
-          ) : null}
-          {canManage ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setConfirmingDelete(true)}
-              >
-                <Icon name="Trash2" className="size-4" />
-                Delete
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ) : null;
-
-  // Edit (Cancel/Save) and delete-confirm actions live below the preview.
-  const footerActions = editing ? (
+  const actionRow = editing ? (
     <>
       <Button
         variant="outline"
@@ -1022,112 +1140,128 @@ export function SkillDetailDialogView({
   ) : null;
 
   if (skill === null) return null;
+  const providerMeta = skill.provider ? providerLabel(skill.provider) : "bb";
+  const headerActions =
+    !editing && !confirmingDelete && (canManage || canOpenInEditor) ? (
+      <ResourceOverflowMenu
+        label={`${skill.name} actions`}
+        items={[
+          ...(canManage
+            ? [
+                {
+                  label: "Edit",
+                  icon: "Edit" as const,
+                  disabled: isLoadingContent,
+                  onSelect: startEditing,
+                },
+              ]
+            : []),
+          ...(canOpenInEditor
+            ? [
+                {
+                  label: "Open in editor",
+                  icon: "ExternalLink" as const,
+                  onSelect: onOpenInEditor,
+                },
+              ]
+            : []),
+          ...(canManage
+            ? [
+                { kind: "separator" as const },
+                {
+                  label: "Delete",
+                  icon: "Trash2" as const,
+                  tone: "destructive" as const,
+                  onSelect: () => setConfirmingDelete(true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    ) : null;
+  const contentBody = isContentError ? (
+    <p className="text-sm text-destructive">Failed to load the skill.</p>
+  ) : isLoadingContent ? (
+    <p className="text-sm text-muted-foreground">Loading...</p>
+  ) : editing ? (
+    <textarea
+      ref={textareaRef}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      aria-label="SKILL.md"
+      className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    />
+  ) : (
+    <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
+      <FilePreview
+        path="SKILL.md"
+        headerMode="none"
+        state={{
+          kind: "ready",
+          file: { name: "SKILL.md", contents: content },
+          lineRange: null,
+          showMarkdownModeToggle: false,
+        }}
+      />
+    </div>
+  );
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2 text-muted-foreground hover:text-foreground"
-        onClick={onClose}
-      >
-        <Icon name="ChevronLeft" className="size-3.5" />
-        Skills
-      </Button>
-      <div className="space-y-4 rounded-md border border-border bg-popover p-4 text-popover-foreground">
-        <div className="flex min-w-0 items-start gap-3">
-          <Icon
-            name="Zap"
-            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-          />
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h1 className="truncate text-base font-semibold">{skill.name}</h1>
-              {skill.provider ? (
-                <ProviderLogo
-                  providerId={skill.provider}
-                  className="size-3.5 shrink-0"
-                />
-              ) : null}
-              <Pill variant="outline" className="shrink-0">
-                {SCOPE_LABELS[skill.scope]}
-              </Pill>
-            </div>
-            {skill.description ? (
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {skill.description}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {editing || confirmingDelete ? null : overflowMenu}
-          </div>
-        </div>
-
-        <div className="grid gap-2 rounded-md border border-border bg-surface-recessed p-3 text-xs sm:grid-cols-3">
-          <div className="min-w-0">
-            <div className="text-subtle-foreground">Kind</div>
-            <div className="mt-0.5 truncate text-foreground">Skill</div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-subtle-foreground">Provider</div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-foreground">
-              {skill.provider ? (
-                <>
-                  <ProviderLogo
-                    providerId={skill.provider}
-                    className="size-3.5 shrink-0"
-                  />
-                  <span className="truncate">
-                    {providerLabel(skill.provider)}
-                  </span>
-                </>
-              ) : (
-                <span className="truncate">bb</span>
-              )}
-            </div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-subtle-foreground">Scope</div>
-            <div className="mt-0.5 truncate text-foreground">
-              {SCOPE_LABELS[skill.scope]}
-            </div>
-          </div>
-        </div>
-
-        {isContentError ? (
-          <p className="text-sm text-destructive">Failed to load the skill.</p>
-        ) : isLoadingContent ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : editing ? (
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            aria-label="SKILL.md"
-            className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        ) : (
-          <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
-            <FilePreview
-              path="SKILL.md"
-              headerMode="none"
-              state={{
-                kind: "ready",
-                file: { name: "SKILL.md", contents: content },
-                lineRange: null,
-                showMarkdownModeToggle: false,
-              }}
+    <ResourceDetailPage
+      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
+      title={skill.name}
+      status={
+        <span className="flex shrink-0 items-center gap-2">
+          {skill.provider ? (
+            <ProviderLogo
+              providerId={skill.provider}
+              className="size-4 shrink-0"
             />
-          </div>
-        )}
+          ) : null}
+          <ResourceStatus tone={canManage ? "success" : "muted"}>
+            {canManage ? "Editable" : "Read-only"}
+          </ResourceStatus>
+        </span>
+      }
+      headerActions={headerActions}
+      meta={
+        <ResourceMeta
+          items={["Skill", providerMeta, SCOPE_LABELS[skill.scope]]}
+        />
+      }
+      description={skill.description}
+      actions={actionRow}
+    >
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          Details
+        </p>
+        <ResourcePropertyList>
+          <ResourceProperty label="Kind">Skill</ResourceProperty>
+          <ResourceProperty label="Provider">{providerMeta}</ResourceProperty>
+          <ResourceProperty label="Scope">
+            {SCOPE_LABELS[skill.scope]}
+          </ResourceProperty>
+          <ResourceProperty label="File">SKILL.md</ResourceProperty>
+        </ResourcePropertyList>
+      </section>
 
-        {footerActions ? (
-          <div className="flex justify-end gap-2">{footerActions}</div>
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          SKILL.md
+        </p>
+        {contentBody}
+        {editing || confirmingDelete ? (
+          <span className="sr-only">Skill edit mode is active.</span>
         ) : null}
-      </div>
-    </div>
+      </section>
+
+      {confirmingDelete && !editing ? (
+        <p className="text-xs text-muted-foreground">
+          This deletes the local skill file from the selected scope.
+        </p>
+      ) : null}
+    </ResourceDetailPage>
   );
 }
 
@@ -1168,7 +1302,6 @@ function SkillDetailPage({
       canOpenInEditor={skill !== null && canOpenPreferredFileTarget}
       isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
-      onClose={onClose}
       onSave={async (content) => {
         if (!skill || deletableScope === null) return false;
         try {
@@ -1204,6 +1337,18 @@ function SkillDetailPage({
 
 export function SkillsLibrary() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    scope: routeScope,
+    providerId: routeProviderId,
+    skillName: routeSkillName,
+    registrySkillId: routeRegistrySkillId,
+  } = useParams<{
+    scope?: string;
+    providerId?: string;
+    skillName?: string;
+    registrySkillId?: string;
+  }>();
   const [query, setQuery] = useState("");
   const [registryScope, setRegistryScope] = useState<RegistryScope>("user");
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
@@ -1235,9 +1380,36 @@ export function SkillsLibrary() {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
-  const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
-  const [selectedRegistrySkill, setSelectedRegistrySkill] =
-    useState<RegistrySkill | null>(null);
+  const selectedSkill = useMemo(() => {
+    if (
+      !isSkillScope(routeScope) ||
+      !isSkillProviderRouteId(routeProviderId) ||
+      routeSkillName === undefined
+    ) {
+      return null;
+    }
+    const provider = routeProviderId === "bb" ? null : routeProviderId;
+    return (
+      skills.find(
+        (skill) =>
+          skill.scope === routeScope &&
+          skill.provider === provider &&
+          skill.name === routeSkillName,
+      ) ?? null
+    );
+  }, [routeProviderId, routeScope, routeSkillName, skills]);
+  const selectedRegistrySkill = useMemo(() => {
+    if (routeRegistrySkillId === undefined) {
+      return null;
+    }
+    return (
+      (registryQuery.data ?? []).find(
+        (skill) =>
+          skill.id === routeRegistrySkillId ||
+          skill.skillId === routeRegistrySkillId,
+      ) ?? null
+    );
+  }, [registryQuery.data, routeRegistrySkillId]);
   const installedProvidersForRegistrySkill = useCallback(
     (skill: RegistrySkill): ReadonlySet<RegistryProvider> => {
       const names = new Set([
@@ -1265,6 +1437,27 @@ export function SkillsLibrary() {
     },
     [registryInstall, registryScope],
   );
+  const openSkill = useCallback(
+    (skill: SkillSummary) => {
+      navigate(
+        getSkillDetailRoutePath({
+          scope: skill.scope,
+          providerId: skill.provider,
+          skillName: skill.name,
+        }),
+      );
+    },
+    [navigate],
+  );
+  const openRegistrySkill = useCallback(
+    (skill: RegistrySkill) => {
+      navigate(getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }));
+    },
+    [navigate],
+  );
+  const closeSkillDetail = useCallback(() => {
+    navigate(getSkillsRoutePath());
+  }, [navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -1284,13 +1477,15 @@ export function SkillsLibrary() {
     registryInstall.isPending && registryInstall.variables
       ? registryInstall.variables.skill.id
       : null;
+  const isRegistryBrowseRoute =
+    location.pathname === getRegistrySkillsRoutePath();
   return (
     <>
       {selectedSkill ? (
         <SkillDetailPage
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}
-          onClose={() => setSelectedSkill(null)}
+          onClose={closeSkillDetail}
         />
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
@@ -1301,9 +1496,26 @@ export function SkillsLibrary() {
           providerStatus={providerStatus}
           scope={registryScope}
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
-          onBack={() => setSelectedRegistrySkill(null)}
           onScopeChange={setRegistryScope}
           onInstall={installRegistry}
+        />
+      ) : isRegistryBrowseRoute ? (
+        <RegistrySkillsBrowsePage
+          skills={registryQuery.data ?? []}
+          isLoading={
+            registryQuery.isFetching && registryQuery.data === undefined
+          }
+          hasError={registryQuery.isError}
+          query={query}
+          scope={registryScope}
+          providerStatus={providerStatus}
+          pendingSkillId={pendingRegistrySkillId}
+          onRetry={() => void registryQuery.refetch()}
+          onQueryChange={setQuery}
+          onScopeChange={setRegistryScope}
+          onInstall={installRegistry}
+          onSelect={openRegistrySkill}
+          getInstalledProviders={installedProvidersForRegistrySkill}
         />
       ) : (
         <SkillsOverview
@@ -1319,9 +1531,17 @@ export function SkillsLibrary() {
           registryScope={registryScope}
           providerStatus={providerStatus}
           pendingRegistrySkillId={pendingRegistrySkillId}
+          registryBrowseAction={
+            <Button asChild variant="ghost" size="sm" className="h-6 px-2">
+              <Link to={getRegistrySkillsRoutePath()}>
+                Browse all
+                <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+              </Link>
+            </Button>
+          }
           onCreateSkill={handleCreateSkill}
-          onSelectSkill={setSelectedSkill}
-          onSelectRegistrySkill={setSelectedRegistrySkill}
+          onSelectSkill={openSkill}
+          onSelectRegistrySkill={openRegistrySkill}
           onQueryChange={setQuery}
           onRegistryScopeChange={setRegistryScope}
           onInstallRegistrySkill={installRegistry}

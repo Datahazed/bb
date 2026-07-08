@@ -1,14 +1,8 @@
-import { Button } from "@bb/shared-ui/button";
+import { ResourceCreateButton } from "@bb/shared-ui/resource-list";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
-import { CREATE_SKILL_PROMPT } from "@/components/promptbox/PromptBoxActionsMenu";
-import { CREATE_AUTOMATION_PROMPT } from "@/lib/automation-prompt";
+  CREATE_AUTOMATION_PROMPT,
+  CREATE_SKILL_PROMPT,
+} from "@/lib/automation-prompt";
 
 export type CreateViaPromptKind = "skill" | "plugin" | "automation";
 
@@ -186,50 +180,10 @@ export function CreateWithTemplatesButton({
 }: CreateWithTemplatesButtonProps) {
   const { examples } = getCreateExamples(kind);
   return (
-    <div className="flex shrink-0 items-stretch">
-      <Button
-        type="button"
-        size="sm"
-        className="rounded-r-none"
-        onClick={() => onCreate()}
-      >
-        <Icon name="Plus" className="size-4" />
-        {label}
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            aria-label={`${label} from a template`}
-            className="rounded-l-none border-l border-background/25 px-1.5"
-          >
-            <Icon name="ChevronDown" className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-72"
-          mobileTitle="Start from an example"
-        >
-          <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-            Start from an example
-          </DropdownMenuLabel>
-          {examples.map((example) => (
-            <DropdownMenuItem
-              key={example.label}
-              onSelect={() => onCreate(example.prompt)}
-            >
-              <div className="flex min-w-0 flex-col">
-                <span className="text-sm text-foreground">{example.label}</span>
-                <span className="text-xs text-muted-foreground">
-                  {example.description}
-                </span>
-              </div>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <ResourceCreateButton
+      label={label}
+      templates={examples}
+      onCreate={onCreate}
+    />
   );
 }
