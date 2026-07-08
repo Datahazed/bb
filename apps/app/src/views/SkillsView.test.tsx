@@ -49,7 +49,7 @@ describe("SkillsOverview", () => {
     });
     expect(markup).toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain("Provider");
+    expect(markup).toContain('aria-label="Agent"');
     expect(markup).toContain("Sort");
     expect(markup.indexOf("bb-skill")).toBeLessThan(
       markup.indexOf("claude-skill"),
@@ -74,7 +74,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Provider" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Agent" }));
 
     await waitFor(() => {
       expect(

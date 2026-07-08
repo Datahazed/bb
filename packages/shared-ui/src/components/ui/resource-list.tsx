@@ -109,6 +109,14 @@ export function ResourceToolbar({
   );
 }
 
+export function ResourceTabDescription({ children }: { children: ReactNode }) {
+  return (
+    <p className="max-w-2xl px-1 text-sm leading-5 text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 export interface ResourceOption {
   id: string;
   label: string;
@@ -130,18 +138,24 @@ export function ResourceOptionMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 px-2 text-muted-foreground"
-          aria-label={label}
-        >
-          <Icon name={icon} className="size-4" aria-hidden />
-          <span className="hidden sm:inline">{label}</span>
-        </Button>
-      </DropdownMenuTrigger>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 p-0 text-muted-foreground"
+                aria-label={label}
+              >
+                <Icon name={icon} className="size-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{label}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenuContent align="end" mobileTitle={label} className="min-w-40">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
           {label}
@@ -188,18 +202,24 @@ export function ResourceSortMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 px-2 text-muted-foreground"
-          aria-label="Sort"
-        >
-          <Icon name="ArrowUpDown" className="size-4" aria-hidden />
-          <span className="hidden sm:inline">Sort</span>
-        </Button>
-      </DropdownMenuTrigger>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 p-0 text-muted-foreground"
+                aria-label="Sort"
+              >
+                <Icon name="ArrowUpDown" className="size-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Sort</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenuContent align="end" mobileTitle="Sort" className="min-w-40">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
           Sort by
@@ -581,8 +601,8 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-      <div className="flex items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground">
+    <section className="inline-block max-w-full space-y-1 align-top text-popover-foreground">
+      <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {leading}
           <span className="truncate font-medium">{label}</span>
@@ -594,8 +614,8 @@ export function ResourceSourceShelf({
           <div className="shrink-0 text-xs text-muted-foreground">{action}</div>
         ) : null}
       </div>
-      <div className="overflow-x-auto p-1">
-        <div className="flex min-w-0 snap-x snap-mandatory gap-1">
+      <div className="overflow-x-auto">
+        <div className="flex min-w-max snap-x snap-mandatory gap-1">
           {children}
         </div>
       </div>
@@ -640,7 +660,7 @@ export function ResourceBrowseCard({
     <div
       role="button"
       tabIndex={0}
-      className="flex h-full min-h-40 w-full flex-col rounded-md border border-border bg-background p-3 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       onClick={(event) => {
         if (
           (event.target as HTMLElement).closest("a, button, [data-row-action]")

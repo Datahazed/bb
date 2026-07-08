@@ -30,6 +30,7 @@ import {
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceStatus,
+  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Icon } from "@bb/shared-ui/icon";
@@ -231,7 +232,7 @@ function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
 }
 
 function providerFilterLabel(provider: ResourceProviderFilter): string {
-  if (provider === "all") return "All providers";
+  if (provider === "all") return "All agents";
   if (provider === "bb") return "bb";
   return providerLabel(provider);
 }
@@ -480,7 +481,6 @@ function RegistrySkillsSource({
   skills,
   isLoading,
   hasError,
-  query,
   scope,
   providerStatus,
   pendingSkillId,
@@ -494,7 +494,6 @@ function RegistrySkillsSource({
   skills: readonly RegistrySkill[];
   isLoading: boolean;
   hasError: boolean;
-  query: string;
   scope: RegistryScope;
   providerStatus: Record<RegistryProvider, boolean>;
   pendingSkillId: string | null;
@@ -507,7 +506,10 @@ function RegistrySkillsSource({
     skill: RegistrySkill,
   ) => ReadonlySet<RegistryProvider>;
 }) {
-  const normalizedQuery = query.trim().toLowerCase();
+  const availableSkills = useMemo(
+    () => skills.filter((skill) => getInstalledProviders(skill).size === 0),
+    [getInstalledProviders, skills],
+  );
   if (hasError) {
     return (
       <EmptyStatePanel role="alert" className="py-6">
@@ -545,23 +547,16 @@ function RegistrySkillsSource({
     );
   }
 
-  if (skills.length === 0) {
-    if (normalizedQuery === "") return null;
-    return (
-      <EmptyStatePanel className="py-6">
-        {`No skills.sh resources match "${query}"`}
-      </EmptyStatePanel>
-    );
-  }
+  if (availableSkills.length === 0) return null;
 
   return (
     <ResourceSourceShelf
       label="Browse skills.sh"
-      count={skills.length}
+      count={availableSkills.length}
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       action={browseAction}
     >
-      {skills.map((skill) => (
+      {availableSkills.map((skill) => (
         <ResourceSourceItem key={skill.id}>
           <RegistrySkillSourceItem
             skill={skill}
@@ -809,6 +804,25 @@ export function SkillsOverview({
   );
   return (
     <div className="space-y-4">
+      <ResourceTabDescription>
+        Skills are reusable instructions available to agents in bb. Browse
+        installable skills first, then search and manage the skills already
+        available in this workspace.
+      </ResourceTabDescription>
+      <RegistrySkillsSource
+        skills={registrySkills}
+        isLoading={registryIsLoading}
+        hasError={registryHasError}
+        scope={registryScope}
+        providerStatus={providerStatus}
+        pendingSkillId={pendingRegistrySkillId}
+        browseAction={registryBrowseAction}
+        onRetry={onRetryRegistry}
+        onScopeChange={onRegistryScopeChange}
+        onInstall={onInstallRegistrySkill}
+        onSelect={onSelectRegistrySkill}
+        getInstalledProviders={getInstalledProvidersForRegistrySkill}
+      />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
@@ -816,7 +830,7 @@ export function SkillsOverview({
         controls={
           <>
             <ResourceOptionMenu
-              label="Provider"
+              label="Agent"
               icon="Layers"
               value={providerFilter}
               options={providerOptions}
@@ -830,7 +844,7 @@ export function SkillsOverview({
               options={[
                 {
                   id: "provider",
-                  label: "Provider",
+                  label: "Agent",
                   disabled: providerBucketCount <= 1,
                 },
                 { id: "alpha", label: "Alphabetical" },
@@ -846,21 +860,6 @@ export function SkillsOverview({
             onCreate={onCreateSkill}
           />
         }
-      />
-      <RegistrySkillsSource
-        skills={registrySkills}
-        isLoading={registryIsLoading}
-        hasError={registryHasError}
-        query={query}
-        scope={registryScope}
-        providerStatus={providerStatus}
-        pendingSkillId={pendingRegistrySkillId}
-        browseAction={registryBrowseAction}
-        onRetry={onRetryRegistry}
-        onScopeChange={onRegistryScopeChange}
-        onInstall={onInstallRegistrySkill}
-        onSelect={onSelectRegistrySkill}
-        getInstalledProviders={getInstalledProvidersForRegistrySkill}
       />
       {hasError ? (
         // Failure is direction, not a dead end: say what happened plainly and
@@ -899,7 +898,7 @@ export function SkillsOverview({
         normalizedQuery === "" && providerFilter === "all" ? null : (
           <EmptyStatePanel className="py-6">
             {normalizedQuery === ""
-              ? "No skills match this provider."
+              ? "No skills match this agent."
               : `No skills match "${query}"`}
           </EmptyStatePanel>
         )

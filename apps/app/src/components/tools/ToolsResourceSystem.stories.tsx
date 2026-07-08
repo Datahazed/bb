@@ -18,6 +18,7 @@ import {
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceState,
+  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -94,7 +95,7 @@ const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
   "claude-code",
 ];
 const PROVIDER_FILTER_LABELS: Record<ProviderFilterId, string> = {
-  all: "All providers",
+  all: "All agents",
   bb: "bb",
   codex: "Codex",
   "claude-code": "Claude Code",
@@ -142,7 +143,7 @@ const REGISTRY_SOURCE_ROWS: readonly ResourceListRowFixture[] = [
     id: "moss-notes",
     title: "moss-skills/moss-notes",
     description: "3,412 installs · writing · Codex, Claude Code",
-    state: <ResourceState tone="success">Installed</ResourceState>,
+    state: <ResourceState tone="muted">Available</ResourceState>,
   },
   {
     id: "review-loop",
@@ -334,7 +335,7 @@ function StoryListControls({
   return (
     <>
       <ResourceOptionMenu
-        label="Provider"
+        label="Agent"
         icon="Layers"
         value={provider}
         options={PROVIDER_FILTERS.map((id) => ({
@@ -350,7 +351,7 @@ function StoryListControls({
         options={[
           {
             id: "provider",
-            label: "Provider",
+            label: "Agent",
             disabled: providerSortDisabled,
           },
           { id: "alpha", label: "Alphabetical" },
@@ -525,26 +526,11 @@ function ResourceRowsList({
   );
 }
 
-function RegistryBrowseSource({ query }: { query: string }) {
-  const normalizedQuery = query.trim().toLowerCase();
-  const rows = REGISTRY_SOURCE_ROWS.filter((row) =>
-    [row.title, row.description]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery),
-  );
-  if (rows.length === 0) {
-    if (normalizedQuery === "") return null;
-    return (
-      <p className="rounded-md border border-border bg-popover px-3 py-4 text-sm text-muted-foreground">
-        No skills.sh resources match this search.
-      </p>
-    );
-  }
+function RegistryBrowseSource() {
   return (
     <ResourceSourceShelf
       label="Browse skills.sh"
-      count={rows.length}
+      count={REGISTRY_SOURCE_ROWS.length}
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       action={
         <Button
@@ -558,7 +544,7 @@ function RegistryBrowseSource({ query }: { query: string }) {
         </Button>
       }
     >
-      {rows.map((row) => (
+      {REGISTRY_SOURCE_ROWS.map((row) => (
         <ResourceSourceItem key={row.id}>
           <ResourceBrowseCard
             leading={
@@ -577,7 +563,7 @@ function RegistryBrowseSource({ query }: { query: string }) {
             action={
               <>
                 <Button type="button" variant="outline" size="sm">
-                  {row.id === "moss-notes" ? "Add provider" : "Install"}
+                  Install
                 </Button>
                 <ResourceOverflowMenu
                   label={`${row.title} install options`}
@@ -754,6 +740,11 @@ function SkillsTab() {
   }
   return (
     <div className="space-y-3">
+      <ResourceTabDescription>
+        Skills are reusable instructions available to agents in bb. Browse
+        installable skills first, then search and manage installed skills.
+      </ResourceTabDescription>
+      <RegistryBrowseSource />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
@@ -776,7 +767,6 @@ function SkillsTab() {
           />
         }
       />
-      <RegistryBrowseSource query={query} />
       <ResourceRowsList
         sections={SKILL_SECTIONS}
         query={query}
@@ -806,6 +796,12 @@ function PluginsTab() {
   }
   return (
     <div className="space-y-3">
+      <ResourceTabDescription>
+        Plugins add app surfaces, commands, background services, and
+        provider-specific capabilities. Browse templates first, then search and
+        manage installed plugins.
+      </ResourceTabDescription>
+      <PluginBrowseCards />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search plugins"
@@ -828,7 +824,6 @@ function PluginsTab() {
           />
         }
       />
-      <PluginBrowseCards />
       <ResourceRowsList
         sections={PLUGIN_SECTIONS}
         query={query}
@@ -860,6 +855,11 @@ function AutomationsTab() {
   }
   return (
     <div className="space-y-3">
+      <ResourceTabDescription>
+        Automations run scheduled bb work across projects and folders. Browse
+        starter automations first, then search and manage installed automations.
+      </ResourceTabDescription>
+      <AutomationBrowseCards />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search automations"
@@ -901,7 +901,6 @@ function AutomationsTab() {
           />
         }
       />
-      <AutomationBrowseCards />
       <AutomationsList
         query={query}
         location={location}
@@ -1274,7 +1273,7 @@ function SkillsSourceAboveInstalledPreview() {
           />
         }
       />
-      <RegistryBrowseSource query={query} />
+      <RegistryBrowseSource />
       <ResourceRowsList
         sections={SKILL_SECTIONS}
         query={query}
@@ -1295,7 +1294,7 @@ export function SkillsShSourceSystem() {
         hint="browse source for installable skills; not a provider section"
       >
         <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource query="" />
+          <RegistryBrowseSource />
         </PreviewStage>
       </StoryRow>
       <StoryRow
@@ -1311,7 +1310,7 @@ export function SkillsShSourceSystem() {
         hint="no source results for the active query"
       >
         <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource query="database" />
+          <RegistryBrowseSource />
         </PreviewStage>
       </StoryRow>
       <StoryRow
@@ -1426,7 +1425,7 @@ export function OverviewPageSystem() {
         hint="discovery source for installable skills, separate from installed provider sections"
       >
         <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource query="" />
+          <RegistryBrowseSource />
         </PreviewStage>
       </StoryRow>
       <StoryRow

@@ -50,6 +50,7 @@ import {
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceStatus,
+  ResourceTabDescription,
   ResourceToolbar,
   type ResourceStatusTone,
 } from "@bb/shared-ui/resource-list";
@@ -960,7 +961,16 @@ function OverviewView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      <ResourceTabDescription>
+        Automations run scheduled bb work across projects and folders. Browse
+        starter automations first, then search and manage the automations
+        already installed in this workspace.
+      </ResourceTabDescription>
+      <AutomationBrowseShelf
+        onCreate={createViaChat}
+        onBrowseAll={onBrowseAll}
+      />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search automations"
@@ -998,10 +1008,6 @@ function OverviewView({
             onCreate={createViaChat}
           />
         }
-      />
-      <AutomationBrowseShelf
-        onCreate={createViaChat}
-        onBrowseAll={onBrowseAll}
       />
       {body}
       <DeleteAutomationDialog

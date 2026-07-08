@@ -24,6 +24,7 @@ import {
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceStatus,
+  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -273,7 +274,7 @@ const TOOL_PROVIDER_FILTERS: readonly ToolProviderFilter[] = [
 ];
 
 function toolProviderLabel(provider: ToolProviderFilter): string {
-  if (provider === "all") return "All providers";
+  if (provider === "all") return "All agents";
   if (provider === "bb") return "bb";
   return PROVIDER_LABELS[provider];
 }
@@ -973,7 +974,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         controls={
           <>
             <ResourceOptionMenu
-              label="Provider"
+              label="Agent"
               icon="Layers"
               value={providerFilter}
               options={providerOptions}
@@ -987,7 +988,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
               options={[
                 {
                   id: "provider",
-                  label: "Provider",
+                  label: "Agent",
                   disabled: providerBucketCount <= 1,
                 },
                 { id: "alpha", label: "Alphabetical" },
@@ -1004,6 +1005,18 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
           />
         }
       />
+    ) : null;
+  const overviewHeader =
+    pluginId === undefined && !isBrowsePage ? (
+      <>
+        <ResourceTabDescription>
+          Plugins add bb surfaces, commands, background services, and
+          provider-specific capabilities. Browse installable templates first,
+          then search and manage installed plugins.
+        </ResourceTabDescription>
+        <PluginBrowseShelf onCreate={handleCreatePlugin} />
+        {toolbar}
+      </>
     ) : null;
 
   return (
@@ -1030,39 +1043,35 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
           )
         ) : listQuery.isError ? (
           <>
-            {toolbar}
+            {overviewHeader}
             <EmptyStatePanel role="alert" className="py-6">
               Couldn't load plugins.
             </EmptyStatePanel>
           </>
         ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
           <>
-            {toolbar}
-            <PluginBrowseShelf onCreate={handleCreatePlugin} />
+            {overviewHeader}
             <PluginsLoadingRows />
           </>
         ) : !hasPluginRows ? (
           <>
-            {toolbar}
-            <PluginBrowseShelf onCreate={handleCreatePlugin} />
+            {overviewHeader}
             <EmptyStatePanel className="py-6">
               No plugins installed.
             </EmptyStatePanel>
           </>
         ) : visiblePluginRows.length === 0 ? (
           <>
-            {toolbar}
-            <PluginBrowseShelf onCreate={handleCreatePlugin} />
+            {overviewHeader}
             <EmptyStatePanel className="py-6">
               {normalizedQuery === ""
-                ? "No plugins match this provider."
+                ? "No plugins match this agent."
                 : `No plugins match "${query}"`}
             </EmptyStatePanel>
           </>
         ) : (
           <>
-            {toolbar}
-            <PluginBrowseShelf onCreate={handleCreatePlugin} />
+            {overviewHeader}
             <div className="space-y-0.5">
               {visiblePluginRows.map((row) =>
                 row.kind === "provider" ? (
