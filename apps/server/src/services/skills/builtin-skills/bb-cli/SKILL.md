@@ -35,6 +35,12 @@ message agents, or inspect projects, providers, and environments.
   server does not read the file.
 - Use `bb-app client ssh-target list --json` to inspect mappings.
 
+## App Settings
+
+- Settings → General holds server-backed app-wide preferences, such as the
+  macOS-only "Caffeinate" toggle. For details, read
+  `references/app-settings.md` (in this skill's directory).
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject

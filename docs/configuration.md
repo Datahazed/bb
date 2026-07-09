@@ -87,6 +87,13 @@ selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
 server-side transcription model.
 
+The Caffeinate toggle in Settings → General is server-backed and macOS-only. It
+asks the primary host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`
+while enabled, preventing system idle sleep while bb is running; turning it off
+stops that process. It only blocks idle sleep: closing a laptop lid or choosing
+Sleep manually still sleeps the Mac. The toggle is hidden unless the connected
+primary host daemon reports macOS.
+
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
