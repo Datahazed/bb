@@ -87,7 +87,13 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     latestAttentionAt: 100,
     createdAt: 0,
     updatedAt: 100,
-    activity: { activeWorkflowCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentName: null,
@@ -103,6 +109,7 @@ function renderProjectRow(
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
+  isCollapsed = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -111,7 +118,7 @@ function renderProjectRow(
         project={makeProject()}
         threadListState={threadListState}
         isActive={isActive}
-        isCollapsed={false}
+        isCollapsed={isCollapsed}
         compareThreads={() => 0}
         collapsedThreadIds={new Set()}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -123,6 +130,17 @@ function renderProjectRow(
     </MemoryRouter>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
+}
+
+function expectRightAlignedRollupStatus(label: string) {
+  const icon = screen
+    .getAllByLabelText(label)
+    .find((element) => element.closest(".bb-sidebar-hover-actions-fade"));
+  expect(icon).not.toBeUndefined();
+  const overlay = icon?.closest(".bb-sidebar-hover-actions-fade");
+  expect(overlay).not.toBeNull();
+  expect(overlay?.className).toContain("justify-end");
+  return overlay;
 }
 
 describe("ProjectRow interactions", () => {
@@ -179,28 +197,25 @@ describe("ProjectRow interactions", () => {
   });
 
   it("keeps worktree group row static and scopes collapse to the chevron", () => {
-    const { onToggleEnvironmentCollapsed } = renderProjectRow(
-      vi.fn(),
-      {
-        status: "ready",
-        threads: [
-          makeThread({
-            id: "thr_worktree_a",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentWorkspaceDisplayKind: "managed-worktree",
-          }),
-          makeThread({
-            id: "thr_worktree_b",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentWorkspaceDisplayKind: "managed-worktree",
-          }),
-        ],
-      },
-    );
+    const { onToggleEnvironmentCollapsed } = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [
+        makeThread({
+          id: "thr_worktree_a",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/menu-close",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+        makeThread({
+          id: "thr_worktree_b",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentBranchName: "feat/menu-close",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+      ],
+    });
     const worktreeHeader = screen
       .getByText("Feature workspace")
       .closest(".bb-sidebar-hover-actions-row");
@@ -219,7 +234,7 @@ describe("ProjectRow interactions", () => {
     expect(onToggleEnvironmentCollapsed).toHaveBeenCalledWith("env_test");
   });
 
-  it("shows workflow rollup instead of the generic spinner for collapsed worktree workflow activity", () => {
+  it("shows foreground agent rollup before workflow activity", () => {
     renderProjectRow(
       vi.fn(),
       {
@@ -232,7 +247,13 @@ describe("ProjectRow interactions", () => {
             environmentName: "Feature workspace",
             environmentBranchName: "feat/menu-close",
             environmentWorkspaceDisplayKind: "managed-worktree",
-            activity: { activeWorkflowCount: 1 },
+            activity: {
+              activeWorkflowCount: 1,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 0,
+              activeGoalCount: 0,
+            },
             runtime: {
               displayStatus: "active",
               hostReconnectGraceExpiresAt: null,
@@ -256,8 +277,46 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expectRightAlignedRollupStatus("Agent working");
+  });
+
+  it("shows right-aligned collapsed project activity before hover actions", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            status: "active",
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Expand Test project" }),
+    ).not.toBeNull();
+    const overlay = expectRightAlignedRollupStatus("Agent working");
+    expect(overlay?.className).toContain("max-md:pointer-coarse:hidden");
+    expect(
+      screen
+        .getAllByLabelText("Agent working")
+        .some((element) =>
+          element
+            .closest("span")
+            ?.className.includes("max-md:pointer-coarse:inline-flex"),
+        ),
+    ).toBe(true);
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

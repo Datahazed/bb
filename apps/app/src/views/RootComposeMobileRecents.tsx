@@ -5,6 +5,10 @@ import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@bb/shared-ui/icon";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -84,20 +88,54 @@ function getMobileRecentThreads({
 function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
   const isBusy = isBusyThread(thread);
   const isRuntimeBusy = isRuntimeBusyThread(thread);
+  const isUnreadDone = isUnreadDoneThread(thread);
+  const isUnreadError = isUnreadDone && thread.status === "error";
   const isWorkflowActive =
     !isRuntimeBusy &&
     hasActiveWorkflowActivity(thread) &&
+    !thread.hasPendingInteraction;
+  const isBackgroundAgentActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    hasActiveBackgroundAgentActivity(thread) &&
+    !thread.hasPendingInteraction;
+  const isBackgroundCommandActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    !isBackgroundAgentActive &&
+    hasActiveBackgroundCommandActivity(thread) &&
+    !thread.hasPendingInteraction;
+  const isPlanModeActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    !isBackgroundAgentActive &&
+    !isBackgroundCommandActive &&
+    hasActivePlanModeActivity(thread) &&
+    !thread.hasPendingInteraction;
+  const isGoalActive =
+    !isRuntimeBusy &&
+    !isWorkflowActive &&
+    !isBackgroundAgentActive &&
+    !isBackgroundCommandActive &&
+    !isPlanModeActive &&
+    hasActiveGoalActivity(thread) &&
     !thread.hasPendingInteraction;
 
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={thread.hasPendingInteraction}
+      isBackgroundAgentActive={isBackgroundAgentActive}
+      isBackgroundCommandActive={isBackgroundCommandActive}
+      isForegroundAgentWorking={isRuntimeBusy && !thread.hasPendingInteraction}
+      isGoalActive={isGoalActive}
+      isPlanModeActive={isPlanModeActive}
       isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
       isWorkflowActive={isWorkflowActive}
       showUnreadBadge={
-        !thread.hasPendingInteraction && !isBusy && isUnreadDoneThread(thread)
+        isUnreadError ||
+        (!thread.hasPendingInteraction && !isBusy && isUnreadDone)
       }
-      unreadBadgeTone={thread.status === "error" ? "error" : "default"}
+      unreadBadgeTone={isUnreadError ? "error" : "default"}
     />
   );
 }

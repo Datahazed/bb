@@ -71,7 +71,13 @@ function makeThreadListEntry(
 ): ThreadListEntry {
   return {
     ...makeThreadWithRuntime(thread),
-    activity: { activeWorkflowCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
     pinSortKey: null,
     hasPendingInteraction: false,
     environmentHostId: "host-1",
@@ -225,9 +231,9 @@ describe("thread state mutations", () => {
 
     await waitFor(() => {
       expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-        ?.folderId,
-    ).toBe("fld_personal");
+        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+          ?.folderId,
+      ).toBe("fld_personal");
     });
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.folderId,

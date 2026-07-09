@@ -45,7 +45,13 @@ function createThreadListEntry({
   title: string;
 }): ThreadListEntry {
   return {
-    activity: { activeWorkflowCount: 0 },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
     archivedAt: null,
     childOrigin: null,
     createdAt: 1000,
@@ -334,12 +340,15 @@ describe("sidebar thread search navigation items", () => {
     };
 
     expect(
-      haveSameSidebarThreadSearchNavigationItems([baseItem], [
-        {
-          ...baseItem,
-          messageSeq: 7,
-        },
-      ]),
+      haveSameSidebarThreadSearchNavigationItems(
+        [baseItem],
+        [
+          {
+            ...baseItem,
+            messageSeq: 7,
+          },
+        ],
+      ),
     ).toBe(false);
   });
 });

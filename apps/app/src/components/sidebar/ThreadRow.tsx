@@ -29,6 +29,10 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -160,6 +164,11 @@ function renderThreadRowContainer({
 
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
+  isBackgroundAgentActive: boolean;
+  isBackgroundCommandActive: boolean;
+  isForegroundAgentWorking: boolean;
+  isGoalActive: boolean;
+  isPlanModeActive: boolean;
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
@@ -172,6 +181,11 @@ interface ThreadUnreadBadgeLabelArgs {
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -201,6 +215,20 @@ export function ThreadStatusGlyph({
     );
   }
 
+  if (isForegroundAgentWorking) {
+    return (
+      <Icon
+        name="Loading"
+        className={cn(
+          "animate-spin",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Agent working"
+      />
+    );
+  }
+
   if (isWorkflowActive) {
     return (
       <Icon
@@ -211,6 +239,62 @@ export function ThreadStatusGlyph({
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
         aria-label="Workflow running"
+      />
+    );
+  }
+
+  if (isBackgroundAgentActive) {
+    return (
+      <Icon
+        name="UserRoundPlus"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background agent running"
+      />
+    );
+  }
+
+  if (isBackgroundCommandActive) {
+    return (
+      <Icon
+        name="Terminal"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background command running"
+      />
+    );
+  }
+
+  if (isPlanModeActive) {
+    return (
+      <Icon
+        name="ListTodo"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Plan mode active"
+      />
+    );
+  }
+
+  if (isGoalActive) {
+    return (
+      <Icon
+        name="Target"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Goal active"
       />
     );
   }
@@ -249,13 +333,26 @@ type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
   hasPendingInteraction,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
-    hasPendingInteraction || isBusy || isWorkflowActive || showUnreadBadge;
+    hasPendingInteraction ||
+    isBackgroundAgentActive ||
+    isBackgroundCommandActive ||
+    isForegroundAgentWorking ||
+    isGoalActive ||
+    isPlanModeActive ||
+    isBusy ||
+    isWorkflowActive ||
+    showUnreadBadge;
 
   if (!showStatusGlyph) {
     return null;
@@ -270,6 +367,11 @@ function ThreadTrailingIndicator({
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
+        isBackgroundAgentActive={isBackgroundAgentActive}
+        isBackgroundCommandActive={isBackgroundCommandActive}
+        isForegroundAgentWorking={isForegroundAgentWorking}
+        isGoalActive={isGoalActive}
+        isPlanModeActive={isPlanModeActive}
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
@@ -300,11 +402,23 @@ function ThreadRowComponent({
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive =
+    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive =
+    !hasPendingInteraction && hasActivePlanModeActivity(thread);
+  const threadGoalActive =
+    !hasPendingInteraction && hasActiveGoalActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
+  const threadUnreadDone = isUnreadDoneThread(thread);
+  const threadUnreadError = threadUnreadDone && thread.status === "error";
   const showUnreadBadge =
-    !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
-  const unreadBadgeTone: SidebarUnreadDotTone =
-    showUnreadBadge && thread.status === "error" ? "error" : "default";
+    threadUnreadError ||
+    (!hasPendingInteraction && !threadIsBusy && threadUnreadDone);
+  const unreadBadgeTone: SidebarUnreadDotTone = threadUnreadError
+    ? "error"
+    : "default";
   const threadTitle = getThreadDisplayTitle(thread);
   // Inside a folder the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
@@ -329,7 +443,21 @@ function ThreadRowComponent({
   const trailingIsWorkflowActive = hasHiddenChildren
     ? threadWorkflowActive || childActivity.workflow
     : threadWorkflowActive;
-  const trailingIsBusy = trailingRuntimeBusy;
+  const trailingBackgroundAgentActive = hasHiddenChildren
+    ? threadBackgroundAgentActive || childActivity.backgroundAgent
+    : threadBackgroundAgentActive;
+  const trailingBackgroundCommandActive = hasHiddenChildren
+    ? threadBackgroundCommandActive || childActivity.backgroundCommand
+    : threadBackgroundCommandActive;
+  const trailingPlanModeActive = hasHiddenChildren
+    ? threadPlanModeActive || childActivity.planMode
+    : threadPlanModeActive;
+  const trailingGoalActive = hasHiddenChildren
+    ? threadGoalActive || childActivity.goal
+    : threadGoalActive;
+  const trailingIsBusy = hasHiddenChildren
+    ? threadIsBusy || childActivity.working
+    : threadIsBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
@@ -416,6 +544,11 @@ function ThreadRowComponent({
           >
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
+              isBackgroundAgentActive={trailingBackgroundAgentActive}
+              isBackgroundCommandActive={trailingBackgroundCommandActive}
+              isForegroundAgentWorking={trailingRuntimeBusy}
+              isGoalActive={trailingGoalActive}
+              isPlanModeActive={trailingPlanModeActive}
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}

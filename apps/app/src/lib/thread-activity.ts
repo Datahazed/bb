@@ -21,21 +21,54 @@ export function hasActiveWorkflowActivity(
   return thread.activity.activeWorkflowCount > 0;
 }
 
+export function hasActiveBackgroundAgentActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeBackgroundAgentCount > 0;
+}
+
+export function hasActiveBackgroundCommandActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeBackgroundCommandCount > 0;
+}
+
+export function hasActivePlanModeActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activePlanModeCount > 0;
+}
+
+export function hasActiveGoalActivity(
+  thread: ThreadActivityStateShape,
+): boolean {
+  return thread.activity.activeGoalCount > 0;
+}
+
 export function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
-  return isRuntimeBusyThread(thread) || hasActiveWorkflowActivity(thread);
+  return (
+    isRuntimeBusyThread(thread) ||
+    hasActiveWorkflowActivity(thread) ||
+    hasActiveBackgroundAgentActivity(thread) ||
+    hasActiveBackgroundCommandActivity(thread) ||
+    hasActivePlanModeActivity(thread) ||
+    hasActiveGoalActivity(thread)
+  );
 }
 
 /**
  * The signals a collapsed parent row surfaces on behalf of its hidden children.
  * A collapsed row renders these through its single trailing status glyph, using
  * the same priority as a leaf row: failed unread work is loudest, then pending
- * user input, then workflow work, then unread success, then generic runtime
- * work. Expanded rows show their own status, since the children are then
- * visible with their own glyphs. Workflow work is tracked separately from
- * runtime work so the sidebar can use the same workflow-specific signal as the
- * prompt banner instead of collapsing it into a generic spinner.
+ * user input, then foreground runtime work, then workflow work, then background
+ * agent work, then background commands, then plan/goal banner modes, then
+ * unread success, then generic runtime work. Expanded rows show their own status,
+ * since the children are then visible with their own glyphs. Background
+ * agent, command, and workflow work are tracked separately from runtime work so
+ * the sidebar can use task-specific signals instead of collapsing them into a
+ * generic spinner.
  */
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
@@ -46,6 +79,14 @@ export interface CollapsedChildActivity {
   runtimeWorking: boolean;
   /** At least one idle child has a provider workflow still running. */
   workflow: boolean;
+  /** At least one child has a background agent or subagent still running. */
+  backgroundAgent: boolean;
+  /** At least one child has a background shell command still running. */
+  backgroundCommand: boolean;
+  /** At least one child is showing the plan-mode banner above the composer. */
+  planMode: boolean;
+  /** At least one child is showing the active-goal banner above the composer. */
+  goal: boolean;
   /**
    * At least one finished child is unread. Only top-level worktree children
    * qualify — `isUnreadDoneThread` is false for parented threads, so manager
@@ -61,6 +102,10 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   working: false,
   runtimeWorking: false,
   workflow: false,
+  backgroundAgent: false,
+  backgroundCommand: false,
+  planMode: false,
+  goal: false,
   unread: false,
   unreadError: false,
 };
@@ -77,9 +122,19 @@ export function getCollapsedChildActivity(
   let working = false;
   let runtimeWorking = false;
   let workflow = false;
+  let backgroundAgent = false;
+  let backgroundCommand = false;
+  let planMode = false;
+  let goal = false;
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
+    const childUnreadDone = isUnreadDoneThread(thread);
+    if (childUnreadDone && thread.status === "error") {
+      unread = true;
+      unreadError = true;
+    }
+
     if (thread.hasPendingInteraction) {
       // Mirror leaf rows: a blocked thread reads as pending, not also working.
       pending = true;
@@ -87,6 +142,11 @@ export function getCollapsedChildActivity(
     }
     const childRuntimeWorking = isRuntimeBusyThread(thread);
     const childWorkflowActive = hasActiveWorkflowActivity(thread);
+    const childBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
+    const childBackgroundCommandActive =
+      hasActiveBackgroundCommandActivity(thread);
+    const childPlanModeActive = hasActivePlanModeActivity(thread);
+    const childGoalActive = hasActiveGoalActivity(thread);
     if (childRuntimeWorking) {
       runtimeWorking = true;
       working = true;
@@ -95,15 +155,32 @@ export function getCollapsedChildActivity(
       workflow = true;
       working = true;
     }
+    if (childBackgroundAgentActive) {
+      backgroundAgent = true;
+      working = true;
+    }
+    if (childBackgroundCommandActive) {
+      backgroundCommand = true;
+      working = true;
+    }
+    if (childPlanModeActive) {
+      planMode = true;
+      working = true;
+    }
+    if (childGoalActive) {
+      goal = true;
+      working = true;
+    }
     if (
       !childRuntimeWorking &&
       !childWorkflowActive &&
-      isUnreadDoneThread(thread)
+      !childBackgroundAgentActive &&
+      !childBackgroundCommandActive &&
+      !childPlanModeActive &&
+      !childGoalActive &&
+      childUnreadDone
     ) {
       unread = true;
-      if (thread.status === "error") {
-        unreadError = true;
-      }
     }
   }
   return {
@@ -111,6 +188,10 @@ export function getCollapsedChildActivity(
     working,
     runtimeWorking,
     workflow,
+    backgroundAgent,
+    backgroundCommand,
+    planMode,
+    goal,
     unread,
     unreadError,
   };
