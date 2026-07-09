@@ -12,16 +12,13 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
-  ResourceOptionMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceState,
-  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -100,19 +97,6 @@ const RESOURCE_SURFACES: readonly ResourceSurface[] = [
   { id: "plugins", label: "Plugins", icon: "ElectricPlugs" },
   { id: "automations", label: "Automations", icon: "TimeSchedule" },
 ];
-const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
-  "all",
-  "bb",
-  "codex",
-  "claude-code",
-];
-const PROVIDER_FILTER_LABELS: Record<ProviderFilterId, string> = {
-  all: "All agents",
-  bb: "bb",
-  codex: "Codex",
-  "claude-code": "Claude Code",
-};
-
 const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
   {
     key: "bb",
@@ -314,64 +298,6 @@ function AutomationRowActions() {
         icon="Trash2"
         tone="destructive"
         onClick={NOOP}
-      />
-    </>
-  );
-}
-
-function providerBucketsForSections(
-  sections: readonly ResourceSectionFixture[],
-): ReadonlySet<ProviderId> {
-  const providers = new Set<ProviderId>();
-  for (const section of sections) {
-    for (const row of section.rows) {
-      providers.add(row.provider ?? section.provider ?? "bb");
-    }
-  }
-  return providers;
-}
-
-function StoryListControls({
-  provider,
-  sort,
-  direction,
-  availableProviders,
-  onProviderChange,
-  onSortChange,
-}: {
-  provider: ProviderFilterId;
-  sort: "provider" | "alpha";
-  direction: "asc" | "desc";
-  availableProviders: ReadonlySet<ProviderId>;
-  onProviderChange: (provider: ProviderFilterId) => void;
-  onSortChange: (sort: "provider" | "alpha") => void;
-}) {
-  const providerSortDisabled = availableProviders.size <= 1;
-  return (
-    <>
-      <ResourceOptionMenu
-        label="Agent"
-        icon="Layers"
-        value={provider}
-        options={PROVIDER_FILTERS.map((id) => ({
-          id,
-          label: PROVIDER_FILTER_LABELS[id],
-          disabled: id !== "all" && !availableProviders.has(id),
-        }))}
-        onChange={(value) => onProviderChange(value as ProviderFilterId)}
-      />
-      <ResourceSortMenu
-        value={sort}
-        direction={direction}
-        options={[
-          {
-            id: "provider",
-            label: "Agent",
-            disabled: providerSortDisabled,
-          },
-          { id: "alpha", label: "Alphabetical" },
-        ]}
-        onChange={(value) => onSortChange(value as "provider" | "alpha")}
       />
     </>
   );
@@ -617,64 +543,6 @@ function RegistryBrowseSourceEmpty() {
   );
 }
 
-function TemplateBrowseCards({
-  label,
-  icon,
-}: {
-  label: string;
-  icon: IconName;
-}) {
-  return (
-    <ResourceSourceShelf
-      label={label}
-      count={CREATE_TEMPLATES.length}
-      leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
-      action={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-        >
-          See all
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-        </Button>
-      }
-    >
-      {CREATE_TEMPLATES.map((template) => (
-        <ResourceSourceItem key={`${label}-${template.label}`}>
-          <ResourceBrowseCard
-            leading={
-              <Icon
-                name={icon}
-                className="size-5 text-muted-foreground"
-                aria-hidden
-              />
-            }
-            title={template.label}
-            meta="Starter template"
-            description={template.description}
-            action={
-              <Button type="button" variant="outline" size="sm">
-                Use template
-              </Button>
-            }
-            onOpen={NOOP}
-          />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
-  );
-}
-
-function PluginBrowseCards() {
-  return <TemplateBrowseCards label="Browse plugins" icon="ElectricPlugs" />;
-}
-
-function AutomationBrowseCards() {
-  return <TemplateBrowseCards label="Browse automations" icon="TimeSchedule" />;
-}
-
 function AutomationsList({
   query,
   location,
@@ -734,204 +602,6 @@ function AutomationsList({
       ))}
     </ResourceListPanel>
   );
-}
-
-function SkillsSurface() {
-  const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderFilterId>("all");
-  const [sort, setSort] = useState<"provider" | "alpha">("alpha");
-  const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const providerBuckets = providerBucketsForSections(SKILL_SECTIONS);
-  function updateSort(nextSort: "provider" | "alpha") {
-    if (nextSort === "provider" && providerBuckets.size <= 1) return;
-    if (nextSort === sort) {
-      setDirection((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(nextSort);
-      setDirection("asc");
-    }
-  }
-  return (
-    <div className="space-y-3">
-      <ResourceTabDescription>
-        Skills are reusable instructions available to agents in bb. Browse
-        installable skills first, then search and manage installed skills.
-      </ResourceTabDescription>
-      <RegistryBrowseSource />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search skills"
-        onSearchChange={setQuery}
-        controls={
-          <StoryListControls
-            provider={provider}
-            sort={sort}
-            direction={direction}
-            availableProviders={providerBuckets}
-            onProviderChange={setProvider}
-            onSortChange={updateSort}
-          />
-        }
-        action={
-          <ResourceCreateButton
-            label="New bb skill"
-            templates={CREATE_TEMPLATES}
-            onCreate={NOOP}
-          />
-        }
-      />
-      <ResourceRowsList
-        sections={SKILL_SECTIONS}
-        query={query}
-        providerFilter={provider}
-        sortMode={sort}
-        sortDirection={direction}
-        fallbackIcon="Zap"
-      />
-    </div>
-  );
-}
-
-function PluginsSurface() {
-  const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderFilterId>("all");
-  const [sort, setSort] = useState<"provider" | "alpha">("alpha");
-  const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const providerBuckets = providerBucketsForSections(PLUGIN_SECTIONS);
-  function updateSort(nextSort: "provider" | "alpha") {
-    if (nextSort === "provider" && providerBuckets.size <= 1) return;
-    if (nextSort === sort) {
-      setDirection((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(nextSort);
-      setDirection("asc");
-    }
-  }
-  return (
-    <div className="space-y-3">
-      <ResourceTabDescription>
-        Plugins add app surfaces, commands, background services, and
-        provider-specific capabilities. Browse templates first, then search and
-        manage installed plugins.
-      </ResourceTabDescription>
-      <PluginBrowseCards />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search plugins"
-        onSearchChange={setQuery}
-        controls={
-          <StoryListControls
-            provider={provider}
-            sort={sort}
-            direction={direction}
-            availableProviders={providerBuckets}
-            onProviderChange={setProvider}
-            onSortChange={updateSort}
-          />
-        }
-        action={
-          <ResourceCreateButton
-            label="New plugin"
-            templates={CREATE_TEMPLATES}
-            onCreate={NOOP}
-          />
-        }
-      />
-      <ResourceRowsList
-        sections={PLUGIN_SECTIONS}
-        query={query}
-        providerFilter={provider}
-        sortMode={sort}
-        sortDirection={direction}
-        fallbackIcon="ElectricPlugs"
-      />
-    </div>
-  );
-}
-
-function AutomationsSurface() {
-  const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("all");
-  const [sort, setSort] = useState<"location" | "alpha">("alpha");
-  const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const locationBucketCount = new Set(
-    AUTOMATION_ROWS.map((row) => `${row.project ?? ""}/${row.folder ?? ""}`),
-  ).size;
-  function updateSort(nextSort: "location" | "alpha") {
-    if (nextSort === "location" && locationBucketCount <= 1) return;
-    if (nextSort === sort) {
-      setDirection((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(nextSort);
-      setDirection("asc");
-    }
-  }
-  return (
-    <div className="space-y-3">
-      <ResourceTabDescription>
-        Automations run scheduled bb work across projects and folders. Browse
-        starter automations first, then search and manage installed automations.
-      </ResourceTabDescription>
-      <AutomationBrowseCards />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search automations"
-        onSearchChange={setQuery}
-        controls={
-          <>
-            <ResourceOptionMenu
-              label="Location"
-              icon="Folder"
-              value={location}
-              options={[
-                { id: "all", label: "All locations" },
-                { id: "bb/reviews", label: "bb / Reviews" },
-                { id: "bb/maintenance", label: "bb / Maintenance" },
-                { id: "moss/ci", label: "moss / CI" },
-              ]}
-              onChange={setLocation}
-            />
-            <ResourceSortMenu
-              value={sort}
-              direction={direction}
-              options={[
-                {
-                  id: "location",
-                  label: "Project / folder",
-                  disabled: locationBucketCount <= 1,
-                },
-                { id: "alpha", label: "Alphabetical" },
-              ]}
-              onChange={(value) => updateSort(value as "location" | "alpha")}
-            />
-          </>
-        }
-        action={
-          <ResourceCreateButton
-            label="New automation"
-            templates={CREATE_TEMPLATES}
-            onCreate={NOOP}
-          />
-        }
-      />
-      <AutomationsList
-        query={query}
-        location={location}
-        sort={sort}
-        direction={direction}
-      />
-    </div>
-  );
-}
-
-function ResourceSurfacePanel({
-  activeSurface,
-}: {
-  activeSurface: ResourceSurfaceId;
-}) {
-  if (activeSurface === "plugins") return <PluginsSurface />;
-  if (activeSurface === "automations") return <AutomationsSurface />;
-  return <SkillsSurface />;
 }
 
 function AutomationDetail() {
@@ -1253,27 +923,6 @@ function DetailPropertiesSample() {
       <ResourceProperty label="Execution">gpt-5.4 · Low</ResourceProperty>
       <ResourceProperty label="Environment">Local workspace</ResourceProperty>
     </ResourcePropertyList>
-  );
-}
-
-export function ToolsOverviewPage() {
-  const [activeSurface, setActiveSurface] =
-    useState<ResourceSurfaceId>("skills");
-
-  return (
-    <main className="min-h-[720px] bg-background">
-      <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 md:grid-cols-[12rem_minmax(0,1fr)] md:px-5">
-        <aside className="rounded-lg border border-border bg-popover p-2 shadow-sm">
-          <ResourceSurfaceSelector
-            activeSurface={activeSurface}
-            onChange={setActiveSurface}
-          />
-        </aside>
-        <section className="min-w-0">
-          <ResourceSurfacePanel activeSurface={activeSurface} />
-        </section>
-      </div>
-    </main>
   );
 }
 
