@@ -66,6 +66,7 @@ interface ResourceListRowFixture {
   id: string;
   title: string;
   description: string;
+  environment?: StoryEnvironmentDisplay;
   provider?: ProviderId;
   icon?: IconName;
   state?: ReactNode;
@@ -91,6 +92,18 @@ interface ResourceSectionFixture {
   icon?: IconName;
   rows: ResourceListRowFixture[];
 }
+
+interface StoryEnvironmentDisplay {
+  label: string;
+  title: string;
+  icon: IconName;
+}
+
+const LOCAL_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
+  label: "Local",
+  title: "Working locally",
+  icon: "Laptop",
+};
 
 const RESOURCE_SURFACES: readonly ResourceSurface[] = [
   { id: "skills", label: "Skills", icon: "Zap" },
@@ -207,6 +220,7 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     id: "weekly-pr-review",
     title: "Weekly PR review queue",
     description: "10AM Mon · America/Los_Angeles",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "Calendar",
     state: <ResourceState tone="success">Active</ResourceState>,
     project: "bb",
@@ -217,6 +231,7 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     id: "stale-worktree-cleanup",
     title: "Stale worktree cleanup reminder",
     description: "4PM Fri · America/Los_Angeles",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "ComputerTerminal01",
     state: <ResourceState tone="muted">Paused</ResourceState>,
     project: "bb",
@@ -225,7 +240,8 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
   {
     id: "ci-failure-watcher",
     title: "CI failure watcher",
-    description: "Every 15 min · Project workspace",
+    description: "Every 15 min",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "Calendar",
     state: <ResourceState tone="warning">Failed</ResourceState>,
     project: "moss",
@@ -262,6 +278,22 @@ function ProviderMark({
   if (provider === "bb") return <BbMark className={className} />;
   if (provider === "codex") return <CodexMark className={className} />;
   return <ClaudeMark className={className} />;
+}
+
+function StoryEnvironmentInline({
+  display,
+}: {
+  display: StoryEnvironmentDisplay;
+}) {
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1"
+      title={display.title}
+    >
+      <Icon name={display.icon} className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{display.label}</span>
+    </span>
+  );
 }
 
 function ResourceLeading({
@@ -556,7 +588,13 @@ function AutomationsList({
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = AUTOMATION_ROWS.filter((row) =>
-    [row.project, row.folder, row.title, row.description]
+    [
+      row.project,
+      row.folder,
+      row.title,
+      row.description,
+      row.environment?.label,
+    ]
       .join(" ")
       .toLowerCase()
       .includes(normalizedQuery),
@@ -593,7 +631,22 @@ function AutomationsList({
           key={row.id}
           leading={<ResourceLeading row={row} fallbackIcon="TimeSchedule" />}
           title={row.title}
-          description={`${row.description} · ${row.project}${row.folder ? ` / ${row.folder}` : ""}`}
+          description={
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <span className="truncate">{row.description}</span>
+              {row.environment ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <StoryEnvironmentInline display={row.environment} />
+                </>
+              ) : null}
+              <span aria-hidden>·</span>
+              <span className="truncate">
+                {row.project}
+                {row.folder ? ` / ${row.folder}` : ""}
+              </span>
+            </span>
+          }
           state={row.state}
           selected={row.selected}
           onOpen={NOOP}
@@ -658,7 +711,7 @@ function AutomationDetail() {
           </ResourceProperty>
           <ResourceProperty label="Origin">App-created</ResourceProperty>
           <ResourceProperty label="Environment">
-            Local workspace
+            <StoryEnvironmentInline display={LOCAL_ENVIRONMENT_DISPLAY} />
           </ResourceProperty>
           <ResourceProperty label="Script file">script.sh</ResourceProperty>
         </ResourcePropertyList>
@@ -921,7 +974,9 @@ function DetailPropertiesSample() {
         Every hour · America/New_York
       </ResourceProperty>
       <ResourceProperty label="Execution">gpt-5.4 · Low</ResourceProperty>
-      <ResourceProperty label="Environment">Local workspace</ResourceProperty>
+      <ResourceProperty label="Environment">
+        <StoryEnvironmentInline display={LOCAL_ENVIRONMENT_DISPLAY} />
+      </ResourceProperty>
     </ResourcePropertyList>
   );
 }

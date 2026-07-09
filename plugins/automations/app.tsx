@@ -428,24 +428,50 @@ function describeExecution(execution: AutomationExecution): string {
   return `Script · ${interpreter} ${target} · ${timeoutSeconds}s timeout`;
 }
 
-function describeEnvironment(execution: AutomationExecution): string | null {
+interface AutomationEnvironmentDisplay {
+  label: string;
+  title: string;
+  icon: IconName;
+}
+
+function automationEnvironmentDisplay(
+  execution: AutomationExecution,
+): AutomationEnvironmentDisplay | null {
   if (execution.mode !== "agent") return null;
   const environment = execution.environment;
   switch (environment.type) {
     case "reuse":
-      return "Reuses an existing environment";
+      return {
+        label: "Existing environment",
+        title: "Reuses an existing environment",
+        icon: "FolderGit",
+      };
     case "project-default":
-      return "Project default environment";
+      return {
+        label: "Local",
+        title: "Working locally",
+        icon: "Laptop",
+      };
     case "host":
       switch (environment.workspace.type) {
-        case "personal":
-          return "Personal workspace";
         case "managed-worktree":
-          return "Managed worktree";
+          return {
+            label: "Worktree",
+            title: "Worktree",
+            icon: "FolderGit",
+          };
+        case "personal":
+          return {
+            label: "Local",
+            title: "Working locally",
+            icon: "Laptop",
+          };
         case "unmanaged":
-          return environment.workspace.path
-            ? `Workspace: ${environment.workspace.path}`
-            : "Unmanaged workspace";
+          return {
+            label: "Local",
+            title: environment.workspace.path ?? "Working locally",
+            icon: "Laptop",
+          };
         default: {
           const _exhaustive: never = environment.workspace;
           return _exhaustive;
@@ -456,6 +482,22 @@ function describeEnvironment(execution: AutomationExecution): string | null {
       return _exhaustive;
     }
   }
+}
+
+function AutomationEnvironmentInline({
+  display,
+}: {
+  display: AutomationEnvironmentDisplay;
+}) {
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1"
+      title={display.title}
+    >
+      <Icon name={display.icon} className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{display.label}</span>
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -768,6 +810,9 @@ function AutomationOverviewPreview() {
           runCount: automation.runCount,
         });
         const status = automationStatus(automation);
+        const environmentDisplay = automationEnvironmentDisplay(
+          automation.execution,
+        );
         return (
           <ResourceRow
             key={automation.id}
@@ -779,9 +824,23 @@ function AutomationOverviewPreview() {
               />
             }
             title={automation.name}
-            description={`${formatAutomationTrigger(
-              automation.trigger,
-            )} · ${automationLocationLabel(entry)}`}
+            description={
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <span className="truncate">
+                  {formatAutomationTrigger(automation.trigger)}
+                </span>
+                {environmentDisplay ? (
+                  <>
+                    <span aria-hidden>·</span>
+                    <AutomationEnvironmentInline display={environmentDisplay} />
+                  </>
+                ) : null}
+                <span aria-hidden>·</span>
+                <span className="truncate">
+                  {automationLocationLabel(entry)}
+                </span>
+              </span>
+            }
             status={
               <ResourceStatus tone={status.tone}>{status.label}</ResourceStatus>
             }
@@ -1238,7 +1297,7 @@ function DetailView({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
-  const environmentLabel = describeEnvironment(automation.execution);
+  const environmentDisplay = automationEnvironmentDisplay(automation.execution);
   const status = automationStatus(automation);
 
   return (
@@ -1310,9 +1369,9 @@ function DetailView({
           <ResourceProperty label="Origin">
             {automationOriginLabel(automation)}
           </ResourceProperty>
-          {environmentLabel ? (
+          {environmentDisplay ? (
             <ResourceProperty label="Environment">
-              {environmentLabel}
+              <AutomationEnvironmentInline display={environmentDisplay} />
             </ResourceProperty>
           ) : null}
           {automation.execution.mode === "agent" ? (
