@@ -523,7 +523,7 @@ function AutomationRowLeading({
   if (automation.lastRunStatus === "running") {
     return (
       <Icon
-        name="Spinner"
+        name="Loading"
         className="size-4 shrink-0 animate-spin text-muted-foreground"
         aria-label="Running"
       />
@@ -742,7 +742,7 @@ function AutomationTemplateCard({
       meta="Starter template"
       description={template.description}
       tags={["bb automation", "schedule", "template"]}
-      action={
+      state={
         <Button
           type="button"
           variant="outline"
@@ -767,7 +767,7 @@ function AutomationBrowseShelf({
 }) {
   return (
     <ResourceSourceShelf
-      label="Browse automations"
+      label="Browse"
       count={AUTOMATION_CREATE_TEMPLATES.length}
       leading={
         <Icon
@@ -784,7 +784,7 @@ function AutomationBrowseShelf({
           className="h-6 gap-1 px-2"
           onClick={onBrowseAll}
         >
-          Browse all
+          See all
           <Icon name="ChevronRight" className="size-3.5" aria-hidden />
         </Button>
       }
@@ -1114,8 +1114,8 @@ function OverviewView({
         controls={
           <>
             <ResourceMultiSelectMenu
-              label="Location"
-              icon="Folder"
+              label="Project / folder"
+              icon="Layers"
               selectedValues={locationFilters}
               options={locationOptions}
               onChange={(values) =>

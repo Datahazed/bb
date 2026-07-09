@@ -657,7 +657,7 @@ function PluginBrowseCard({
       meta="Starter template"
       description={example.description}
       tags={["bb plugin", "installable", "template"]}
-      action={
+      state={
         <Button
           type="button"
           variant="outline"
@@ -681,7 +681,7 @@ function PluginBrowseShelf({
   const { examples } = getCreateExamples("plugin");
   return (
     <ResourceSourceShelf
-      label="Browse plugins"
+      label="Browse"
       count={examples.length}
       leading={
         <Icon
@@ -693,7 +693,7 @@ function PluginBrowseShelf({
       action={
         <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
           <Link to={getPluginBrowseRoutePath()}>
-            Browse all
+            See all
             <Icon name="ChevronRight" className="size-3.5" aria-hidden />
           </Link>
         </Button>

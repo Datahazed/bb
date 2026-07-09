@@ -385,7 +385,7 @@ function ResourceLeading({
   if (row.rowSignal === "running") {
     return (
       <Icon
-        name="Spinner"
+        name="Loading"
         className="size-4 animate-spin text-muted-foreground"
         aria-label="Running"
       />
@@ -763,7 +763,7 @@ function TemplateBrowseCards({
             title={template.label}
             meta="Starter template"
             description={template.description}
-            action={
+            state={
               <Button
                 type="button"
                 variant="outline"
@@ -784,7 +784,7 @@ function TemplateBrowseCards({
 function PluginBrowseCards() {
   return (
     <TemplateBrowseCards
-      label="Browse plugins"
+      label="Browse"
       icon="ElectricPlugs"
       templates={PLUGIN_CREATE_TEMPLATES}
     />
@@ -794,7 +794,7 @@ function PluginBrowseCards() {
 function AutomationBrowseCards() {
   return (
     <TemplateBrowseCards
-      label="Browse automations"
+      label="Browse"
       icon="TimeSchedule"
       templates={AUTOMATION_CREATE_TEMPLATES}
     />
@@ -1081,8 +1081,8 @@ function AutomationsOverviewSurface() {
         controls={
           <>
             <ResourceMultiSelectMenu
-              label="Location"
-              icon="Folder"
+              label="Project / folder"
+              icon="Layers"
               selectedValues={locationFilters}
               options={[
                 { id: "bb/reviews", label: "bb / Reviews" },
@@ -1355,7 +1355,7 @@ function AutomationRunHistory({
 }) {
   const iconForStatus = (status: AutomationDetailRunFixture["status"]) => {
     if (status === "Failed") return "CircleX";
-    if (status === "Running") return "Spinner";
+    if (status === "Running") return "Loading";
     if (status === "Skipped") return "CircleDashed";
     return "CircleCheck";
   };
