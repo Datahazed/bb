@@ -1,7 +1,7 @@
 ---
 id: tools-hub-resource-system-407
 name: Tools Hub Resource System
-status: draft
+status: approved
 created_date: 2026-07-09
 description: A cohesive Tools hub for discovering and managing bb skills, plugins, and automations.
 ---
@@ -66,6 +66,69 @@ Discovery wins the empty or low-resource state. Management wins the populated st
 - Make unavailable actions understandable without asking users to infer missing provider or project setup.
 - Keep color and visual emphasis reserved for Tools-specific meaning and attention states.
 
+## Architecture Output
+
+The Tools hub should be a cohesive view over existing bb primitives, not a new persisted Tool object. The system architecture is a shared UI and taxonomy layer that lets Skills, Plugins, and Automations remain owned by their existing domains while presenting them through one product grammar.
+
+### Capability Model
+
+| Dimension | Decision |
+| --- | --- |
+| Inputs | Existing skill summaries and skills.sh catalog data, installed plugins, provider-derived plugin capabilities, automation overview/detail data, provider CLI availability, route state, search/filter/sort state. |
+| Outputs | Mixed overview modules, focused resource tabs, installed resource rows, discovery/install affordances, detail pages, attention states, and stable navigation routes. |
+| State | Persisted state stays with each domain: skills on disk/provider registries, plugins in plugin state, automations in the automations plugin. Tools owns transient UI state only. |
+| Lifecycle | Tools observes, creates, installs, enables, disables, pauses, resumes, runs, edits, deletes, and links into existing resource lifecycles without inventing a parallel lifecycle. |
+| Permissions | Capability follows source and ownership: user-created resources can be edited/deleted; built-in/provider-managed resources are inspectable and may expose only supported actions. |
+| Relationships | Provider-specific plugins can link to underlying provider skills; skills.sh entries can link to installed provider instances; automations link to projects, folders, threads, and run history. |
+| History | History remains resource-specific: automation run history, plugin status/configuration, skill source/content preview. The mixed overview may summarize recent activity but does not own history. |
+| Automation | Agents should be able to read the five-facet taxonomy, inspect resource detail pages, and trigger supported actions through existing commands or APIs. |
+
+### Primitives Reused
+
+| Existing primitive | How Tools uses it |
+| --- | --- |
+| Skill | Installed instructions and catalog-discovered skills. |
+| Plugin | Installed bb or provider-managed capability bundles. |
+| Automation | Scheduled or recurring bb work. |
+| Agent | Compatibility/runtime facet for Codex, Claude Code, and bb. |
+| Source | Catalog, built-in, provider-managed, user-created, or plugin-provided origin. |
+| View | Mixed overview, focused tabs, and detail pages are projections over existing resources. |
+| Metadata | The five-facet taxonomy: Kind, Source, Scope, Agents, State. |
+| Action | Install, create, inspect, enable, disable, pause, resume, run, edit, delete. |
+
+New primitives should be UI primitives only: shared resource row, toolbar, source/discovery shelf, detail shell, metadata list, action controls, and story fixtures. The spec explicitly rejects a new persisted `Tool` super-entity.
+
+### Interaction Model
+
+| Surface | Interaction rule |
+| --- | --- |
+| Mixed overview | Teach and summarize; link users into focused tabs or details; aggregate attention; avoid full management controls. |
+| Focused tabs | Own search, filter, sort, discovery, installed rows, and row-level management for one resource kind. |
+| Detail pages | Explain one resource, show canonical metadata, expose safe actions, and link related resources/history. |
+| Create/discover | Templates and catalogs are entry points into each resource kind, not a separate navigation category. |
+
+### Lifecycle And Scale
+
+| Stage | Product rule |
+| --- | --- |
+| Creation | Creation starts from the relevant kind: skill install/create, plugin install/enable, automation template/create path. |
+| Editing | Editing depends on source ownership; unsupported edit paths must be clear rather than fake. |
+| Viewing | Overview for orientation, focused tab for management, detail page for confidence and action. |
+| Searching | Search belongs inside focused tabs; the mixed overview should not become cross-resource search in this PR. |
+| Recovery | Destructive or disabling actions should be reversible where the underlying resource supports it. |
+| Growth | With few resources, discovery can stay visible. Once resources exist, management controls must remain easy to reach; at 100 resources, search/filter/sort must dominate. At 10,000 resources, focused tabs and indexed domain queries become mandatory. |
+
+### Architecture Tradeoffs
+
+| Option | Decision | Rationale |
+| --- | --- | --- |
+| New Tool entity | Reject | Adds schema and lifecycle complexity without solving the user problem. |
+| One mixed searchable table | Reject for this PR | Cross-kind metadata does not normalize cleanly and would weaken resource-specific management. |
+| Three isolated pages | Reject | Repeats UI and fails the cohesive system goal. |
+| Shared view layer over existing domains | Adopt | Preserves ownership boundaries while giving users one mental model. |
+
+The core architecture recommendation is to standardize taxonomy and UI primitives first, then let each resource domain provide adapters into that system.
+
 ## Resource Taxonomy
 
 Every resource surface should map into five facets:
@@ -76,7 +139,7 @@ Every resource surface should map into five facets:
 | Source | Where it came from and who owns it. | bb built-in, Created by you, Provider-managed, Installed from skills.sh, From plugin `<name>` |
 | Scope | Where it applies. | User, Project `<name>`, Folder `<name>` |
 | Agents | Which agent/provider can use or run it. | Codex, Claude Code, bb |
-| State | Whether it can currently do its job. | Healthy, Active, Paused, Disabled, Needs configuration, Needs attention, Completed |
+| State | Whether it can currently do its job. | Healthy, Active, Paused, Disabled, Needs attention, Completed |
 
 Provider is not scope. Ownership and scope must stay separate. For example, a skill can be installed from skills.sh, scoped to User, and available to Codex.
 
@@ -92,6 +155,19 @@ The mixed overview answers three questions: what is here, what needs me, and wha
 | Discovery module | Empty/light state, or compact in populated state | Suggest one small set of compatible, inspectable resources to try next. |
 
 The mixed overview does not include full resource lists, cross-resource search, filters, sort controls, or deep management row actions. Those belong in the focused tabs.
+
+### Mixed Overview V1 Data Contract
+
+The mixed overview must use existing data sources only. It should hide modules that cannot be populated from current data rather than inventing placeholders or new backend aggregation.
+
+| Module | Existing data source | Show/hide rule | Deferred |
+| --- | --- | --- | --- |
+| Kind summaries | Existing skills, plugins, provider-derived plugins, and automations overview data. | Always show all three kinds. Counts may show loading or unavailable states independently. | Rich cross-kind metrics. |
+| Needs attention | V1-detectable attention states from the table below. | Show only when at least one detectable resource needs action. Hide when no attention state is detected. | New health checks, file validation, or backend health aggregation. |
+| Recent activity | Automation last-run data already available through the automations overview/detail path. | Show only when existing automation data includes recent run entries. Hide if that data is unavailable in the mixed overview integration. | Cross-kind activity feed, recently added skill/plugin tracking, new event backend. |
+| Discovery module | skills.sh catalog entries compatible with configured providers. | Show in empty/low-resource states when skills.sh loads. Hide on catalog failure rather than blocking installed-resource management. | Plugin marketplace recommendations and automation recommendation backend. |
+
+V1 overview layout rule: if the user has zero installed resources, lead with teaching and discovery. If the user has one or more installed resources, lead with needs attention when present, then recent activity when available, then compact discovery. Discovery may remain visible but should not push management content below the first screen for populated users.
 
 ## Focused Tabs
 
@@ -109,6 +185,8 @@ The tab structure should be:
 2. Resource-specific discovery or creation affordance.
 3. Search, filter, sort, and create controls.
 4. Installed resource rows.
+
+V1 keeps discovery above the toolbar in focused tabs, but discovery must stay compact enough that management controls remain in the first viewport for populated users. If a discovery module would push search/filter/sort too far down, collapse or shorten discovery rather than moving management out of reach.
 
 ## Discovery And Recommendation
 
@@ -143,6 +221,30 @@ Needs attention means the resource cannot do its job right now and a user action
 
 Attention states use warning/error treatment and may be aggregated on the mixed overview. Healthy resources should not carry loud success badges just to prove they are healthy.
 
+### V1 Attention Detectability
+
+The spec defines the product semantics for attention, but v1 should only aggregate attention that can be detected from existing data.
+
+| Kind | V1 detectable | Deferred |
+| --- | --- | --- |
+| Skill | Installed for a provider that is no longer configured, when provider availability is known. | File unreadable, broken manifest, or content validation unless existing skill summaries already expose it. |
+| Plugin | Existing plugin status values that indicate error, incompatible, needs configuration, or degraded. | New plugin health checks beyond installed plugin status. |
+| Automation | Last-run failure or missing required runtime only when already available through the automations overview/detail data. | New automation health aggregation or environment validation not already exposed. |
+
+If no v1-detectable attention state exists for a kind, that kind contributes nothing to the mixed overview attention strip rather than showing speculative health.
+
+### State Matrix
+
+| Kind | Default unshown state | Visible states |
+| --- | --- | --- |
+| Skill | Healthy/installed | Needs attention. |
+| Plugin | Enabled and healthy | Disabled, Needs attention. |
+| Automation | Active | Paused, Needs attention, Completed, Disabled. |
+
+`Healthy` is the conceptual default, not a row badge. `Active` is automation-specific because running scheduled work needs an explicit control state; it should still be visually quiet.
+
+State reasons such as unavailable provider, read-only source, needs configuration, incompatible, degraded, failed run, or unavailable runtime should appear as explanation text inside the canonical state, not as new sibling state labels.
+
 ## Row Semantics
 
 Rows are for scanning and fast management.
@@ -155,9 +257,9 @@ Primary row actions differ by kind:
 | --- | --- |
 | Skills | Open detail, inspect, edit when user-owned, delete when user-owned. No enable/disable concept. |
 | Plugins | Open detail, enable/disable, configure when needed, delete/uninstall when applicable. |
-| Automations | Open detail, pause/resume, run now, edit path when supported, delete. |
+| Automations | Open detail, pause/resume, run now, delete. V1 does not show a row edit control if editing is CLI/agent-owned. |
 
-Destructive and rare actions can live in overflow menus. Hover actions should be consistent in placement and tooltip behavior across kinds.
+Destructive and rare actions can live in overflow menus. Hover actions should be consistent in placement and tooltip behavior across kinds, with the same actions reachable by keyboard focus.
 
 ## Detail Pages
 
@@ -199,8 +301,90 @@ Target navigation:
 - The tab bar shows Skills, Plugins, and Automations only.
 - The tab bar has no selected tab at `/tools`.
 - Clicking the Tools nav item returns to the mixed overview.
+- The page title or breadcrumb `Tools` label should also link back to `/tools` from focused tabs and detail pages.
+- Detail breadcrumbs use `Tools / <Kind> / <Name>`, with `Tools` linking to the mixed overview and `<Kind>` linking to the focused tab.
 - Deep links remain stable for skills, plugin details, automation details, and legacy redirects.
 - Legacy top-level routes such as `/skills` and `/automations` may redirect into the Tools hub.
+
+## Design Output
+
+The design should feel like an operational resource manager with built-in discovery, not a marketing page and not three unrelated settings pages.
+
+### User Flow
+
+| Flow | Steps | Success state |
+| --- | --- | --- |
+| Orient | Land on `/tools` → scan kind summaries → notice attention or discovery → choose a focused tab or detail. | User understands the available resource kinds and where to act next. |
+| Discover and install | Open Skills → inspect skills.sh card/detail → choose provider and scope → install → see confirmation and installed row. | User understands what was installed, where it applies, and how to undo it. |
+| Manage automation | Open Automations → search/filter/sort → identify failing or relevant row → open detail → run now, pause, or diagnose history. | User can control scheduled work without guessing state or origin. |
+| Manage plugin | Open Plugins → find installed/provider-managed plugin → inspect capabilities/configuration → enable, disable, or configure. | User knows what the plugin adds and whether it is healthy. |
+
+### Screen Model
+
+| Screen | Primary content | Primary action | Secondary content |
+| --- | --- | --- | --- |
+| Mixed overview | Kind summaries and attention signal. | Enter a focused tab or create/browse for one kind. | Recent activity and one compact discovery module. |
+| Skills tab | skills.sh discovery followed by installed skill rows. | Install/create or open a skill. | Agent filter, alphabetical sort, provider compatibility and scope. |
+| Plugins tab | Plugin discovery/templates followed by installed plugin rows. | Enable/disable or open plugin detail. | Provider-specific plugin rows and configuration state. |
+| Automations tab | Automation starters followed by installed automation rows. | Pause/resume, run now, or open detail. | Project/folder filters, schedule metadata, run state. |
+| Detail page | Header, canonical metadata, resource-specific configuration/history. | The safest resource-specific action. | Overflow actions and related resource links. |
+
+### State Model
+
+| State | Design requirement |
+| --- | --- |
+| Empty overview | Teach the three kinds and make discovery/create actions obvious. |
+| Populated overview | Lead with attention and recent activity, keeping discovery compact. |
+| Empty focused tab | Explain what belongs in that tab and show a resource-specific starting action. |
+| Loading | Preserve the layout frame; use skeleton rows/cards where content will appear. |
+| Healthy | Keep visual treatment quiet; avoid success badges that compete with real issues. |
+| Needs attention | State the problem and the direct recovery path. |
+| Disabled/unavailable | Explain whether the user disabled it intentionally or setup is missing. |
+| No configured provider | Disable provider-specific install actions and link or point to provider setup. |
+| Partial catalog failure | Keep installed resources manageable. In focused tabs, show a retry path for catalog content; on the mixed overview, hide the discovery module. |
+| Destructive action | Use confirmation when deletion is not trivially reversible. |
+
+### Visual Hierarchy
+
+| Rank | Information | Treatment |
+| --- | --- | --- |
+| 1 | Current resource context and primary action. | Page title/detail header, focused row action, or detail action. |
+| 2 | Attention state. | Warning/error treatment only when action is needed. |
+| 3 | Resource identity. | Icon/logo, title, one-line description or schedule. |
+| 4 | Taxonomy metadata. | Quiet meta text or detail properties in canonical order. |
+| 5 | Rare/destructive actions. | Overflow menus or confirmed detail actions. |
+
+Rows should align across kinds. The differences should come from resource semantics, not from bespoke layouts.
+
+### Edge Cases
+
+| Edge case | Design response |
+| --- | --- |
+| User has no resources | Overview and tabs emphasize teaching and creation/discovery. |
+| User has many resources | Focused tabs prioritize search, filter, sort, and quiet rows. |
+| User has no provider configured | Discovery remains visible, but install actions explain the missing provider setup. |
+| Installed catalog item appears in browse results | Browse surfaces should indicate installed state or omit it from compact carousels; installed rows remain canonical for management. |
+| Provider-specific plugin duplicates skill visibility | Cross-link the relationship so it reads as two views of one provider-managed capability bundle. |
+| Automation failed but is paused | Do not show as needs attention unless the paused state is not user-intended or another actionable failure remains. |
+| Plugin disabled by intent | Muted state, not warning state. |
+
+Install/create success should confirm completion with a toast or equivalent feedback and, when practical, reveal the newly installed row without disrupting the user's context.
+
+### Design Rationale And Tradeoffs
+
+| Decision | Rationale | Tradeoff |
+| --- | --- | --- |
+| Mixed overview without `All` tab | Keeps `/tools` as orientation while tabs remain focused filters. | Requires a clear return path to the overview. |
+| Discovery above installed rows in focused tabs | Helps new/light users while preserving installed rows as canonical management. | Heavy users may want discovery to collapse later. |
+| Quiet healthy rows | Reduces noise and makes real attention visible. | Some users may initially expect explicit healthy status everywhere. |
+| Shared detail shell | Makes resource taxonomy learnable and maintainable. | Some resource-specific detail layouts need adaptation. |
+| No cross-resource search on overview | Avoids shallow global search and inconsistent metadata. | Heavy users must enter a focused tab before searching. |
+
+### Open Design Follow-Ups
+
+- Decide whether discovery modules become collapsible after enough installed resources exist.
+- Decide whether later versions should add cross-kind recent activity beyond automation run data.
+- Decide whether automation edit UI should become first-class in a later PR.
 
 ## Product Scope
 
@@ -252,19 +436,22 @@ The implementation should continue to reuse the PR’s existing data, queries, d
 
 - `/tools` renders a mixed overview that teaches the three resource kinds and supports both discovery and management.
 - The default mixed overview exists without a visible `All` tab.
-- The mixed overview contains kind summaries and conditionally shows needs-attention, recent activity, and compact discovery modules.
+- The mixed overview follows the v1 data contract: kind summaries always render, while needs-attention, recent activity, and compact discovery modules only render when existing data supports them.
 - Skills, Plugins, and Automations use a cohesive layout, taxonomy, and interaction model.
 - Resource rows map to the five facets without conflating source, scope, and agents.
 - Healthy rows stay quiet; attention and disabled states appear only when meaningful.
+- Needs-attention aggregation uses only v1-detectable states and does not invent speculative health.
 - Shared components cover repeated resource surface patterns rather than duplicating layouts per page.
 - Installed resources are represented as rows designed for scanning and management.
 - Discovery/catalog/template content does not masquerade as installed resources.
 - Detail pages use a shared layout and aligned metadata taxonomy while allowing resource-specific content.
 - Unavailable install/create actions explain what setup is missing.
+- Hover-revealed row actions are also reachable through keyboard focus.
+- Install/create success gives explicit feedback and preserves user context.
 - Provider-specific plugin rows and their underlying skills are cross-linked or otherwise explained.
 - Ladle stories show the overview page, overview component system, detail component system, and skills.sh discovery system using shipped components where possible.
 - Typecheck stays green for the app, shared UI, automations plugin, and SDK packages.
 
 ## Review Notes
 
-This spec is intentionally retroactive. It captures the product direction emerging from PR #407 feedback and the Fable worker review from `thr_mggx8gnzhc`.
+This spec is intentionally retroactive. It captures the product direction emerging from PR #407 feedback, Fable approval from `thr_spwq9hzizv`, and Fable `/crit` ship verdict from `thr_p65beeca6n`.
