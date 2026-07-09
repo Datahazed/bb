@@ -1,6 +1,4 @@
-import type {
-  ComponentType,
-} from "react";
+import type { ComponentType } from "react";
 
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
@@ -285,8 +283,18 @@ export interface BbNavigate {
    */
   toPluginPanel(
     path: string,
-    options?: { subPath?: string; replace?: boolean },
+    options?: {
+      subPath?: string;
+      replace?: boolean;
+      /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
+      returnOnExit?: boolean;
+    },
   ): void;
+  /**
+   * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
+   * direct entries replace themselves with this fallback location.
+   */
+  exitPluginPanel(path: string, options?: { subPath?: string }): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
    * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
@@ -344,6 +352,5 @@ type MissingExportName = Exclude<
   keyof PluginSdkApp,
   (typeof PLUGIN_SDK_APP_EXPORT_NAMES)[number]
 >;
-const _assertAllExported: MissingExportName extends never ? true : never =
-  true;
+const _assertAllExported: MissingExportName extends never ? true : never = true;
 void _assertAllExported;

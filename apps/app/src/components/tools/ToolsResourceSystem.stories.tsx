@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import type { Story } from "@ladle/react";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
@@ -17,6 +18,7 @@ import {
   ResourceCardStat,
   ResourceCreateButton,
   ResourceDetailPage,
+  ResourceDetailSection,
   ResourceListPanel,
   ResourceMeta,
   ResourceMultiSelectMenu,
@@ -36,6 +38,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
+import { PluginDetailView } from "@/components/tools/PluginDetailView";
 
 export default {
   title: "Tools/Resource System",
@@ -498,23 +501,6 @@ function PageStory({ children }: { children: ReactNode }) {
   );
 }
 
-function DetailSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <p className="text-xs font-medium uppercase text-muted-foreground">
-        {label}
-      </p>
-      {children}
-    </section>
-  );
-}
-
 function ResourceRowsList({
   sections,
   query,
@@ -522,6 +508,7 @@ function ResourceRowsList({
   sortMode,
   sortDirection,
   fallbackIcon,
+  kind,
 }: {
   sections: readonly ResourceSectionFixture[];
   query: string;
@@ -529,6 +516,7 @@ function ResourceRowsList({
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
   fallbackIcon: IconName;
+  kind: "skill" | "plugin";
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = sections
@@ -578,7 +566,20 @@ function ResourceRowsList({
           state={row.state}
           muted={row.muted}
           onOpen={NOOP}
-          actions={<RowOpenAction label={`Open ${row.title}`} />}
+          actions={
+            kind === "plugin" ? (
+              <>
+                <ResourceActionButton
+                  label={row.muted ? "Enable" : "Disable"}
+                  icon={row.muted ? "Play" : "Pause"}
+                  onClick={NOOP}
+                />
+                <RowOpenAction label={`Open ${row.title}`} />
+              </>
+            ) : (
+              <RowOpenAction label={`Open ${row.title}`} />
+            )
+          }
         />
       ))}
     </ResourceListPanel>
@@ -690,9 +691,8 @@ function RegistryBrowseSource({
   return (
     <ResourceSourceShelf
       label="Browse"
-      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-      count={<SkillsShAttributionLink />}
-      action={
+      attribution={<SkillsShAttributionLink />}
+      browseAction={
         <Button
           type="button"
           variant="ghost"
@@ -701,7 +701,6 @@ function RegistryBrowseSource({
           onClick={onSeeAll}
         >
           {showAll ? "Showing all" : "See all"}
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
         </Button>
       }
     >
@@ -709,13 +708,14 @@ function RegistryBrowseSource({
         <ResourceSourceItem key={row.id}>
           <ResourceBrowseCard
             title={row.title}
-            meta={`by ${row.source}`}
+            byline={`by ${row.source}`}
             description={row.summary}
-            state={
+            openLabel={`Open ${row.title}`}
+            headerAside={
               <StorySocialProof installs={row.installs} stars={row.stars} />
             }
             onOpen={NOOP}
-            action={
+            footerAction={
               <StoryInstallComboButton
                 installed={installedSkillIds.has(row.id)}
                 onInstall={(target) => onInstall(row.id, target)}
@@ -745,7 +745,7 @@ function TemplateBrowseCards({
     <ResourceSourceShelf
       label={label}
       leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
-      action={
+      browseAction={
         <Button
           type="button"
           variant="ghost"
@@ -768,9 +768,10 @@ function TemplateBrowseCards({
               />
             }
             title={template.label}
-            meta="Starter template"
+            byline="Starter template"
             description={template.description}
-            state={
+            openLabel={`Use ${template.label} template`}
+            headerAside={
               <Button
                 type="button"
                 variant="outline"
@@ -992,6 +993,7 @@ function SkillsOverviewSurface() {
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="Zap"
+        kind="skill"
       />
     </div>
   );
@@ -1051,6 +1053,7 @@ function PluginsOverviewSurface() {
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="ElectricPlugs"
+        kind="plugin"
       />
     </div>
   );
@@ -1348,36 +1351,6 @@ function automationFixtureScheduleMeta(
     : fixture.scheduleLabel;
 }
 
-function AutomationExampleSelector({
-  selectedId,
-  onSelect,
-}: {
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1 px-1">
-      {AUTOMATION_DETAIL_FIXTURES.map((fixture) => (
-        <Button
-          key={fixture.id}
-          type="button"
-          variant={fixture.id === selectedId ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={() => onSelect(fixture.id)}
-        >
-          <Icon
-            name={fixture.icon}
-            className="size-3.5 text-muted-foreground"
-            aria-hidden
-          />
-          {fixture.title}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 function AutomationRunHistory({
   runs,
 }: {
@@ -1441,15 +1414,6 @@ function AutomationDetailContent({
     automationFixtureBodyValue(fixture),
   );
 
-  useEffect(() => {
-    setEnabled(fixture.enabled);
-    setEditing(false);
-    setTitle(fixture.title);
-    setBody(automationFixtureBodyValue(fixture));
-    setDraftTitle(fixture.title);
-    setDraftBody(automationFixtureBodyValue(fixture));
-  }, [fixture.id, fixture.enabled]);
-
   function startEditing() {
     setDraftTitle(title);
     setDraftBody(body);
@@ -1484,54 +1448,54 @@ function AutomationDetailContent({
         />
       }
       title={editing ? draftTitle || title : title}
-      status={
+      info={
         fixture.status ? (
           <ResourceState tone={fixture.status.tone}>
             {fixture.status.label}
           </ResourceState>
         ) : undefined
       }
-      headerActions={
-        <>
-          <Switch
-            size="sm"
-            checked={enabled}
-            disabled={fixture.switchDisabled}
-            aria-label={enabled ? "Pause automation" : "Resume automation"}
-            onCheckedChange={setEnabled}
-          />
-          <ResourceOverflowMenu
-            label="Automation actions"
-            items={[
-              {
-                label: "Edit",
-                icon: "Edit",
-                disabled: editing,
-                onSelect: startEditing,
-              },
-              { kind: "separator" },
-              {
-                label: "Run now",
-                icon: "ArrowReloadHorizontal",
-                onSelect: NOOP,
-              },
-              { kind: "separator" },
-              {
-                label: "Delete",
-                icon: "Trash2",
-                tone: "destructive",
-                onSelect: NOOP,
-              },
-            ]}
-          />
-        </>
+      lifecycleControl={
+        <Switch
+          size="sm"
+          checked={enabled}
+          disabled={fixture.switchDisabled}
+          aria-label={enabled ? "Pause automation" : "Resume automation"}
+          onCheckedChange={setEnabled}
+        />
       }
-      meta={
+      overflowMenu={
+        <ResourceOverflowMenu
+          label="Automation actions"
+          items={[
+            {
+              label: "Edit",
+              icon: "Edit",
+              disabled: editing,
+              onSelect: startEditing,
+            },
+            { kind: "separator" },
+            {
+              label: "Run now",
+              icon: "ArrowReloadHorizontal",
+              onSelect: NOOP,
+            },
+            { kind: "separator" },
+            {
+              label: "Delete",
+              icon: "Trash2",
+              tone: "destructive",
+              onSelect: NOOP,
+            },
+          ]}
+        />
+      }
+      metadata={
         <ResourceMeta
           items={[automationFixtureScheduleMeta(fixture, enabled)]}
         />
       }
-      actions={
+      modeActions={
         editing ? (
           <>
             <Button
@@ -1554,7 +1518,7 @@ function AutomationDetailContent({
         ) : null
       }
     >
-      <DetailSection label="Configuration">
+      <ResourceDetailSection label="Configuration">
         <ResourcePropertyList>
           {editing ? (
             <ResourceProperty label="Name">
@@ -1621,32 +1585,21 @@ function AutomationDetailContent({
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>
-      </DetailSection>
-      <DetailSection label="Run history">
+      </ResourceDetailSection>
+      <ResourceDetailSection label="Run history">
         <AutomationRunHistory runs={fixture.runs} />
-      </DetailSection>
+      </ResourceDetailSection>
     </ResourceDetailPage>
   );
 }
 
-function AutomationDetail() {
-  const [selectedId, setSelectedId] = useState(
-    AUTOMATION_DETAIL_FIXTURES[0].id,
-  );
+function AutomationDetail({ selectedId }: { selectedId: string }) {
   const fixture =
     AUTOMATION_DETAIL_FIXTURES.find(
       (candidate) => candidate.id === selectedId,
     ) ?? AUTOMATION_DETAIL_FIXTURES[0];
 
-  return (
-    <div className="space-y-4">
-      <AutomationExampleSelector
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-      />
-      <AutomationDetailContent fixture={fixture} />
-    </div>
-  );
+  return <AutomationDetailContent key={fixture.id} fixture={fixture} />;
 }
 
 interface SkillDetailFixture {
@@ -1827,32 +1780,6 @@ const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
   },
 ];
 
-function SkillExampleSelector({
-  selectedId,
-  onSelect,
-}: {
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1 px-1">
-      {SKILL_DETAIL_FIXTURES.map((fixture) => (
-        <Button
-          key={fixture.id}
-          type="button"
-          variant={fixture.id === selectedId ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={() => onSelect(fixture.id)}
-        >
-          <ProviderMark provider={fixture.provider} className="size-3.5" />
-          {fixture.title}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 function StoryPathCopyButton({ path }: { path: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -1869,7 +1796,6 @@ function StoryPathCopyButton({ path }: { path: string }) {
   return (
     <button
       type="button"
-      title={copied ? "Copied path" : "Copy path"}
       aria-label={`Copy skill path: ${path}`}
       onClick={handleCopy}
       className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1906,12 +1832,6 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
   const [savedMarkdown, setSavedMarkdown] = useState(fixture.markdown);
   const [draft, setDraft] = useState(fixture.markdown);
 
-  useEffect(() => {
-    setEditing(false);
-    setSavedMarkdown(fixture.markdown);
-    setDraft(fixture.markdown);
-  }, [fixture.id, fixture.markdown]);
-
   const actions = editing ? (
     <>
       <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
@@ -1933,12 +1853,12 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
     <ResourceDetailPage
       leading={<ProviderMark provider={fixture.provider} />}
       title={fixture.title}
-      status={
+      info={
         <ResourceState tone={fixture.statusTone}>
           {fixture.status}
         </ResourceState>
       }
-      headerActions={
+      overflowMenu={
         <ResourceOverflowMenu
           label="Skill actions"
           items={[
@@ -1958,10 +1878,10 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
           ]}
         />
       }
-      meta={<StoryPathCopyButton path={fixture.path} />}
-      actions={actions}
+      metadata={<StoryPathCopyButton path={fixture.path} />}
+      modeActions={actions}
     >
-      <DetailSection label="SKILL.md">
+      <ResourceDetailSection label="SKILL.md">
         {editing ? (
           <textarea
             value={draft}
@@ -1983,27 +1903,21 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
             />
           </div>
         )}
-      </DetailSection>
+      </ResourceDetailSection>
       {fixture.includedFiles ? (
-        <DetailSection label="Included files">
+        <ResourceDetailSection label="Included files">
           <SkillIncludedFiles files={fixture.includedFiles} />
-        </DetailSection>
+        </ResourceDetailSection>
       ) : null}
     </ResourceDetailPage>
   );
 }
 
-function SkillDetail() {
-  const [selectedId, setSelectedId] = useState(SKILL_DETAIL_FIXTURES[0].id);
+function SkillDetail({ selectedId }: { selectedId: string }) {
   const fixture =
     SKILL_DETAIL_FIXTURES.find((candidate) => candidate.id === selectedId) ??
     SKILL_DETAIL_FIXTURES[0];
-  return (
-    <div className="space-y-4">
-      <SkillExampleSelector selectedId={selectedId} onSelect={setSelectedId} />
-      <SkillDetailContent fixture={fixture} />
-    </div>
-  );
+  return <SkillDetailContent key={fixture.id} fixture={fixture} />;
 }
 
 interface PluginSettingFixture {
@@ -2150,32 +2064,6 @@ const PLUGIN_DETAIL_FIXTURES: readonly PluginDetailFixture[] = [
   },
 ];
 
-function PluginExampleSelector({
-  selectedId,
-  onSelect,
-}: {
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1 px-1">
-      {PLUGIN_DETAIL_FIXTURES.map((fixture) => (
-        <Button
-          key={fixture.id}
-          type="button"
-          variant={fixture.id === selectedId ? "secondary" : "ghost"}
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={() => onSelect(fixture.id)}
-        >
-          <ProviderMark provider={fixture.provider} className="size-3.5" />
-          {fixture.title}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 function PluginCapabilitiesList({
   capabilities,
 }: {
@@ -2198,92 +2086,62 @@ function PluginCapabilitiesList({
 function PluginDetailContent({ fixture }: { fixture: PluginDetailFixture }) {
   const [enabled, setEnabled] = useState(fixture.enabled);
 
-  useEffect(() => {
-    setEnabled(fixture.enabled);
-  }, [fixture.id, fixture.enabled]);
-
-  const status = enabled
-    ? fixture.status
-    : ({ label: "Disabled", tone: "muted" } as const);
+  const health =
+    enabled &&
+    (fixture.status.tone === "warning" || fixture.status.tone === "error")
+      ? fixture.status
+      : undefined;
 
   return (
-    <ResourceDetailPage
+    <PluginDetailView
       leading={<ProviderMark provider={fixture.provider} />}
       title={fixture.title}
-      status={<ResourceState tone={status.tone}>{status.label}</ResourceState>}
-      meta={<ResourceMeta items={[fixture.source, `v${fixture.version}`]} />}
+      health={health}
+      metadata={[fixture.source, `v${fixture.version}`]}
       description={fixture.description}
-      headerActions={
-        <>
-          <Switch
-            size="sm"
-            checked={enabled}
-            aria-label={
-              enabled ? `Disable ${fixture.title}` : `Enable ${fixture.title}`
-            }
-            onCheckedChange={setEnabled}
-          />
-          <ResourceOverflowMenu
-            label={`${fixture.title} actions`}
-            items={[
-              {
-                label: "Open plugin folder",
-                icon: "ExternalLink",
-                onSelect: NOOP,
-              },
-              {
-                label: "Reload",
-                icon: "ArrowReloadHorizontal",
-                onSelect: NOOP,
-              },
-            ]}
-          />
-        </>
-      }
-    >
-      <DetailSection label="Configuration">
-        <ResourcePropertyList>
-          <ResourceProperty label="Provider">
+      enabled={enabled}
+      onEnabledChange={setEnabled}
+      overflowItems={[
+        {
+          label: "Reload",
+          icon: "ArrowReloadHorizontal",
+          onSelect: NOOP,
+        },
+      ]}
+      properties={[
+        {
+          label: "Agent",
+          value: (
             <span className="inline-flex items-center gap-1.5">
               <ProviderMark provider={fixture.provider} className="size-3.5" />
               {PROVIDER_FILTER_LABELS[fixture.provider]}
             </span>
-          </ResourceProperty>
-          <ResourceProperty label="Source">{fixture.source}</ResourceProperty>
-          <ResourceProperty label="Version">
-            v{fixture.version}
-          </ResourceProperty>
-          {fixture.statusDetail ? (
-            <ResourceProperty label="Status detail">
-              {fixture.statusDetail}
-            </ResourceProperty>
-          ) : null}
-          {fixture.settings.map((setting) => (
-            <ResourceProperty key={setting.label} label={setting.label}>
-              {setting.value}
-            </ResourceProperty>
-          ))}
-        </ResourcePropertyList>
-      </DetailSection>
-      <DetailSection label="Capabilities">
-        <PluginCapabilitiesList capabilities={fixture.capabilities} />
-      </DetailSection>
-    </ResourceDetailPage>
+          ),
+        },
+        { label: "Source", value: fixture.source },
+        ...(fixture.statusDetail
+          ? [{ label: "Status detail", value: fixture.statusDetail }]
+          : []),
+        ...fixture.settings,
+      ]}
+      sections={[
+        {
+          label: "Capabilities",
+          content: (
+            <PluginCapabilitiesList capabilities={fixture.capabilities} />
+          ),
+        },
+      ]}
+    />
   );
 }
 
-function PluginDetail() {
-  const [selectedId, setSelectedId] = useState(PLUGIN_DETAIL_FIXTURES[0].id);
+function PluginDetail({ selectedId }: { selectedId: string }) {
   const fixture =
     PLUGIN_DETAIL_FIXTURES.find((candidate) => candidate.id === selectedId) ??
     PLUGIN_DETAIL_FIXTURES[0];
 
-  return (
-    <div className="space-y-4">
-      <PluginExampleSelector selectedId={selectedId} onSelect={setSelectedId} />
-      <PluginDetailContent fixture={fixture} />
-    </div>
-  );
+  return <PluginDetailContent key={fixture.id} fixture={fixture} />;
 }
 
 export function SkillsOverviewPage() {
@@ -2310,26 +2168,64 @@ export function AutomationsOverviewPage() {
   );
 }
 
-export function SkillDetailPage() {
+export const SkillDetailPage: Story<{ example: string }> = ({ example }) => {
   return (
     <PageStory>
-      <SkillDetail />
+      <SkillDetail selectedId={example} />
     </PageStory>
   );
-}
+};
+SkillDetailPage.args = { example: SKILL_DETAIL_FIXTURES[0].id };
+SkillDetailPage.argTypes = {
+  example: {
+    options: SKILL_DETAIL_FIXTURES.map(({ id }) => id),
+    control: {
+      type: "select",
+      labels: Object.fromEntries(
+        SKILL_DETAIL_FIXTURES.map(({ id, title }) => [id, title]),
+      ),
+    },
+  },
+};
 
-export function PluginDetailPage() {
+export const PluginDetailPage: Story<{ example: string }> = ({ example }) => {
   return (
     <PageStory>
-      <PluginDetail />
+      <PluginDetail selectedId={example} />
     </PageStory>
   );
-}
+};
+PluginDetailPage.args = { example: PLUGIN_DETAIL_FIXTURES[0].id };
+PluginDetailPage.argTypes = {
+  example: {
+    options: PLUGIN_DETAIL_FIXTURES.map(({ id }) => id),
+    control: {
+      type: "select",
+      labels: Object.fromEntries(
+        PLUGIN_DETAIL_FIXTURES.map(({ id, title }) => [id, title]),
+      ),
+    },
+  },
+};
 
-export function AutomationDetailPage() {
+export const AutomationDetailPage: Story<{ example: string }> = ({
+  example,
+}) => {
   return (
     <PageStory>
-      <AutomationDetail />
+      <AutomationDetail selectedId={example} />
     </PageStory>
   );
-}
+};
+AutomationDetailPage.args = { example: AUTOMATION_DETAIL_FIXTURES[0].id };
+AutomationDetailPage.argTypes = {
+  example: {
+    options: AUTOMATION_DETAIL_FIXTURES.map(({ id }) => id),
+    control: {
+      type: "select",
+      labels: Object.fromEntries(
+        AUTOMATION_DETAIL_FIXTURES.map(({ id, title }) => [id, title]),
+      ),
+    },
+  },
+};

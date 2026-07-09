@@ -42,6 +42,7 @@ import {
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   getAutomationDetailRoutePath,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
@@ -163,6 +164,10 @@ function AppRoutes() {
             element={<ToolsView />}
           />
           <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
+            element={<ToolsView />}
+          />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}

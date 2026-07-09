@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type {
   BbContext,
   BbNavigate,
@@ -19,7 +19,9 @@ import {
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getAutomationBrowseRoutePath,
   getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
   getAutomationsRoutePath,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
@@ -171,8 +173,27 @@ export function useBbContext(): BbContext {
   );
 }
 
+export function getAutomationPluginPanelRoutePath(subPath: string): string {
+  const parts = subPath.split("/").filter((part) => part.length > 0);
+  if (parts.length === 0) return getAutomationsRoutePath();
+  if (parts.length === 1 && parts[0] === "browse") {
+    return getAutomationBrowseRoutePath();
+  }
+  if (parts.length !== 2 && !(parts.length === 3 && parts[2] === "edit")) {
+    return getAutomationsRoutePath();
+  }
+  const [projectId, automationId, mode] = parts;
+  if (projectId === undefined || automationId === undefined) {
+    return getAutomationsRoutePath();
+  }
+  return mode === "edit"
+    ? getAutomationEditRoutePath({ projectId, automationId })
+    : getAutomationDetailRoutePath({ projectId, automationId });
+}
+
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
+  const location = useLocation();
   const navigate = useNavigate();
   const toThread = useCallback(
     (threadId: string) => {
@@ -196,23 +217,28 @@ export function useBbNavigate(): BbNavigate {
     [navigate],
   );
   const toPluginPanel = useCallback(
-    (path: string, options?: { subPath?: string; replace?: boolean }) => {
+    (
+      path: string,
+      options?: {
+        subPath?: string;
+        replace?: boolean;
+        returnOnExit?: boolean;
+      },
+    ) => {
+      const navigateOptions = {
+        ...(options?.replace ? { replace: true } : {}),
+        ...(options?.returnOnExit
+          ? { state: { bbPluginPanelReturnOnExit: true } }
+          : {}),
+      };
       if (
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         path === AUTOMATIONS_PLUGIN_PANEL_PATH
       ) {
-        const parts = (options?.subPath ?? "")
-          .split("/")
-          .filter((part) => part.length > 0);
-        const [projectId, automationId] = parts;
-        const target =
-          projectId !== undefined && automationId !== undefined
-            ? getAutomationDetailRoutePath({
-                projectId,
-                automationId,
-              })
-            : getAutomationsRoutePath();
-        void navigate(target, options?.replace ? { replace: true } : undefined);
+        const target = getAutomationPluginPanelRoutePath(
+          options?.subPath ?? "",
+        );
+        void navigate(target, navigateOptions);
         return;
       }
       void navigate(
@@ -223,10 +249,26 @@ export function useBbNavigate(): BbNavigate {
             ? { subPath: options.subPath }
             : {}),
         }),
-        options?.replace ? { replace: true } : undefined,
+        navigateOptions,
       );
     },
     [navigate, pluginId],
+  );
+  const exitPluginPanel = useCallback(
+    (path: string, options?: { subPath?: string }) => {
+      const state = location.state;
+      if (
+        state !== null &&
+        typeof state === "object" &&
+        "bbPluginPanelReturnOnExit" in state &&
+        state.bbPluginPanelReturnOnExit === true
+      ) {
+        void navigate(-1);
+        return;
+      }
+      toPluginPanel(path, { ...options, replace: true });
+    },
+    [location.state, navigate, toPluginPanel],
   );
   const toCompose = useCallback(
     (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
@@ -242,8 +284,8 @@ export function useBbNavigate(): BbNavigate {
     [navigate],
   );
   return useMemo(
-    () => ({ toThread, toProject, toPluginPanel, toCompose }),
-    [toThread, toProject, toPluginPanel, toCompose],
+    () => ({ toThread, toProject, toPluginPanel, exitPluginPanel, toCompose }),
+    [toThread, toProject, toPluginPanel, exitPluginPanel, toCompose],
   );
 }
 

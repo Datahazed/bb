@@ -29,6 +29,8 @@ export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
 export const TOOLS_AUTOMATION_BROWSE_ROUTE_PATH = "/tools/automations/browse";
 export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
+export const TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
+  "/tools/automations/:projectId/:automationId/edit";
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
@@ -161,6 +163,13 @@ export function getAutomationDetailRoutePath({
   )}/${encodeURIComponent(automationId)}`;
 }
 
+export function getAutomationEditRoutePath({
+  projectId,
+  automationId,
+}: AutomationDetailRoutePathArgs): string {
+  return `${getAutomationDetailRoutePath({ projectId, automationId })}/edit`;
+}
+
 export function getAutomationBrowseRoutePath(): string {
   return TOOLS_AUTOMATION_BROWSE_ROUTE_PATH;
 }
@@ -274,6 +283,7 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_AUTOMATIONS_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,

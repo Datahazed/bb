@@ -1,5 +1,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  matchPath,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -12,27 +18,26 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import { Button } from "@bb/shared-ui/button";
 import {
+  ResourceActionButton,
   ResourceBrowseCard,
-  ResourceDetailPage,
   ResourceListPanel,
-  ResourceMeta,
+  ResourceListState,
   ResourceMultiSelectMenu,
-  ResourceOverflowMenu,
-  ResourceProperty,
-  ResourcePropertyList,
   ResourceRow,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
-  ResourceStatus,
   ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Switch } from "@bb/shared-ui/switch";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import {
+  PluginDetailView,
+  type PluginDetailHealth,
+} from "@/components/tools/PluginDetailView";
 import {
   usePluginList,
   type PluginListItem,
@@ -47,6 +52,7 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
   getPluginBrowseRoutePath,
@@ -83,10 +89,23 @@ function pluginStatusTone(
   if (plugin.status === "needs-configuration" || plugin.status === "degraded") {
     return "warning";
   }
-  if (plugin.status === "error" || plugin.status === "incompatible") {
+  if (
+    plugin.status === "error" ||
+    plugin.status === "incompatible" ||
+    plugin.status === "missing"
+  ) {
     return "error";
   }
   return "muted";
+}
+
+function pluginDetailHealth(
+  plugin: PluginListItem,
+): PluginDetailHealth | undefined {
+  if (!plugin.enabled || plugin.status === "running") return undefined;
+  const tone = pluginStatusTone(plugin);
+  if (tone === "success" || tone === "muted") return undefined;
+  return { label: plugin.status, tone };
 }
 
 function ToolsBodyFallback() {
@@ -173,22 +192,20 @@ function PluginListRow({
       description={description}
       onOpen={() => void navigate(detailPath)}
       actions={
-        <ResourceOverflowMenu
-          label={`${plugin.id} actions`}
-          disabled={pending}
-          items={[
-            {
-              label: plugin.enabled ? "Disable" : "Enable",
-              icon: plugin.enabled ? "Pause" : "Play",
-              onSelect: () => onToggle(plugin),
-            },
-            {
-              label: "Open",
-              icon: "ChevronRight",
-              onSelect: () => void navigate(detailPath),
-            },
-          ]}
-        />
+        <>
+          <ResourceActionButton
+            label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
+            icon={plugin.enabled ? "Pause" : "Play"}
+            disabled={pending}
+            onClick={() => onToggle(plugin)}
+          />
+          <ResourceActionButton
+            label={`Open ${plugin.id}`}
+            icon="ChevronRight"
+            disabled={pending}
+            onClick={() => void navigate(detailPath)}
+          />
+        </>
       }
     />
   );
@@ -352,36 +369,18 @@ function ProviderInstalledPluginRow({
       description={description}
       onOpen={() => void navigate(detailPath)}
       actions={
-        <Link
-          to={detailPath}
-          aria-label={`Open ${plugin.name}`}
-          className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <Icon
-            name="ChevronRight"
-            className="size-4 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-        </Link>
+        <ResourceActionButton
+          label={`Open ${plugin.name}`}
+          icon="ChevronRight"
+          onClick={() => void navigate(detailPath)}
+        />
       }
     />
   );
 }
 
 function PluginsLoadingRows() {
-  return (
-    <div className="space-y-0.5" aria-busy aria-label="Loading plugins">
-      {["w-32", "w-44", "w-28"].map((nameWidth) => (
-        <div key={nameWidth} className="flex items-start gap-2 px-3 py-2">
-          <Skeleton className="size-4 shrink-0 rounded-sm" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Skeleton className={cn("h-3.5", nameWidth)} />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <ResourceListState state="loading" message="Loading plugins" />;
 }
 
 type PluginToolRow =
@@ -459,7 +458,14 @@ function AutomationsToolView() {
     location.pathname === getAutomationBrowseRoutePath()
       ? "browse"
       : projectId && automationId
-        ? `${projectId}/${automationId}`
+        ? `${projectId}/${automationId}${
+            matchPath(
+              { path: TOOLS_AUTOMATION_EDIT_ROUTE_PATH, end: true },
+              location.pathname,
+            ) !== null
+              ? "/edit"
+              : ""
+          }`
         : "";
 
   if (panel === null) {
@@ -511,11 +517,13 @@ function PluginDetail({
   plugin,
   pending,
   onToggle,
+  onReload,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
   pending: boolean;
   onToggle: (plugin: PluginListItem) => void;
+  onReload: (plugin: PluginListItem) => void;
 }) {
   if (isLoading) {
     return <PluginsLoadingRows />;
@@ -528,45 +536,29 @@ function PluginDetail({
   }
 
   return (
-    <ResourceDetailPage
+    <PluginDetailView
       leading={<PluginListLogo plugin={plugin} />}
       title={plugin.id}
-      status={
-        <ResourceStatus tone={pluginStatusTone(plugin)}>
-          {plugin.enabled ? plugin.status : "disabled"}
-        </ResourceStatus>
-      }
-      meta={<ResourceMeta items={[`v${plugin.version}`]} />}
+      health={pluginDetailHealth(plugin)}
+      metadata={[`v${plugin.version}`]}
       description={plugin.description ?? plugin.statusDetail}
-      headerActions={
-        <>
-          <Switch
-            size="sm"
-            checked={plugin.enabled}
-            disabled={pending}
-            aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
-            onCheckedChange={() => onToggle(plugin)}
-          />
-        </>
+      enabled={plugin.enabled}
+      lifecycleDisabled={pending}
+      onEnabledChange={() => onToggle(plugin)}
+      overflowItems={[
+        {
+          label: "Reload",
+          icon: "ArrowReloadHorizontal",
+          disabled: pending,
+          onSelect: () => onReload(plugin),
+        },
+      ]}
+      properties={
+        plugin.statusDetail
+          ? [{ label: "Status detail", value: plugin.statusDetail }]
+          : []
       }
-    >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Details
-        </p>
-        <ResourcePropertyList>
-          <ResourceProperty label="Status">
-            {plugin.enabled ? plugin.status : "disabled"}
-          </ResourceProperty>
-          <ResourceProperty label="Version">{plugin.version}</ResourceProperty>
-          {plugin.statusDetail ? (
-            <ResourceProperty label="Status detail">
-              {plugin.statusDetail}
-            </ResourceProperty>
-          ) : null}
-        </ResourcePropertyList>
-      </section>
-    </ResourceDetailPage>
+    />
   );
 }
 
@@ -582,57 +574,40 @@ function ProviderPluginDetail({
   }
 
   return (
-    <ResourceDetailPage
+    <PluginDetailView
       leading={<ProviderPluginLogoStack providers={plugin.providers} />}
       title={plugin.name}
-      status={
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="inline-flex items-center gap-1">
-            {plugin.providers.map((provider) => (
-              <ProviderLogo
-                key={provider}
-                providerId={provider}
-                className="size-4 shrink-0"
-              />
-            ))}
-          </span>
-          <ResourceStatus tone="success">Installed</ResourceStatus>
-        </span>
-      }
-      meta={
-        <ResourceMeta
-          items={[
-            "Provider plugin",
-            plugin.providers
-              .map((provider) => PROVIDER_LABELS[provider])
-              .join(", "),
-            `${plugin.skillCount} ${plugin.skillCount === 1 ? "skill" : "skills"}`,
-          ]}
-        />
-      }
+      metadata={[
+        plugin.providers
+          .map((provider) => PROVIDER_LABELS[provider])
+          .join(", "),
+        `${plugin.skillCount} ${plugin.skillCount === 1 ? "skill" : "skills"}`,
+      ]}
       description={plugin.description}
-    >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Skills
-        </p>
-        <div className="space-y-1">
-          {plugin.skillNames.map((skillName) => (
-            <div
-              key={skillName}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-            >
-              <Icon
-                name="Zap"
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate">{skillName}</span>
+      properties={[]}
+      sections={[
+        {
+          label: "Skills",
+          content: (
+            <div className="space-y-1">
+              {plugin.skillNames.map((skillName) => (
+                <div
+                  key={skillName}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
+                >
+                  <Icon
+                    name="Zap"
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{skillName}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
-    </ResourceDetailPage>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -653,9 +628,10 @@ function PluginBrowseCard({
         />
       }
       title={example.label}
-      meta="Starter template"
+      byline="Starter template"
       description={example.description}
-      state={
+      openLabel={`Use ${example.label} template`}
+      headerAside={
         <Button
           type="button"
           variant="outline"
@@ -680,7 +656,6 @@ function PluginBrowseShelf({
   return (
     <ResourceSourceShelf
       label="Browse"
-      count={examples.length}
       leading={
         <Icon
           name="ElectricPlugs"
@@ -688,7 +663,7 @@ function PluginBrowseShelf({
           aria-hidden
         />
       }
-      action={
+      browseAction={
         <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
           <Link to={getPluginBrowseRoutePath()}>
             See all
@@ -740,7 +715,7 @@ function PluginBrowsePage({
           No plugin templates match "{query}".
         </EmptyStatePanel>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visibleExamples.map((example) => (
             <PluginBrowseCard
               key={example.label}
@@ -764,7 +739,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
   const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
   const listQuery = usePluginList({ includeExperimentDisabled: true });
-  const plugins = listQuery.data ?? [];
+  const plugins = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const providerPlugins = useMemo(
     () => providerPluginsFromSkills(skillsQuery.data?.skills ?? []),
@@ -867,7 +842,23 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       );
       if (!response.ok) throw new Error(`Failed to ${action} plugin`);
     },
-    onSuccess: () => void listQuery.refetch(),
+    onSuccess: () => listQuery.refetch(),
+    onError: (error) => {
+      appToast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
+  const pluginReload = useMutation({
+    mutationFn: async (plugin: PluginListItem) => {
+      const response = await fetch(
+        `/api/v1/plugins/reload?id=${encodeURIComponent(plugin.id)}`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error("Failed to reload plugin");
+    },
+    onSuccess: () => {
+      appToast.success("Plugin reloaded");
+      return listQuery.refetch();
+    },
     onError: (error) => {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
@@ -890,7 +881,9 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
-      : null;
+      : pluginReload.isPending && pluginReload.variables
+        ? pluginReload.variables.id
+        : null;
   const hasPluginRows = pluginRows.length > 0;
   const handleCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
@@ -965,11 +958,23 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
           <PluginBrowsePage onCreate={handleCreatePlugin} />
         ) : pluginId !== undefined ? (
           selectedProviderPluginName !== null ? (
-            isProviderPluginsLoading ? (
+            skillsQuery.isError ? (
+              <ResourceListState
+                state="error"
+                message="Couldn't load plugin."
+                onRetry={() => void skillsQuery.refetch()}
+              />
+            ) : isProviderPluginsLoading ? (
               <PluginsLoadingRows />
             ) : (
               <ProviderPluginDetail plugin={selectedProviderPlugin} />
             )
+          ) : listQuery.isError ? (
+            <ResourceListState
+              state="error"
+              message="Couldn't load plugin."
+              onRetry={() => void listQuery.refetch()}
+            />
           ) : (
             <PluginDetail
               isLoading={isLoading}
@@ -978,14 +983,17 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
                 selectedPlugin !== null && pendingPluginId === selectedPlugin.id
               }
               onToggle={(target) => pluginToggle.mutate(target)}
+              onReload={(target) => pluginReload.mutate(target)}
             />
           )
         ) : listQuery.isError ? (
           <>
             {overviewHeader}
-            <EmptyStatePanel role="alert" className="py-6">
-              Couldn't load plugins.
-            </EmptyStatePanel>
+            <ResourceListState
+              state="error"
+              message="Couldn't load plugins."
+              onRetry={() => void listQuery.refetch()}
+            />
           </>
         ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
           <>
@@ -995,18 +1003,19 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         ) : !hasPluginRows ? (
           <>
             {overviewHeader}
-            <EmptyStatePanel className="py-6">
-              No plugins installed.
-            </EmptyStatePanel>
+            <ResourceListState state="empty" message="No plugins installed." />
           </>
         ) : visiblePluginRows.length === 0 ? (
           <>
             {overviewHeader}
-            <EmptyStatePanel className="py-6">
-              {normalizedQuery === ""
-                ? "No plugins match these agents."
-                : `No plugins match "${query}"`}
-            </EmptyStatePanel>
+            <ResourceListState
+              state="empty"
+              message={
+                normalizedQuery === ""
+                  ? "No plugins match these agents."
+                  : `No plugins match "${query}"`
+              }
+            />
           </>
         ) : (
           <>

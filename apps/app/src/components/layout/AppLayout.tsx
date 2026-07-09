@@ -62,6 +62,7 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
@@ -508,6 +509,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
     location.pathname,
   );
+  const toolsAutomationEditMatch = matchPath(
+    TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+    location.pathname,
+  );
   const isToolsAutomationBrowse = Boolean(
     matchPath(TOOLS_AUTOMATION_BROWSE_ROUTE_PATH, location.pathname),
   );
@@ -545,11 +550,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (isToolsAutomationBrowse) {
       return [automationsCrumb, { label: "Browse" }];
     }
-    if (toolsAutomationDetailMatch) {
+    if (toolsAutomationEditMatch ?? toolsAutomationDetailMatch) {
+      const automationMatch =
+        toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
       return [
         automationsCrumb,
         {
-          label: toolsAutomationDetailMatch.params.automationId ?? "Automation",
+          label: automationMatch?.params.automationId ?? "Automation",
         },
       ];
     }
@@ -645,8 +652,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (isToolsAutomationBrowse) {
       return "Browse automations";
     }
-    if (toolsAutomationDetailMatch) {
-      return `${toolsAutomationDetailMatch.params.automationId ?? "Automation"} · Automations`;
+    const automationDetailMatch =
+      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
+    if (automationDetailMatch) {
+      return `${automationDetailMatch.params.automationId ?? "Automation"} · Automations`;
     }
     if (toolsBreadcrumbs) {
       const currentTool = toolsBreadcrumbs[toolsBreadcrumbs.length - 1]?.label;

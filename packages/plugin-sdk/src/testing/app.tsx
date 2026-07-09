@@ -64,7 +64,16 @@ export type NavigateCall =
   | {
       method: "toPluginPanel";
       path: string;
-      options?: { subPath?: string; replace?: boolean };
+      options?: {
+        subPath?: string;
+        replace?: boolean;
+        returnOnExit?: boolean;
+      };
+    }
+  | {
+      method: "exitPluginPanel";
+      path: string;
+      options?: { subPath?: string };
     }
   | {
       method: "toCompose";
@@ -113,9 +122,7 @@ function definePluginApp(setup: PluginAppSetup): PluginAppDefinition {
   return Object.freeze({ __bbPluginApp: true as const, setup });
 }
 
-function isPluginAppDefinition(
-  value: unknown,
-): value is PluginAppDefinition {
+function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -186,9 +193,7 @@ export function installTestPluginRuntime(): void {
 
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
-  navPanels: Array<
-    PluginNavPanelRegistration & { chrome: "page" | "none" }
-  >;
+  navPanels: Array<PluginNavPanelRegistration & { chrome: "page" | "none" }>;
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -346,10 +351,7 @@ function collectRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (
-            typeof extension !== "string" ||
-            !/^[a-z0-9]+$/.test(extension)
-          ) {
+          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
             throw new Error(
               `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
             );
@@ -460,6 +462,13 @@ export function renderSlot<Props extends object>(
     toPluginPanel(path, panelOptions) {
       navigateCalls.push({
         method: "toPluginPanel",
+        path,
+        ...(panelOptions !== undefined ? { options: panelOptions } : {}),
+      });
+    },
+    exitPluginPanel(path, panelOptions) {
+      navigateCalls.push({
+        method: "exitPluginPanel",
         path,
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
       });

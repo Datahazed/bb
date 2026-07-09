@@ -261,6 +261,15 @@ interface BbNavigate {
     toPluginPanel(path: string, options?: {
         subPath?: string;
         replace?: boolean;
+        /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
+        returnOnExit?: boolean;
+    }): void;
+    /**
+     * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
+     * direct entries replace themselves with this fallback location.
+     */
+    exitPluginPanel(path: string, options?: {
+        subPath?: string;
     }): void;
     /**
      * Navigate to the root compose surface (the new-thread screen). Pass
@@ -1237,6 +1246,7 @@ type ProjectCreateResult = PublicApiOutput<"/projects", "$post">;
 type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
 type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
 type ProjectListResult = PublicApiOutput<"/projects", "$get">;
+type ProjectSidebarBootstrapResult = PublicApiOutput<"/sidebar-bootstrap", "$get">;
 type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
 type ProjectSourceAddResult = PublicApiOutput<"/projects/:id/sources", "$post">;
 type ProjectSourceUpdateResult = PublicApiOutput<"/projects/:id/sources/:sourceId", "$patch">;
@@ -1251,6 +1261,7 @@ interface ProjectsArea {
     delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
     get(args: ProjectGetArgs): Promise<ProjectGetResult>;
     list(args?: ProjectListArgs): Promise<ProjectListResult>;
+    sidebarBootstrap(): Promise<ProjectSidebarBootstrapResult>;
     sources: ProjectSourcesArea;
     update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }

@@ -18,10 +18,13 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { appToast } from "@/components/ui/app-toast";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import {
+  ResourceActionButton,
   ResourceBrowseCard,
   ResourceCardStat,
   ResourceDetailPage,
+  ResourceDetailSection,
   ResourceListPanel,
+  ResourceListState,
   ResourceMeta,
   ResourceMultiSelectMenu,
   ResourceOverflowMenu,
@@ -345,18 +348,11 @@ function SkillRow({
       description={description}
       onOpen={onSelect}
       actions={
-        <button
-          type="button"
+        <ResourceActionButton
+          label={`Open ${skill.name}`}
+          icon="ChevronRight"
           onClick={onSelect}
-          aria-label={`Open ${skill.name}`}
-          className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <Icon
-            name="ChevronRight"
-            className="size-4 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-        </button>
+        />
       }
     />
   );
@@ -532,11 +528,12 @@ function RegistrySkillSourceItem({
   return (
     <ResourceBrowseCard
       title={skill.name}
-      meta={`by ${formatRegistrySource(skill.source)}`}
+      byline={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
-      state={<RegistrySkillSocialProof skill={skill} />}
+      headerAside={<RegistrySkillSocialProof skill={skill} />}
+      openLabel={`Open ${skill.name}`}
       onOpen={() => onSelect(skill)}
-      action={
+      footerAction={
         <RegistryInstallButton
           skill={skill}
           installedProviders={installedProviders}
@@ -635,8 +632,7 @@ function RegistrySkillsSource({
     return (
       <ResourceSourceShelf
         label="Browse"
-        leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-        count={<SkillsShAttributionLink />}
+        attribution={<SkillsShAttributionLink />}
       >
         {["w-36", "w-48", "w-28"].map((nameWidth) => (
           <ResourceSourceItem key={nameWidth}>
@@ -659,9 +655,8 @@ function RegistrySkillsSource({
   return (
     <ResourceSourceShelf
       label="Browse"
-      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-      count={<SkillsShAttributionLink />}
-      action={browseAction}
+      attribution={<SkillsShAttributionLink />}
+      browseAction={browseAction}
     >
       {availableSkills.map((skill) => (
         <ResourceSourceItem key={skill.id}>
@@ -1009,46 +1004,24 @@ export function SkillsOverview({
         }
       />
       {hasError ? (
-        // Failure is direction, not a dead end: say what happened plainly and
-        // offer the way out, kept calm rather than alarmist.
-        <EmptyStatePanel role="alert" className="py-6">
-          <div className="flex flex-col items-center gap-2">
-            <span>Couldn't load skills.</span>
-            {onRetry ? (
-              <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </div>
-        </EmptyStatePanel>
+        <ResourceListState
+          state="error"
+          message="Couldn't load skills."
+          onRetry={onRetry}
+        />
       ) : isLoading ? (
-        <div className="space-y-px" aria-busy aria-label="Loading skills">
-          {[
-            ["w-28", "w-48"],
-            ["w-36", "w-40"],
-            ["w-24", "w-56"],
-            ["w-32", "w-44"],
-            ["w-40", "w-52"],
-            ["w-28", "w-44"],
-          ].map(([nameWidth, descWidth]) => (
-            <div
-              key={`${nameWidth}-${descWidth}`}
-              className="flex items-center gap-1.5 px-2 py-1.5"
-            >
-              <Skeleton className="size-3.5 rounded" />
-              <Skeleton className={cn("h-3", nameWidth)} />
-              <Skeleton className={cn("h-3", descWidth)} />
-            </div>
-          ))}
-        </div>
+        <ResourceListState state="loading" message="Loading skills" />
       ) : visibleSkills.length === 0 ? (
-        normalizedQuery === "" && providerFilters.length === 0 ? null : (
-          <EmptyStatePanel className="py-6">
-            {normalizedQuery === ""
-              ? "No skills match these agents."
-              : `No skills match "${query}"`}
-          </EmptyStatePanel>
-        )
+        <ResourceListState
+          state="empty"
+          message={
+            normalizedQuery === "" && providerFilters.length === 0
+              ? "No skills installed."
+              : normalizedQuery === ""
+                ? "No skills match these agents."
+                : `No skills match "${query}"`
+          }
+        />
       ) : (
         <ResourceListPanel>
           {visibleSkills.map((skill) => (
@@ -1085,14 +1058,14 @@ function RegistrySkillDetailView({
     <ResourceDetailPage
       leading={<RegistrySkillLeading skill={skill} />}
       title={skill.name}
-      status={<RegistrySkillSocialProof skill={skill} />}
-      meta={
+      info={<RegistrySkillSocialProof skill={skill} />}
+      metadata={
         <ResourceMeta
           items={["skills.sh", formatRegistrySource(skill.source), skill.topic]}
         />
       }
       description={skill.summary}
-      actions={
+      modeActions={
         <RegistryInstallButton
           skill={skill}
           installedProviders={installedProviders}
@@ -1104,10 +1077,7 @@ function RegistrySkillDetailView({
         />
       }
     >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Details
-        </p>
+      <ResourceDetailSection label="Details">
         <ResourcePropertyList>
           <ResourceProperty label="Installs">
             {formatInstallCount(skill.installs)}
@@ -1126,7 +1096,7 @@ function RegistrySkillDetailView({
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>
-      </section>
+      </ResourceDetailSection>
     </ResourceDetailPage>
   );
 }
@@ -1167,7 +1137,6 @@ function SkillPathCopyButton({ path }: { path: string }) {
   return (
     <button
       type="button"
-      title={copied ? "Copied path" : "Copy path"}
       aria-label={`Copy skill path: ${path}`}
       onClick={handleCopy}
       className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1349,24 +1318,21 @@ export function SkillDetailDialogView({
     <ResourceDetailPage
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
-      status={
+      info={
         <ResourceStatus tone={canManage ? "success" : "muted"}>
           {detailStatusLabel}
         </ResourceStatus>
       }
-      headerActions={headerActions}
-      meta={<SkillPathCopyButton path={skill.filePath} />}
-      actions={actionRow}
+      overflowMenu={headerActions}
+      metadata={<SkillPathCopyButton path={skill.filePath} />}
+      modeActions={actionRow}
     >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          SKILL.md
-        </p>
+      <ResourceDetailSection label="SKILL.md">
         {contentBody}
         {editing || confirmingDelete ? (
           <span className="sr-only">Skill edit mode is active.</span>
         ) : null}
-      </section>
+      </ResourceDetailSection>
 
       {confirmingDelete && !editing ? (
         <p className="text-xs text-muted-foreground">
@@ -1645,10 +1611,7 @@ export function SkillsLibrary() {
           pendingRegistrySkillId={pendingRegistrySkillId}
           registryBrowseAction={
             <Button asChild variant="ghost" size="sm" className="h-6 px-2">
-              <Link to={getRegistrySkillsRoutePath()}>
-                See all
-                <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-              </Link>
+              <Link to={getRegistrySkillsRoutePath()}>See all</Link>
             </Button>
           }
           onCreateSkill={handleCreateSkill}

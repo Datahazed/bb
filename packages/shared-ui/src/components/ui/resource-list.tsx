@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "./button";
+import { EmptyStatePanel } from "./empty-state";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -11,6 +12,7 @@ import {
 } from "./dropdown-menu";
 import { Icon, type IconName } from "./icon";
 import { Input } from "./input";
+import { Skeleton } from "./skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +22,13 @@ import {
 import { cn } from "../../lib/utils";
 
 export type ResourceStatusTone = "success" | "warning" | "error" | "muted";
+
+function targetsResourceAction(target: EventTarget): boolean {
+  return (
+    target instanceof Element &&
+    target.closest("a, button, [data-row-action]") !== null
+  );
+}
 
 export function ResourceState({
   tone,
@@ -559,11 +568,7 @@ export function ResourceRow({
         className,
       )}
       onClick={(event) => {
-        if (
-          (event.target as HTMLElement).closest("a, button, [data-row-action]")
-        ) {
-          return;
-        }
+        if (targetsResourceAction(event.target)) return;
         onOpen();
       }}
     >
@@ -593,7 +598,7 @@ export function ResourceRow({
           className={cn(
             "mt-0.5 flex shrink-0 items-center gap-0.5 transition-opacity",
             actionsVisibility === "hover" &&
-              "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+              "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
           )}
         >
           {actions}
@@ -626,11 +631,80 @@ export function ResourceListPanel({
   );
 }
 
+export function ResourceListState({
+  state,
+  message,
+  onRetry,
+  loadingRows = 4,
+}: {
+  state: "loading" | "empty" | "error";
+  message: string;
+  onRetry?: () => void;
+  loadingRows?: number;
+}) {
+  if (state === "loading") {
+    return (
+      <ResourceListPanel>
+        <span role="status" className="sr-only">
+          {message}
+        </span>
+        <div aria-hidden="true">
+          {Array.from({ length: loadingRows }, (_, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-3 px-3 py-2"
+            >
+              <Skeleton className="size-4 rounded-sm" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-3.5 w-36" />
+                <Skeleton className="h-3 w-56 max-w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </ResourceListPanel>
+    );
+  }
+
+  return (
+    <EmptyStatePanel
+      role={state === "error" ? "alert" : "status"}
+      className="py-6"
+    >
+      <div className="flex flex-col items-center gap-2">
+        <span>{message}</span>
+        {state === "error" && onRetry ? (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
+      </div>
+    </EmptyStatePanel>
+  );
+}
+
 export function ResourcePropertyList({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-popover shadow-sm">
       {children}
     </div>
+  );
+}
+
+export function ResourceDetailSection({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-medium uppercase text-muted-foreground">
+        {label}
+      </h2>
+      {children}
+    </section>
   );
 }
 
@@ -691,15 +765,15 @@ export function ResourceSection({
 
 export function ResourceSourceShelf({
   label,
-  count,
+  attribution,
   leading,
-  action,
+  browseAction,
   children,
 }: {
   label: ReactNode;
-  count?: ReactNode;
+  attribution?: ReactNode;
   leading?: ReactNode;
-  action?: ReactNode;
+  browseAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -708,12 +782,16 @@ export function ResourceSourceShelf({
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {leading}
           <span className="truncate font-medium">{label}</span>
-          {count !== undefined && count !== null && count !== false ? (
-            <span className="text-subtle-foreground">{count}</span>
+          {attribution !== undefined &&
+          attribution !== null &&
+          attribution !== false ? (
+            <span className="text-subtle-foreground">{attribution}</span>
           ) : null}
         </div>
-        {action ? (
-          <div className="shrink-0 text-xs text-muted-foreground">{action}</div>
+        {browseAction ? (
+          <div className="shrink-0 text-xs text-muted-foreground">
+            {browseAction}
+          </div>
         ) : null}
       </div>
       <div className="overflow-x-auto">
@@ -743,51 +821,34 @@ export function ResourceBrowseCard({
   leading,
   title,
   description,
-  meta,
-  tags = [],
-  state,
-  action,
+  byline,
+  headerAside,
+  footerAction,
+  openLabel,
   onOpen,
 }: {
   leading?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
-  meta?: ReactNode;
-  tags?: readonly ReactNode[];
-  state?: ReactNode;
-  action?: ReactNode;
+  byline?: ReactNode;
+  headerAside?: ReactNode;
+  footerAction?: ReactNode;
+  openLabel: string;
   onOpen: () => void;
 }) {
   const hasLeading =
     leading !== undefined && leading !== null && leading !== false;
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left shadow-sm transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      onClick={(event) => {
-        if (
-          (event.target as HTMLElement).closest("a, button, [data-row-action]")
-        ) {
-          return;
-        }
-        onOpen();
-      }}
-      onKeyDown={(event) => {
-        if (
-          (event.target as HTMLElement).closest("a, button, [data-row-action]")
-        ) {
-          return;
-        }
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-    >
+    <div className="group relative flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left shadow-sm transition-colors hover:bg-state-hover">
+      <button
+        type="button"
+        aria-label={openLabel}
+        onClick={onOpen}
+        className="absolute inset-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
       <div
         className={cn(
-          "grid min-w-0 gap-x-2 gap-y-2",
+          "pointer-events-none relative grid min-w-0 gap-x-2 gap-y-2",
           hasLeading
             ? "grid-cols-[2.25rem_minmax(0,1fr)_auto]"
             : "grid-cols-[minmax(0,1fr)_auto]",
@@ -802,20 +863,24 @@ export function ResourceBrowseCard({
           <span className="block truncate text-sm font-medium text-foreground">
             {title}
           </span>
-          {meta ? (
+          {byline ? (
             <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-              {meta}
+              {byline}
             </span>
           ) : null}
         </span>
-        {state ? (
+        {headerAside ? (
           <span
+            onClick={(event) => {
+              if (targetsResourceAction(event.target)) return;
+              onOpen();
+            }}
             className={cn(
-              "row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end",
+              "pointer-events-auto row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end",
               hasLeading ? "col-start-3" : "col-start-2",
             )}
           >
-            {state}
+            {headerAside}
           </span>
         ) : null}
         {description ? (
@@ -828,30 +893,16 @@ export function ResourceBrowseCard({
             {description}
           </span>
         ) : null}
-        {tags.length > 0 ? (
-          <span
-            className={cn(
-              "flex flex-wrap gap-1",
-              hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
-            )}
-          >
-            {tags.map((tag, index) => (
-              <span
-                key={index}
-                className="rounded-md bg-surface-recessed px-1.5 py-0.5 text-[11px] text-muted-foreground"
-              >
-                {tag}
-              </span>
-            ))}
-          </span>
-        ) : null}
       </div>
-      {action ? (
+      {footerAction ? (
         <span
-          data-row-action
-          className="mt-auto flex items-center justify-end pt-3"
+          onClick={(event) => {
+            if (targetsResourceAction(event.target)) return;
+            onOpen();
+          }}
+          className="pointer-events-auto relative mt-auto flex items-center justify-end pt-3"
         >
-          {action}
+          {footerAction}
         </span>
       ) : null}
     </div>
@@ -862,21 +913,23 @@ export function ResourceDetailPage({
   back,
   title,
   leading,
-  status,
-  headerActions,
-  meta,
+  info,
+  lifecycleControl,
+  overflowMenu,
+  metadata,
   description,
-  actions,
+  modeActions,
   children,
 }: {
   back?: ReactNode;
   title: ReactNode;
   leading: ReactNode;
-  status?: ReactNode;
-  headerActions?: ReactNode;
-  meta?: ReactNode;
+  info?: ReactNode;
+  lifecycleControl?: ReactNode;
+  overflowMenu?: ReactNode;
+  metadata?: ReactNode;
   description?: ReactNode;
-  actions?: ReactNode;
+  modeActions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -892,26 +945,23 @@ export function ResourceDetailPage({
               {title}
             </h1>
           </div>
-          {meta ? (
-            <div className="text-xs text-muted-foreground">{meta}</div>
+          {metadata ? (
+            <div className="text-xs text-muted-foreground">{metadata}</div>
           ) : null}
           {description ? (
             <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {status || headerActions ? (
+        {info || lifecycleControl || overflowMenu ? (
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            {status}
-            {headerActions ? (
-              <span className="flex shrink-0 items-center gap-0.5">
-                {headerActions}
-              </span>
-            ) : null}
+            {info}
+            {lifecycleControl}
+            {overflowMenu}
           </div>
         ) : null}
       </div>
-      {actions ? (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      {modeActions ? (
+        <div className="flex flex-wrap items-center gap-2">{modeActions}</div>
       ) : null}
       {children}
     </div>

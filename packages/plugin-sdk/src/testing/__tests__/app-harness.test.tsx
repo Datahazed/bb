@@ -1,22 +1,24 @@
 // @vitest-environment jsdom
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   PluginHomepageSectionProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
-import {
-  installTestPluginRuntime,
-  loadPluginApp,
-  renderSlot,
-} from "../app.js";
+import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
-const { definePluginApp, useBbNavigate, useComposer, useRealtime, useRpc, useSettings } =
-  await import("../../app.js");
+const {
+  definePluginApp,
+  useBbNavigate,
+  useComposer,
+  useRealtime,
+  useRpc,
+  useSettings,
+} = await import("../../app.js");
 
 afterEach(cleanup);
 
@@ -25,7 +27,7 @@ function Panel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const composer = useComposer();
   const [items, setItems] = useState<string[] | null>(null);
-  const refresh = () => {
+  const refresh = useCallback(() => {
     void rpc
       .call("listItems", { subPath })
       .then((result) => setItems(result as string[]))
@@ -34,12 +36,19 @@ function Panel({ subPath }: PluginNavPanelProps) {
           `error: ${error instanceof Error ? error.message : String(error)}`,
         ]),
       );
-  };
-  useEffect(refresh, []);
+  }, [rpc, subPath]);
+  useEffect(refresh, [refresh]);
   useRealtime("items-changed", refresh);
   if (items === null) return <div>Loading…</div>;
   return (
     <div>
+      <button
+        onClick={() =>
+          navigate.exitPluginPanel("panel", { subPath: "fallback" })
+        }
+      >
+        Exit
+      </button>
       {items.map((item) => (
         <button
           key={item}
@@ -126,6 +135,15 @@ describe("renderSlot", () => {
       { method: "listItems", input: { subPath: "" } },
     ]);
 
+    fireEvent.click(slot.getByText("Exit"));
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "exitPluginPanel",
+        path: "panel",
+        options: { subPath: "fallback" },
+      },
+    ]);
+
     // A realtime push re-fetches and renders the new listing.
     listing = ["a.md", "b.md"];
     await slot.emitRealtime("items-changed", null);
@@ -134,6 +152,11 @@ describe("renderSlot", () => {
     fireEvent.click(slot.getByText("a.md"));
     expect(slot.navigateCalls).toEqual([
       {
+        method: "exitPluginPanel",
+        path: "panel",
+        options: { subPath: "fallback" },
+      },
+      {
         method: "toPluginPanel",
         path: "panel",
         options: { subPath: "a.md" },
@@ -141,6 +164,11 @@ describe("renderSlot", () => {
     ]);
     fireEvent.click(slot.getByText("Compose"));
     expect(slot.navigateCalls).toEqual([
+      {
+        method: "exitPluginPanel",
+        path: "panel",
+        options: { subPath: "fallback" },
+      },
       {
         method: "toPluginPanel",
         path: "panel",

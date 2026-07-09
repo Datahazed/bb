@@ -257,6 +257,15 @@ interface BbNavigate {
     toPluginPanel(path: string, options?: {
         subPath?: string;
         replace?: boolean;
+        /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
+        returnOnExit?: boolean;
+    }): void;
+    /**
+     * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
+     * direct entries replace themselves with this fallback location.
+     */
+    exitPluginPanel(path: string, options?: {
+        subPath?: string;
     }): void;
     /**
      * Navigate to the root compose surface (the new-thread screen). Pass

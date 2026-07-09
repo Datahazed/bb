@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { useState } from "react";
 import {
   cleanup,
   fireEvent,
@@ -9,7 +10,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { PluginContext } from "@/components/plugin/plugin-context";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
+import { useBbNavigate } from "./plugin-sdk-hooks";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
+} from "./route-paths";
 import { useRouteStateHistoryNavigation } from "./app-route-history";
 
 const TOOL_ROUTE_SEQUENCE = [
@@ -23,6 +33,7 @@ const TOOL_ROUTE_SEQUENCE = [
   "/tools/automations",
   "/tools/automations/browse",
   "/tools/automations/proj_standard/auto_standard",
+  "/tools/automations/proj_standard/auto_standard/edit",
 ] as const;
 
 function HistoryHarness() {
@@ -67,6 +78,77 @@ function SidebarControlsHarness() {
   );
 }
 
+const AUTOMATION_ROUTE = {
+  projectId: "proj_standard",
+  automationId: "auto_standard",
+} as const;
+
+function PluginNavigationHarness() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pluginNavigate = useBbNavigate();
+  const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
+  const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
+  const detailSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}`;
+
+  return (
+    <div>
+      <div data-testid="path">{location.pathname}</div>
+      <button type="button" onClick={() => navigate(detailPath)}>
+        Open detail
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+            subPath: editSubPath,
+            returnOnExit: true,
+          })
+        }
+      >
+        Edit from detail
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+            subPath: editSubPath,
+          })
+        }
+      >
+        Open direct edit
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          pluginNavigate.exitPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+            subPath: detailSubPath,
+          })
+        }
+      >
+        Exit edit
+      </button>
+      <button type="button" onClick={() => navigate(-1)}>
+        Native back
+      </button>
+    </div>
+  );
+}
+
+function RemountablePluginNavigationHarness() {
+  const [mountKey, setMountKey] = useState(0);
+  return (
+    <>
+      <button type="button" onClick={() => setMountKey((value) => value + 1)}>
+        Remount plugin
+      </button>
+      <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
+        <PluginNavigationHarness key={mountKey} />
+      </PluginContext.Provider>
+    </>
+  );
+}
+
 async function clickAndExpectPath(label: string, path: string) {
   fireEvent.click(screen.getByRole("button", { name: label }));
   await waitFor(() => {
@@ -103,6 +185,10 @@ describe("useRouteStateHistoryNavigation", () => {
     expect(screen.getByTestId("can-go-back").textContent).toBe("true");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("false");
 
+    await clickAndExpectPath(
+      "Back",
+      "/tools/automations/proj_standard/auto_standard",
+    );
     await clickAndExpectPath("Back", "/tools/automations/browse");
     await clickAndExpectPath("Back", "/tools/automations");
     await clickAndExpectPath("Back", "/tools/plugins/github");
@@ -142,6 +228,10 @@ describe("useRouteStateHistoryNavigation", () => {
       "Forward",
       "/tools/automations/proj_standard/auto_standard",
     );
+    await clickAndExpectPath(
+      "Forward",
+      "/tools/automations/proj_standard/auto_standard/edit",
+    );
   });
 
   it("updates the actual sidebar arrow buttons after Tools route clicks", async () => {
@@ -166,5 +256,27 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Go back", "/tools/skills");
 
     await expectSidebarButtonState("Go forward", false);
+  });
+
+  it("exits remounted edit routes without duplicate native history entries", async () => {
+    render(
+      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
+        <RemountablePluginNavigationHarness />
+      </MemoryRouter>,
+    );
+
+    const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
+    const editPath = getAutomationEditRoutePath(AUTOMATION_ROUTE);
+
+    await clickAndExpectPath("Open detail", detailPath);
+    await clickAndExpectPath("Edit from detail", editPath);
+    await clickAndExpectPath("Remount plugin", editPath);
+    await clickAndExpectPath("Exit edit", detailPath);
+    await clickAndExpectPath("Native back", getAutomationsRoutePath());
+
+    await clickAndExpectPath("Open direct edit", editPath);
+    await clickAndExpectPath("Remount plugin", editPath);
+    await clickAndExpectPath("Exit edit", detailPath);
+    await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 });

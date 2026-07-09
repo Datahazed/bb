@@ -79,13 +79,13 @@ describe("SkillsOverview", () => {
     await waitFor(() => {
       expect(
         screen
-          .getByRole("menuitem", { name: "Claude Code" })
+          .getByRole("menuitemcheckbox", { name: "Claude Code" })
           .getAttribute("aria-disabled"),
       ).toBe("true");
     });
     expect(
       screen
-        .getByRole("menuitem", { name: "Codex" })
+        .getByRole("menuitemcheckbox", { name: "Codex" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
   });
@@ -104,7 +104,8 @@ describe("SkillsOverview", () => {
 
   it("shows a loading skeleton", () => {
     const markup = render({ skills: [], isLoading: true });
-    expect(markup).toContain('aria-label="Loading skills"');
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain("Loading skills");
     expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("Start from an example");
   });

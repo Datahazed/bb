@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
   getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
@@ -122,6 +123,12 @@ describe("route path helpers", () => {
         automationId: "auto_standard",
       }),
     ).toBe("/tools/automations/proj_standard/auto_standard");
+    expect(
+      getAutomationEditRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/tools/automations/proj_standard/auto_standard/edit");
 
     for (const path of [
       "/tools",
@@ -134,6 +141,7 @@ describe("route path helpers", () => {
       "/tools/automations",
       "/tools/automations/browse",
       "/tools/automations/proj_standard/auto_standard",
+      "/tools/automations/proj_standard/auto_standard/edit",
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }
@@ -181,6 +189,10 @@ describe("route path helpers", () => {
       [
         "/tools/automations/:projectId/:automationId",
         "/tools/automations/proj_standard/auto_standard",
+      ],
+      [
+        "/tools/automations/:projectId/:automationId/edit",
+        "/tools/automations/proj_standard/auto_standard/edit",
       ],
       ["/skills", "/skills"],
       ["/automations", "/automations"],

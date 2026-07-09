@@ -42,7 +42,9 @@ import {
   ResourceBrowseCard,
   ResourceCreateButton,
   ResourceDetailPage,
+  ResourceDetailSection,
   ResourceListPanel,
+  ResourceListState,
   ResourceMeta,
   ResourceMultiSelectMenu,
   ResourceOverflowMenu,
@@ -161,6 +163,7 @@ function asSignal(payload: unknown): AutomationSignal | null {
 function useOverview(): {
   entries: OverviewEntry[] | null;
   error: string | null;
+  refetch: () => void;
 } {
   const rpc = useRpc();
   const [state, setState] = useState<{
@@ -168,16 +171,44 @@ function useOverview(): {
     error: string | null;
   }>({ entries: null, error: null });
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestInFlightRef = useRef(false);
+  const trailingRefetchRef = useRef(false);
 
-  const refetch = useCallback(() => {
-    rpc.call("automations_overview").then(
-      (result) => {
-        const data = result as AutomationsOverviewResponse;
-        setState({ entries: data.automations, error: null });
-      },
-      (error: unknown) => setState({ entries: null, error: errorText(error) }),
-    );
-  }, [rpc]);
+  const runRefetch = useCallback(
+    function requestOverview(showLoading: boolean) {
+      if (requestInFlightRef.current) {
+        trailingRefetchRef.current = true;
+        return;
+      }
+      requestInFlightRef.current = true;
+      if (showLoading) {
+        setState({ entries: null, error: null });
+      }
+      rpc
+        .call("automations_overview")
+        .then(
+          (result) => {
+            const data = result as AutomationsOverviewResponse;
+            setState({ entries: data.automations, error: null });
+          },
+          (error: unknown) =>
+            setState((current) =>
+              !showLoading && current.entries !== null
+                ? current
+                : { entries: null, error: errorText(error) },
+            ),
+        )
+        .finally(() => {
+          requestInFlightRef.current = false;
+          if (trailingRefetchRef.current) {
+            trailingRefetchRef.current = false;
+            requestOverview(false);
+          }
+        });
+    },
+    [rpc],
+  );
+  const refetch = useCallback(() => runRefetch(true), [runRefetch]);
 
   useEffect(() => {
     refetch();
@@ -191,18 +222,22 @@ function useOverview(): {
     [],
   );
   const scheduleRefetch = useCallback(() => {
+    if (requestInFlightRef.current) {
+      trailingRefetchRef.current = true;
+      return;
+    }
     if (refetchTimerRef.current !== null) return;
     refetchTimerRef.current = setTimeout(() => {
       refetchTimerRef.current = null;
-      refetch();
+      runRefetch(false);
     }, 75);
-  }, [refetch]);
+  }, [runRefetch]);
   // Any create/update/pause/resume/run/delete or run-completion touches the
   // overview (rows show last-run status), so refetch on either kind.
   useRealtime("automations", (payload) => {
     if (asSignal(payload) !== null) scheduleRefetch();
   });
-  return state;
+  return { ...state, refetch };
 }
 
 function useAutomation(route: DetailRoute): {
@@ -792,10 +827,10 @@ function AutomationTemplateCard({
         />
       }
       title={template.label}
-      meta="Starter template"
+      byline="Starter template"
       description={template.description}
-      tags={["bb automation", "schedule", "template"]}
-      state={
+      openLabel={`Use ${template.label} template`}
+      headerAside={
         <Button
           type="button"
           variant="outline"
@@ -821,7 +856,6 @@ function AutomationBrowseShelf({
   return (
     <ResourceSourceShelf
       label="Browse"
-      count={AUTOMATION_CREATE_TEMPLATES.length}
       leading={
         <Icon
           name="TimeSchedule"
@@ -829,7 +863,7 @@ function AutomationBrowseShelf({
           aria-hidden
         />
       }
-      action={
+      browseAction={
         <Button
           type="button"
           variant="ghost"
@@ -853,21 +887,23 @@ function AutomationBrowseShelf({
 
 function AutomationOverviewPreview() {
   const navigate = useBbNavigate();
-  const { entries, error } = useOverview();
+  const { entries, error, refetch } = useOverview();
 
   if (error !== null) {
     return (
-      <p className="px-1 text-sm text-destructive">
-        Failed to load automations.
-      </p>
+      <ResourceListState
+        state="error"
+        message="Couldn't load automations."
+        onRetry={refetch}
+      />
     );
   }
   if (entries === null) {
-    return <p className="px-1 text-sm text-muted-foreground">Loading...</p>;
+    return <ResourceListState state="loading" message="Loading automations" />;
   }
   if (entries.length === 0) {
     return (
-      <EmptyStatePanel className="py-5">No automations yet.</EmptyStatePanel>
+      <ResourceListState state="empty" message="No automations installed." />
     );
   }
 
@@ -945,7 +981,7 @@ function AutomationBrowsePage({
   );
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
+    <div className="w-full space-y-4">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search automation templates"
@@ -963,7 +999,7 @@ function AutomationBrowsePage({
           No automation templates match "{query}".
         </EmptyStatePanel>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visibleTemplates.map((template) => (
             <AutomationTemplateCard
               key={template.label}
@@ -985,7 +1021,7 @@ function OverviewView({
   onBrowseAll: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { entries, error } = useOverview();
+  const { entries, error, refetch } = useOverview();
   const mutations = useMutations();
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
@@ -1117,21 +1153,28 @@ function OverviewView({
   let body: ReactNode;
   if (error !== null) {
     body = (
-      <p className="text-sm text-destructive">Failed to load automations.</p>
+      <ResourceListState
+        state="error"
+        message="Couldn't load automations."
+        onRetry={refetch}
+      />
     );
   } else if (entries === null) {
-    body = <p className="text-sm text-muted-foreground">Loading...</p>;
+    body = <ResourceListState state="loading" message="Loading automations" />;
   } else if (entries.length === 0) {
     body = (
-      <EmptyStatePanel className="py-6">No automations yet.</EmptyStatePanel>
+      <ResourceListState state="empty" message="No automations installed." />
     );
   } else if (visibleEntries.length === 0) {
     body = (
-      <EmptyStatePanel className="py-6">
-        {normalizedQuery === ""
-          ? "No automations match these locations."
-          : `No automations match "${query}"`}
-      </EmptyStatePanel>
+      <ResourceListState
+        state="empty"
+        message={
+          normalizedQuery === ""
+            ? "No automations match these locations."
+            : `No automations match "${query}"`
+        }
+      />
     );
   } else {
     body = (
@@ -1293,25 +1336,19 @@ function DetailView({
   const runsState = useRuns(route);
   const mutations = useMutations();
   const [actionPending, setActionPending] = useState(false);
-  const [editing, setEditing] = useState(initialEditing);
+  const editing = initialEditing;
   const [saving, setSaving] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    setEditing(initialEditing);
-  }, [route.projectId, route.automationId, initialEditing]);
+  const draftAutomationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (automation === null) return;
-    setDraftName(automation.name);
-    setDraftBody(automationEditBodyValue(automation.execution));
-  }, [automation?.id]);
-
-  useEffect(() => {
-    if (automation === null || editing) return;
+    const automationChanged = draftAutomationIdRef.current !== automation.id;
+    if (editing && !automationChanged) return;
+    draftAutomationIdRef.current = automation.id;
     setDraftName(automation.name);
     setDraftBody(automationEditBodyValue(automation.execution));
   }, [automation, editing]);
@@ -1344,11 +1381,17 @@ function DetailView({
       setDraftName(automation.name);
       setDraftBody(automationEditBodyValue(automation.execution));
     }
-    setEditing(false);
-    navigate.toPluginPanel(PANEL_PATH, {
+    navigate.exitPluginPanel(PANEL_PATH, {
       subPath: `${route.projectId}/${route.automationId}`,
     });
   }, [automation, navigate, route]);
+
+  const openEdit = useCallback(() => {
+    navigate.toPluginPanel(PANEL_PATH, {
+      subPath: `${route.projectId}/${route.automationId}/edit`,
+      returnOnExit: true,
+    });
+  }, [navigate, route]);
 
   const saveEdit = useCallback(() => {
     if (automation === null) return;
@@ -1445,49 +1488,47 @@ function DetailView({
         />
       }
       title={editing ? draftName || automation.name : automation.name}
-      status={status}
-      headerActions={
-        <>
-          <Switch
-            size="sm"
-            checked={automation.enabled}
-            disabled={actionPending || saving || completedOneShot}
-            aria-label={
-              automation.enabled ? "Pause automation" : "Resume automation"
-            }
-            onCheckedChange={(checked) =>
-              runAction(checked ? "resume" : "pause")
-            }
-          />
-          <ResourceOverflowMenu
-            label={`${automation.name} actions`}
-            disabled={actionPending || saving}
-            items={[
-              {
-                label: "Edit",
-                icon: "Edit",
-                disabled: editing,
-                onSelect: () => setEditing(true),
-              },
-              { kind: "separator" },
-              {
-                label: "Run now",
-                icon: "ArrowReloadHorizontal",
-                onSelect: () => runAction("run"),
-              },
-              { kind: "separator" },
-              {
-                label: "Delete",
-                icon: "Trash2",
-                tone: "destructive",
-                onSelect: () => setDeleteOpen(true),
-              },
-            ]}
-          />
-        </>
+      info={status}
+      lifecycleControl={
+        <Switch
+          size="sm"
+          checked={automation.enabled}
+          disabled={actionPending || saving || completedOneShot}
+          aria-label={
+            automation.enabled ? "Pause automation" : "Resume automation"
+          }
+          onCheckedChange={(checked) => runAction(checked ? "resume" : "pause")}
+        />
       }
-      meta={<ResourceMeta items={[automationScheduleLabel(automation)]} />}
-      actions={
+      overflowMenu={
+        <ResourceOverflowMenu
+          label={`${automation.name} actions`}
+          disabled={actionPending || saving}
+          items={[
+            {
+              label: "Edit",
+              icon: "Edit",
+              disabled: editing,
+              onSelect: openEdit,
+            },
+            { kind: "separator" },
+            {
+              label: "Run now",
+              icon: "ArrowReloadHorizontal",
+              onSelect: () => runAction("run"),
+            },
+            { kind: "separator" },
+            {
+              label: "Delete",
+              icon: "Trash2",
+              tone: "destructive",
+              onSelect: () => setDeleteOpen(true),
+            },
+          ]}
+        />
+      }
+      metadata={<ResourceMeta items={[automationScheduleLabel(automation)]} />}
+      modeActions={
         editing ? (
           <>
             <Button
@@ -1511,10 +1552,7 @@ function DetailView({
         ) : null
       }
     >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Configuration
-        </p>
+      <ResourceDetailSection label="Configuration">
         <ResourcePropertyList>
           {editing ? (
             <ResourceProperty label="Name">
@@ -1585,12 +1623,9 @@ function DetailView({
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>
-      </section>
+      </ResourceDetailSection>
 
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Run history
-        </p>
+      <ResourceDetailSection label="Run history">
         {runsState.error !== null ? (
           <p className="text-sm text-destructive">Failed to load runs.</p>
         ) : runsState.loading ? (
@@ -1617,7 +1652,7 @@ function DetailView({
             ) : null}
           </div>
         )}
-      </section>
+      </ResourceDetailSection>
 
       <DeleteAutomationDialog
         open={deleteOpen}
