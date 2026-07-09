@@ -1869,40 +1869,287 @@ function SkillDetail() {
   );
 }
 
-function PluginDetail() {
-  const [enabled, setEnabled] = useState(true);
+interface PluginSettingFixture {
+  label: string;
+  value: ReactNode;
+}
+
+interface PluginDetailFixture {
+  id: string;
+  title: string;
+  provider: ProviderId;
+  version: string;
+  enabled: boolean;
+  status: {
+    label: string;
+    tone: "muted" | "success" | "warning" | "error";
+  };
+  source: string;
+  description: string;
+  statusDetail?: string;
+  capabilities: readonly string[];
+  settings: readonly PluginSettingFixture[];
+}
+
+const PLUGIN_DETAIL_FIXTURES: readonly PluginDetailFixture[] = [
+  {
+    id: "bb-automations",
+    title: "automations",
+    provider: "bb",
+    version: "0.1.0",
+    enabled: true,
+    status: { label: "Running", tone: "success" },
+    source: "Built-in",
+    description: "Schedule recurring or one-shot agent and script runs.",
+    capabilities: [
+      "Tools navigation surface",
+      "Automation list and detail views",
+      "Create-via-chat templates",
+      "Run history",
+    ],
+    settings: [],
+  },
+  {
+    id: "bb-connect",
+    title: "connect",
+    provider: "bb",
+    version: "0.2.0",
+    enabled: true,
+    status: { label: "Needs configuration", tone: "warning" },
+    source: "Built-in",
+    description: "Remote access via getbb.app.",
+    statusDetail: "Sign in before remote hosts and browser access are enabled.",
+    capabilities: [
+      "Remote host pairing",
+      "Browser access",
+      "Connection status panel",
+    ],
+    settings: [
+      { label: "Account", value: "Not connected" },
+      { label: "Remote access", value: "Off until sign-in" },
+    ],
+  },
+  {
+    id: "codex-github",
+    title: "github",
+    provider: "codex",
+    version: "0.1.8",
+    enabled: true,
+    status: { label: "Running", tone: "success" },
+    source: "openai-curated-remote",
+    description: "Inspect repositories, issues, pull requests, and CI state.",
+    capabilities: [
+      "GitHub MCP tools",
+      "PR review skills",
+      "CI investigation workflows",
+      "Repository metadata lookup",
+    ],
+    settings: [
+      { label: "Account", value: "Connected" },
+      { label: "Default repository", value: "ymichael/bb" },
+      { label: "Write access", value: "Enabled" },
+    ],
+  },
+  {
+    id: "codex-notion",
+    title: "notion",
+    provider: "codex",
+    version: "0.1.7",
+    enabled: false,
+    status: { label: "Running", tone: "success" },
+    source: "openai-curated-remote",
+    description: "Capture and retrieve connected Notion context.",
+    capabilities: [
+      "Knowledge capture",
+      "Research documentation",
+      "Meeting intelligence",
+    ],
+    settings: [
+      { label: "Workspace", value: "Product" },
+      { label: "Default database", value: "Knowledge base" },
+    ],
+  },
+  {
+    id: "claude-linear",
+    title: "linear",
+    provider: "claude-code",
+    version: "0.3.1",
+    enabled: true,
+    status: { label: "Degraded", tone: "warning" },
+    source: "Claude Code",
+    description: "Read Linear issues and create follow-up implementation work.",
+    statusDetail:
+      "Issue search is available; write actions are waiting on a refreshed token.",
+    capabilities: [
+      "Issue search",
+      "Project and cycle lookup",
+      "Implementation handoff prompts",
+    ],
+    settings: [
+      { label: "Workspace", value: "bb" },
+      { label: "Token", value: "[set]" },
+      { label: "Write actions", value: "Paused" },
+    ],
+  },
+  {
+    id: "codex-product-design",
+    title: "product-design",
+    provider: "codex",
+    version: "0.1.50",
+    enabled: true,
+    status: { label: "Running", tone: "success" },
+    source: "openai-curated-remote",
+    description: "Audit product flows and turn visual references into code.",
+    capabilities: [
+      "Product design audit skill",
+      "Image-to-code skill",
+      "URL-to-code skill",
+      "Design critique workflow",
+    ],
+    settings: [
+      { label: "Screenshot capture", value: "Browser" },
+      { label: "Review depth", value: "Thorough" },
+    ],
+  },
+];
+
+function PluginExampleSelector({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1 px-1">
+      {PLUGIN_DETAIL_FIXTURES.map((fixture) => (
+        <Button
+          key={fixture.id}
+          type="button"
+          variant={fixture.id === selectedId ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
+          onClick={() => onSelect(fixture.id)}
+        >
+          <ProviderMark provider={fixture.provider} className="size-3.5" />
+          {fixture.title}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function PluginCapabilitiesList({
+  capabilities,
+}: {
+  capabilities: readonly string[];
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {capabilities.map((capability) => (
+        <div
+          key={capability}
+          className="rounded-md border border-border bg-surface-raised px-3 py-2 text-sm shadow-sm"
+        >
+          {capability}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PluginDetailContent({ fixture }: { fixture: PluginDetailFixture }) {
+  const [enabled, setEnabled] = useState(fixture.enabled);
+
+  useEffect(() => {
+    setEnabled(fixture.enabled);
+  }, [fixture.id, fixture.enabled]);
+
+  const status = enabled
+    ? fixture.status
+    : ({ label: "Disabled", tone: "muted" } as const);
+
   return (
     <ResourceDetailPage
-      leading={<BbMark />}
-      title="automations"
-      status={
-        <ResourceState tone={enabled ? "success" : "muted"}>
-          {enabled ? "Running" : "Disabled"}
-        </ResourceState>
+      leading={<ProviderMark provider={fixture.provider} />}
+      title={fixture.title}
+      status={<ResourceState tone={status.tone}>{status.label}</ResourceState>}
+      meta={
+        <ResourceMeta
+          items={["Plugin", fixture.source, `v${fixture.version}`]}
+        />
       }
-      meta={<ResourceMeta items={["bb plugin", "v0.1.0"]} />}
-      description="Schedule agent or script runs."
+      description={fixture.description}
       headerActions={
         <>
           <Switch
             size="sm"
             checked={enabled}
-            aria-label={enabled ? "Disable automations" : "Enable automations"}
+            aria-label={
+              enabled ? `Disable ${fixture.title}` : `Enable ${fixture.title}`
+            }
             onCheckedChange={setEnabled}
+          />
+          <ResourceOverflowMenu
+            label={`${fixture.title} actions`}
+            items={[
+              {
+                label: "Open plugin folder",
+                icon: "ExternalLink",
+                onSelect: NOOP,
+              },
+              {
+                label: "Reload",
+                icon: "ArrowReloadHorizontal",
+                onSelect: NOOP,
+              },
+            ]}
           />
         </>
       }
     >
-      <DetailSection label="Details">
+      <DetailSection label="Configuration">
         <ResourcePropertyList>
-          <ResourceProperty label="Kind">bb plugin</ResourceProperty>
-          <ResourceProperty label="Status">
-            {enabled ? "Running" : "Disabled"}
+          <ResourceProperty label="Provider">
+            <span className="inline-flex items-center gap-1.5">
+              <ProviderMark provider={fixture.provider} className="size-3.5" />
+              {PROVIDER_FILTER_LABELS[fixture.provider]}
+            </span>
           </ResourceProperty>
-          <ResourceProperty label="Version">0.1.0</ResourceProperty>
+          <ResourceProperty label="Source">{fixture.source}</ResourceProperty>
+          <ResourceProperty label="Version">
+            v{fixture.version}
+          </ResourceProperty>
+          {fixture.statusDetail ? (
+            <ResourceProperty label="Status detail">
+              {fixture.statusDetail}
+            </ResourceProperty>
+          ) : null}
+          {fixture.settings.map((setting) => (
+            <ResourceProperty key={setting.label} label={setting.label}>
+              {setting.value}
+            </ResourceProperty>
+          ))}
         </ResourcePropertyList>
       </DetailSection>
+      <DetailSection label="Capabilities">
+        <PluginCapabilitiesList capabilities={fixture.capabilities} />
+      </DetailSection>
     </ResourceDetailPage>
+  );
+}
+
+function PluginDetail() {
+  const [selectedId, setSelectedId] = useState(PLUGIN_DETAIL_FIXTURES[0].id);
+  const fixture =
+    PLUGIN_DETAIL_FIXTURES.find((candidate) => candidate.id === selectedId) ??
+    PLUGIN_DETAIL_FIXTURES[0];
+
+  return (
+    <div className="space-y-4">
+      <PluginExampleSelector selectedId={selectedId} onSelect={setSelectedId} />
+      <PluginDetailContent fixture={fixture} />
+    </div>
   );
 }
 
