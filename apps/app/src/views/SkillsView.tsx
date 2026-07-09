@@ -96,6 +96,7 @@ export type RegistryScope = "user" | "project";
 export type RegistryProvider = "claude-code" | "codex";
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
 const EMPTY_REGISTRY_PROVIDER_SET = new Set<RegistryProvider>();
+const SKILLS_SH_URL = "https://www.skills.sh/";
 const DEFAULT_PROVIDER_STATUS: Record<RegistryProvider, boolean> = {
   "claude-code": false,
   codex: false,
@@ -555,6 +556,20 @@ function RegistrySkillSourceItem({
   );
 }
 
+function SkillsShAttributionLink() {
+  return (
+    <a
+      href={SKILLS_SH_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span>from skills.sh</span>
+      <Icon name="ExternalLink" className="size-3" aria-hidden />
+    </a>
+  );
+}
+
 function RegistrySkillsSource({
   skills,
   isLoading,
@@ -600,6 +615,7 @@ function RegistrySkillsSource({
       <EmptyStatePanel role="alert" className="py-6">
         <div className="flex flex-col items-center gap-2">
           <span>Couldn't load skills.sh.</span>
+          <SkillsShAttributionLink />
           {onRetry ? (
             <Button variant="outline" size="sm" onClick={onRetry}>
               Retry
@@ -615,6 +631,7 @@ function RegistrySkillsSource({
       <ResourceSourceShelf
         label="Browse"
         leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+        action={<SkillsShAttributionLink />}
       >
         {["w-36", "w-48", "w-28"].map((nameWidth) => (
           <ResourceSourceItem key={nameWidth}>
@@ -638,7 +655,12 @@ function RegistrySkillsSource({
     <ResourceSourceShelf
       label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-      action={browseAction}
+      action={
+        <span className="inline-flex items-center gap-2">
+          <SkillsShAttributionLink />
+          {browseAction}
+        </span>
+      }
     >
       {availableSkills.map((skill) => (
         <ResourceSourceItem key={skill.id}>
@@ -733,6 +755,9 @@ function RegistrySkillsBrowsePage({
           />
         }
       />
+      <div className="flex justify-end px-1">
+        <SkillsShAttributionLink />
+      </div>
       {hasError ? (
         <EmptyStatePanel role="alert" className="py-6">
           <div className="flex flex-col items-center gap-2">

@@ -31,6 +31,7 @@ export default {
 };
 
 const NOOP = () => {};
+const SKILLS_SH_URL = "https://www.skills.sh/";
 const SKILL_CREATE_TEMPLATES = [
   {
     label: "PR review",
@@ -552,21 +553,38 @@ function StorySocialProof({
   );
 }
 
+function SkillsShAttributionLink() {
+  return (
+    <a
+      href={SKILLS_SH_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span>from skills.sh</span>
+      <Icon name="ExternalLink" className="size-3" aria-hidden />
+    </a>
+  );
+}
+
 function RegistryBrowseSource() {
   return (
     <ResourceSourceShelf
       label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       action={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-        >
-          See all
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-        </Button>
+        <span className="inline-flex items-center gap-2">
+          <SkillsShAttributionLink />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2"
+          >
+            See all
+            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+          </Button>
+        </span>
       }
     >
       {REGISTRY_SOURCE_ROWS.map((row) => (
