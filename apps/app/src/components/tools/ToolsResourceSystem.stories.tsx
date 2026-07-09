@@ -1588,20 +1588,27 @@ function AutomationDetail({ selectedId }: { selectedId: string }) {
   return <AutomationDetailContent key={fixture.id} fixture={fixture} />;
 }
 
+interface SkillDetailFileFixture {
+  path: string;
+  contents: string;
+}
+
 interface SkillDetailFixture {
   id: string;
+  exampleLabel: string;
   title: string;
   provider: ProviderId;
   status: string;
   statusTone: "muted" | "success";
   path: string;
   markdown: string;
-  includedFiles?: readonly string[];
+  includedFiles?: readonly SkillDetailFileFixture[];
 }
 
 const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
   {
-    id: "bb-builtin",
+    id: "bb-cli",
+    exampleLabel: "bb-cli · Built-in",
     title: "bb-cli",
     provider: "bb",
     status: "Built-in",
@@ -1615,153 +1622,137 @@ const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
       "",
       "# bb CLI",
       "",
-      "Use this when a task needs authoritative bb context from the local CLI.",
+      "Use `bb` when controlling bb itself: inspect current context, coordinate threads, message agents, or inspect projects, providers, and environments.",
       "",
-      "## Workflow",
+      "## Start With Context",
       "",
-      "1. Start with `bb status --json` to identify the current project, thread, and environment.",
-      "2. Use `bb guide` or `bb guide <chapter>` for command-specific details.",
-      "3. Prefer read-only inspection commands before mutating projects, threads, or automations.",
+      "- Use `bb status` to identify the current project, thread, and environment.",
+      "- Prefer `--json` when command output will drive follow-up work.",
+      "- Run `bb guide` for the system overview and `bb guide <chapter>` for command reference.",
+      "",
+      "## Coordinating Work",
+      "",
+      "- Use one clear owner per task.",
+      "- Spawn independent tasks separately when parallel work is useful.",
+      "- Use `bb thread wait <thread-id>` when you explicitly need to block until a thread finishes.",
     ].join("\n"),
   },
   {
-    id: "codex-user",
-    title: "openai-docs",
-    provider: "codex",
-    status: "Read-only",
-    statusTone: "muted",
-    path: "~/.codex/skills/.system/openai-docs/SKILL.md",
-    markdown: [
-      "---",
-      "name: openai-docs",
-      "description: Use official OpenAI documentation when answering product or API questions.",
-      "---",
-      "",
-      "# OpenAI Docs",
-      "",
-      "Use this skill when the user asks how to build with OpenAI products, needs current model guidance, or asks for citations from official documentation.",
-      "",
-      "## Rules",
-      "",
-      "- Prefer official OpenAI documentation sources.",
-      "- Cite the source used in the final answer.",
-      "- Verify current API names and model availability before answering.",
-    ].join("\n"),
-  },
-  {
-    id: "codex-user-multifile",
-    title: "video-analysis",
-    provider: "codex",
-    status: "Editable",
-    statusTone: "success",
-    path: "~/.codex/skills/video-analysis/SKILL.md",
-    markdown: [
-      "---",
-      "name: video-analysis",
-      "description: Analyze videos, screen recordings, and UI recordings frame-by-frame and audio-track for bug triage, behavior review, and A/V inspection.",
-      "---",
-      "",
-      "# Video Analysis",
-      "",
-      "Analyze videos and screen recordings, both visual frames and audio tracks, to produce structured reports with timestamped observations, reproduction steps, and likely code or product areas.",
-      "",
-      "## Inputs",
-      "",
-      "| Input | Required | Notes |",
-      "| --- | --- | --- |",
-      "| Video path or artifact | Yes | Local path, private URL, or attached file |",
-      "| Expected behavior | Yes | What should have happened |",
-      "| Actual behavior | Yes | What the user observed |",
-      "| Known timestamp | Optional | Skip ahead when provided |",
-      "",
-      "## Analysis Workflow",
-      "",
-      "Run the bundled extraction script to get video metadata and sample frames:",
-      "",
-      "```bash",
-      "python3 /path/to/video-analysis/scripts/video_triage.py \\",
-      "  <video-path> <output-dir> [--timestamps 42,67,120] [--interval 5]",
-      "```",
-    ].join("\n"),
-    includedFiles: [
-      "SKILL.md",
-      "agents/openai.yaml",
-      "references/report-template.md",
-      "scripts/video_triage.py",
-    ],
-  },
-  {
-    id: "bb-multifile",
-    title: "bb-thread-status-report",
+    id: "skill-creator",
+    exampleLabel: "skill-creator · Built-in",
+    title: "skill-creator",
     provider: "bb",
-    status: "Editable",
-    statusTone: "success",
-    path: "~/.bb/runtime/global-skills/.../skills/bb-thread-status-report/SKILL.md",
+    status: "Built-in",
+    statusTone: "muted",
+    path: "~/.bb/runtime/global-skills/skill-creator/SKILL.md",
     markdown: [
       "---",
-      "name: bb-thread-status-report",
-      "description: Give a status report for actively running bb threads.",
+      "name: skill-creator",
+      "description: Create new bb skills and improve existing ones. Use this whenever the user wants to make, write, edit, refine, or optimize a skill.",
       "---",
       "",
-      "# BB Thread Status Report",
+      "# Skill Creator",
       "",
-      "Give the user a concise operational snapshot of all non-idle, non-archived bb threads, focused on what is running, what needs attention, and what appears blocked or errored.",
+      "A skill for creating new bb skills and iteratively improving them.",
+      "",
+      "## How skills work in bb",
+      "",
+      "- **Location.** User skills live under `~/.bb/skills/<name>/`.",
+      "- **Frontmatter.** `SKILL.md` begins with `name` and `description`.",
+      "- **Discovery.** New or edited skills are picked up by the next thread you spawn.",
+      "- **Bundled resources.** `scripts/`, `references/`, and `assets/` ship with the skill.",
       "",
       "## Workflow",
       "",
-      "1. Start with `bb status --json` to capture the current project, thread, and environment.",
-      "2. Run the bundled helper:",
-      "",
-      "```bash",
-      "node ~/.bb/skills/bb-thread-status-report/scripts/collect-running-threads.js",
-      "```",
-      "",
-      "3. Inspect only the threads that need more context.",
-      "4. Do not message, stop, archive, wait on, or otherwise disturb threads unless the user explicitly asks.",
+      "1. Capture what the skill should enable and when it should trigger.",
+      "2. Write a focused `SKILL.md` and move deep detail into bundled resources.",
+      "3. Test realistic prompts in fresh bb threads.",
+      "4. Compare outcomes, revise, and repeat until the behavior is reliable.",
     ].join("\n"),
-    includedFiles: ["SKILL.md", "scripts/collect-running-threads.js"],
   },
   {
-    id: "codex-plugin-multifolder",
+    id: "documents-multifolder",
+    exampleLabel: "documents · Multi-folder",
     title: "documents",
     provider: "codex",
     status: "Read-only",
     statusTone: "muted",
-    path: "~/.codex/plugins/cache/openai-primary-runtime/documents/26.630.12135/skills/documents/SKILL.md",
+    path: "~/.codex/plugins/openai-primary-runtime/documents/skills/documents/SKILL.md",
     markdown: [
       "---",
       "name: documents",
-      "description: Create, edit, redline, and comment on `.docx`, Word, and Google Docs-targeted document artifacts inside the container.",
+      "description: Create, edit, redline, and comment on DOCX, Word, and Google Docs-targeted document artifacts.",
       "---",
       "",
       "# Documents Skill",
       "",
-      "Use this skill when you need to create or modify `.docx`, Word, or Google Docs-targeted document artifacts and verify them visually.",
+      "Use this skill to create or modify document artifacts and verify them visually.",
       "",
-      "## Non-negotiable: render -> inspect PNGs -> iterate",
+      "## Render and verify",
       "",
-      "Before delivering any DOCX, render it to page images, inspect every page, and iterate until layout is clean.",
+      "1. Use the appropriate task guide and design preset.",
+      "2. Build or edit the DOCX.",
+      "3. Run `render_docx.py` to produce page images.",
+      "4. Inspect every rendered page and iterate until the layout is clean.",
       "",
-      "## Design Preset Contract",
+      "## Bundled resources",
       "",
-      "For new DOCX creation and major rewrites, choose exactly one design preset and apply its page, margin, type scale, paragraph rhythm, heading, list, table, callout, header, footer, and color tokens consistently.",
+      "Read the relevant reference page or run a bundled script only when that part of the workflow is needed.",
     ].join("\n"),
     includedFiles: [
-      "SKILL.md",
-      "LICENSE.txt",
-      "manifest.txt",
-      "agents/openai.yaml",
-      "assets/file-document.png",
-      "examples/end_to_end_smoke_test.md",
-      "ooxml/comments.md",
-      "ooxml/tracked_changes.md",
-      "references/design_presets.md",
-      "references/header_templates.md",
-      "render_docx.py",
-      "scripts/a11y_audit.py",
-      "scripts/comments_extract.py",
-      "scripts/docx_ooxml_patch.py",
-      "scripts/google_docs_title_sanitize.py",
+      {
+        path: "references/design_presets.md",
+        contents: [
+          "# Document Design Presets",
+          "",
+          "Choose one preset before drafting a new document.",
+          "",
+          "## standard_business_brief",
+          "",
+          "Use for formal memos, decision documents, and board-facing briefs.",
+          "",
+          "## compact_reference_guide",
+          "",
+          "Use for launch guides, checklists, and dense operator references.",
+          "",
+          "## narrative_proposal",
+          "",
+          "Use for grants and persuasive documents with longer prose.",
+        ].join("\n"),
+      },
+      {
+        path: "references/header_templates.md",
+        contents: [
+          "# Header Templates",
+          "",
+          "Use a restrained first-page header that matches the document archetype.",
+          "",
+          "- Memo: title, decision owner, date, and status.",
+          "- Proposal: title, subtitle, organization, and prepared-for line.",
+          "- Guide: compact title with version and last-updated metadata.",
+        ].join("\n"),
+      },
+      {
+        path: "ooxml/comments.md",
+        contents: [
+          "# Word Comments",
+          "",
+          "Comments are represented across the document body, comments part, and relationship metadata.",
+          "",
+          "When editing comments, preserve existing IDs and verify the document after patching the OOXML package.",
+        ].join("\n"),
+      },
+      {
+        path: "scripts/a11y_audit.py",
+        contents: [
+          "from pathlib import Path",
+          "",
+          "def audit_document(path: Path) -> list[str]:",
+          "    issues: list[str] = []",
+          "    # Inspect headings, image alt text, table headers, and link labels.",
+          "    return issues",
+        ].join("\n"),
+      },
     ],
   },
 ];
@@ -1796,18 +1787,49 @@ function StoryPathCopyButton({ path }: { path: string }) {
   );
 }
 
-function SkillIncludedFiles({ files }: { files: readonly string[] }) {
+function SkillIncludedFiles({
+  rootPath,
+  files,
+}: {
+  rootPath: string;
+  files: readonly SkillDetailFileFixture[];
+}) {
+  const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? "");
+  const selectedFile =
+    files.find((file) => file.path === selectedPath) ?? files[0];
+
+  if (selectedFile === undefined) return null;
+
   return (
-    <div className="max-h-44 overflow-auto rounded-md border border-border bg-surface-raised p-2 shadow-sm">
-      <div className="grid gap-1">
+    <div className="grid min-h-64 gap-2 md:grid-cols-[14rem_minmax(0,1fr)]">
+      <div className="max-h-[44dvh] overflow-auto rounded-md border border-border bg-surface-raised p-1 shadow-sm">
         {files.map((file) => (
-          <span
-            key={file}
-            className="min-w-0 rounded-sm bg-surface-recessed px-2 py-1 font-mono text-xs text-muted-foreground"
+          <button
+            key={file.path}
+            type="button"
+            aria-pressed={file.path === selectedFile.path}
+            onClick={() => setSelectedPath(file.path)}
+            className="flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-pressed:bg-state-active aria-pressed:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            {file}
-          </span>
+            <Icon name="FileText" className="size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{file.path}</span>
+          </button>
         ))}
+      </div>
+      <div className="max-h-[44dvh] min-h-64 overflow-auto rounded-md border border-border bg-surface-raised">
+        <FilePreview
+          path={`${rootPath.replace(/\/SKILL\.md$/, "")}/${selectedFile.path}`}
+          headerMode="none"
+          state={{
+            kind: "ready",
+            file: {
+              name: selectedFile.path.split("/").at(-1) ?? selectedFile.path,
+              contents: selectedFile.contents,
+            },
+            lineRange: null,
+            showMarkdownModeToggle: false,
+          }}
+        />
       </div>
     </div>
   );
@@ -1892,7 +1914,10 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
       </ResourceDetailSection>
       {fixture.includedFiles ? (
         <ResourceDetailSection label="Included files">
-          <SkillIncludedFiles files={fixture.includedFiles} />
+          <SkillIncludedFiles
+            rootPath={fixture.path}
+            files={fixture.includedFiles}
+          />
         </ResourceDetailSection>
       ) : null}
     </ResourceDetailPage>
@@ -2168,7 +2193,7 @@ SkillDetailPage.argTypes = {
     control: {
       type: "select",
       labels: Object.fromEntries(
-        SKILL_DETAIL_FIXTURES.map(({ id, title }) => [id, title]),
+        SKILL_DETAIL_FIXTURES.map(({ id, exampleLabel }) => [id, exampleLabel]),
       ),
     },
   },
