@@ -9,10 +9,17 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SkillSummary } from "@bb/server-contract";
-import { afterEach, describe, expect, it } from "vitest";
-import { SkillsOverview } from "./SkillsView";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  installRegistrySkill,
+  SkillsOverview,
+  type RegistrySkill,
+} from "./SkillsView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
   return {
@@ -116,5 +123,45 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("load skills.");
     expect(markup).toContain("Retry");
     expect(markup).toContain('role="alert"');
+  });
+});
+
+describe("installRegistrySkill", () => {
+  it("installs at user scope for every configured provider", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => ({
+        ok: true,
+        json: async () => ({ ok: true }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const skill: RegistrySkill = {
+      id: "owner/repo/skill",
+      source: "owner/repo",
+      skillId: "skill",
+      name: "Skill",
+      installs: 100,
+      stars: 20,
+      installUrl: null,
+      url: "https://skills.sh/owner/repo/skill",
+      topic: "Development",
+      summary: "A useful skill.",
+      worksWith: ["claude-code", "codex"],
+    };
+
+    await installRegistrySkill({
+      skill,
+      providers: ["claude-code", "codex"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = fetchMock.mock.calls[0];
+    expect(request?.[0]).toBe("/api/v1/skills-registry/install");
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      source: "owner/repo",
+      skillId: "skill",
+      scope: "user",
+      providers: ["claude-code", "codex"],
+    });
   });
 });

@@ -773,34 +773,43 @@ export function ResourceSourceShelf({
   attribution,
   leading,
   browseAction,
+  scrollOverlay,
   children,
 }: {
   label: ReactNode;
   attribution?: ReactNode;
   leading?: ReactNode;
   browseAction?: ReactNode;
+  scrollOverlay?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="w-full max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 text-popover-foreground">
       <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        {leading}
-        <span className="truncate font-medium">{label}</span>
-        {attribution !== undefined &&
-        attribution !== null &&
-        attribution !== false ? (
-          <span className="truncate text-subtle-foreground">{attribution}</span>
-        ) : null}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {leading}
+          <span className="truncate font-medium">{label}</span>
+          {attribution !== undefined &&
+          attribution !== null &&
+          attribution !== false ? (
+            <span className="truncate text-subtle-foreground">
+              {attribution}
+            </span>
+          ) : null}
+        </div>
         {browseAction ? (
-          <div className="ml-1 shrink-0 text-xs text-muted-foreground">
+          <div className="ml-auto shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
       </div>
-      <div className="overflow-x-auto">
-        <div className="flex min-w-max snap-x snap-mandatory gap-1">
-          {children}
+      <div className="relative">
+        <div className="overflow-x-auto">
+          <div className="flex w-full snap-x snap-mandatory gap-1">
+            {children}
+          </div>
         </div>
+        {scrollOverlay}
       </div>
     </section>
   );
@@ -831,7 +840,12 @@ export function ResourceSourceItem({
   className?: string;
 }) {
   return (
-    <div className={cn("min-w-[22rem] max-w-[22rem] snap-start", className)}>
+    <div
+      className={cn(
+        "w-[22rem] shrink-0 snap-start md:w-[calc((100%_-_0.5rem)/3)]",
+        className,
+      )}
+    >
       {children}
     </div>
   );

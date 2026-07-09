@@ -1,7 +1,7 @@
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export type OverflowFadePlacement = "above" | "below" | "left" | "right";
-export type OverflowFadeTone = "background" | "sidebar";
+export type OverflowFadeTone = "background" | "sidebar" | "recessed";
 export type OverflowFadeSize = "default" | "sm";
 
 export interface OverflowFadeProps {
@@ -53,6 +53,7 @@ function isHorizontalPlacement(placement: OverflowFadePlacement): boolean {
 interface OverflowFadeGradientClasses {
   background: string;
   sidebar: string;
+  recessed: string;
 }
 
 // Each fade runs transparent (content side) → surface color (outer edge). Both
@@ -68,18 +69,22 @@ const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
   above: {
     background: "bg-gradient-to-b from-transparent to-background",
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
+    recessed: "bg-gradient-to-b from-transparent to-surface-recessed",
   },
   below: {
     background: "bg-gradient-to-b to-transparent from-background",
     sidebar: "bg-gradient-to-b to-transparent from-sidebar",
+    recessed: "bg-gradient-to-b to-transparent from-surface-recessed",
   },
   left: {
     background: "bg-gradient-to-l from-transparent to-background",
     sidebar: "bg-gradient-to-l from-transparent to-sidebar",
+    recessed: "bg-gradient-to-l from-transparent to-surface-recessed",
   },
   right: {
     background: "bg-gradient-to-r from-transparent to-background",
     sidebar: "bg-gradient-to-r from-transparent to-sidebar",
+    recessed: "bg-gradient-to-r from-transparent to-surface-recessed",
   },
 };
 

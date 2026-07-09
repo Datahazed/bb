@@ -2,13 +2,6 @@ import { useState, type ReactNode } from "react";
 import type { Story } from "@ladle/react";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -40,6 +33,7 @@ import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 
 export default {
   title: "Tools/Resource System",
@@ -622,63 +616,24 @@ function SkillsShAttributionLink() {
   );
 }
 
-function StoryInstallComboButton({
+function StoryInstallButton({
   installed,
   onInstall,
 }: {
   installed: boolean;
-  onInstall: (target: string) => void;
+  onInstall: () => void;
 }) {
-  if (installed) {
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="h-7 px-2 text-xs"
-        disabled
-      >
-        Installed
-      </Button>
-    );
-  }
   return (
-    <span className="inline-flex items-stretch">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 rounded-r-none px-2 text-xs"
-        onClick={() => onInstall("Codex")}
-      >
-        Install
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Choose install target"
-            className="-ml-px h-7 rounded-l-none px-1.5"
-          >
-            <Icon name="ChevronDown" className="size-3.5" aria-hidden />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={() => onInstall("Codex")}>
-            Install for Codex
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onInstall("Claude Code")}>
-            Install for Claude Code
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => onInstall("Project scope")}>
-            Project scope
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </span>
+    <Button
+      type="button"
+      variant={installed ? "secondary" : "outline"}
+      size="sm"
+      className="h-7 px-2 text-xs"
+      disabled={installed}
+      onClick={onInstall}
+    >
+      {installed ? "Installed" : "Install"}
+    </Button>
   );
 }
 
@@ -690,16 +645,21 @@ function RegistryBrowseSource({
 }: {
   showAll: boolean;
   installedSkillIds: ReadonlySet<string>;
-  onInstall: (id: string, target: string) => void;
+  onInstall: (id: string) => void;
   onSeeAll: () => void;
 }) {
   const rows = showAll
     ? REGISTRY_SOURCE_ROWS
-    : REGISTRY_SOURCE_ROWS.slice(0, 2);
+    : REGISTRY_SOURCE_ROWS.slice(0, 3);
   return (
     <ResourceSourceShelf
       label="Browse"
       attribution={<SkillsShAttributionLink />}
+      scrollOverlay={
+        REGISTRY_SOURCE_ROWS.length > rows.length ? (
+          <OverflowFade placement="right" tone="recessed" />
+        ) : undefined
+      }
       browseAction={
         <ResourceShelfAction type="button" onClick={onSeeAll}>
           {showAll ? "Showing all" : "See all"}
@@ -715,9 +675,9 @@ function RegistryBrowseSource({
             openLabel={`Open ${row.title}`}
             onOpen={NOOP}
             headerAction={
-              <StoryInstallComboButton
+              <StoryInstallButton
                 installed={installedSkillIds.has(row.id)}
-                onInstall={(target) => onInstall(row.id, target)}
+                onInstall={() => onInstall(row.id)}
               />
             }
             footerMeta={
@@ -915,7 +875,7 @@ function SkillsOverviewSurface() {
       setDirection("asc");
     }
   }
-  function handleRegistryInstall(id: string, _target: string) {
+  function handleRegistryInstall(id: string) {
     setInstalledSkillIds((current) => {
       const next = new Set(current);
       next.add(id);
