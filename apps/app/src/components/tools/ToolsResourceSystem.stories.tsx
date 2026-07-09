@@ -7,6 +7,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
+  ResourceCardStat,
   ResourceCreateButton,
   ResourceDetailPage,
   ResourceListPanel,
@@ -521,12 +522,8 @@ function StorySocialProof({
 }) {
   return (
     <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
-      <span className="rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
-        {installs}
-      </span>
-      <span className="rounded-md border border-border px-1.5 py-1 text-subtle-foreground">
-        {stars}
-      </span>
+      <ResourceCardStat icon="Download">{installs}</ResourceCardStat>
+      <ResourceCardStat icon="Star">{stars}</ResourceCardStat>
     </span>
   );
 }

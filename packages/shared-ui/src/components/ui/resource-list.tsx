@@ -70,6 +70,21 @@ export function ResourceMeta({
   );
 }
 
+export function ResourceCardStat({
+  icon,
+  children,
+}: {
+  icon: IconName;
+  children: ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+      <Icon name={icon} className="size-3 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </span>
+  );
+}
+
 export function ResourceToolbar({
   searchValue,
   searchPlaceholder,

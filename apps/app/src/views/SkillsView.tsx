@@ -19,6 +19,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import {
   ResourceBrowseCard,
+  ResourceCardStat,
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
@@ -371,13 +372,13 @@ function registryProviderLabel(providerId: RegistryProvider): string {
 function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
   return (
     <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
-      <span className="rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+      <ResourceCardStat icon="Download">
         {formatInstallCount(skill.installs)} installs
-      </span>
+      </ResourceCardStat>
       {skill.stars !== null ? (
-        <span className="rounded-md border border-border px-1.5 py-1 text-subtle-foreground">
+        <ResourceCardStat icon="Star">
           {formatInstallCount(skill.stars)} stars
-        </span>
+        </ResourceCardStat>
       ) : null}
     </span>
   );
