@@ -240,7 +240,7 @@ const PLUGIN_SECTIONS: readonly ResourceSectionFixture[] = [
       {
         id: "automations",
         title: "automations",
-        description: "Schedule agent or script runs.",
+        description: "Run scheduled bb work across projects and folders.",
       },
       {
         id: "connect",
@@ -2037,7 +2037,7 @@ const PLUGIN_DETAIL_FIXTURES: readonly PluginDetailFixture[] = [
     enabled: true,
     status: { label: "Running", tone: "success" },
     source: "Built-in",
-    description: "Schedule recurring or one-shot agent and script runs.",
+    description: "Run scheduled bb work across projects and folders.",
     capabilities: [
       "Tools navigation surface",
       "Automation list and detail views",
@@ -2211,11 +2211,7 @@ function PluginDetailContent({ fixture }: { fixture: PluginDetailFixture }) {
       leading={<ProviderMark provider={fixture.provider} />}
       title={fixture.title}
       status={<ResourceState tone={status.tone}>{status.label}</ResourceState>}
-      meta={
-        <ResourceMeta
-          items={["Plugin", fixture.source, `v${fixture.version}`]}
-        />
-      }
+      meta={<ResourceMeta items={[fixture.source, `v${fixture.version}`]} />}
       description={fixture.description}
       headerActions={
         <>

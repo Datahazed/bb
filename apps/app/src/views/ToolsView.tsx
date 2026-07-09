@@ -536,7 +536,7 @@ function PluginDetail({
           {plugin.enabled ? plugin.status : "disabled"}
         </ResourceStatus>
       }
-      meta={<ResourceMeta items={["bb plugin", `v${plugin.version}`]} />}
+      meta={<ResourceMeta items={[`v${plugin.version}`]} />}
       description={plugin.description ?? plugin.statusDetail}
       headerActions={
         <>
@@ -555,7 +555,6 @@ function PluginDetail({
           Details
         </p>
         <ResourcePropertyList>
-          <ResourceProperty label="Kind">bb plugin</ResourceProperty>
           <ResourceProperty label="Status">
             {plugin.enabled ? plugin.status : "disabled"}
           </ResourceProperty>
@@ -656,7 +655,6 @@ function PluginBrowseCard({
       title={example.label}
       meta="Starter template"
       description={example.description}
-      tags={["bb plugin", "installable", "template"]}
       state={
         <Button
           type="button"
