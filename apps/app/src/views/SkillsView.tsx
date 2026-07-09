@@ -533,9 +533,6 @@ function RegistrySkillSourceItem({
 }) {
   return (
     <ResourceBrowseCard
-      leading={
-        <Icon name="Zap" className="size-5 text-muted-foreground" aria-hidden />
-      }
       title={skill.name}
       meta={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
@@ -564,8 +561,7 @@ function SkillsShAttributionLink() {
       rel="noreferrer"
       className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>from skills.sh</span>
-      <Icon name="ExternalLink" className="size-3" aria-hidden />
+      <span>powered by skills.sh</span>
     </a>
   );
 }
@@ -631,7 +627,7 @@ function RegistrySkillsSource({
       <ResourceSourceShelf
         label="Browse"
         leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-        action={<SkillsShAttributionLink />}
+        count={<SkillsShAttributionLink />}
       >
         {["w-36", "w-48", "w-28"].map((nameWidth) => (
           <ResourceSourceItem key={nameWidth}>
@@ -655,12 +651,8 @@ function RegistrySkillsSource({
     <ResourceSourceShelf
       label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-      action={
-        <span className="inline-flex items-center gap-2">
-          <SkillsShAttributionLink />
-          {browseAction}
-        </span>
-      }
+      count={<SkillsShAttributionLink />}
+      action={browseAction}
     >
       {availableSkills.map((skill) => (
         <ResourceSourceItem key={skill.id}>

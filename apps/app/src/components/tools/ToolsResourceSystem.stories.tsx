@@ -1,5 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -190,6 +197,22 @@ const REGISTRY_SOURCE_ROWS: readonly RegistrySourceFixture[] = [
     summary: "Run a staged review loop and apply prioritized fixes.",
     installs: "1.3K installs",
     stars: "4.8K stars",
+  },
+  {
+    id: "product-design-audit",
+    title: "openai/product-design-audit",
+    source: "openai",
+    summary: "Capture screenshots and critique a product flow before build.",
+    installs: "920 installs",
+    stars: "2.1K stars",
+  },
+  {
+    id: "github-triage",
+    title: "bb/github-triage",
+    source: "bb",
+    summary: "Find actionable GitHub PR and issue follow-up for agents.",
+    installs: "740 installs",
+    stars: "1.5K stars",
   },
 ];
 
@@ -561,42 +584,106 @@ function SkillsShAttributionLink() {
       rel="noreferrer"
       className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>from skills.sh</span>
-      <Icon name="ExternalLink" className="size-3" aria-hidden />
+      <span>powered by skills.sh</span>
     </a>
   );
 }
 
-function RegistryBrowseSource() {
+function StoryInstallComboButton({
+  installed,
+  onInstall,
+}: {
+  installed: boolean;
+  onInstall: (target: string) => void;
+}) {
+  if (installed) {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="h-7 px-2 text-xs"
+        disabled
+      >
+        Installed
+      </Button>
+    );
+  }
+  return (
+    <span className="inline-flex items-stretch">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 rounded-r-none px-2 text-xs"
+        onClick={() => onInstall("Codex")}
+      >
+        Install
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Choose install target"
+            className="-ml-px h-7 rounded-l-none px-1.5"
+          >
+            <Icon name="ChevronDown" className="size-3.5" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onSelect={() => onInstall("Codex")}>
+            Install for Codex
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onInstall("Claude Code")}>
+            Install for Claude Code
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onInstall("Project scope")}>
+            Project scope
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
+}
+
+function RegistryBrowseSource({
+  showAll,
+  installedSkillIds,
+  onInstall,
+  onSeeAll,
+}: {
+  showAll: boolean;
+  installedSkillIds: ReadonlySet<string>;
+  onInstall: (id: string, target: string) => void;
+  onSeeAll: () => void;
+}) {
+  const rows = showAll
+    ? REGISTRY_SOURCE_ROWS
+    : REGISTRY_SOURCE_ROWS.slice(0, 2);
   return (
     <ResourceSourceShelf
       label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+      count={<SkillsShAttributionLink />}
       action={
-        <span className="inline-flex items-center gap-2">
-          <SkillsShAttributionLink />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-6 gap-1 px-2"
-          >
-            See all
-            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-          </Button>
-        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-2"
+          onClick={onSeeAll}
+        >
+          {showAll ? "Showing all" : "See all"}
+          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+        </Button>
       }
     >
-      {REGISTRY_SOURCE_ROWS.map((row) => (
+      {rows.map((row) => (
         <ResourceSourceItem key={row.id}>
           <ResourceBrowseCard
-            leading={
-              <Icon
-                name="Zap"
-                className="size-5 text-muted-foreground"
-                aria-hidden
-              />
-            }
             title={row.title}
             meta={`by ${row.source}`}
             description={row.summary}
@@ -605,15 +692,10 @@ function RegistryBrowseSource() {
             }
             onOpen={NOOP}
             action={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-              >
-                Install
-                <Icon name="ChevronDown" className="size-3.5" aria-hidden />
-              </Button>
+              <StoryInstallComboButton
+                installed={installedSkillIds.has(row.id)}
+                onInstall={(target) => onInstall(row.id, target)}
+              />
             }
           />
         </ResourceSourceItem>
@@ -789,7 +871,21 @@ function SkillsOverviewSurface() {
   const [provider, setProvider] = useState<ProviderFilterId>("all");
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const providerBuckets = providerBucketsForSections(SKILL_SECTIONS);
+  const [showAllBrowse, setShowAllBrowse] = useState(false);
+  const [installedSkillIds, setInstalledSkillIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [draftSkill, setDraftSkill] = useState<ResourceListRowFixture | null>(
+    null,
+  );
+  const skillSections = draftSkill
+    ? SKILL_SECTIONS.map((section, index) =>
+        index === 0
+          ? { ...section, rows: [draftSkill, ...section.rows] }
+          : section,
+      )
+    : SKILL_SECTIONS;
+  const providerBuckets = providerBucketsForSections(skillSections);
   function updateSort(nextSort: "provider" | "alpha") {
     if (nextSort === "provider" && providerBuckets.size <= 1) return;
     if (nextSort === sort) {
@@ -799,6 +895,36 @@ function SkillsOverviewSurface() {
       setDirection("asc");
     }
   }
+  function handleRegistryInstall(id: string, _target: string) {
+    setInstalledSkillIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+    const row = REGISTRY_SOURCE_ROWS.find((candidate) => candidate.id === id);
+    if (!row) return;
+    setDraftSkill({
+      id: `installed-${id}`,
+      title: row.title,
+      description: row.summary,
+      provider: "bb",
+      icon: "Zap",
+    });
+  }
+  function handleCreateSkill(prompt?: string) {
+    const template = SKILL_CREATE_TEMPLATES.find(
+      (candidate) => candidate.prompt === prompt,
+    );
+    setDraftSkill({
+      id: `draft-${template?.label ?? "blank"}`,
+      title: template ? `Draft: ${template.label}` : "Untitled bb skill",
+      description:
+        prompt ??
+        "New skill draft created from the story's primary create action.",
+      provider: "bb",
+      icon: "Zap",
+    });
+  }
   return (
     <div className="space-y-4">
       <ResourceTabDescription>
@@ -806,7 +932,12 @@ function SkillsOverviewSurface() {
         installable skills first, then search and manage the skills already
         available in this workspace.
       </ResourceTabDescription>
-      <RegistryBrowseSource />
+      <RegistryBrowseSource
+        showAll={showAllBrowse}
+        installedSkillIds={installedSkillIds}
+        onInstall={handleRegistryInstall}
+        onSeeAll={() => setShowAllBrowse(true)}
+      />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
@@ -825,12 +956,12 @@ function SkillsOverviewSurface() {
           <ResourceCreateButton
             label="New bb skill"
             templates={SKILL_CREATE_TEMPLATES}
-            onCreate={NOOP}
+            onCreate={handleCreateSkill}
           />
         }
       />
       <ResourceRowsList
-        sections={SKILL_SECTIONS}
+        sections={skillSections}
         query={query}
         providerFilter={provider}
         sortMode={sort}

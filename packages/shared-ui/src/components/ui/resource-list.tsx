@@ -685,7 +685,7 @@ export function ResourceBrowseCard({
   action,
   onOpen,
 }: {
-  leading: ReactNode;
+  leading?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   meta?: ReactNode;
@@ -694,6 +694,8 @@ export function ResourceBrowseCard({
   action?: ReactNode;
   onOpen: () => void;
 }) {
+  const hasLeading =
+    leading !== undefined && leading !== null && leading !== false;
   return (
     <div
       role="button"
@@ -719,10 +721,19 @@ export function ResourceBrowseCard({
         }
       }}
     >
-      <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] gap-x-2 gap-y-2">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
-          {leading}
-        </span>
+      <div
+        className={cn(
+          "grid min-w-0 gap-x-2 gap-y-2",
+          hasLeading
+            ? "grid-cols-[2.25rem_minmax(0,1fr)_auto]"
+            : "grid-cols-[minmax(0,1fr)_auto]",
+        )}
+      >
+        {hasLeading ? (
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
+            {leading}
+          </span>
+        ) : null}
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-foreground">
             {title}
@@ -734,17 +745,32 @@ export function ResourceBrowseCard({
           ) : null}
         </span>
         {state ? (
-          <span className="col-start-3 row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end">
+          <span
+            className={cn(
+              "row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end",
+              hasLeading ? "col-start-3" : "col-start-2",
+            )}
+          >
             {state}
           </span>
         ) : null}
         {description ? (
-          <span className="col-span-2 col-start-2 line-clamp-3 rounded-md bg-surface-recessed/70 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground">
+          <span
+            className={cn(
+              "line-clamp-3 rounded-md bg-surface-recessed/70 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
+              hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
+            )}
+          >
             {description}
           </span>
         ) : null}
         {tags.length > 0 ? (
-          <span className="col-span-2 col-start-2 flex flex-wrap gap-1">
+          <span
+            className={cn(
+              "flex flex-wrap gap-1",
+              hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
+            )}
+          >
             {tags.map((tag, index) => (
               <span
                 key={index}
