@@ -948,9 +948,8 @@ export function SkillsOverview({
   return (
     <div className="space-y-4">
       <ResourceTabDescription>
-        Skills are reusable instructions available to agents in bb. Browse
-        installable skills first, then search and manage the skills already
-        available in this workspace.
+        All skills from bb and your configured agents, in one place. Skills
+        created in bb are available across every agent you use in bb.
       </ResourceTabDescription>
       <RegistrySkillsSource
         skills={registrySkills}
