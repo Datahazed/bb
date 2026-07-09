@@ -830,6 +830,18 @@ export function ResourceShelfAction({
   );
 }
 
+export function ResourceShelfSeeAllAction({
+  className,
+  ...props
+}: Omit<ButtonProps, "children" | "size" | "variant">) {
+  return (
+    <ResourceShelfAction className={cn("gap-0.5", className)} {...props}>
+      See all
+      <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+    </ResourceShelfAction>
+  );
+}
+
 export function ResourceSourceItem({
   children,
   className,

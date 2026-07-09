@@ -19,7 +19,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceShelfAction,
+  ResourceShelfSeeAllAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -783,9 +783,9 @@ function RegistryBrowseSource({
         ) : undefined
       }
       browseAction={
-        <ResourceShelfAction type="button" onClick={onSeeAll}>
-          {showAll ? "Showing all" : "See all"}
-        </ResourceShelfAction>
+        showAll ? undefined : (
+          <ResourceShelfSeeAllAction type="button" onClick={onSeeAll} />
+        )
       }
     >
       {rows.map((row) => (
@@ -831,9 +831,7 @@ function TemplateBrowseCards({
     <ResourceSourceShelf
       label={label}
       leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
-      browseAction={
-        <ResourceShelfAction type="button">See all</ResourceShelfAction>
-      }
+      browseAction={<ResourceShelfSeeAllAction type="button" onClick={NOOP} />}
     >
       {templates.map((template) => (
         <ResourceSourceItem key={`${label}-${template.label}`}>

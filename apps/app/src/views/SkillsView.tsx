@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -25,7 +25,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceShelfAction,
+  ResourceShelfSeeAllAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -1495,9 +1495,10 @@ export function SkillsLibrary() {
           providerStatus={providerStatus}
           pendingRegistrySkillId={pendingRegistrySkillId}
           registryBrowseAction={
-            <ResourceShelfAction asChild>
-              <Link to={getRegistrySkillsRoutePath()}>See all</Link>
-            </ResourceShelfAction>
+            <ResourceShelfSeeAllAction
+              type="button"
+              onClick={() => navigate(getRegistrySkillsRoutePath())}
+            />
           }
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}

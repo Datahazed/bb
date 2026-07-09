@@ -1,6 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Link,
   matchPath,
   useLocation,
   useNavigate,
@@ -24,7 +23,7 @@ import {
   ResourceListState,
   ResourceMultiSelectMenu,
   ResourceRow,
-  ResourceShelfAction,
+  ResourceShelfSeeAllAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -650,8 +649,10 @@ function PluginBrowseCard({
 
 function PluginBrowseShelf({
   onCreate,
+  onBrowseAll,
 }: {
   onCreate: (prompt?: string) => void;
+  onBrowseAll: () => void;
 }) {
   const { examples } = getCreateExamples("plugin");
   return (
@@ -665,9 +666,7 @@ function PluginBrowseShelf({
         />
       }
       browseAction={
-        <ResourceShelfAction asChild>
-          <Link to={getPluginBrowseRoutePath()}>See all</Link>
-        </ResourceShelfAction>
+        <ResourceShelfSeeAllAction type="button" onClick={onBrowseAll} />
       }
     >
       {examples.map((example) => (
@@ -944,7 +943,10 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
           provider-specific capabilities. Browse installable templates first,
           then search and manage installed plugins.
         </ResourceTabDescription>
-        <PluginBrowseShelf onCreate={handleCreatePlugin} />
+        <PluginBrowseShelf
+          onCreate={handleCreatePlugin}
+          onBrowseAll={() => navigate(getPluginBrowseRoutePath())}
+        />
         {toolbar}
       </>
     ) : null;
