@@ -131,6 +131,18 @@ const LOCAL_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
   icon: "Laptop",
 };
 
+const WORKTREE_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
+  label: "Worktree",
+  title: "Worktree",
+  icon: "FolderGit",
+};
+
+const EXISTING_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
+  label: "Existing environment",
+  title: "Reuses an existing environment",
+  icon: "FolderGit",
+};
+
 const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
   "all",
   "bb",
@@ -1107,24 +1119,315 @@ function AutomationsOverviewSurface() {
   );
 }
 
-function AutomationDetail() {
+interface AutomationDetailRunFixture {
+  id: string;
+  status: "Succeeded" | "Failed" | "Running" | "Skipped";
+  when: string;
+  duration?: string;
+  thread?: string;
+}
+
+interface AutomationDetailFixture {
+  id: string;
+  title: string;
+  icon: IconName;
+  enabled: boolean;
+  switchDisabled?: boolean;
+  status?: {
+    label: string;
+    tone: "muted" | "success" | "warning" | "error";
+  };
+  executionKind: "Agent" | "Script";
+  scheduleLabel: string;
+  schedule: string;
+  execution: string;
+  origin: string;
+  environment?: StoryEnvironmentDisplay;
+  prompt?: string;
+  script?: string;
+  scriptFile?: string;
+  runs: readonly AutomationDetailRunFixture[];
+}
+
+const AUTOMATION_DETAIL_FIXTURES: readonly AutomationDetailFixture[] = [
+  {
+    id: "pr-review",
+    title: "PR review queue",
+    icon: "Calendar",
+    enabled: true,
+    executionKind: "Agent",
+    scheduleLabel: "Next run today, 1:00 PM",
+    schedule: "Every hour · America/Los_Angeles",
+    execution: "Agent · codex/gpt-5.5 · Workspace write",
+    origin: "Agent-created",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
+    prompt:
+      "Review open PRs assigned to me, summarize blocking feedback, and open a follow-up thread only when a PR needs action.",
+    runs: [
+      {
+        id: "pr-1",
+        status: "Succeeded",
+        when: "Jul 9, 12:13 PM",
+        duration: "22s",
+        thread: "View thread",
+      },
+      {
+        id: "pr-2",
+        status: "Succeeded",
+        when: "Jul 9, 11:00 AM",
+        duration: "20s",
+        thread: "View thread",
+      },
+      {
+        id: "pr-3",
+        status: "Skipped",
+        when: "Jul 9, 10:00 AM",
+        duration: "0.8s",
+      },
+    ],
+  },
+  {
+    id: "release-readiness",
+    title: "Release readiness check",
+    icon: "Calendar",
+    enabled: true,
+    status: { label: "Failed", tone: "error" },
+    executionKind: "Agent",
+    scheduleLabel: "Next run today, 5:00 PM",
+    schedule: "Every 2 hours · America/Los_Angeles",
+    execution: "Agent · claude-code/sonnet · Workspace write",
+    origin: "Human-created",
+    environment: WORKTREE_ENVIRONMENT_DISPLAY,
+    prompt:
+      "Check release branch status, failed CI, unresolved launch blockers, and summarize only changes since the previous run.",
+    runs: [
+      {
+        id: "release-1",
+        status: "Failed",
+        when: "Jul 9, 3:00 PM",
+        duration: "1m 04s",
+        thread: "View thread",
+      },
+      {
+        id: "release-2",
+        status: "Succeeded",
+        when: "Jul 9, 1:00 PM",
+        duration: "38s",
+        thread: "View thread",
+      },
+      {
+        id: "release-3",
+        status: "Succeeded",
+        when: "Jul 9, 11:00 AM",
+        duration: "41s",
+        thread: "View thread",
+      },
+    ],
+  },
+  {
+    id: "stale-worktree",
+    title: "Stale worktree cleanup reminder",
+    icon: "ComputerTerminal01",
+    enabled: false,
+    executionKind: "Script",
+    scheduleLabel: "Paused",
+    schedule: "4PM Fri · America/Los_Angeles",
+    execution: "Script · bash script.sh · 120s timeout",
+    origin: "App-created",
+    scriptFile: "script.sh",
+    runs: [
+      {
+        id: "stale-1",
+        status: "Skipped",
+        when: "Jul 7, 6:02 PM",
+        duration: "0.7s",
+      },
+      {
+        id: "stale-2",
+        status: "Failed",
+        when: "Jul 5, 2:00 PM",
+        duration: "1.0s",
+      },
+    ],
+  },
+  {
+    id: "digest-running",
+    title: "Daily workspace digest",
+    icon: "Calendar",
+    enabled: true,
+    status: { label: "Running", tone: "muted" },
+    executionKind: "Agent",
+    scheduleLabel: "Next run tomorrow, 9:00 AM",
+    schedule: "9AM Mon-Fri · America/New_York",
+    execution: "Agent · codex/gpt-5.5-medium · Read-only",
+    origin: "Agent-created",
+    environment: EXISTING_ENVIRONMENT_DISPLAY,
+    prompt:
+      "Summarize yesterday's active threads, blocked work, merged PRs, and unresolved questions into a short morning digest.",
+    runs: [
+      {
+        id: "digest-1",
+        status: "Running",
+        when: "Now",
+      },
+      {
+        id: "digest-2",
+        status: "Succeeded",
+        when: "Jul 8, 9:00 AM",
+        duration: "31s",
+        thread: "View thread",
+      },
+      {
+        id: "digest-3",
+        status: "Succeeded",
+        when: "Jul 7, 9:00 AM",
+        duration: "28s",
+        thread: "View thread",
+      },
+    ],
+  },
+  {
+    id: "one-shot",
+    title: "Launch note follow-up",
+    icon: "Calendar",
+    enabled: false,
+    switchDisabled: true,
+    status: { label: "Completed", tone: "muted" },
+    executionKind: "Agent",
+    scheduleLabel: "Completed",
+    schedule: "Once · Jul 8, 4:00 PM · America/Los_Angeles",
+    execution: "Agent · codex/gpt-5.5 · Workspace write",
+    origin: "Human-created",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
+    prompt:
+      "Check whether the launch note received review comments and open a reminder thread if the doc is still waiting.",
+    runs: [
+      {
+        id: "launch-1",
+        status: "Succeeded",
+        when: "Jul 8, 4:00 PM",
+        duration: "18s",
+        thread: "View thread",
+      },
+    ],
+  },
+];
+
+function AutomationExampleSelector({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1 px-1">
+      {AUTOMATION_DETAIL_FIXTURES.map((fixture) => (
+        <Button
+          key={fixture.id}
+          type="button"
+          variant={fixture.id === selectedId ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
+          onClick={() => onSelect(fixture.id)}
+        >
+          <Icon
+            name={fixture.icon}
+            className="size-3.5 text-muted-foreground"
+            aria-hidden
+          />
+          {fixture.title}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function AutomationRunHistory({
+  runs,
+}: {
+  runs: readonly AutomationDetailRunFixture[];
+}) {
+  const iconForStatus = (status: AutomationDetailRunFixture["status"]) => {
+    if (status === "Failed") return "CircleX";
+    if (status === "Running") return "Spinner";
+    if (status === "Skipped") return "CircleDashed";
+    return "CircleCheck";
+  };
+  const classForStatus = (status: AutomationDetailRunFixture["status"]) =>
+    cn(
+      "size-4 shrink-0",
+      status === "Failed" && "text-destructive",
+      status === "Running" && "animate-spin text-muted-foreground",
+      status === "Skipped" && "text-muted-foreground",
+      status === "Succeeded" && "text-success",
+    );
+
+  return (
+    <div className="space-y-2">
+      {runs.map((run) => (
+        <div
+          key={run.id}
+          className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-surface-raised px-3 py-2 shadow-sm"
+        >
+          <Icon
+            name={iconForStatus(run.status)}
+            className={classForStatus(run.status)}
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{run.status}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {[run.when, run.duration].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          {run.thread ? (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+              {run.thread}
+            </Button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AutomationDetailContent({
+  fixture,
+}: {
+  fixture: AutomationDetailFixture;
+}) {
+  const [enabled, setEnabled] = useState(fixture.enabled);
+
+  useEffect(() => {
+    setEnabled(fixture.enabled);
+  }, [fixture.id, fixture.enabled]);
+
   return (
     <ResourceDetailPage
       leading={
         <Icon
-          name="ComputerTerminal01"
+          name={fixture.icon}
           className="size-4 text-muted-foreground"
           aria-hidden
         />
       }
-      title="Stale worktree cleanup reminder"
+      title={fixture.title}
+      status={
+        fixture.status ? (
+          <ResourceState tone={fixture.status.tone}>
+            {fixture.status.label}
+          </ResourceState>
+        ) : undefined
+      }
       headerActions={
         <>
           <Switch
             size="sm"
-            checked={false}
-            aria-label="Resume automation"
-            onCheckedChange={NOOP}
+            checked={enabled}
+            disabled={fixture.switchDisabled}
+            aria-label={enabled ? "Pause automation" : "Resume automation"}
+            onCheckedChange={setEnabled}
           />
           <ResourceOverflowMenu
             label="Automation actions"
@@ -1147,36 +1450,65 @@ function AutomationDetail() {
       }
       meta={
         <ResourceMeta
-          items={["Automation", "Script", "Next run Friday, 4:00 PM"]}
+          items={["Automation", fixture.executionKind, fixture.scheduleLabel]}
         />
       }
     >
       <DetailSection label="Configuration">
         <ResourcePropertyList>
           <ResourceProperty label="Schedule">
-            4PM Fri · America/Los_Angeles
+            {fixture.schedule}
           </ResourceProperty>
           <ResourceProperty label="Execution">
-            Script · bash script.sh · 120s timeout
+            {fixture.execution}
           </ResourceProperty>
-          <ResourceProperty label="Origin">App-created</ResourceProperty>
-          <ResourceProperty label="Environment">
-            <StoryEnvironmentInline display={LOCAL_ENVIRONMENT_DISPLAY} />
-          </ResourceProperty>
-          <ResourceProperty label="Script file">script.sh</ResourceProperty>
+          <ResourceProperty label="Origin">{fixture.origin}</ResourceProperty>
+          {fixture.environment ? (
+            <ResourceProperty label="Environment">
+              <StoryEnvironmentInline display={fixture.environment} />
+            </ResourceProperty>
+          ) : null}
+          {fixture.prompt ? (
+            <ResourceProperty label="Prompt">
+              <span className="whitespace-pre-wrap">{fixture.prompt}</span>
+            </ResourceProperty>
+          ) : fixture.script ? (
+            <ResourceProperty label="Script">
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                {fixture.script}
+              </pre>
+            </ResourceProperty>
+          ) : fixture.scriptFile ? (
+            <ResourceProperty label="Script file">
+              {fixture.scriptFile}
+            </ResourceProperty>
+          ) : null}
         </ResourcePropertyList>
       </DetailSection>
       <DetailSection label="Run history">
-        <ResourcePropertyList>
-          <ResourceProperty label="Skipped">
-            Jul 7, 6:02 PM · 0.7s
-          </ResourceProperty>
-          <ResourceProperty label="Failed">
-            Jul 5, 2:00 PM · 1.0s
-          </ResourceProperty>
-        </ResourcePropertyList>
+        <AutomationRunHistory runs={fixture.runs} />
       </DetailSection>
     </ResourceDetailPage>
+  );
+}
+
+function AutomationDetail() {
+  const [selectedId, setSelectedId] = useState(
+    AUTOMATION_DETAIL_FIXTURES[0].id,
+  );
+  const fixture =
+    AUTOMATION_DETAIL_FIXTURES.find(
+      (candidate) => candidate.id === selectedId,
+    ) ?? AUTOMATION_DETAIL_FIXTURES[0];
+
+  return (
+    <div className="space-y-4">
+      <AutomationExampleSelector
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
+      <AutomationDetailContent fixture={fixture} />
+    </div>
   );
 }
 
