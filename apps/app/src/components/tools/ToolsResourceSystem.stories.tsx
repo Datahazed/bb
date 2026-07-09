@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -386,7 +387,10 @@ function ResourceLeading({
     return (
       <Icon
         name="Loading"
-        className="size-4 animate-spin text-muted-foreground"
+        className={cn(
+          "animate-spin text-muted-foreground/50",
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
         aria-label="Running"
       />
     );

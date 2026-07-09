@@ -35,6 +35,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
@@ -524,7 +525,10 @@ function AutomationRowLeading({
     return (
       <Icon
         name="Loading"
-        className="size-4 shrink-0 animate-spin text-muted-foreground"
+        className={cn(
+          "animate-spin text-muted-foreground/50",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
         aria-label="Running"
       />
     );
