@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ResourceActionButton,
@@ -31,6 +32,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
@@ -417,6 +419,7 @@ function AutomationRowActions() {
   return (
     <>
       <ResourceActionButton label="Run now" icon="Play" onClick={NOOP} />
+      <ResourceActionButton label="Edit" icon="Edit" onClick={NOOP} />
       <ResourceActionButton
         label="Delete"
         icon="Trash2"
@@ -1322,6 +1325,29 @@ const AUTOMATION_DETAIL_FIXTURES: readonly AutomationDetailFixture[] = [
   },
 ];
 
+function automationFixtureBodyLabel(
+  fixture: AutomationDetailFixture,
+): "Prompt" | "Script" | "Script file" {
+  if (fixture.prompt !== undefined) return "Prompt";
+  if (fixture.script !== undefined) return "Script";
+  return "Script file";
+}
+
+function automationFixtureBodyValue(fixture: AutomationDetailFixture): string {
+  return fixture.prompt ?? fixture.script ?? fixture.scriptFile ?? "";
+}
+
+function automationFixtureScheduleMeta(
+  fixture: AutomationDetailFixture,
+  enabled: boolean,
+): string {
+  if (fixture.switchDisabled) return fixture.scheduleLabel;
+  if (!enabled) return "Paused";
+  return fixture.scheduleLabel === "Paused"
+    ? fixture.schedule
+    : fixture.scheduleLabel;
+}
+
 function AutomationExampleSelector({
   selectedId,
   onSelect,
@@ -1407,10 +1433,46 @@ function AutomationDetailContent({
   fixture: AutomationDetailFixture;
 }) {
   const [enabled, setEnabled] = useState(fixture.enabled);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(fixture.title);
+  const [body, setBody] = useState(automationFixtureBodyValue(fixture));
+  const [draftTitle, setDraftTitle] = useState(fixture.title);
+  const [draftBody, setDraftBody] = useState(
+    automationFixtureBodyValue(fixture),
+  );
 
   useEffect(() => {
     setEnabled(fixture.enabled);
+    setEditing(false);
+    setTitle(fixture.title);
+    setBody(automationFixtureBodyValue(fixture));
+    setDraftTitle(fixture.title);
+    setDraftBody(automationFixtureBodyValue(fixture));
   }, [fixture.id, fixture.enabled]);
+
+  function startEditing() {
+    setDraftTitle(title);
+    setDraftBody(body);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraftTitle(title);
+    setDraftBody(body);
+    setEditing(false);
+  }
+
+  function saveEditing() {
+    if (draftTitle.trim().length === 0 || draftBody.trim().length === 0) {
+      return;
+    }
+    setTitle(draftTitle.trim());
+    setBody(draftBody);
+    setEditing(false);
+  }
+
+  const bodyLabel = automationFixtureBodyLabel(fixture);
+  const canSave = draftTitle.trim().length > 0 && draftBody.trim().length > 0;
 
   return (
     <ResourceDetailPage
@@ -1421,7 +1483,7 @@ function AutomationDetailContent({
           aria-hidden
         />
       }
-      title={fixture.title}
+      title={editing ? draftTitle || title : title}
       status={
         fixture.status ? (
           <ResourceState tone={fixture.status.tone}>
@@ -1442,6 +1504,13 @@ function AutomationDetailContent({
             label="Automation actions"
             items={[
               {
+                label: "Edit",
+                icon: "Edit",
+                disabled: editing,
+                onSelect: startEditing,
+              },
+              { kind: "separator" },
+              {
                 label: "Run now",
                 icon: "ArrowReloadHorizontal",
                 onSelect: NOOP,
@@ -1459,12 +1528,44 @@ function AutomationDetailContent({
       }
       meta={
         <ResourceMeta
-          items={["Automation", fixture.executionKind, fixture.scheduleLabel]}
+          items={[automationFixtureScheduleMeta(fixture, enabled)]}
         />
+      }
+      actions={
+        editing ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={cancelEditing}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canSave}
+              onClick={saveEditing}
+            >
+              Save
+            </Button>
+          </>
+        ) : null
       }
     >
       <DetailSection label="Configuration">
         <ResourcePropertyList>
+          {editing ? (
+            <ResourceProperty label="Name">
+              <Input
+                value={draftTitle}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                aria-label="Automation name"
+                className="h-8"
+              />
+            </ResourceProperty>
+          ) : null}
           <ResourceProperty label="Schedule">
             {fixture.schedule}
           </ResourceProperty>
@@ -1479,17 +1580,44 @@ function AutomationDetailContent({
           ) : null}
           {fixture.prompt ? (
             <ResourceProperty label="Prompt">
-              <span className="whitespace-pre-wrap">{fixture.prompt}</span>
+              {editing ? (
+                <Textarea
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation prompt"
+                  className="min-h-40 resize-y text-sm leading-relaxed"
+                />
+              ) : (
+                <span className="whitespace-pre-wrap">{body}</span>
+              )}
             </ResourceProperty>
           ) : fixture.script ? (
             <ResourceProperty label="Script">
-              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {fixture.script}
-              </pre>
+              {editing ? (
+                <Textarea
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation script"
+                  className="min-h-40 resize-y font-mono text-xs leading-relaxed"
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {body}
+                </pre>
+              )}
             </ResourceProperty>
           ) : fixture.scriptFile ? (
-            <ResourceProperty label="Script file">
-              {fixture.scriptFile}
+            <ResourceProperty label={bodyLabel}>
+              {editing ? (
+                <Input
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation script file"
+                  className="h-8 font-mono text-xs"
+                />
+              ) : (
+                body
+              )}
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>

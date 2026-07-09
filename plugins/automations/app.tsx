@@ -4,9 +4,8 @@
 // views. The panel root lists every automation across projects (rpc
 // automations.overview); the detail subPath (/:projectId/:automationId)
 // shows one automation's full config plus its cursor-paginated run history.
-// Realtime "automations" signals refetch in place. Creation/editing is
-// deliberately absent — parity with the kernel, where automations are made
-// via the CLI or by agents.
+// Realtime "automations" signals refetch in place. Creation starts from chat;
+// detail editing uses the plugin's update RPC for the supported editable fields.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -23,6 +22,7 @@ import type {
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
+  UpdateAutomationInput,
 } from "@/src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -36,6 +36,7 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { Input } from "@bb/shared-ui/input";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
@@ -56,6 +57,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
@@ -116,10 +118,18 @@ interface DetailRoute {
   automationId: string;
 }
 
-function parseSubPath(subPath: string): DetailRoute | null {
+interface ParsedDetailRoute {
+  route: DetailRoute;
+  editing: boolean;
+}
+
+function parseSubPath(subPath: string): ParsedDetailRoute | null {
   const parts = subPath.split("/").filter((p) => p.length > 0);
-  if (parts.length === 2) {
-    return { projectId: parts[0], automationId: parts[1] };
+  if (parts.length === 2 || (parts.length === 3 && parts[2] === "edit")) {
+    return {
+      route: { projectId: parts[0], automationId: parts[1] },
+      editing: parts[2] === "edit",
+    };
   }
   return null;
 }
@@ -354,6 +364,8 @@ function useMutations() {
     resume: (route: DetailRoute) => call("automations_resume", route),
     run: (route: DetailRoute) => call("automations_run", route),
     delete: (route: DetailRoute) => call("automations_delete", route),
+    update: (input: UpdateAutomationInput) =>
+      rpc.call("automations_update", input),
   };
 }
 
@@ -423,6 +435,36 @@ function describeExecution(execution: AutomationExecution): string {
   const target = execution.scriptFile ?? "inline script";
   const timeoutSeconds = Math.round(execution.timeoutMs / 1000);
   return `Script · ${interpreter} ${target} · ${timeoutSeconds}s timeout`;
+}
+
+function automationEditBodyLabel(execution: AutomationExecution): string {
+  if (execution.mode === "agent") return "Prompt";
+  return execution.scriptFile !== undefined && execution.script === undefined
+    ? "Script file"
+    : "Script";
+}
+
+function automationEditBodyValue(execution: AutomationExecution): string {
+  if (execution.mode === "agent") return execution.prompt;
+  return execution.script ?? execution.scriptFile ?? "";
+}
+
+function withAutomationEditBody(
+  execution: AutomationExecution,
+  body: string,
+): AutomationExecution {
+  if (execution.mode === "agent") return { ...execution, prompt: body };
+  const base = {
+    mode: "script" as const,
+    timeoutMs: execution.timeoutMs,
+    ...(execution.interpreter !== undefined
+      ? { interpreter: execution.interpreter }
+      : {}),
+    ...(execution.env !== undefined ? { env: execution.env } : {}),
+  };
+  return execution.scriptFile !== undefined && execution.script === undefined
+    ? { ...base, scriptFile: body }
+    : { ...base, script: body };
 }
 
 interface AutomationEnvironmentDisplay {
@@ -680,11 +722,13 @@ function DeleteAutomationDialog({
 function OverviewRow({
   entry,
   onNavigate,
+  onEdit,
   onAction,
   onDelete,
 }: {
   entry: OverviewEntry;
   onNavigate: (route: DetailRoute) => void;
+  onEdit: (route: DetailRoute) => void;
   onAction: (method: "pause" | "resume" | "run", route: DetailRoute) => void;
   onDelete: (entry: OverviewEntry) => void;
 }) {
@@ -713,6 +757,11 @@ function OverviewRow({
             icon="Play"
             disabled={completedOneShot}
             onClick={() => onAction("run", route)}
+          />
+          <ResourceActionButton
+            label="Edit"
+            icon="Edit"
+            onClick={() => onEdit(route)}
           />
           <ResourceActionButton
             label="Delete"
@@ -932,7 +981,7 @@ function OverviewView({
   onOpenDetail,
   onBrowseAll,
 }: {
-  onOpenDetail: (route: DetailRoute) => void;
+  onOpenDetail: (route: DetailRoute, options?: { editing?: boolean }) => void;
   onBrowseAll: () => void;
 }) {
   const navigate = useBbNavigate();
@@ -1092,6 +1141,7 @@ function OverviewView({
             key={entry.automation.id}
             entry={entry}
             onNavigate={onOpenDetail}
+            onEdit={(route) => onOpenDetail(route, { editing: true })}
             onAction={runAction}
             onDelete={setDeleteTarget}
           />
@@ -1231,9 +1281,11 @@ function RunRow({
 
 function DetailView({
   route,
+  initialEditing,
   onBack,
 }: {
   route: DetailRoute;
+  initialEditing: boolean;
   onBack: () => void;
 }) {
   const navigate = useBbNavigate();
@@ -1241,8 +1293,28 @@ function DetailView({
   const runsState = useRuns(route);
   const mutations = useMutations();
   const [actionPending, setActionPending] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
+  const [saving, setSaving] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftBody, setDraftBody] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setEditing(initialEditing);
+  }, [route.projectId, route.automationId, initialEditing]);
+
+  useEffect(() => {
+    if (automation === null) return;
+    setDraftName(automation.name);
+    setDraftBody(automationEditBodyValue(automation.execution));
+  }, [automation?.id]);
+
+  useEffect(() => {
+    if (automation === null || editing) return;
+    setDraftName(automation.name);
+    setDraftBody(automationEditBodyValue(automation.execution));
+  }, [automation, editing]);
 
   const openThread = useCallback(
     (threadId: string) => navigate.toThread(threadId),
@@ -1266,6 +1338,54 @@ function DetailView({
     },
     [mutations, route],
   );
+
+  const closeEdit = useCallback(() => {
+    if (automation !== null) {
+      setDraftName(automation.name);
+      setDraftBody(automationEditBodyValue(automation.execution));
+    }
+    setEditing(false);
+    navigate.toPluginPanel(PANEL_PATH, {
+      subPath: `${route.projectId}/${route.automationId}`,
+    });
+  }, [automation, navigate, route]);
+
+  const saveEdit = useCallback(() => {
+    if (automation === null) return;
+    const nextName = draftName.trim();
+    const nextBody = draftBody;
+    if (nextName.length === 0 || nextBody.trim().length === 0) {
+      toast.error("Automation name and editable body are required");
+      return;
+    }
+
+    const currentBody = automationEditBodyValue(automation.execution);
+    const input: UpdateAutomationInput = {
+      projectId: route.projectId,
+      automationId: route.automationId,
+    };
+    if (nextName !== automation.name) input.name = nextName;
+    if (nextBody !== currentBody) {
+      input.execution = withAutomationEditBody(automation.execution, nextBody);
+    }
+    if (input.name === undefined && input.execution === undefined) {
+      closeEdit();
+      return;
+    }
+
+    setSaving(true);
+    mutations
+      .update(input)
+      .then(
+        () => {
+          toast.success("Automation updated");
+          closeEdit();
+        },
+        (rpcError: unknown) =>
+          toast.error(`Failed to update automation: ${errorText(rpcError)}`),
+      )
+      .finally(() => setSaving(false));
+  }, [automation, closeEdit, draftBody, draftName, mutations, route]);
 
   const confirmDelete = useCallback(() => {
     setDeleting(true);
@@ -1308,6 +1428,12 @@ function DetailView({
   });
   const environmentDisplay = automationEnvironmentDisplay(automation.execution);
   const status = automationDetailStatus(automation);
+  const editableBodyLabel = automationEditBodyLabel(automation.execution);
+  const canSaveEdit =
+    draftName.trim().length > 0 &&
+    draftBody.trim().length > 0 &&
+    !saving &&
+    !actionPending;
 
   return (
     <ResourceDetailPage
@@ -1318,14 +1444,14 @@ function DetailView({
           aria-hidden
         />
       }
-      title={automation.name}
+      title={editing ? draftName || automation.name : automation.name}
       status={status}
       headerActions={
         <>
           <Switch
             size="sm"
             checked={automation.enabled}
-            disabled={actionPending || completedOneShot}
+            disabled={actionPending || saving || completedOneShot}
             aria-label={
               automation.enabled ? "Pause automation" : "Resume automation"
             }
@@ -1335,8 +1461,15 @@ function DetailView({
           />
           <ResourceOverflowMenu
             label={`${automation.name} actions`}
-            disabled={actionPending}
+            disabled={actionPending || saving}
             items={[
+              {
+                label: "Edit",
+                icon: "Edit",
+                disabled: editing,
+                onSelect: () => setEditing(true),
+              },
+              { kind: "separator" },
               {
                 label: "Run now",
                 icon: "ArrowReloadHorizontal",
@@ -1353,14 +1486,29 @@ function DetailView({
           />
         </>
       }
-      meta={
-        <ResourceMeta
-          items={[
-            "Automation",
-            automation.execution.mode === "script" ? "Script" : "Agent",
-            automationScheduleLabel(automation),
-          ]}
-        />
+      meta={<ResourceMeta items={[automationScheduleLabel(automation)]} />}
+      actions={
+        editing ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={closeEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canSaveEdit}
+              onClick={saveEdit}
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </>
+        ) : null
       }
     >
       <section className="space-y-2">
@@ -1368,6 +1516,16 @@ function DetailView({
           Configuration
         </p>
         <ResourcePropertyList>
+          {editing ? (
+            <ResourceProperty label="Name">
+              <Input
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                aria-label="Automation name"
+                className="h-8"
+              />
+            </ResourceProperty>
+          ) : null}
           <ResourceProperty label="Schedule">
             {formatAutomationTrigger(automation.trigger)}
           </ResourceProperty>
@@ -1384,19 +1542,46 @@ function DetailView({
           ) : null}
           {automation.execution.mode === "agent" ? (
             <ResourceProperty label="Prompt">
-              <span className="whitespace-pre-wrap">
-                {automation.execution.prompt}
-              </span>
+              {editing ? (
+                <Textarea
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation prompt"
+                  className="min-h-40 resize-y text-sm leading-relaxed"
+                />
+              ) : (
+                <span className="whitespace-pre-wrap">
+                  {automation.execution.prompt}
+                </span>
+              )}
             </ResourceProperty>
           ) : automation.execution.script ? (
             <ResourceProperty label="Script">
-              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {automation.execution.script}
-              </pre>
+              {editing ? (
+                <Textarea
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation script"
+                  className="min-h-40 resize-y font-mono text-xs leading-relaxed"
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {automation.execution.script}
+                </pre>
+              )}
             </ResourceProperty>
           ) : automation.execution.scriptFile ? (
-            <ResourceProperty label="Script file">
-              {automation.execution.scriptFile}
+            <ResourceProperty label={editableBodyLabel}>
+              {editing ? (
+                <Input
+                  value={draftBody}
+                  onChange={(event) => setDraftBody(event.target.value)}
+                  aria-label="Automation script file"
+                  className="h-8 font-mono text-xs"
+                />
+              ) : (
+                automation.execution.scriptFile
+              )}
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>
@@ -1452,7 +1637,7 @@ function DetailView({
 
 function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
-  const route = useMemo(() => parseSubPath(subPath), [subPath]);
+  const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
   const createViaChat = useCallback(
     (prompt?: string) => {
       navigate.toCompose({
@@ -1464,9 +1649,11 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   );
 
   const openDetail = useCallback(
-    (next: DetailRoute) => {
+    (next: DetailRoute, options?: { editing?: boolean }) => {
       navigate.toPluginPanel(PANEL_PATH, {
-        subPath: `${next.projectId}/${next.automationId}`,
+        subPath: `${next.projectId}/${next.automationId}${
+          options?.editing ? "/edit" : ""
+        }`,
       });
     },
     [navigate],
@@ -1484,8 +1671,14 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   if (subPath === "preview") {
     return <AutomationOverviewPreview />;
   }
-  if (route !== null) {
-    return <DetailView route={route} onBack={backToList} />;
+  if (parsedRoute !== null) {
+    return (
+      <DetailView
+        route={parsedRoute.route}
+        initialEditing={parsedRoute.editing}
+        onBack={backToList}
+      />
+    );
   }
   return <OverviewView onOpenDetail={openDetail} onBrowseAll={openBrowse} />;
 }
