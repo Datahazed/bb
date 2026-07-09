@@ -639,7 +639,7 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="inline-block max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 align-top text-popover-foreground">
+    <section className="w-full max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 text-popover-foreground">
       <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {leading}
