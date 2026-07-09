@@ -536,7 +536,7 @@ function RegistrySkillSourceItem({
         <Icon name="Zap" className="size-5 text-muted-foreground" aria-hidden />
       }
       title={skill.name}
-      meta={formatRegistrySource(skill.source)}
+      meta={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
       state={<RegistrySkillSocialProof skill={skill} />}
       onOpen={() => onSelect(skill)}

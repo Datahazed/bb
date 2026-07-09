@@ -719,7 +719,7 @@ export function ResourceBrowseCard({
         }
       }}
     >
-      <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-2">
+      <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] gap-x-2 gap-y-2">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
           {leading}
         </span>
@@ -732,19 +732,19 @@ export function ResourceBrowseCard({
               {meta}
             </span>
           ) : null}
-          {state ? (
-            <span className="mt-2 flex min-w-0 flex-wrap items-center gap-1">
-              {state}
-            </span>
-          ) : null}
         </span>
+        {state ? (
+          <span className="col-start-3 row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end">
+            {state}
+          </span>
+        ) : null}
         {description ? (
-          <span className="col-start-2 line-clamp-3 text-xs leading-relaxed text-subtle-foreground">
+          <span className="col-span-2 col-start-2 line-clamp-3 rounded-md bg-surface-recessed/70 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground">
             {description}
           </span>
         ) : null}
         {tags.length > 0 ? (
-          <span className="col-start-2 flex flex-wrap gap-1">
+          <span className="col-span-2 col-start-2 flex flex-wrap gap-1">
             {tags.map((tag, index) => (
               <span
                 key={index}

@@ -580,7 +580,7 @@ function RegistryBrowseSource() {
               />
             }
             title={row.title}
-            meta={row.source}
+            meta={`by ${row.source}`}
             description={row.summary}
             state={
               <StorySocialProof installs={row.installs} stars={row.stars} />
