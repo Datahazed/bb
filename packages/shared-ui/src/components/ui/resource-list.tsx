@@ -474,7 +474,7 @@ export function ResourceRow({
   return (
     <div
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 rounded-md border border-transparent bg-background px-3 py-2 text-left shadow-sm transition-colors hover:border-border hover:bg-state-hover",
+        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
         selected && "bg-state-active",
         muted && "opacity-60",
         className,
@@ -541,7 +541,7 @@ export function ResourceListPanel({
       )}
     >
       <div className={cn("overflow-y-auto pr-1", maxHeightClassName)}>
-        <div className="space-y-1">{children}</div>
+        <div className="space-y-0">{children}</div>
       </div>
     </div>
   );
@@ -624,7 +624,7 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="inline-block max-w-full space-y-1 rounded-lg border border-border bg-popover p-2 align-top text-popover-foreground shadow-sm">
+    <section className="inline-block max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 align-top text-popover-foreground">
       <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {leading}
@@ -683,7 +683,7 @@ export function ResourceBrowseCard({
     <div
       role="button"
       tabIndex={0}
-      className="flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left shadow-sm transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       onClick={(event) => {
         if (
           (event.target as HTMLElement).closest("a, button, [data-row-action]")
@@ -705,7 +705,7 @@ export function ResourceBrowseCard({
       }}
     >
       <span className="flex min-w-0 items-start gap-2">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
           {leading}
         </span>
         <span className="min-w-0 flex-1">
