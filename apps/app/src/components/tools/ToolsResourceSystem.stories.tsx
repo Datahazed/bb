@@ -1,9 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
@@ -12,26 +10,28 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
+  ResourceOptionMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
   ResourceState,
+  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
-import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
   title: "Tools/Resource System",
 };
 
 const NOOP = () => {};
-const CREATE_TEMPLATES = [
+const SKILL_CREATE_TEMPLATES = [
   {
     label: "PR review",
     description:
@@ -39,28 +39,44 @@ const CREATE_TEMPLATES = [
     prompt: "Create a new bb skill that reviews a GitHub PR.",
   },
   {
-    label: "Release readiness",
+    label: "Usage pattern skill",
     description:
-      "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
-    prompt: "Create a new bb automation to check release readiness.",
+      "turns repeated thread behavior into a reusable agent instruction",
+    prompt: "Create a new bb skill for a repeated workflow.",
   },
+] as const;
+
+const PLUGIN_CREATE_TEMPLATES = [
   {
     label: "GitHub triage",
     description:
       "adds a GitHub panel that lists assigned PRs and lets agents open review threads",
     prompt: "Create a new bb plugin that adds GitHub triage.",
   },
+  {
+    label: "Status panel",
+    description:
+      "adds a compact nav panel for surfacing workspace health and shortcuts",
+    prompt: "Create a new bb plugin that adds a workspace status panel.",
+  },
 ] as const;
 
-type ResourceSurfaceId = "skills" | "plugins" | "automations";
+const AUTOMATION_CREATE_TEMPLATES = [
+  {
+    label: "Release readiness",
+    description:
+      "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
+    prompt: "Create a new bb automation to check release readiness.",
+  },
+  {
+    label: "Standup digest",
+    description: "summarizes yesterday's thread activity every weekday morning",
+    prompt: "Create a new bb automation that sends a weekday standup digest.",
+  },
+] as const;
+
 type ProviderId = "bb" | "codex" | "claude-code";
 type ProviderFilterId = ProviderId | "all";
-
-interface ResourceSurface {
-  id: ResourceSurfaceId;
-  label: string;
-  icon: IconName;
-}
 
 interface ResourceListRowFixture {
   id: string;
@@ -105,11 +121,20 @@ const LOCAL_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
   icon: "Laptop",
 };
 
-const RESOURCE_SURFACES: readonly ResourceSurface[] = [
-  { id: "skills", label: "Skills", icon: "Zap" },
-  { id: "plugins", label: "Plugins", icon: "ElectricPlugs" },
-  { id: "automations", label: "Automations", icon: "TimeSchedule" },
+const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
+  "all",
+  "bb",
+  "codex",
+  "claude-code",
 ];
+
+const PROVIDER_FILTER_LABELS: Record<ProviderFilterId, string> = {
+  all: "All agents",
+  bb: "bb",
+  codex: "Codex",
+  "claude-code": "Claude Code",
+};
+
 const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
   {
     key: "bb",
@@ -335,55 +360,69 @@ function AutomationRowActions() {
   );
 }
 
-function ResourceSurfaceSelector({
-  activeSurface,
-  onChange,
+function providerBucketsForSections(
+  sections: readonly ResourceSectionFixture[],
+): ReadonlySet<ProviderId> {
+  const providers = new Set<ProviderId>();
+  for (const section of sections) {
+    for (const row of section.rows) {
+      providers.add(row.provider ?? section.provider ?? "bb");
+    }
+  }
+  return providers;
+}
+
+function StoryListControls({
+  provider,
+  sort,
+  direction,
+  availableProviders,
+  onProviderChange,
+  onSortChange,
 }: {
-  activeSurface: ResourceSurfaceId;
-  onChange: (surface: ResourceSurfaceId) => void;
+  provider: ProviderFilterId;
+  sort: "provider" | "alpha";
+  direction: "asc" | "desc";
+  availableProviders: ReadonlySet<ProviderId>;
+  onProviderChange: (provider: ProviderFilterId) => void;
+  onSortChange: (sort: "provider" | "alpha") => void;
 }) {
+  const providerSortDisabled = availableProviders.size <= 1;
   return (
-    <nav aria-label="Resource pages" className="grid min-w-0 gap-1">
-      {RESOURCE_SURFACES.map((surface) => {
-        const active = surface.id === activeSurface;
-        return (
-          <button
-            key={surface.id}
-            type="button"
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "inline-flex h-8 min-w-0 items-center gap-2 rounded-md px-2.5 text-sm transition-colors",
-              active
-                ? "bg-state-active text-foreground"
-                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            )}
-            onClick={() => onChange(surface.id)}
-          >
-            <Icon name={surface.icon} className="size-4 shrink-0" aria-hidden />
-            <span className="truncate">{surface.label}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <>
+      <ResourceOptionMenu
+        label="Agent"
+        icon="Layers"
+        value={provider}
+        options={PROVIDER_FILTERS.map((id) => ({
+          id,
+          label: PROVIDER_FILTER_LABELS[id],
+          disabled: id !== "all" && !availableProviders.has(id),
+        }))}
+        onChange={(value) => onProviderChange(value as ProviderFilterId)}
+      />
+      <ResourceSortMenu
+        value={sort}
+        direction={direction}
+        options={[
+          {
+            id: "provider",
+            label: "Agent",
+            disabled: providerSortDisabled,
+          },
+          { id: "alpha", label: "Alphabetical" },
+        ]}
+        onChange={(value) => onSortChange(value as "provider" | "alpha")}
+      />
+    </>
   );
 }
 
-function PreviewStage({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function PageStory({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={cn(
-        "w-full rounded-md border border-border bg-background p-4",
-        className,
-      )}
-    >
-      {children}
-    </div>
+    <main className="min-h-[720px] bg-background px-4 py-4 md:px-5">
+      <div className="mx-auto w-full max-w-5xl">{children}</div>
+    </main>
   );
 }
 
@@ -538,40 +577,83 @@ function RegistryBrowseSource() {
   );
 }
 
-function RegistryBrowseSourceLoading() {
+function TemplateBrowseCards({
+  label,
+  icon,
+  templates,
+}: {
+  label: string;
+  icon: IconName;
+  templates: readonly {
+    label: string;
+    description: string;
+    prompt: string;
+  }[];
+}) {
   return (
     <ResourceSourceShelf
-      label="Browse"
-      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+      label={label}
+      leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
+      action={
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-2"
+        >
+          See all
+          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+        </Button>
+      }
     >
-      {["w-40", "w-52", "w-36"].map((nameWidth) => (
-        <ResourceSourceItem key={nameWidth}>
-          <div className="flex min-w-0 items-center gap-3 px-3 py-2">
-            <Skeleton className="size-4 rounded" />
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Skeleton className={cn("h-3.5", nameWidth)} />
-              <Skeleton className="h-3 w-56 max-w-full" />
-            </div>
-            <Skeleton className="h-7 w-20" />
-          </div>
+      {templates.map((template) => (
+        <ResourceSourceItem key={`${label}-${template.label}`}>
+          <ResourceBrowseCard
+            leading={
+              <Icon
+                name={icon}
+                className="size-5 text-muted-foreground"
+                aria-hidden
+              />
+            }
+            title={template.label}
+            meta="Starter template"
+            description={template.description}
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+              >
+                Use template
+              </Button>
+            }
+            onOpen={NOOP}
+          />
         </ResourceSourceItem>
       ))}
     </ResourceSourceShelf>
   );
 }
 
-function RegistryBrowseSourceEmpty() {
+function PluginBrowseCards() {
   return (
-    <ResourceSourceShelf
-      label="Browse"
-      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-    >
-      <ResourceSourceItem>
-        <EmptyStatePanel className="min-h-36 justify-center py-5">
-          No skills.sh results match this search.
-        </EmptyStatePanel>
-      </ResourceSourceItem>
-    </ResourceSourceShelf>
+    <TemplateBrowseCards
+      label="Browse plugins"
+      icon="ElectricPlugs"
+      templates={PLUGIN_CREATE_TEMPLATES}
+    />
+  );
+}
+
+function AutomationBrowseCards() {
+  return (
+    <TemplateBrowseCards
+      label="Browse automations"
+      icon="TimeSchedule"
+      templates={AUTOMATION_CREATE_TEMPLATES}
+    />
   );
 }
 
@@ -654,6 +736,196 @@ function AutomationsList({
         />
       ))}
     </ResourceListPanel>
+  );
+}
+
+function SkillsOverviewSurface() {
+  const [query, setQuery] = useState("");
+  const [provider, setProvider] = useState<ProviderFilterId>("all");
+  const [sort, setSort] = useState<"provider" | "alpha">("alpha");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const providerBuckets = providerBucketsForSections(SKILL_SECTIONS);
+  function updateSort(nextSort: "provider" | "alpha") {
+    if (nextSort === "provider" && providerBuckets.size <= 1) return;
+    if (nextSort === sort) {
+      setDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(nextSort);
+      setDirection("asc");
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <ResourceTabDescription>
+        Skills are reusable instructions available to agents in bb. Browse
+        installable skills first, then search and manage the skills already
+        available in this workspace.
+      </ResourceTabDescription>
+      <RegistryBrowseSource />
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search skills"
+        onSearchChange={setQuery}
+        controls={
+          <StoryListControls
+            provider={provider}
+            sort={sort}
+            direction={direction}
+            availableProviders={providerBuckets}
+            onProviderChange={setProvider}
+            onSortChange={updateSort}
+          />
+        }
+        action={
+          <ResourceCreateButton
+            label="New bb skill"
+            templates={SKILL_CREATE_TEMPLATES}
+            onCreate={NOOP}
+          />
+        }
+      />
+      <ResourceRowsList
+        sections={SKILL_SECTIONS}
+        query={query}
+        providerFilter={provider}
+        sortMode={sort}
+        sortDirection={direction}
+        fallbackIcon="Zap"
+      />
+    </div>
+  );
+}
+
+function PluginsOverviewSurface() {
+  const [query, setQuery] = useState("");
+  const [provider, setProvider] = useState<ProviderFilterId>("all");
+  const [sort, setSort] = useState<"provider" | "alpha">("alpha");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const providerBuckets = providerBucketsForSections(PLUGIN_SECTIONS);
+  function updateSort(nextSort: "provider" | "alpha") {
+    if (nextSort === "provider" && providerBuckets.size <= 1) return;
+    if (nextSort === sort) {
+      setDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(nextSort);
+      setDirection("asc");
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <ResourceTabDescription>
+        Plugins add bb surfaces, commands, background services, and
+        provider-specific capabilities. Browse installable templates first, then
+        search and manage installed plugins.
+      </ResourceTabDescription>
+      <PluginBrowseCards />
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search plugins"
+        onSearchChange={setQuery}
+        controls={
+          <StoryListControls
+            provider={provider}
+            sort={sort}
+            direction={direction}
+            availableProviders={providerBuckets}
+            onProviderChange={setProvider}
+            onSortChange={updateSort}
+          />
+        }
+        action={
+          <ResourceCreateButton
+            label="New plugin"
+            templates={PLUGIN_CREATE_TEMPLATES}
+            onCreate={NOOP}
+          />
+        }
+      />
+      <ResourceRowsList
+        sections={PLUGIN_SECTIONS}
+        query={query}
+        providerFilter={provider}
+        sortMode={sort}
+        sortDirection={direction}
+        fallbackIcon="ElectricPlugs"
+      />
+    </div>
+  );
+}
+
+function AutomationsOverviewSurface() {
+  const [query, setQuery] = useState("");
+  const [location, setLocation] = useState("all");
+  const [sort, setSort] = useState<"location" | "alpha">("alpha");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const locationBucketCount = new Set(
+    AUTOMATION_ROWS.map((row) => `${row.project ?? ""}/${row.folder ?? ""}`),
+  ).size;
+  function updateSort(nextSort: "location" | "alpha") {
+    if (nextSort === "location" && locationBucketCount <= 1) return;
+    if (nextSort === sort) {
+      setDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(nextSort);
+      setDirection("asc");
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <ResourceTabDescription>
+        Automations run scheduled bb work across projects and folders. Browse
+        starter automations first, then search and manage the automations
+        already installed in this workspace.
+      </ResourceTabDescription>
+      <AutomationBrowseCards />
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search automations"
+        onSearchChange={setQuery}
+        controls={
+          <>
+            <ResourceOptionMenu
+              label="Location"
+              icon="Folder"
+              value={location}
+              options={[
+                { id: "all", label: "All locations" },
+                { id: "bb/reviews", label: "bb / Reviews" },
+                { id: "bb/maintenance", label: "bb / Maintenance" },
+                { id: "moss/ci", label: "moss / CI" },
+              ]}
+              onChange={setLocation}
+            />
+            <ResourceSortMenu
+              value={sort}
+              direction={direction}
+              options={[
+                {
+                  id: "location",
+                  label: "Project / folder",
+                  disabled: locationBucketCount <= 1,
+                },
+                { id: "alpha", label: "Alphabetical" },
+              ]}
+              onChange={(value) => updateSort(value as "location" | "alpha")}
+            />
+          </>
+        }
+        action={
+          <ResourceCreateButton
+            label="New automation"
+            templates={AUTOMATION_CREATE_TEMPLATES}
+            onCreate={NOOP}
+          />
+        }
+      />
+      <AutomationsList
+        query={query}
+        location={location}
+        sort={sort}
+        direction={direction}
+      />
+    </div>
   );
 }
 
@@ -779,41 +1051,6 @@ function SkillDetail() {
   );
 }
 
-function RegistrySkillDetail() {
-  return (
-    <ResourceDetailPage
-      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
-      title="moss-skills/moss-notes"
-      status={<StorySocialProof installs="3.4K installs" stars="25.6K stars" />}
-      meta={<ResourceMeta items={["skills.sh", "moss-skills", "writing"]} />}
-      description="Author and edit Moss notes with the current Moss syntax."
-      actions={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs"
-          disabled
-          onClick={NOOP}
-        >
-          Installed
-        </Button>
-      }
-    >
-      <DetailSection label="Details">
-        <ResourcePropertyList>
-          <ResourceProperty label="Installs">3,412</ResourceProperty>
-          <ResourceProperty label="GitHub stars">25,561</ResourceProperty>
-          <ResourceProperty label="Works with">
-            Codex, Claude Code
-          </ResourceProperty>
-          <ResourceProperty label="Installed on">Codex</ResourceProperty>
-        </ResourcePropertyList>
-      </DetailSection>
-    </ResourceDetailPage>
-  );
-}
-
 function PluginDetail() {
   const [enabled, setEnabled] = useState(true);
   return (
@@ -855,341 +1092,50 @@ function PluginDetail() {
   );
 }
 
-function ProviderPluginDetail() {
+export function SkillsOverviewPage() {
   return (
-    <ResourceDetailPage
-      leading={<CodexMark className="size-4" />}
-      title="github"
-      status={
-        <span className="flex shrink-0 items-center gap-2">
-          <CodexMark className="size-4" />
-          <ResourceState tone="success">Installed</ResourceState>
-        </span>
-      }
-      meta={<ResourceMeta items={["Provider plugin", "Codex", "2 skills"]} />}
-      description="Address actionable GitHub PR review feedback."
-    >
-      <DetailSection label="Skills">
-        <div className="space-y-1">
-          {["github:gh-address-comments", "github:gh-fix-ci"].map((skill) => (
-            <div
-              key={skill}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-            >
-              <Icon
-                name="Zap"
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate">{skill}</span>
-            </div>
-          ))}
-        </div>
-      </DetailSection>
-    </ResourceDetailPage>
+    <PageStory>
+      <SkillsOverviewSurface />
+    </PageStory>
   );
 }
 
-function OverviewToolbarSample() {
-  const [query, setQuery] = useState("");
+export function PluginsOverviewPage() {
   return (
-    <ResourceToolbar
-      searchValue={query}
-      searchPlaceholder="Search resources"
-      onSearchChange={setQuery}
-      action={
-        <ResourceCreateButton
-          label="New resource"
-          templates={CREATE_TEMPLATES}
-          onCreate={NOOP}
-        />
-      }
-    />
+    <PageStory>
+      <PluginsOverviewSurface />
+    </PageStory>
   );
 }
 
-function ResourceSidebarEntrySample() {
-  const [activeSurface, setActiveSurface] =
-    useState<ResourceSurfaceId>("skills");
+export function AutomationsOverviewPage() {
   return (
-    <div className="w-48">
-      <ResourceSurfaceSelector
-        activeSurface={activeSurface}
-        onChange={setActiveSurface}
-      />
-    </div>
+    <PageStory>
+      <AutomationsOverviewSurface />
+    </PageStory>
   );
 }
 
-function StatusAndActionSamples() {
+export function SkillDetailPage() {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <ResourceState tone="success">Active</ResourceState>
-      <ResourceState tone="warning">Failed</ResourceState>
-      <ResourceState tone="muted">Paused</ResourceState>
-      <span className="flex items-center gap-0.5">
-        <AutomationRowActions />
-      </span>
-    </div>
+    <PageStory>
+      <SkillDetail />
+    </PageStory>
   );
 }
 
-function DetailHeaderSamples() {
-  const [enabled, setEnabled] = useState(true);
+export function PluginDetailPage() {
   return (
-    <div className="flex flex-wrap items-center gap-4">
-      <span className="flex items-center gap-2">
-        <Icon name="Zap" className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Resource title</span>
-        <ResourceState tone="success">Active</ResourceState>
-      </span>
-      <span className="flex items-center gap-1">
-        <Switch
-          checked={enabled}
-          aria-label="Enable resource"
-          onCheckedChange={setEnabled}
-        />
-        <ResourceOverflowMenu
-          label="More actions"
-          items={[
-            { label: "Edit", icon: "Edit", onSelect: NOOP },
-            { kind: "separator" },
-            {
-              label: "Delete",
-              icon: "Trash2",
-              tone: "destructive",
-              onSelect: NOOP,
-            },
-          ]}
-        />
-      </span>
-    </div>
+    <PageStory>
+      <PluginDetail />
+    </PageStory>
   );
 }
 
-function DetailPropertiesSample() {
+export function AutomationDetailPage() {
   return (
-    <ResourcePropertyList>
-      <ResourceProperty label="Schedule">
-        Every hour · America/New_York
-      </ResourceProperty>
-      <ResourceProperty label="Execution">gpt-5.4 · Low</ResourceProperty>
-      <ResourceProperty label="Environment">
-        <StoryEnvironmentInline display={LOCAL_ENVIRONMENT_DISPLAY} />
-      </ResourceProperty>
-    </ResourcePropertyList>
-  );
-}
-
-function SkillsSourceAboveInstalledPreview() {
-  const [query, setQuery] = useState("");
-  return (
-    <div className="space-y-3">
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search skills"
-        onSearchChange={setQuery}
-        action={
-          <ResourceCreateButton
-            label="New bb skill"
-            templates={CREATE_TEMPLATES}
-            onCreate={NOOP}
-          />
-        }
-      />
-      <RegistryBrowseSource />
-      <ResourceRowsList
-        sections={SKILL_SECTIONS}
-        query={query}
-        providerFilter="all"
-        sortMode="alpha"
-        sortDirection="asc"
-        fallbackIcon="Zap"
-      />
-    </div>
-  );
-}
-
-export function SkillsShSourceSystem() {
-  return (
-    <StoryCard labelWidth="260px">
-      <StoryRow
-        label="source carousel"
-        hint="browse source for installable skills; not a provider section"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="source loading"
-        hint="source loading is independent from installed provider groups"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSourceLoading />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="source search miss"
-        hint="no source results for the active query"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSourceEmpty />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="source above installed"
-        hint="toolbar, skills.sh source carousel, then flat installed skill rows"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <SkillsSourceAboveInstalledPreview />
-        </PreviewStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function DetailPageSystem() {
-  return (
-    <StoryCard labelWidth="260px">
-      <StoryRow
-        label="automation detail page"
-        hint="full-page resource shell with status, compact header actions, configuration, and run history"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <AutomationDetail />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="skill detail page"
-        hint="shared detail shell for installed skills, SKILL.md metadata, and edit/open/delete actions"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <SkillDetail />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="skills.sh source detail"
-        hint="source results use the shared detail taxonomy, with install scope and provider actions as resource state"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <RegistrySkillDetail />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="bb plugin detail page"
-        hint="plugin resource detail keeps status and enablement in the header/action area"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <PluginDetail />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="provider plugin detail page"
-        hint="provider-specific plugins share the same detail shell and expose their bundled skills"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <ProviderPluginDetail />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="detail header primitives"
-        hint="leading icon, title, status, enable switch, and compact overflow action"
-      >
-        <PreviewStage>
-          <DetailHeaderSamples />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="property list"
-        hint="shared key/value surface used by automation, skill, and plugin details"
-      >
-        <PreviewStage className="max-w-[560px]">
-          <DetailPropertiesSample />
-        </PreviewStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function OverviewPageSystem() {
-  return (
-    <StoryCard labelWidth="260px">
-      <StoryRow
-        label="sidebar entries"
-        hint="three direct resource destinations; no mixed hub page and no in-page tab strip"
-      >
-        <PreviewStage className="max-w-[300px]">
-          <ResourceSidebarEntrySample />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="overview toolbar"
-        hint="shared search field and aligned primary New action"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <OverviewToolbarSample />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="automation rows"
-        hint="scrolling row panel; status appears once beside the title and hover/focus reveals actions"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <AutomationsList
-            query=""
-            location="all"
-            sort="alpha"
-            direction="asc"
-          />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="skills.sh source carousel"
-        hint="discovery source for installable skills, separate from installed provider sections"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="skills rows"
-        hint="scrolling row panel controlled by agent filter and alphabetical/provider sort"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <ResourceRowsList
-            sections={SKILL_SECTIONS}
-            query=""
-            providerFilter="all"
-            sortMode="alpha"
-            sortDirection="asc"
-            fallbackIcon="Zap"
-          />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="plugins rows"
-        hint="bb and provider-specific plugins use the same scrolling row grammar as skills"
-      >
-        <PreviewStage className="max-w-[760px]">
-          <ResourceRowsList
-            sections={PLUGIN_SECTIONS}
-            query=""
-            providerFilter="all"
-            sortMode="alpha"
-            sortDirection="asc"
-            fallbackIcon="ElectricPlugs"
-          />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="states and row actions"
-        hint="shared status dot labels and compact icon actions with tooltips"
-      >
-        <PreviewStage>
-          <StatusAndActionSamples />
-        </PreviewStage>
-      </StoryRow>
-    </StoryCard>
+    <PageStory>
+      <AutomationDetail />
+    </PageStory>
   );
 }
