@@ -89,8 +89,8 @@ export interface RegistrySkill {
   worksWith: string[];
 }
 
-type RegistryScope = "user" | "project";
-type RegistryProvider = "claude-code" | "codex";
+export type RegistryScope = "user" | "project";
+export type RegistryProvider = "claude-code" | "codex";
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
 const EMPTY_REGISTRY_PROVIDER_SET = new Set<RegistryProvider>();
 const DEFAULT_PROVIDER_STATUS: Record<RegistryProvider, boolean> = {
@@ -141,7 +141,9 @@ function parseRegistrySkills(value: unknown): RegistrySkill[] {
   });
 }
 
-async function fetchRegistrySkills(query: string): Promise<RegistrySkill[]> {
+export async function fetchRegistrySkills(
+  query: string,
+): Promise<RegistrySkill[]> {
   const params = new URLSearchParams();
   if (query.trim().length > 0) params.set("q", query.trim());
   const suffix = params.toString();
@@ -180,27 +182,27 @@ async function installRegistrySkill(args: {
   return body;
 }
 
-function normalizeSkillName(value: string): string {
+export function normalizeSkillName(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-");
 }
 
-function formatRegistrySource(source: string): string {
+export function formatRegistrySource(source: string): string {
   const githubPrefix = "github.com/";
   return source.startsWith(githubPrefix)
     ? source.slice(githubPrefix.length)
     : source;
 }
 
-function formatInstallCount(count: number): string {
+export function formatInstallCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
   return String(count);
 }
 
-function providerStatusFromCli(
+export function providerStatusFromCli(
   data: ProviderCliStatusResponse | undefined,
 ): Record<RegistryProvider, boolean> {
   return {

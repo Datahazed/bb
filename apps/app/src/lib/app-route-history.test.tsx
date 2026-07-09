@@ -13,12 +13,16 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useRouteStateHistoryNavigation } from "./app-route-history";
 
 const TOOL_ROUTE_SEQUENCE = [
+  "/tools",
   "/tools/skills",
+  "/tools/skills/registry",
   "/tools/skills/installed/bb-user/bb/review-loop",
   "/tools/skills/registry/moss-skills%2Fmoss-notes",
   "/tools/plugins",
+  "/tools/plugins/browse",
   "/tools/plugins/github",
   "/tools/automations",
+  "/tools/automations/browse",
   "/tools/automations/proj_standard/auto_standard",
 ] as const;
 
@@ -100,8 +104,10 @@ describe("useRouteStateHistoryNavigation", () => {
     expect(screen.getByTestId("can-go-back").textContent).toBe("true");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("false");
 
+    await clickAndExpectPath("Back", "/tools/automations/browse");
     await clickAndExpectPath("Back", "/tools/automations");
     await clickAndExpectPath("Back", "/tools/plugins/github");
+    await clickAndExpectPath("Back", "/tools/plugins/browse");
     await clickAndExpectPath("Back", "/tools/plugins");
     await clickAndExpectPath(
       "Back",
@@ -111,13 +117,17 @@ describe("useRouteStateHistoryNavigation", () => {
       "Back",
       "/tools/skills/installed/bb-user/bb/review-loop",
     );
+    await clickAndExpectPath("Back", "/tools/skills/registry");
     await clickAndExpectPath("Back", "/tools/skills");
+    await clickAndExpectPath("Back", "/tools");
     await clickAndExpectPath("Back", "/");
 
     expect(screen.getByTestId("can-go-back").textContent).toBe("false");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("true");
 
+    await clickAndExpectPath("Forward", "/tools");
     await clickAndExpectPath("Forward", "/tools/skills");
+    await clickAndExpectPath("Forward", "/tools/skills/registry");
     await clickAndExpectPath(
       "Forward",
       "/tools/skills/installed/bb-user/bb/review-loop",
@@ -127,8 +137,10 @@ describe("useRouteStateHistoryNavigation", () => {
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
     );
     await clickAndExpectPath("Forward", "/tools/plugins");
+    await clickAndExpectPath("Forward", "/tools/plugins/browse");
     await clickAndExpectPath("Forward", "/tools/plugins/github");
     await clickAndExpectPath("Forward", "/tools/automations");
+    await clickAndExpectPath("Forward", "/tools/automations/browse");
     await clickAndExpectPath(
       "Forward",
       "/tools/automations/proj_standard/auto_standard",
@@ -145,11 +157,12 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go back", true);
     await expectSidebarButtonState("Go forward", true);
 
-    await clickAndExpectPath("/tools/skills", "/tools/skills");
+    await clickAndExpectPath("/tools", "/tools");
 
     await expectSidebarButtonState("Go back", false);
     await expectSidebarButtonState("Go forward", true);
 
+    await clickAndExpectPath("/tools/skills", "/tools/skills");
     await clickAndExpectPath(
       "/tools/skills/installed/bb-user/bb/review-loop",
       "/tools/skills/installed/bb-user/bb/review-loop",

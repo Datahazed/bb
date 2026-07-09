@@ -58,6 +58,7 @@ import {
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getSkillsRoutePath,
+  getToolsRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
@@ -512,7 +513,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     matchPath(TOOLS_AUTOMATION_BROWSE_ROUTE_PATH, location.pathname),
   );
   const toolsBreadcrumbs = (() => {
-    const toolsCrumb = { label: "Tools", to: getSkillsRoutePath() };
+    const toolsCrumb = { label: "Tools", to: getToolsRoutePath() };
     if (toolsSkillDetailMatch) {
       return [
         toolsCrumb,
@@ -577,7 +578,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       location.pathname === "/tools/skills" ||
       location.pathname === "/skills"
     ) {
-      return [toolsCrumb, { label: "Skills" }];
+      return location.pathname === "/tools"
+        ? [{ label: "Tools" }]
+        : [toolsCrumb, { label: "Skills" }];
     }
     return null;
   })();

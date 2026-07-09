@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -227,7 +228,7 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     title: "CI failure watcher",
     description: "Every 15 min · Project workspace",
     icon: "Calendar",
-    state: <ResourceState tone="warning">Needs attention</ResourceState>,
+    state: <ResourceState tone="warning">Failed</ResourceState>,
     project: "moss",
     folder: "CI",
   },
@@ -293,7 +294,6 @@ function AutomationRowActions() {
   return (
     <>
       <ResourceActionButton label="Run now" icon="Play" onClick={NOOP} />
-      <ResourceActionButton label="Edit" icon="Edit" onClick={NOOP} />
       <ResourceActionButton
         label="Delete"
         icon="Trash2"
@@ -366,7 +366,7 @@ function ToolsTabBar({
   activeTab,
   onChange,
 }: {
-  activeTab: ToolsTabId;
+  activeTab: ToolsTabId | null;
   onChange: (tab: ToolsTabId) => void;
 }) {
   return (
@@ -603,6 +603,22 @@ function RegistryBrowseSourceLoading() {
   );
 }
 
+function RegistryBrowseSourceEmpty() {
+  return (
+    <ResourceSourceShelf
+      label="Browse skills.sh"
+      count={0}
+      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
+    >
+      <ResourceSourceItem>
+        <EmptyStatePanel className="min-h-36 justify-center py-5">
+          No skills.sh results match this search.
+        </EmptyStatePanel>
+      </ResourceSourceItem>
+    </ResourceSourceShelf>
+  );
+}
+
 function TemplateBrowseCards({
   label,
   icon,
@@ -660,6 +676,101 @@ function PluginBrowseCards() {
 
 function AutomationBrowseCards() {
   return <TemplateBrowseCards label="Browse automations" icon="TimeSchedule" />;
+}
+
+function MixedOverviewSection({
+  title,
+  description,
+  count,
+  children,
+}: {
+  title: string;
+  description: string;
+  count?: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex min-w-0 items-end gap-3 px-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <h2 className="truncate text-sm font-medium text-foreground">
+              {title}
+            </h2>
+            {count !== undefined ? (
+              <span className="text-xs text-subtle-foreground">{count}</span>
+            ) : null}
+          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-2"
+        >
+          View all
+          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
+        </Button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MixedOverviewPanel() {
+  return (
+    <div className="space-y-5">
+      <ResourceTabDescription>
+        Discover and manage the capabilities bb can give agents: reusable
+        skills, app and provider plugins, and scheduled automations.
+      </ResourceTabDescription>
+      <RegistryBrowseSource />
+      <MixedOverviewSection
+        title="Skills"
+        description="Installed reusable instructions available to agents."
+        count={SKILL_SECTIONS.reduce(
+          (total, section) => total + section.rows.length,
+          0,
+        )}
+      >
+        <ResourceRowsList
+          sections={SKILL_SECTIONS}
+          query=""
+          providerFilter="all"
+          sortMode="alpha"
+          sortDirection="asc"
+          fallbackIcon="Zap"
+        />
+      </MixedOverviewSection>
+      <MixedOverviewSection
+        title="Plugins"
+        description="Installed bb and provider-specific plugin capabilities."
+        count={PLUGIN_SECTIONS.reduce(
+          (total, section) => total + section.rows.length,
+          0,
+        )}
+      >
+        <ResourceRowsList
+          sections={PLUGIN_SECTIONS}
+          query=""
+          providerFilter="all"
+          sortMode="alpha"
+          sortDirection="asc"
+          fallbackIcon="ElectricPlugs"
+        />
+      </MixedOverviewSection>
+      <MixedOverviewSection
+        title="Automations"
+        description="Scheduled work running across projects and folders."
+        count={AUTOMATION_ROWS.length}
+      >
+        <AutomationsList query="" location="all" sort="alpha" direction="asc" />
+      </MixedOverviewSection>
+    </div>
+  );
 }
 
 function AutomationsList({
@@ -1123,13 +1234,7 @@ function PluginDetail() {
 function ProviderPluginDetail() {
   return (
     <ResourceDetailPage
-      leading={
-        <Icon
-          name="ElectricPlugs"
-          className="size-4 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      }
+      leading={<CodexMark className="size-4" />}
       title="github"
       status={
         <span className="flex shrink-0 items-center gap-2">
@@ -1180,7 +1285,7 @@ function OverviewToolbarSample() {
 }
 
 function OverviewTabsSample() {
-  const [activeTab, setActiveTab] = useState<ToolsTabId>("skills");
+  const [activeTab, setActiveTab] = useState<ToolsTabId | null>(null);
   return <ToolsTabBar activeTab={activeTab} onChange={setActiveTab} />;
 }
 
@@ -1188,7 +1293,7 @@ function StatusAndActionSamples() {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <ResourceState tone="success">Active</ResourceState>
-      <ResourceState tone="warning">Needs attention</ResourceState>
+      <ResourceState tone="warning">Failed</ResourceState>
       <ResourceState tone="muted">Paused</ResourceState>
       <span className="flex items-center gap-0.5">
         <AutomationRowActions />
@@ -1243,7 +1348,7 @@ function DetailPropertiesSample() {
 }
 
 export function ToolsOverviewPage() {
-  const [activeTab, setActiveTab] = useState<ToolsTabId>("skills");
+  const [activeTab, setActiveTab] = useState<ToolsTabId | null>(null);
 
   return (
     <main className="min-h-[720px] bg-background">
@@ -1251,7 +1356,11 @@ export function ToolsOverviewPage() {
         <div className="mb-4 flex items-center gap-3">
           <ToolsTabBar activeTab={activeTab} onChange={setActiveTab} />
         </div>
-        <ActiveTabPanel activeTab={activeTab} />
+        {activeTab === null ? (
+          <MixedOverviewPanel />
+        ) : (
+          <ActiveTabPanel activeTab={activeTab} />
+        )}
       </div>
     </main>
   );
@@ -1310,7 +1419,7 @@ export function SkillsShSourceSystem() {
         hint="no source results for the active query"
       >
         <PreviewStage className="max-w-[760px]">
-          <RegistryBrowseSource />
+          <RegistryBrowseSourceEmpty />
         </PreviewStage>
       </StoryRow>
       <StoryRow
@@ -1391,6 +1500,14 @@ export function DetailPageSystem() {
 export function OverviewPageSystem() {
   return (
     <StoryCard labelWidth="260px">
+      <StoryRow
+        label="mixed overview"
+        hint="default /tools surface with no All tab: discovery shelf plus compact installed-resource previews"
+      >
+        <PreviewStage className="max-w-[760px]">
+          <MixedOverviewPanel />
+        </PreviewStage>
+      </StoryRow>
       <StoryRow
         label="tools tabs"
         hint="filter-style tabs for switching between skills, plugins, and automations"

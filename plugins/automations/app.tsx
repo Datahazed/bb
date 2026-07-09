@@ -509,13 +509,16 @@ function automationOriginLabel(automation: AutomationResponse): string {
   }
 }
 
-function automationProjectLabel(project: OverviewEntry["project"]): string {
+function automationProjectLabel(
+  project: OverviewEntry["project"] | null | undefined,
+): string {
+  if (project == null) return "Workspace";
   return project.id === PERSONAL_PROJECT_ID ? "Personal" : project.name;
 }
 
 function automationLocationLabel(entry: OverviewEntry): string {
   const projectLabel = automationProjectLabel(entry.project);
-  return entry.folder === null
+  return entry.folder == null
     ? projectLabel
     : `${projectLabel} / ${entry.folder.name}`;
 }
@@ -523,9 +526,10 @@ function automationLocationLabel(entry: OverviewEntry): string {
 function automationLocationFilterId(
   entry: OverviewEntry,
 ): AutomationLocationFilter {
-  return entry.folder === null
-    ? `project:${entry.project.id}`
-    : `folder:${entry.project.id}/${entry.folder.id}`;
+  const projectId = entry.project?.id ?? entry.automation.projectId;
+  return entry.folder == null
+    ? `project:${projectId}`
+    : `folder:${projectId}/${entry.folder.id}`;
 }
 
 function applyAutomationSortDirection(
@@ -645,11 +649,6 @@ function OverviewRow({
             onClick={() => onAction("run", route)}
           />
           <ResourceActionButton
-            label="Edit"
-            icon="Edit"
-            onClick={() => onNavigate(route)}
-          />
-          <ResourceActionButton
             label="Delete"
             icon="Trash2"
             tone="destructive"
@@ -734,6 +733,78 @@ function AutomationBrowseShelf({
         </ResourceSourceItem>
       ))}
     </ResourceSourceShelf>
+  );
+}
+
+function AutomationOverviewPreview() {
+  const navigate = useBbNavigate();
+  const { entries, error } = useOverview();
+
+  if (error !== null) {
+    return (
+      <p className="px-1 text-sm text-destructive">
+        Failed to load automations.
+      </p>
+    );
+  }
+  if (entries === null) {
+    return <p className="px-1 text-sm text-muted-foreground">Loading...</p>;
+  }
+  if (entries.length === 0) {
+    return (
+      <EmptyStatePanel className="py-5">No automations yet.</EmptyStatePanel>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {entries.slice(0, 5).map((entry) => {
+        const { automation } = entry;
+        const route = routeOf(automation);
+        const completedOneShot = isCompletedOneShotAutomation({
+          enabled: automation.enabled,
+          trigger: automation.trigger,
+          runCount: automation.runCount,
+        });
+        const status = automationStatus(automation);
+        return (
+          <ResourceRow
+            key={automation.id}
+            leading={
+              <Icon
+                name={automationIconName(automation)}
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            }
+            title={automation.name}
+            description={`${formatAutomationTrigger(
+              automation.trigger,
+            )} · ${automationLocationLabel(entry)}`}
+            status={
+              <ResourceStatus tone={status.tone}>{status.label}</ResourceStatus>
+            }
+            muted={completedOneShot}
+            onOpen={() =>
+              navigate.toPluginPanel(PANEL_PATH, {
+                subPath: `${route.projectId}/${route.automationId}`,
+              })
+            }
+            actions={
+              <ResourceActionButton
+                label={`Open ${automation.name}`}
+                icon="ChevronRight"
+                onClick={() =>
+                  navigate.toPluginPanel(PANEL_PATH, {
+                    subPath: `${route.projectId}/${route.automationId}`,
+                  })
+                }
+              />
+            }
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -1341,6 +1412,9 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 
   if (subPath === "browse") {
     return <AutomationBrowsePage onCreate={createViaChat} />;
+  }
+  if (subPath === "preview") {
+    return <AutomationOverviewPreview />;
   }
   if (route !== null) {
     return <DetailView route={route} onBack={backToList} />;

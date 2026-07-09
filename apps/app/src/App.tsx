@@ -134,10 +134,7 @@ function AppRoutes() {
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
-          <Route
-            path={TOOLS_ROUTE_PATH}
-            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
-          />
+          <Route path={TOOLS_ROUTE_PATH} element={<ToolsView />} />
           <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
           <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route
