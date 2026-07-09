@@ -206,32 +206,32 @@ const REGISTRY_SOURCE_ROWS: readonly RegistrySourceFixture[] = [
     title: "moss-skills/moss-notes",
     source: "moss-skills",
     summary: "Author and edit Moss notes with the current Moss syntax.",
-    installs: "3.4K installs",
-    stars: "25.6K stars",
+    installs: "3.4K",
+    stars: "25.6K",
   },
   {
     id: "review-loop",
     title: "bb/review-loop",
     source: "bb",
     summary: "Run a staged review loop and apply prioritized fixes.",
-    installs: "1.3K installs",
-    stars: "4.8K stars",
+    installs: "1.3K",
+    stars: "4.8K",
   },
   {
     id: "product-design-audit",
     title: "openai/product-design-audit",
     source: "openai",
     summary: "Capture screenshots and critique a product flow before build.",
-    installs: "920 installs",
-    stars: "2.1K stars",
+    installs: "920",
+    stars: "2.1K",
   },
   {
     id: "github-triage",
     title: "bb/github-triage",
     source: "bb",
     summary: "Find actionable GitHub PR and issue follow-up for agents.",
-    installs: "740 installs",
-    stars: "1.5K stars",
+    installs: "740",
+    stars: "1.5K",
   },
 ];
 
@@ -596,8 +596,15 @@ function StorySocialProof({
 }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
-      <ResourceCardStat icon="Download">{installs}</ResourceCardStat>
-      <ResourceCardStat icon="Star">{stars}</ResourceCardStat>
+      <ResourceCardStat
+        icon="Download"
+        accessibleLabel={`${installs} installs`}
+      >
+        {installs}
+      </ResourceCardStat>
+      <ResourceCardStat icon="Star" accessibleLabel={`${stars} stars`}>
+        {stars}
+      </ResourceCardStat>
     </span>
   );
 }

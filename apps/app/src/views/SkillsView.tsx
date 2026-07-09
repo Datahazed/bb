@@ -366,14 +366,19 @@ function registryProviderLabel(providerId: RegistryProvider): string {
 }
 
 function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
+  const installs = formatInstallCount(skill.installs);
+  const stars = skill.stars !== null ? formatInstallCount(skill.stars) : null;
   return (
     <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
-      <ResourceCardStat icon="Download">
-        {formatInstallCount(skill.installs)} installs
+      <ResourceCardStat
+        icon="Download"
+        accessibleLabel={`${installs} installs`}
+      >
+        {installs}
       </ResourceCardStat>
-      {skill.stars !== null ? (
-        <ResourceCardStat icon="Star">
-          {formatInstallCount(skill.stars)} stars
+      {stars !== null ? (
+        <ResourceCardStat icon="Star" accessibleLabel={`${stars} stars`}>
+          {stars}
         </ResourceCardStat>
       ) : null}
     </span>

@@ -82,13 +82,18 @@ export function ResourceMeta({
 
 export function ResourceCardStat({
   icon,
+  accessibleLabel,
   children,
 }: {
   icon: IconName;
+  accessibleLabel?: string;
   children: ReactNode;
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+    <span
+      aria-label={accessibleLabel}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground"
+    >
       <Icon name={icon} className="size-3 shrink-0" aria-hidden />
       <span>{children}</span>
     </span>
