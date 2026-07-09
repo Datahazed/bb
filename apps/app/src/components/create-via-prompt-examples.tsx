@@ -169,9 +169,9 @@ export interface CreateWithTemplatesButtonProps {
 }
 
 /**
- * Split (combo) button: the left half creates a blank one immediately; the right
- * half opens a menu of example templates that seed the composer. Shared by the
- * Skills and Automations library toolbars.
+ * Split (combo) button: the left half opens the composer with the kind's base
+ * prompt; the right half opens examples that seed a more specific prompt.
+ * Shared by the resource library toolbars.
  */
 export function CreateWithTemplatesButton({
   kind,

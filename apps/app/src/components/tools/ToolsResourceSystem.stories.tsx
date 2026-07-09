@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Story } from "@ladle/react";
+import type { PromptTextMention } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -9,7 +10,6 @@ import {
   ResourceActionButton,
   ResourceBrowseCard,
   ResourceCardStat,
-  ResourceCreateButton,
   ResourceDetailPage,
   ResourceDetailSection,
   ResourceListPanel,
@@ -31,9 +31,41 @@ import { Switch } from "@bb/shared-ui/switch";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
+import {
+  CREATE_PLUGIN_PROMPT,
+  CreateWithTemplatesButton,
+  getCreateExamples,
+  type CreateViaPromptKind,
+} from "@/components/create-via-prompt-examples";
+import {
+  NewThreadPromptBoxUI,
+  type NewThreadModeConfig,
+  type NewThreadProjectConfig,
+} from "@/components/promptbox/NewThreadPromptBox";
+import type {
+  PromptBoxAction,
+  PromptBoxHandle,
+} from "@/components/promptbox/PromptBoxInternal";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import { OverflowFade } from "@/components/ui/overflow-fade";
+import {
+  CREATE_AUTOMATION_PROMPT,
+  CREATE_SKILL_PROMPT,
+} from "@/lib/automation-prompt";
+import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
+import {
+  HOST_IDS,
+  PROJECT_IDS,
+  STORY_BRANCH_OPTIONS,
+  STORY_PROJECTS,
+  STORY_PROJECT_SOURCES,
+  STORY_WORKTREE_OPTIONS,
+  makeAttachmentsConfig,
+  makeExecutionControlsProps,
+  makeHost,
+  makeTypeaheadConfig,
+} from "../../../.ladle/story-fixtures";
 
 export default {
   title: "Tools/Resource System",
@@ -41,49 +73,6 @@ export default {
 
 const NOOP = () => {};
 const SKILLS_SH_URL = "https://www.skills.sh/";
-const SKILL_CREATE_TEMPLATES = [
-  {
-    label: "PR review",
-    description:
-      "reviews a GitHub PR, checks changed files, runs focused tests, and returns blocking findings first",
-    prompt: "Create a new bb skill that reviews a GitHub PR.",
-  },
-  {
-    label: "Usage pattern skill",
-    description:
-      "turns repeated thread behavior into a reusable agent instruction",
-    prompt: "Create a new bb skill for a repeated workflow.",
-  },
-] as const;
-
-const PLUGIN_CREATE_TEMPLATES = [
-  {
-    label: "GitHub triage",
-    description:
-      "adds a GitHub panel that lists assigned PRs and lets agents open review threads",
-    prompt: "Create a new bb plugin that adds GitHub triage.",
-  },
-  {
-    label: "Status panel",
-    description:
-      "adds a compact nav panel for surfacing workspace health and shortcuts",
-    prompt: "Create a new bb plugin that adds a workspace status panel.",
-  },
-] as const;
-
-const AUTOMATION_CREATE_TEMPLATES = [
-  {
-    label: "Release readiness",
-    description:
-      "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
-    prompt: "Create a new bb automation to check release readiness.",
-  },
-  {
-    label: "Standup digest",
-    description: "summarizes yesterday's thread activity every weekday morning",
-    prompt: "Create a new bb automation that sends a weekday standup digest.",
-  },
-] as const;
 
 type ProviderId = "bb" | "codex" | "claude-code";
 type ProviderFilterId = ProviderId;
@@ -496,6 +485,139 @@ function PageStory({ children }: { children: ReactNode }) {
   );
 }
 
+const CREATE_PROMPT_PREFIX: Record<CreateViaPromptKind, string> = {
+  skill: CREATE_SKILL_PROMPT,
+  plugin: CREATE_PLUGIN_PROMPT,
+  automation: CREATE_AUTOMATION_PROMPT,
+};
+
+const CREATE_PROMPT_MODE_CONFIG: NewThreadModeConfig = {
+  environment: {
+    value: `host:${HOST_IDS.local}:local`,
+    onChange: NOOP,
+    sources: STORY_PROJECT_SOURCES,
+    host: makeHost({ id: HOST_IDS.local }),
+    isLocal: true,
+  },
+  branch: {
+    value: null,
+    currentBranch: "main",
+    isNew: false,
+    options: STORY_BRANCH_OPTIONS,
+    loading: false,
+    currentOptionLabel: "Current: main",
+    placeholder: "Current checkout",
+    triggerLabel: "Current (main)",
+    triggerTitle: "Current: main",
+    onChange: NOOP,
+    onClear: NOOP,
+    onCreate: NOOP,
+  },
+  worktree: {
+    options: STORY_WORKTREE_OPTIONS,
+    value: null,
+    onChange: NOOP,
+  },
+  permission: {
+    value: "workspace-write",
+    options: [
+      { value: "full", label: "Full Access", tone: "warning" },
+      { value: "workspace-write", label: "Workspace Write" },
+      { value: "readonly", label: "Readonly" },
+    ],
+    onChange: NOOP,
+    supported: true,
+  },
+};
+
+const CREATE_PROMPT_PROJECT_CONFIG: NewThreadProjectConfig = {
+  projects: STORY_PROJECTS,
+  value: PROJECT_IDS.bb,
+  onChange: NOOP,
+};
+
+const CREATE_PROMPT_ACTIONS: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "/" },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
+];
+
+function CreatePromptSurface({
+  kind,
+  initialPrompt,
+}: {
+  kind: CreateViaPromptKind;
+  initialPrompt: string;
+}) {
+  const [value, setValue] = useState(initialPrompt);
+  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const promptBoxRef = useRef<PromptBoxHandle>(null);
+
+  useEffect(() => {
+    promptBoxRef.current?.focusEnd();
+  }, []);
+
+  return (
+    <ModelPickerStoryQueryProvider>
+      <div className="mx-auto flex min-h-[680px] w-full max-w-[760px] items-center">
+        <NewThreadPromptBoxUI
+          id={`story-create-${kind}`}
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={(nextValue, nextMentions) => {
+            setValue(nextValue);
+            setMentionRanges(nextMentions);
+          }}
+          onSubmit={NOOP}
+          promptBoxRef={promptBoxRef}
+          isSubmitting={false}
+          disabled={false}
+          zenModeStorageKey={`bb.story.tools.create-${kind}`}
+          history={{
+            currentDraft: {
+              text: value,
+              mentions: mentionRanges,
+              attachments: [],
+            },
+            entries: [],
+            onSelectEntry: NOOP,
+          }}
+          typeahead={makeTypeaheadConfig()}
+          attachments={makeAttachmentsConfig()}
+          promptActions={CREATE_PROMPT_ACTIONS}
+          modeConfig={CREATE_PROMPT_MODE_CONFIG}
+          project={CREATE_PROMPT_PROJECT_CONFIG}
+          execution={makeExecutionControlsProps()}
+        />
+      </div>
+    </ModelPickerStoryQueryProvider>
+  );
+}
+
+function CreateViaPromptStory({
+  kind,
+  children,
+}: {
+  kind: CreateViaPromptKind;
+  children: (onCreate: (prompt?: string) => void) => ReactNode;
+}) {
+  const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
+  if (initialPrompt !== null) {
+    return <CreatePromptSurface kind={kind} initialPrompt={initialPrompt} />;
+  }
+  return children((prompt) =>
+    setInitialPrompt(prompt ?? CREATE_PROMPT_PREFIX[kind]),
+  );
+}
+
 function ResourceRowsList({
   sections,
   query,
@@ -694,6 +816,7 @@ function TemplateBrowseCards({
   label,
   icon,
   templates,
+  onCreate,
 }: {
   label: string;
   icon: IconName;
@@ -702,6 +825,7 @@ function TemplateBrowseCards({
     description: string;
     prompt: string;
   }[];
+  onCreate: (prompt: string) => void;
 }) {
   return (
     <ResourceSourceShelf
@@ -731,11 +855,12 @@ function TemplateBrowseCards({
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-xs"
+                onClick={() => onCreate(template.prompt)}
               >
                 Use template
               </Button>
             }
-            onOpen={NOOP}
+            onOpen={() => onCreate(template.prompt)}
           />
         </ResourceSourceItem>
       ))}
@@ -743,22 +868,32 @@ function TemplateBrowseCards({
   );
 }
 
-function PluginBrowseCards() {
+function PluginBrowseCards({
+  onCreate,
+}: {
+  onCreate: (prompt: string) => void;
+}) {
   return (
     <TemplateBrowseCards
       label="Browse"
       icon="ElectricPlugs"
-      templates={PLUGIN_CREATE_TEMPLATES}
+      templates={getCreateExamples("plugin").examples}
+      onCreate={onCreate}
     />
   );
 }
 
-function AutomationBrowseCards() {
+function AutomationBrowseCards({
+  onCreate,
+}: {
+  onCreate: (prompt: string) => void;
+}) {
   return (
     <TemplateBrowseCards
       label="Browse"
       icon="TimeSchedule"
-      templates={AUTOMATION_CREATE_TEMPLATES}
+      templates={getCreateExamples("automation").examples}
+      onCreate={onCreate}
     />
   );
 }
@@ -844,7 +979,11 @@ function AutomationsList({
   );
 }
 
-function SkillsOverviewSurface() {
+function SkillsOverviewSurface({
+  onCreate,
+}: {
+  onCreate: (prompt?: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [providerFilters, setProviderFilters] = useState<ProviderFilterId[]>(
     [],
@@ -855,13 +994,12 @@ function SkillsOverviewSurface() {
   const [installedSkillIds, setInstalledSkillIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [draftSkill, setDraftSkill] = useState<ResourceListRowFixture | null>(
-    null,
-  );
-  const skillSections = draftSkill
+  const [installedSkill, setInstalledSkill] =
+    useState<ResourceListRowFixture | null>(null);
+  const skillSections = installedSkill
     ? SKILL_SECTIONS.map((section, index) =>
         index === 0
-          ? { ...section, rows: [draftSkill, ...section.rows] }
+          ? { ...section, rows: [installedSkill, ...section.rows] }
           : section,
       )
     : SKILL_SECTIONS;
@@ -883,24 +1021,10 @@ function SkillsOverviewSurface() {
     });
     const row = REGISTRY_SOURCE_ROWS.find((candidate) => candidate.id === id);
     if (!row) return;
-    setDraftSkill({
+    setInstalledSkill({
       id: `installed-${id}`,
       title: row.title,
       description: row.summary,
-      provider: "bb",
-      icon: "Zap",
-    });
-  }
-  function handleCreateSkill(prompt?: string) {
-    const template = SKILL_CREATE_TEMPLATES.find(
-      (candidate) => candidate.prompt === prompt,
-    );
-    setDraftSkill({
-      id: `draft-${template?.label ?? "blank"}`,
-      title: template ? `Draft: ${template.label}` : "Untitled bb skill",
-      description:
-        prompt ??
-        "New skill draft created from the story's primary create action.",
       provider: "bb",
       icon: "Zap",
     });
@@ -932,10 +1056,10 @@ function SkillsOverviewSurface() {
           />
         }
         action={
-          <ResourceCreateButton
+          <CreateWithTemplatesButton
+            kind="skill"
             label="New bb skill"
-            templates={SKILL_CREATE_TEMPLATES}
-            onCreate={handleCreateSkill}
+            onCreate={onCreate}
           />
         }
       />
@@ -952,7 +1076,11 @@ function SkillsOverviewSurface() {
   );
 }
 
-function PluginsOverviewSurface() {
+function PluginsOverviewSurface({
+  onCreate,
+}: {
+  onCreate: (prompt?: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [providerFilters, setProviderFilters] = useState<ProviderFilterId[]>(
     [],
@@ -976,7 +1104,7 @@ function PluginsOverviewSurface() {
         provider-specific capabilities. Browse installable templates first, then
         search and manage installed plugins.
       </ResourceTabDescription>
-      <PluginBrowseCards />
+      <PluginBrowseCards onCreate={onCreate} />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search plugins"
@@ -992,10 +1120,10 @@ function PluginsOverviewSurface() {
           />
         }
         action={
-          <ResourceCreateButton
+          <CreateWithTemplatesButton
+            kind="plugin"
             label="New plugin"
-            templates={PLUGIN_CREATE_TEMPLATES}
-            onCreate={NOOP}
+            onCreate={onCreate}
           />
         }
       />
@@ -1012,7 +1140,11 @@ function PluginsOverviewSurface() {
   );
 }
 
-function AutomationsOverviewSurface() {
+function AutomationsOverviewSurface({
+  onCreate,
+}: {
+  onCreate: (prompt?: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [locationFilters, setLocationFilters] = useState<string[]>([]);
   const [sort, setSort] = useState<"location" | "alpha">("alpha");
@@ -1036,7 +1168,7 @@ function AutomationsOverviewSurface() {
         starter automations first, then search and manage the automations
         already installed in this workspace.
       </ResourceTabDescription>
-      <AutomationBrowseCards />
+      <AutomationBrowseCards onCreate={onCreate} />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search automations"
@@ -1070,10 +1202,10 @@ function AutomationsOverviewSurface() {
           </>
         }
         action={
-          <ResourceCreateButton
+          <CreateWithTemplatesButton
+            kind="automation"
             label="New automation"
-            templates={AUTOMATION_CREATE_TEMPLATES}
-            onCreate={NOOP}
+            onCreate={onCreate}
           />
         }
       />
@@ -2125,7 +2257,9 @@ function PluginDetail({ selectedId }: { selectedId: string }) {
 export function SkillsOverviewPage() {
   return (
     <PageStory>
-      <SkillsOverviewSurface />
+      <CreateViaPromptStory kind="skill">
+        {(onCreate) => <SkillsOverviewSurface onCreate={onCreate} />}
+      </CreateViaPromptStory>
     </PageStory>
   );
 }
@@ -2133,7 +2267,9 @@ export function SkillsOverviewPage() {
 export function PluginsOverviewPage() {
   return (
     <PageStory>
-      <PluginsOverviewSurface />
+      <CreateViaPromptStory kind="plugin">
+        {(onCreate) => <PluginsOverviewSurface onCreate={onCreate} />}
+      </CreateViaPromptStory>
     </PageStory>
   );
 }
@@ -2141,7 +2277,9 @@ export function PluginsOverviewPage() {
 export function AutomationsOverviewPage() {
   return (
     <PageStory>
-      <AutomationsOverviewSurface />
+      <CreateViaPromptStory kind="automation">
+        {(onCreate) => <AutomationsOverviewSurface onCreate={onCreate} />}
+      </CreateViaPromptStory>
     </PageStory>
   );
 }
