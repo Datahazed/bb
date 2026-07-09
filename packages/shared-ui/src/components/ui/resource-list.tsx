@@ -231,7 +231,7 @@ export function ResourceSortMenu({
               key={option.id}
               disabled={option.disabled}
               onSelect={(event) => {
-                if (selected || option.disabled) {
+                if (option.disabled) {
                   event.preventDefault();
                   return;
                 }

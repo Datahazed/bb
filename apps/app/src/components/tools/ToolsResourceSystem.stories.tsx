@@ -77,6 +77,15 @@ interface ResourceListRowFixture {
   selected?: boolean;
 }
 
+interface RegistrySourceFixture {
+  id: string;
+  title: string;
+  source: string;
+  summary: string;
+  installs: string;
+  stars: string;
+}
+
 interface ResourceSectionFixture {
   key: string;
   label: string;
@@ -140,18 +149,22 @@ const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
   },
 ];
 
-const REGISTRY_SOURCE_ROWS: readonly ResourceListRowFixture[] = [
+const REGISTRY_SOURCE_ROWS: readonly RegistrySourceFixture[] = [
   {
     id: "moss-notes",
     title: "moss-skills/moss-notes",
-    description: "3,412 installs · writing · Codex, Claude Code",
-    state: <ResourceState tone="muted">Available</ResourceState>,
+    source: "moss-skills",
+    summary: "Author and edit Moss notes with the current Moss syntax.",
+    installs: "3.4K installs",
+    stars: "25.6K stars",
   },
   {
     id: "review-loop",
     title: "bb/review-loop",
-    description: "1,280 installs · code review · Codex",
-    state: <ResourceState tone="muted">Available</ResourceState>,
+    source: "bb",
+    summary: "Run a staged review loop and apply prioritized fixes.",
+    installs: "1.3K installs",
+    stars: "4.8K stars",
   },
 ];
 
@@ -371,10 +384,7 @@ function ResourceSurfaceSelector({
   onChange: (surface: ResourceSurfaceId) => void;
 }) {
   return (
-    <nav
-      aria-label="Resource pages"
-      className="grid min-w-0 gap-1"
-    >
+    <nav aria-label="Resource pages" className="grid min-w-0 gap-1">
       {RESOURCE_SURFACES.map((surface) => {
         const active = surface.id === activeSurface;
         return (
@@ -432,29 +442,6 @@ function DetailSection({
       </p>
       {children}
     </section>
-  );
-}
-
-function ScopeControl() {
-  const [scope, setScope] = useState<"user" | "project">("user");
-  return (
-    <div className="flex rounded-md bg-surface-recessed p-0.5">
-      {(["user", "project"] as const).map((option) => (
-        <button
-          key={option}
-          type="button"
-          className={cn(
-            "h-7 rounded px-2 text-xs capitalize",
-            scope === option
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground",
-          )}
-          onClick={() => setScope(option)}
-        >
-          {option}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -525,11 +512,29 @@ function ResourceRowsList({
   );
 }
 
+function StorySocialProof({
+  installs,
+  stars,
+}: {
+  installs: string;
+  stars: string;
+}) {
+  return (
+    <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
+      <span className="rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+        {installs}
+      </span>
+      <span className="rounded-md border border-border px-1.5 py-1 text-subtle-foreground">
+        {stars}
+      </span>
+    </span>
+  );
+}
+
 function RegistryBrowseSource() {
   return (
     <ResourceSourceShelf
-      label="Browse skills.sh"
-      count={REGISTRY_SOURCE_ROWS.length}
+      label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       action={
         <Button
@@ -538,7 +543,7 @@ function RegistryBrowseSource() {
           size="sm"
           className="h-6 gap-1 px-2"
         >
-          Browse all
+          See all
           <Icon name="ChevronRight" className="size-3.5" aria-hidden />
         </Button>
       }
@@ -554,24 +559,22 @@ function RegistryBrowseSource() {
               />
             }
             title={row.title}
-            meta="skills.sh"
-            description="Reusable skill package with provider compatibility, usage signal, and topic metadata."
-            tags={row.description.split(" · ")}
-            state={row.state}
+            meta={row.source}
+            description={row.summary}
+            state={
+              <StorySocialProof installs={row.installs} stars={row.stars} />
+            }
             onOpen={NOOP}
             action={
-              <>
-                <Button type="button" variant="outline" size="sm">
-                  Install
-                </Button>
-                <ResourceOverflowMenu
-                  label={`${row.title} install options`}
-                  items={[
-                    { label: "Install for user", onSelect: NOOP },
-                    { label: "Install for project", onSelect: NOOP },
-                  ]}
-                />
-              </>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+              >
+                Install
+                <Icon name="ChevronDown" className="size-3.5" aria-hidden />
+              </Button>
             }
           />
         </ResourceSourceItem>
@@ -583,7 +586,7 @@ function RegistryBrowseSource() {
 function RegistryBrowseSourceLoading() {
   return (
     <ResourceSourceShelf
-      label="Browse skills.sh"
+      label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
     >
       {["w-40", "w-52", "w-36"].map((nameWidth) => (
@@ -605,8 +608,7 @@ function RegistryBrowseSourceLoading() {
 function RegistryBrowseSourceEmpty() {
   return (
     <ResourceSourceShelf
-      label="Browse skills.sh"
-      count={0}
+      label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
     >
       <ResourceSourceItem>
@@ -637,7 +639,7 @@ function TemplateBrowseCards({
           size="sm"
           className="h-6 gap-1 px-2"
         >
-          Browse all
+          See all
           <Icon name="ChevronRight" className="size-3.5" aria-hidden />
         </Button>
       }
@@ -655,7 +657,6 @@ function TemplateBrowseCards({
             title={template.label}
             meta="Starter template"
             description={template.description}
-            tags={["template", "installable", label.replace("Browse ", "")]}
             action={
               <Button type="button" variant="outline" size="sm">
                 Use template
@@ -1063,31 +1064,26 @@ function RegistrySkillDetail() {
     <ResourceDetailPage
       leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
       title="moss-skills/moss-notes"
-      status={<ResourceState tone="success">Installed</ResourceState>}
+      status={<StorySocialProof installs="3.4K installs" stars="25.6K stars" />}
       meta={<ResourceMeta items={["skills.sh", "moss-skills", "writing"]} />}
       description="Author and edit Moss notes with the current Moss syntax."
       actions={
-        <>
-          <ScopeControl />
-          <Button type="button" size="sm" onClick={NOOP}>
-            Add provider
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="size-8"
-            aria-label="Provider picker"
-            onClick={NOOP}
-          >
-            <Icon name="ChevronDown" className="size-4" />
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          disabled
+          onClick={NOOP}
+        >
+          Installed
+        </Button>
       }
     >
       <DetailSection label="Details">
         <ResourcePropertyList>
           <ResourceProperty label="Installs">3,412</ResourceProperty>
+          <ResourceProperty label="GitHub stars">25,561</ResourceProperty>
           <ResourceProperty label="Works with">
             Codex, Claude Code
           </ResourceProperty>

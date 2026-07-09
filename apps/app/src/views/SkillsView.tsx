@@ -83,6 +83,7 @@ export interface RegistrySkill {
   skillId: string;
   name: string;
   installs: number;
+  stars: number | null;
   installUrl: string | null;
   url: string;
   topic: string;
@@ -124,22 +125,55 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseRegistrySkills(value: unknown): RegistrySkill[] {
   if (!isRecord(value) || !Array.isArray(value.skills)) return [];
-  return value.skills.filter((skill): skill is RegistrySkill => {
-    if (!isRecord(skill)) return false;
-    return (
-      typeof skill.id === "string" &&
-      typeof skill.source === "string" &&
-      typeof skill.skillId === "string" &&
-      typeof skill.name === "string" &&
-      typeof skill.installs === "number" &&
-      (skill.installUrl === null || typeof skill.installUrl === "string") &&
-      typeof skill.url === "string" &&
-      typeof skill.topic === "string" &&
-      (skill.summary === null || typeof skill.summary === "string") &&
-      Array.isArray(skill.worksWith) &&
-      skill.worksWith.every((provider) => typeof provider === "string")
-    );
-  });
+  const parsed: RegistrySkill[] = [];
+  for (const skill of value.skills) {
+    if (!isRecord(skill)) continue;
+    const {
+      id,
+      source,
+      skillId,
+      name,
+      installs,
+      stars,
+      installUrl,
+      url,
+      topic,
+      summary,
+      worksWith,
+    } = skill;
+    if (
+      typeof id !== "string" ||
+      typeof source !== "string" ||
+      typeof skillId !== "string" ||
+      typeof name !== "string" ||
+      typeof installs !== "number" ||
+      (stars !== undefined && stars !== null && typeof stars !== "number") ||
+      (installUrl !== null && typeof installUrl !== "string") ||
+      typeof url !== "string" ||
+      typeof topic !== "string" ||
+      (summary !== null && typeof summary !== "string") ||
+      !Array.isArray(worksWith) ||
+      !worksWith.every(
+        (provider): provider is string => typeof provider === "string",
+      )
+    ) {
+      continue;
+    }
+    parsed.push({
+      id,
+      source,
+      skillId,
+      name,
+      installs,
+      stars: typeof stars === "number" ? stars : null,
+      installUrl,
+      url,
+      topic,
+      summary,
+      worksWith,
+    });
+  }
+  return parsed;
 }
 
 export async function fetchRegistrySkills(
@@ -221,6 +255,7 @@ function providerLabel(providerId: SkillProvider | null): string {
 
 type ResourceProviderFilter = "all" | "bb" | SkillProvider;
 type ResourceSortMode = "provider" | "alpha";
+type RegistrySkillSortMode = "installs" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
 const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
@@ -326,22 +361,152 @@ function SkillRow({
     />
   );
 }
-function StatusDot({ tone }: { tone: "success" | "muted" }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        tone === "success" ? "bg-success" : "bg-muted-foreground/50",
-      )}
-    />
-  );
-}
-
 function registryProviderLabel(providerId: RegistryProvider): string {
   return (
     REGISTRY_PROVIDERS.find((provider) => provider.id === providerId)?.label ??
     providerId
+  );
+}
+
+function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
+  return (
+    <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
+      <span className="rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+        {formatInstallCount(skill.installs)} installs
+      </span>
+      {skill.stars !== null ? (
+        <span className="rounded-md border border-border px-1.5 py-1 text-subtle-foreground">
+          {formatInstallCount(skill.stars)} stars
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function RegistryInstallButton({
+  skill,
+  installedProviders,
+  providerStatus,
+  scope,
+  pending,
+  onScopeChange,
+  onInstall,
+}: {
+  skill: RegistrySkill;
+  installedProviders: ReadonlySet<RegistryProvider>;
+  providerStatus: Record<RegistryProvider, boolean>;
+  scope: RegistryScope;
+  pending: boolean;
+  onScopeChange: (scope: RegistryScope) => void;
+  onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
+}) {
+  const configuredProviders = REGISTRY_PROVIDERS.filter(
+    (provider) => providerStatus[provider.id],
+  ).map((provider) => provider.id);
+  const remainingProviders = configuredProviders.filter(
+    (provider) => !installedProviders.has(provider),
+  );
+  const isInstalled = installedProviders.size > 0;
+  const primaryProviders = isInstalled
+    ? remainingProviders
+    : configuredProviders;
+  const fullyInstalled = isInstalled && remainingProviders.length === 0;
+  const disabled =
+    pending || fullyInstalled || configuredProviders.length === 0;
+  const label = pending
+    ? "Installing"
+    : fullyInstalled
+      ? "Installed"
+      : "Install";
+  const primaryProvider = primaryProviders[0];
+  const primaryActionLabel =
+    primaryProviders.length > 1
+      ? "Install on all configured agents"
+      : primaryProvider !== undefined
+        ? `Install on ${registryProviderLabel(primaryProvider)}`
+        : "No configured agents";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 shrink-0 gap-1 px-2 text-xs"
+          disabled={disabled}
+          aria-label={`${skill.name} install options`}
+        >
+          {label}
+          {fullyInstalled ? null : (
+            <Icon name="ChevronDown" className="size-3.5" aria-hidden />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-60"
+        mobileTitle={`${skill.name} install options`}
+      >
+        <DropdownMenuItem
+          disabled={primaryProviders.length === 0}
+          onSelect={() => onInstall(skill, [...primaryProviders])}
+        >
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate">{primaryActionLabel}</span>
+            <span className="text-xs text-muted-foreground">{scope} scope</span>
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {(["user", "project"] as const).map((option) => {
+          const selected = scope === option;
+          return (
+            <DropdownMenuItem
+              key={option}
+              onSelect={(event) => {
+                event.preventDefault();
+                onScopeChange(option);
+              }}
+              className="flex items-center justify-between gap-3"
+            >
+              <span className="capitalize">{option} scope</span>
+              <Icon
+                name="Check"
+                aria-hidden
+                className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
+              />
+            </DropdownMenuItem>
+          );
+        })}
+        <DropdownMenuSeparator />
+        {REGISTRY_PROVIDERS.map((provider) => {
+          const configured = providerStatus[provider.id];
+          const installed = installedProviders.has(provider.id);
+          return (
+            <DropdownMenuItem
+              key={provider.id}
+              disabled={!configured || pending || installed}
+              onSelect={() => onInstall(skill, [provider.id])}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <ProviderLogo
+                  providerId={provider.id}
+                  className="size-3.5 shrink-0"
+                />
+                <span>{provider.label}</span>
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {installed
+                  ? "Installed"
+                  : configured
+                    ? scope
+                    : "Not configured"}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -364,21 +529,6 @@ function RegistrySkillSourceItem({
   onSelect: (skill: RegistrySkill) => void;
   pending: boolean;
 }) {
-  const configuredProviders = REGISTRY_PROVIDERS.filter(
-    (provider) => providerStatus[provider.id],
-  ).map((provider) => provider.id);
-  const remainingProviders = configuredProviders.filter(
-    (provider) => !installedProviders.has(provider),
-  );
-  const isInstalled = installedProviders.size > 0;
-  const defaultProviders = isInstalled
-    ? remainingProviders
-    : configuredProviders;
-  const statusLabel = isInstalled
-    ? "Installed"
-    : configuredProviders.length > 0
-      ? "Available"
-      : "No provider";
   return (
     <ResourceBrowseCard
       leading={
@@ -386,95 +536,19 @@ function RegistrySkillSourceItem({
       }
       title={skill.name}
       meta={formatRegistrySource(skill.source)}
-      description={
-        skill.summary ??
-        `Works with ${skill.worksWith.join(", ")}. ${formatInstallCount(
-          skill.installs,
-        )} installs.`
-      }
-      tags={[
-        `${formatInstallCount(skill.installs)} installs`,
-        skill.topic,
-        ...skill.worksWith,
-      ]}
-      state={
-        <ResourceStatus tone={isInstalled ? "success" : "muted"}>
-          {statusLabel}
-        </ResourceStatus>
-      }
+      description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
+      state={<RegistrySkillSocialProof skill={skill} />}
       onOpen={() => onSelect(skill)}
       action={
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2 text-xs"
-            disabled={pending || defaultProviders.length === 0}
-            onClick={() => onInstall(skill, [...defaultProviders])}
-          >
-            {isInstalled ? "Add provider" : "Install"}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0 text-muted-foreground"
-                aria-label={`${skill.name} install options`}
-              >
-                <Icon name="ChevronDown" className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-56"
-              mobileTitle={`${skill.name} install options`}
-            >
-              {(["user", "project"] as const).map((option) => (
-                <DropdownMenuItem
-                  key={option}
-                  onSelect={() => onScopeChange(option)}
-                >
-                  <span className="flex min-w-0 flex-1 items-center gap-2 capitalize">
-                    <StatusDot tone={scope === option ? "success" : "muted"} />
-                    {option}
-                  </span>
-                  <span className="text-xs text-muted-foreground">scope</span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              {REGISTRY_PROVIDERS.map((provider) => {
-                const configured = providerStatus[provider.id];
-                const installed = installedProviders.has(provider.id);
-                return (
-                  <DropdownMenuItem
-                    key={provider.id}
-                    disabled={!configured || pending || installed}
-                    onSelect={() => onInstall(skill, [provider.id])}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <StatusDot tone={configured ? "success" : "muted"} />
-                      <ProviderLogo
-                        providerId={provider.id}
-                        className="size-3.5 shrink-0"
-                      />
-                      <span>{provider.label}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {installed
-                        ? "Installed"
-                        : configured
-                          ? scope
-                          : "Disabled"}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
+        <RegistryInstallButton
+          skill={skill}
+          installedProviders={installedProviders}
+          providerStatus={providerStatus}
+          scope={scope}
+          pending={pending}
+          onScopeChange={onScopeChange}
+          onInstall={onInstall}
+        />
       }
     />
   );
@@ -510,7 +584,14 @@ function RegistrySkillsSource({
   ) => ReadonlySet<RegistryProvider>;
 }) {
   const availableSkills = useMemo(
-    () => skills.filter((skill) => getInstalledProviders(skill).size === 0),
+    () =>
+      skills
+        .filter((skill) => getInstalledProviders(skill).size === 0)
+        .sort(
+          (left, right) =>
+            right.installs - left.installs ||
+            left.name.localeCompare(right.name),
+        ),
     [getInstalledProviders, skills],
   );
   if (hasError) {
@@ -531,7 +612,7 @@ function RegistrySkillsSource({
   if (isLoading) {
     return (
       <ResourceSourceShelf
-        label="Browse skills.sh"
+        label="Browse"
         leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       >
         {["w-36", "w-48", "w-28"].map((nameWidth) => (
@@ -554,8 +635,7 @@ function RegistrySkillsSource({
 
   return (
     <ResourceSourceShelf
-      label="Browse skills.sh"
-      count={availableSkills.length}
+      label="Browse"
       leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
       action={browseAction}
     >
@@ -608,12 +688,49 @@ function RegistrySkillsBrowsePage({
     skill: RegistrySkill,
   ) => ReadonlySet<RegistryProvider>;
 }) {
+  const [sortMode, setSortMode] = useState<RegistrySkillSortMode>("installs");
+  const [sortDirection, setSortDirection] =
+    useState<ResourceSortDirection>("desc");
+  const sortedSkills = useMemo(() => {
+    return [...skills].sort((left, right) => {
+      const base =
+        sortMode === "installs"
+          ? left.installs - right.installs ||
+            left.name.localeCompare(right.name)
+          : left.name.localeCompare(right.name);
+      return applySortDirection(base, sortDirection);
+    });
+  }, [skills, sortDirection, sortMode]);
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      if (nextSort !== "installs" && nextSort !== "alpha") return;
+      if (nextSort === sortMode) {
+        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortMode(nextSort);
+      setSortDirection(nextSort === "installs" ? "desc" : "asc");
+    },
+    [sortMode],
+  );
+
   return (
     <div className="space-y-4">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills.sh"
         onSearchChange={onQueryChange}
+        controls={
+          <ResourceSortMenu
+            value={sortMode}
+            direction={sortDirection}
+            options={[
+              { id: "installs", label: "Install count" },
+              { id: "alpha", label: "Alphabetical" },
+            ]}
+            onChange={handleSortChange}
+          />
+        }
       />
       {hasError ? (
         <EmptyStatePanel role="alert" className="py-6">
@@ -653,7 +770,7 @@ function RegistrySkillsBrowsePage({
         </EmptyStatePanel>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {skills.map((skill) => (
+          {sortedSkills.map((skill) => (
             <RegistrySkillSourceItem
               key={skill.id}
               skill={skill}
@@ -937,25 +1054,11 @@ function RegistrySkillDetailView({
   onScopeChange: (scope: RegistryScope) => void;
   onInstall: (skill: RegistrySkill, providers: RegistryProvider[]) => void;
 }) {
-  const configuredProviders = REGISTRY_PROVIDERS.filter(
-    (provider) => providerStatus[provider.id],
-  ).map((provider) => provider.id);
-  const remainingProviders = configuredProviders.filter(
-    (provider) => !installedProviders.has(provider),
-  );
-  const isInstalled = installedProviders.size > 0;
-  const defaultProviders = isInstalled
-    ? remainingProviders
-    : configuredProviders;
   return (
     <ResourceDetailPage
       leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
       title={skill.name}
-      status={
-        <ResourceStatus tone={isInstalled ? "success" : "muted"}>
-          {isInstalled ? "Installed" : "Available"}
-        </ResourceStatus>
-      }
+      status={<RegistrySkillSocialProof skill={skill} />}
       meta={
         <ResourceMeta
           items={["skills.sh", formatRegistrySource(skill.source), skill.topic]}
@@ -963,79 +1066,15 @@ function RegistrySkillDetailView({
       }
       description={skill.summary}
       actions={
-        <>
-          <div className="flex rounded-md bg-surface-recessed p-0.5">
-            {(["user", "project"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={cn(
-                  "h-7 rounded px-2 text-xs capitalize",
-                  scope === option
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground",
-                )}
-                onClick={() => onScopeChange(option)}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            disabled={pending || defaultProviders.length === 0}
-            onClick={() => onInstall(skill, [...defaultProviders])}
-          >
-            {isInstalled ? "Add provider" : "Install"}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-8"
-                aria-label={`${skill.name} provider picker`}
-              >
-                <Icon name="ChevronDown" className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-56"
-              mobileTitle={`${skill.name} providers`}
-            >
-              {REGISTRY_PROVIDERS.map((provider) => {
-                const configured = providerStatus[provider.id];
-                const installed = installedProviders.has(provider.id);
-                return (
-                  <DropdownMenuItem
-                    key={provider.id}
-                    disabled={!configured || pending || installed}
-                    onSelect={() => onInstall(skill, [provider.id])}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <StatusDot tone={configured ? "success" : "muted"} />
-                      <ProviderLogo
-                        providerId={provider.id}
-                        className="size-3.5 shrink-0"
-                      />
-                      <span>{provider.label}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {installed
-                        ? "Installed"
-                        : configured
-                          ? scope
-                          : "Disabled"}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
+        <RegistryInstallButton
+          skill={skill}
+          installedProviders={installedProviders}
+          providerStatus={providerStatus}
+          scope={scope}
+          pending={pending}
+          onScopeChange={onScopeChange}
+          onInstall={onInstall}
+        />
       }
     >
       <section className="space-y-2">
@@ -1046,6 +1085,11 @@ function RegistrySkillDetailView({
           <ResourceProperty label="Installs">
             {formatInstallCount(skill.installs)}
           </ResourceProperty>
+          {skill.stars !== null ? (
+            <ResourceProperty label="GitHub stars">
+              {formatInstallCount(skill.stars)}
+            </ResourceProperty>
+          ) : null}
           <ResourceProperty label="Works with">
             {skill.worksWith.join(", ")}
           </ResourceProperty>
@@ -1566,7 +1610,7 @@ export function SkillsLibrary() {
           registryBrowseAction={
             <Button asChild variant="ghost" size="sm" className="h-6 px-2">
               <Link to={getRegistrySkillsRoutePath()}>
-                Browse all
+                See all
                 <Icon name="ChevronRight" className="size-3.5" aria-hidden />
               </Link>
             </Button>

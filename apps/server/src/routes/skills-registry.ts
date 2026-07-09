@@ -6,8 +6,10 @@ import { requirePublicProject } from "../services/lib/entity-lookup.js";
 import { resolveCommandWorkspace } from "../services/threads/provider-command-typeahead.js";
 
 const SKILLS_BASE_URL = "https://www.skills.sh";
-const REGISTRY_LIMIT = 24;
+const REGISTRY_LIMIT = 100;
 const DETAIL_PREVIEW_LIMIT = 10;
+const GITHUB_STARS_PREVIEW_LIMIT = 48;
+const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 120_000;
 
 const SUPPORTED_INSTALL_PROVIDERS = ["claude-code", "codex"] as const;
@@ -20,6 +22,7 @@ interface RegistrySkill {
   skillId: string;
   name: string;
   installs: number;
+  stars: number | null;
   installUrl: string | null;
   url: string;
   topic: string;
@@ -44,6 +47,7 @@ const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
     skillId: "find-skills",
     name: "find-skills",
     installs: 2_384_417,
+    stars: null,
     installUrl: "https://github.com/vercel-labs/skills",
     url: "https://www.skills.sh/vercel-labs/skills/find-skills",
     topic: "Agent workflows",
@@ -57,6 +61,7 @@ const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
     skillId: "frontend-design",
     name: "frontend-design",
     installs: 635_858,
+    stars: null,
     installUrl: "https://github.com/anthropics/skills",
     url: "https://www.skills.sh/anthropics/skills/frontend-design",
     topic: "Design & UI",
@@ -69,6 +74,7 @@ const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
     skillId: "vercel-react-best-practices",
     name: "vercel-react-best-practices",
     installs: 532_556,
+    stars: null,
     installUrl: "https://github.com/vercel-labs/agent-skills",
     url: "https://www.skills.sh/vercel-labs/agent-skills/vercel-react-best-practices",
     topic: "React",
@@ -78,6 +84,14 @@ const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
 ];
 
 let lastRegistrySkills: RegistrySkill[] | null = null;
+const githubStarsCache = new Map<
+  string,
+  { stars: number | null; expiresAt: number }
+>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 function decodeHtml(value: string): string {
   return value
@@ -120,6 +134,7 @@ function parsePublicHomepageSkills(html: string): RegistrySkill[] {
       skillId,
       name,
       installs,
+      stars: null,
       installUrl: source.includes(".")
         ? `https://${source}`
         : `https://github.com/${source}`,
@@ -221,6 +236,83 @@ async function hydrateDetails(
   return [...hydrated, ...skills.slice(DETAIL_PREVIEW_LIMIT)];
 }
 
+function githubRepoForSource(source: string): string | null {
+  const githubHostPrefix = "github.com/";
+  const githubUrlPrefix = "https://github.com/";
+  const normalized = source.startsWith(githubUrlPrefix)
+    ? source.slice(githubUrlPrefix.length)
+    : source.startsWith(githubHostPrefix)
+      ? source.slice(githubHostPrefix.length)
+      : source;
+  if (normalized.includes(".")) return null;
+
+  const [owner, repo] = normalized.split("/");
+  if (!owner || !repo) return null;
+  const safeSegment = /^[A-Za-z0-9_.-]+$/u;
+  if (!safeSegment.test(owner) || !safeSegment.test(repo)) return null;
+  return `${owner}/${repo}`;
+}
+
+async function fetchGithubStars(source: string): Promise<number | null> {
+  const repo = githubRepoForSource(source);
+  if (repo === null) return null;
+
+  const cached = githubStarsCache.get(repo);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.stars;
+
+  let stars: number | null = null;
+  try {
+    const separatorIndex = repo.indexOf("/");
+    const owner = repo.slice(0, separatorIndex);
+    const repoName = repo.slice(separatorIndex + 1);
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
+      {
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "bb-skills-registry",
+        },
+      },
+    );
+    if (response.ok) {
+      const body = await response.json().catch(() => null);
+      if (isRecord(body) && typeof body.stargazers_count === "number") {
+        stars = body.stargazers_count;
+      }
+    }
+  } catch {
+    stars = null;
+  }
+
+  githubStarsCache.set(repo, {
+    stars,
+    expiresAt: now + GITHUB_STARS_CACHE_TTL_MS,
+  });
+  return stars;
+}
+
+async function hydrateGithubStars(
+  skills: RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const sources = [
+    ...new Set(
+      skills.slice(0, GITHUB_STARS_PREVIEW_LIMIT).map((skill) => skill.source),
+    ),
+  ];
+  const starsBySource = new Map<string, number | null>();
+  await Promise.all(
+    sources.map(async (source) => {
+      starsBySource.set(source, await fetchGithubStars(source));
+    }),
+  );
+  return skills.map((skill) =>
+    starsBySource.has(skill.source)
+      ? { ...skill, stars: starsBySource.get(skill.source) ?? null }
+      : skill,
+  );
+}
+
 async function listRegistrySkills(query: string): Promise<RegistrySkill[]> {
   const apiUrl = new URL(
     query.trim().length > 0 ? "/api/v1/skills/search" : "/api/v1/skills",
@@ -241,13 +333,14 @@ async function listRegistrySkills(query: string): Promise<RegistrySkill[]> {
       skillId: skill.slug,
       name: skill.name,
       installs: skill.installs,
+      stars: null,
       installUrl: skill.installUrl,
       url: skill.url,
       topic: "Agent workflows",
       summary: null,
       worksWith: ["Claude Code", "Codex"],
     })) ?? (await fetchPublicDirectorySkills(query));
-  const hydrated = await hydrateDetails(skills);
+  const hydrated = await hydrateGithubStars(await hydrateDetails(skills));
   lastRegistrySkills = hydrated;
   return hydrated;
 }
