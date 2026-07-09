@@ -71,6 +71,7 @@ export interface ProviderCommandSuggestion {
   name: string;
   source: ProviderCommandSource;
   origin: ProviderCommandOrigin;
+  providerId?: string;
   description: string | null;
   argumentHint: string | null;
 }
@@ -82,12 +83,14 @@ export interface ProviderCommandSuggestion {
  */
 export function toProviderCommandSuggestion(
   command: ProviderCommand,
+  providerId?: string,
 ): ProviderCommandSuggestion {
   return {
     kind: "command",
     name: command.name,
     source: command.source,
     origin: command.origin,
+    providerId,
     description: command.description,
     argumentHint: command.argumentHint,
   };

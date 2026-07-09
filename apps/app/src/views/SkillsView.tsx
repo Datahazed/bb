@@ -553,6 +553,17 @@ function RegistrySkillSourceItem({
   );
 }
 
+function RegistrySkillLeading({ skill }: { skill: RegistrySkill }) {
+  const provider = REGISTRY_PROVIDERS.find((candidate) =>
+    skill.worksWith.includes(candidate.id),
+  )?.id;
+  return provider ? (
+    <ProviderLogo providerId={provider} className="size-4" />
+  ) : (
+    <BbLogo />
+  );
+}
+
 function SkillsShAttributionLink() {
   return (
     <a
@@ -1074,7 +1085,7 @@ function RegistrySkillDetailView({
 }) {
   return (
     <ResourceDetailPage
-      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
+      leading={<RegistrySkillLeading skill={skill} />}
       title={skill.name}
       status={<RegistrySkillSocialProof skill={skill} />}
       meta={
@@ -1308,20 +1319,12 @@ export function SkillDetailDialogView({
 
   return (
     <ResourceDetailPage
-      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
+      leading={<SkillLeading skill={skill} />}
       title={skill.name}
       status={
-        <span className="flex shrink-0 items-center gap-2">
-          {skill.provider ? (
-            <ProviderLogo
-              providerId={skill.provider}
-              className="size-4 shrink-0"
-            />
-          ) : null}
-          <ResourceStatus tone={canManage ? "success" : "muted"}>
-            {detailStatusLabel}
-          </ResourceStatus>
-        </span>
+        <ResourceStatus tone={canManage ? "success" : "muted"}>
+          {detailStatusLabel}
+        </ResourceStatus>
       }
       headerActions={headerActions}
       meta={

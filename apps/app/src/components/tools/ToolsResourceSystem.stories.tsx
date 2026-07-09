@@ -1178,52 +1178,171 @@ function AutomationDetail() {
   );
 }
 
-function SkillDetail() {
+interface SkillDetailFixture {
+  id: string;
+  title: string;
+  provider: ProviderId;
+  scope: string;
+  status: string;
+  statusTone: "muted" | "success";
+  description: string;
+  path: string;
+  markdownDescription: string;
+  canManage: boolean;
+}
+
+const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
+  {
+    id: "bb-builtin",
+    title: "bb-cli",
+    provider: "bb",
+    scope: "Built-in",
+    status: "Built-in",
+    statusTone: "muted",
+    description: "Inspect and orchestrate bb from the CLI.",
+    path: "~/.bb/runtime/global-skills/bb-cli/SKILL.md",
+    markdownDescription:
+      "Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, projects, providers, and environments.",
+    canManage: false,
+  },
+  {
+    id: "codex-user",
+    title: "openai-docs",
+    provider: "codex",
+    scope: "Codex",
+    status: "Read-only",
+    statusTone: "muted",
+    description: "Use current official OpenAI documentation.",
+    path: "~/.codex/skills/.system/openai-docs/SKILL.md",
+    markdownDescription:
+      "Use when the user asks how to build with OpenAI products or APIs, or needs up-to-date official documentation with citations.",
+    canManage: false,
+  },
+  {
+    id: "claude-project",
+    title: "frontend-design",
+    provider: "claude-code",
+    scope: "Claude · project",
+    status: "Editable",
+    statusTone: "success",
+    description: "Review frontend implementation against product intent.",
+    path: ".claude/skills/frontend-design/SKILL.md",
+    markdownDescription:
+      "Use when implementing or reviewing frontend UI against a supplied design, screenshot, or product direction.",
+    canManage: true,
+  },
+  {
+    id: "codex-plugin",
+    title: "browser:control-in-app-browser",
+    provider: "codex",
+    scope: "Plugin",
+    status: "Read-only",
+    statusTone: "muted",
+    description: "Open, inspect, and test local browser targets.",
+    path: "~/.codex/plugins/cache/openai-bundled/browser/skills/control-in-app-browser/SKILL.md",
+    markdownDescription:
+      "Use to open, navigate, inspect, test, click, type, scroll, screenshot, or verify local targets in the in-app browser.",
+    canManage: false,
+  },
+];
+
+function SkillExampleSelector({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1 px-1">
+      {SKILL_DETAIL_FIXTURES.map((fixture) => (
+        <Button
+          key={fixture.id}
+          type="button"
+          variant={fixture.id === selectedId ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
+          onClick={() => onSelect(fixture.id)}
+        >
+          <ProviderMark provider={fixture.provider} className="size-3.5" />
+          {fixture.title}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
+  const providerLabel = PROVIDER_FILTER_LABELS[fixture.provider];
   return (
     <ResourceDetailPage
-      leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
-      title="bb-cli"
-      status={<ResourceState tone="muted">Built-in</ResourceState>}
+      leading={<ProviderMark provider={fixture.provider} />}
+      title={fixture.title}
+      status={
+        <ResourceState tone={fixture.statusTone}>
+          {fixture.status}
+        </ResourceState>
+      }
       headerActions={
         <ResourceOverflowMenu
           label="Skill actions"
           items={[
-            { label: "Edit", icon: "Edit", onSelect: NOOP },
+            {
+              label: "Edit",
+              icon: "Edit",
+              disabled: !fixture.canManage,
+              onSelect: NOOP,
+            },
             { label: "Open in editor", icon: "ExternalLink", onSelect: NOOP },
             { kind: "separator" },
             {
               label: "Delete",
               icon: "Trash2",
               tone: "destructive",
+              disabled: !fixture.canManage,
               onSelect: NOOP,
             },
           ]}
         />
       }
-      meta={<ResourceMeta items={["Skill", "bb", "built-in"]} />}
-      description="Inspect and orchestrate bb from the CLI."
+      meta={<ResourceMeta items={["Skill", providerLabel, fixture.scope]} />}
+      description={fixture.description}
     >
       <DetailSection label="Details">
         <ResourcePropertyList>
           <ResourceProperty label="Kind">Skill</ResourceProperty>
-          <ResourceProperty label="Provider">bb</ResourceProperty>
-          <ResourceProperty label="Scope">built-in</ResourceProperty>
+          <ResourceProperty label="Provider">
+            <span className="inline-flex items-center gap-1.5">
+              <ProviderMark provider={fixture.provider} className="size-3.5" />
+              {providerLabel}
+            </span>
+          </ResourceProperty>
+          <ResourceProperty label="Scope">{fixture.scope}</ResourceProperty>
           <ResourceProperty label="File">SKILL.md</ResourceProperty>
         </ResourcePropertyList>
       </DetailSection>
       <DetailSection label="SKILL.md">
         <ResourcePropertyList>
           <ResourceProperty label="Description">
-            Use this when controlling bb. The bb CLI lets you inspect, create,
-            and orchestrate bb threads, automations, projects, providers, and
-            environments.
+            {fixture.markdownDescription}
           </ResourceProperty>
-          <ResourceProperty label="Path">
-            ~/.bb/runtime/global-skills/bb-cli/SKILL.md
-          </ResourceProperty>
+          <ResourceProperty label="Path">{fixture.path}</ResourceProperty>
         </ResourcePropertyList>
       </DetailSection>
     </ResourceDetailPage>
+  );
+}
+
+function SkillDetail() {
+  const [selectedId, setSelectedId] = useState(SKILL_DETAIL_FIXTURES[0].id);
+  const fixture =
+    SKILL_DETAIL_FIXTURES.find((candidate) => candidate.id === selectedId) ??
+    SKILL_DETAIL_FIXTURES[0];
+  return (
+    <div className="space-y-4">
+      <SkillExampleSelector selectedId={selectedId} onSelect={setSelectedId} />
+      <SkillDetailContent fixture={fixture} />
+    </div>
   );
 }
 

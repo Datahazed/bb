@@ -188,7 +188,7 @@ export function useCommandSuggestions(
     }
     const discoveredSuggestions = (commandsQuery.data?.pages ?? [])
       .flatMap((page) => page.commands)
-      .map(toProviderCommandSuggestion);
+      .map((command) => toProviderCommandSuggestion(command, args.providerId));
     return mergeCommandSuggestions(
       promptActionSuggestions,
       discoveredSuggestions,
