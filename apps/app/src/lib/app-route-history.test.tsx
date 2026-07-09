@@ -13,7 +13,6 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useRouteStateHistoryNavigation } from "./app-route-history";
 
 const TOOL_ROUTE_SEQUENCE = [
-  "/tools",
   "/tools/skills",
   "/tools/skills/registry",
   "/tools/skills/installed/bb-user/bb/review-loop",
@@ -119,13 +118,11 @@ describe("useRouteStateHistoryNavigation", () => {
     );
     await clickAndExpectPath("Back", "/tools/skills/registry");
     await clickAndExpectPath("Back", "/tools/skills");
-    await clickAndExpectPath("Back", "/tools");
     await clickAndExpectPath("Back", "/");
 
     expect(screen.getByTestId("can-go-back").textContent).toBe("false");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("true");
 
-    await clickAndExpectPath("Forward", "/tools");
     await clickAndExpectPath("Forward", "/tools/skills");
     await clickAndExpectPath("Forward", "/tools/skills/registry");
     await clickAndExpectPath(
@@ -157,12 +154,11 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go back", true);
     await expectSidebarButtonState("Go forward", true);
 
-    await clickAndExpectPath("/tools", "/tools");
+    await clickAndExpectPath("/tools/skills", "/tools/skills");
 
     await expectSidebarButtonState("Go back", false);
     await expectSidebarButtonState("Go forward", true);
 
-    await clickAndExpectPath("/tools/skills", "/tools/skills");
     await clickAndExpectPath(
       "/tools/skills/installed/bb-user/bb/review-loop",
       "/tools/skills/installed/bb-user/bb/review-loop",

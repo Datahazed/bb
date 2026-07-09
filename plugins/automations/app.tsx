@@ -40,6 +40,7 @@ import {
   ResourceBrowseCard,
   ResourceCreateButton,
   ResourceDetailPage,
+  ResourceListPanel,
   ResourceMeta,
   ResourceOptionMenu,
   ResourceOverflowMenu,
@@ -757,7 +758,7 @@ function AutomationOverviewPreview() {
   }
 
   return (
-    <div className="space-y-0.5">
+    <ResourceListPanel maxHeightClassName="max-h-72">
       {entries.slice(0, 5).map((entry) => {
         const { automation } = entry;
         const route = routeOf(automation);
@@ -804,7 +805,7 @@ function AutomationOverviewPreview() {
           />
         );
       })}
-    </div>
+    </ResourceListPanel>
   );
 }
 
@@ -1017,7 +1018,7 @@ function OverviewView({
     );
   } else {
     body = (
-      <div className="space-y-0.5">
+      <ResourceListPanel>
         {visibleEntries.map((entry) => (
           <OverviewRow
             key={entry.automation.id}
@@ -1027,7 +1028,7 @@ function OverviewView({
             onDelete={setDeleteTarget}
           />
         ))}
-      </div>
+      </ResourceListPanel>
     );
   }
 

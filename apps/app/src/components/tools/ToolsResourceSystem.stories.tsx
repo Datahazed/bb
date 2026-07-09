@@ -9,6 +9,7 @@ import {
   ResourceBrowseCard,
   ResourceCreateButton,
   ResourceDetailPage,
+  ResourceListPanel,
   ResourceMeta,
   ResourceOptionMenu,
   ResourceOverflowMenu,
@@ -53,12 +54,12 @@ const CREATE_TEMPLATES = [
   },
 ] as const;
 
-type ToolsTabId = "skills" | "plugins" | "automations";
+type ResourceSurfaceId = "skills" | "plugins" | "automations";
 type ProviderId = "bb" | "codex" | "claude-code";
 type ProviderFilterId = ProviderId | "all";
 
-interface ToolTab {
-  id: ToolsTabId;
+interface ResourceSurface {
+  id: ResourceSurfaceId;
   label: string;
   icon: IconName;
 }
@@ -84,7 +85,7 @@ interface ResourceSectionFixture {
   rows: ResourceListRowFixture[];
 }
 
-const TOOL_TABS: readonly ToolTab[] = [
+const RESOURCE_SURFACES: readonly ResourceSurface[] = [
   { id: "skills", label: "Skills", icon: "Zap" },
   { id: "plugins", label: "Plugins", icon: "ElectricPlugs" },
   { id: "automations", label: "Automations", icon: "TimeSchedule" },
@@ -362,37 +363,35 @@ function StoryListControls({
   );
 }
 
-function ToolsTabBar({
-  activeTab,
+function ResourceSurfaceSelector({
+  activeSurface,
   onChange,
 }: {
-  activeTab: ToolsTabId | null;
-  onChange: (tab: ToolsTabId) => void;
+  activeSurface: ResourceSurfaceId;
+  onChange: (surface: ResourceSurfaceId) => void;
 }) {
   return (
     <nav
-      aria-label="Tools"
-      role="tablist"
-      className="flex min-w-0 items-center gap-1"
+      aria-label="Resource pages"
+      className="grid min-w-0 gap-1"
     >
-      {TOOL_TABS.map((tab) => {
-        const active = tab.id === activeTab;
+      {RESOURCE_SURFACES.map((surface) => {
+        const active = surface.id === activeSurface;
         return (
           <button
-            key={tab.id}
+            key={surface.id}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-current={active ? "page" : undefined}
             className={cn(
-              "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors",
+              "inline-flex h-8 min-w-0 items-center gap-2 rounded-md px-2.5 text-sm transition-colors",
               active
                 ? "bg-state-active text-foreground"
                 : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
-            onClick={() => onChange(tab.id)}
+            onClick={() => onChange(surface.id)}
           >
-            <Icon name={tab.icon} className="size-4 shrink-0" aria-hidden />
-            <span className="truncate">{tab.label}</span>
+            <Icon name={surface.icon} className="size-4 shrink-0" aria-hidden />
+            <span className="truncate">{surface.label}</span>
           </button>
         );
       })}
@@ -509,7 +508,7 @@ function ResourceRowsList({
   }
 
   return (
-    <div className="space-y-0.5">
+    <ResourceListPanel>
       {rows.map((row) => (
         <ResourceRow
           key={row.id}
@@ -522,7 +521,7 @@ function ResourceRowsList({
           actions={<RowOpenAction label={`Open ${row.title}`} />}
         />
       ))}
-    </div>
+    </ResourceListPanel>
   );
 }
 
@@ -678,101 +677,6 @@ function AutomationBrowseCards() {
   return <TemplateBrowseCards label="Browse automations" icon="TimeSchedule" />;
 }
 
-function MixedOverviewSection({
-  title,
-  description,
-  count,
-  children,
-}: {
-  title: string;
-  description: string;
-  count?: number;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <div className="flex min-w-0 items-end gap-3 px-1">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <h2 className="truncate text-sm font-medium text-foreground">
-              {title}
-            </h2>
-            {count !== undefined ? (
-              <span className="text-xs text-subtle-foreground">{count}</span>
-            ) : null}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-        >
-          View all
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-        </Button>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function MixedOverviewPanel() {
-  return (
-    <div className="space-y-5">
-      <ResourceTabDescription>
-        Discover and manage the capabilities bb can give agents: reusable
-        skills, app and provider plugins, and scheduled automations.
-      </ResourceTabDescription>
-      <RegistryBrowseSource />
-      <MixedOverviewSection
-        title="Skills"
-        description="Installed reusable instructions available to agents."
-        count={SKILL_SECTIONS.reduce(
-          (total, section) => total + section.rows.length,
-          0,
-        )}
-      >
-        <ResourceRowsList
-          sections={SKILL_SECTIONS}
-          query=""
-          providerFilter="all"
-          sortMode="alpha"
-          sortDirection="asc"
-          fallbackIcon="Zap"
-        />
-      </MixedOverviewSection>
-      <MixedOverviewSection
-        title="Plugins"
-        description="Installed bb and provider-specific plugin capabilities."
-        count={PLUGIN_SECTIONS.reduce(
-          (total, section) => total + section.rows.length,
-          0,
-        )}
-      >
-        <ResourceRowsList
-          sections={PLUGIN_SECTIONS}
-          query=""
-          providerFilter="all"
-          sortMode="alpha"
-          sortDirection="asc"
-          fallbackIcon="ElectricPlugs"
-        />
-      </MixedOverviewSection>
-      <MixedOverviewSection
-        title="Automations"
-        description="Scheduled work running across projects and folders."
-        count={AUTOMATION_ROWS.length}
-      >
-        <AutomationsList query="" location="all" sort="alpha" direction="asc" />
-      </MixedOverviewSection>
-    </div>
-  );
-}
-
 function AutomationsList({
   query,
   location,
@@ -817,7 +721,7 @@ function AutomationsList({
     );
   }
   return (
-    <div className="space-y-0.5">
+    <ResourceListPanel>
       {rows.map((row) => (
         <ResourceRow
           key={row.id}
@@ -830,11 +734,11 @@ function AutomationsList({
           actions={<AutomationRowActions />}
         />
       ))}
-    </div>
+    </ResourceListPanel>
   );
 }
 
-function SkillsTab() {
+function SkillsSurface() {
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<ProviderFilterId>("all");
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
@@ -890,7 +794,7 @@ function SkillsTab() {
   );
 }
 
-function PluginsTab() {
+function PluginsSurface() {
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<ProviderFilterId>("all");
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
@@ -947,7 +851,7 @@ function PluginsTab() {
   );
 }
 
-function AutomationsTab() {
+function AutomationsSurface() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("all");
   const [sort, setSort] = useState<"location" | "alpha">("alpha");
@@ -1022,10 +926,14 @@ function AutomationsTab() {
   );
 }
 
-function ActiveTabPanel({ activeTab }: { activeTab: ToolsTabId }) {
-  if (activeTab === "plugins") return <PluginsTab />;
-  if (activeTab === "automations") return <AutomationsTab />;
-  return <SkillsTab />;
+function ResourceSurfacePanel({
+  activeSurface,
+}: {
+  activeSurface: ResourceSurfaceId;
+}) {
+  if (activeSurface === "plugins") return <PluginsSurface />;
+  if (activeSurface === "automations") return <AutomationsSurface />;
+  return <SkillsSurface />;
 }
 
 function AutomationDetail() {
@@ -1284,9 +1192,17 @@ function OverviewToolbarSample() {
   );
 }
 
-function OverviewTabsSample() {
-  const [activeTab, setActiveTab] = useState<ToolsTabId | null>(null);
-  return <ToolsTabBar activeTab={activeTab} onChange={setActiveTab} />;
+function ResourceSidebarEntrySample() {
+  const [activeSurface, setActiveSurface] =
+    useState<ResourceSurfaceId>("skills");
+  return (
+    <div className="w-48">
+      <ResourceSurfaceSelector
+        activeSurface={activeSurface}
+        onChange={setActiveSurface}
+      />
+    </div>
+  );
 }
 
 function StatusAndActionSamples() {
@@ -1348,19 +1264,21 @@ function DetailPropertiesSample() {
 }
 
 export function ToolsOverviewPage() {
-  const [activeTab, setActiveTab] = useState<ToolsTabId | null>(null);
+  const [activeSurface, setActiveSurface] =
+    useState<ResourceSurfaceId>("skills");
 
   return (
     <main className="min-h-[720px] bg-background">
-      <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-5">
-        <div className="mb-4 flex items-center gap-3">
-          <ToolsTabBar activeTab={activeTab} onChange={setActiveTab} />
-        </div>
-        {activeTab === null ? (
-          <MixedOverviewPanel />
-        ) : (
-          <ActiveTabPanel activeTab={activeTab} />
-        )}
+      <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 md:grid-cols-[12rem_minmax(0,1fr)] md:px-5">
+        <aside className="rounded-lg border border-border bg-popover p-2 shadow-sm">
+          <ResourceSurfaceSelector
+            activeSurface={activeSurface}
+            onChange={setActiveSurface}
+          />
+        </aside>
+        <section className="min-w-0">
+          <ResourceSurfacePanel activeSurface={activeSurface} />
+        </section>
       </div>
     </main>
   );
@@ -1501,19 +1419,11 @@ export function OverviewPageSystem() {
   return (
     <StoryCard labelWidth="260px">
       <StoryRow
-        label="mixed overview"
-        hint="default /tools surface with no All tab: discovery shelf plus compact installed-resource previews"
+        label="sidebar entries"
+        hint="three direct resource destinations; no mixed hub page and no in-page tab strip"
       >
-        <PreviewStage className="max-w-[760px]">
-          <MixedOverviewPanel />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="tools tabs"
-        hint="filter-style tabs for switching between skills, plugins, and automations"
-      >
-        <PreviewStage>
-          <OverviewTabsSample />
+        <PreviewStage className="max-w-[300px]">
+          <ResourceSidebarEntrySample />
         </PreviewStage>
       </StoryRow>
       <StoryRow
@@ -1526,7 +1436,7 @@ export function OverviewPageSystem() {
       </StoryRow>
       <StoryRow
         label="automation rows"
-        hint="status appears once beside the title; hover/focus reveals the shared overflow action"
+        hint="scrolling row panel; status appears once beside the title and hover/focus reveals actions"
       >
         <PreviewStage className="max-w-[760px]">
           <AutomationsList
@@ -1547,7 +1457,7 @@ export function OverviewPageSystem() {
       </StoryRow>
       <StoryRow
         label="skills rows"
-        hint="flat installed skill rows controlled by provider filter and sort"
+        hint="scrolling row panel controlled by agent filter and alphabetical/provider sort"
       >
         <PreviewStage className="max-w-[760px]">
           <ResourceRowsList
@@ -1562,7 +1472,7 @@ export function OverviewPageSystem() {
       </StoryRow>
       <StoryRow
         label="plugins rows"
-        hint="bb and provider-specific plugins use the same flat row grammar as skills"
+        hint="bb and provider-specific plugins use the same scrolling row grammar as skills"
       >
         <PreviewStage className="max-w-[760px]">
           <ResourceRowsList

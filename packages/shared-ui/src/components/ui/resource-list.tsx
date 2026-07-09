@@ -474,7 +474,7 @@ export function ResourceRow({
   return (
     <div
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-state-hover",
+        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 rounded-md border border-transparent bg-background px-3 py-2 text-left shadow-sm transition-colors hover:border-border hover:bg-state-hover",
         selected && "bg-state-active",
         muted && "opacity-60",
         className,
@@ -524,9 +524,32 @@ export function ResourceRow({
   );
 }
 
+export function ResourceListPanel({
+  children,
+  maxHeightClassName = "max-h-[min(44rem,calc(100dvh-21rem))]",
+  className,
+}: {
+  children: ReactNode;
+  maxHeightClassName?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-sm",
+        className,
+      )}
+    >
+      <div className={cn("overflow-y-auto pr-1", maxHeightClassName)}>
+        <div className="space-y-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export function ResourcePropertyList({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-popover">
+    <div className="overflow-hidden rounded-md border border-border bg-popover shadow-sm">
       {children}
     </div>
   );
@@ -563,7 +586,7 @@ export function ResourceSection({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
+    <section className="overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-sm">
       <button
         type="button"
         onClick={onToggle}
@@ -601,7 +624,7 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="inline-block max-w-full space-y-1 align-top text-popover-foreground">
+    <section className="inline-block max-w-full space-y-1 rounded-lg border border-border bg-popover p-2 align-top text-popover-foreground shadow-sm">
       <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {leading}

@@ -4,11 +4,10 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import {
@@ -19,9 +18,9 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import { Button } from "@bb/shared-ui/button";
 import {
-  ResourceActionButton,
   ResourceBrowseCard,
   ResourceDetailPage,
+  ResourceListPanel,
   ResourceMeta,
   ResourceOptionMenu,
   ResourceOverflowMenu,
@@ -36,7 +35,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -44,9 +43,7 @@ import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useProjectSkills } from "@/hooks/queries/skills-queries";
-import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import {
   createDiffWorker,
@@ -58,28 +55,13 @@ import {
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
-  getRegistrySkillDetailRoutePath,
-  getRegistrySkillsRoutePath,
-  getSkillDetailRoutePath,
   getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
-  getSkillsRoutePath,
-  getToolsRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  fetchRegistrySkills,
-  formatInstallCount,
-  formatRegistrySource,
-  normalizeSkillName,
-  ProviderLogo,
-  providerStatusFromCli,
-  SkillsLibrary,
-  type RegistryProvider,
-  type RegistrySkill,
-} from "./SkillsView";
+import { ProviderLogo, SkillsLibrary } from "./SkillsView";
 
 const WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
@@ -87,35 +69,9 @@ const WORKER_POOL_OPTIONS = {
 };
 const HIGHLIGHTER_OPTIONS = {};
 
-type ToolsTabId = "skills" | "plugins" | "automations";
+type ToolsSectionId = "skills" | "plugins" | "automations";
 
-interface ToolsTab {
-  id: ToolsTabId;
-  label: string;
-  icon: IconName;
-  to: string;
-}
-
-const TOOLS_TABS: readonly ToolsTab[] = [
-  { id: "skills", label: "Skills", icon: "Zap", to: getSkillsRoutePath() },
-  {
-    id: "plugins",
-    label: "Plugins",
-    icon: "ElectricPlugs",
-    to: getPluginsRoutePath(),
-  },
-  {
-    id: "automations",
-    label: "Automations",
-    icon: "TimeSchedule",
-    to: getAutomationsRoutePath(),
-  },
-];
-
-function getToolsTab(pathname: string): ToolsTabId | null {
-  if (pathname === getToolsRoutePath()) {
-    return null;
-  }
+function getToolsSection(pathname: string): ToolsSectionId {
   if (pathname.startsWith(getPluginsRoutePath())) {
     return "plugins";
   }
@@ -139,38 +95,6 @@ function pluginStatusTone(
   return "muted";
 }
 
-function ToolsTabs({ activeTab }: { activeTab: ToolsTabId | null }) {
-  return (
-    <nav
-      aria-label="Tools"
-      role="tablist"
-      className="flex min-w-0 items-center gap-1"
-    >
-      {TOOLS_TABS.map((tab) => {
-        const active = tab.id === activeTab;
-        return (
-          <Link
-            key={tab.id}
-            to={tab.to}
-            role="tab"
-            aria-selected={active}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors",
-              active
-                ? "bg-state-active text-foreground"
-                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            )}
-          >
-            <Icon name={tab.icon} className="size-4 shrink-0" aria-hidden />
-            <span className="truncate">{tab.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 function ToolsBodyFallback() {
   return (
     <div className="h-full overflow-y-auto">
@@ -185,17 +109,14 @@ function ToolsBodyFallback() {
   );
 }
 
-function ToolsTabBody({
-  activeTab,
+function ToolsSectionBody({
+  activeSection,
   pluginId,
 }: {
-  activeTab: ToolsTabId | null;
+  activeSection: ToolsSectionId;
   pluginId: string | undefined;
 }) {
-  if (activeTab === null) {
-    return <ToolsOverview />;
-  }
-  if (activeTab === "skills") {
+  if (activeSection === "skills") {
     return (
       <div className="h-full overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
@@ -204,443 +125,10 @@ function ToolsTabBody({
       </div>
     );
   }
-  if (activeTab === "plugins") {
+  if (activeSection === "plugins") {
     return <PluginsToolView pluginId={pluginId} />;
   }
   return <AutomationsToolView />;
-}
-
-function registryProviderFromValue(value: string): RegistryProvider | null {
-  const normalized = value.trim().toLowerCase().replace(/\s+/gu, "-");
-  if (normalized === "claude-code" || normalized === "claude") {
-    return "claude-code";
-  }
-  if (normalized === "codex" || normalized === "openai") {
-    return "codex";
-  }
-  return null;
-}
-
-function registrySkillInstalled(
-  skill: RegistrySkill,
-  installedSkills: readonly SkillSummary[],
-): boolean {
-  const registryNames = new Set([
-    normalizeSkillName(skill.skillId),
-    normalizeSkillName(skill.name),
-  ]);
-  return installedSkills.some(
-    (installedSkill) =>
-      installedSkill.provider !== null &&
-      registryNames.has(normalizeSkillName(installedSkill.name)),
-  );
-}
-
-function registrySkillWorksWithConfiguredProviders({
-  skill,
-  configuredProviders,
-}: {
-  skill: RegistrySkill;
-  configuredProviders: readonly RegistryProvider[];
-}): boolean {
-  if (configuredProviders.length === 0) return true;
-  return skill.worksWith.some(
-    (provider) => {
-      const registryProvider = registryProviderFromValue(provider);
-      return (
-        registryProvider !== null &&
-        configuredProviders.includes(registryProvider)
-      );
-    },
-  );
-}
-
-function registryWorksWithLabel(skill: RegistrySkill): string {
-  const providers = skill.worksWith
-    .map(registryProviderFromValue)
-    .filter((provider): provider is RegistryProvider => provider !== null)
-    .map((provider) => PROVIDER_LABELS[provider]);
-  return providers.length > 0 ? providers.join(", ") : "Compatible agents";
-}
-
-function ToolsOverviewSection({
-  title,
-  description,
-  count,
-  to,
-  children,
-}: {
-  title: string;
-  description: string;
-  count?: number;
-  to: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <div className="flex min-w-0 items-end gap-3 px-1">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <h2 className="truncate text-sm font-medium text-foreground">
-              {title}
-            </h2>
-            {count !== undefined ? (
-              <span className="text-xs text-subtle-foreground">{count}</span>
-            ) : null}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
-          <Link to={to}>
-            View all
-            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-          </Link>
-        </Button>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function RowOpenAction({ label, to }: { label: string; to: string }) {
-  const navigate = useNavigate();
-  return (
-    <ResourceActionButton
-      label={label}
-      icon="ChevronRight"
-      onClick={() => void navigate(to)}
-    />
-  );
-}
-
-function SkillOverviewLeading({ skill }: { skill: SkillSummary }) {
-  if (skill.provider !== null) {
-    return <ProviderLogo providerId={skill.provider} className="size-4" />;
-  }
-  return <BbMark />;
-}
-
-function SkillOverviewRow({ skill }: { skill: SkillSummary }) {
-  const navigate = useNavigate();
-  const detailPath = getSkillDetailRoutePath({
-    scope: skill.scope,
-    providerId: skill.provider,
-    skillName: skill.name,
-  });
-  return (
-    <ResourceRow
-      leading={<SkillOverviewLeading skill={skill} />}
-      title={skill.name}
-      description={skill.description ?? "Reusable agent instruction"}
-      onOpen={() => void navigate(detailPath)}
-      actions={<RowOpenAction label={"Open " + skill.name} to={detailPath} />}
-    />
-  );
-}
-
-function PluginOverviewRow({ row }: { row: PluginToolRow }) {
-  const navigate = useNavigate();
-  const detailPath =
-    row.kind === "provider"
-      ? getPluginDetailRoutePath({
-          pluginId: getProviderPluginRouteId(row.plugin.name),
-        })
-      : getPluginDetailRoutePath({ pluginId: row.plugin.id });
-  return (
-    <ResourceRow
-      leading={
-        row.kind === "provider" ? (
-          <ProviderPluginLogoStack providers={row.plugin.providers} />
-        ) : (
-          <PluginListLogo plugin={row.plugin} />
-        )
-      }
-      title={
-        row.kind === "provider" ? (
-          row.name
-        ) : (
-          <>
-            {row.name}
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              v{row.plugin.version}
-            </span>
-          </>
-        )
-      }
-      description={row.description}
-      onOpen={() => void navigate(detailPath)}
-      actions={<RowOpenAction label={"Open " + row.name} to={detailPath} />}
-    />
-  );
-}
-
-function AutomationsOverviewPreviewMount() {
-  const { navPanels } = usePluginSlots();
-  const panel =
-    navPanels.find(
-      (candidate) =>
-        candidate.pluginId === AUTOMATIONS_PLUGIN_ID &&
-        candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
-    ) ?? null;
-
-  if (panel === null) {
-    return (
-      <EmptyStatePanel className="py-5">
-        Automations are still loading.
-      </EmptyStatePanel>
-    );
-  }
-
-  const slotMount = (
-    <PluginSlotMount
-      key={
-        panel.pluginId + "/" + panel.id + "/" + panel.generation + "/preview"
-      }
-      pluginId={panel.pluginId}
-      slotKind="navPanel"
-      slotId={panel.id}
-    >
-      <panel.component subPath="preview" />
-    </PluginSlotMount>
-  );
-
-  return typeof Worker === "undefined" ? (
-    slotMount
-  ) : (
-    <WorkerPoolContextProvider
-      poolOptions={WORKER_POOL_OPTIONS}
-      highlighterOptions={HIGHLIGHTER_OPTIONS}
-    >
-      {slotMount}
-    </WorkerPoolContextProvider>
-  );
-}
-
-function SkillsOverviewPreview({
-  skills,
-  isLoading,
-}: {
-  skills: readonly SkillSummary[];
-  isLoading: boolean;
-}) {
-  const previewSkills = useMemo(
-    () =>
-      [...skills].sort((left, right) => left.name.localeCompare(right.name)),
-    [skills],
-  );
-  if (isLoading) {
-    return <PluginsLoadingRows />;
-  }
-  if (previewSkills.length === 0) {
-    return (
-      <EmptyStatePanel className="py-5">No skills installed.</EmptyStatePanel>
-    );
-  }
-  return (
-    <div className="space-y-0.5">
-      {previewSkills.slice(0, 5).map((skill) => (
-        <SkillOverviewRow
-          key={skill.scope + ":" + (skill.provider ?? "bb") + ":" + skill.name}
-          skill={skill}
-        />
-      ))}
-    </div>
-  );
-}
-
-function PluginsOverviewPreview({
-  rows,
-  isLoading,
-}: {
-  rows: readonly PluginToolRow[];
-  isLoading: boolean;
-}) {
-  if (isLoading) {
-    return <PluginsLoadingRows />;
-  }
-  if (rows.length === 0) {
-    return (
-      <EmptyStatePanel className="py-5">No plugins installed.</EmptyStatePanel>
-    );
-  }
-  return (
-    <div className="space-y-0.5">
-      {rows.slice(0, 5).map((row) => (
-        <PluginOverviewRow key={row.id} row={row} />
-      ))}
-    </div>
-  );
-}
-
-function ToolsRegistryDiscovery({
-  skills,
-  onSelect,
-}: {
-  skills: readonly RegistrySkill[];
-  onSelect: (skill: RegistrySkill) => void;
-}) {
-  if (skills.length === 0) return null;
-  return (
-    <ResourceSourceShelf
-      label="Popular on skills.sh"
-      count={skills.length}
-      leading={<Icon name="Zap" className="size-3.5 shrink-0" aria-hidden />}
-      action={
-        <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
-          <Link to={getRegistrySkillsRoutePath()}>
-            View all
-            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-          </Link>
-        </Button>
-      }
-    >
-      {skills.map((skill) => (
-        <ResourceSourceItem key={skill.id}>
-          <ResourceBrowseCard
-            leading={
-              <Icon
-                name="Zap"
-                className="size-5 text-muted-foreground"
-                aria-hidden
-              />
-            }
-            title={skill.name}
-            meta={formatRegistrySource(skill.source)}
-            description={
-              skill.summary ??
-              "Reusable skill package with source, usage, and compatibility metadata."
-            }
-            tags={[
-              formatInstallCount(skill.installs) + " installs",
-              skill.topic,
-              registryWorksWithLabel(skill),
-            ]}
-            action={
-              <Button asChild variant="outline" size="sm" className="h-7 px-2">
-                <Link
-                  to={getRegistrySkillDetailRoutePath({
-                    registrySkillId: skill.id,
-                  })}
-                >
-                  Inspect
-                </Link>
-              </Button>
-            }
-            onOpen={() => onSelect(skill)}
-          />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
-  );
-}
-
-function ToolsOverview() {
-  const navigate = useNavigate();
-  const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
-  const installedSkills = skillsQuery.data?.skills ?? [];
-  const visibleSkills = useMemo(
-    () => installedSkills.filter((skill) => skill.scope !== "plugin"),
-    [installedSkills],
-  );
-  const pluginListQuery = usePluginList({ includeExperimentDisabled: true });
-  const plugins = pluginListQuery.data ?? [];
-  const providerPlugins = useMemo(
-    () => providerPluginsFromSkills(installedSkills),
-    [installedSkills],
-  );
-  const pluginRows = useMemo(
-    () => buildPluginRows({ plugins, providerPlugins }),
-    [plugins, providerPlugins],
-  );
-  const primaryHost = usePrimaryHost();
-  const providerCliStatus = useHostProviderCliStatus({
-    hostId: primaryHost?.id ?? null,
-    enabled: primaryHost !== null,
-  });
-  const providerStatus = useMemo(
-    () => providerStatusFromCli(providerCliStatus.data),
-    [providerCliStatus.data],
-  );
-  const configuredRegistryProviders = useMemo(
-    () =>
-      (Object.entries(providerStatus) as [RegistryProvider, boolean][])
-        .filter(([, installed]) => installed)
-        .map(([provider]) => provider),
-    [providerStatus],
-  );
-  const registryQuery = useQuery({
-    queryKey: ["skills-registry", "tools-overview"],
-    queryFn: () => fetchRegistrySkills(""),
-    staleTime: 60_000,
-  });
-  const registryDiscoverySkills = useMemo(() => {
-    return (registryQuery.data ?? [])
-      .filter((skill) => !registrySkillInstalled(skill, visibleSkills))
-      .filter((skill) =>
-        registrySkillWorksWithConfiguredProviders({
-          skill,
-          configuredProviders: configuredRegistryProviders,
-        }),
-      )
-      .sort((left, right) => right.installs - left.installs)
-      .slice(0, 3);
-  }, [configuredRegistryProviders, registryQuery.data, visibleSkills]);
-
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        <ResourceTabDescription>
-          Discover and manage the capabilities bb can give agents: reusable
-          skills, app and provider plugins, and scheduled automations.
-        </ResourceTabDescription>
-        {!registryQuery.isError ? (
-          <ToolsRegistryDiscovery
-            skills={registryDiscoverySkills}
-            onSelect={(skill) =>
-              void navigate(
-                getRegistrySkillDetailRoutePath({
-                  registrySkillId: skill.id,
-                }),
-              )
-            }
-          />
-        ) : null}
-        <ToolsOverviewSection
-          title="Skills"
-          description="Installed reusable instructions available to agents."
-          count={visibleSkills.length}
-          to={getSkillsRoutePath()}
-        >
-          <SkillsOverviewPreview
-            skills={visibleSkills}
-            isLoading={skillsQuery.isFetching && skillsQuery.data === undefined}
-          />
-        </ToolsOverviewSection>
-        <ToolsOverviewSection
-          title="Plugins"
-          description="Installed bb and provider-specific plugin capabilities."
-          count={pluginRows.length}
-          to={getPluginsRoutePath()}
-        >
-          <PluginsOverviewPreview
-            rows={pluginRows}
-            isLoading={
-              pluginListQuery.isFetching && pluginListQuery.data === undefined
-            }
-          />
-        </ToolsOverviewSection>
-        <ToolsOverviewSection
-          title="Automations"
-          description="Scheduled work running across projects and folders."
-          to={getAutomationsRoutePath()}
-        >
-          <AutomationsOverviewPreviewMount />
-        </ToolsOverviewSection>
-      </div>
-    </div>
-  );
 }
 
 function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
@@ -1537,7 +1025,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         ) : (
           <>
             {overviewHeader}
-            <div className="space-y-0.5">
+            <ResourceListPanel>
               {visiblePluginRows.map((row) =>
                 row.kind === "provider" ? (
                   <ProviderInstalledPluginRow
@@ -1553,7 +1041,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
                   />
                 ),
               )}
-            </div>
+            </ResourceListPanel>
           </>
         )}
       </div>
@@ -1563,31 +1051,16 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
 
 export function ToolsView() {
   const location = useLocation();
-  const { automationId, pluginId, registrySkillId, skillName } = useParams<{
-    automationId?: string;
+  const { pluginId } = useParams<{
     pluginId?: string;
-    registrySkillId?: string;
-    skillName?: string;
   }>();
-  const activeTab = getToolsTab(location.pathname);
-  const isDetailPage =
-    automationId !== undefined ||
-    pluginId !== undefined ||
-    registrySkillId !== undefined ||
-    skillName !== undefined;
+  const activeSection = getToolsSection(location.pathname);
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      {!isDetailPage ? (
-        <div className="shrink-0 bg-background">
-          <div className="mx-auto flex w-full max-w-5xl items-center px-4 pb-1.5 pt-3 md:px-5 md:pt-4">
-            <ToolsTabs activeTab={activeTab} />
-          </div>
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<ToolsBodyFallback />}>
-          <ToolsTabBody activeTab={activeTab} pluginId={pluginId} />
+          <ToolsSectionBody activeSection={activeSection} pluginId={pluginId} />
         </Suspense>
       </div>
     </div>

@@ -6,7 +6,7 @@ import {
   type KeyboardEventHandler,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -21,7 +21,11 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import {
+  ProjectList,
+  ProjectListActionButtons,
+  type ProjectListToolActionId,
+} from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -34,11 +38,14 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
+  getAutomationsRoutePath,
+  getPluginsRoutePath,
   getRootComposeRoutePath,
-  getToolsRoutePath,
+  getSkillsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
-import { useRouteState } from "@/hooks/useRouteState";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   haveSameSidebarThreadSearchNavigationItems,
@@ -77,8 +84,8 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
+  const location = useLocation();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isToolsView } = useRouteState();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [isThreadSearchActive, setIsThreadSearchActive] = useState(false);
@@ -165,10 +172,32 @@ export function AppSidebar({
     });
   }, [closeOnMobile, navigate]);
 
-  const handleOpenTools = useCallback(() => {
+  const handleOpenSkills = useCallback(() => {
     closeOnMobile();
-    void navigate(getToolsRoutePath());
+    void navigate(getSkillsRoutePath());
   }, [closeOnMobile, navigate]);
+
+  const handleOpenPlugins = useCallback(() => {
+    closeOnMobile();
+    void navigate(getPluginsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenAutomations = useCallback(() => {
+    closeOnMobile();
+    void navigate(getAutomationsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const activeTool: ProjectListToolActionId | null =
+    location.pathname.startsWith(getPluginsRoutePath())
+      ? "plugins"
+      : location.pathname.startsWith(getAutomationsRoutePath()) ||
+          location.pathname === LEGACY_AUTOMATIONS_ROUTE_PATH
+        ? "automations"
+        : location.pathname.startsWith(getSkillsRoutePath()) ||
+            location.pathname === LEGACY_SKILLS_ROUTE_PATH ||
+            location.pathname === "/tools"
+          ? "skills"
+          : null;
 
   const handleThreadSearchKeyDown = useCallback<
     KeyboardEventHandler<HTMLDivElement>
@@ -299,8 +328,10 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
-            onOpenTools={handleOpenTools}
-            isToolsActive={isToolsView}
+            onOpenSkills={handleOpenSkills}
+            onOpenPlugins={handleOpenPlugins}
+            onOpenAutomations={handleOpenAutomations}
+            activeTool={activeTool}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,

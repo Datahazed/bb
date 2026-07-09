@@ -58,7 +58,6 @@ import {
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getSkillsRoutePath,
-  getToolsRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
@@ -235,14 +234,14 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
-  "/tools": { title: "Tools" },
-  "/tools/skills": { title: "Tools" },
-  "/tools/plugins": { title: "Tools" },
-  "/tools/plugins/browse": { title: "Tools" },
-  "/tools/automations": { title: "Tools" },
-  "/tools/automations/browse": { title: "Tools" },
-  "/automations": { title: "Tools" },
-  "/skills": { title: "Tools" },
+  "/tools": { title: "Skills" },
+  "/tools/skills": { title: "Skills" },
+  "/tools/plugins": { title: "Plugins" },
+  "/tools/plugins/browse": { title: "Plugins" },
+  "/tools/automations": { title: "Automations" },
+  "/tools/automations/browse": { title: "Automations" },
+  "/automations": { title: "Automations" },
+  "/skills": { title: "Skills" },
 };
 
 interface AppHeaderProps {
@@ -513,18 +512,21 @@ export function AppLayout({ children }: AppLayoutProps) {
     matchPath(TOOLS_AUTOMATION_BROWSE_ROUTE_PATH, location.pathname),
   );
   const toolsBreadcrumbs = (() => {
-    const toolsCrumb = { label: "Tools", to: getToolsRoutePath() };
+    const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
+    const pluginsCrumb = { label: "Plugins", to: getPluginsRoutePath() };
+    const automationsCrumb = {
+      label: "Automations",
+      to: getAutomationsRoutePath(),
+    };
     if (toolsSkillDetailMatch) {
       return [
-        toolsCrumb,
-        { label: "Skills", to: getSkillsRoutePath() },
+        skillsCrumb,
         { label: toolsSkillDetailMatch.params.skillName ?? "Skill" },
       ];
     }
     if (toolsRegistrySkillDetailMatch) {
       return [
-        toolsCrumb,
-        { label: "Skills", to: getSkillsRoutePath() },
+        skillsCrumb,
         {
           label:
             toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh",
@@ -532,55 +534,40 @@ export function AppLayout({ children }: AppLayoutProps) {
       ];
     }
     if (isToolsPluginBrowse) {
-      return [
-        toolsCrumb,
-        { label: "Plugins", to: getPluginsRoutePath() },
-        { label: "Browse" },
-      ];
+      return [pluginsCrumb, { label: "Browse" }];
     }
     if (toolsPluginDetailMatch) {
       return [
-        toolsCrumb,
-        { label: "Plugins", to: getPluginsRoutePath() },
+        pluginsCrumb,
         { label: toolsPluginDetailMatch.params.pluginId ?? "Plugin" },
       ];
     }
     if (isToolsAutomationBrowse) {
-      return [
-        toolsCrumb,
-        { label: "Automations", to: getAutomationsRoutePath() },
-        { label: "Browse" },
-      ];
+      return [automationsCrumb, { label: "Browse" }];
     }
     if (toolsAutomationDetailMatch) {
       return [
-        toolsCrumb,
-        { label: "Automations", to: getAutomationsRoutePath() },
+        automationsCrumb,
         {
           label: toolsAutomationDetailMatch.params.automationId ?? "Automation",
         },
       ];
     }
     if (location.pathname === "/tools/plugins") {
-      return [toolsCrumb, { label: "Plugins" }];
+      return [{ label: "Plugins" }];
     }
     if (
       location.pathname === "/tools/automations" ||
       location.pathname === "/automations"
     ) {
-      return [
-        toolsCrumb,
-        { label: "Automations", to: getAutomationsRoutePath() },
-      ];
+      return [{ label: "Automations" }];
     }
     if (
       location.pathname === "/tools" ||
       location.pathname === "/tools/skills" ||
       location.pathname === "/skills"
     ) {
-      return location.pathname === "/tools"
-        ? [{ label: "Tools" }]
-        : [toolsCrumb, { label: "Skills" }];
+      return [{ label: "Skills" }];
     }
     return null;
   })();
@@ -644,26 +631,26 @@ export function AppLayout({ children }: AppLayoutProps) {
       return pluginPanel.title;
     }
     if (toolsSkillDetailMatch) {
-      return `${toolsSkillDetailMatch.params.skillName ?? "Skill"} · Skills · Tools`;
+      return `${toolsSkillDetailMatch.params.skillName ?? "Skill"} · Skills`;
     }
     if (toolsRegistrySkillDetailMatch) {
-      return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills · Tools`;
+      return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills`;
     }
     if (isToolsPluginBrowse) {
-      return "Browse plugins · Tools";
+      return "Browse plugins";
     }
     if (toolsPluginDetailMatch) {
-      return `${toolsPluginDetailMatch.params.pluginId ?? "Plugin"} · Plugins · Tools`;
+      return `${toolsPluginDetailMatch.params.pluginId ?? "Plugin"} · Plugins`;
     }
     if (isToolsAutomationBrowse) {
-      return "Browse automations · Tools";
+      return "Browse automations";
     }
     if (toolsAutomationDetailMatch) {
-      return `${toolsAutomationDetailMatch.params.automationId ?? "Automation"} · Automations · Tools`;
+      return `${toolsAutomationDetailMatch.params.automationId ?? "Automation"} · Automations`;
     }
     if (toolsBreadcrumbs) {
       const currentTool = toolsBreadcrumbs[toolsBreadcrumbs.length - 1]?.label;
-      return currentTool ? `${currentTool} · Tools` : "Tools";
+      return currentTool ?? "bb";
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

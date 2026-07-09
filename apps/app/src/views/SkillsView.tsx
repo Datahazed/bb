@@ -20,6 +20,7 @@ import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import {
   ResourceBrowseCard,
   ResourceDetailPage,
+  ResourceListPanel,
   ResourceMeta,
   ResourceOptionMenu,
   ResourceOverflowMenu,
@@ -905,7 +906,7 @@ export function SkillsOverview({
           </EmptyStatePanel>
         )
       ) : (
-        <div className="space-y-0.5">
+        <ResourceListPanel>
           {visibleSkills.map((skill) => (
             <SkillRow
               key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
@@ -913,7 +914,7 @@ export function SkillsOverview({
               onSelect={() => onSelectSkill(skill)}
             />
           ))}
-        </div>
+        </ResourceListPanel>
       )}
     </div>
   );
