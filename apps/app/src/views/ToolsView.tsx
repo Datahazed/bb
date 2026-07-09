@@ -16,7 +16,7 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
-  ResourceOptionMenu,
+  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -207,26 +207,24 @@ const PROVIDER_LABELS: Record<SkillProvider, string> = {
   codex: "Codex",
 };
 
-type ToolProviderFilter = "all" | "bb" | SkillProvider;
+type ToolProviderFilter = "bb" | SkillProvider;
 type ToolSortMode = "provider" | "alpha";
 type ToolSortDirection = "asc" | "desc";
 
 const TOOL_PROVIDER_FILTERS: readonly ToolProviderFilter[] = [
-  "all",
   "bb",
   "claude-code",
   "codex",
 ];
 
 function toolProviderLabel(provider: ToolProviderFilter): string {
-  if (provider === "all") return "All agents";
   if (provider === "bb") return "bb";
   return PROVIDER_LABELS[provider];
 }
 
 function compareProviderFilters(
-  left: Exclude<ToolProviderFilter, "all">,
-  right: Exclude<ToolProviderFilter, "all">,
+  left: ToolProviderFilter,
+  right: ToolProviderFilter,
 ): number {
   return toolProviderLabel(left).localeCompare(toolProviderLabel(right));
 }
@@ -762,8 +760,9 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
-  const [providerFilter, setProviderFilter] =
-    useState<ToolProviderFilter>("all");
+  const [providerFilters, setProviderFilters] = useState<ToolProviderFilter[]>(
+    [],
+  );
   const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
   const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
   const listQuery = usePluginList({ includeExperimentDisabled: true });
@@ -796,15 +795,14 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     return TOOL_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: toolProviderLabel(provider),
-      disabled: provider !== "all" && !providerCounts.has(provider),
+      disabled: !providerCounts.has(provider),
     }));
   }, [providerCounts]);
   useEffect(() => {
-    if (providerFilter === "all") return;
-    if (!providerCounts.has(providerFilter)) {
-      setProviderFilter("all");
-    }
-  }, [providerCounts, providerFilter]);
+    setProviderFilters((current) =>
+      current.filter((provider) => providerCounts.has(provider)),
+    );
+  }, [providerCounts]);
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");
@@ -814,12 +812,16 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const visiblePluginRows = useMemo(() => {
     return pluginRows
       .filter((row) => {
-        if (providerFilter !== "all") {
+        if (providerFilters.length > 0) {
           if (row.kind === "provider") {
-            if (!row.providers.includes(providerFilter as SkillProvider)) {
+            if (
+              !providerFilters.some((provider) =>
+                row.providers.includes(provider as SkillProvider),
+              )
+            ) {
               return false;
             }
-          } else if (providerFilter !== "bb") {
+          } else if (!providerFilters.includes("bb")) {
             return false;
           }
         }
@@ -844,7 +846,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
             : left.name.localeCompare(right.name);
         return applyToolSortDirection(base, sortDirection);
       });
-  }, [normalizedQuery, pluginRows, providerFilter, sortDirection, sortMode]);
+  }, [normalizedQuery, pluginRows, providerFilters, sortDirection, sortMode]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -912,13 +914,13 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         onSearchChange={setQuery}
         controls={
           <>
-            <ResourceOptionMenu
+            <ResourceMultiSelectMenu
               label="Agent"
               icon="Layers"
-              value={providerFilter}
+              selectedValues={providerFilters}
               options={providerOptions}
-              onChange={(value) =>
-                setProviderFilter(value as ToolProviderFilter)
+              onChange={(values) =>
+                setProviderFilters(values as ToolProviderFilter[])
               }
             />
             <ResourceSortMenu
@@ -1004,7 +1006,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
             {overviewHeader}
             <EmptyStatePanel className="py-6">
               {normalizedQuery === ""
-                ? "No plugins match this agent."
+                ? "No plugins match these agents."
                 : `No plugins match "${query}"`}
             </EmptyStatePanel>
           </>

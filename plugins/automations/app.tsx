@@ -42,7 +42,7 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
-  ResourceOptionMenu,
+  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -92,10 +92,7 @@ const AUTOMATION_CREATE_TEMPLATES = [
 ] as const;
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
-type AutomationLocationFilter =
-  | "all"
-  | `project:${string}`
-  | `folder:${string}`;
+type AutomationLocationFilter = `project:${string}` | `folder:${string}`;
 type AutomationSortMode = "location" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
 
@@ -940,8 +937,9 @@ function OverviewView({
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [locationFilter, setLocationFilter] =
-    useState<AutomationLocationFilter>("all");
+  const [locationFilters, setLocationFilters] = useState<
+    AutomationLocationFilter[]
+  >([]);
   const [sortMode, setSortMode] = useState<AutomationSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<AutomationSortDirection>("asc");
@@ -998,9 +996,7 @@ function OverviewView({
   }, [entries]);
   const locationBucketCount = locationCounts.size;
   const locationOptions = useMemo(() => {
-    const options = new Map<AutomationLocationFilter, string>([
-      ["all", "All locations"],
-    ]);
+    const options = new Map<AutomationLocationFilter, string>();
     for (const entry of entries ?? []) {
       options.set(
         automationLocationFilterId(entry),
@@ -1010,11 +1006,10 @@ function OverviewView({
     return [...options].map(([id, label]) => ({ id, label }));
   }, [entries]);
   useEffect(() => {
-    if (locationFilter === "all") return;
-    if (!locationCounts.has(locationFilter)) {
-      setLocationFilter("all");
-    }
-  }, [locationCounts, locationFilter]);
+    setLocationFilters((current) =>
+      current.filter((location) => locationCounts.has(location)),
+    );
+  }, [locationCounts]);
   useEffect(() => {
     if (sortMode === "location" && locationBucketCount <= 1) {
       setSortMode("alpha");
@@ -1026,8 +1021,8 @@ function OverviewView({
     return entries.filter((entry) => {
       const { automation, folder, project } = entry;
       if (
-        locationFilter !== "all" &&
-        automationLocationFilterId(entry) !== locationFilter
+        locationFilters.length > 0 &&
+        !locationFilters.includes(automationLocationFilterId(entry))
       ) {
         return false;
       }
@@ -1040,7 +1035,7 @@ function OverviewView({
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
     });
-  }, [entries, locationFilter, normalizedQuery]);
+  }, [entries, locationFilters, normalizedQuery]);
   const visibleEntries = useMemo(() => {
     return [...filteredEntries].sort((left, right) => {
       const base =
@@ -1081,7 +1076,7 @@ function OverviewView({
     body = (
       <EmptyStatePanel className="py-6">
         {normalizedQuery === ""
-          ? "No automations match this location."
+          ? "No automations match these locations."
           : `No automations match "${query}"`}
       </EmptyStatePanel>
     );
@@ -1118,13 +1113,13 @@ function OverviewView({
         onSearchChange={setQuery}
         controls={
           <>
-            <ResourceOptionMenu
+            <ResourceMultiSelectMenu
               label="Location"
               icon="Folder"
-              value={locationFilter}
+              selectedValues={locationFilters}
               options={locationOptions}
-              onChange={(value) =>
-                setLocationFilter(value as AutomationLocationFilter)
+              onChange={(values) =>
+                setLocationFilters(values as AutomationLocationFilter[])
               }
             />
             <ResourceSortMenu

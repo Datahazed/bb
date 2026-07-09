@@ -17,7 +17,7 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
-  ResourceOptionMenu,
+  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -85,7 +85,7 @@ const AUTOMATION_CREATE_TEMPLATES = [
 ] as const;
 
 type ProviderId = "bb" | "codex" | "claude-code";
-type ProviderFilterId = ProviderId | "all";
+type ProviderFilterId = ProviderId;
 
 interface ResourceListRowFixture {
   id: string;
@@ -144,14 +144,12 @@ const EXISTING_ENVIRONMENT_DISPLAY: StoryEnvironmentDisplay = {
 };
 
 const PROVIDER_FILTERS: readonly ProviderFilterId[] = [
-  "all",
   "bb",
   "codex",
   "claude-code",
 ];
 
 const PROVIDER_FILTER_LABELS: Record<ProviderFilterId, string> = {
-  all: "All agents",
   bb: "bb",
   codex: "Codex",
   "claude-code": "Claude Code",
@@ -438,33 +436,35 @@ function providerBucketsForSections(
 }
 
 function StoryListControls({
-  provider,
+  providerFilters,
   sort,
   direction,
   availableProviders,
-  onProviderChange,
+  onProviderFiltersChange,
   onSortChange,
 }: {
-  provider: ProviderFilterId;
+  providerFilters: readonly ProviderFilterId[];
   sort: "provider" | "alpha";
   direction: "asc" | "desc";
   availableProviders: ReadonlySet<ProviderId>;
-  onProviderChange: (provider: ProviderFilterId) => void;
+  onProviderFiltersChange: (providers: ProviderFilterId[]) => void;
   onSortChange: (sort: "provider" | "alpha") => void;
 }) {
   const providerSortDisabled = availableProviders.size <= 1;
   return (
     <>
-      <ResourceOptionMenu
+      <ResourceMultiSelectMenu
         label="Agent"
         icon="Layers"
-        value={provider}
+        selectedValues={providerFilters}
         options={PROVIDER_FILTERS.map((id) => ({
           id,
           label: PROVIDER_FILTER_LABELS[id],
-          disabled: id !== "all" && !availableProviders.has(id),
+          disabled: !availableProviders.has(id),
         }))}
-        onChange={(value) => onProviderChange(value as ProviderFilterId)}
+        onChange={(values) =>
+          onProviderFiltersChange(values as ProviderFilterId[])
+        }
       />
       <ResourceSortMenu
         value={sort}
@@ -511,14 +511,14 @@ function DetailSection({
 function ResourceRowsList({
   sections,
   query,
-  providerFilter,
+  providerFilters,
   sortMode,
   sortDirection,
   fallbackIcon,
 }: {
   sections: readonly ResourceSectionFixture[];
   query: string;
-  providerFilter: ProviderFilterId;
+  providerFilters: readonly ProviderFilterId[];
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
   fallbackIcon: IconName;
@@ -532,7 +532,10 @@ function ResourceRowsList({
       })),
     )
     .filter((row) => {
-      if (providerFilter !== "all" && row.provider !== providerFilter) {
+      if (
+        providerFilters.length > 0 &&
+        !providerFilters.includes(row.provider ?? "bb")
+      ) {
         return false;
       }
       return [row.provider, row.title, row.description]
@@ -800,12 +803,12 @@ function AutomationBrowseCards() {
 
 function AutomationsList({
   query,
-  location,
+  locationFilters,
   sort,
   direction,
 }: {
   query: string;
-  location: string;
+  locationFilters: readonly string[];
   sort: "location" | "alpha";
   direction: "asc" | "desc";
 }) {
@@ -823,10 +826,9 @@ function AutomationsList({
       .includes(normalizedQuery),
   )
     .filter((row) => {
-      if (location === "all") return true;
-      return (
-        `${row.project?.toLowerCase()}/${row.folder?.toLowerCase()}` ===
-        location
+      if (locationFilters.length === 0) return true;
+      return locationFilters.includes(
+        `${row.project?.toLowerCase()}/${row.folder?.toLowerCase()}`,
       );
     })
     .sort((left, right) => {
@@ -882,7 +884,9 @@ function AutomationsList({
 
 function SkillsOverviewSurface() {
   const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderFilterId>("all");
+  const [providerFilters, setProviderFilters] = useState<ProviderFilterId[]>(
+    [],
+  );
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [showAllBrowse, setShowAllBrowse] = useState(false);
@@ -958,11 +962,11 @@ function SkillsOverviewSurface() {
         onSearchChange={setQuery}
         controls={
           <StoryListControls
-            provider={provider}
+            providerFilters={providerFilters}
             sort={sort}
             direction={direction}
             availableProviders={providerBuckets}
-            onProviderChange={setProvider}
+            onProviderFiltersChange={setProviderFilters}
             onSortChange={updateSort}
           />
         }
@@ -977,7 +981,7 @@ function SkillsOverviewSurface() {
       <ResourceRowsList
         sections={skillSections}
         query={query}
-        providerFilter={provider}
+        providerFilters={providerFilters}
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="Zap"
@@ -988,7 +992,9 @@ function SkillsOverviewSurface() {
 
 function PluginsOverviewSurface() {
   const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState<ProviderFilterId>("all");
+  const [providerFilters, setProviderFilters] = useState<ProviderFilterId[]>(
+    [],
+  );
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const providerBuckets = providerBucketsForSections(PLUGIN_SECTIONS);
@@ -1015,11 +1021,11 @@ function PluginsOverviewSurface() {
         onSearchChange={setQuery}
         controls={
           <StoryListControls
-            provider={provider}
+            providerFilters={providerFilters}
             sort={sort}
             direction={direction}
             availableProviders={providerBuckets}
-            onProviderChange={setProvider}
+            onProviderFiltersChange={setProviderFilters}
             onSortChange={updateSort}
           />
         }
@@ -1034,7 +1040,7 @@ function PluginsOverviewSurface() {
       <ResourceRowsList
         sections={PLUGIN_SECTIONS}
         query={query}
-        providerFilter={provider}
+        providerFilters={providerFilters}
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="ElectricPlugs"
@@ -1045,7 +1051,7 @@ function PluginsOverviewSurface() {
 
 function AutomationsOverviewSurface() {
   const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("all");
+  const [locationFilters, setLocationFilters] = useState<string[]>([]);
   const [sort, setSort] = useState<"location" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const locationBucketCount = new Set(
@@ -1074,17 +1080,16 @@ function AutomationsOverviewSurface() {
         onSearchChange={setQuery}
         controls={
           <>
-            <ResourceOptionMenu
+            <ResourceMultiSelectMenu
               label="Location"
               icon="Folder"
-              value={location}
+              selectedValues={locationFilters}
               options={[
-                { id: "all", label: "All locations" },
                 { id: "bb/reviews", label: "bb / Reviews" },
                 { id: "bb/maintenance", label: "bb / Maintenance" },
                 { id: "moss/ci", label: "moss / CI" },
               ]}
-              onChange={setLocation}
+              onChange={setLocationFilters}
             />
             <ResourceSortMenu
               value={sort}
@@ -1111,7 +1116,7 @@ function AutomationsOverviewSurface() {
       />
       <AutomationsList
         query={query}
-        location={location}
+        locationFilters={locationFilters}
         sort={sort}
         direction={direction}
       />

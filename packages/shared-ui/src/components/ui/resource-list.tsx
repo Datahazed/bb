@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "./button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -138,6 +139,40 @@ export interface ResourceOption {
   disabled?: boolean;
 }
 
+function ResourceMenuTrigger({
+  label,
+  icon,
+  active = false,
+}: {
+  label: string;
+  icon: IconName;
+  active?: boolean;
+}) {
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-8 shrink-0 p-0 text-muted-foreground",
+                active && "bg-state-active text-foreground",
+              )}
+              aria-label={label}
+            >
+              <Icon name={icon} className="size-4" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function ResourceOptionMenu({
   label,
   icon,
@@ -153,24 +188,7 @@ export function ResourceOptionMenu({
 }) {
   return (
     <DropdownMenu>
-      <TooltipProvider delayDuration={250}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0 p-0 text-muted-foreground"
-                aria-label={label}
-              >
-                <Icon name={icon} className="size-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{label}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <ResourceMenuTrigger label={label} icon={icon} />
       <DropdownMenuContent align="end" mobileTitle={label} className="min-w-40">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
           {label}
@@ -204,6 +222,69 @@ export function ResourceOptionMenu({
   );
 }
 
+export function ResourceMultiSelectMenu({
+  label,
+  icon,
+  selectedValues,
+  options,
+  onChange,
+}: {
+  label: string;
+  icon: IconName;
+  selectedValues: readonly string[];
+  options: readonly ResourceOption[];
+  onChange: (values: string[]) => void;
+}) {
+  const selected = new Set(selectedValues);
+  const activeSelectedCount = options.filter(
+    (option) => !option.disabled && selected.has(option.id),
+  ).length;
+  const triggerLabel =
+    activeSelectedCount === 0
+      ? label
+      : `${label}: ${activeSelectedCount} selected`;
+
+  function updateValue(option: ResourceOption, checked: boolean) {
+    if (option.disabled) return;
+    const next = new Set(selectedValues);
+    if (checked) {
+      next.add(option.id);
+    } else {
+      next.delete(option.id);
+    }
+    const enabledOptionIds = new Set(
+      options.filter((candidate) => !candidate.disabled).map(({ id }) => id),
+    );
+    onChange([...next].filter((id) => enabledOptionIds.has(id)));
+  }
+
+  return (
+    <DropdownMenu>
+      <ResourceMenuTrigger
+        label={triggerLabel}
+        icon={icon}
+        active={activeSelectedCount > 0}
+      />
+      <DropdownMenuContent align="end" mobileTitle={label} className="min-w-44">
+        <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+          {triggerLabel}
+        </DropdownMenuLabel>
+        {options.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option.id}
+            checked={selected.has(option.id)}
+            disabled={option.disabled}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(checked) => updateValue(option, checked === true)}
+          >
+            <span className="truncate text-xs">{option.label}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ResourceSortMenu({
   value,
   direction,
@@ -217,24 +298,7 @@ export function ResourceSortMenu({
 }) {
   return (
     <DropdownMenu>
-      <TooltipProvider delayDuration={250}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0 p-0 text-muted-foreground"
-                aria-label="Sort"
-              >
-                <Icon name="ArrowUpDown" className="size-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Sort</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <ResourceMenuTrigger label="Sort" icon="ArrowUpDown" />
       <DropdownMenuContent align="end" mobileTitle="Sort" className="min-w-40">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
           Sort by

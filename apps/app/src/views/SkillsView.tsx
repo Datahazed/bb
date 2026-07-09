@@ -23,7 +23,7 @@ import {
   ResourceDetailPage,
   ResourceListPanel,
   ResourceMeta,
-  ResourceOptionMenu,
+  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -255,13 +255,12 @@ function providerLabel(providerId: SkillProvider | null): string {
   return getProviderIconInfo(providerId)?.ariaLabel ?? providerId;
 }
 
-type ResourceProviderFilter = "all" | "bb" | SkillProvider;
+type ResourceProviderFilter = "bb" | SkillProvider;
 type ResourceSortMode = "provider" | "alpha";
 type RegistrySkillSortMode = "installs" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
 const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
-  "all",
   "bb",
   "claude-code",
   "codex",
@@ -272,7 +271,6 @@ function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
 }
 
 function providerFilterLabel(provider: ResourceProviderFilter): string {
-  if (provider === "all") return "All agents";
   if (provider === "bb") return "bb";
   return providerLabel(provider);
 }
@@ -874,8 +872,9 @@ export function SkillsOverview({
   onRetry,
   onRetryRegistry,
 }: SkillsOverviewProps) {
-  const [providerFilter, setProviderFilter] =
-    useState<ResourceProviderFilter>("all");
+  const [providerFilters, setProviderFilters] = useState<
+    ResourceProviderFilter[]
+  >([]);
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -893,15 +892,14 @@ export function SkillsOverview({
     return RESOURCE_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider),
-      disabled: provider !== "all" && !providerCounts.has(provider),
+      disabled: !providerCounts.has(provider),
     }));
   }, [providerCounts]);
   useEffect(() => {
-    if (providerFilter === "all") return;
-    if (!providerCounts.has(providerFilter)) {
-      setProviderFilter("all");
-    }
-  }, [providerCounts, providerFilter]);
+    setProviderFilters((current) =>
+      current.filter((provider) => providerCounts.has(provider)),
+    );
+  }, [providerCounts]);
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");
@@ -911,8 +909,8 @@ export function SkillsOverview({
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       if (
-        providerFilter !== "all" &&
-        skillProviderFilterId(skill) !== providerFilter
+        providerFilters.length > 0 &&
+        !providerFilters.includes(skillProviderFilterId(skill))
       ) {
         return false;
       }
@@ -937,7 +935,7 @@ export function SkillsOverview({
           : left.name.localeCompare(right.name);
       return applySortDirection(base, sortDirection);
     });
-  }, [normalizedQuery, providerFilter, skills, sortDirection, sortMode]);
+  }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -978,13 +976,13 @@ export function SkillsOverview({
         onSearchChange={onQueryChange}
         controls={
           <>
-            <ResourceOptionMenu
+            <ResourceMultiSelectMenu
               label="Agent"
               icon="Layers"
-              value={providerFilter}
+              selectedValues={providerFilters}
               options={providerOptions}
-              onChange={(value) =>
-                setProviderFilter(value as ResourceProviderFilter)
+              onChange={(values) =>
+                setProviderFilters(values as ResourceProviderFilter[])
               }
             />
             <ResourceSortMenu
@@ -1044,10 +1042,10 @@ export function SkillsOverview({
           ))}
         </div>
       ) : visibleSkills.length === 0 ? (
-        normalizedQuery === "" && providerFilter === "all" ? null : (
+        normalizedQuery === "" && providerFilters.length === 0 ? null : (
           <EmptyStatePanel className="py-6">
             {normalizedQuery === ""
-              ? "No skills match this agent."
+              ? "No skills match these agents."
               : `No skills match "${query}"`}
           </EmptyStatePanel>
         )
