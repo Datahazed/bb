@@ -324,10 +324,8 @@ export function ResourceSortMenu({
               key={option.id}
               disabled={option.disabled}
               onSelect={(event) => {
-                if (option.disabled) {
-                  event.preventDefault();
-                  return;
-                }
+                event.preventDefault();
+                if (option.disabled) return;
                 onChange(option.id);
               }}
               className="flex items-center justify-between gap-3"
