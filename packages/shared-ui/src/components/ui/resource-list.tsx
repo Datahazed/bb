@@ -792,24 +792,32 @@ export function ResourceDetailPage({
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       {back}
-      <div className="space-y-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex size-4 shrink-0 items-center justify-center">
-            {leading}
-          </span>
-          <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
-            {title}
-          </h1>
-          {status}
-          {headerActions ? (
-            <span className="flex shrink-0 items-center gap-0.5">
-              {headerActions}
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              {leading}
             </span>
+            <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
+              {title}
+            </h1>
+          </div>
+          {meta ? (
+            <p className="text-xs text-muted-foreground">{meta}</p>
+          ) : null}
+          {description ? (
+            <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {meta ? <p className="text-xs text-muted-foreground">{meta}</p> : null}
-        {description ? (
-          <p className="text-xs text-muted-foreground">{description}</p>
+        {status || headerActions ? (
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+            {status}
+            {headerActions ? (
+              <span className="flex shrink-0 items-center gap-0.5">
+                {headerActions}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {actions ? (

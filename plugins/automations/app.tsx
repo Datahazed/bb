@@ -53,7 +53,6 @@ import {
   ResourceStatus,
   ResourceTabDescription,
   ResourceToolbar,
-  type ResourceStatusTone,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -510,10 +509,45 @@ function automationIconName(automation: AutomationResponse): IconName {
     : "Calendar";
 }
 
-function automationStatus(automation: AutomationResponse): {
-  label: string;
-  tone: ResourceStatusTone;
-} {
+function AutomationRowLeading({
+  automation,
+}: {
+  automation: AutomationResponse;
+}) {
+  if (automation.lastRunStatus === "failed") {
+    return (
+      <Icon
+        name="CircleX"
+        className="size-4 shrink-0 text-destructive"
+        aria-label="Failed"
+      />
+    );
+  }
+  if (automation.lastRunStatus === "running") {
+    return (
+      <Icon
+        name="Spinner"
+        className="size-4 shrink-0 animate-spin text-muted-foreground"
+        aria-label="Running"
+      />
+    );
+  }
+  return (
+    <Icon
+      name={automationIconName(automation)}
+      className="size-4 shrink-0 text-muted-foreground"
+      aria-hidden
+    />
+  );
+}
+
+function automationDetailStatus(automation: AutomationResponse): ReactNode {
+  if (automation.lastRunStatus === "failed") {
+    return <ResourceStatus tone="error">Failed</ResourceStatus>;
+  }
+  if (automation.lastRunStatus === "running") {
+    return <ResourceStatus tone="muted">Running</ResourceStatus>;
+  }
   if (
     isCompletedOneShotAutomation({
       enabled: automation.enabled,
@@ -521,11 +555,9 @@ function automationStatus(automation: AutomationResponse): {
       runCount: automation.runCount,
     })
   ) {
-    return { label: "Completed", tone: "muted" };
+    return <ResourceStatus tone="muted">Completed</ResourceStatus>;
   }
-  return automation.enabled
-    ? { label: "Active", tone: "success" }
-    : { label: "Paused", tone: "muted" };
+  return null;
 }
 
 function automationScheduleLabel(automation: AutomationResponse): string {
@@ -662,25 +694,15 @@ function OverviewRow({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
-  const status = automationStatus(automation);
   const description = `${formatAutomationTrigger(
     automation.trigger,
   )} · ${automationLocationLabel(entry)}`;
 
   return (
     <ResourceRow
-      leading={
-        <Icon
-          name={automationIconName(automation)}
-          className="size-4 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      }
+      leading={<AutomationRowLeading automation={automation} />}
       title={automation.name}
       description={description}
-      status={
-        <ResourceStatus tone={status.tone}>{status.label}</ResourceStatus>
-      }
       muted={completedOneShot}
       onOpen={() => onNavigate(route)}
       actions={
@@ -809,20 +831,13 @@ function AutomationOverviewPreview() {
           trigger: automation.trigger,
           runCount: automation.runCount,
         });
-        const status = automationStatus(automation);
         const environmentDisplay = automationEnvironmentDisplay(
           automation.execution,
         );
         return (
           <ResourceRow
             key={automation.id}
-            leading={
-              <Icon
-                name={automationIconName(automation)}
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-            }
+            leading={<AutomationRowLeading automation={automation} />}
             title={automation.name}
             description={
               <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -840,9 +855,6 @@ function AutomationOverviewPreview() {
                   {automationLocationLabel(entry)}
                 </span>
               </span>
-            }
-            status={
-              <ResourceStatus tone={status.tone}>{status.label}</ResourceStatus>
             }
             muted={completedOneShot}
             onOpen={() =>
@@ -1020,12 +1032,10 @@ function OverviewView({
         return false;
       }
       if (normalizedQuery.length === 0) return true;
-      const status = automationStatus(automation).label;
       return [
         automation.name,
         project.name,
         folder?.name,
-        status,
         automationScheduleLabel(automation),
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
@@ -1298,7 +1308,7 @@ function DetailView({
     runCount: automation.runCount,
   });
   const environmentDisplay = automationEnvironmentDisplay(automation.execution);
-  const status = automationStatus(automation);
+  const status = automationDetailStatus(automation);
 
   return (
     <ResourceDetailPage
@@ -1310,12 +1320,11 @@ function DetailView({
         />
       }
       title={automation.name}
-      status={
-        <ResourceStatus tone={status.tone}>{status.label}</ResourceStatus>
-      }
+      status={status}
       headerActions={
         <>
           <Switch
+            size="sm"
             checked={automation.enabled}
             disabled={actionPending || completedOneShot}
             aria-label={

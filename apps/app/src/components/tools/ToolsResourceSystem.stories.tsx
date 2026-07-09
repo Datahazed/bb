@@ -85,6 +85,7 @@ interface ResourceListRowFixture {
   environment?: StoryEnvironmentDisplay;
   provider?: ProviderId;
   icon?: IconName;
+  rowSignal?: "failed" | "running";
   state?: ReactNode;
   project?: string;
   folder?: string;
@@ -247,7 +248,6 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     description: "10AM Mon · America/Los_Angeles",
     environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "Calendar",
-    state: <ResourceState tone="success">Active</ResourceState>,
     project: "bb",
     folder: "Reviews",
     selected: true,
@@ -258,9 +258,18 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     description: "4PM Fri · America/Los_Angeles",
     environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "ComputerTerminal01",
-    state: <ResourceState tone="muted">Paused</ResourceState>,
     project: "bb",
     folder: "Maintenance",
+  },
+  {
+    id: "release-readiness",
+    title: "Release readiness sweep",
+    description: "Every hour",
+    environment: LOCAL_ENVIRONMENT_DISPLAY,
+    icon: "Calendar",
+    rowSignal: "running",
+    project: "bb",
+    folder: "Releases",
   },
   {
     id: "ci-failure-watcher",
@@ -268,7 +277,7 @@ const AUTOMATION_ROWS: readonly ResourceListRowFixture[] = [
     description: "Every 15 min",
     environment: LOCAL_ENVIRONMENT_DISPLAY,
     icon: "Calendar",
-    state: <ResourceState tone="warning">Failed</ResourceState>,
+    rowSignal: "failed",
     project: "moss",
     folder: "CI",
   },
@@ -328,6 +337,24 @@ function ResourceLeading({
   row: ResourceListRowFixture;
   fallbackIcon: IconName;
 }) {
+  if (row.rowSignal === "failed") {
+    return (
+      <Icon
+        name="CircleX"
+        className="size-4 text-destructive"
+        aria-label="Failed"
+      />
+    );
+  }
+  if (row.rowSignal === "running") {
+    return (
+      <Icon
+        name="Spinner"
+        className="size-4 animate-spin text-muted-foreground"
+        aria-label="Running"
+      />
+    );
+  }
   if (row.provider) {
     return <ProviderMark provider={row.provider} />;
   }
@@ -940,10 +967,10 @@ function AutomationDetail() {
         />
       }
       title="Stale worktree cleanup reminder"
-      status={<ResourceState tone="muted">Paused</ResourceState>}
       headerActions={
         <>
           <Switch
+            size="sm"
             checked={false}
             aria-label="Resume automation"
             onCheckedChange={NOOP}
@@ -1007,7 +1034,7 @@ function SkillDetail() {
     <ResourceDetailPage
       leading={<Icon name="Zap" className="size-4 text-muted-foreground" />}
       title="bb-cli"
-      status={<ResourceState tone="success">bb built-in</ResourceState>}
+      status={<ResourceState tone="muted">Built-in</ResourceState>}
       headerActions={
         <ResourceOverflowMenu
           label="Skill actions"
@@ -1062,21 +1089,17 @@ function PluginDetail() {
           {enabled ? "Running" : "Disabled"}
         </ResourceState>
       }
-      meta={
-        <ResourceMeta
-          items={["bb plugin", "v0.1.0", enabled ? "Running" : "Disabled"]}
-        />
-      }
+      meta={<ResourceMeta items={["bb plugin", "v0.1.0"]} />}
       description="Schedule agent or script runs."
-      actions={
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      headerActions={
+        <>
           <Switch
+            size="sm"
             checked={enabled}
             aria-label={enabled ? "Disable automations" : "Enable automations"}
             onCheckedChange={setEnabled}
           />
-          {enabled ? "Enabled" : "Disabled"}
-        </label>
+        </>
       }
     >
       <DetailSection label="Details">

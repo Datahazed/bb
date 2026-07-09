@@ -1,10 +1,4 @@
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
@@ -544,26 +538,18 @@ function PluginDetail({
           {plugin.enabled ? plugin.status : "disabled"}
         </ResourceStatus>
       }
-      meta={
-        <ResourceMeta
-          items={[
-            "bb plugin",
-            `v${plugin.version}`,
-            plugin.enabled ? plugin.status : "disabled",
-          ]}
-        />
-      }
+      meta={<ResourceMeta items={["bb plugin", `v${plugin.version}`]} />}
       description={plugin.description ?? plugin.statusDetail}
-      actions={
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      headerActions={
+        <>
           <Switch
+            size="sm"
             checked={plugin.enabled}
             disabled={pending}
             aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
             onCheckedChange={() => onToggle(plugin)}
           />
-          {plugin.enabled ? "Enabled" : "Disabled"}
-        </label>
+        </>
       }
     >
       <section className="space-y-2">

@@ -111,7 +111,7 @@ const REGISTRY_PROVIDERS = [
 }[];
 
 const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
-  "bb-builtin": "bb · built-in",
+  "bb-builtin": "Built-in",
   "bb-user": "bb · user",
   "bb-project": "bb · project",
   "claude-user": "Claude · user",
@@ -1218,6 +1218,12 @@ export function SkillDetailDialogView({
 
   if (skill === null) return null;
   const providerMeta = skill.provider ? providerLabel(skill.provider) : "bb";
+  const detailStatusLabel =
+    skill.scope === "bb-builtin"
+      ? "Built-in"
+      : canManage
+        ? "Editable"
+        : "Read-only";
   const headerActions =
     !editing && !confirmingDelete && (canManage || canOpenInEditor) ? (
       <ResourceOverflowMenu
@@ -1296,7 +1302,7 @@ export function SkillDetailDialogView({
             />
           ) : null}
           <ResourceStatus tone={canManage ? "success" : "muted"}>
-            {canManage ? "Editable" : "Read-only"}
+            {detailStatusLabel}
           </ResourceStatus>
         </span>
       }
