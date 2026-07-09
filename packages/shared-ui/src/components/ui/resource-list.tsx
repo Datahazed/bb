@@ -829,7 +829,7 @@ export function ResourceDetailPage({
             </h1>
           </div>
           {meta ? (
-            <p className="text-xs text-muted-foreground">{meta}</p>
+            <div className="text-xs text-muted-foreground">{meta}</div>
           ) : null}
           {description ? (
             <p className="text-xs text-muted-foreground">{description}</p>

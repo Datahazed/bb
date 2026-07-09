@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -32,6 +32,7 @@ import {
 import { Switch } from "@bb/shared-ui/switch";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
+import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 
 export default {
   title: "Tools/Resource System",
@@ -153,7 +154,8 @@ const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
       {
         id: "bb-cli",
         title: "bb-cli",
-        description: "Inspect and orchestrate bb from the CLI.",
+        description:
+          "Inspect and manage bb projects, threads, and automations.",
       },
       {
         id: "skill-creator",
@@ -1182,13 +1184,11 @@ interface SkillDetailFixture {
   id: string;
   title: string;
   provider: ProviderId;
-  scope: string;
   status: string;
   statusTone: "muted" | "success";
-  description: string;
   path: string;
-  markdownDescription: string;
-  canManage: boolean;
+  markdown: string;
+  includedFiles?: readonly string[];
 }
 
 const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
@@ -1196,53 +1196,165 @@ const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
     id: "bb-builtin",
     title: "bb-cli",
     provider: "bb",
-    scope: "Built-in",
     status: "Built-in",
     statusTone: "muted",
-    description: "Inspect and orchestrate bb from the CLI.",
     path: "~/.bb/runtime/global-skills/bb-cli/SKILL.md",
-    markdownDescription:
-      "Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, projects, providers, and environments.",
-    canManage: false,
+    markdown: [
+      "---",
+      "name: bb-cli",
+      "description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, projects, providers, and environments.",
+      "---",
+      "",
+      "# bb CLI",
+      "",
+      "Use this when a task needs authoritative bb context from the local CLI.",
+      "",
+      "## Workflow",
+      "",
+      "1. Start with `bb status --json` to identify the current project, thread, and environment.",
+      "2. Use `bb guide` or `bb guide <chapter>` for command-specific details.",
+      "3. Prefer read-only inspection commands before mutating projects, threads, or automations.",
+    ].join("\n"),
   },
   {
     id: "codex-user",
     title: "openai-docs",
     provider: "codex",
-    scope: "Codex",
     status: "Read-only",
     statusTone: "muted",
-    description: "Use current official OpenAI documentation.",
     path: "~/.codex/skills/.system/openai-docs/SKILL.md",
-    markdownDescription:
-      "Use when the user asks how to build with OpenAI products or APIs, or needs up-to-date official documentation with citations.",
-    canManage: false,
+    markdown: [
+      "---",
+      "name: openai-docs",
+      "description: Use official OpenAI documentation when answering product or API questions.",
+      "---",
+      "",
+      "# OpenAI Docs",
+      "",
+      "Use this skill when the user asks how to build with OpenAI products, needs current model guidance, or asks for citations from official documentation.",
+      "",
+      "## Rules",
+      "",
+      "- Prefer official OpenAI documentation sources.",
+      "- Cite the source used in the final answer.",
+      "- Verify current API names and model availability before answering.",
+    ].join("\n"),
   },
   {
-    id: "claude-project",
-    title: "frontend-design",
-    provider: "claude-code",
-    scope: "Claude · project",
+    id: "codex-user-multifile",
+    title: "video-analysis",
+    provider: "codex",
     status: "Editable",
     statusTone: "success",
-    description: "Review frontend implementation against product intent.",
-    path: ".claude/skills/frontend-design/SKILL.md",
-    markdownDescription:
-      "Use when implementing or reviewing frontend UI against a supplied design, screenshot, or product direction.",
-    canManage: true,
+    path: "~/.codex/skills/video-analysis/SKILL.md",
+    markdown: [
+      "---",
+      "name: video-analysis",
+      "description: Analyze videos, screen recordings, and UI recordings frame-by-frame and audio-track for bug triage, behavior review, and A/V inspection.",
+      "---",
+      "",
+      "# Video Analysis",
+      "",
+      "Analyze videos and screen recordings, both visual frames and audio tracks, to produce structured reports with timestamped observations, reproduction steps, and likely code or product areas.",
+      "",
+      "## Inputs",
+      "",
+      "| Input | Required | Notes |",
+      "| --- | --- | --- |",
+      "| Video path or artifact | Yes | Local path, private URL, or attached file |",
+      "| Expected behavior | Yes | What should have happened |",
+      "| Actual behavior | Yes | What the user observed |",
+      "| Known timestamp | Optional | Skip ahead when provided |",
+      "",
+      "## Analysis Workflow",
+      "",
+      "Run the bundled extraction script to get video metadata and sample frames:",
+      "",
+      "```bash",
+      "python3 /path/to/video-analysis/scripts/video_triage.py \\",
+      "  <video-path> <output-dir> [--timestamps 42,67,120] [--interval 5]",
+      "```",
+    ].join("\n"),
+    includedFiles: [
+      "SKILL.md",
+      "agents/openai.yaml",
+      "references/report-template.md",
+      "scripts/video_triage.py",
+    ],
   },
   {
-    id: "codex-plugin",
-    title: "browser:control-in-app-browser",
+    id: "bb-multifile",
+    title: "bb-thread-status-report",
+    provider: "bb",
+    status: "Editable",
+    statusTone: "success",
+    path: "~/.bb/runtime/global-skills/.../skills/bb-thread-status-report/SKILL.md",
+    markdown: [
+      "---",
+      "name: bb-thread-status-report",
+      "description: Give a status report for actively running bb threads.",
+      "---",
+      "",
+      "# BB Thread Status Report",
+      "",
+      "Give the user a concise operational snapshot of all non-idle, non-archived bb threads, focused on what is running, what needs attention, and what appears blocked or errored.",
+      "",
+      "## Workflow",
+      "",
+      "1. Start with `bb status --json` to capture the current project, thread, and environment.",
+      "2. Run the bundled helper:",
+      "",
+      "```bash",
+      "node ~/.bb/skills/bb-thread-status-report/scripts/collect-running-threads.js",
+      "```",
+      "",
+      "3. Inspect only the threads that need more context.",
+      "4. Do not message, stop, archive, wait on, or otherwise disturb threads unless the user explicitly asks.",
+    ].join("\n"),
+    includedFiles: ["SKILL.md", "scripts/collect-running-threads.js"],
+  },
+  {
+    id: "codex-plugin-multifolder",
+    title: "documents",
     provider: "codex",
-    scope: "Plugin",
     status: "Read-only",
     statusTone: "muted",
-    description: "Open, inspect, and test local browser targets.",
-    path: "~/.codex/plugins/cache/openai-bundled/browser/skills/control-in-app-browser/SKILL.md",
-    markdownDescription:
-      "Use to open, navigate, inspect, test, click, type, scroll, screenshot, or verify local targets in the in-app browser.",
-    canManage: false,
+    path: "~/.codex/plugins/cache/openai-primary-runtime/documents/26.630.12135/skills/documents/SKILL.md",
+    markdown: [
+      "---",
+      "name: documents",
+      "description: Create, edit, redline, and comment on `.docx`, Word, and Google Docs-targeted document artifacts inside the container.",
+      "---",
+      "",
+      "# Documents Skill",
+      "",
+      "Use this skill when you need to create or modify `.docx`, Word, or Google Docs-targeted document artifacts and verify them visually.",
+      "",
+      "## Non-negotiable: render -> inspect PNGs -> iterate",
+      "",
+      "Before delivering any DOCX, render it to page images, inspect every page, and iterate until layout is clean.",
+      "",
+      "## Design Preset Contract",
+      "",
+      "For new DOCX creation and major rewrites, choose exactly one design preset and apply its page, margin, type scale, paragraph rhythm, heading, list, table, callout, header, footer, and color tokens consistently.",
+    ].join("\n"),
+    includedFiles: [
+      "SKILL.md",
+      "LICENSE.txt",
+      "manifest.txt",
+      "agents/openai.yaml",
+      "assets/file-document.png",
+      "examples/end_to_end_smoke_test.md",
+      "ooxml/comments.md",
+      "ooxml/tracked_changes.md",
+      "references/design_presets.md",
+      "references/header_templates.md",
+      "render_docx.py",
+      "scripts/a11y_audit.py",
+      "scripts/comments_extract.py",
+      "scripts/docx_ooxml_patch.py",
+      "scripts/google_docs_title_sanitize.py",
+    ],
   },
 ];
 
@@ -1272,8 +1384,82 @@ function SkillExampleSelector({
   );
 }
 
+function StoryPathCopyButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      title={copied ? "Copied path" : "Copy path"}
+      aria-label={`Copy skill path: ${path}`}
+      onClick={handleCopy}
+      className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span className="truncate font-mono">{path}</span>
+      <Icon
+        name={copied ? "Check" : "Copy"}
+        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        aria-hidden
+      />
+    </button>
+  );
+}
+
+function SkillIncludedFiles({ files }: { files: readonly string[] }) {
+  return (
+    <div className="max-h-44 overflow-auto rounded-md border border-border bg-surface-raised p-2 shadow-sm">
+      <div className="grid gap-1">
+        {files.map((file) => (
+          <span
+            key={file}
+            className="min-w-0 rounded-sm bg-surface-recessed px-2 py-1 font-mono text-xs text-muted-foreground"
+          >
+            {file}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
-  const providerLabel = PROVIDER_FILTER_LABELS[fixture.provider];
+  const [editing, setEditing] = useState(false);
+  const [savedMarkdown, setSavedMarkdown] = useState(fixture.markdown);
+  const [draft, setDraft] = useState(fixture.markdown);
+
+  useEffect(() => {
+    setEditing(false);
+    setSavedMarkdown(fixture.markdown);
+    setDraft(fixture.markdown);
+  }, [fixture.id, fixture.markdown]);
+
+  const actions = editing ? (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        onClick={() => {
+          setSavedMarkdown(draft);
+          setEditing(false);
+        }}
+      >
+        Save
+      </Button>
+    </>
+  ) : null;
+
   return (
     <ResourceDetailPage
       leading={<ProviderMark provider={fixture.provider} />}
@@ -1290,8 +1476,7 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
             {
               label: "Edit",
               icon: "Edit",
-              disabled: !fixture.canManage,
-              onSelect: NOOP,
+              onSelect: () => setEditing(true),
             },
             { label: "Open in editor", icon: "ExternalLink", onSelect: NOOP },
             { kind: "separator" },
@@ -1299,36 +1484,42 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
               label: "Delete",
               icon: "Trash2",
               tone: "destructive",
-              disabled: !fixture.canManage,
               onSelect: NOOP,
             },
           ]}
         />
       }
-      meta={<ResourceMeta items={["Skill", providerLabel, fixture.scope]} />}
-      description={fixture.description}
+      meta={<StoryPathCopyButton path={fixture.path} />}
+      actions={actions}
     >
-      <DetailSection label="Details">
-        <ResourcePropertyList>
-          <ResourceProperty label="Kind">Skill</ResourceProperty>
-          <ResourceProperty label="Provider">
-            <span className="inline-flex items-center gap-1.5">
-              <ProviderMark provider={fixture.provider} className="size-3.5" />
-              {providerLabel}
-            </span>
-          </ResourceProperty>
-          <ResourceProperty label="Scope">{fixture.scope}</ResourceProperty>
-          <ResourceProperty label="File">SKILL.md</ResourceProperty>
-        </ResourcePropertyList>
-      </DetailSection>
       <DetailSection label="SKILL.md">
-        <ResourcePropertyList>
-          <ResourceProperty label="Description">
-            {fixture.markdownDescription}
-          </ResourceProperty>
-          <ResourceProperty label="Path">{fixture.path}</ResourceProperty>
-        </ResourcePropertyList>
+        {editing ? (
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label="SKILL.md"
+            className="h-[52dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        ) : (
+          <div className="max-h-[52dvh] overflow-auto rounded-md border border-border">
+            <FilePreview
+              path={fixture.path}
+              headerMode="none"
+              state={{
+                kind: "ready",
+                file: { name: "SKILL.md", contents: savedMarkdown },
+                lineRange: null,
+                showMarkdownModeToggle: false,
+              }}
+            />
+          </div>
+        )}
       </DetailSection>
+      {fixture.includedFiles ? (
+        <DetailSection label="Included files">
+          <SkillIncludedFiles files={fixture.includedFiles} />
+        </DetailSection>
+      ) : null}
     </ResourceDetailPage>
   );
 }

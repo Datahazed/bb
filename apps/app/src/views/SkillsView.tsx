@@ -1153,6 +1153,37 @@ export interface SkillDetailDialogViewProps {
   onOpenInEditor: () => void;
 }
 
+function SkillPathCopyButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      appToast.error("Failed to copy path.");
+    }
+  }, [path]);
+
+  return (
+    <button
+      type="button"
+      title={copied ? "Copied path" : "Copy path"}
+      aria-label={`Copy skill path: ${path}`}
+      onClick={handleCopy}
+      className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span className="truncate font-mono">{path}</span>
+      <Icon
+        name={copied ? "Check" : "Copy"}
+        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        aria-hidden
+      />
+    </button>
+  );
+}
+
 /**
  * Presentational skill detail page: renders the SKILL.md (read) or an inline
  * editor, with Edit / Delete / Open-in-editor affordances. Owns only local UI
@@ -1245,7 +1276,6 @@ export function SkillDetailDialogView({
   ) : null;
 
   if (skill === null) return null;
-  const providerMeta = skill.provider ? providerLabel(skill.provider) : "bb";
   const detailStatusLabel =
     skill.scope === "bb-builtin"
       ? "Built-in"
@@ -1327,28 +1357,9 @@ export function SkillDetailDialogView({
         </ResourceStatus>
       }
       headerActions={headerActions}
-      meta={
-        <ResourceMeta
-          items={["Skill", providerMeta, SCOPE_LABELS[skill.scope]]}
-        />
-      }
-      description={skill.description}
+      meta={<SkillPathCopyButton path={skill.filePath} />}
       actions={actionRow}
     >
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Details
-        </p>
-        <ResourcePropertyList>
-          <ResourceProperty label="Kind">Skill</ResourceProperty>
-          <ResourceProperty label="Provider">{providerMeta}</ResourceProperty>
-          <ResourceProperty label="Scope">
-            {SCOPE_LABELS[skill.scope]}
-          </ResourceProperty>
-          <ResourceProperty label="File">SKILL.md</ResourceProperty>
-        </ResourcePropertyList>
-      </section>
-
       <section className="space-y-2">
         <p className="text-xs font-medium uppercase text-muted-foreground">
           SKILL.md
