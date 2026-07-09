@@ -371,7 +371,7 @@ function registryProviderLabel(providerId: RegistryProvider): string {
 
 function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
   return (
-    <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
+    <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
       <ResourceCardStat icon="Download">
         {formatInstallCount(skill.installs)} installs
       </ResourceCardStat>

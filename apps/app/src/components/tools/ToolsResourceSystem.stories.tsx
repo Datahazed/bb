@@ -521,7 +521,7 @@ function StorySocialProof({
   stars: string;
 }) {
   return (
-    <span className="inline-flex shrink-0 flex-wrap justify-end gap-1 text-[11px] leading-none">
+    <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
       <ResourceCardStat icon="Download">{installs}</ResourceCardStat>
       <ResourceCardStat icon="Star">{stars}</ResourceCardStat>
     </span>

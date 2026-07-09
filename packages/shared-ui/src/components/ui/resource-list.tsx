@@ -78,7 +78,7 @@ export function ResourceCardStat({
   children: ReactNode;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground">
       <Icon name={icon} className="size-3 shrink-0" aria-hidden />
       <span>{children}</span>
     </span>
@@ -719,11 +719,11 @@ export function ResourceBrowseCard({
         }
       }}
     >
-      <span className="flex min-w-0 items-start gap-2">
+      <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-2">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
           {leading}
         </span>
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-foreground">
             {title}
           </span>
@@ -732,26 +732,30 @@ export function ResourceBrowseCard({
               {meta}
             </span>
           ) : null}
-        </span>
-        {state}
-      </span>
-      {description ? (
-        <span className="mt-3 line-clamp-3 text-xs leading-relaxed text-subtle-foreground">
-          {description}
-        </span>
-      ) : null}
-      {tags.length > 0 ? (
-        <span className="mt-3 flex flex-wrap gap-1">
-          {tags.map((tag, index) => (
-            <span
-              key={index}
-              className="rounded-md bg-surface-recessed px-1.5 py-0.5 text-[11px] text-muted-foreground"
-            >
-              {tag}
+          {state ? (
+            <span className="mt-2 flex min-w-0 flex-wrap items-center gap-1">
+              {state}
             </span>
-          ))}
+          ) : null}
         </span>
-      ) : null}
+        {description ? (
+          <span className="col-start-2 line-clamp-3 text-xs leading-relaxed text-subtle-foreground">
+            {description}
+          </span>
+        ) : null}
+        {tags.length > 0 ? (
+          <span className="col-start-2 flex flex-wrap gap-1">
+            {tags.map((tag, index) => (
+              <span
+                key={index}
+                className="rounded-md bg-surface-recessed px-1.5 py-0.5 text-[11px] text-muted-foreground"
+              >
+                {tag}
+              </span>
+            ))}
+          </span>
+        ) : null}
+      </div>
       {action ? (
         <span
           data-row-action
