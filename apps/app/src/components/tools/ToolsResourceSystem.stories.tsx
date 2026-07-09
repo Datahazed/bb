@@ -26,6 +26,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceShelfAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -693,15 +694,9 @@ function RegistryBrowseSource({
       label="Browse"
       attribution={<SkillsShAttributionLink />}
       browseAction={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-          onClick={onSeeAll}
-        >
+        <ResourceShelfAction type="button" onClick={onSeeAll}>
           {showAll ? "Showing all" : "See all"}
-        </Button>
+        </ResourceShelfAction>
       }
     >
       {rows.map((row) => (
@@ -746,15 +741,7 @@ function TemplateBrowseCards({
       label={label}
       leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
       browseAction={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-        >
-          See all
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-        </Button>
+        <ResourceShelfAction type="button">See all</ResourceShelfAction>
       }
     >
       {templates.map((template) => (

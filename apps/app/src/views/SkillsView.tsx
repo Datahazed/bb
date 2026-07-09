@@ -31,6 +31,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceShelfAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -1610,9 +1611,9 @@ export function SkillsLibrary() {
           providerStatus={providerStatus}
           pendingRegistrySkillId={pendingRegistrySkillId}
           registryBrowseAction={
-            <Button asChild variant="ghost" size="sm" className="h-6 px-2">
+            <ResourceShelfAction asChild>
               <Link to={getRegistrySkillsRoutePath()}>See all</Link>
-            </Button>
+            </ResourceShelfAction>
           }
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}

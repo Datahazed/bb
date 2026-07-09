@@ -51,6 +51,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceShelfAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -864,16 +865,9 @@ function AutomationBrowseShelf({
         />
       }
       browseAction={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 px-2"
-          onClick={onBrowseAll}
-        >
+        <ResourceShelfAction type="button" onClick={onBrowseAll}>
           See all
-          <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-        </Button>
+        </ResourceShelfAction>
       }
     >
       {AUTOMATION_CREATE_TEMPLATES.map((template) => (

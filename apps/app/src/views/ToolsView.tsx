@@ -24,6 +24,7 @@ import {
   ResourceListState,
   ResourceMultiSelectMenu,
   ResourceRow,
+  ResourceShelfAction,
   ResourceSortMenu,
   ResourceSourceItem,
   ResourceSourceShelf,
@@ -664,12 +665,9 @@ function PluginBrowseShelf({
         />
       }
       browseAction={
-        <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-2">
-          <Link to={getPluginBrowseRoutePath()}>
-            See all
-            <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-          </Link>
-        </Button>
+        <ResourceShelfAction asChild>
+          <Link to={getPluginBrowseRoutePath()}>See all</Link>
+        </ResourceShelfAction>
       }
     >
       {examples.map((example) => (

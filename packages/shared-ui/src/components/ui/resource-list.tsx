@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "./button";
+import { Button, type ButtonProps } from "./button";
 import { EmptyStatePanel } from "./empty-state";
 import {
   DropdownMenu,
@@ -778,18 +778,16 @@ export function ResourceSourceShelf({
 }) {
   return (
     <section className="w-full max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 text-popover-foreground">
-      <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {leading}
-          <span className="truncate font-medium">{label}</span>
-          {attribution !== undefined &&
-          attribution !== null &&
-          attribution !== false ? (
-            <span className="text-subtle-foreground">{attribution}</span>
-          ) : null}
-        </div>
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {leading}
+        <span className="truncate font-medium">{label}</span>
+        {attribution !== undefined &&
+        attribution !== null &&
+        attribution !== false ? (
+          <span className="truncate text-subtle-foreground">{attribution}</span>
+        ) : null}
         {browseAction ? (
-          <div className="shrink-0 text-xs text-muted-foreground">
+          <div className="ml-1 shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
@@ -800,6 +798,23 @@ export function ResourceSourceShelf({
         </div>
       </div>
     </section>
+  );
+}
+
+export function ResourceShelfAction({
+  className,
+  ...props
+}: Omit<ButtonProps, "size" | "variant">) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-auto shrink-0 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
