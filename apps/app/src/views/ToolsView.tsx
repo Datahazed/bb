@@ -632,7 +632,7 @@ function PluginBrowseCard({
       byline="Starter template"
       description={example.description}
       openLabel={`Use ${example.label} template`}
-      headerAside={
+      headerAction={
         <Button
           type="button"
           variant="outline"

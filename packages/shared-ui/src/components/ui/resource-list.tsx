@@ -842,8 +842,8 @@ export function ResourceBrowseCard({
   title,
   description,
   byline,
-  headerAside,
-  footerAction,
+  headerAction,
+  footerMeta,
   openLabel,
   onOpen,
 }: {
@@ -851,8 +851,8 @@ export function ResourceBrowseCard({
   title: ReactNode;
   description?: ReactNode;
   byline?: ReactNode;
-  headerAside?: ReactNode;
-  footerAction?: ReactNode;
+  headerAction?: ReactNode;
+  footerMeta?: ReactNode;
   openLabel: string;
   onOpen: () => void;
 }) {
@@ -889,7 +889,7 @@ export function ResourceBrowseCard({
             </span>
           ) : null}
         </span>
-        {headerAside ? (
+        {headerAction ? (
           <span
             onClick={(event) => {
               if (targetsResourceAction(event.target)) return;
@@ -900,7 +900,7 @@ export function ResourceBrowseCard({
               hasLeading ? "col-start-3" : "col-start-2",
             )}
           >
-            {headerAside}
+            {headerAction}
           </span>
         ) : null}
         {description ? (
@@ -914,15 +914,9 @@ export function ResourceBrowseCard({
           </span>
         ) : null}
       </div>
-      {footerAction ? (
-        <span
-          onClick={(event) => {
-            if (targetsResourceAction(event.target)) return;
-            onOpen();
-          }}
-          className="pointer-events-auto relative mt-auto flex items-center justify-end pt-3"
-        >
-          {footerAction}
+      {footerMeta ? (
+        <span className="pointer-events-none relative mt-auto flex items-center justify-start pt-3">
+          {footerMeta}
         </span>
       ) : null}
     </div>

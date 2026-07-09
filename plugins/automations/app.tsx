@@ -831,7 +831,7 @@ function AutomationTemplateCard({
       byline="Starter template"
       description={template.description}
       openLabel={`Use ${template.label} template`}
-      headerAside={
+      headerAction={
         <Button
           type="button"
           variant="outline"

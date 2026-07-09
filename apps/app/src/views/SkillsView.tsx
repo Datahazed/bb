@@ -536,10 +536,9 @@ function RegistrySkillSourceItem({
       title={skill.name}
       byline={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
-      headerAside={<RegistrySkillSocialProof skill={skill} />}
       openLabel={`Open ${skill.name}`}
       onOpen={() => onSelect(skill)}
-      footerAction={
+      headerAction={
         <RegistryInstallButton
           skill={skill}
           installedProviders={installedProviders}
@@ -550,6 +549,7 @@ function RegistrySkillSourceItem({
           onInstall={onInstall}
         />
       }
+      footerMeta={<RegistrySkillSocialProof skill={skill} />}
     />
   );
 }

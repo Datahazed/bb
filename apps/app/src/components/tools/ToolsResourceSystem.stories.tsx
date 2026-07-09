@@ -713,15 +713,15 @@ function RegistryBrowseSource({
             byline={`by ${row.source}`}
             description={row.summary}
             openLabel={`Open ${row.title}`}
-            headerAside={
-              <StorySocialProof installs={row.installs} stars={row.stars} />
-            }
             onOpen={NOOP}
-            footerAction={
+            headerAction={
               <StoryInstallComboButton
                 installed={installedSkillIds.has(row.id)}
                 onInstall={(target) => onInstall(row.id, target)}
               />
+            }
+            footerMeta={
+              <StorySocialProof installs={row.installs} stars={row.stars} />
             }
           />
         </ResourceSourceItem>
@@ -765,7 +765,7 @@ function TemplateBrowseCards({
             byline="Starter template"
             description={template.description}
             openLabel={`Use ${template.label} template`}
-            headerAside={
+            headerAction={
               <Button
                 type="button"
                 variant="outline"
