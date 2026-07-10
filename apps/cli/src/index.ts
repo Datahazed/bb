@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
-import { registerHostCommands } from "./commands/host.js";
 import { registerManagerCommands } from "./commands/manager.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
@@ -10,7 +10,6 @@ import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
-import { registerUiCommands } from "./commands/ui.js";
 import {
   createCliRuntimeContext,
   resolveContextSnapshot,
@@ -25,6 +24,10 @@ import {
   runPluginCliCommand,
 } from "./plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "./version.js";
+
+// Hop to the daemon-managed binary when BB_CLI is set (agent shell env). Must
+// run before Commander so flags/help match the intended build.
+maybeReexecViaBbCli();
 
 const program = new Command();
 let cliRuntimeContext: CliRuntimeContext | undefined;
@@ -78,9 +81,7 @@ registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
-registerHostCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
-registerUiCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
 registerGuideCommand(program);
 
@@ -112,10 +113,25 @@ async function tryPluginCommandProxy(): Promise<void> {
     // when the name matches an installed-but-disabled plugin's id.
     const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
     if (disabled !== null) {
-      console.error(
-        `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
-          `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
-      );
+      if (disabled.enabled && disabled.statusDetail?.includes("bb connect")) {
+        console.error(
+          `bb ${candidate} is behind the "bb connect" experiment — ` +
+            "enable it in Settings → Experiments.",
+        );
+      } else if (
+        disabled.enabled &&
+        disabled.statusDetail?.includes("Plugins")
+      ) {
+        console.error(
+          `bb ${candidate} is behind the "Plugins" experiment — ` +
+            "enable it in Settings → Experiments.",
+        );
+      } else {
+        console.error(
+          `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
+            `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
+        );
+      }
       process.exit(1);
     }
     return;

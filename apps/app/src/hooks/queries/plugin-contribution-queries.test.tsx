@@ -2,13 +2,18 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { defaultAppTheme, defaultExperiments } from "@bb/domain";
+import {
+  defaultAppSettings,
+  defaultAppTheme,
+  defaultExperiments,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   runPluginThreadAction,
   usePluginContributions,
+  usePluginMentionSearch,
 } from "./plugin-contribution-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -21,11 +26,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
+    generalSettings: defaultAppSettings,
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",
   };
@@ -73,6 +80,30 @@ describe("usePluginContributions", () => {
       ],
       mentionProviders: [
         { pluginId: "linear", id: "issues", label: "Linear issues" },
+        {
+          pluginId: "github",
+          id: "pulls",
+          label: "GitHub pull requests",
+          triggers: ["@", "#"],
+        },
+        {
+          pluginId: "bad-trigger",
+          id: "issues",
+          label: "Bad trigger",
+          triggers: ["?"],
+        },
+        {
+          pluginId: "duplicate-trigger",
+          id: "issues",
+          label: "Duplicate trigger",
+          triggers: ["#", "#"],
+        },
+        {
+          pluginId: "empty-trigger",
+          id: "issues",
+          label: "Empty trigger",
+          triggers: [],
+        },
         { pluginId: "broken" }, // malformed: dropped at the boundary
       ],
     });
@@ -99,7 +130,18 @@ describe("usePluginContributions", () => {
           },
         ],
         mentionProviders: [
-          { pluginId: "linear", id: "issues", label: "Linear issues" },
+          {
+            pluginId: "linear",
+            id: "issues",
+            label: "Linear issues",
+            triggers: ["@"],
+          },
+          {
+            pluginId: "github",
+            id: "pulls",
+            label: "GitHub pull requests",
+            triggers: ["@", "#"],
+          },
         ],
       });
     });
@@ -139,6 +181,66 @@ describe("usePluginContributions", () => {
         mentionProviders: [],
       });
     });
+  });
+});
+
+describe("usePluginMentionSearch", () => {
+  it("includes the active trigger in the search request", async () => {
+    const fetchMock = mockFetchJsonOnce({
+      ok: true,
+      groups: [
+        {
+          pluginId: "github",
+          providerId: "issue",
+          label: "GitHub issues",
+          items: [
+            {
+              itemId: "issue:owner/repo#42",
+              title: "#42 Fix login bug",
+              subtitle: "owner/repo",
+              icon: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        usePluginMentionSearch(
+          {
+            trigger: "#",
+            query: "42",
+            projectId: "proj_1",
+            threadId: null,
+          },
+          { enabled: true },
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([
+        {
+          pluginId: "github",
+          providerId: "issue",
+          label: "GitHub issues",
+          items: [
+            {
+              itemId: "issue:owner/repo#42",
+              title: "#42 Fix login bug",
+              subtitle: "owner/repo",
+              icon: null,
+            },
+          ],
+        },
+      ]);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/plugins/mentions/search?q=42&trigger=%23&projectId=proj_1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 });
 

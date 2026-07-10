@@ -309,10 +309,10 @@ function SideChatConversation({
 /**
  * Hosts a message-anchored side chat: the child thread's conversation above the
  * shared `FollowUpPromptBox` composer (the same component the main thread uses)
- * with its footer in read-only mode — the side chat inherits the parent's
- * provider/model and is always read-only. The child thread is created by the
- * user's first submit, so opening a side chat is just a draft surface until the
- * user sends. Once a thread exists, each side-chat agent reply carries a
+ * with provider locked to the parent and permission pinned to read-only. The
+ * child thread is created by the user's first submit, so opening a side chat is
+ * just a draft surface until the user sends. Once a thread exists, each
+ * side-chat agent reply carries a
  * per-message "send to main thread" action that posts that reply into the main
  * thread (rendered there as "Message from {side chat}") via the existing
  * cross-thread send transport (`senderThreadId`).
@@ -338,8 +338,9 @@ export function SideChatTabContent({
   const sendThreadMessage = useSendThreadMessage();
   const stopThread = useStopThread();
   const { isLocalDaemonHost } = useHostDaemon();
+  const executionOptionsThreadId = childThreadId ?? sourceThread.id;
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
-    sourceThread.id,
+    executionOptionsThreadId,
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
@@ -349,11 +350,10 @@ export function SideChatTabContent({
     thread: isActive ? childThreadQuery.data : undefined,
   });
   // Build the SAME execution + permission configs the main thread builds (see
-  // ThreadDetailPromptArea), seeded from the parent thread's resolved options
-  // and its environment's provider/model catalog. The side chat renders these
-  // through the identical pickers, just disabled (read-only) — so the model and
-  // permission labels match the main thread exactly. Permission is pinned to
-  // "readonly": a side chat never writes to the workspace.
+  // ThreadDetailPromptArea), seeded from the parent thread while the side chat
+  // is a draft and from the child thread after creation. Provider stays locked
+  // to the parent; permission is pinned to "readonly" because a side chat never
+  // writes to the workspace.
   const defaultExecutionOptions = executionOptionsQuery.data;
   const threadCreationOptions = useThreadCreationOptions({
     scope: "component-local",
@@ -365,6 +365,34 @@ export function SideChatTabContent({
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
     initialPermissionMode: "readonly",
   });
+  const {
+    selectedProviderId,
+    providerOptions,
+    hasMultipleProviders,
+    selectedProviderDisplayName,
+    selectedProviderComposerActions,
+    selectedModel,
+    setSelectedModel,
+    serviceTier,
+    setServiceTier,
+    reasoningLevel,
+    setReasoningLevel,
+    activeModel,
+    modelOptions,
+    moreModelOptions,
+    modelLoadFailed,
+    modelLoadError,
+    reasoningOptions,
+    permissionModeOptions,
+    supportsPermissionModeSelection,
+    supportsServiceTier,
+    serviceTierSupportByProvider,
+    isLoadingModels,
+  } = threadCreationOptions;
+  const selectedExecutionModel = activeModel?.model ?? selectedModel;
+  const selectedExecutionServiceTier = supportsServiceTier
+    ? serviceTier
+    : undefined;
   // `tab.threadId` only flips after async create resolves and panel state
   // propagates. Keep the in-flight create promise here so repeated submit
   // attempts share one side-chat thread.
@@ -389,11 +417,8 @@ export function SideChatTabContent({
   });
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const providerPromptActions = useMemo(
-    () =>
-      buildProviderPromptActionProps(
-        threadCreationOptions.selectedProviderComposerActions ?? [],
-      ),
-    [threadCreationOptions.selectedProviderComposerActions],
+    () => buildProviderPromptActionProps(selectedProviderComposerActions ?? []),
+    [selectedProviderComposerActions],
   );
   const promptActions = providerPromptActions.promptActions;
   const commandSuggestions = useCommandSuggestions({
@@ -469,18 +494,18 @@ export function SideChatTabContent({
     sourceEnvironmentReady;
   const sideChatExecutionRequestFields = useMemo(
     () => ({
-      ...(defaultExecutionOptions
+      ...(selectedExecutionModel.length > 0
         ? {
-            model: defaultExecutionOptions.model,
-            reasoningLevel: defaultExecutionOptions.reasoningLevel,
-            ...(defaultExecutionOptions.serviceTier
-              ? { serviceTier: defaultExecutionOptions.serviceTier }
+            model: selectedExecutionModel,
+            reasoningLevel,
+            ...(selectedExecutionServiceTier
+              ? { serviceTier: selectedExecutionServiceTier }
               : {}),
           }
         : {}),
       permissionMode: SIDE_CHAT_PERMISSION_MODE,
     }),
-    [defaultExecutionOptions],
+    [reasoningLevel, selectedExecutionModel, selectedExecutionServiceTier],
   );
   const childTimeline = useThreadTimelineController({
     enabled: childThreadId !== null,
@@ -557,8 +582,7 @@ export function SideChatTabContent({
       if (createThreadPromiseRef.current !== null) {
         return createThreadPromiseRef.current;
       }
-      const executionOptions = defaultExecutionOptions;
-      if (!canCreateSideChatThread || !executionOptions) {
+      if (!canCreateSideChatThread || selectedExecutionModel.length === 0) {
         return null;
       }
       const request = buildSideChatCreateRequest({
@@ -567,9 +591,9 @@ export function SideChatTabContent({
         sourceThreadId: sourceThread.id,
         sourceEnvironment,
         providerId: sourceThread.providerId,
-        model: executionOptions.model,
-        reasoningLevel: executionOptions.reasoningLevel,
-        serviceTier: executionOptions.serviceTier,
+        model: selectedExecutionModel,
+        reasoningLevel,
+        serviceTier: selectedExecutionServiceTier,
         sourceSeqEnd: tab.sourceSeqEnd ?? undefined,
         title: tab.title,
       });
@@ -591,8 +615,10 @@ export function SideChatTabContent({
     [
       canCreateSideChatThread,
       createThread,
-      defaultExecutionOptions,
       onSetThreadId,
+      reasoningLevel,
+      selectedExecutionModel,
+      selectedExecutionServiceTier,
       sourceEnvironment,
       sourceThread.id,
       sourceThread.projectId,
@@ -1019,6 +1045,7 @@ export function SideChatTabContent({
       queuedMessages.length > 0 ? (
         <QueuedMessagesList
           queuedMessages={queuedMessages}
+          resolveMentionLink={resolveMentionLink}
           sendDisabled={
             childThreadId === null ||
             isSideChatProvisioning ||
@@ -1046,6 +1073,7 @@ export function SideChatTabContent({
       processingQueuedMessage?.id,
       queuedMessageActionPending,
       queuedMessages,
+      resolveMentionLink,
     ],
   );
 
@@ -1111,6 +1139,7 @@ export function SideChatTabContent({
   const typeaheadConfig = useMemo<TypeaheadConfig>(
     () => ({
       mention: {
+        triggers: promptMentions.triggers,
         suggestions: promptMentions.suggestions,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
@@ -1140,35 +1169,15 @@ export function SideChatTabContent({
       promptMentions.isLoading,
       promptMentions.setQuery,
       promptMentions.suggestions,
+      promptMentions.triggers,
       resolveMentionLink,
     ],
   );
 
   // Built the same shape as the main thread's executionConfig (see
-  // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
-  // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
-  // are display-only and their `onChange` is a no-op. The hook supplies the
-  // inherited display values (provider / model / reasoning / permission options).
-  const {
-    selectedProviderId,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderDisplayName,
-    selectedModel,
-    serviceTier,
-    reasoningLevel,
-    activeModel,
-    modelOptions,
-    moreModelOptions,
-    modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
-    supportsServiceTier,
-    serviceTierSupportByProvider,
-    isLoadingModels,
-  } = threadCreationOptions;
-
+  // ThreadDetailPromptArea). Provider remains locked because the child thread
+  // clones the parent's provider session, but model/reasoning/service tier can
+  // be changed before sending a side-chat turn.
   const executionConfig = useMemo<ExecutionControlsProps>(
     () => ({
       provider: {
@@ -1184,25 +1193,26 @@ export function SideChatTabContent({
         moreOptions: moreModelOptions,
         loadError: modelLoadError,
         isLoading: isLoadingModels,
-        loadFailed: modelLoadError !== null,
-        onChange: noop,
+        loadFailed: modelLoadFailed,
+        onChange: setSelectedModel,
       },
       serviceTier: {
         value: serviceTier,
-        onChange: noop,
+        onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
       },
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
-        onChange: noop,
+        onChange: setReasoningLevel,
       },
     }),
     [
       activeModel,
       hasMultipleProviders,
       isLoadingModels,
+      modelLoadFailed,
       modelLoadError,
       modelOptions,
       moreModelOptions,
@@ -1214,6 +1224,9 @@ export function SideChatTabContent({
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
+      setReasoningLevel,
+      setSelectedModel,
+      setServiceTier,
       supportsServiceTier,
     ],
   );
@@ -1284,7 +1297,7 @@ export function SideChatTabContent({
           contextWindowUsage={null}
           execution={executionConfig}
           permission={permissionConfig}
-          readOnly
+          permissionReadOnly
           typeahead={typeaheadConfig}
           promptActions={promptActions}
           zenModeResetKey={childThreadId ?? tab.id}

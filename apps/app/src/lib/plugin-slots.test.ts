@@ -21,9 +21,11 @@ function registrationSet(
 ): PluginRegistrationSet {
   return {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
     ...overrides,
   };

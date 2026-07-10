@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from "react";
 import type {
   PluginComposerAccessoryRegistration,
+  PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginNavPanelRegistration,
+  PluginSettingsSectionRegistration,
+  PluginSidebarFooterActionRegistration,
   PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 
@@ -17,9 +20,12 @@ import type {
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
+  settingsSections: readonly PluginSettingsSectionRegistration[];
   navPanels: readonly PluginNavPanelRegistration[];
   threadPanelActions: readonly PluginThreadPanelActionRegistration[];
   composerAccessories: readonly PluginComposerAccessoryRegistration[];
+  pendingInteractions?: readonly PluginPendingInteractionRegistration[];
+  sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
 }
 
@@ -36,29 +42,41 @@ interface PluginSlotBase {
 
 export interface PluginHomepageSectionSlot
   extends PluginHomepageSectionRegistration, PluginSlotBase {}
+export interface PluginSettingsSectionSlot
+  extends PluginSettingsSectionRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
 export interface PluginThreadPanelActionSlot
   extends PluginThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerAccessorySlot
   extends PluginComposerAccessoryRegistration, PluginSlotBase {}
+export interface PluginPendingInteractionSlot
+  extends PluginPendingInteractionRegistration, PluginSlotBase {}
+export interface PluginSidebarFooterActionSlot
+  extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
+  settingsSections: readonly PluginSettingsSectionSlot[];
   navPanels: readonly PluginNavPanelSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   composerAccessories: readonly PluginComposerAccessorySlot[];
+  pendingInteractions: readonly PluginPendingInteractionSlot[];
+  sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   homepageSections: [],
+  settingsSections: [],
   navPanels: [],
   threadPanelActions: [],
   composerAccessories: [],
+  pendingInteractions: [],
+  sidebarFooterActions: [],
   fileOpeners: [],
 };
 
@@ -71,15 +89,21 @@ function buildSnapshot(): PluginSlotSnapshot {
   const pluginIds = [...registrationsByPluginId.keys()].sort();
   const next: {
     homepageSections: PluginHomepageSectionSlot[];
+    settingsSections: PluginSettingsSectionSlot[];
     navPanels: PluginNavPanelSlot[];
     threadPanelActions: PluginThreadPanelActionSlot[];
     composerAccessories: PluginComposerAccessorySlot[];
+    pendingInteractions: PluginPendingInteractionSlot[];
+    sidebarFooterActions: PluginSidebarFooterActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
   } = {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    pendingInteractions: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
   };
   for (const pluginId of pluginIds) {
@@ -89,6 +113,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     for (const registration of set.homepageSections) {
       next.homepageSections.push({ ...registration, pluginId, generation });
     }
+    for (const registration of set.settingsSections) {
+      next.settingsSections.push({ ...registration, pluginId, generation });
+    }
     for (const registration of set.navPanels) {
       next.navPanels.push({ ...registration, pluginId, generation });
     }
@@ -97,6 +124,16 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.composerAccessories) {
       next.composerAccessories.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.pendingInteractions ?? []) {
+      next.pendingInteractions.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.sidebarFooterActions) {
+      next.sidebarFooterActions.push({
+        ...registration,
+        pluginId,
+        generation,
+      });
     }
     for (const registration of set.fileOpeners) {
       next.fileOpeners.push({ ...registration, pluginId, generation });

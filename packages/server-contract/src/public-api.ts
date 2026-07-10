@@ -3,6 +3,7 @@ import { hc, type ClientRequestOptions } from "hono/client";
 import type {
   AppTheme,
   AppThemeSelection,
+  AppSettings,
   Environment,
   Experiments,
   Host,
@@ -13,7 +14,11 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import { appThemeSelectionSchema, experimentsSchema } from "@bb/domain";
+import {
+  appSettingsSchema,
+  appThemeSelectionSchema,
+  experimentsSchema,
+} from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
   binaryResponse,
@@ -102,6 +107,7 @@ import type {
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
+  RespondPluginInteractionRequest,
   SendMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
@@ -112,6 +118,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
   SystemVoiceTranscriptionResponse,
@@ -204,10 +211,12 @@ import {
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
+  respondPluginInteractionRequestSchema,
   sendMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemVersionQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
   threadFilesRawQuerySchema,
@@ -891,6 +900,21 @@ export const publicApiRoutes = {
       >(resolvePendingInteractionRequestSchema),
       response: jsonResponse<PendingInteraction>(),
     }),
+    respondToInteraction: defineRoute({
+      path: "/threads/:id/interactions/:interactionId/respond",
+      method: "post",
+      request: jsonRequest<
+        PathThreadInteractionId,
+        RespondPluginInteractionRequest
+      >(respondPluginInteractionRequestSchema),
+      response: jsonResponse<PendingInteraction>(),
+    }),
+    cancelInteraction: defineRoute({
+      path: "/threads/:id/interactions/:interactionId/cancel",
+      method: "post",
+      request: noRequest<PathThreadInteractionId>(),
+      response: jsonResponse<PendingInteraction>(),
+    }),
     archive: defineRoute({
       path: "/threads/:id/archive",
       method: "post",
@@ -1032,6 +1056,12 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemConfigResponse>(),
     }),
+    generalSettings: defineRoute({
+      path: "/settings/general",
+      method: "put",
+      request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
+      response: jsonResponse<AppSettings>(),
+    }),
     experiments: defineRoute({
       path: "/settings/experiments",
       method: "put",
@@ -1087,11 +1117,12 @@ export const publicApiRoutes = {
     version: defineRoute({
       path: "/system/version",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemVersionQuery>(
+        systemVersionQuerySchema,
+      ),
       response: jsonResponse<SystemVersionResponse>(),
     }),
   },
-
 };
 
 export type PublicApiSchema = ApiSchemaFromRouteDescriptors<
@@ -1123,10 +1154,7 @@ export function createPublicApiClient(
   baseUrl: string,
   options?: PublicApiClientOptions,
 ) {
-  return hc<PublicApiRoutes>(
-    `${baseUrl}/api/v1`,
-    toHonoClientOptions(options),
-  );
+  return hc<PublicApiRoutes>(`${baseUrl}/api/v1`, toHonoClientOptions(options));
 }
 
 export function createApiClient(

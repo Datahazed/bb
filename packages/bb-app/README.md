@@ -116,9 +116,12 @@ bb uses whichever providers you have configured. Common providers:
 | `cursor`      | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                     |
 | `pi`          | See the [Pi coding agent docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
 | `opencode`    | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                |
+| `grok`        | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                           |
+| `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`. |
 
 Custom ACP agents can be configured through `customAcpAgents` in
-`~/.bb/config.json`.
+`~/.bb/config.json`; see the configuration docs for optional `modelCli` and
+`reasoningCli` or `nativeReasoning` reasoning settings.
 
 ## Configuration
 

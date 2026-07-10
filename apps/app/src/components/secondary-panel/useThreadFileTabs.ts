@@ -16,6 +16,7 @@ import {
   type FixedPanelTab,
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
+  type PluginPanelFixedPanelTab,
   type SideChatFixedPanelTab,
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
@@ -135,7 +136,8 @@ type SecondaryPanelTab =
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | PluginPanelFixedPanelTab;
 
 function isSideChatTab(tab: FixedPanelTab): tab is SideChatFixedPanelTab {
   return tab.kind === "side-chat";
@@ -418,7 +420,7 @@ export function useThreadFileTabs({
     (
       request: OpenSecondaryPanelTabRequest,
       options?: { viewer?: FileTabViewerOverride },
-    ) => {
+    ): SecondaryPanelTab | null => {
       // Default-opener diversion (plugin design §5.2): every file-open flow
       // funnels through here (links, file search, `bb thread open`), so a
       // preferred plugin opener applies uniformly. Falls through to the
@@ -441,7 +443,7 @@ export function useThreadFileTabs({
           resolvedEnvironmentId,
           threadId: resolvedFileOwnerThreadId,
         });
-      if (tab === null) return;
+      if (tab === null) return null;
 
       if (
         request.kind === "workspace-file-preview" &&
@@ -459,6 +461,7 @@ export function useThreadFileTabs({
         }
         return openSecondaryPanelTabInState({ state, tab });
       });
+      return tab;
     },
     [
       fileOpenerPreference,

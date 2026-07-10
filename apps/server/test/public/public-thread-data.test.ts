@@ -2934,6 +2934,8 @@ describe("public thread data routes", () => {
           agents: [
             { id: "acp-opencode", executableName: "opencode" },
             { id: "acp-omp", executableName: "omp" },
+            { id: "acp-grok", executableName: "grok" },
+            { id: "acp-hermes-agent", executableName: "hermes" },
           ],
         },
         { type: "provider.list_models", providerId: "codex" },
@@ -3043,7 +3045,8 @@ describe("public thread data routes", () => {
         projectId: project.id,
         providerId: "codex",
         model: "gpt-5.5",
-        reasoningLevel: "max",
+        // ultracode is Claude-only; stale for Codex project defaults.
+        reasoningLevel: "ultracode",
         permissionMode: "full",
         serviceTier: "default",
       });

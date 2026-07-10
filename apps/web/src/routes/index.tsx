@@ -33,7 +33,17 @@ import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
-import { ClaudeIcon, CursorIcon, OpenAiIcon, OpencodeIcon, PiIcon } from "../landing/icons";
+import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import {
+  ClaudeIcon,
+  CursorIcon,
+  GrokIcon,
+  HermesAgentIcon,
+  OmpIcon,
+  OpenAiIcon,
+  OpencodeIcon,
+  PiIcon,
+} from "../landing/icons";
 import type { CtaPlacement } from "../landing/site";
 import {
   CLI_COMMAND,
@@ -407,14 +417,37 @@ function useFitMock() {
 
 /* ── Shared bits ──────────────────────────────────────────────────── */
 
+const PROVIDER_ICONS = [
+  ClaudeIcon,
+  OpenAiIcon,
+  CursorIcon,
+  PiIcon,
+  OpencodeIcon,
+  GrokIcon,
+  OmpIcon,
+  HermesAgentIcon,
+] as const;
+
+/** How many provider logos stay visible on narrow screens before "+N more". */
+const PROVIDER_ICONS_MOBILE_VISIBLE = 3;
+
 function ProviderChips() {
+  const extra = PROVIDER_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE;
   return (
     <>
-      <ClaudeIcon className="plogo" />
-      <OpenAiIcon className="plogo" />
-      <CursorIcon className="plogo" />
-      <PiIcon className="plogo" />
-      <OpencodeIcon className="plogo" />
+      {PROVIDER_ICONS.map((Icon, i) => (
+        <Icon
+          key={i}
+          className={
+            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+          }
+        />
+      ))}
+      {extra > 0 ? (
+        <span className="pmore" aria-label={`${extra} more providers`}>
+          +{extra} more
+        </span>
+      ) : null}
     </>
   );
 }
@@ -1701,6 +1734,7 @@ function LandingPage() {
         </a>
         <div className="nav-links">
           <GitHubLink placement="nav">GitHub</GitHubLink>
+          <a href={DASHBOARD_PATH}>Sign in</a>
           <DownloadLink placement="nav" className="btn btn-primary btn-sm">
             Download for macOS
           </DownloadLink>
@@ -1754,9 +1788,9 @@ function LandingPage() {
         visual={<SpawnSidebar />}
       >
         <p>
-          Claude Code, Codex, Cursor, Pi, and OpenCode all live in bb. Give a
-          task to whichever fits, and have one agent spawn and manage another,
-          each in its own thread.
+          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
+          live in bb. Give a task to whichever fits, and have one agent spawn
+          and manage another, each in its own thread.
         </p>
         <p>
           Each runs on your own subscription: the provider plan you already pay

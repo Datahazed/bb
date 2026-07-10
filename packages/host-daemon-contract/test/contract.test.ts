@@ -32,6 +32,7 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  normalizeHostDaemonAcpLaunchSpec,
   type HostDaemonAcpLaunchSpec,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
@@ -49,6 +50,23 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     listArgs: ["models", "list"],
     selectFlag: "--model",
     primaryModels: ["local-default"],
+  },
+  reasoningCli: {
+    flag: "--reasoning-effort",
+    supportedLevels: ["low", "medium", "high"],
+    levelValues: {
+      max: "high",
+    },
+    defaultLevel: "high",
+  },
+  nativeReasoning: {
+    configId: "reasoning_effort",
+    supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+    defaultLevel: "medium",
+  },
+  permissionCli: {
+    full: ["--always-approve"],
+    insertAfterArgs: 1,
   },
 };
 
@@ -213,6 +231,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   },
   "host.write_skill": {
     filePath: "/home/user/.bb/skills/review/SKILL.md",
+  },
+  "host.caffeinate": {
+    enabled: true,
+    supported: true,
   },
   "host.list_branches": {
     branches: ["main"],
@@ -596,10 +618,34 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
   "hostDaemonCommandSchema.acpLaunchSpec.modelCli.selectFlag":
     "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
+  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli":
+    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
+  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
+    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
+    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning":
+    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
+    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
+    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
+  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.readonly":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
+    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
+  "hostDaemonOnlineRpcCommandSchema.mode":
+    "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
@@ -610,6 +656,28 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
     "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli":
+    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
+    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
+    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning":
+    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
+    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
+    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.readonly":
+    "ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
+    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonOnlineRpcCommandSchema.additionalSkillsRootPaths":
     "host.list_commands may include inherited skill roots for source-dev app instances; ordinary app instances scan data-dir and built-in skills.",
   "hostDaemonOnlineRpcCommandSchema.query":
@@ -644,6 +712,28 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP launch specs may omit modelCli so ACP uses the shared default-model sentinel path.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli.selectFlag":
     "resume-context ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli":
+    "resume-context ACP launch specs may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.defaultLevel":
+    "resume-context ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.levelValues":
+    "resume-context ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning":
+    "resume-context ACP launch specs may omit nativeReasoning when the agent advertises thought_level itself or does not support bb-managed ACP reasoning.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.defaultLevel":
+    "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
+    "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
+    "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
+    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":
+    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.readonly":
+    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.insertAfterArgs":
+    "resume-context ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -880,6 +970,39 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  it("normalizes ACP launch specs at the contract boundary", () => {
+    expect(
+      normalizeHostDaemonAcpLaunchSpec({
+        displayName: "Custom ACP",
+        command: "custom-agent",
+        args: [],
+        env: {},
+        modelCli: {
+          listArgs: [],
+          selectFlag: "--model",
+          primaryModels: ["model-a"],
+        },
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "medium", "high"],
+          levelValues: { max: "high" },
+          defaultLevel: "high",
+        },
+      }),
+    ).toEqual({
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: [],
+      env: {},
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        levelValues: { max: "high" },
+        defaultLevel: "high",
+      },
+    });
+  });
+
   it("parses valid workspace and provisioning commands", () => {
     expect(
       hostDaemonEnrollRequestSchema.parse({
@@ -2345,7 +2468,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(45);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(49);
   });
 
   it("parses valid session open and event batch payloads", () => {
@@ -2355,6 +2478,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
@@ -2375,6 +2499,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
@@ -2398,6 +2523,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
@@ -2414,6 +2540,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
@@ -2428,6 +2555,7 @@ describe("host-daemon session schemas", () => {
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
         hostType: "persistent",
+        platform: "darwin",
         dataDir: "/tmp/bb-data",
         protocolVersion: 0,
         activeThreads: [],

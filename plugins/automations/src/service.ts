@@ -139,15 +139,6 @@ function assertNotRecursiveCreation(
   }
 }
 
-function assertScriptRunsAllowed(
-  allowScriptRuns: boolean,
-  execution: AutomationExecution,
-): void {
-  if (execution.mode === "script" && !allowScriptRuns) {
-    throw new Error("Script automations are disabled on this server");
-  }
-}
-
 async function resolveStoredExecution(args: {
   pluginDataDir: string;
   automationId: string;
@@ -318,7 +309,6 @@ export function createAutomationService(args: {
   bb: ServiceApi;
   db: Db;
   pluginDataDir: string;
-  getAllowScriptRuns: () => Promise<boolean>;
   serverUrl: string;
 }): AutomationService {
   const { bb, db, pluginDataDir, serverUrl } = args;
@@ -367,11 +357,9 @@ export function createAutomationService(args: {
 
     async create(payload) {
       await requireProjectAvailable(bb, payload.projectId);
-      const allowScriptRuns = await args.getAllowScriptRuns();
       const now = Date.now();
       validateTrigger(payload.trigger, now);
       assertNotRecursiveCreation(db, payload.createdByThreadId);
-      assertScriptRunsAllowed(allowScriptRuns, payload.execution);
       const automationId = createAutomationId();
       const storedExecution = await resolveStoredExecution({
         pluginDataDir,
@@ -401,7 +389,6 @@ export function createAutomationService(args: {
     async update(input) {
       await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
-      const allowScriptRuns = await args.getAllowScriptRuns();
       const now = Date.now();
       const patch: Parameters<typeof updateAutomation>[1]["patch"] = {};
       if (input.name !== undefined) patch.name = input.name;
@@ -413,7 +400,6 @@ export function createAutomationService(args: {
           : null;
       }
       if (input.execution !== undefined) {
-        assertScriptRunsAllowed(allowScriptRuns, input.execution);
         patch.execution = await resolveStoredExecution({
           pluginDataDir,
           automationId: current.id,
@@ -477,8 +463,6 @@ export function createAutomationService(args: {
     async run(input) {
       const automation = requireProjectAutomation(db, input);
       const execution = parseAutomationExecution(automation.execution);
-      const allowScriptRuns = await args.getAllowScriptRuns();
-      assertScriptRunsAllowed(allowScriptRuns, execution);
       const now = Date.now();
       const { run, deduped } = createManualRun(db, {
         automationId: automation.id,

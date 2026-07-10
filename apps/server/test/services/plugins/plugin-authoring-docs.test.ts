@@ -11,7 +11,11 @@ import {
   type PluginHttpAuthMode,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
+  type PluginPendingInteractionProps,
   type PluginSettingDescriptor,
+  type PluginSettingsSectionProps,
+  type PluginSidebarFooterActionProps,
+  type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
@@ -44,6 +48,7 @@ const BB_PLUGIN_API_KEYS = [
   "realtime",
   "background",
   "cli",
+  "interactions",
   "agents",
   "ui",
   "status",
@@ -133,9 +138,12 @@ void _assertAllThreadEventFieldsListed;
  */
 type SlotPropsByName = {
   homepageSection: PluginHomepageSectionProps;
+  settingsSection: PluginSettingsSectionProps;
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  pendingInteraction: PluginPendingInteractionProps;
+  sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
 };
 
@@ -145,9 +153,12 @@ void _assertAllSlotsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
+  settingsSection: [],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  pendingInteraction: ["interaction", "submit", "cancel"],
+  sidebarFooterAction: [],
   fileOpener: ["path", "source"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
@@ -189,6 +200,22 @@ const _assertAllNavPanelRegistrationFieldsListed: MissingNavPanelRegistrationFie
   : never = true;
 void _assertAllNavPanelRegistrationFieldsListed;
 
+const SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "run",
+] as const satisfies readonly (keyof PluginSidebarFooterActionRegistration)[];
+
+type MissingSidebarFooterActionRegistrationField = Exclude<
+  keyof PluginSidebarFooterActionRegistration,
+  (typeof SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllSidebarFooterActionRegistrationFieldsListed: MissingSidebarFooterActionRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllSidebarFooterActionRegistrationFieldsListed;
+
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
 
@@ -229,9 +256,7 @@ describe("bb-plugin-authoring skill", () => {
   });
 
   it("documents every thread event and its payload fields", () => {
-    for (const [event, fields] of Object.entries(
-      THREAD_EVENT_PAYLOAD_FIELDS,
-    )) {
+    for (const [event, fields] of Object.entries(THREAD_EVENT_PAYLOAD_FIELDS)) {
       expect(skill, `${event} is not documented in the skill`).toContain(
         `"${event}"`,
       );
@@ -256,11 +281,23 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain('"none"');
   });
 
+  it("documents every sidebarFooterAction registration field", () => {
+    for (const field of SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `sidebarFooterAction registration field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+    expect(skill).toContain("openSettings");
+  });
+
   it("documents the plugin logo convention (both theme variants)", () => {
     expect(skill).toContain("logo.svg");
     expect(skill).toContain("bb.logo");
     expect(skill).toContain("logo-dark.svg");
     expect(skill).toContain("bb.logoDark");
+    expect(skill).toContain("currentColor");
+    expect(skill).toContain("named `icon` hint");
   });
 
   it("documents every frontend slot and its prop fields", () => {

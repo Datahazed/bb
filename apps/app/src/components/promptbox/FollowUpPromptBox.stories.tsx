@@ -129,10 +129,9 @@ const promptActions: readonly PromptBoxAction[] = [
   },
 ];
 
-// Read-only footer (side chat): the side chat inherits its parent thread's
-// provider/model and is always read-only. It renders the SAME model/reasoning
-// and permission pickers the main thread does — just disabled via the
-// FollowUpPromptBox `readOnly` flag — so labels and positions match exactly.
+// Fully read-only footer example: renders the SAME model/reasoning and
+// permission pickers the main thread does, just disabled via the
+// FollowUpPromptBox `readOnly` flag so labels and positions match exactly.
 // The configs carry real onChange handlers (they never fire while disabled).
 const readOnlyExecution = makeExecutionControlsProps({
   provider: {
@@ -892,8 +891,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="read-only footer (side chat)"
-        hint="inherits parent provider/model; always read-only — same model & permission pickers as the main thread, just disabled"
+        label="read-only footer"
+        hint="same model & permission pickers as the main thread, just disabled"
       >
         <Row
           submitMode={{ kind: "ready" }}

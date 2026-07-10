@@ -35,6 +35,12 @@ message agents, or inspect projects, providers, and environments.
   server does not read the file.
 - Use `bb-app client ssh-target list --json` to inspect mappings.
 
+## App Settings
+
+- Settings → General holds server-backed app-wide preferences, such as the
+  macOS-only "Caffeinate" toggle. For details, read
+  `references/app-settings.md` (in this skill's directory).
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject
@@ -56,17 +62,22 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Spawn creates a root thread unless you pass `--parent-thread`.
-- Pass `--host <host-id>` to run the thread on a specific connected machine
-  (list ids with `bb host list`); omit it to use the local primary host.
-  Non-primary hosts require the "Multi-machine" experiment (Settings →
-  Experiments) — when off, the server rejects with `multi_machine_disabled`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
-  https://getbb.app). Pairing returns immediately — the server itself holds the
-  tunnel and reconnects on restart, so there is no foreground process.
-  `bb connect status` / `bb connect off` report and clear the pairing. Remote
-  access is owned by the builtin `connect` plugin: `bb plugin disable connect`
-  cuts it off entirely, `bb plugin enable connect` restores the command.
+  https://getbb.app). It requires the "bb connect" experiment; when off the
+  builtin connect plugin is not loaded. Pairing returns immediately — the
+  server itself holds the tunnel and reconnects on restart, so there is no
+  foreground process.
+  `bb connect status` / `bb connect off` report and clear the pairing.
+  Port sharing: `bb connect expose <port>` publishes a local HTTP port at
+  `https://<handle>--<port>.getbb.app` (owner-session-gated, not public);
+  `bb connect unexpose <port>` stops sharing; `bb connect shares` lists active
+  URLs. When you start a local server the user should open remotely, expose
+  the port and give them the share URL. Remote access is owned by the builtin
+  `connect` plugin: `bb plugin disable connect` cuts it off entirely; with bb
+  connect still enabled, `bb plugin enable connect` restores the command.
+  Settings → Connect shows the current URL, QR code, shared ports, re-pair
+  form, and disconnect control.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
@@ -77,15 +88,18 @@ message agents, or inspect projects, providers, and environments.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 - Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode` or `omp` on PATH appears as provider
-  `acp-opencode` or `acp-omp`.
+  host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
+  `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
+  `acp-grok`, or `acp-hermes-agent`.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known
   ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
   has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
   or restart bb. The configured command is local code execution and only works
-  with a co-located daemon.
+  with a co-located daemon. Custom ACP agents can use `modelCli` for CLI model
+  listing/selection, `reasoningCli` for launch-time reasoning flags, and
+  `nativeReasoning` for ACP `session/set_config_option` reasoning.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files
@@ -98,10 +112,18 @@ or artifacts, validation performed, and blockers.
 - Let threads work after spawning. Do not poll with shell sleeps, repeated log
   reads, or repeated status reads.
 - Use `bb thread wait <thread-id>` when you explicitly need to block until a
-  thread finishes. It defaults to waiting for `idle`; pass `--status` or
-  `--event` for a different target.
+  thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
+  pass `--status` or `--event` for a different target, and `--timeout
+  <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- By default, `bb thread tell` **queues** the message: if the agent is still
+  working, delivery waits until the current turn finishes. Use
+  `--mode steer` to **steer** — send the message immediately into the active
+  turn. Prefer steer when the change is urgent (wrong direction, hard stop,
+  critical clarification). Prefer the default queue when the note is non-urgent
+  and the agent can finish its current work first.
+  Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
 
 ## Inspecting Results
 
@@ -202,6 +224,16 @@ For review or fix pipelines, get the environment ID from
 - Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
   automations plugin should be installed and running.
 
+## Secrets
+
+- Use `bb secret request <NAME...> --write-env <path>` when credentials are
+  needed. Batch known names and add `--purpose <text>` plus one
+  `--describe <NAME> <text>` per variable.
+- The user enters values in a secure plugin form; values are written directly
+  to the workspace dotenv file and never returned in CLI output or chat.
+- Treat the returned path and added/updated/unchanged counts as verification.
+  Do not inspect the completed file with `cat`, `sed`, `env`, or similar tools.
+
 ## Theming
 
 - `bb theme` controls the **app-wide color palette** — a set of CSS-variable
@@ -252,7 +284,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - **Enable user-installed plugins first.** Plugins are an experiment, off by
   default: turn on **"Plugins"** under Settings → Experiments. Builtin plugins
   (`builtin:<name>`) ship with bb and remain available even when the experiment
-  is off.
+  is off, except `connect`, which is gated by the **"bb connect"**
+  experiment.
 - Commands:
   - `bb plugin install <src>` — local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<name>@<version>` (npm on PATH required for
@@ -279,10 +312,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     declared) and reloads the plugin; open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
-    `@bb/plugin-sdk/app` and register UI slots (homepageSection, navPanel,
-    threadPanelAction, composerAccessory) with hooks (useRpc, useRealtime,
-    useSettings, useBbContext, useBbNavigate); components are vendored
-    shadcn source the plugin owns. Installed
+    `@bb/plugin-sdk/app` and register UI slots (homepageSection,
+    settingsSection, navPanel, threadPanelAction, composerAccessory,
+    fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
+    useBbNavigate, useComposer); components are vendored shadcn source the
+    plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins
@@ -294,62 +328,3 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   tools and context, host-rendered UI, lifecycle) and the frontend
   `@bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
   and gotchas. `bb guide plugins` has the short walkthrough.
-
-## Modifying the App UI
-
-`bb ui` lets you reshape the bb frontend itself — not just colors, but layout,
-copy, components, and behavior. It works from **any chat**: `bb ui fork` to start,
-edit the source on disk, then `bb ui apply` to rebuild and live-reload every
-window.
-
-- **Enable it first.** UI forking is an experiment, off by default. Turn on
-  **"UI forking"** under Settings → Experiments. Until then, `bb ui` commands are
-  disabled and the shipped UI is always served (`bb ui status` says so).
-- **`bb ui fork` creates your editable copy** of the frontend at `<bb-data-dir>/ui`
-  (the packaged app uses `~/.bb/ui`) and switches to it. It is a self-contained
-  Vite + React + Tailwind workspace — `src/`, `index.html`, `public/`,
-  `package.json`. The first `fork` seeds it (installs + builds — slower, a minute
-  or so); after that, edits are fast.
-- **Add dependencies freely:** add a package to `package.json`, and `bb ui apply`
-  runs `pnpm install` and rebuilds.
-- **`bb ui prod` is the known-good fallback.** It switches back to the shipped UI
-  instantly; your fork stays on disk. This is the escape hatch if an edit breaks
-  the app — it works even when the UI is broken, because it runs server-side.
-- **Builds are gated.** A build that fails to compile is never served: the live
-  UI stays on the last good build and `bb ui apply` returns the build errors so
-  you can fix and retry.
-- **Type feedback.** `bb ui fork`/`apply` also run a scoped `tsc --noEmit` over
-  your source (tests excluded) and print any type errors. It is advisory — the
-  build still serves (Vite strips types) — but it catches type mistakes the build
-  won't, so fix them.
-- **Where it takes effect:** `bb ui` swaps what the **server** serves, so it
-  applies to the packaged app and any production server build. Under `pnpm dev`
-  the frontend is served by Vite, so `bb ui apply` still builds but the running
-  dev page keeps coming from Vite (use Vite's own HMR there).
-
-Workflow for a UI change:
-
-1. `bb ui fork` — create your editable copy and switch to it (first run seeds it).
-   `fork` and `status` print the **fork dir** (its absolute path) — that is where
-   you edit.
-2. Edit files under that fork dir (`<bb-data-dir>/ui`, e.g. `~/.bb/ui` in the
-   packaged app): change `src/` for the UI and `package.json` to add deps. This
-   is the real frontend source.
-3. `bb ui apply` — rebuild and live-reload every window. On a build error, read
-   the printed log, fix the source, and run it again.
-4. `bb ui prod` to switch back to the shipped UI, or `bb ui fork --reset` to throw
-   your edits away and start fresh.
-
-Commands:
-
-- `bb ui status` — which UI is active (`prod` / `fork`) and the last build state.
-- `bb ui fork [--reset]` — create your fork and switch to it (first run seeds;
-  `--reset` discards edits and re-seeds).
-- `bb ui apply` — rebuild your fork after editing and reload connected clients.
-- `bb ui prod` — switch back to the shipped UI (your fork stays on disk).
-- `bb ui update` — rebase your fork onto a newer shipped UI after a bb update. A
-  clean rebase rebuilds and serves automatically. On conflict it falls back to
-  the shipped UI and reports the files to fix; resolve them and run
-  `bb ui update --continue` (or `bb ui update --abort`).
-
-Add `--json` to any `bb ui` command for machine-readable output.

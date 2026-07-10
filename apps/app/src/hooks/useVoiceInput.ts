@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
+import {
+  buildAudioInputConstraints,
+  useAudioInputDevicePreferenceValue,
+} from "@/lib/audio-input-device-preference";
 
 type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
 
@@ -44,7 +48,10 @@ function sanitizeErrorMessage(raw: string): string | null {
   return normalized;
 }
 
-function resolveRecordingErrorMessage(error: unknown): string {
+function resolveRecordingErrorMessage(
+  error: unknown,
+  hasPreferredAudioInput = false,
+): string {
   if (error instanceof DOMException) {
     switch (error.name) {
       case "NotAllowedError":
@@ -52,7 +59,9 @@ function resolveRecordingErrorMessage(error: unknown): string {
         return "Microphone permission denied";
       case "NotFoundError":
       case "DevicesNotFoundError":
-        return "No microphone was found";
+        return hasPreferredAudioInput
+          ? "Selected microphone was not found"
+          : "No microphone was found";
       case "NotReadableError":
       case "TrackStartError":
         return "Microphone is already in use";
@@ -94,6 +103,7 @@ function createRecordingFile(audioBlob: Blob, mimeType: string): File {
 }
 
 export function useVoiceInput(options: UseVoiceInputOptions) {
+  const preferredAudioInputDeviceId = useAudioInputDevicePreferenceValue();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -107,6 +117,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   const [state, setState] = useState<VoiceInputState>("idle");
   const [isSupported, setIsSupported] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const showError = useCallback((message: string) => {
     setState("error");
@@ -118,6 +129,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setStream(null);
   }, []);
 
   const requestRecordingWakeLock = useCallback(() => {
@@ -246,8 +258,11 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(
+        buildAudioInputConstraints(preferredAudioInputDeviceId),
+      );
       streamRef.current = stream;
+      setStream(stream);
       chunksRef.current = [];
       startedAtMsRef.current = Date.now();
       promptContextRef.current = options.getPromptContext?.();
@@ -351,11 +366,17 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       shouldTranscribeRef.current = true;
       transcriptionAbortRef.current = null;
       releaseRecordingWakeLock();
-      showError(resolveRecordingErrorMessage(error));
+      showError(
+        resolveRecordingErrorMessage(
+          error,
+          preferredAudioInputDeviceId !== null,
+        ),
+      );
     }
   }, [
     isSupported,
     options,
+    preferredAudioInputDeviceId,
     releaseRecordingWakeLock,
     requestRecordingWakeLock,
     showError,
@@ -407,6 +428,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   return {
     state,
     isSupported,
+    stream,
     isRecording: state === "recording",
     isProcessing: state === "transcribing",
     isListening: state === "recording" || state === "transcribing",

@@ -393,6 +393,34 @@
       "when": 1783354375744,
       "tag": "0055_drop_kernel_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1783464830533,
+      "tag": "0056_drop_ui_forking",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1783488303729,
+      "tag": "0057_useful_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1783554416332,
+      "tag": "0058_confused_catseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1783626227375,
+      "tag": "0059_stale_power_pack",
+      "breakpoints": true
     }
   ]
 }

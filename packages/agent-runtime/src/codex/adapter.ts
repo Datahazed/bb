@@ -37,7 +37,10 @@ import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
-import { parseModelsResponse } from "./models.js";
+import {
+  mapBbReasoningLevelToCodex,
+  parseModelsResponse,
+} from "./models.js";
 import {
   buildShellEnvironmentPolicyConfig,
   extractResultText,
@@ -71,6 +74,12 @@ import {
   codexRawResponseItemCompletedParamsSchema,
   codexThreadClosedParamsSchema,
 } from "./schemas.js";
+import {
+  buildCodexSubAgentCompletedEvent,
+  buildCodexSubAgentStartedEvent,
+  parseCodexSubAgentActivityEvent,
+  type CodexTrackedSubAgent,
+} from "./subagent-activity-translation.js";
 
 interface CodexPermissionSettings {
   approvalPolicy: AskForApproval;
@@ -662,24 +671,16 @@ function toCodexServiceTier(tier: ServiceTier | undefined): "fast" | undefined {
 function toCodexReasoningEffort(
   reasoningLevel: ReasoningLevel,
 ): CodexReasoningEffort {
-  switch (reasoningLevel) {
-    case "low":
-      return "low";
-    case "medium":
-      return "medium";
-    case "high":
-      return "high";
-    case "xhigh":
-      return "xhigh";
-    case "none":
-      // "none" (thinking-off) is a Cursor-only level; Codex models never
-      // expose it, so model-switch reconciliation maps it away before here.
-      throw new Error("Codex does not support the none reasoning level.");
-    case "ultracode":
-      throw new Error("Codex does not support ultracode reasoning level.");
-    case "max":
-      throw new Error("Codex does not support max reasoning level.");
+  const codexEffort = mapBbReasoningLevelToCodex(reasoningLevel);
+  if (codexEffort == null) {
+    // "none" is Cursor-only; "ultracode" is Claude-specific. Codex models
+    // never expose either, so model-switch reconciliation maps them away
+    // before here — but fail closed if something slips through.
+    throw new Error(
+      `Codex does not support the ${reasoningLevel} reasoning level.`,
+    );
   }
+  return codexEffort;
 }
 
 function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
@@ -1115,6 +1116,8 @@ export function createCodexProviderAdapter(
     CodexPendingDelegationTurnLink[]
   >();
   const pendingDelegationCallIds = new Set<string>();
+  const trackedSubAgentsByCallId = new Map<string, CodexTrackedSubAgent>();
+  const trackedSubAgentCallIdsByAgentThreadId = new Map<string, string>();
 
   function stageThreadGitWritableRoots(
     args: RecordThreadGitWritableRootsArgs,
@@ -1246,6 +1249,16 @@ export function createCodexProviderAdapter(
   function clearCodexDelegationParentState(providerThreadId: string): void {
     delegationParentToolCallIdsByProviderThreadId.delete(providerThreadId);
     pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
+    for (const [callId, tracked] of trackedSubAgentsByCallId) {
+      if (
+        tracked.parentProviderThreadId !== providerThreadId &&
+        tracked.agentThreadId !== providerThreadId
+      ) {
+        continue;
+      }
+      clearTrackedSubAgentLinks(tracked);
+      trackedSubAgentsByCallId.delete(callId);
+    }
   }
 
   function queueNativeTurnStartClientRequestId(args: {
@@ -1398,6 +1411,53 @@ export function createCodexProviderAdapter(
     pendingDelegationCallIds.add(args.callId);
   }
 
+  function removePendingDelegationCall(callId: string): void {
+    pendingDelegationCallIds.delete(callId);
+    for (const [
+      providerThreadId,
+      pendingLinks,
+    ] of pendingDelegationTurnLinksByProviderThreadId) {
+      const remainingLinks = pendingLinks.filter(
+        (pendingLink) => pendingLink.callId !== callId,
+      );
+      if (remainingLinks.length === 0) {
+        pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
+      } else if (remainingLinks.length !== pendingLinks.length) {
+        pendingDelegationTurnLinksByProviderThreadId.set(
+          providerThreadId,
+          remainingLinks,
+        );
+      }
+    }
+  }
+
+  function clearTrackedSubAgentLinks(tracked: CodexTrackedSubAgent): void {
+    removePendingDelegationCall(tracked.callId);
+    if (
+      trackedSubAgentCallIdsByAgentThreadId.get(tracked.agentThreadId) ===
+      tracked.callId
+    ) {
+      trackedSubAgentCallIdsByAgentThreadId.delete(tracked.agentThreadId);
+    }
+    if (
+      delegationParentToolCallIdsByProviderThreadId.get(
+        tracked.agentThreadId,
+      ) === tracked.callId
+    ) {
+      delegationParentToolCallIdsByProviderThreadId.delete(
+        tracked.agentThreadId,
+      );
+    }
+    for (const [
+      turnId,
+      parentToolCallId,
+    ] of delegationParentToolCallIdsByTurnId) {
+      if (parentToolCallId === tracked.callId) {
+        delegationParentToolCallIdsByTurnId.delete(turnId);
+      }
+    }
+  }
+
   function consumePendingDelegationTurnLink(args: {
     providerThreadId: string | undefined;
     turnId: string;
@@ -1518,6 +1578,116 @@ export function createCodexProviderAdapter(
       observeCodexDelegationToolCall(parentLinkedEvent);
       return parentLinkedEvent;
     });
+  }
+
+  function completeCodexTrackedSubAgent(args: {
+    status: "completed" | "failed" | "interrupted";
+    tracked: CodexTrackedSubAgent;
+  }): ThreadEvent | null {
+    if (args.tracked.terminal) {
+      return null;
+    }
+    args.tracked.terminal = true;
+    clearTrackedSubAgentLinks(args.tracked);
+    return buildCodexSubAgentCompletedEvent(args);
+  }
+
+  function translateCodexSubAgentActivity(
+    event: ProviderRuntimeEvent,
+  ): ThreadEvent[] | null {
+    const activity = parseCodexSubAgentActivityEvent(event);
+    if (!activity) {
+      return null;
+    }
+
+    switch (activity.item.kind) {
+      case "started": {
+        if (trackedSubAgentsByCallId.has(activity.item.id)) {
+          return [];
+        }
+        const tracked: CodexTrackedSubAgent = {
+          agentPath: activity.item.agentPath,
+          agentThreadId: activity.item.agentThreadId,
+          callId: activity.item.id,
+          parentProviderThreadId: activity.providerThreadId,
+          parentTurnId: activity.turnId,
+          terminal: false,
+        };
+        trackedSubAgentsByCallId.set(tracked.callId, tracked);
+        trackedSubAgentCallIdsByAgentThreadId.set(
+          tracked.agentThreadId,
+          tracked.callId,
+        );
+
+        const [startedEvent] = attachCodexDelegationParentLinks([
+          buildCodexSubAgentStartedEvent(tracked),
+        ]);
+        if (
+          startedEvent?.type === "item/started" &&
+          startedEvent.item.type === "toolCall"
+        ) {
+          tracked.parentToolCallId = startedEvent.item.parentToolCallId;
+        }
+        // Codex currently multiplexes child turns onto the root provider
+        // thread, even though the activity includes a distinct agent thread
+        // id. Queue a FIFO fallback in addition to the explicit id mapping.
+        enqueuePendingDelegationTurnLink({
+          callId: tracked.callId,
+          parentTurnId: tracked.parentTurnId,
+          providerThreadId: tracked.parentProviderThreadId,
+        });
+        return startedEvent ? [startedEvent] : [];
+      }
+      case "interacted":
+        // Messaging an existing agent is activity within the original
+        // delegation, not a new timeline row.
+        return [];
+      case "interrupted": {
+        const callId = trackedSubAgentCallIdsByAgentThreadId.get(
+          activity.item.agentThreadId,
+        );
+        const tracked = callId
+          ? trackedSubAgentsByCallId.get(callId)
+          : undefined;
+        if (!tracked) {
+          return [];
+        }
+        const completed = completeCodexTrackedSubAgent({
+          tracked,
+          status: "interrupted",
+        });
+        return completed ? [completed] : [];
+      }
+    }
+  }
+
+  function completeFinishedCodexSubAgentTurns(
+    events: ThreadEvent[],
+  ): ThreadEvent[] {
+    const completedEvents: ThreadEvent[] = [];
+    for (const event of events) {
+      completedEvents.push(event);
+      if (event.type !== "turn/completed") {
+        continue;
+      }
+      const turnId = requireThreadEventScopeTurnId({
+        type: event.type,
+        scope: event.scope,
+      });
+      const callId = delegationParentToolCallIdsByTurnId.get(turnId);
+      const tracked = callId ? trackedSubAgentsByCallId.get(callId) : undefined;
+      if (!tracked) {
+        continue;
+      }
+      const completed = completeCodexTrackedSubAgent({
+        tracked,
+        status: event.status,
+      });
+      if (completed) {
+        completedEvents.push(completed);
+      }
+    }
+    return completedEvents;
   }
 
   function consumeCodexRawResponseItem(event: ProviderRuntimeEvent): boolean {
@@ -1896,13 +2066,21 @@ export function createCodexProviderAdapter(
         return [];
       }
 
+      const subAgentActivityEvents = translateCodexSubAgentActivity(event);
+      if (subAgentActivityEvents !== null) {
+        reconcileRawCommandOutputLifecycle(subAgentActivityEvents);
+        return applyRecoveredCommandOutput(subAgentActivityEvents);
+      }
+
       const translatedEvents = translateCodexEvent(event).flatMap(
         attachAcceptedUserMessageCorrelation,
       );
       const parentLinkedEvents =
         attachCodexDelegationParentLinks(translatedEvents);
-      reconcileRawCommandOutputLifecycle(parentLinkedEvents);
-      return applyRecoveredCommandOutput(parentLinkedEvents);
+      const completedSubAgentEvents =
+        completeFinishedCodexSubAgentTurns(parentLinkedEvents);
+      reconcileRawCommandOutputLifecycle(completedSubAgentEvents);
+      return applyRecoveredCommandOutput(completedSubAgentEvents);
     },
 
     translateAcceptedCommand({ command, providerThreadId }) {

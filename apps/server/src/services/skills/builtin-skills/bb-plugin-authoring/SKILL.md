@@ -10,8 +10,9 @@ Its backend entry default-exports a factory that receives the full plugin API
 (`bb`); an optional frontend entry registers React UI inside the bb app.
 Plugins are full-trust code: they can read all local bb data.
 
-Plugins are gated behind the "Plugins" experiment (Settings → Experiments).
-`bb plugin list` tells you if plugins are disabled.
+User-installed plugins are gated behind the "Plugins" experiment (Settings →
+Experiments). Builtin plugins ship with bb and can remain available under their
+own product gates. `bb plugin list` tells you if plugins are disabled.
 
 ## Quickstart
 
@@ -54,7 +55,13 @@ The manifest is `package.json`:
   at the root (same precedence), or `bb.logoDark` (same rules) — is
   preferred whenever the app is in dark mode, falling back to the light
   logo. Without a logo, contributions fall back to their named `icon` hint
-  or a generic bolt. Picked up on `bb plugin reload`.
+  or a generic bolt. Picked up on `bb plugin reload`. Inline icons must use
+  `currentColor` for their stroke/fill and take their color from semantic
+  text-token classes; never hardcode gray or palette values. An SVG loaded
+  through `<img>` cannot inherit `currentColor`, so omit the logo and use a
+  named `icon` hint when a monochrome glyph should match the surrounding bb
+  chrome. Reserve logo assets for intentionally branded artwork (and provide
+  a dark variant when needed).
 - `engines.bb` — semver range checked against the bb version at load.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
@@ -188,6 +195,7 @@ const saved = await bb.sdk.files.write({
   rootPath: "/home/me/notes",     // optional: confine writes beneath this root
   content: "# Todo\n",
   expectedSha256: file.sha256,    // CAS guard; omit for unconditional, null for create-only
+  mode: 0o600,                    // optional POSIX mode for a newly created file; existing mode is preserved
 });
 if (saved.outcome === "conflict") {
   // File changed since the read (saved.currentSha256, null = deleted) —
@@ -320,11 +328,23 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
-### bb.agents — native tools
+### bb.interactions — replace the composer with a blocking plugin form
+
+Use `bb.interactions.request({ threadId, rendererId, title, payload, timeoutMs? },
+{ signal? })` when plugin backend code must wait for sensitive or structured
+user input. The promise resolves to `{ outcome: "submitted", value }` or
+`{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
+capped at 64 KiB; response values are delivered only to the waiting plugin
+invocation and are never persisted. Pair `rendererId` with a frontend
+`pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
+the caller cancels the request.
+
+### bb.agents — native tools and dynamic instructions
 
 To give agents standing knowledge (conventions, workflows), ship a
-`skills/` directory — there is deliberately no per-turn instruction
-injection API. For schema'd capabilities, register a native tool:
+`skills/` directory. For schema'd capabilities, register a native tool.
+For a short, per-resolution instruction block (e.g. "the user is viewing
+bb remotely — share tunnel URLs"), use `contributeInstructions`:
 
 ```ts
 import { z } from "zod";   // runtime import — declare zod as a plugin dependency
@@ -337,6 +357,16 @@ bb.agents.registerTool({
     return excerpts.join("\n");           // or { content: [{ type: "text", text }], isError? }
   },
 });
+
+// Dynamic section evaluated at thread.start / turn.submit (sync, fast).
+// Return null to contribute nothing for that resolution. Re-registering
+// replaces this plugin's previous provider. Output is capped at 4096
+// characters; a throw is logged and contributes nothing. Side-chat
+// threads never receive plugin instructions.
+bb.agents.contributeInstructions(({ threadId, projectId }) => {
+  if (!shouldAdviseRemoteUrls()) return null;
+  return "The user is viewing bb remotely — share tunnel URLs, not localhost.";
+});
 ```
 
 `parameters` is a zod schema (zod 4; validated per call — bad model args
@@ -345,6 +375,10 @@ become a tool error, not a plugin crash) or a plain JSON-schema object
 session start, not mid-session. Name collisions: within a plugin the later
 registration replaces the earlier; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
+
+`contributeInstructions` is **synchronous** and runs on the thread-start
+path — keep it cheap. Prefer `skills/` for standing knowledge; use this
+only when the text must reflect live plugin state at resolution time.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
@@ -359,7 +393,8 @@ bb.ui.registerThreadAction({
 
 bb.ui.registerMentionProvider({
   id: "issue", label: "Issues",
-  search({ query, projectId, threadId }) {             // as-you-type after "@"; 2s time box, failure = empty list
+  triggers: ["@", "#"],                                // optional; defaults to ["@"]. Valid: @ # $ ! ~
+  search({ trigger, query, projectId, threadId }) {    // 2s time box, failure = empty list
     return [{ id: "42", title: "ENG-42 Fix flake", subtitle: "Todo" }];
   },
   resolve(itemId) {                                    // once per unique item AT SEND TIME
@@ -368,11 +403,11 @@ bb.ui.registerMentionProvider({
 });
 ```
 
-Thread actions render in the thread header; mention items under `label`
-in the `@` menu. All handlers run server-side. There is deliberately no
-plugin slash-command surface: the composer's `/` menu lists skills, so a
-plugin capability that crafts a prompt for the agent ships as a `skills/`
-entry instead.
+Thread actions render in the thread header; mention items render under
+`label` in the menu for each registered trigger. All handlers run server-side.
+There is deliberately no plugin slash-command surface: the composer's `/`
+menu lists skills, so a plugin capability that crafts a prompt for the agent
+ships as a `skills/` entry instead.
 
 ### bb.status
 
@@ -404,9 +439,12 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
   app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
+  app.slots.settingsSection({ id: "settings", title: "Connection", component: SettingsSection });
   app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
   app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
   app.slots.composerAccessory({ id: "hint", component: Hint });
+  app.slots.pendingInteraction({ id: "credentials", component: CredentialForm });
+  app.slots.sidebarFooterAction({ id: "remote", title: "Remote access", icon: "Smartphone", run: ({ openSettings }) => openSettings() });
 });
 ```
 
@@ -414,6 +452,16 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
+- `settingsSection` → `{}` (deliberately no props in V1). Rendered on
+  `/settings/plugins/<pluginId>` below the host-rendered declarative settings
+  form for running, needs-configuration, and degraded plugins. Registration:
+  `{ id, title?, component }`; `title` is an optional host-rendered section
+  heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
+  `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
+  settings sidebar when they declare settings descriptors OR register
+  settings sections. Slot-derived sidebar entries work for builtin plugin
+  frontends even when the user-installed Plugins experiment is off; the
+  Settings → Plugins management bucket remains experiment-gated.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep
@@ -451,6 +499,22 @@ Slot props contracts (versioned, additive-only):
   or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
+  thread composer only while a matching plugin interaction is pending.
+  Registration: `{ id, component }`; `id` must equal the backend request's
+  `rendererId`. `interaction` contains metadata plus the JSON `payload`;
+  `submit(value)` returns the JSON value to the waiting backend invocation,
+  while `cancel()` settles it without a value. Keep sensitive field values in
+  component state only.
+- `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
+  (next to Settings / bug report). No plugin component — the host paints
+  the chrome so icons stay consistent. Registration:
+  `{ id, title, icon, run }`. Activating it calls
+  `run({ openSettings })` — use `openSettings()` to open this plugin's
+  Settings detail page (`/settings/plugins/<pluginId>`), or do anything else
+  (rpc, toast). Errors from `run` (sync or async) are contained and logged,
+  never breaking the sidebar. `title` is the tooltip + accessible label;
+  `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
 - `fileOpener` → `{ path: string, source }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Users set the per-extension default under Settings → "File openers", and
@@ -630,8 +694,8 @@ slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activi
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
-patterns, navPanel path, chrome, fileOpener extensions) and returns them
-typed with defaults filled. Working examples:
+patterns, settingsSection optional title, navPanel path, chrome,
+fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions), and

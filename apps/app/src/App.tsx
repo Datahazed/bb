@@ -13,7 +13,6 @@ import {
   useDesktopUpdateAvailableToast,
   useUpdateAvailableToast,
 } from "./hooks/useUpdateAvailableToast";
-import { useUiSourceStatusToast } from "./hooks/useUiSourceStatusToast";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -31,7 +30,9 @@ import {
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
@@ -136,6 +137,11 @@ function AppRoutes() {
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
+            path={SETTINGS_SECTION_ROUTE_PATH}
+            element={<SettingsView />}
+          />
+          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
+          <Route
             path={TOOLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
@@ -222,8 +228,6 @@ export function App() {
   useUpdateAvailableToast();
   // Show a separate toast when the Electron shell reports a desktop update.
   useDesktopUpdateAvailableToast();
-  // Surface UI-source build failures / rebase-needed state from `bb ui`.
-  useUiSourceStatusToast();
   // Keep the Electron window chrome (traffic lights, inactive title bar)
   // in sync with bb's resolved theme.
   useDesktopThemeSync();

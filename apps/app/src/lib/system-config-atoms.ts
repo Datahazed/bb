@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import { defaultAppTheme } from "@bb/domain";
+import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -9,18 +9,19 @@ import { wsManager } from "./ws";
 
 // Offline/unavailable app behavior should fail closed independently of server defaults.
 const unavailableSystemConfig: SystemConfigResponse = {
+  generalSettings: defaultAppSettings,
   experiments: {
+    bbConnect: false,
     claudeCodeMockCliTraffic: false,
-    multiMachine: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
     plugins: false,
-    uiForking: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
+  primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,
   dataDir: "",
 };

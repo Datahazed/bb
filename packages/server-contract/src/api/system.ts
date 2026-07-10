@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
+  appSettingsSchema,
   appThemeSchema,
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
   providerInfoSchema,
 } from "@bb/domain";
+import { hostPlatformSchema } from "@bb/host-daemon-contract";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
   "missing_executable",
@@ -74,6 +76,8 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 >;
 
 export const systemConfigResponseSchema = z.object({
+  /** App-wide Settings → General preferences, persisted server-side. */
+  generalSettings: appSettingsSchema,
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
   experiments: experimentsSchema,
   /** Active app-wide palette (built-in id or custom theme), resolved server-side. */
@@ -85,6 +89,7 @@ export const systemConfigResponseSchema = z.object({
   customThemes: z.array(z.string()),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
   /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */
   dataDir: z.string(),
@@ -120,6 +125,12 @@ export const systemVersionResponseSchema = z.object({
   upgradeCommand: z.string(),
 });
 export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
+
+export const systemVersionQuerySchema = z.object({
+  /** "true" bypasses the server-side npm latest cache for a manual check. */
+  force: z.enum(["true", "false"]).optional(),
+});
+export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 
 export const systemConfigReloadResponseSchema = z.object({
   ok: z.literal(true),

@@ -121,15 +121,20 @@ async function startDesktopSmokeServer(
           customThemes: [],
           dataDir: args.dataDir,
           experiments: {
+            bbConnect: false,
             claudeCodeMockCliTraffic: false,
             popoutChat: false,
             popoutChatHotkey: "Alt+Space",
-            uiForking: false,
+            plugins: false,
           },
           featureFlags: {
             placeholder: false,
           },
+          generalSettings: {
+            caffeinate: false,
+          },
           hostDaemonPort: 38887,
+          primaryHostPlatform: null,
           voiceTranscriptionEnabled: false,
         });
         return;

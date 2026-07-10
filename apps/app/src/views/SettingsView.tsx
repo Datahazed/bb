@@ -1,7 +1,13 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
+  defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
   isValidElectronAccelerator,
@@ -36,9 +42,17 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
-import { PluginsSettingsSection } from "@/components/settings/PluginsSettingsSection";
-import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import {
+  PluginSettingsDetailSection,
+  PluginsSettingsSection,
+} from "@/components/settings/PluginsSettingsSection";
+import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
+import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
+import {
+  useUpdateGeneralSettings,
   useUpdateAppearance,
   useUpdateExperiments,
 } from "@/hooks/mutations/settings-mutations";
@@ -52,7 +66,10 @@ import {
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  SETTINGS_ROUTE_PATH,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -112,6 +129,12 @@ export interface RootComposeBehaviorSettingsControlProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
 }
 
+export interface CaffeinateSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
@@ -123,25 +146,32 @@ export interface FaviconColorSettingsControlProps {
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
 
-export interface GeneralSettingsSectionProps {
+export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
-  desktopBrowserAvailable: boolean;
   faviconColor: FaviconColorPreference;
-  navigateToThreadAfterCreate: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
   onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
+  onThemePreferenceChange: (themePreference: ThemePreference) => void;
+  themePreference: ThemePreference;
+}
+
+export interface GeneralSettingsSectionProps {
+  caffeinateAvailable: boolean;
+  caffeinateDisabled: boolean;
+  caffeinateEnabled: boolean;
+  desktopBrowserAvailable: boolean;
+  onCaffeinateChange: (enabled: boolean) => void;
+  navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
-  onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
-  themePreference: ThemePreference;
 }
 
 function appPaletteLabel(appearance: AppTheme): string {
@@ -152,19 +182,17 @@ function appPaletteLabel(appearance: AppTheme): string {
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
+  bbConnectEnabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   desktopShellAvailable: boolean;
-  multiMachineEnabled: boolean;
+  onBbConnectEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onMultiMachineEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
-  onUiForkingEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
-  uiForkingEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -438,6 +466,7 @@ const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL =
   "Markdown formatting in prompt box";
+const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -449,6 +478,26 @@ export function RootComposeBehaviorSettingsControl({
         checked={navigateToThreadAfterCreate}
         onCheckedChange={onNavigateToThreadAfterCreateChange}
         aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function CaffeinateSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: CaffeinateSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={CAFFEINATE_SETTING_LABEL}
+      description="Prevent system idle sleep while bb is running. Closing the lid or choosing Sleep still sleeps the Mac."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={CAFFEINATE_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -505,28 +554,19 @@ export function RichTextEditingSettingsControl({
   );
 }
 
-export function GeneralSettingsSection({
+export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
   customThemes,
-  desktopBrowserAvailable,
   faviconColor,
-  navigateToThreadAfterCreate,
   onAppearanceThemeChange,
   onFaviconColorChange,
-  onNavigateToThreadAfterCreateChange,
-  onOpenLinksInAppBrowserChange,
-  onRewriteLocalhostLinksChange,
-  onRichTextEditingChange,
   onCreatePalette,
   onThemePreferenceChange,
-  openLinksInAppBrowser,
-  rewriteLocalhostLinks,
-  richTextEditing,
   themePreference,
-}: GeneralSettingsSectionProps) {
+}: AppearanceSettingsSectionProps) {
   return (
-    <SettingsSection title="General">
+    <SettingsSection title="Appearance">
       <div className="space-y-5">
         <SettingsWithControl label="Theme">
           <DropdownMenu>
@@ -640,7 +680,29 @@ export function GeneralSettingsSection({
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
         />
+      </div>
+    </SettingsSection>
+  );
+}
 
+export function GeneralSettingsSection({
+  caffeinateAvailable,
+  caffeinateDisabled,
+  caffeinateEnabled,
+  desktopBrowserAvailable,
+  navigateToThreadAfterCreate,
+  onCaffeinateChange,
+  onNavigateToThreadAfterCreateChange,
+  onOpenLinksInAppBrowserChange,
+  onRewriteLocalhostLinksChange,
+  onRichTextEditingChange,
+  openLinksInAppBrowser,
+  rewriteLocalhostLinks,
+  richTextEditing,
+}: GeneralSettingsSectionProps) {
+  return (
+    <SettingsSection title="General">
+      <div className="space-y-5">
         <RootComposeBehaviorSettingsControl
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           onNavigateToThreadAfterCreateChange={
@@ -652,6 +714,14 @@ export function GeneralSettingsSection({
           enabled={richTextEditing}
           onEnabledChange={onRichTextEditingChange}
         />
+
+        {caffeinateAvailable ? (
+          <CaffeinateSettingsControl
+            disabled={caffeinateDisabled}
+            enabled={caffeinateEnabled}
+            onEnabledChange={onCaffeinateChange}
+          />
+        ) : null}
 
         {desktopBrowserAvailable ? (
           <InAppBrowserLinkSettingsControl
@@ -670,11 +740,10 @@ export function GeneralSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
+const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
-const UI_FORKING_EXPERIMENT_LABEL = "UI forking";
 
 interface HotkeyRecorderProps {
   disabled: boolean;
@@ -852,20 +921,18 @@ function HotkeyRecorder({
 }
 
 export function ExperimentsSettingsSection({
+  bbConnectEnabled,
   claudeCodeMockCliTrafficEnabled,
   desktopShellAvailable,
   disabled,
-  multiMachineEnabled,
+  onBbConnectEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
-  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
-  onUiForkingEnabledChange,
   pluginsEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
-  uiForkingEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -887,14 +954,14 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={MULTI_MACHINE_EXPERIMENT_LABEL}
-          description="Run threads on other connected machines (bb thread spawn --host) and bb connect remote access. Off rejects execution on any host but this machine's."
+          label={BB_CONNECT_EXPERIMENT_LABEL}
+          description="Enable remote access for this bb server at getbb.app."
         >
           <Switch
-            checked={multiMachineEnabled}
+            checked={bbConnectEnabled}
             disabled={disabled}
-            onCheckedChange={onMultiMachineEnabledChange}
-            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
+            onCheckedChange={onBbConnectEnabledChange}
+            aria-label={BB_CONNECT_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -907,18 +974,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onPluginsEnabledChange}
             aria-label={PLUGINS_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={UI_FORKING_EXPERIMENT_LABEL}
-          description="Let the bb CLI (bb ui) fork, edit, and live-reload the app's own frontend. This feature is unstable, and your forks will probably break in the future. Off keeps the shipped UI."
-        >
-          <Switch
-            checked={uiForkingEnabled}
-            disabled={disabled}
-            onCheckedChange={onUiForkingEnabledChange}
-            aria-label={UI_FORKING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -984,52 +1039,56 @@ export function SettingsView() {
   const [desktopShellAvailable] = useState(() => getBbDesktopInfo() !== null);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
+  const generalSettings =
+    systemConfigQuery.data?.generalSettings ?? defaultAppSettings;
+  const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
+  const { activePluginId, activeSection, hasUnknownSection } =
+    useSettingsNavState();
+  if (hasUnknownSection) {
+    return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
+  }
 
-  return (
-    <PageShell contentClassName="pt-4 md:pt-5">
-      <div className="mx-auto w-full max-w-3xl space-y-10">
-        <GeneralSettingsSection
-          appearance={appearance}
-          appearanceDisabled={
-            systemConfigQuery.data === undefined ||
-            updateAppearanceMutation.isPending
-          }
-          customThemes={systemConfigQuery.data?.customThemes ?? []}
-          desktopBrowserAvailable={desktopBrowserAvailable}
-          faviconColor={appearance.faviconColor}
-          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
-          openLinksInAppBrowser={openLinksInAppBrowser}
-          rewriteLocalhostLinks={rewriteLocalhostLinks}
-          richTextEditing={richTextEditing}
-          themePreference={themePreference}
-          onAppearanceThemeChange={(themeId) =>
-            updateAppearanceMutation.mutate({ themeId })
-          }
-          onCreatePalette={() =>
-            navigate(getRootComposeRoutePath(), {
-              state: {
-                focusPrompt: true,
-                initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
-              },
-            })
-          }
-          onFaviconColorChange={(faviconColor) =>
-            updateAppearanceMutation.mutate({
-              themeId: appearance.themeId,
-              faviconColor,
-            })
-          }
-          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
-          onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
-          onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
-          onRichTextEditingChange={setRichTextEditing}
-          onThemePreferenceChange={setPreferredTheme}
-        />
-
-        <UsageLimitsSettingsSection />
-
+  let content: ReactNode = null;
+  if (activePluginId !== null) {
+    content = <PluginSettingsDetailSection pluginId={activePluginId} />;
+  } else if (activeSection === "appearance") {
+    content = (
+      <AppearanceSettingsSection
+        appearance={appearance}
+        appearanceDisabled={
+          systemConfigQuery.data === undefined ||
+          updateAppearanceMutation.isPending
+        }
+        customThemes={systemConfigQuery.data?.customThemes ?? []}
+        faviconColor={appearance.faviconColor}
+        themePreference={themePreference}
+        onAppearanceThemeChange={(themeId) =>
+          updateAppearanceMutation.mutate({ themeId })
+        }
+        onCreatePalette={() =>
+          navigate(getRootComposeRoutePath(), {
+            state: {
+              focusPrompt: true,
+              initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
+            },
+          })
+        }
+        onFaviconColorChange={(faviconColor) =>
+          updateAppearanceMutation.mutate({
+            themeId: appearance.themeId,
+            faviconColor,
+          })
+        }
+        onThemePreferenceChange={setPreferredTheme}
+      />
+    );
+  } else if (activeSection === "usage") {
+    content = <UsageLimitsSettingsSection />;
+  } else if (activeSection === "files") {
+    content = (
+      <>
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}
           fileTargetId={fileTargetId}
@@ -1038,61 +1097,95 @@ export function SettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
-
         <FileOpenersSettingsSection />
-
-        <ExperimentsSettingsSection
-          claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
-          desktopShellAvailable={desktopShellAvailable}
-          disabled={
+      </>
+    );
+  } else if (activeSection === "experiments") {
+    content = (
+      <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
+        desktopShellAvailable={desktopShellAvailable}
+        disabled={
+          systemConfigQuery.data === undefined ||
+          updateExperimentsMutation.isPending
+        }
+        onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            claudeCodeMockCliTraffic: enabled,
+          })
+        }
+        onPopoutChatEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            popoutChat: enabled,
+          })
+        }
+        onPopoutChatHotkeyChange={(hotkey) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            popoutChatHotkey: hotkey,
+          })
+        }
+        onBbConnectEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            bbConnect: enabled,
+          })
+        }
+        onPluginsEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            plugins: enabled,
+          })
+        }
+        bbConnectEnabled={experiments.bbConnect}
+        pluginsEnabled={experiments.plugins}
+        popoutChatEnabled={experiments.popoutChat}
+        popoutChatHotkey={experiments.popoutChatHotkey}
+      />
+    );
+  } else if (activeSection === "plugins") {
+    content = <PluginsSettingsSection />;
+  } else if (activeSection === "community") {
+    content = <CommunitySettingsSection />;
+  } else {
+    content = (
+      <>
+        <GeneralSettingsSection
+          caffeinateAvailable={
+            systemConfigQuery.data?.primaryHostPlatform === "darwin"
+          }
+          caffeinateDisabled={
             systemConfigQuery.data === undefined ||
-            updateExperimentsMutation.isPending
+            updateGeneralSettingsMutation.isPending
           }
-          onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              claudeCodeMockCliTraffic: enabled,
+          caffeinateEnabled={generalSettings.caffeinate}
+          desktopBrowserAvailable={desktopBrowserAvailable}
+          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
+          openLinksInAppBrowser={openLinksInAppBrowser}
+          rewriteLocalhostLinks={rewriteLocalhostLinks}
+          richTextEditing={richTextEditing}
+          onCaffeinateChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              caffeinate: enabled,
             })
           }
-          onPopoutChatEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              popoutChat: enabled,
-            })
-          }
-          onPopoutChatHotkeyChange={(hotkey) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              popoutChatHotkey: hotkey,
-            })
-          }
-          onMultiMachineEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              multiMachine: enabled,
-            })
-          }
-          onPluginsEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              plugins: enabled,
-            })
-          }
-          onUiForkingEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              uiForking: enabled,
-            })
-          }
-          multiMachineEnabled={experiments.multiMachine}
-          pluginsEnabled={experiments.plugins}
-          popoutChatEnabled={experiments.popoutChat}
-          popoutChatHotkey={experiments.popoutChatHotkey}
-          uiForkingEnabled={experiments.uiForking}
+          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
+          onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
+          onRichTextEditingChange={setRichTextEditing}
         />
+        <VoiceInputSettingsSection />
+        <UpdatesSettingsSection />
+      </>
+    );
+  }
 
-        <PluginsSettingsSection />
-      </div>
+  return (
+    <PageShell contentClassName="pt-4 md:pt-5">
+      <div className="mx-auto w-full max-w-3xl space-y-10">{content}</div>
     </PageShell>
   );
 }

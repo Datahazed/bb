@@ -1,18 +1,10 @@
-import type { ProviderInfo } from "@bb/domain";
 import { buildAcpProviderInfo } from "@bb/agent-providers";
+import type { ProviderInfo } from "@bb/domain";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
-export interface KnownAcpAgent {
+export interface KnownAcpAgent extends HostDaemonAcpLaunchSpec {
   id: string;
-  displayName: string;
-  command: string;
-  args: string[];
-  env: Record<string, string>;
   executableName: string;
-  modelCli?: {
-    listArgs: string[];
-    selectFlag?: string;
-    primaryModels: string[];
-  };
 }
 
 export interface KnownAcpAgentExecutableQuery {
@@ -39,6 +31,54 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["acp"],
     env: {},
     executableName: "omp",
+  },
+  {
+    // Grok Build speaks ACP over stdio via `grok agent stdio`
+    // (https://docs.x.ai/build/cli/headless-scripting). Authentication is
+    // handled by the ACP bridge using Grok's advertised auth methods.
+    id: "acp-grok",
+    displayName: "Grok Build",
+    command: "grok",
+    args: ["agent", "stdio"],
+    env: {},
+    executableName: "grok",
+    modelCli: {
+      listArgs: ["models"],
+      selectFlag: "--model",
+      primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
+    },
+    permissionCli: {
+      full: ["--always-approve"],
+      insertAfterArgs: 1,
+    },
+    reasoningCli: {
+      flag: "--reasoning-effort",
+      supportedLevels: ["low", "medium", "high"],
+      levelValues: {
+        none: "low",
+        xhigh: "high",
+        ultracode: "high",
+        max: "high",
+      },
+      defaultLevel: "high",
+    },
+  },
+  {
+    // Hermes Agent speaks ACP over stdio via `hermes acp`. The official ACP
+    // registry also supports a uvx launcher, but the installed CLI exposes the
+    // `hermes` command as the stable host-local signal.
+    // https://hermes-agent.nousresearch.com/docs/user-guide/features/acp
+    id: "acp-hermes-agent",
+    displayName: "Hermes Agent",
+    command: "hermes",
+    args: ["acp"],
+    env: {},
+    executableName: "hermes",
+    nativeReasoning: {
+      configId: "reasoning_effort",
+      supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+      defaultLevel: "medium",
+    },
   },
 ];
 

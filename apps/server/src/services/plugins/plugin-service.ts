@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -80,6 +79,7 @@ import {
   type PluginBackgroundServiceRecord,
   type PluginCliContext,
   type PluginHttpRouteRecord,
+  type PluginMentionTrigger,
   type PluginRpcHandler,
   type PluginThreadActionRecord,
   type PluginThreadActionToast,
@@ -156,6 +156,11 @@ export interface PluginListEntry {
   enabled: boolean;
   /** Manifest description (package.json), null when absent or unreadable. */
   description: string | null;
+  /**
+   * `bb.displayName` — human nav/header label; null when not declared or the
+   * plugin is not currently loaded (falls back to the id in the UI).
+   */
+  displayName: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
   handlerStats: PluginHandlerStats;
@@ -165,6 +170,13 @@ export interface PluginListEntry {
   schedules: PluginScheduleEntry[];
   /** The plugin's registered `bb` subcommand; null when none or not loaded. */
   cliCommand: { name: string; summary: string } | null;
+  /**
+   * True when the loaded plugin declared at least one setting via
+   * bb.settings.define — drives the app's per-plugin settings nav entries.
+   * False while the plugin is not loaded (its schema only exists once the
+   * factory has run).
+   */
+  hasSettings: boolean;
   /**
    * Frontend bundle state (design §5.1), refreshed each time the plugin
    * loads. `{ hasApp: false, bundle: null }` until a load has read the
@@ -208,6 +220,7 @@ interface LoadedPlugin {
   handle: PluginApiHandle;
   services: ServiceRuntime[];
   isBuiltin: boolean;
+  builtinName: string | null;
 }
 
 export interface PluginServiceDeps {
@@ -219,12 +232,18 @@ export interface PluginServiceDeps {
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
   >;
   logger: ServerLogger;
+  pendingInteractions?: Pick<
+    import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
+    "requestPluginInteraction" | "interruptPluginInteractions"
+  >;
   /** BB data dir: plugin sqlite files and secrets live under <dataDir>/plugins/<id>/. */
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;
-  /** The `plugins` experiment gate, read live. */
+  /** The `plugins` experiment gate for user-installed plugins, read live. */
   isEnabled: () => boolean;
+  /** The `bbConnect` experiment gate for the builtin connect plugin, read live. */
+  isConnectEnabled: () => boolean;
   /** Declared first-party plugins installed by default; test-only override. */
   builtinPlugins?: readonly BuiltinPluginRegistration[];
   /** Factory-execution time box; overridable in tests. */
@@ -247,6 +266,12 @@ export interface PluginAgentToolContribution {
   instructions: string | null;
 }
 
+/** One dynamic instructions provider from a running plugin. */
+export interface PluginInstructionContribution {
+  pluginId: string;
+  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+}
+
 /** One thread action contributed by a running plugin (design §4.9). */
 export interface PluginThreadActionContribution {
   pluginId: string;
@@ -267,6 +292,7 @@ export interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
 }
 
 /** One row in a mention search group. `itemId` is the wire-composed
@@ -322,7 +348,7 @@ export type PluginWireLookup<T> =
 export interface PluginService {
   /** Whether the `plugins` experiment is currently on. */
   isEnabled(): boolean;
-  /** Whether this installed plugin is a builtin that bypasses the experiment gate. */
+  /** Whether this installed plugin is a builtin. */
   isBuiltin(id: string): boolean;
   /** Thread lifecycle event emitter, called from the lifecycle seams. */
   events: PluginThreadEventEmitter;
@@ -335,8 +361,8 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown or experiment turned off). */
   stop(): Promise<void>;
-  /** React to the `plugins` experiment being toggled at runtime. */
-  onExperimentChanged(enabled: boolean): Promise<void>;
+  /** React to experiments that affect plugin loading being toggled at runtime. */
+  onExperimentsChanged(): Promise<void>;
   list(): PluginListEntry[];
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
@@ -459,6 +485,13 @@ export interface PluginService {
    * NEXT session start. Empty when the experiment is off.
    */
   listAgentTools(): PluginAgentToolContribution[];
+  /**
+   * Dynamic instruction providers from bb.agents.contributeInstructions,
+   * ordered by plugin id. Resolved live at thread.start/turn.submit;
+   * empty when the experiment is off or no plugin registered a provider.
+   * At most one provider per plugin (re-register replaces).
+   */
+  listInstructionContributions(): PluginInstructionContribution[];
   /** Resolve one registered native tool by name (same view as listAgentTools). */
   findAgentTool(
     name: string,
@@ -513,6 +546,7 @@ export interface PluginService {
    * are dropped. Item ids are namespaced "<providerId>:<item id>".
    */
   searchMentions(args: {
+    trigger: PluginMentionTrigger;
     query: string;
     projectId: string | null;
     threadId: string | null;
@@ -555,6 +589,7 @@ const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
+const CONNECT_BUILTIN_PLUGIN_NAME = "connect";
 
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
@@ -743,6 +778,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // install could enter loadOne mid-dispose (no loaded entry, no hung
   // marker yet) and double-start the plugin's services.
   const lifecycleChains = new Map<string, Promise<void>>();
+  const disposingPluginIds = new Set<string>();
 
   function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = lifecycleChains.get(id) ?? Promise.resolve();
@@ -1143,6 +1179,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return sourceKind(source) === "builtin";
   }
 
+  function builtinNameFromSource(source: string): string | null {
+    try {
+      const parsed = parsePluginSource(source);
+      return parsed.kind === "builtin" ? parsed.name : null;
+    } catch {
+      return null;
+    }
+  }
+
   function isPackagedBuiltinAppEntry(args: {
     kind: ReturnType<typeof sourceKind>;
     manifest: PluginManifest;
@@ -1159,17 +1204,45 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return row !== undefined && isBuiltinSource(row.source);
   }
 
+  function isBuiltinPluginLoadEnabled(name: string): boolean {
+    if (name === CONNECT_BUILTIN_PLUGIN_NAME) {
+      return deps.isConnectEnabled();
+    }
+    return true;
+  }
+
+  function experimentGateDisabledDetail(
+    row: InstalledPluginRow,
+  ): string | null {
+    const builtinName = builtinNameFromSource(row.source);
+    if (builtinName === CONNECT_BUILTIN_PLUGIN_NAME) {
+      return 'disabled by the "bb connect" experiment';
+    }
+    if (builtinName === null) {
+      return 'disabled by the "Plugins" experiment';
+    }
+    return null;
+  }
+
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    return deps.isEnabled() || isBuiltinSource(row.source);
+    const builtinName = builtinNameFromSource(row.source);
+    if (builtinName !== null) return isBuiltinPluginLoadEnabled(builtinName);
+    return deps.isEnabled();
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return deps.isEnabled() || plugin.isBuiltin;
+    if (plugin.builtinName !== null) {
+      return isBuiltinPluginLoadEnabled(plugin.builtinName);
+    }
+    return deps.isEnabled();
   }
 
   function shouldExposePluginId(id: string): boolean {
     const plugin = loaded.get(id);
-    return deps.isEnabled() || (plugin?.isBuiltin ?? isBuiltinPluginId(id));
+    if (plugin !== undefined) return shouldExposeLoadedPlugin(plugin);
+    const row = getInstalledPlugin(deps.db, id);
+    if (row === undefined) return deps.isEnabled();
+    return shouldLoadRow(row);
   }
 
   function exposedLoadedEntries(): Array<[string, LoadedPlugin]> {
@@ -1344,6 +1417,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
+      requestInteraction: (args) => {
+        if (!deps.pendingInteractions) {
+          throw new Error("Plugin interactions are unavailable in this host");
+        }
+        if (disposingPluginIds.has(row.id)) {
+          throw new Error(`plugin "${row.id}" is disposing`);
+        }
+        return deps.pendingInteractions.requestPluginInteraction({
+          ...args,
+          pluginId: row.id,
+        });
+      },
     });
     // Fresh load: a plugin that was waiting on configuration gets to prove
     // itself again (its factory/services re-report if still unconfigured).
@@ -1384,6 +1469,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       return;
     }
+    const builtinName = builtinNameFromSource(row.source);
     const plugin: LoadedPlugin = {
       manifest,
       handle,
@@ -1397,7 +1483,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         startedAt: 0,
         disposed: false,
       })),
-      isBuiltin: isBuiltinSource(row.source),
+      isBuiltin: builtinName !== null,
+      builtinName,
     };
     loaded.set(row.id, plugin);
     // Sync durable schedule rows to this load's registrations: upsert each
@@ -1442,34 +1529,46 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
-    // §3 order: services first (abort + bounded await), then dispose hooks,
-    // then vended resources, then handle invalidation.
-    await stopServices(id, plugin);
-    // LIFO, each hook isolated: one bad hook must not skip the rest.
-    for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+    disposingPluginIds.add(id);
+    try {
       try {
-        await hook();
+        deps.pendingInteractions?.interruptPluginInteractions(id);
       } catch (error) {
         logger.warn(
-          `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          `plugin ${id} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    }
-    // §3 step 3: let in-flight rpc/http/event handlers settle (bounded)
-    // before their sqlite handles close and their API handle goes stale.
-    await drainInvocations(id);
-    // Close host-vended sqlite handles before invalidating: a stale handle
-    // throws on use instead of writing to a database mid-reload.
-    for (const database of plugin.handle.sqliteHandles.splice(0)) {
-      try {
-        database.close();
-      } catch (error) {
-        logger.warn(
-          `plugin ${id} sqlite close failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      // §3 order: services first (abort + bounded await), then dispose hooks,
+      // then vended resources, then handle invalidation.
+      await stopServices(id, plugin);
+      // LIFO, each hook isolated: one bad hook must not skip the rest.
+      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+        try {
+          await hook();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
+      // §3 step 3: let in-flight rpc/http/event handlers settle (bounded)
+      // before their sqlite handles close and their API handle goes stale.
+      await drainInvocations(id);
+      // Close host-vended sqlite handles before invalidating: a stale handle
+      // throws on use instead of writing to a database mid-reload.
+      for (const database of plugin.handle.sqliteHandles.splice(0)) {
+        try {
+          database.close();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} sqlite close failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    } finally {
+      plugin.handle.invalidate();
+      disposingPluginIds.delete(id);
     }
-    plugin.handle.invalidate();
   }
 
   async function disposeAll(): Promise<void> {
@@ -1478,28 +1577,37 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
   }
 
-  async function disposeNonBuiltins(): Promise<void> {
-    for (const [id, plugin] of [...loaded.entries()]) {
-      if (plugin.isBuiltin) continue;
-      await withLifecycleLock(id, () => disposeOne(id));
-    }
+  function clearRuntimeState(id: string): void {
+    statuses.delete(id);
+    appBundles.delete(id);
+    logos.delete(id);
+    needsConfiguration.delete(id);
+    agentToolProblems.delete(id);
   }
 
-  function clearNonBuiltinRuntimeState(): void {
-    for (const row of listInstalledPlugins(deps.db)) {
-      if (isBuiltinSource(row.source)) continue;
-      statuses.delete(row.id);
-      appBundles.delete(row.id);
-      logos.delete(row.id);
+  async function unloadOneForExperimentGate(
+    row: InstalledPluginRow,
+  ): Promise<void> {
+    await disposeOne(row.id);
+    clearRuntimeState(row.id);
+    if (row.enabled) {
+      setStatus(row.id, "disabled", experimentGateDisabledDetail(row));
+    } else {
+      setStatus(row.id, "disabled");
     }
   }
 
   async function loadAll(): Promise<void> {
-    const rows = listInstalledPlugins(deps.db)
-      .filter(shouldLoadRow)
-      .sort((a, b) => a.id.localeCompare(b.id));
+    const rows = listInstalledPlugins(deps.db).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
     for (const row of rows) {
-      await withLifecycleLock(row.id, () => loadOne(row));
+      if (shouldLoadRow(row)) {
+        if (loaded.has(row.id)) continue;
+        await withLifecycleLock(row.id, () => loadOne(row));
+      } else {
+        await withLifecycleLock(row.id, () => unloadOneForExperimentGate(row));
+      }
     }
   }
 
@@ -1512,6 +1620,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     id: string,
     find: (plugin: LoadedPlugin) => T | undefined,
   ): PluginWireLookup<T> {
+    if (!shouldExposePluginId(id)) {
+      const row = getInstalledPlugin(deps.db, id);
+      if (!row) return { outcome: "unknown-plugin" };
+      const runtime = statuses.get(id);
+      return {
+        outcome: "not-running",
+        status: runtime?.status ?? "disabled",
+        detail: runtime?.detail ?? experimentGateDisabledDetail(row),
+      };
+    }
     const plugin = loaded.get(id);
     if (!plugin) {
       const row = getInstalledPlugin(deps.db, id);
@@ -1616,14 +1734,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       version: manifest.version,
       enabled: existing?.enabled ?? true,
     });
-    if (deps.isEnabled()) {
+    const row = getInstalledPlugin(deps.db, manifest.id);
+    if (row && shouldLoadRow(row)) {
       await withLifecycleLock(manifest.id, async () => {
         await disposeOne(manifest.id);
-        const row = getInstalledPlugin(deps.db, manifest.id);
-        if (row) await loadOne(row);
+        await loadOne(row);
       });
       await syncCliSkill();
       notifyPluginsChanged();
+    } else if (row) {
+      await withLifecycleLock(manifest.id, () =>
+        unloadOneForExperimentGate(row),
+      );
     }
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
@@ -1879,20 +2001,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.hub.notifySystem(["plugins-changed"]);
   }
 
-  function readManifestDescription(rootDir: string): string | null {
-    try {
-      const parsed = JSON.parse(
-        readFileSync(join(rootDir, "package.json"), "utf8"),
-      ) as { description?: unknown };
-      const description = parsed.description;
-      return typeof description === "string" && description.trim().length > 0
-        ? description
-        : null;
-    } catch {
-      return null;
-    }
-  }
-
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     return listInstalledPlugins(deps.db)
@@ -1900,7 +2008,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       .map((row) => {
         const runtime = statuses.get(row.id);
         const stats = handlerStats.get(row.id);
-        const cliRegistration = loaded.get(row.id)?.handle.cli.registration;
+        const loadedPlugin = loaded.get(row.id);
+        const exposedPlugin =
+          loadedPlugin !== undefined && shouldExposeLoadedPlugin(loadedPlugin)
+            ? loadedPlugin
+            : undefined;
+        const cliRegistration = exposedPlugin?.handle.cli.registration;
         return {
           id: row.id,
           source: row.source,
@@ -1908,10 +2021,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           version: row.version,
           enabled: row.enabled,
           description:
-            loaded.get(row.id)?.manifest.description ??
+            exposedPlugin?.manifest.description ??
             manifestSnapshots.get(row.id)?.description ??
-            readManifestDescription(row.rootDir) ??
             null,
+          displayName: exposedPlugin?.manifest.displayName ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1923,7 +2036,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-          services: (loaded.get(row.id)?.services ?? []).map((service) => ({
+          services: (exposedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,
           })),
@@ -1940,15 +2053,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           cliCommand: cliRegistration
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
+          hasSettings:
+            exposedPlugin !== undefined &&
+            Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
           // Only advertise URLs the asset route will actually serve (it
           // gates on the live runtime, like the bundle assets).
-          logoUrl: loaded.has(row.id)
-            ? (logos.get(row.id)?.logo?.url ?? null)
-            : null,
-          logoDarkUrl: loaded.has(row.id)
-            ? (logos.get(row.id)?.logoDark?.url ?? null)
-            : null,
+          logoUrl:
+            exposedPlugin !== undefined
+              ? (logos.get(row.id)?.logo?.url ?? null)
+              : null,
+          logoDarkUrl:
+            exposedPlugin !== undefined
+              ? (logos.get(row.id)?.logoDark?.url ?? null)
+              : null,
         };
       });
   }
@@ -2000,13 +2118,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       notifyPluginsChanged();
     },
 
-    async onExperimentChanged(enabled) {
-      if (enabled) {
-        await loadAll();
-      } else {
-        await disposeNonBuiltins();
-        clearNonBuiltinRuntimeState();
-      }
+    async onExperimentsChanged() {
+      await loadAll();
       await syncCliSkill();
       notifyPluginsChanged();
     },
@@ -2069,6 +2182,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const row = getInstalledPlugin(deps.db, id);
         if (row && shouldLoadRow(row)) {
           await withLifecycleLock(id, () => loadOne(row));
+        } else if (row) {
+          await withLifecycleLock(id, () => unloadOneForExperimentGate(row));
         }
       } else {
         await withLifecycleLock(id, async () => {
@@ -2100,6 +2215,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getApi(id) {
+      if (!shouldExposePluginId(id)) return undefined;
       return loaded.get(id)?.handle.api;
     },
 
@@ -2107,6 +2223,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       // Honest gate: assets are only downloadable while the plugin runtime
       // is live. A disabled/errored/removed plugin's recorded snapshot may
       // still ride the inventory for display, but its bytes are not served.
+      if (!shouldExposePluginId(id)) return undefined;
       if (!loaded.has(id)) return undefined;
       const assets = appBundles.get(id)?.assets;
       if (!assets) return undefined;
@@ -2118,6 +2235,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     getLogoAsset(id, variant) {
       // Same honest gate as getAppAsset: bytes only while the runtime is
       // live (matches the inventory's logoUrl/logoDarkUrl gating).
+      if (!shouldExposePluginId(id)) return undefined;
       if (!loaded.has(id)) return undefined;
       const set = logos.get(id);
       const logo = variant === "logo-dark" ? set?.logoDark : set?.logo;
@@ -2130,6 +2248,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async getSettings(id) {
+      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       return buildPluginSettingsView({
@@ -2141,6 +2260,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async updateSettings(id, values) {
+      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       const storeArgs = {
@@ -2317,6 +2437,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }));
     },
 
+    listInstructionContributions() {
+      const out: PluginInstructionContribution[] = [];
+      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        const provider = plugin.handle.instructionProvider;
+        if (provider === null) continue;
+        out.push({ pluginId: id, provider });
+      }
+      return out;
+    },
+
     findAgentTool(name) {
       return collectAgentTools().find((entry) => entry.record.name === name);
     },
@@ -2409,6 +2541,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: id,
             id: record.id,
             label: record.label,
+            triggers: record.triggers,
           });
         }
       }
@@ -2423,6 +2556,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const tasks: Array<Promise<PluginMentionSearchGroup | null>> = [];
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
+          if (!record.triggers.includes(args.trigger)) continue;
           tasks.push(
             (async () => {
               const outcome = await invokeWrapped(
@@ -2431,6 +2565,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 async () => {
                   const searchPromise = (async () =>
                     record.search({
+                      trigger: args.trigger,
                       query: args.query,
                       projectId: args.projectId,
                       threadId: args.threadId,

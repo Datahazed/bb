@@ -18,10 +18,14 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginInteractions,
+  PluginInteractionRequest,
+  PluginInteractionResult,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
   PluginMentionSearchContext,
+  PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -39,6 +43,7 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
 } from "../backend-contract.js";
+import type { JsonValue } from "@bb/domain";
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -100,7 +105,60 @@ const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_MENTION_TRIGGER_VALUES = [
+  "@",
+  "#",
+  "$",
+  "!",
+  "~",
+] as const satisfies readonly PluginMentionTrigger[];
+const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
+  "@",
+] as const satisfies readonly PluginMentionTrigger[];
 const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger {
+  return (
+    typeof value === "string" &&
+    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
+  );
+}
+
+function normalizeMentionProviderTriggers(
+  providerId: string,
+  triggers: unknown,
+): readonly PluginMentionTrigger[] {
+  if (triggers === undefined) {
+    return DEFAULT_PLUGIN_MENTION_TRIGGERS;
+  }
+  if (!Array.isArray(triggers)) {
+    throw new Error(
+      `mention provider "${providerId}" triggers must be an array`,
+    );
+  }
+  if (triggers.length === 0) {
+    throw new Error(
+      `mention provider "${providerId}" triggers must include at least one trigger`,
+    );
+  }
+  const seen = new Set<PluginMentionTrigger>();
+  const normalized: PluginMentionTrigger[] = [];
+  for (const trigger of triggers) {
+    if (!isPluginMentionTrigger(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid — use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
+      );
+    }
+    if (seen.has(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is duplicated`,
+      );
+    }
+    seen.add(trigger);
+    normalized.push(trigger);
+  }
+  return normalized;
+}
 
 /**
  * Copies of the server's hand-maintained reserved-name lists
@@ -188,6 +246,7 @@ export interface FakeThreadActionRecord {
 export interface FakeMentionProviderRecord {
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
   search: (
     ctx: PluginMentionSearchContext,
   ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
@@ -211,6 +270,10 @@ export interface FakePluginRegistrations {
   schedules: FakeScheduleRecord[];
   cli: FakeCliRecord | null;
   agentTools: FakeAgentToolRecord[];
+  /** Provider from contributeInstructions, or null when none registered. */
+  instructionProvider:
+    | ((ctx: { threadId: string; projectId: string }) => string | null)
+    | null;
   threadActions: FakeThreadActionRecord[];
   threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
@@ -227,15 +290,18 @@ export interface FakePluginHarness {
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
+  readonly pendingInteractions: readonly (PluginInteractionRequest & {
+    id: string;
+  })[];
+  submitInteraction(id: string, value: JsonValue): void;
+  cancelInteraction(id: string): void;
   /**
    * Apply a settings update the way the host's settings save does:
    * validate against the declared descriptors (`null` unsets), store, and
    * fire `onChange` listeners when effective values changed. Throws on
    * unknown keys or wrong value types.
    */
-  setSettings(
-    values: Record<string, PluginSettingValue | null>,
-  ): Promise<void>;
+  setSettings(values: Record<string, PluginSettingValue | null>): Promise<void>;
   /**
    * Invoke a registered rpc method with host semantics: the input and the
    * result are JSON-round-tripped, and a handler failure rejects with an
@@ -267,7 +333,10 @@ export interface FakePluginHarness {
    * recorded via needsConfiguration and resolves `done`; other errors
    * reject it.
    */
-  runService(name: string): { controller: AbortController; done: Promise<void> };
+  runService(name: string): {
+    controller: AbortController;
+    done: Promise<void>;
+  };
   /** Run a registered schedule's function once (no timers, no cron sweep). */
   runSchedule(name: string): Promise<void>;
   /**
@@ -832,7 +901,19 @@ export function createFakePluginHost(
 
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
+  let instructionProvider:
+    | ((ctx: { threadId: string; projectId: string }) => string | null)
+    | null = null;
   const agents: PluginAgents = {
+    contributeInstructions(provider) {
+      assertLive();
+      if (typeof provider !== "function") {
+        throw new Error(
+          "contributeInstructions requires a provider function (ctx) => string | null",
+        );
+      }
+      instructionProvider = provider;
+    },
     registerTool(tool: {
       name: string;
       description: string;
@@ -1011,6 +1092,7 @@ export function createFakePluginHost(
       mentionProviders.push({
         id,
         label: provider.label.trim(),
+        triggers: normalizeMentionProviderTriggers(id, provider.triggers),
         search: provider.search.bind(provider),
         resolve: provider.resolve.bind(provider),
       });
@@ -1056,6 +1138,41 @@ export function createFakePluginHost(
   };
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
+  let nextInteractionId = 1;
+  const pendingInteractions = new Map<
+    string,
+    {
+      request: PluginInteractionRequest;
+      resolve: (result: PluginInteractionResult) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const interactions: PluginInteractions = {
+    request(request, requestOptions) {
+      assertLive();
+      const id = `fake-interaction-${nextInteractionId++}`;
+      return new Promise((resolve) => {
+        const settleAborted = () => {
+          const pending = pendingInteractions.get(id);
+          if (!pending) return;
+          clearTimeout(pending.timer);
+          pendingInteractions.delete(id);
+          resolve({ outcome: "cancelled", reason: "request-aborted" });
+        };
+        requestOptions?.signal?.addEventListener("abort", settleAborted, {
+          once: true,
+        });
+        const timer = setTimeout(
+          () => {
+            pendingInteractions.delete(id);
+            resolve({ outcome: "cancelled", reason: "timeout" });
+          },
+          request.timeoutMs ?? 10 * 60 * 1000,
+        );
+        pendingInteractions.set(id, { request, resolve, timer });
+      });
+    },
+  };
 
   const bb: BbPluginApi = {
     pluginId,
@@ -1067,6 +1184,7 @@ export function createFakePluginHost(
     realtime,
     background,
     cli,
+    interactions,
     agents,
     ui,
     status,
@@ -1111,6 +1229,9 @@ export function createFakePluginHost(
         return cliRecord.registration;
       },
       agentTools,
+      get instructionProvider() {
+        return instructionProvider;
+      },
       threadActions,
       get threadEventHandlers() {
         return {
@@ -1121,6 +1242,26 @@ export function createFakePluginHost(
         };
       },
       mentionProviders,
+    },
+    get pendingInteractions() {
+      return [...pendingInteractions].map(([id, pending]) => ({
+        id,
+        ...pending.request,
+      }));
+    },
+    submitInteraction(id, value) {
+      const pending = pendingInteractions.get(id);
+      if (!pending) throw new Error(`no pending interaction "${id}"`);
+      clearTimeout(pending.timer);
+      pendingInteractions.delete(id);
+      pending.resolve({ outcome: "submitted", value });
+    },
+    cancelInteraction(id) {
+      const pending = pendingInteractions.get(id);
+      if (!pending) throw new Error(`no pending interaction "${id}"`);
+      clearTimeout(pending.timer);
+      pendingInteractions.delete(id);
+      pending.resolve({ outcome: "cancelled", reason: "user" });
     },
 
     async setSettings(values) {
@@ -1194,8 +1335,7 @@ export function createFakePluginHost(
       const pathname = new URL(path, "http://plugin.test").pathname;
       const route = httpRoutes.find(
         (candidate) =>
-          candidate.method === normalizedMethod &&
-          candidate.path === pathname,
+          candidate.method === normalizedMethod && candidate.path === pathname,
       );
       if (!route) {
         throw new Error(
@@ -1284,7 +1424,9 @@ export function createFakePluginHost(
       }
       const parsed = record.parse(input);
       if (!parsed.ok) {
-        throw new Error(`tool "${name}" arguments are invalid: ${parsed.error}`);
+        throw new Error(
+          `tool "${name}" arguments are invalid: ${parsed.error}`,
+        );
       }
       return record.execute(parsed.value, {
         threadId: ctx?.threadId ?? "thread-test",
@@ -1296,6 +1438,11 @@ export function createFakePluginHost(
     async dispose() {
       if (disposed) return;
       disposed = true;
+      for (const [id, pending] of pendingInteractions) {
+        clearTimeout(pending.timer);
+        pendingInteractions.delete(id);
+        pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
+      }
       // Host order (§3): services first, then hooks LIFO (isolated), then
       // vended sqlite handles, then handle invalidation.
       for (const controller of serviceControllers) controller.abort();

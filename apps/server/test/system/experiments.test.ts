@@ -12,12 +12,11 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
+        bbConnect: false,
         claudeCodeMockCliTraffic: false,
-        multiMachine: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,
-        uiForking: false,
       });
     });
   });
@@ -28,43 +27,62 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          bbConnect: true,
           claudeCodeMockCliTraffic: true,
-          multiMachine: true,
           popoutChat: true,
           popoutChatHotkey: "CommandOrControl+Shift+P",
           plugins: false,
-          uiForking: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
-        uiForking: true,
       });
       expect(getExperiments(harness.db)).toEqual({
+        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
-        uiForking: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
+        bbConnect: true,
         claudeCodeMockCliTraffic: true,
-        multiMachine: true,
         popoutChat: true,
         popoutChatHotkey: "CommandOrControl+Shift+P",
         plugins: false,
-        uiForking: true,
       });
+    });
+  });
+
+  it("does not expose legacy direct bb connect routes", async () => {
+    await withTestHarness(async (harness) => {
+      const disabled = await harness.app.request("/api/v1/connect/status");
+      expect(disabled.status).toBe(404);
+
+      const put = await harness.app.request("/api/v1/settings/experiments", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          bbConnect: true,
+          claudeCodeMockCliTraffic: false,
+          popoutChat: false,
+          popoutChatHotkey: "Alt+Space",
+          plugins: false,
+        }),
+      });
+      expect(put.status).toBe(200);
+
+      const enabled = await harness.app.request("/api/v1/connect/status");
+      expect(enabled.status).toBe(404);
     });
   });
 

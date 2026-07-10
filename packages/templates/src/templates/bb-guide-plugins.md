@@ -14,8 +14,20 @@ run like any other command. Plugins are full-trust code inside the server.
 
 User-installed plugins are an experiment, off by default: enable "Plugins" under
 Settings → Experiments first. Builtin plugins (`builtin:<name>`) ship with bb and
-remain available even when the experiment is off. Plugin state lives under
+can remain available even when the experiment is off; `connect` additionally
+requires the "bb connect" experiment. Plugin state lives under
 `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
+
+The builtin Secrets plugin provides a secure credential form and guarded
+dotenv reconciliation:
+
+  bb secret request <NAME...> --write-env <path>
+                    [--purpose <text>] [--describe <NAME> <text>]...
+
+The command blocks until the user submits or cancels the form. Secret values
+never appear in command arguments, model-visible output, or persisted
+interaction data; success prints only the path, variable names, and
+added/updated/unchanged counts.
 
   bb plugin install <src>        Install from a local path, builtin:<name>,
                                  git:<url>@<ref>, or npm:<name>@<version>
@@ -67,12 +79,17 @@ refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
+settingsSection (per-plugin settings page below the host-rendered settings
+form; no props in V1, optional host-rendered title; builtin slot entries work
+with the Plugins experiment off while the Settings → Plugins management
+bucket stays experiment-gated),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with JSON params), composerAccessory (prompt box
-footer), and fileOpener (register as a per-extension file viewer/editor;
+footer), pendingInteraction (temporarily replace a thread composer with a
+plugin form), and fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
@@ -112,7 +129,7 @@ range). The plugin id is the package name minus `bb-plugin-`.
 
 Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
 shows it wherever the plugin's contributions appear — the sidebar entry,
-panel title bar, composer command and @-mention menus, thread action
+panel title bar, composer command and mention menus, thread action
 buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
@@ -148,8 +165,9 @@ frontend bundle needed); bb.status.needsConfiguration (report
 "unconfigured" instead of crashing); bb.onDispose (LIFO cleanup on
 reload/disable/shutdown).
 
-Frontend entries register React slots (homepageSection, navPanel,
-threadPanelAction, composerAccessory) via definePluginApp, use the hooks
+Frontend entries register React slots (homepageSection, settingsSection,
+navPanel, threadPanelAction, composerAccessory, fileOpener) via
+definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and
 tw-animate-css utilities compile in plugin builds).

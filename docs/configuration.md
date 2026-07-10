@@ -82,6 +82,18 @@ By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
 
+The microphone picker in Settings → Voice Input is client-local. It stores the
+selected browser `MediaDevices` device id in localStorage as
+`bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
+server-side transcription model.
+
+The Caffeinate toggle in Settings → General is server-backed and macOS-only. It
+asks the primary host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`
+while enabled, preventing system idle sleep while bb is running; turning it off
+stops that process. It only blocks idle sleep: closing a laptop lid or choosing
+Sleep manually still sleeps the Mac. The toggle is hidden unless the connected
+primary host daemon reports macOS.
+
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting
@@ -120,7 +132,10 @@ simply unavailable.
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
 be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
-and can be launched as `omp acp`.
+and can be launched as `omp acp`. It also exposes `acp-grok` when Grok Build's
+`grok` CLI is on PATH and can be launched as `grok agent stdio`, and
+`acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
+`hermes acp`.
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
@@ -149,6 +164,19 @@ Example:
         "listArgs": ["--list-models"],
         "selectFlag": "--model",
         "primaryModels": ["default"]
+      },
+      "reasoningCli": {
+        "flag": "--reasoning-effort",
+        "supportedLevels": ["low", "medium", "high"],
+        "levelValues": {
+          "max": "high"
+        },
+        "defaultLevel": "high"
+      },
+      "nativeReasoning": {
+        "configId": "reasoning_effort",
+        "supportedLevels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "defaultLevel": "medium"
       }
     }
   ]
@@ -172,12 +200,29 @@ and `primaryModels` marks preferred models in the picker. ACP agents that
 advertise models over the protocol are auto-discovered without `modelCli`; keep
 `modelCli` for CLI-style agents such as Cursor.
 
+`reasoningCli` is optional. Use it only when the agent accepts reasoning as a
+global launch flag rather than advertising a protocol `thought_level` option or
+encoding effort in model ids. `flag` is inserted before the ACP agent args,
+`supportedLevels` controls the picker levels, `defaultLevel` controls the
+picker default, and `levelValues` maps bb reasoning levels to the agent's CLI
+vocabulary when they differ.
+
+`nativeReasoning` is optional. Use it for ACP agents that accept reasoning via
+`session/set_config_option` but do not advertise a `thought_level` config option
+during model discovery. `configId` is the ACP config id to set,
+`supportedLevels` controls the picker levels, `defaultLevel` controls the
+picker default, and `levelValues` maps bb reasoning levels to the agent's ACP
+config vocabulary when they differ. Hermes Agent uses this with
+`configId: "reasoning_effort"`.
+
 For ACP-native agents, bb also uses a protocol `thought_level` config option
 when the selected model advertises one. The selected reasoning level is applied
 with `session/set_config_option` before the first prompt. Models without that
-option keep agent-managed reasoning. Cursor is intentionally separate: it
-encodes reasoning in model ids discovered through `modelCli`, not in an ACP
-`thought_level` option.
+option keep agent-managed reasoning unless the provider launch spec declares
+`nativeReasoning`. Cursor is intentionally separate: it encodes reasoning in
+model ids discovered through `modelCli`, not in an ACP `thought_level` option.
+Grok Build is also separate: it uses `reasoningCli` to launch
+`grok --reasoning-effort <level> agent stdio`.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not
@@ -226,20 +271,19 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
-## Multi-Machine
+## bb connect Experiment
 
-Running threads on hosts other than the local primary (`bb thread spawn
---host <id>`; ids from `bb host list`) is gated behind the "Multi-machine"
-experiment (Settings → Experiments, off by default). While the experiment is
-off, execution requests that target a non-primary host are rejected with
-`multi_machine_disabled`. The bb connect remote-access surfaces are gated by
-the same experiment as they land.
+The **bb connect** experiment (Settings → Experiments, off by default) gates
+remote access for reaching this bb server through getbb.app. It does not enable
+running threads on non-primary hosts.
 
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Remote access is owned by the builtin
+command at https://getbb.app). Enable the "bb connect" experiment first;
+while it is off, `bb connect` and Settings → Connect are unavailable because
+the plugin is not loaded. Remote access is owned by the builtin
 **connect plugin** (`plugins/connect/`): pairing redeems the code and stores
 the durable credential in the plugin's kv storage (in `bb.db`), and the
 plugin's background service holds the connect tunnel — dialing the gate,
@@ -249,18 +293,26 @@ lives as long as the bb server runs (with the plugin enabled) and
 re-establishes on restart; there is no foreground client. Pair from a machine
 without an installed bb via `npx -p bb-app@latest bb connect …`.
 `bb connect status` shows the connect state and `bb connect off` disconnects
-and clears the pairing. Disabling the plugin (`bb plugin disable connect`)
-cuts off all remote access.
+and clears the pairing. After pairing, `bb connect expose <port>` shares a
+local HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent
+host for a self-hosted gate); access requires the owner's getbb.app session
+(not a public link). `bb connect unexpose <port>` stops sharing and
+`bb connect shares` lists active URLs. Disabling the plugin
+(`bb plugin disable connect`) cuts off all remote access; with the bb connect
+experiment still enabled, `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and the app's "Connect" panel drives the plugin's rpc.
+the plugin, and Settings → Connect drives the plugin's rpc (including shared
+ports).
 
 ## Plugins
 
-Plugins are gated behind the "Plugins" experiment (Settings → Experiments, off
-by default). While the experiment is off, no plugin code loads and `bb plugin`
-commands report that plugins are disabled. Toggling the experiment applies
-live — enabling loads installed plugins, disabling unloads them.
+User-installed plugins are gated behind the "Plugins" experiment (Settings →
+Experiments, off by default). While the experiment is off, user plugin code
+does not load and `bb plugin` commands for user plugins report that plugins are
+disabled. Builtin plugins ship with bb and can remain available; the builtin
+connect plugin is separately gated by "bb connect". Toggling these
+experiments applies live.
 
 Plugin state lives under the data dir:
 
@@ -292,10 +344,8 @@ npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
 The data directory is the root directory for all bb-managed state: the SQLite
-database, logs, host identity, thread storage, custom themes (`theme/`), and the
-user-editable UI source (`ui/`, see `bb ui` in the bb-cli skill — gated behind the
-"UI forking" experiment under Settings → Experiments, off by default). It defaults to
-`~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
+database, logs, host identity, thread storage, custom themes (`theme/`), and
+plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your
 home directory, plus a short hash suffix. Use `--data-dir` to point packaged-app

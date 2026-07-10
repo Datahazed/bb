@@ -10,6 +10,10 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type JsonValue,
+} from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentToolContext,
@@ -23,10 +27,12 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginInteractions,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
   PluginMentionSearchContext,
+  PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -44,6 +50,7 @@ import type {
 } from "@bb/plugin-sdk";
 import type { BbSdk, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
+import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
 import {
   readPluginSettingsValues,
@@ -74,6 +81,7 @@ export type {
   PluginMentionItem,
   PluginMentionProviderRegistration,
   PluginMentionSearchContext,
+  PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -190,7 +198,6 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "status",
   "theme",
   "thread",
-  "ui",
 ];
 
 /**
@@ -207,6 +214,7 @@ export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
 export interface PluginMentionProviderRecord {
   id: string;
   label: string;
+  triggers: readonly PluginMentionTrigger[];
   search: (
     ctx: PluginMentionSearchContext,
   ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
@@ -278,6 +286,59 @@ const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PLUGIN_MENTION_TRIGGER_VALUES = [
+  "@",
+  "#",
+  "$",
+  "!",
+  "~",
+] as const satisfies readonly PluginMentionTrigger[];
+const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
+  "@",
+] as const satisfies readonly PluginMentionTrigger[];
+
+function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger {
+  return (
+    typeof value === "string" &&
+    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
+  );
+}
+
+function normalizeMentionProviderTriggers(
+  providerId: string,
+  triggers: unknown,
+): readonly PluginMentionTrigger[] {
+  if (triggers === undefined) {
+    return DEFAULT_PLUGIN_MENTION_TRIGGERS;
+  }
+  if (!Array.isArray(triggers)) {
+    throw new Error(
+      `mention provider "${providerId}" triggers must be an array`,
+    );
+  }
+  if (triggers.length === 0) {
+    throw new Error(
+      `mention provider "${providerId}" triggers must include at least one trigger`,
+    );
+  }
+  const seen = new Set<PluginMentionTrigger>();
+  const normalized: PluginMentionTrigger[] = [];
+  for (const trigger of triggers) {
+    if (!isPluginMentionTrigger(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid; use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
+      );
+    }
+    if (seen.has(trigger)) {
+      throw new Error(
+        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is duplicated`,
+      );
+    }
+    seen.add(trigger);
+    normalized.push(trigger);
+  }
+  return normalized;
+}
 
 export type PluginSettingsListener = (
   next: Record<string, PluginSettingValue | undefined>,
@@ -309,6 +370,11 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
+  /**
+   * Dynamic thread-instructions provider from
+   * `bb.agents.contributeInstructions` (at most one; null when none).
+   */
+  instructionProvider: PluginInstructionProvider | null;
   /** Thread actions recorded by `bb.ui.registerThreadAction`. */
   threadActions: PluginThreadActionRecord[];
   /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
@@ -316,6 +382,12 @@ export interface PluginApiHandle {
   /** Poison every method on the handle. */
   invalidate(): void;
 }
+
+/** Provider registered by `bb.agents.contributeInstructions`. */
+export type PluginInstructionProvider = (ctx: {
+  threadId: string;
+  projectId: string;
+}) => string | null;
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
@@ -389,6 +461,14 @@ export function createPluginApi(options: {
   /** Records an agent-tool registration problem as the plugin's status
    * detail; the plugin itself keeps running. */
   reportAgentToolProblem: (message: string) => void;
+  requestInteraction: (args: {
+    threadId: string;
+    rendererId: string;
+    title: string;
+    payload: JsonValue;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }) => Promise<PluginInteractionResult>;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -401,6 +481,7 @@ export function createPluginApi(options: {
     reportNeedsConfiguration,
     isAgentToolNameTaken,
     reportAgentToolProblem,
+    requestInteraction,
   } = options;
   let invalidated = false;
   let wrappedSdk: BbSdk | undefined;
@@ -440,6 +521,73 @@ export function createPluginApi(options: {
     info: (message) => emitLog("info", message),
     warn: (message) => emitLog("warn", message),
     error: (message) => emitLog("error", message),
+  };
+
+  const interactions: PluginInteractions = {
+    async request(request, requestOptions) {
+      assertLive();
+      if (!request || typeof request !== "object") {
+        throw new Error("interactions.request requires an options object");
+      }
+      if (
+        typeof request.threadId !== "string" ||
+        request.threadId.length === 0
+      ) {
+        throw new Error(
+          "interactions.request threadId must be a non-empty string",
+        );
+      }
+      if (
+        typeof request.rendererId !== "string" ||
+        !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
+      ) {
+        throw new Error(
+          "interactions.request rendererId must use letters, digits, '-' or '_'",
+        );
+      }
+      if (
+        typeof request.title !== "string" ||
+        request.title.trim().length === 0 ||
+        request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
+      ) {
+        throw new Error(
+          `interactions.request title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+        );
+      }
+      let payload: JsonValue;
+      try {
+        const json = JSON.stringify(request.payload);
+        if (json === undefined) throw new Error();
+        if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
+          throw new Error("interactions.request payload exceeds 64 KiB");
+        }
+        payload = JSON.parse(json) as JsonValue;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("64 KiB"))
+          throw error;
+        throw new Error(
+          "interactions.request payload must be JSON-serializable",
+        );
+      }
+      const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+      if (
+        !Number.isInteger(timeoutMs) ||
+        timeoutMs <= 0 ||
+        timeoutMs > 60 * 60 * 1000
+      ) {
+        throw new Error(
+          "interactions.request timeoutMs must be between 1 and 3600000",
+        );
+      }
+      return requestInteraction({
+        threadId: request.threadId,
+        rendererId: request.rendererId,
+        title: request.title.trim(),
+        payload,
+        timeoutMs,
+        signal: requestOptions?.signal,
+      });
+    },
   };
 
   const kv: PluginKvStorage = {
@@ -672,7 +820,18 @@ export function createPluginApi(options: {
   };
 
   const agentTools: PluginAgentToolRecord[] = [];
+  let instructionProvider: PluginInstructionProvider | null = null;
   const agents: PluginAgents = {
+    contributeInstructions(provider) {
+      assertLive();
+      if (typeof provider !== "function") {
+        throw new Error(
+          "contributeInstructions requires a provider function (ctx) => string | null",
+        );
+      }
+      // At most one provider per plugin; a repeated call replaces.
+      instructionProvider = provider;
+    },
     registerTool(tool: {
       name: string;
       description: string;
@@ -868,6 +1027,7 @@ export function createPluginApi(options: {
       mentionProviders.push({
         id,
         label: provider.label.trim(),
+        triggers: normalizeMentionProviderTriggers(id, provider.triggers),
         search: provider.search.bind(provider),
         resolve: provider.resolve.bind(provider),
       });
@@ -966,6 +1126,7 @@ export function createPluginApi(options: {
     realtime,
     background,
     cli,
+    interactions,
     agents,
     ui,
     status,
@@ -1014,6 +1175,9 @@ export function createPluginApi(options: {
     schedules,
     cli: cliRecord,
     agentTools,
+    get instructionProvider() {
+      return instructionProvider;
+    },
     threadActions,
     mentionProviders,
     invalidate() {

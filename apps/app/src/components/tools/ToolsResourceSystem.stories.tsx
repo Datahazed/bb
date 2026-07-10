@@ -2007,7 +2007,7 @@ function SkillIncludedFiles({
               contents: selectedFile.contents,
             },
             lineRange: null,
-            showMarkdownModeToggle: false,
+            textPreviewKind: "markdown",
           }}
         />
       </div>
@@ -2086,7 +2086,7 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
                 kind: "ready",
                 file: { name: "SKILL.md", contents: savedMarkdown },
                 lineRange: null,
-                showMarkdownModeToggle: false,
+                textPreviewKind: "markdown",
               }}
             />
           </div>

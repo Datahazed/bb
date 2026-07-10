@@ -37,6 +37,11 @@ describe("collectPluginAppRegistrations", () => {
         title: "Issues",
         component: Component,
       });
+      app.slots.settingsSection({
+        id: "custom-settings",
+        title: "Custom settings",
+        component: Component,
+      });
       app.slots.navPanel({
         id: "board",
         title: "Board",
@@ -52,6 +57,12 @@ describe("collectPluginAppRegistrations", () => {
         run,
       });
       app.slots.composerAccessory({ id: "picker", component: Component });
+      app.slots.sidebarFooterAction({
+        id: "remote",
+        title: "Remote access",
+        icon: "Smartphone",
+        run,
+      });
       app.slots.fileOpener({
         id: "editor",
         title: "Notes editor",
@@ -63,6 +74,13 @@ describe("collectPluginAppRegistrations", () => {
     const registrations = collectPluginAppRegistrations(definition);
     expect(registrations.homepageSections).toEqual([
       { id: "issues", title: "Issues", component: Component },
+    ]);
+    expect(registrations.settingsSections).toEqual([
+      {
+        id: "custom-settings",
+        title: "Custom settings",
+        component: Component,
+      },
     ]);
     expect(registrations.navPanels).toEqual([
       {
@@ -81,6 +99,14 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
     ]);
+    expect(registrations.sidebarFooterActions).toEqual([
+      {
+        id: "remote",
+        title: "Remote access",
+        icon: "Smartphone",
+        run,
+      },
+    ]);
     expect(registrations.fileOpeners).toEqual([
       {
         id: "editor",
@@ -92,6 +118,27 @@ describe("collectPluginAppRegistrations", () => {
   });
 
   it.each([
+    [
+      "settings section with a non-string title",
+      () =>
+        definePluginApp((app) => {
+          app.slots.settingsSection({
+            id: "x",
+            title: 12 as never,
+            component: Component,
+          });
+        }),
+      /"title" must be a string when set/,
+    ],
+    [
+      "duplicate settings section id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.settingsSection({ id: "a", component: Component });
+          app.slots.settingsSection({ id: "a", component: Component });
+        }),
+      /duplicate id/,
+    ],
     [
       "bad id",
       () =>
@@ -112,6 +159,18 @@ describe("collectPluginAppRegistrations", () => {
           app.slots.composerAccessory({ id: "a", component: Component });
         }),
       /duplicate id/,
+    ],
+    [
+      "sidebar footer action missing run",
+      () =>
+        definePluginApp((app) => {
+          app.slots.sidebarFooterAction({
+            id: "x",
+            title: "X",
+            icon: "Smartphone",
+          } as never);
+        }),
+      /"run" must be a function/,
     ],
     [
       "nav panel path with slash",

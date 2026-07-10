@@ -2,71 +2,182 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
-  MAX_MACHINES_PER_SERVER,
+  MAX_MACHINES_PER_ACCOUNT,
+  MAX_SERVERS_PER_ACCOUNT,
   SERVER_OFFLINE_AFTER_MS,
+  checkLabelAvailability,
   connectCode,
   machine,
   profile,
   server,
-  validateHandle,
+  user,
 } from "@bb/connect-db";
+import type { ConnectDb, LabelAvailability } from "@bb/connect-db";
 import type { Env } from "./env.js";
 import { generateConnectCode, generateToken, sha256Hex } from "./tokens.js";
 
-export interface AccountState {
-  handle: string | null;
-  server: {
-    connected: boolean;
-    online: boolean;
-    lastSeenAt: number | null;
-    version: string | null;
-  } | null;
-  appUrl: string;
+/**
+ * Injected dependencies for the product-state functions. `db` is the shared
+ * `ConnectDb` shape (D1 in the worker, in-memory better-sqlite3 in tests, per
+ * AGENTS "never mock the database"); `closeTunnel` abstracts the TunnelDO so the
+ * DB logic is testable without a Durable Object.
+ */
+export interface Deps {
+  db: ConnectDb;
   baseDomain: string;
-  serverUrl: string | null;
+  appUrl: string;
+  closeTunnel?: (subdomain: string) => Promise<void>;
 }
 
-/** Product-state read for the dashboard. */
-export async function getAccountState(env: Env, userId: string): Promise<AccountState> {
-  const db = drizzle(env.DB);
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
-  const srv = prof
-    ? await db.select().from(server).where(eq(server.userId, userId)).get()
-    : undefined;
-  const online =
-    srv?.lastSeenAt != null && Date.now() - srv.lastSeenAt.getTime() < SERVER_OFFLINE_AFTER_MS;
+export function depsFromEnv(env: Env): Deps {
   return {
-    handle: prof?.handle ?? null,
-    server: srv
-      ? {
-          connected: srv.credentialHash != null && srv.revokedAt == null,
-          online,
-          lastSeenAt: srv.lastSeenAt?.getTime() ?? null,
-          version: srv.version,
-        }
-      : null,
-    appUrl: env.APP_URL,
+    db: drizzle(env.DB),
     baseDomain: env.BASE_DOMAIN,
-    serverUrl: prof ? `https://${prof.handle}.${env.BASE_DOMAIN}` : null,
+    appUrl: env.APP_URL,
+    closeTunnel: async (subdomain) => {
+      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(subdomain));
+      await stub.fetch("https://tunnel/__control/close");
+    },
   };
 }
 
-/** Claim a handle + create the default server row. */
+/** One connected bb server, projected for the dashboard. */
+export interface ServerSummary {
+  id: string;
+  /** Routing label — `<subdomain>.<baseDomain>`. */
+  subdomain: string;
+  name: string;
+  /** The account handle names the primary/first server (subdomain === handle). */
+  isPrimary: boolean;
+  /** Has a live tunnel credential (paired, not revoked). */
+  connected: boolean;
+  /** Connected AND heartbeated within the offline window. */
+  online: boolean;
+  lastSeenAt: number | null;
+  version: string | null;
+  /** Row-creation time; the best "connected since" proxy we persist. */
+  createdAt: number;
+  serverUrl: string;
+}
+
+export interface AccountState {
+  handle: string | null;
+  /** Primary first, then oldest → newest. Empty until a handle is claimed. */
+  servers: ServerSummary[];
+  appUrl: string;
+  baseDomain: string;
+  /** GitHub login for the account footer link; null for pre-column rows. */
+  githubLogin: string | null;
+  /** Per-account server ceiling, surfaced in the footer as "N of MAX bbs". */
+  maxServers: number;
+}
+
+type ServerRow = typeof server.$inferSelect;
+
+function toServerSummary(srv: ServerRow, handle: string, baseDomain: string, now: number): ServerSummary {
+  const lastSeenMs = srv.lastSeenAt?.getTime() ?? null;
+  const connected = srv.credentialHash != null && srv.revokedAt == null;
+  return {
+    id: srv.id,
+    subdomain: srv.subdomain,
+    name: srv.name,
+    isPrimary: srv.subdomain === handle,
+    connected,
+    online: connected && lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+    lastSeenAt: lastSeenMs,
+    version: srv.version,
+    createdAt: srv.createdAt.getTime(),
+    serverUrl: `https://${srv.subdomain}.${baseDomain}`,
+  };
+}
+
+/** Resolve the target server for a code/action: an explicit id (owner-scoped) or the primary. */
+async function resolveServer(
+  db: ConnectDb,
+  userId: string,
+  serverId: string | undefined,
+): Promise<ServerRow | undefined> {
+  if (serverId) {
+    return db
+      .select()
+      .from(server)
+      .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+      .get();
+  }
+  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  if (!prof) return undefined;
+  const primary = await db
+    .select()
+    .from(server)
+    .where(and(eq(server.userId, userId), eq(server.subdomain, prof.handle)))
+    .get();
+  if (primary) return primary;
+  const all = await db.select().from(server).where(eq(server.userId, userId)).all();
+  return [...all].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+}
+
+/** Product-state read for the dashboard: every server the account owns. */
+export async function getAccountState(deps: Deps, userId: string): Promise<AccountState> {
+  const { db, baseDomain } = deps;
+  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const userRow = await db
+    .select({ githubLogin: user.githubLogin })
+    .from(user)
+    .where(eq(user.id, userId))
+    .get();
+
+  const now = Date.now();
+  const base = {
+    appUrl: deps.appUrl,
+    baseDomain,
+    githubLogin: userRow?.githubLogin ?? null,
+    maxServers: MAX_SERVERS_PER_ACCOUNT,
+  };
+
+  if (!prof) {
+    return { handle: null, servers: [], ...base };
+  }
+
+  const serverRows = await db.select().from(server).where(eq(server.userId, userId)).all();
+
+  const servers = serverRows
+    .map((srv) => toServerSummary(srv, prof.handle, baseDomain, now))
+    .sort((a, b) =>
+      a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : a.createdAt - b.createdAt,
+    );
+
+  return { handle: prof.handle, servers, ...base };
+}
+
+/** Live label-availability check for the claim UIs (handle + "connect another"). */
+export async function checkAvailability(deps: Deps, rawLabel: string): Promise<LabelAvailability> {
+  return checkLabelAvailability(deps.db, rawLabel);
+}
+
+type ClaimError =
+  | "already-claimed"
+  | "taken"
+  | "too-short"
+  | "too-long"
+  | "invalid-format"
+  | "reserved";
+
+/** Claim the account handle + create the primary server row (subdomain = handle). */
 export async function claimHandle(
-  env: Env,
+  deps: Deps,
   userId: string,
   rawHandle: string,
-): Promise<{ ok: true; handle: string } | { error: string }> {
-  const db = drizzle(env.DB);
+): Promise<{ ok: true; handle: string } | { error: ClaimError }> {
+  const { db } = deps;
   const existing = await db.select().from(profile).where(eq(profile.userId, userId)).get();
   if (existing) return { error: "already-claimed" };
 
-  const handle = rawHandle.trim().toLowerCase();
-  const invalid = validateHandle(handle);
-  if (invalid) return { error: invalid };
-
-  const taken = await db.select().from(profile).where(eq(profile.handle, handle)).get();
-  if (taken) return { error: "taken" };
+  // One namespace for handles + subdomains, so validate/collision-check both.
+  const avail = await checkLabelAvailability(db, rawHandle);
+  if (!avail.available) {
+    return { error: avail.reason === "invalid" ? avail.error : "taken" };
+  }
+  const handle = avail.label;
 
   const now = new Date();
   try {
@@ -74,23 +185,148 @@ export async function claimHandle(
   } catch {
     return { error: "taken" };
   }
-  await db
-    .insert(server)
-    .values({ id: crypto.randomUUID(), userId, name: "default", createdAt: now })
-    .run();
+  try {
+    await db
+      .insert(server)
+      .values({ id: crypto.randomUUID(), userId, name: "default", subdomain: handle, createdAt: now })
+      .run();
+  } catch {
+    return { error: "taken" };
+  }
   return { ok: true, handle };
 }
 
-/** Mint a one-time server-pair code. */
-export async function createConnectCode(
-  env: Env,
+type CreateServerError = "no-handle" | "server-limit" | "taken" | ClaimError;
+
+/**
+ * Claim another server label for the account (the "Connect another bb" beat 1).
+ * The row is created immediately so the label is held while the machine pairs.
+ */
+export async function createServer(
+  deps: Deps,
   userId: string,
-): Promise<{ code: string; expiresInMs: number; serverUrl: string } | { error: string }> {
-  const db = drizzle(env.DB);
+  rawLabel: string,
+): Promise<{ ok: true; server: ServerSummary } | { error: CreateServerError }> {
+  const { db, baseDomain } = deps;
   const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
   if (!prof) return { error: "no-handle" };
-  const srv = await db.select().from(server).where(eq(server.userId, userId)).get();
+
+  const owned = await db.select().from(server).where(eq(server.userId, userId)).all();
+  if (owned.length >= MAX_SERVERS_PER_ACCOUNT) return { error: "server-limit" };
+
+  const avail = await checkLabelAvailability(db, rawLabel);
+  if (!avail.available) {
+    return { error: avail.reason === "invalid" ? avail.error : "taken" };
+  }
+  const label = avail.label;
+
+  const now = new Date();
+  const id = crypto.randomUUID();
+  try {
+    await db
+      .insert(server)
+      .values({ id, userId, name: label, subdomain: label, createdAt: now })
+      .run();
+  } catch {
+    return { error: "taken" };
+  }
+  // Re-check the cap after inserting: the pre-insert count is a TOCTOU
+  // (concurrent claims could each see room and all insert). Deleting our own
+  // row on overflow keeps the ceiling atomic without a transaction, mirroring
+  // redeemMachineCode's re-check-at-the-atomic-step pattern.
+  const afterCount = await db.select().from(server).where(eq(server.userId, userId)).all();
+  if (afterCount.length > MAX_SERVERS_PER_ACCOUNT) {
+    await db.delete(server).where(eq(server.id, id)).run();
+    return { error: "server-limit" };
+  }
+  const created = await db.select().from(server).where(eq(server.id, id)).get();
+  if (!created) return { error: "taken" };
+  return { ok: true, server: toServerSummary(created, prof.handle, baseDomain, Date.now()) };
+}
+
+export interface IssuedCode {
+  code: string;
+  expiresInMs: number;
+  serverUrl: string;
+  serverId: string;
+}
+
+/**
+ * Mint (or, with `reuse`, return an existing valid) one-time server-pair code
+ * for a specific server. `reuse` backs the setup-mode panels so a poll/reload
+ * does not spam fresh codes; the explicit "re-pair" action mints a new one.
+ */
+export async function createConnectCode(
+  deps: Deps,
+  userId: string,
+  opts: { serverId?: string; reuse?: boolean } = {},
+): Promise<IssuedCode | { error: string }> {
+  const { db, baseDomain } = deps;
+  const srv = await resolveServer(db, userId, opts.serverId);
   if (!srv) return { error: "no-server" };
+  const serverUrl = `https://${srv.subdomain}.${baseDomain}`;
+  const now = Date.now();
+
+  if (opts.reuse) {
+    const open = await db
+      .select()
+      .from(connectCode)
+      .where(
+        and(
+          eq(connectCode.serverId, srv.id),
+          eq(connectCode.purpose, "server-pair"),
+          isNull(connectCode.consumedAt),
+        ),
+      )
+      .all();
+    const valid = open
+      .filter((c) => c.expiresAt.getTime() > now)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    if (valid) {
+      return {
+        code: valid.code,
+        expiresInMs: valid.expiresAt.getTime() - now,
+        serverUrl,
+        serverId: srv.id,
+      };
+    }
+  }
+
+  const code = generateConnectCode();
+  const nowDate = new Date();
+  await db
+    .insert(connectCode)
+    .values({
+      code,
+      userId,
+      serverId: srv.id,
+      purpose: "server-pair",
+      expiresAt: new Date(nowDate.getTime() + CONNECT_CODE_TTL_MS),
+      createdAt: nowDate,
+    })
+    .run();
+  return { code, expiresInMs: CONNECT_CODE_TTL_MS, serverUrl, serverId: srv.id };
+}
+
+/** Mint a one-time machine-pair code (dashboard "Add machine"). */
+export async function createMachineCode(
+  deps: Deps,
+  userId: string,
+  serverId?: string,
+): Promise<{ code: string; expiresInMs: number; serverUrl: string } | { error: string }> {
+  const { db, baseDomain } = deps;
+  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  if (!prof) return { error: "no-handle" };
+
+  // The machine credential is account-scoped, but the install one-liner names a
+  // specific server URL (`--server`) — resolve it so the command dials the right bb.
+  const srv = await resolveServer(db, userId, serverId);
+  if (!srv) return { error: "no-server" };
+
+  const active = await db.select().from(machine).where(eq(machine.userId, userId)).all();
+  if (active.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT) {
+    return { error: "machine-limit" };
+  }
 
   const code = generateConnectCode();
   const now = new Date();
@@ -99,8 +335,10 @@ export async function createConnectCode(
     .values({
       code,
       userId,
+      // Machine credentials are account-scoped, but the code remembers which
+      // server the "Add machine" flow targeted so redeem can echo its URL.
       serverId: srv.id,
-      purpose: "server-pair",
+      purpose: "machine-pair",
       expiresAt: new Date(now.getTime() + CONNECT_CODE_TTL_MS),
       createdAt: now,
     })
@@ -108,23 +346,103 @@ export async function createConnectCode(
   return {
     code,
     expiresInMs: CONNECT_CODE_TTL_MS,
-    serverUrl: `https://${prof.handle}.${env.BASE_DOMAIN}`,
+    serverUrl: `https://${srv.subdomain}.${baseDomain}`,
   };
+}
+
+/**
+ * Revoke ONE server's credential and sever its live tunnel. Server-scoped: only
+ * the target row is cleared and only its TunnelDO (keyed by subdomain) is closed,
+ * so disconnecting one bb never touches the account's other servers.
+ */
+export async function disconnectServer(
+  deps: Deps,
+  userId: string,
+  serverId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { db } = deps;
+  const srv = await db
+    .select()
+    .from(server)
+    .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+    .get();
+  if (!srv) return { error: "not-found" };
+
+  await db
+    .update(server)
+    .set({ credentialHash: null, revokedAt: new Date() })
+    .where(eq(server.id, srv.id))
+    .run();
+  try {
+    await deps.closeTunnel?.(srv.subdomain);
+  } catch {
+    // best-effort; the credential is already revoked so reconnect is blocked
+  }
+  return { ok: true };
+}
+
+/**
+ * Delete a never-paired secondary server row, freeing its subdomain for re-claim.
+ * Distinct from `disconnectServer`: disconnect revokes a live credential but keeps
+ * the row (so it can be re-paired at the same address); remove drops the row
+ * entirely. Refuses the primary (subdomain === account handle) — that row is the
+ * account's identity and must survive — and refuses a still-connected row, since
+ * a live bb should be disconnected (revoked + tunnel closed), not silently deleted.
+ */
+export async function removeServer(
+  deps: Deps,
+  userId: string,
+  serverId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { db } = deps;
+  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
+  const srv = await db
+    .select()
+    .from(server)
+    .where(and(eq(server.id, serverId), eq(server.userId, userId)))
+    .get();
+  if (!srv) return { error: "not-found" };
+  if (prof && srv.subdomain === prof.handle) return { error: "is-primary" };
+  if (srv.credentialHash != null && srv.revokedAt == null) return { error: "connected" };
+
+  await db.delete(server).where(eq(server.id, srv.id)).run();
+  return { ok: true };
+}
+
+/**
+ * Rows affected by a drizzle `.run()` across D1 (`meta.changes`) and
+ * better-sqlite3 (`changes`) drivers.
+ */
+function rowsChanged(result: unknown): number {
+  if (result && typeof result === "object") {
+    const r = result as { meta?: { changes?: number }; changes?: number };
+    if (typeof r.meta?.changes === "number") return r.meta.changes;
+    if (typeof r.changes === "number") return r.changes;
+  }
+  return 0;
 }
 
 /**
  * Redeem a connect code (called by the tunnel client — the code is the
  * credential). Atomically consumes the code, mints a durable tunnel credential,
  * pins it (hashed) on the server row, returns plaintext once.
+ *
+ * `handle` is the redeemed server's routing label (its subdomain). For the
+ * primary server this equals the account handle, so primary pairing is
+ * byte-identical to the pre-multi-server behavior. The tunnel client uses
+ * this field to build serverUrl / share URLs — it must not be the account's
+ * primary handle when a non-primary server was paired.
+ *
+ * Accepts `Deps` (D1 in the worker via `depsFromEnv`, better-sqlite3 in tests).
  */
 export async function redeemConnectCode(
-  env: Env,
+  deps: Pick<Deps, "db" | "baseDomain">,
   code: string,
 ): Promise<
   | { credential: string; serverId: string; handle: string | null; tunnelUrl: string | null }
   | { error: string; status: number }
 > {
-  const db = drizzle(env.DB);
+  const { db, baseDomain } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
@@ -138,7 +456,7 @@ export async function redeemConnectCode(
     .set({ consumedAt: new Date() })
     .where(and(eq(connectCode.code, normalized), isNull(connectCode.consumedAt)))
     .run();
-  if (consumed.meta.changes === 0) return { error: "already-used", status: 409 };
+  if (rowsChanged(consumed) === 0) return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcred_", 32);
   await db
@@ -147,54 +465,22 @@ export async function redeemConnectCode(
     .where(eq(server.id, row.serverId))
     .run();
 
+  const srv = await db.select().from(server).where(eq(server.id, row.serverId)).get();
   const prof = await db.select().from(profile).where(eq(profile.userId, row.userId)).get();
+  // Routing label of the redeemed server (not necessarily the account handle).
+  const handle = srv?.subdomain ?? prof?.handle ?? null;
   return {
     credential,
     serverId: row.serverId,
-    handle: prof?.handle ?? null,
-    tunnelUrl: prof ? `wss://${prof.handle}.${env.BASE_DOMAIN}/__tunnel` : null,
-  };
-}
-
-/** Mint a one-time machine-pair code (dashboard "Add a machine"). */
-export async function createMachineCode(
-  env: Env,
-  userId: string,
-): Promise<{ code: string; expiresInMs: number; serverUrl: string } | { error: string }> {
-  const db = drizzle(env.DB);
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
-  if (!prof) return { error: "no-handle" };
-
-  const active = await db.select().from(machine).where(eq(machine.userId, userId)).all();
-  if (active.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_SERVER) {
-    return { error: "machine-limit" };
-  }
-
-  const code = generateConnectCode();
-  const now = new Date();
-  await db
-    .insert(connectCode)
-    .values({
-      code,
-      userId,
-      serverId: null,
-      purpose: "machine-pair",
-      expiresAt: new Date(now.getTime() + CONNECT_CODE_TTL_MS),
-      createdAt: now,
-    })
-    .run();
-  return {
-    code,
-    expiresInMs: CONNECT_CODE_TTL_MS,
-    serverUrl: `https://${prof.handle}.${env.BASE_DOMAIN}`,
+    handle,
+    // Keyed by this server's subdomain (which may be non-primary), not the account handle.
+    tunnelUrl: srv ? `wss://${srv.subdomain}.${baseDomain}/__tunnel` : null,
   };
 }
 
 /**
  * Redeem a machine-pair code (called by the daemon join). Consumes the code,
- * creates a machine row, returns the durable machine credential once. The
- * daemon presents this on the `x-bb-connect-machine` header so the gate lets its
- * /internal traffic through to the server.
+ * creates a machine row, returns the durable machine credential once. Worker-only.
  */
 export async function redeemMachineCode(
   env: Env,
@@ -217,7 +503,7 @@ export async function redeemMachineCode(
   // redeem past it). Checked before consuming so a rejected redeem leaves the
   // code usable.
   const machines = await db.select().from(machine).where(eq(machine.userId, row.userId)).all();
-  if (machines.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_SERVER) {
+  if (machines.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT) {
     return { error: "machine-limit", status: 409 };
   }
 
@@ -241,30 +527,17 @@ export async function redeemMachineCode(
     .run();
 
   const prof = await db.select().from(profile).where(eq(profile.userId, row.userId)).get();
+  // Echo the server the "Add machine" flow targeted (carried on the code);
+  // fall back to the primary handle for codes minted before serverId was set.
+  const targetServer =
+    row.serverId == null
+      ? null
+      : await db.select().from(server).where(eq(server.id, row.serverId)).get();
+  const label = targetServer?.subdomain ?? prof?.handle ?? null;
   return {
     credential,
     machineId,
     handle: prof?.handle ?? null,
-    serverUrl: prof ? `https://${prof.handle}.${env.BASE_DOMAIN}` : null,
+    serverUrl: label ? `https://${label}.${env.BASE_DOMAIN}` : null,
   };
-}
-
-/** Revoke the credential AND sever the live tunnel. */
-export async function disconnectServer(env: Env, userId: string): Promise<{ ok: true }> {
-  const db = drizzle(env.DB);
-  await db
-    .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
-    .where(eq(server.userId, userId))
-    .run();
-  const prof = await db.select().from(profile).where(eq(profile.userId, userId)).get();
-  if (prof) {
-    try {
-      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(prof.handle));
-      await stub.fetch("https://tunnel/__control/close");
-    } catch {
-      // best-effort; the credential is already revoked so reconnect is blocked
-    }
-  }
-  return { ok: true };
 }

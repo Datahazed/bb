@@ -212,28 +212,24 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
+  db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its ui_forking column (added by 0048), plugins column
-  // (added by 0049), and multi_machine column (added by 0053) are, so the
-  // forward re-migrate can re-add them.
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN ui_forking")
-    .run();
+  // rewound — but its plugins column (added by 0049) and bb_connect column
+  // (added under its old name by 0053 and renamed later) are, so the forward
+  // re-migrate can re-add them.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
     .run();
   db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
+    .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
     .run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
-  db.$client
-    .prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id")
-    .run();
+  db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -3176,9 +3172,9 @@ describe("migrate", () => {
     try {
       db.$client.exec(`
         CREATE TABLE pending_interactions (
-          provider_id text NOT NULL,
-          provider_thread_id text NOT NULL,
-          provider_request_id text NOT NULL,
+          provider_id text,
+          provider_thread_id text,
+          provider_request_id text,
           session_id text NOT NULL
         );
         INSERT INTO pending_interactions (
@@ -3189,11 +3185,13 @@ describe("migrate", () => {
         )
         VALUES
           ('codex', 'provider-thread-1', 'request-1', 'session-1'),
-          ('codex', 'provider-thread-1', 'request-1', 'session-2');
+          ('codex', 'provider-thread-1', 'request-1', 'session-2'),
+          (NULL, NULL, NULL, 'plugin-session-1'),
+          (NULL, NULL, NULL, 'plugin-session-2');
       `);
 
       expect(() => migrate(db)).toThrow(
-        /duplicate provider requests already exist/,
+        /Duplicates: codex\/provider-thread-1\/request-1 count=2\./,
       );
     } finally {
       closeConnection(db);

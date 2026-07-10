@@ -2,15 +2,15 @@
  * Agent CLI model catalog.
  *
  * Cursor's `agent --list-models` prints one `id - Display Name` line per model,
- * while OpenCode's `opencode models` prints one bare id per line. These ids
- * can encode reasoning effort: `gpt-5.3-codex-low`, bare `gpt-5.3-codex` for
- * medium, `gpt-5.5-extra-high` as an alternate xhigh spelling, with an optional
- * `-fast` service tail after the effort token (`gpt-5.3-codex-low-fast`). This
- * module groups those raw variants into bb model families so the picker offers
- * one clean entry per family with
- * selectable reasoning efforts, and resolves a (family, effort, serviceTier)
- * selection back to the exact raw id at session launch — by table lookup,
- * never string synthesis, because effort spellings vary per family.
+ * OpenCode's `opencode models` prints one bare id per line, and Grok's
+ * `grok models` prints a bulleted list. These ids can encode reasoning effort:
+ * `gpt-5.3-codex-low`, bare `gpt-5.3-codex` for medium, `gpt-5.5-extra-high`
+ * as an alternate xhigh spelling, with an optional `-fast` service tail after
+ * the effort token (`gpt-5.3-codex-low-fast`). This module groups those raw
+ * variants into bb model families so the picker offers one clean entry per
+ * family with selectable reasoning efforts, and resolves a (family, effort,
+ * serviceTier) selection back to the exact raw id at session launch — by table
+ * lookup, never string synthesis, because effort spellings vary per family.
  *
  * The `-fast` tail is a service tier, not a separate model: both the normal
  * and fast raw ids for a given effort collapse into one family, and the bb
@@ -65,6 +65,7 @@ interface AgentModelVariant extends RawAgentModel {
 
 const MODEL_LINE_PATTERN = /^(\S+) - (.+)$/;
 const BARE_PROVIDER_MODEL_LINE_PATTERN = /^\S+\/\S+$/;
+const BULLETED_MODEL_LINE_PATTERN = /^[*-]\s+(\S+)(?:\s+\([^)]*\))?$/u;
 
 // Trailing id tokens that mark a reasoning-effort variant, longest first so
 // `extra-high` wins over `high`. `none` maps onto bb's "none" (thinking-off)
@@ -108,6 +109,12 @@ export function parseAgentModelLines(stdout: string): RawAgentModel[] {
     const trimmed = line.trim();
     const match = MODEL_LINE_PATTERN.exec(trimmed);
     if (!match) {
+      const bulletMatch = BULLETED_MODEL_LINE_PATTERN.exec(trimmed);
+      if (bulletMatch) {
+        const [, id] = bulletMatch;
+        models.push({ id, displayName: id });
+        continue;
+      }
       if (BARE_PROVIDER_MODEL_LINE_PATTERN.test(trimmed)) {
         models.push({ id: trimmed, displayName: trimmed });
       }
@@ -141,21 +148,27 @@ const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
   Partial<Record<string, ReasoningLevel>>
 > = {
   none: "none",
+  minimal: "low",
   low: "low",
   medium: "medium",
   high: "high",
   xhigh: "xhigh",
+  ultracode: "ultracode",
+  max: "max",
+  ultra: "ultra",
 };
 
-const ACP_NATIVE_REASONING_VALUE_BY_LEVEL: Readonly<
-  Partial<Record<ReasoningLevel, string>>
+const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
+  Partial<Record<ReasoningLevel, readonly string[]>>
 > = {
-  none: "none",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  max: "xhigh",
+  none: ["none"],
+  low: ["low", "minimal"],
+  medium: ["medium"],
+  high: ["high"],
+  xhigh: ["xhigh"],
+  ultracode: ["ultracode", "xhigh"],
+  max: ["max", "xhigh"],
+  ultra: ["ultra", "max"],
 };
 
 function acpNativeValueToReasoningLevel(
@@ -170,14 +183,14 @@ export function acpNativeReasoningLevelToValue(
   level: ReasoningLevel,
   thoughtLevelOption: AcpConfigOption,
 ): string | undefined {
-  const mappedValue = ACP_NATIVE_REASONING_VALUE_BY_LEVEL[level];
-  if (mappedValue === undefined) {
+  const candidateValues = ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL[level];
+  if (candidateValues === undefined) {
     return undefined;
   }
   const values = new Set(
     (thoughtLevelOption.options ?? []).map((o) => o.value),
   );
-  return values.has(mappedValue) ? mappedValue : undefined;
+  return candidateValues.find((value) => values.has(value));
 }
 
 export function buildAcpNativeReasoningSupport(
@@ -185,14 +198,29 @@ export function buildAcpNativeReasoningSupport(
 ): AcpNativeReasoningSupport {
   const options = thoughtLevelOption?.options ?? [];
   const seen = new Set<ReasoningLevel>();
+  const matchedValueByLevel = new Map<ReasoningLevel, string>();
   const supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"] =
     [];
   for (const option of options) {
     const level = acpNativeValueToReasoningLevel(option.value);
-    if (level === undefined || seen.has(level)) {
+    if (level === undefined) {
+      continue;
+    }
+    if (seen.has(level)) {
+      const previousValue = matchedValueByLevel.get(level);
+      if (previousValue !== level && option.value === level) {
+        const effort = supportedReasoningEfforts.find(
+          (candidate) => candidate.reasoningEffort === level,
+        );
+        if (effort) {
+          effort.description = option.name ?? option.value;
+        }
+        matchedValueByLevel.set(level, option.value);
+      }
       continue;
     }
     seen.add(level);
+    matchedValueByLevel.set(level, option.value);
     supportedReasoningEfforts.push({
       reasoningEffort: level,
       description: option.name ?? option.value,
@@ -343,6 +371,7 @@ const EFFORT_DISPLAY_WORDS: Readonly<Record<string, string>> = {
   high: "High",
   low: "Low",
   max: "Max",
+  ultra: "Ultra",
   none: "None",
 };
 

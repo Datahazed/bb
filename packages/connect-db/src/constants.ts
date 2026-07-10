@@ -18,6 +18,8 @@ export const HANDLE_MAX_LENGTH = 30;
  */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
   "www",
+  // `default` collides with the primary server's row name on (user_id, name).
+  "default",
   "api",
   "app",
   "admin",
@@ -64,8 +66,8 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Per-account resource ceilings enforced at the gate (open-signup abuse guard). */
-export const MAX_SERVERS_PER_ACCOUNT = 1;
-export const MAX_MACHINES_PER_SERVER = 5;
+export const MAX_SERVERS_PER_ACCOUNT = 10;
+export const MAX_MACHINES_PER_ACCOUNT = 5;
 
 /** Connect-code lifetimes. */
 export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
@@ -75,29 +77,6 @@ export const SERVER_OFFLINE_AFTER_MS = 90 * 1000;
 
 /** Token prefixes (mirrors bb's host-key convention; distinct namespaces). */
 export const CLOUD_PAT_PREFIX = "bbc_";
-
-/**
- * Signup/sign-in allowlist while bb connect is invite-only. Parsed from the
- * `CONNECT_ALLOWED_GITHUB_USERS` worker var: comma-separated GitHub usernames,
- * case-insensitive. Unset or empty means nobody can sign in (fail closed).
- */
-export function parseAllowedGithubUsers(
-  value: string | undefined,
-): ReadonlySet<string> {
-  return new Set(
-    (value ?? "")
-      .split(",")
-      .map((name) => name.trim().toLowerCase())
-      .filter((name) => name.length > 0),
-  );
-}
-
-export function isGithubUserAllowed(
-  allowed: ReadonlySet<string>,
-  login: string | null | undefined,
-): boolean {
-  return login != null && allowed.has(login.toLowerCase());
-}
 
 export type HandleValidationError =
   | "too-short"
@@ -109,16 +88,68 @@ export type HandleValidationError =
 export function validateHandle(handle: string): HandleValidationError | null {
   if (handle.length < HANDLE_MIN_LENGTH) return "too-short";
   if (handle.length > HANDLE_MAX_LENGTH) return "too-long";
+  // `--` is reserved as the host-label separator for port shares
+  // (`<handle>--<port>.<base>`). Never allow it in claimable handles.
+  if (handle.includes("--")) return "invalid-format";
   if (!HANDLE_REGEX.test(handle)) return "invalid-format";
   if (RESERVED_HANDLES.has(handle)) return "reserved";
   return null;
 }
 
-/** Resolve the visitor host `<handle>.<base>` to its handle, or null. */
-export function handleFromHost(host: string, baseDomain: string): string | null {
+/**
+ * Account handles and server subdomains live in ONE public namespace and share
+ * the exact same grammar, so both claim paths validate through a single
+ * function. `validateLabel` is the intent-neutral canonical name;
+ * `validateHandle` / `validateSubdomain` are the same function under
+ * domain-specific names so the two claim paths cannot drift apart.
+ */
+export const validateLabel = validateHandle;
+export const validateSubdomain = validateHandle;
+
+/** Alias of {@link HandleValidationError}; the two namespaces share one grammar. */
+export type LabelValidationError = HandleValidationError;
+export type SubdomainValidationError = HandleValidationError;
+
+/** Decimal port 1–65535 with no leading zeros (v1 share target grammar). */
+const SHARE_PORT_TARGET = /^[1-9]\d{0,4}$/;
+
+function isValidShareTarget(target: string): boolean {
+  if (!SHARE_PORT_TARGET.test(target)) return false;
+  const port = Number(target);
+  return port >= 1 && port <= 65535;
+}
+
+export interface VisitorHost {
+  handle: string;
+  /** Null on a bare handle host; a decimal port string on a share host. */
+  target: string | null;
+}
+
+/**
+ * Resolve a visitor host to its handle and optional share target.
+ *
+ * - `<handle>.<base>` → `{ handle, target: null }`
+ * - `<handle>--<port>.<base>` → `{ handle, target: port }` when port is a
+ *   valid decimal 1–65535 with no leading zeros
+ * - apex, multi-level labels, foreign domains, or invalid share labels → null
+ *
+ * When the label contains `--`, it is split on the first occurrence only
+ * (prefix = handle, suffix = target). An invalid target makes the whole
+ * host unroutable (null), not a bare-handle fallback.
+ */
+export function parseVisitorHost(host: string, baseDomain: string): VisitorHost | null {
   const suffix = `.${baseDomain}`;
   if (!host.endsWith(suffix)) return null;
   const label = host.slice(0, -suffix.length);
   if (!label || label.includes(".")) return null;
-  return label.toLowerCase();
+
+  const sep = label.indexOf("--");
+  if (sep === -1) {
+    return { handle: label.toLowerCase(), target: null };
+  }
+
+  const handle = label.slice(0, sep).toLowerCase();
+  const target = label.slice(sep + 2);
+  if (!handle || !isValidShareTarget(target)) return null;
+  return { handle, target };
 }

@@ -23,8 +23,6 @@ Spawning:
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
-    --host <id>                    Target host to run on (list ids with `bb host list`; default: local primary
-                                   host; non-primary hosts require the Multi-machine experiment in Settings)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
 
@@ -64,7 +62,7 @@ Inspecting:
   bb thread wait <id>                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
-    --timeout <seconds>                    Timeout
+    --timeout <seconds>                    Timeout in seconds (default: 1200 / 20 min)
     --poll-interval <ms>                   Polling interval in milliseconds
 
 Opening files in the thread panel:
@@ -140,6 +138,11 @@ Messaging:
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
 
+  By default, tell queues: if the agent is working, the message is delivered
+  after the current turn finishes. Use --mode steer to send immediately into
+  the active turn. Prefer steer for urgent redirects; prefer queue for
+  non-urgent follow-ups that can wait until the agent is free.
+
   bb thread stop [id]                      Stop an active or provisioning thread
     --self                                 Stop current thread
 
@@ -153,7 +156,7 @@ Ownership:
 
 Lifecycle:
 
-  bb thread archive [id]                   Archive a thread
+  bb thread archive [id]                   Archive a thread (and children/side chats)
     --self                                 Archive current thread
 
   bb thread unarchive [id]                 Unarchive a thread

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 
@@ -13,27 +14,54 @@ const pairInputSchema = z.object({
   baseUrl: z.string().url().optional(),
 });
 
+const portInputSchema = z.object({
+  port: z.number().int().min(1).max(65535),
+});
+
 export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
   status(): ConnectStatus;
   disconnect(): Promise<ConnectStatus>;
+  expose(input: unknown): Promise<{ port: number; url: string }>;
+  unexpose(input: unknown): Promise<{ removed: boolean; port: number }>;
+  listShares(): Array<{ port: number; url: string }>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
   return {
     async pair(input: unknown) {
       const args = pairInputSchema.parse(input);
-      return tunnel.pair({
-        code: args.code,
-        ...(args.server !== undefined ? { serverUrl: args.server } : {}),
-        ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
-      });
+      try {
+        return await tunnel.pair({
+          code: args.code,
+          ...(args.server !== undefined ? { serverUrl: args.server } : {}),
+          ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
+        });
+      } catch (error) {
+        // The panel maps stable codes to human copy; raw detail stays in the
+        // plugin log (see ConnectTunnel.pair). Never surface wire text.
+        if (error instanceof ConnectPairError) {
+          throw new Error(error.code);
+        }
+        throw error;
+      }
     },
     status() {
       return tunnel.status();
     },
     async disconnect() {
       return tunnel.disconnect();
+    },
+    async expose(input: unknown) {
+      const args = portInputSchema.parse(input);
+      return tunnel.expose(args.port);
+    },
+    async unexpose(input: unknown) {
+      const args = portInputSchema.parse(input);
+      return tunnel.unexpose(args.port);
+    },
+    listShares() {
+      return tunnel.listShares();
     },
   };
 }

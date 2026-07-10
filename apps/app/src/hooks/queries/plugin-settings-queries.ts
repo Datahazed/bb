@@ -1,5 +1,4 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { useSystemConfig } from "./system-queries";
 
 /**
  * Host-rendered plugin management data for the Settings "Plugins" section
@@ -28,10 +27,14 @@ export interface PluginListItem {
   statusDetail: string | null;
   /** Manifest description (package.json); null when absent or not loaded. */
   description: string | null;
+  /** `bb.displayName` — human nav/header label; null → fall back to `id`. */
+  displayName: string | null;
   /** Hash-busted logo asset URL; null when the plugin ships no logo. */
   logoUrl: string | null;
   /** Dark-theme logo variant URL; null when the plugin ships none. */
   logoDarkUrl: string | null;
+  /** True when the loaded plugin declared settings; drives its nav entry. */
+  hasSettings: boolean;
 }
 
 function parsePluginListItem(value: unknown): PluginListItem | null {
@@ -55,9 +58,13 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     status: item.status,
     statusDetail: item.statusDetail,
     description: typeof item.description === "string" ? item.description : null,
+    // Absent on older servers → fall back to the id in the UI.
+    displayName: typeof item.displayName === "string" ? item.displayName : null,
     // Absent on older servers → no logo, never a dropped row.
     logoUrl: typeof item.logoUrl === "string" ? item.logoUrl : null,
     logoDarkUrl: typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
+    // Absent on older servers → assume no declared settings.
+    hasSettings: item.hasSettings === true,
   };
 }
 
@@ -177,8 +184,32 @@ export async function updatePluginSettings(
   return view;
 }
 
-export function pluginListQueryKey(pluginsEnabled: boolean): QueryKey {
-  return ["plugin-list", pluginsEnabled];
+/**
+ * POST /api/v1/plugins/:id/enable|disable. Resolves on success; throws with
+ * the server's message on rejection (unknown plugin, experiment off).
+ */
+export async function setPluginEnabled(
+  fetchImpl: FetchLike,
+  pluginId: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetchImpl(
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}/${enabled ? "enable" : "disable"}`,
+    { method: "POST" },
+  );
+  if (response.ok) return;
+  const body = (await response.json().catch(() => null)) as {
+    error?: unknown;
+  } | null;
+  throw new Error(
+    typeof body?.error === "string"
+      ? body.error
+      : `${enabled ? "enabling" : "disabling"} the plugin failed (HTTP ${response.status})`,
+  );
+}
+
+export function pluginListQueryKey(enabled: boolean): QueryKey {
+  return ["plugin-list", enabled];
 }
 
 /** Prefix the realtime `plugins-changed` broadcast invalidates. */
@@ -195,22 +226,11 @@ export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
   return ["plugin-settings-view"];
 }
 
-/**
- * Installed plugins. Settings keeps the experiment gate; the Tools hub can opt
- * in because builtin and already-installed plugins are still real resources
- * even when new plugin installation is disabled.
- */
-export function usePluginList(options?: {
-  includeExperimentDisabled?: boolean;
-}) {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const shouldFetch =
-    pluginsEnabled || options?.includeExperimentDisabled === true;
+export function usePluginList(args: { enabled: boolean }) {
   return useQuery({
-    queryKey: pluginListQueryKey(shouldFetch),
+    queryKey: pluginListQueryKey(args.enabled),
     queryFn: () => fetchPluginList(fetch),
-    enabled: shouldFetch,
+    enabled: args.enabled,
     staleTime: 30_000,
   });
 }

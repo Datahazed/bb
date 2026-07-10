@@ -15,6 +15,11 @@ export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
   "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
+// Settings buckets (general, files, …) and per-plugin settings pages. The
+// static "plugins" segment wins over :section, so /settings/plugins is the
+// plugin management bucket and /settings/plugins/:id a plugin's own page.
+export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
+export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
@@ -198,6 +203,16 @@ export function getProjectComposeRoutePath(projectId: string): string {
     : getLegacyProjectComposeRoutePath(projectId);
 }
 
+export function getSettingsRoutePath(section?: string): string {
+  return section === undefined
+    ? SETTINGS_ROUTE_PATH
+    : `/settings/${encodeURIComponent(section)}`;
+}
+
+export function getSettingsPluginRoutePath(pluginId: string): string {
+  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
+}
+
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
@@ -267,6 +282,8 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  SETTINGS_SECTION_ROUTE_PATH,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

@@ -11,6 +11,7 @@ import {
   type DesktopWindowOpenDevToolsOptions,
   type DesktopWindowWebContents,
 } from "../src/desktop-window-factory.js";
+import type { DesktopContextMenuWebContents } from "../src/desktop-context-menu.js";
 import { readPersistedWindowStateEntries } from "../src/window-state.js";
 import {
   MIN_WINDOW_HEIGHT,
@@ -48,8 +49,25 @@ afterEach(async () => {
 class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public devToolsOpenCount = 0;
   public id: number;
+  public readonly addedDictionaryWords: string[] = [];
   public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
     [];
+  public readonly spellCheckerEnabledValues: boolean[] = [];
+  public readonly session: DesktopContextMenuWebContents["session"] = {
+    addWordToSpellCheckerDictionary: (word) => {
+      this.addedDictionaryWords.push(word);
+      return true;
+    },
+    setSpellCheckerEnabled: (enabled) => {
+      this.spellCheckerEnabledValues.push(enabled);
+    },
+  };
+  public readonly contextMenuListeners: Parameters<
+    DesktopContextMenuWebContents["on"]
+  >[1][] = [];
+  public readonly executedScripts: string[] = [];
+  public readonly insertedTexts: string[] = [];
+  public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
 
@@ -63,8 +81,28 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     }
   }
 
+  executeJavaScript(script: string): Promise<unknown> {
+    this.executedScripts.push(script);
+    return Promise.resolve(null);
+  }
+
+  insertText(text: string): void {
+    this.insertedTexts.push(text);
+  }
+
   send(channel: string, payload: unknown): void {
     this.sentMessages.push({ channel, payload });
+  }
+
+  on(...args: Parameters<DesktopContextMenuWebContents["on"]>): void {
+    const [eventName, listener] = args;
+    if (eventName === "context-menu") {
+      this.contextMenuListeners.push(listener);
+    }
+  }
+
+  replaceMisspelling(text: string): void {
+    this.replacedMisspellings.push(text);
   }
 
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void {
@@ -153,7 +191,14 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     this.maximized = true;
   }
 
-  on(eventName: "close" | "closed", listener: () => void): void {
+  on(
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen",
+    listener: () => void,
+  ): void {
     if (eventName === "closed") {
       this.closedListeners.push(listener);
     }
@@ -229,6 +274,10 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options.minHeight).toBe(MIN_WINDOW_HEIGHT);
     expect(createdWindows[0]?.options.minWidth).toBe(MIN_WINDOW_WIDTH);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
+    expect(createdWindows[0]?.options.webPreferences?.spellcheck).toBe(true);
+    expect(createdWindows[0]?.webContents.spellCheckerEnabledValues).toEqual([
+      true,
+    ]);
     // Equal x/y inset places the traffic lights on a 45° diagonal from the
     // window's top-left corner (see MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET).
     expect(createdWindows[0]?.options.trafficLightPosition).toEqual({
@@ -470,9 +519,9 @@ describe("desktop window factory", () => {
       userDataPath: tempDir.path,
     });
 
-    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
-      false,
-    );
+    expect(
+      factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" }),
+    ).toBe(false);
 
     await factory.createWindow({
       initialUrl: "http://127.0.0.1:38886",
@@ -483,9 +532,9 @@ describe("desktop window factory", () => {
       throw new Error("Expected desktop window");
     }
 
-    expect(factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" })).toBe(
-      true,
-    );
+    expect(
+      factory.sendToFirstWindow("bb:test", { path: "/threads/thr_a" }),
+    ).toBe(true);
     expect(browserWindow.webContents.sentMessages).toEqual([
       { channel: "bb:test", payload: { path: "/threads/thr_a" } },
     ]);

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "spike:origin": "tsx scripts/spike-origin.mts",
     "spike:client": "tsx scripts/spike-client.mts"
@@ -18,10 +19,13 @@
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@cloudflare/workers-types": "^4.20260610.0",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "better-sqlite3": "12.10.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
     "wrangler": "^4.100.0",
     "ws": "^8.18.0"
   }

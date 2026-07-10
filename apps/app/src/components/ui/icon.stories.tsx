@@ -16,6 +16,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   ArrowRight: "Rename arrow in diff file headers (old → new)",
   ArrowUp: "Submit prompt button",
   AudioLines: "Voice recording indicator (pulsing) and idle wave",
+  Bug: "Report a bug link in sidebar footer",
   Check:
     "Selected item in pickers/menus, CopyButton confirmation, completed todo",
   ChartColumn: "Right-panel report file visual",
@@ -40,6 +41,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   CornerDownLeft: "Mod+Enter submit hint in prompt footer",
   CornerDownRight:
     "Queued message indicator, steer/edit request label marker in conversation",
+  Discord: "Join Discord link in Settings → Community",
+  Github: "View on GitHub link in Settings → Community",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
   File: "Right-panel markdown/doc file visual, Open file action",

@@ -17,6 +17,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -44,12 +45,14 @@ import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
@@ -60,6 +63,7 @@ import {
   getSkillsRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
+  SETTINGS_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
@@ -173,6 +177,7 @@ function resetSidebarResizeDocumentState(): void {
 }
 
 interface SidebarTriggerOverlayProps {
+  reserveMacosTrafficLights: boolean;
   usesDesktopChrome: boolean;
 }
 
@@ -185,13 +190,14 @@ interface SidebarTriggerOverlayProps {
  * slides the header content smoothly past it rather than snapping around a
  * toggle that mounts/unmounts in the header.
  *
- * Desktop chrome offsets it clear of the macOS traffic lights and keeps the
- * strip a window-drag region; only the button itself is no-drag, so the title
- * strip above and below the (shorter) button stays draggable rather than
- * becoming an oversized dead zone. Browser chrome has no traffic lights, so it
- * sits flush at the top-left with a small inset.
+ * Desktop chrome keeps the strip a window-drag region; only the button itself
+ * is no-drag, so the title strip above and below the (shorter) button stays
+ * draggable rather than becoming an oversized dead zone. When macOS traffic
+ * lights are visible it offsets past them; in fullscreen, where the lights are
+ * hidden, it uses the same small top-left inset as browser chrome.
  */
 function SidebarTriggerOverlay({
+  reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
   if (usesDesktopChrome) {
@@ -201,20 +207,17 @@ function SidebarTriggerOverlay({
         className={cn(
           "fixed top-0 z-50",
           CHROME_ROW_CLASS,
-          MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
+          reserveMacosTrafficLights
+            ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
+            : "left-0",
+          !reserveMacosTrafficLights && BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        {/* The overlay's CHROME_ROW_CLASS box-centers the trigger; the shared
-            traffic-light axis nudge then drops it onto the native lights' axis
-            (which renders ~2 CSS px below the row center), matching the sidebar
-            arrows and page-title header in desktop chrome. */}
-        <SidebarTrigger
-          className={cn(
-            MACOS_WINDOW_NO_DRAG_CLASS,
-            MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
-          )}
-        />
+        {/* The overlay's CHROME_ROW_CLASS box-centers the trigger on the shared
+            traffic-light axis, matching the sidebar arrows and page-title
+            header in desktop chrome. */}
+        <SidebarTrigger className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS} />
       </div>
     );
   }
@@ -244,6 +247,22 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
 };
+
+function resolveRouteTitle(
+  pathname: string,
+): { title: string; subtitle?: string } | undefined {
+  // The global settings page owns a subtree (/settings/:section,
+  // /settings/plugins/:id); every sub-route keeps the "Settings" title.
+  if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
+    return routeTitles[SETTINGS_ROUTE_PATH];
+  }
+  return (
+    routeTitles[pathname] ??
+    (pathname === "/tools" || pathname.startsWith("/tools/")
+      ? routeTitles["/tools"]
+      : undefined)
+  );
+}
 
 interface AppHeaderProps {
   /**
@@ -418,6 +437,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Plugin panel routes ride the shared header (design §5.2): logo + panel
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
+  // Global settings routes swap the app sidebar for the settings sidebar.
+  const isGlobalSettingsView =
+    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -459,7 +481,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   const animationFrameRef = useRef<number | null>(null);
   const showHeader = !isThreadView && !isRootView;
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
+    desktopInfo,
+    windowState: desktopWindowState,
+  });
   const sidebarProviderStyle: SidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
   };
@@ -485,11 +512,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  const currentRouteTitle =
-    routeTitles[location.pathname] ??
-    (location.pathname === "/tools" || location.pathname.startsWith("/tools/")
-      ? routeTitles["/tools"]
-      : undefined);
   const toolsPluginDetailMatch = matchPath(
     TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
     location.pathname,
@@ -628,7 +650,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 title: projectLabel ?? projectId,
                 subtitle: undefined,
               }
-            : (currentRouteTitle ?? { title: "" });
+            : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -675,7 +697,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (projectId) {
       return projectLabel ?? projectId;
     }
-    const routeTitle = currentRouteTitle?.title;
+    const routeTitle = resolveRouteTitle(location.pathname)?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
   // The sidebar list omits archived threads and side chats, so it can't answer
@@ -789,11 +811,19 @@ export function AppLayout({ children }: AppLayoutProps) {
           providerRef={providerRef}
           style={sidebarProviderStyle}
         >
-          <AppSidebar
-            onResizeMouseDown={handleResizeMouseDown}
-            isResizing={isSidebarResizing}
-            showTopReserve={true}
-          />
+          {isGlobalSettingsView ? (
+            <SettingsSidebar
+              onResizeMouseDown={handleResizeMouseDown}
+              isResizing={isSidebarResizing}
+              showTopReserve={true}
+            />
+          ) : (
+            <AppSidebar
+              onResizeMouseDown={handleResizeMouseDown}
+              isResizing={isSidebarResizing}
+              showTopReserve={true}
+            />
+          )}
           <SidebarInset>
             <div
               data-testid="app-layout-content-shell"
@@ -819,7 +849,10 @@ export function AppLayout({ children }: AppLayoutProps) {
               </main>
             </div>
           </SidebarInset>
-          <SidebarTriggerOverlay usesDesktopChrome={usesDesktopChrome} />
+          <SidebarTriggerOverlay
+            reserveMacosTrafficLights={reserveMacosTrafficLights}
+            usesDesktopChrome={usesDesktopChrome}
+          />
         </SidebarStateBridge>
         <ProjectPathDialog
           target={quickCreateProject.projectPathDialog.target}

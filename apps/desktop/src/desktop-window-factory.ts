@@ -15,6 +15,7 @@ import {
   type PersistBrowserWindowStateSnapshot,
   type StatefulBrowserWindow,
 } from "./window-state.js";
+import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 
 export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
@@ -47,7 +48,7 @@ export interface DesktopWindowOpenDevToolsOptions {
   mode: "detach";
 }
 
-export interface DesktopWindowWebContents {
+export interface DesktopWindowWebContents extends DesktopContextMenuWebContents {
   id: number;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
   send(channel: string, payload: unknown): void;
@@ -61,7 +62,14 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
   maximize(): void;
-  on(eventName: "close" | "closed", listener: () => void): void;
+  on(
+    eventName:
+      | "close"
+      | "closed"
+      | "enter-full-screen"
+      | "leave-full-screen",
+    listener: () => void,
+  ): void;
   once(eventName: "ready-to-show", listener: () => void): void;
   restore(): void;
   setFullScreen(isFullScreen: boolean): void;
@@ -175,6 +183,7 @@ function createWindowOptions(
       nodeIntegration: false,
       preload: args.preloadPath,
       sandbox: true,
+      spellcheck: true,
     },
     width: args.bounds.width,
     x: args.bounds.x,
@@ -228,6 +237,7 @@ export function createDesktopWindowFactory(
           preloadPath: args.preloadPath,
         }),
       );
+      browserWindow.webContents.session.setSpellCheckerEnabled(true);
 
       activeWindows.set(stateKey, browserWindow);
 

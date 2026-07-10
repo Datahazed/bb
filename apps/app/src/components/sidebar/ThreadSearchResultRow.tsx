@@ -12,6 +12,10 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -137,6 +141,14 @@ function ThreadSearchResultRowComponent({
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive =
+    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive =
+    !hasPendingInteraction && hasActivePlanModeActivity(thread);
+  const threadGoalActive =
+    !hasPendingInteraction && hasActiveGoalActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.
@@ -151,11 +163,7 @@ function ThreadSearchResultRowComponent({
     timestamp: thread.updatedAt,
     now: Date.now(),
   });
-  const metadataText = [
-    snippetMatch ? title : null,
-    contextLabel,
-    relativeTime,
-  ]
+  const metadataText = [snippetMatch ? title : null, contextLabel, relativeTime]
     .filter(isNonEmptyMetadataPart)
     .join(" · ");
   const handleMouseEnter = useCallback<
@@ -191,10 +199,7 @@ function ThreadSearchResultRowComponent({
     >
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="block min-w-0 truncate">
-          <HighlightedText
-            text={primaryText}
-            ranges={primaryHighlightRanges}
-          />
+          <HighlightedText text={primaryText} ranges={primaryHighlightRanges} />
         </span>
         <span
           className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
@@ -216,6 +221,11 @@ function ThreadSearchResultRowComponent({
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
           <ThreadStatusGlyph
             hasPendingInteraction={hasPendingInteraction}
+            isBackgroundAgentActive={threadBackgroundAgentActive}
+            isBackgroundCommandActive={threadBackgroundCommandActive}
+            isForegroundAgentWorking={threadRuntimeBusy}
+            isGoalActive={threadGoalActive}
+            isPlanModeActive={threadPlanModeActive}
             isBusy={threadRuntimeBusy}
             isWorkflowActive={threadWorkflowActive}
             showUnreadBadge={false}

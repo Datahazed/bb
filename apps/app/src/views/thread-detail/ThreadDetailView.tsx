@@ -14,7 +14,6 @@ import {
   useThreadTimelineController,
 } from "@/components/thread/timeline";
 import {
-  isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
@@ -23,7 +22,9 @@ import type {
   PullRequestMergeMethod,
   TerminalSession,
 } from "@bb/server-contract";
+import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { isThreadForkable } from "@/lib/fork-thread-request";
@@ -119,6 +120,7 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
@@ -182,8 +184,9 @@ import {
   type ThreadLocalFileLinkResolution,
 } from "@/lib/thread-local-file-links";
 import {
-  MarkdownLocalFileOpenWithContext,
+  MarkdownLocalFileContextMenuContext,
   type MarkdownLinkRouting,
+  type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
@@ -223,8 +226,7 @@ const PARENT_THREAD_SELECTOR_FILTERS = {
 } satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
-const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY =
-  "bb.pullRequest.mergeMethod";
+const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY = "bb.pullRequest.mergeMethod";
 
 function isPullRequestMergeMethod(
   value: string,
@@ -420,6 +422,15 @@ function buildMarkdownPreviewLinkRouting({
   };
 }
 
+function getLocalFileBasename(path: string): string {
+  const normalizedPath = path.replace(/[\\/]+$/u, "");
+  return normalizedPath.split(/[\\/]/u).at(-1) ?? path;
+}
+
+function buildOpenTargetMenuItemLabel(target: WorkspaceOpenTarget): string {
+  return `Open in ${target.label}`;
+}
+
 export function resolveHostFilePreviewLinkRootPath({
   baseDir,
   threadStorageRootPath,
@@ -539,6 +550,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
+    useState<BrowserAddressFocusRequest | null>(null);
   const shouldLoadThreadStorageFiles = thread !== undefined;
   const {
     isThreadStorageFilesLoading,
@@ -601,15 +614,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const browserDeckThreadId = thread?.id ?? null;
   const browserDeckEnvironmentId = thread?.environmentId ?? null;
+  const handleBrowserAddressFocusRequestConsumed = useCallback(
+    (request: BrowserAddressFocusRequest) => {
+      setBrowserAddressFocusRequest((current) =>
+        current?.requestId === request.requestId &&
+        current.tabId === request.tabId
+          ? null
+          : current,
+      );
+    },
+    [],
+  );
   // Browser tabs are not rendered through the single `fileTabContent` slot:
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
   const renderBrowserDeck = useCallback(
-    ({
-      canShowNativeBrowserView,
-    }: {
-      canShowNativeBrowserView: boolean;
-    }) => {
+    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
       if (browserDeckThreadId === null) {
         return null;
       }
@@ -617,6 +637,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         <BrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
+          addressFocusRequest={browserAddressFocusRequest}
+          onAddressFocusRequestConsumed={
+            handleBrowserAddressFocusRequestConsumed
+          }
           environmentId={browserDeckEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={browserDeckThreadId}
@@ -626,9 +650,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [
       activeBrowserTab?.id,
+      browserAddressFocusRequest,
       browserTabs,
       browserDeckEnvironmentId,
       browserDeckThreadId,
+      handleBrowserAddressFocusRequestConsumed,
       updateBrowserTab,
     ],
   );
@@ -652,7 +678,14 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     );
   const openBrowserTab = useCallback(
     (url?: string) => {
-      openTab({ kind: "browser", url: url ?? "" });
+      const browserUrl = url ?? "";
+      const tab = openTab({ kind: "browser", url: browserUrl });
+      if (browserUrl.length === 0 && tab?.kind === "browser") {
+        setBrowserAddressFocusRequest((current) => ({
+          requestId: (current?.requestId ?? 0) + 1,
+          tabId: tab.id,
+        }));
+      }
     },
     [openTab],
   );
@@ -726,13 +759,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const closeTerminal = useCloseThreadTerminal();
   const terminalSessions =
     terminalsListQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
-  const activeTerminalCount = useMemo(
-    () =>
-      terminalSessions.filter((session) =>
-        isActiveTerminalSessionStatus(session.status),
-      ).length,
-    [terminalSessions],
-  );
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
@@ -790,10 +816,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
   });
-  const handleForkMessage =
-    useCallback<ThreadTimelineForkMessageHandler>((target) => {
+  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
+    (target) => {
       void forkThreadFromMessage(target);
-    }, [forkThreadFromMessage]);
+    },
+    [forkThreadFromMessage],
+  );
   const isForkAvailable = isThreadForkable(thread ?? null);
   const canUseSideChatPanel = props.surface !== "popout";
   const canStartSideChat =
@@ -880,12 +908,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           senderThreadId: thread.id,
         });
       },
-      [
-        sendMessage,
-        thread?.id,
-        threadOriginKind,
-        threadSourceThreadId,
-      ],
+      [sendMessage, thread?.id, threadOriginKind, threadSourceThreadId],
     );
   const handleSendToMainMessage =
     threadOriginKind === "side-chat" && threadSourceThreadId !== null
@@ -1469,9 +1492,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         return;
       }
       setPullRequestMergeMethod(method);
-      const toastId = appToast.loading(
-        getPullRequestMergeLoadingTitle(method),
-      );
+      const toastId = appToast.loading(getPullRequestMergeLoadingTitle(method));
       try {
         const response = await requestEnvironmentAction.mutateAsync({
           id: environmentId,
@@ -1492,7 +1513,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         });
       }
     },
-    [requestEnvironmentAction, setPullRequestMergeMethod, thread?.environmentId],
+    [
+      requestEnvironmentAction,
+      setPullRequestMergeMethod,
+      thread?.environmentId,
+    ],
   );
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
@@ -1530,7 +1555,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     canOpenPreferredDirectoryTarget,
     canOpenPreferredFileTarget,
     directoryOpenTargets,
+    fileOpenTargets,
     openPathInDirectoryTarget,
+    openPathInFileTarget,
     openPathInPreferredDirectoryTarget,
     openPathInPreferredFileTarget,
     preferredDirectoryTarget,
@@ -1886,37 +1913,98 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadStorageRootPath,
     workspaceRootPath: workspacePreviewRootPath,
   });
-  // Right-click "Open with" on local file links: per-open viewer choice
-  // between the built-in preview and any plugin opener matching the file's
-  // extension. Only rendered when at least one opener matches.
-  const getLocalFileOpenWithItems = useCallback(
+  // Right-click local file links: per-open native app choices, optional
+  // preview/plugin viewer choices, and utility copy actions. Left-click behavior
+  // stays unchanged.
+  const getLocalFileContextMenuItems = useCallback(
     (link: ThreadTimelineLocalFileLink) => {
       const extension = getFileExtension(link.path);
-      if (extension === null) return null;
-      const matching = pluginFileOpeners.filter((opener) =>
-        opener.extensions.includes(extension),
-      );
-      if (matching.length === 0) return null;
-      return [
-        {
-          id: "builtin",
-          label: "Open with built-in preview",
-          onSelect: () => {
-            handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
-          },
+      const matching =
+        extension === null
+          ? []
+          : pluginFileOpeners.filter((opener) =>
+              opener.extensions.includes(extension),
+            );
+      const lineNumber = getFilePreviewLineRangeStart({
+        lineRange: link.lineRange,
+      });
+      const openTargetItems = fileOpenTargets.map((target) => ({
+        id: `open-target:${target.id}`,
+        label: buildOpenTargetMenuItemLabel(target),
+        onSelect: () => {
+          void openPathInFileTarget({
+            lineNumber,
+            path: link.path,
+            rememberTarget: false,
+            targetId: target.id,
+          });
         },
-        ...matching.map((opener) => ({
-          id: `${opener.pluginId}:${opener.id}`,
-          label: `Open with ${opener.title}`,
+      }));
+      const items: MarkdownLocalFileContextMenuItem[] = [];
+      if (openTargetItems.length > 0) {
+        items.push({
+          id: "open-in",
+          items: openTargetItems,
+          label: "Open in",
+          type: "submenu",
+        });
+      }
+      if (matching.length > 0) {
+        if (items.length > 0) {
+          items.push({ id: "open-with-separator", type: "separator" });
+        }
+        items.push(
+          {
+            id: "builtin",
+            label: "Open with built-in preview",
+            onSelect: () => {
+              handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
+            },
+          },
+          ...matching.map((opener) => ({
+            id: `${opener.pluginId}:${opener.id}`,
+            label: `Open with ${opener.title}`,
+            onSelect: () => {
+              handleOpenTimelineLocalFileLink(link, {
+                viewer: { pluginId: opener.pluginId, openerId: opener.id },
+              });
+            },
+          })),
+        );
+      }
+      if (items.length > 0) {
+        items.push({ id: "copy-separator", type: "separator" });
+      }
+      items.push(
+        {
+          id: "copy-path",
+          label: "Copy file path",
           onSelect: () => {
-            handleOpenTimelineLocalFileLink(link, {
-              viewer: { pluginId: opener.pluginId, openerId: opener.id },
+            void copyToClipboardWithToast(link.path, {
+              successMessage: "File path copied",
+              errorMessage: "Failed to copy file path",
             });
           },
-        })),
-      ];
+        },
+        {
+          id: "copy-name",
+          label: "Copy file name",
+          onSelect: () => {
+            void copyToClipboardWithToast(getLocalFileBasename(link.path), {
+              successMessage: "File name copied",
+              errorMessage: "Failed to copy file name",
+            });
+          },
+        },
+      );
+      return items;
     },
-    [handleOpenTimelineLocalFileLink, pluginFileOpeners],
+    [
+      fileOpenTargets,
+      handleOpenTimelineLocalFileLink,
+      openPathInFileTarget,
+      pluginFileOpeners,
+    ],
   );
   const workspaceMarkdownLinkRouting = useMemo(
     () =>
@@ -2106,7 +2194,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               : null
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
-        activeTerminalCount={activeTerminalCount}
         onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
         onToggleSecondaryPanel={toggleSecondaryPanel}
         pluginActions={<PluginThreadActions threadId={thread.id} />}
@@ -2251,146 +2338,150 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
 
   return (
-    <MarkdownLocalFileOpenWithContext.Provider
-      value={getLocalFileOpenWithItems}
+    <MarkdownLocalFileContextMenuContext.Provider
+      value={getLocalFileContextMenuItems}
     >
-    <UrlOpenRoutingProvider
-      openInAppBrowser={
-        canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
-      }
-    >
-      <ThreadDetailSecondaryContent
-        footer={composerFooter}
-        header={timelineHeader}
-        isMetadataLoading={environmentQuery.isLoading}
-        isSecondaryPanelOpen={isSecondaryPanelOpen}
-        isConversationCollapsed={isConversationCollapsed}
-        surface={props.surface}
-        onToggleConversationCollapse={toggleConversationCollapse}
-        metadata={{
-          thread,
-          projectId,
-          parentThreadDisplayName: parentThreadDisplayName ?? null,
-          parentThreads,
-          canAssignToParent,
-          canTakeOverThread,
-          environment: environment ?? null,
-          environmentDisplayHost: environmentDisplayHostContext,
-          workspaceStatus,
-          workspaceStatusError: workspaceStatusError ?? null,
-          workspaceUnavailable,
-          pullRequest,
-          selectedMergeBaseBranch,
-          mergeBaseBranchRef: selectedMergeBaseBranchRef,
-          mergeBaseBranchOptions,
-          mergeBaseRemoteBranchOptions,
-          isLoadingMergeBaseBranchOptions,
-          updateThreadPending:
-            updateThread.isPending || updateEnvironment.isPending,
-          storage: metadataStorage,
-          onAssignParent: handleAssignParent,
-          onMergeBaseBranchChange: handleMergeBaseBranchChange,
-          onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
-          onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
-          onChangedFileClick: canUseGitUi ? handleChangedFileClick : undefined,
-          onCommitClick: canUseGitUi ? handleCommitClick : undefined,
-        }}
-        secondaryPanel={{
-          activeTab: activeFixedSecondaryTab,
-          canUseGitUi,
-          defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
-          environmentId: thread.environmentId ?? undefined,
-          workspaceRootPath: environment?.path,
-          fileTabs,
-          fileTabContent,
-          renderBrowserDeck,
-          isBrowserTabActive,
-          sideChatDeck,
-          isSideChatTabActive,
-          isOpen: isSecondaryPanelOpen,
-          onClose: closeSecondaryPanel,
-          onCollapse: closeSecondaryPanel,
-          onOpenFileInEditor: handleOpenFileInEditor,
-          onFileTabReorder: reorderFileTab,
-          onOpenNewTab: handleOpenNewTab,
-          onOpenFilePreview: handleOpenFilePreview,
-          onSelectionAddToChat: handleSelectionAddToChat,
-          onPanelFocus: handleSecondaryPanelFocus,
-          onPanelChange: handleSecondaryPanelChange,
-          showGitDiffTab: canUseGitUi,
-        }}
-        timeline={{
-          activeThinking,
-          canSpawnChild: thread.canSpawnChild,
-          threadChildOrigin: threadOriginKind,
-          hasOlderTimelineRows,
-          hostConnectionNotice,
-          isLoadingOlderTimelineRows,
-          isThreadTimelinePending,
-          timelineError: Boolean(timelineError),
-          onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-          onSideChatMessage: canStartSideChat
-            ? handleSideChatMessage
-            : undefined,
-          onSendToMainMessage: handleSendToMainMessage,
-          onSelectionAddToChat: handleSelectionAddToChat,
-          onSelectionReplyInSideChat: canStartSideChat
-            ? handleSelectionReplyInSideChat
-            : undefined,
-          onLoadOlderRows: loadOlderTimelineRows,
-          onOpenLink: handleOpenTimelineLink,
-          onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-          onTitleAction: handleTimelineTitleAction,
-          projectId,
-          resolveMentionLink,
-          showOngoingIndicator:
-            thread.status !== "stopping" &&
-            // A pending interaction (question or approval) already renders its
-            // own inline shimmer row, so the bottom indicator would just
-            // duplicate it.
-            !hasPendingInteraction &&
-            isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
-            !isThreadTimelinePending,
-          ongoingIndicatorLabel:
-            thread.runtime.displayStatus === "host-reconnecting"
-              ? "Waiting for reconnection"
+      <UrlOpenRoutingProvider
+        openInAppBrowser={
+          canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+        }
+      >
+        <ThreadDetailSecondaryContent
+          footer={composerFooter}
+          header={timelineHeader}
+          isMetadataLoading={environmentQuery.isLoading}
+          isSecondaryPanelOpen={isSecondaryPanelOpen}
+          isConversationCollapsed={isConversationCollapsed}
+          surface={props.surface}
+          onToggleConversationCollapse={toggleConversationCollapse}
+          metadata={{
+            thread,
+            projectId,
+            parentThreadDisplayName: parentThreadDisplayName ?? null,
+            parentThreads,
+            canAssignToParent,
+            canTakeOverThread,
+            environment: environment ?? null,
+            environmentDisplayHost: environmentDisplayHostContext,
+            workspaceStatus,
+            workspaceStatusError: workspaceStatusError ?? null,
+            workspaceUnavailable,
+            pullRequest,
+            selectedMergeBaseBranch,
+            mergeBaseBranchRef: selectedMergeBaseBranchRef,
+            mergeBaseBranchOptions,
+            mergeBaseRemoteBranchOptions,
+            isLoadingMergeBaseBranchOptions,
+            updateThreadPending:
+              updateThread.isPending || updateEnvironment.isPending,
+            storage: metadataStorage,
+            onAssignParent: handleAssignParent,
+            onMergeBaseBranchChange: handleMergeBaseBranchChange,
+            onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
+            onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
+            onChangedFileClick: canUseGitUi
+              ? handleChangedFileClick
               : undefined,
-          timelineRows,
-          isStopping: thread.status === "stopping",
-          stoppingAnchorAt: thread.updatedAt,
-          threadId: thread.id,
-          threadRuntimeDisplayStatus: thread.runtime.displayStatus,
-          unreadDividerAutoScroll: unreadDividerState.autoScroll,
-          unreadDividerPlacement: unreadDividerState.placement,
-          workspaceRootPath: environment?.path ?? undefined,
-        }}
-      />
-      {canUseGitUi ? (
-        <ThreadGitActionDialog
-          target={gitActions.threadGitActionDialog.target}
-          branchName={threadBranchName}
-          gitStatusDisplay={threadGitStatusDisplay}
-          changedFilesSection={workingTreeChangedFilesSection}
-          showMergeBaseDetails={showBranchComparisonUi}
-          mergeBaseBranch={effectiveMergeBaseBranch}
-          mergeBaseBranchOptions={mergeBaseBranchOptions}
-          mergeBaseBranchRef={selectedMergeBaseBranchRef}
-          mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
-          mergeBaseBranchOptionsLoading={isLoadingMergeBaseBranchOptions}
-          onMergeBaseBranchSearchQueryChange={setMergeBaseBranchSearchQuery}
-          onMergeBaseBranchChange={
-            showBranchComparisonUi ? handleMergeBaseBranchChange : undefined
-          }
-          onOpenChange={(open) => {
-            if (!open) {
-              gitActions.threadGitActionDialog.onClose();
-            }
+            onCommitClick: canUseGitUi ? handleCommitClick : undefined,
           }}
-          onCommit={gitActions.handleCommitThread}
-          onSquashMerge={gitActions.handleSquashMergeThread}
+          secondaryPanel={{
+            activeTab: activeFixedSecondaryTab,
+            canUseGitUi,
+            defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
+            environmentId: thread.environmentId ?? undefined,
+            workspaceRootPath: environment?.path,
+            fileTabs,
+            fileTabContent,
+            renderBrowserDeck,
+            isBrowserTabActive,
+            sideChatDeck,
+            isSideChatTabActive,
+            isOpen: isSecondaryPanelOpen,
+            onClose: closeSecondaryPanel,
+            onCollapse: closeSecondaryPanel,
+            onOpenFileInEditor: handleOpenFileInEditor,
+            onFileTabReorder: reorderFileTab,
+            onOpenNewTab: handleOpenNewTab,
+            onOpenFilePreview: handleOpenFilePreview,
+            onSelectionAddToChat: handleSelectionAddToChat,
+            onPanelFocus: handleSecondaryPanelFocus,
+            onPanelChange: handleSecondaryPanelChange,
+            showGitDiffTab: canUseGitUi,
+          }}
+          timeline={{
+            activeThinking,
+            canSpawnChild: thread.canSpawnChild,
+            threadChildOrigin: threadOriginKind,
+            hasOlderTimelineRows,
+            hostConnectionNotice,
+            isLoadingOlderTimelineRows,
+            isThreadTimelinePending,
+            timelineError: Boolean(timelineError),
+            onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onSideChatMessage: canStartSideChat
+              ? handleSideChatMessage
+              : undefined,
+            onSendToMainMessage: handleSendToMainMessage,
+            onSelectionAddToChat: handleSelectionAddToChat,
+            onSelectionReplyInSideChat: canStartSideChat
+              ? handleSelectionReplyInSideChat
+              : undefined,
+            onLoadOlderRows: loadOlderTimelineRows,
+            onOpenLink: handleOpenTimelineLink,
+            onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+            onTitleAction: handleTimelineTitleAction,
+            projectId,
+            resolveMentionLink,
+            showOngoingIndicator:
+              thread.status !== "stopping" &&
+              // A pending interaction (question or approval) already renders its
+              // own inline shimmer row, so the bottom indicator would just
+              // duplicate it.
+              !hasPendingInteraction &&
+              isRunningThreadRuntimeDisplayStatus(
+                thread.runtime.displayStatus,
+              ) &&
+              !isThreadTimelinePending,
+            ongoingIndicatorLabel:
+              thread.runtime.displayStatus === "host-reconnecting"
+                ? "Waiting for reconnection"
+                : undefined,
+            timelineRows,
+            isStopping: thread.status === "stopping",
+            stoppingAnchorAt: thread.updatedAt,
+            threadId: thread.id,
+            threadRuntimeDisplayStatus: thread.runtime.displayStatus,
+            unreadDividerAutoScroll: unreadDividerState.autoScroll,
+            unreadDividerPlacement: unreadDividerState.placement,
+            workspaceRootPath: environment?.path ?? undefined,
+          }}
         />
-      ) : null}
-    </UrlOpenRoutingProvider>
-    </MarkdownLocalFileOpenWithContext.Provider>
+        {canUseGitUi ? (
+          <ThreadGitActionDialog
+            target={gitActions.threadGitActionDialog.target}
+            branchName={threadBranchName}
+            gitStatusDisplay={threadGitStatusDisplay}
+            changedFilesSection={workingTreeChangedFilesSection}
+            showMergeBaseDetails={showBranchComparisonUi}
+            mergeBaseBranch={effectiveMergeBaseBranch}
+            mergeBaseBranchOptions={mergeBaseBranchOptions}
+            mergeBaseBranchRef={selectedMergeBaseBranchRef}
+            mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
+            mergeBaseBranchOptionsLoading={isLoadingMergeBaseBranchOptions}
+            onMergeBaseBranchSearchQueryChange={setMergeBaseBranchSearchQuery}
+            onMergeBaseBranchChange={
+              showBranchComparisonUi ? handleMergeBaseBranchChange : undefined
+            }
+            onOpenChange={(open) => {
+              if (!open) {
+                gitActions.threadGitActionDialog.onClose();
+              }
+            }}
+            onCommit={gitActions.handleCommitThread}
+            onSquashMerge={gitActions.handleSquashMergeThread}
+          />
+        ) : null}
+      </UrlOpenRoutingProvider>
+    </MarkdownLocalFileContextMenuContext.Provider>
   );
 }

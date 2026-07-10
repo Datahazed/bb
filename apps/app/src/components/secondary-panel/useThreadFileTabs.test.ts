@@ -352,9 +352,11 @@ describe("useThreadFileTabs file opener diversion", () => {
   function registerNotesOpener() {
     setPluginSlotRegistrations("notes", {
       homepageSections: [],
+      settingsSections: [],
       navPanels: [],
       threadPanelActions: [],
       composerAccessories: [],
+      sidebarFooterActions: [],
       fileOpeners: [
         {
           id: "editor",

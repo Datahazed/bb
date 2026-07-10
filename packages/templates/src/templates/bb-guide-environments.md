@@ -63,22 +63,12 @@ Making your repo work with bb:
   bb environment squash-merge <id>        Squash-merge into a target branch
     --merge-base-branch <branch>          Target branch (required)
 
-Hosts:
-
-  Every environment lives on a host (a machine running the bb host daemon).
-
-  bb host list                            List hosts with connection status and last-seen time
-
-  Pass a host id to `bb thread spawn --host <id>` to run a thread on a
-  specific connected machine; omit it to use the local primary host.
-  Targeting a non-primary host requires the "Multi-machine" experiment
-  (Settings → Experiments); when it is off such requests are rejected.
-
 Remote access (bb connect):
 
   Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Claim a handle at https://getbb.app and copy the connect command it
-  generates, then run it here to pair:
+  browser. Enable the "bb connect" experiment, claim a handle at
+  https://getbb.app, copy the connect command it generates, then run it here to
+  pair:
 
   bb connect --code <code> --server https://<handle>.getbb.app
     --code <code>          One-time pairing code from the dashboard
@@ -92,8 +82,21 @@ Remote access (bb connect):
 
   bb connect status                       Show the server's connect status
   bb connect off                          Disconnect and forget the pairing
+  bb connect expose <port>                Share a local HTTP port
+  bb connect unexpose <port>              Stop sharing a port
+  bb connect shares                       List shared ports and their URLs
 
-  Remote access is owned by the builtin "connect" plugin (its "Connect"
-  panel in the app shows the URL and a QR code). Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; re-enable with
-  `bb plugin enable connect`.
+  Port sharing: after pairing, `bb connect expose <port>` publishes a local
+  HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent host for
+  a self-hosted gate). Access is owner-session-gated — only viewers signed into
+  the owner's getbb.app account can open the URL; it is not a public internet
+  link. Agents that start a local server for the user should run expose and
+  share that URL (especially when the user is remote); unexpose when the
+  server stops. `bb connect shares` lists active URLs; Settings → Connect
+  shows and manages them in the UI.
+
+  Remote access is owned by the builtin "connect" plugin (Settings → Connect
+  shows the URL, QR code, and shared ports). Disabling the plugin
+  (`bb plugin disable connect`) cuts off all remote access; with the
+  bb connect experiment still enabled, re-enable with `bb plugin enable
+  connect`.

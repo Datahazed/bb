@@ -10,7 +10,6 @@ import { registerProviderCommands } from "../commands/provider.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
-import { registerUiCommands } from "../commands/ui.js";
 import {
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
@@ -33,7 +32,6 @@ const RESERVED_BB_CLI_COMMANDS = [
   "status",
   "theme",
   "thread",
-  "ui",
 ];
 
 function buildProgram(): Command {
@@ -46,7 +44,6 @@ function buildProgram(): Command {
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
-  registerUiCommands(program, getUrl);
   registerPluginCommands(program, getUrl);
   registerGuideCommand(program);
   return program;
@@ -186,7 +183,12 @@ describe("findDisabledPluginForCommand", () => {
     );
     await expect(
       findDisabledPluginForCommand("http://localhost", "connect"),
-    ).resolves.toEqual({ id: "connect" });
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: false,
+      status: null,
+      statusDetail: null,
+    });
     // Enabled plugins and unknown names never match.
     await expect(
       findDisabledPluginForCommand("http://localhost", "automations"),
@@ -194,6 +196,36 @@ describe("findDisabledPluginForCommand", () => {
     await expect(
       findDisabledPluginForCommand("http://localhost", "linear"),
     ).resolves.toBeNull();
+  });
+
+  it("matches an experiment-disabled plugin by runtime status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              plugins: [
+                {
+                  id: "connect",
+                  enabled: true,
+                  status: "disabled",
+                  statusDetail: 'disabled by the "bb connect" experiment',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await expect(
+      findDisabledPluginForCommand("http://localhost", "connect"),
+    ).resolves.toEqual({
+      id: "connect",
+      enabled: true,
+      status: "disabled",
+      statusDetail: 'disabled by the "bb connect" experiment',
+    });
   });
 
   it("returns null on any fetch failure", async () => {

@@ -1,10 +1,12 @@
 // bb-plugin-connect — the frontend bundle.
 //
-// One navPanel "Remote access": a single card driven by the `status` rpc and
-// live `connect` realtime pushes. Four states — not paired (explainer +
-// paste-a-code pairing), pairing (button spinner + inline errors), connected
-// (hero URL + QR + disconnect-with-confirm), reconnecting (amber, last
-// error, retrying automatically).
+// One settingsSection "Remote access", driven by the `status` rpc and live
+// `connect` realtime pushes. Four states, each matched to the redesign mock:
+// not paired (promise + two numbered steps + auto-submitting code field),
+// pairing (inline typed-code errors), connected (URL hero chip + QR toggle +
+// shared ports + isolated disconnect), reconnecting (amber wash + dimmed
+// body). Disconnect confirms in a dialog, then lands on the unpaired card
+// with a transient receipt.
 import {
   useCallback,
   useEffect,
@@ -21,7 +23,6 @@ import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -34,13 +35,71 @@ import {
   type ConnectStatus,
 } from "@/src/types";
 
-const PANEL_PATH = "connect";
-// Sign in → claim a handle → generate a connect code, all on one page.
-const DASHBOARD_URL = "https://getbb.app/dashboard";
-
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+// Danger-quiet: a ghost button that carries the destructive tone (Disconnect,
+// Revoke). Isolated from benign quiet buttons so it never looks like a peer.
+const DANGER_QUIET_CLASS =
+  "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
+
+// ---------------------------------------------------------------------------
+// Typed pair errors → human copy (never raw RPC text; see rpc.ts).
+// ---------------------------------------------------------------------------
+
+type PairErrorCode =
+  | "invalid_code"
+  | "expired_code"
+  | "already_used"
+  | "network";
+
+interface PairErrorCopy {
+  lead: string;
+  linkLabel: string;
+  tail: string;
+}
+
+const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
+  invalid_code: {
+    lead: "That code is invalid or has expired.",
+    linkLabel: "Get a new code",
+    tail: " — they only last 10 minutes.",
+  },
+  expired_code: {
+    lead: "That code has expired.",
+    linkLabel: "Get a new code",
+    tail: " — they only last 10 minutes.",
+  },
+  already_used: {
+    lead: "That code was already used.",
+    linkLabel: "Get a new code",
+    tail: " — each code works once.",
+  },
+  network: {
+    lead: "Couldn't reach getbb.app.",
+    linkLabel: "Open the dashboard",
+    tail: " — check your connection, then try again.",
+  },
+};
+
+function toPairErrorCode(error: unknown): PairErrorCode {
+  const message = errorText(error);
+  if (
+    message === "invalid_code" ||
+    message === "expired_code" ||
+    message === "already_used" ||
+    message === "network"
+  ) {
+    return message;
+  }
+  // Anything unexpected reads as a bad code rather than leaking wire text.
+  return "invalid_code";
+}
+
+// ---------------------------------------------------------------------------
+// Status parsing + small formatters.
+// ---------------------------------------------------------------------------
 
 function asStatus(payload: unknown): ConnectStatus | null {
   if (payload === null || typeof payload !== "object") return null;
@@ -49,8 +108,13 @@ function asStatus(payload: unknown): ConnectStatus | null {
     paired?: unknown;
     handle?: unknown;
     url?: unknown;
+    dashboardUrl?: unknown;
     lastError?: unknown;
+    nextRetryAt?: unknown;
     since?: unknown;
+    remoteClients?: unknown;
+    lastRemoteActivityAt?: unknown;
+    shares?: unknown;
   };
   if (
     (record.state !== "disconnected" &&
@@ -62,15 +126,92 @@ function asStatus(payload: unknown): ConnectStatus | null {
   ) {
     return null;
   }
+  const shares: ConnectStatus["shares"] = [];
+  if (Array.isArray(record.shares)) {
+    for (const entry of record.shares) {
+      if (
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof (entry as { port?: unknown }).port === "number" &&
+        typeof (entry as { url?: unknown }).url === "string"
+      ) {
+        shares.push({
+          port: (entry as { port: number }).port,
+          url: (entry as { url: string }).url,
+        });
+      }
+    }
+  }
   return {
     state: record.state,
     paired: record.paired,
     handle: typeof record.handle === "string" ? record.handle : null,
     url: typeof record.url === "string" ? record.url : null,
+    dashboardUrl:
+      typeof record.dashboardUrl === "string"
+        ? record.dashboardUrl
+        : "https://getbb.app/dashboard",
     lastError: typeof record.lastError === "string" ? record.lastError : null,
+    nextRetryAt:
+      typeof record.nextRetryAt === "number" ? record.nextRetryAt : null,
     since: record.since,
+    remoteClients:
+      typeof record.remoteClients === "number" ? record.remoteClients : 0,
+    lastRemoteActivityAt:
+      typeof record.lastRemoteActivityAt === "number"
+        ? record.lastRemoteActivityAt
+        : null,
+    shares,
   };
 }
+
+/** "5:33 PM" when the timestamp is today, else "Jul 6" — never seconds. */
+function formatSince(sinceMs: number): string {
+  const at = new Date(sinceMs);
+  const now = new Date();
+  const sameDay =
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate();
+  return sameDay
+    ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : at.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Retry countdown from the backoff timer; computed at render (no live tick). */
+function retryHint(nextRetryAt: number | null): string {
+  if (nextRetryAt === null) return "retrying automatically";
+  const seconds = Math.max(0, Math.round((nextRetryAt - Date.now()) / 1000));
+  return seconds > 0 ? `retrying in ${seconds}s` : "retrying…";
+}
+
+/** Host-only display of a URL (drop the scheme); the raw string if unparsable. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.replace(/^https?:\/\//, "");
+  }
+}
+
+/**
+ * Normalize a pasted/typed connect code to the canonical `XXXX-XXXX` shape:
+ * uppercase, strip whitespace and any dash variant, group 4-4. Partial input
+ * returns a partial canonical value (used both for the field display and the
+ * complete-code check that drives auto-submit).
+ */
+function formatConnectCode(raw: string): string {
+  const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  return cleaned.length > 4 ? `${cleaned.slice(0, 4)}-${cleaned.slice(4)}` : cleaned;
+}
+
+function isCompleteCode(formatted: string): boolean {
+  return /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(formatted);
+}
+
+// ---------------------------------------------------------------------------
+// Shared bits.
+// ---------------------------------------------------------------------------
 
 function StatusDot({ tone }: { tone: "ok" | "warn" | "muted" }) {
   return (
@@ -78,11 +219,25 @@ function StatusDot({ tone }: { tone: "ok" | "warn" | "muted" }) {
       aria-hidden="true"
       className={cn(
         "size-2 shrink-0 rounded-full",
-        tone === "ok" && "bg-success",
-        tone === "warn" && "bg-warning",
+        // Soft halo mixed from the tone anchor so it survives custom palettes.
+        tone === "ok" &&
+          "bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_18%,transparent)]",
+        tone === "warn" &&
+          "animate-pulse bg-warning shadow-[0_0_0_3px_color-mix(in_oklab,var(--warning)_22%,transparent)]",
         tone === "muted" && "bg-muted-foreground/50",
       )}
     />
+  );
+}
+
+function StepNumber({ value }: { value: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-recessed text-xs font-medium text-muted-foreground"
+    >
+      {value}
+    </span>
   );
 }
 
@@ -107,12 +262,93 @@ function QrCodeImage({ value }: { value: string }) {
     <img
       src={dataUrl}
       alt={`QR code for ${value}`}
-      className="size-36 rounded-md border border-border bg-white p-1.5"
+      className="size-32 rounded-md border border-border bg-white p-1.5"
     />
   );
 }
 
-function CopyUrlButton({ url }: { url: string }) {
+/**
+ * The URL hero chip: recessed, single-line with ellipsis (never wraps
+ * mid-address), Copy + optional Open attached. Copy has a real failure path —
+ * on clipboard rejection it selects the URL text and flips to "Press ⌘C"
+ * rather than failing silently.
+ */
+function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">(
+    "idle",
+  );
+  const urlRef = useRef<HTMLAnchorElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  const selectUrl = useCallback(() => {
+    const element = urlRef.current;
+    if (element === null) return;
+    const selection = window.getSelection();
+    if (selection === null) return;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, []);
+
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopyState("copied");
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+      },
+      () => {
+        // Locked-down / insecure contexts reject: keep the user unblocked.
+        selectUrl();
+        setCopyState("manual");
+      },
+    );
+  }, [url, selectUrl]);
+
+  return (
+    <div className="flex max-w-xl items-center gap-1 rounded-lg border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
+      <a
+        ref={urlRef}
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-foreground no-underline hover:underline"
+      >
+        {url}
+      </a>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={copy}
+        aria-label="Copy URL"
+      >
+        <Icon name={copyState === "copied" ? "Check" : "Copy"} className="size-4" />
+        {copyState === "copied"
+          ? "Copied"
+          : copyState === "manual"
+            ? "Press ⌘C"
+            : "Copy"}
+      </Button>
+      {showOpen ? (
+        <Button type="button" variant="outline" size="sm" asChild>
+          <a href={url} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function QuietCopyButton({ url, label }: { url: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -122,125 +358,317 @@ function CopyUrlButton({ url }: { url: string }) {
     [],
   );
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), 1500);
-    });
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopied(true);
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setCopied(false), 1500);
+      },
+      () => {
+        // Quiet copy has no inline hint; leave the label unchanged.
+      },
+    );
   }, [url]);
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="ghost"
       size="sm"
+      className="text-muted-foreground"
       onClick={copy}
-      aria-label="Copy URL"
+      aria-label={label}
     >
-      <Icon name={copied ? "Check" : "Copy"} className="size-4" />
       {copied ? "Copied" : "Copy"}
     </Button>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Pairing (paste-a-code) form — used unpaired and for re-pair.
+// ---------------------------------------------------------------------------
+
 function PairForm({
-  paired,
+  dashboardUrl,
   onPaired,
 }: {
-  paired: boolean;
+  dashboardUrl: string;
   onPaired: () => void;
 }) {
   const rpc = useRpc();
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<PairErrorCode | null>(null);
+  // The last code we fired so a completed value auto-submits once, not on
+  // every keystroke — and a rejected code doesn't loop until it's edited.
+  const submittedRef = useRef<string | null>(null);
 
-  const pair = useCallback(() => {
-    const trimmed = code.trim();
-    if (trimmed.length === 0 || pending) return;
-    setPending(true);
-    setError(null);
-    rpc.call("pair", { code: trimmed }).then(
-      () => {
-        setPending(false);
-        setCode("");
-        onPaired();
-      },
-      (rpcError: unknown) => {
-        setPending(false);
-        // Inline, not a toast: the message must stay readable while the user
-        // goes back to the dashboard for a fresh code.
-        setError(errorText(rpcError));
-      },
-    );
-  }, [code, pending, rpc, onPaired]);
+  const submit = useCallback(
+    (value: string) => {
+      if (pending) return;
+      const canonical = formatConnectCode(value);
+      if (!isCompleteCode(canonical)) return;
+      submittedRef.current = canonical;
+      setPending(true);
+      setErrorCode(null);
+      rpc.call("pair", { code: canonical }).then(
+        () => {
+          setPending(false);
+          setCode("");
+          submittedRef.current = null;
+          onPaired();
+        },
+        (rpcError: unknown) => {
+          setPending(false);
+          // Inline, never a toast: it must survive a trip to the dashboard.
+          setErrorCode(toPairErrorCode(rpcError));
+        },
+      );
+    },
+    [pending, rpc, onPaired],
+  );
+
+  const onChange = useCallback(
+    (raw: string) => {
+      const formatted = formatConnectCode(raw);
+      setCode(formatted);
+      if (errorCode !== null) setErrorCode(null);
+      // "It connects automatically": fire as soon as a fresh 4-4 lands.
+      if (isCompleteCode(formatted) && formatted !== submittedRef.current) {
+        submit(formatted);
+      }
+    },
+    [errorCode, submit],
+  );
+
+  const complete = isCompleteCode(code);
+  const copy = errorCode !== null ? PAIR_ERROR_COPY[errorCode] : null;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <form
-        className="flex items-center gap-2"
+        className="flex max-w-md items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          pair();
+          submit(code);
         }}
       >
         <Input
           value={code}
-          onChange={(event) => setCode(event.target.value)}
-          placeholder="Paste your connect code"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="XXXX–XXXX"
           autoComplete="off"
           spellCheck={false}
-          className="max-w-xs font-mono"
+          aria-label="Connect code"
+          aria-invalid={errorCode !== null}
+          className={cn(
+            "font-mono tracking-widest",
+            errorCode !== null &&
+              "border-destructive ring-1 ring-destructive",
+          )}
         />
-        <Button type="submit" disabled={pending || code.trim().length === 0}>
+        <Button type="submit" disabled={pending || !complete}>
           {pending ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
-          {paired ? "Re-pair" : "Connect"}
+          Connect
         </Button>
       </form>
-      {error !== null ? (
-        <p className="text-sm text-destructive">
-          {error} — generate a new code on the{" "}
+      {copy !== null ? (
+        <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
+          {copy.lead}{" "}
           <a
-            href={DASHBOARD_URL}
+            href={dashboardUrl}
             target="_blank"
             rel="noreferrer"
-            className="underline"
+            className="font-semibold underline underline-offset-2"
           >
-            dashboard
+            {copy.linkLabel}
           </a>
-          .
-        </p>
-      ) : null}
-      {paired ? (
-        <p className="text-xs text-muted-foreground">
-          Re-pairing replaces this bb&apos;s credential. A code for a
-          different handle moves your URL.
-        </p>
+          {copy.tail}
+        </div>
       ) : null}
     </div>
   );
 }
 
-function StepNumber({ value }: { value: number }) {
+// ---------------------------------------------------------------------------
+// Shared ports subsection (restyled into the section grammar).
+// ---------------------------------------------------------------------------
+
+function SharedPortsSection({
+  shares,
+  dimmed,
+}: {
+  shares: ConnectStatus["shares"];
+  dimmed: boolean;
+}) {
+  const rpc = useRpc();
+  const [portInput, setPortInput] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [exposing, setExposing] = useState(false);
+  const [revokingPort, setRevokingPort] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const expose = useCallback(() => {
+    const trimmed = portInput.trim();
+    if (trimmed.length === 0 || exposing) return;
+    const port = Number(trimmed);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError("Port must be an integer between 1 and 65535");
+      return;
+    }
+    setExposing(true);
+    setError(null);
+    rpc.call("expose", { port }).then(
+      () => {
+        setExposing(false);
+        setPortInput("");
+        setFormOpen(false);
+      },
+      (rpcError: unknown) => {
+        setExposing(false);
+        setError(errorText(rpcError));
+      },
+    );
+  }, [portInput, exposing, rpc]);
+
+  const unexpose = useCallback(
+    (port: number) => {
+      if (revokingPort !== null) return;
+      setRevokingPort(port);
+      setError(null);
+      rpc.call("unexpose", { port }).then(
+        () => {
+          setRevokingPort(null);
+        },
+        (rpcError: unknown) => {
+          setRevokingPort(null);
+          setError(errorText(rpcError));
+        },
+      );
+    },
+    [revokingPort, rpc],
+  );
+
   return (
-    <span
-      aria-hidden="true"
-      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-recessed text-xs font-medium text-muted-foreground"
+    <div
+      className={cn(
+        "space-y-2.5 border-t border-border-seam pt-4",
+        dimmed && "pointer-events-none opacity-60 saturate-[0.85]",
+      )}
     >
-      {value}
-    </span>
+      <div className="flex items-center">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle-foreground">
+          Shared ports
+        </h3>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => setFormOpen((open) => !open)}
+        >
+          <Icon name="Plus" className="size-3.5" />
+          Expose a port
+        </Button>
+      </div>
+
+      {shares.length > 0 ? (
+        <ul className="space-y-1">
+          {shares.map((share) => (
+            <li key={share.port} className="flex items-center gap-2">
+              <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
+                :{share.port}
+              </span>
+              <a
+                href={share.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                {hostOf(share.url)}
+              </a>
+              <QuietCopyButton
+                url={share.url}
+                label={`Copy share URL for port ${share.port}`}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={DANGER_QUIET_CLASS}
+                disabled={revokingPort === share.port}
+                onClick={() => unexpose(share.port)}
+              >
+                {revokingPort === share.port ? (
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                ) : null}
+                Revoke
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {formOpen ? (
+        <form
+          className="flex max-w-[16rem] items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            expose();
+          }}
+        >
+          <Input
+            type="number"
+            min={1}
+            max={65535}
+            step={1}
+            value={portInput}
+            onChange={(event) => setPortInput(event.target.value)}
+            placeholder="Port"
+            inputMode="numeric"
+            className="max-w-[7rem] font-mono"
+            aria-label="Port to share"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={exposing || portInput.trim().length === 0}
+          >
+            {exposing ? (
+              <Icon name="Spinner" className="size-4 animate-spin" />
+            ) : null}
+            Expose
+          </Button>
+        </form>
+      ) : null}
+
+      <p className="text-xs text-subtle-foreground/75">
+        Agents can expose their dev servers too — same owner sign-in required
+        to view.
+      </p>
+      {error !== null ? (
+        <p className="text-xs text-destructive-text">{error}</p>
+      ) : null}
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Disconnect confirm dialog (names the concrete URL + pending state).
+// ---------------------------------------------------------------------------
 
 function DisconnectDialog({
   open,
   onOpenChange,
+  host,
   pending,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  host: string;
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -251,11 +679,12 @@ function DisconnectDialog({
           <>
             <DialogHeader>
               <DialogTitle>Disconnect remote access?</DialogTitle>
-              <DialogDescription>
-                This forgets the credential; re-pairing needs a new code from
-                the getbb.app dashboard.
-              </DialogDescription>
             </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{host}</span> will
+              stop working on all devices. Re-pairing needs a new code from
+              your getbb.app dashboard.
+            </p>
             <DialogFooter>
               <Button
                 type="button"
@@ -271,7 +700,10 @@ function DisconnectDialog({
                 disabled={pending}
                 onClick={onConfirm}
               >
-                Disconnect
+                {pending ? (
+                  <Icon name="Spinner" className="size-4 animate-spin" />
+                ) : null}
+                {pending ? "Disconnecting…" : "Disconnect"}
               </Button>
             </DialogFooter>
           </>
@@ -281,30 +713,36 @@ function DisconnectDialog({
   );
 }
 
-function NotPairedCard({ onPaired }: { onPaired: () => void }) {
+// ---------------------------------------------------------------------------
+// Not paired (p1).
+// ---------------------------------------------------------------------------
+
+function NotPairedContent({
+  dashboardUrl,
+  onPaired,
+}: {
+  dashboardUrl: string;
+  onPaired: () => void;
+}) {
   return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <StatusDot tone="muted" />
-          <h2 className="text-sm font-semibold">Set up remote access</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Use this bb from any device at{" "}
-          <span className="font-mono">https://&lt;handle&gt;.getbb.app</span>.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Pairing gives this bb a private URL like{" "}
+        <span className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-xs text-foreground">
+          you.getbb.app
+        </span>
+        . Your code and data stay on this machine.
+      </p>
 
       <div className="flex gap-3">
         <StepNumber value={1} />
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm">
-            Sign in to getbb.app and pick a name for your bb. The dashboard
-            shows a one-time connect code.
+            Get a one-time connect code from your getbb.app dashboard.
           </p>
-          <Button type="button" variant="outline" size="sm" asChild>
-            <a href={DASHBOARD_URL} target="_blank" rel="noreferrer">
-              Sign in to getbb.app
+          <Button type="button" asChild>
+            <a href={dashboardUrl} target="_blank" rel="noreferrer">
+              Get a connect code
               <Icon name="ExternalLink" className="size-3.5" />
             </a>
           </Button>
@@ -314,32 +752,42 @@ function NotPairedCard({ onPaired }: { onPaired: () => void }) {
       <div className="flex gap-3">
         <StepNumber value={2} />
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm">Paste the connect code here.</p>
-          <PairForm paired={false} onPaired={onPaired} />
+          <p className="text-sm">Paste it here — it connects automatically.</p>
+          <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Anyone signed into your getbb.app account gets full control of this
+      <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
+        <Icon
+          name="AlertTriangle"
+          className="mt-px size-3.5 shrink-0 opacity-70"
+        />
+        Anyone signed in to your getbb.app account gets full control of this
         bb.
       </p>
     </div>
   );
 }
 
-function PairedCard({
+// ---------------------------------------------------------------------------
+// Connected (p4) + reconnecting (p5).
+// ---------------------------------------------------------------------------
+
+function ConnectedContent({
   status,
   onChanged,
+  onDisconnected,
 }: {
   status: ConnectStatus;
   onChanged: () => void;
+  onDisconnected: () => void;
 }) {
   const rpc = useRpc();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
-  const connected = status.state === "connected";
+  const [qrOpen, setQrOpen] = useState(false);
 
   const disconnect = useCallback(() => {
     setDisconnecting(true);
@@ -348,6 +796,7 @@ function PairedCard({
       () => {
         setDisconnecting(false);
         setConfirmOpen(false);
+        onDisconnected();
         onChanged();
       },
       (error: unknown) => {
@@ -355,82 +804,91 @@ function PairedCard({
         setDisconnectError(errorText(error));
       },
     );
-  }, [rpc, onChanged]);
+  }, [rpc, onChanged, onDisconnected]);
+
+  const host = status.url !== null ? hostOf(status.url) : "this bb";
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <StatusDot tone={connected ? "ok" : "warn"} />
-        <h2 className="text-sm font-semibold">
-          {connected ? "Connected" : "Reconnecting…"}
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {connected
-            ? `since ${new Date(status.since).toLocaleString()}`
-            : "retrying automatically"}
+        <StatusDot tone="ok" />
+        <span className="text-sm font-semibold">Connected</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          since {formatSince(status.since)}
+          {status.remoteClients > 0
+            ? ` · ${status.remoteClients} viewing remotely`
+            : ""}
         </span>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => setRepairOpen((open) => !open)}
+        >
+          Re-pair…
+        </Button>
       </div>
 
-      {!connected && status.lastError !== null ? (
-        <p className="text-sm text-warning-text">
-          {status.lastError}
-        </p>
-      ) : null}
+      {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
 
       {status.url !== null ? (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Open this URL on any device — or scan the code:
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={status.url}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all font-mono text-lg font-medium underline-offset-4 hover:underline"
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setQrOpen((open) => !open)}
             >
-              {status.url}
-            </a>
-            <CopyUrlButton url={status.url} />
+              <Icon name="GridView" className="size-3.5" />
+              Show QR for phone
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              scan to open on another device
+            </span>
           </div>
-          <QrCodeImage value={status.url} />
+          {qrOpen ? <QrCodeImage value={status.url} /> : null}
         </div>
       ) : null}
 
-      <div className="space-y-2 border-t border-border-seam pt-4">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={() => setRepairOpen((open) => !open)}
-          >
-            <Icon
-              name={repairOpen ? "ChevronDown" : "ChevronRight"}
-              className="size-3.5"
-            />
-            Re-pair with a new code
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setConfirmOpen(true)}
-          >
-            Disconnect
-          </Button>
+      {repairOpen ? (
+        <div className="space-y-2 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+          <p className="text-xs text-muted-foreground">
+            Re-pairing replaces this bb&apos;s credential. Paste a fresh code
+            from your dashboard.
+          </p>
+          <PairForm dashboardUrl={status.dashboardUrl} onPaired={onChanged} />
         </div>
-        {repairOpen ? <PairForm paired onPaired={onChanged} /> : null}
-        {disconnectError !== null ? (
-          <p className="text-sm text-destructive">{disconnectError}</p>
-        ) : null}
+      ) : null}
+
+      <SharedPortsSection shares={status.shares} dimmed={false} />
+
+      <div className="-mx-4 mt-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
+        <span className="min-w-0 text-xs text-muted-foreground">
+          Disconnecting forgets this bb&apos;s credential.
+        </span>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={DANGER_QUIET_CLASS}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Disconnect…
+        </Button>
       </div>
+      {disconnectError !== null ? (
+        <p className="text-xs text-destructive-text">{disconnectError}</p>
+      ) : null}
 
       <DisconnectDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
+        host={host}
         pending={disconnecting}
         onConfirm={disconnect}
       />
@@ -438,10 +896,108 @@ function PairedCard({
   );
 }
 
-function RemoteAccessPanel() {
+function ReconnectingContent({
+  status,
+  onChanged,
+  onDisconnected,
+}: {
+  status: ConnectStatus;
+  onChanged: () => void;
+  onDisconnected: () => void;
+}) {
+  const rpc = useRpc();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+  const disconnect = useCallback(() => {
+    setDisconnecting(true);
+    setDisconnectError(null);
+    rpc.call("disconnect").then(
+      () => {
+        setDisconnecting(false);
+        setConfirmOpen(false);
+        onDisconnected();
+        onChanged();
+      },
+      (error: unknown) => {
+        setDisconnecting(false);
+        setDisconnectError(errorText(error));
+      },
+    );
+  }, [rpc, onChanged, onDisconnected]);
+
+  const host = status.url !== null ? hostOf(status.url) : "this bb";
+  const why = [status.lastError, retryHint(status.nextRetryAt)]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(" · ");
+
+  return (
+    <div className="space-y-4">
+      {/* Amber wash bleeds to the card edges — the whole card changes
+          temperature without moving the layout (no jump when it recovers). */}
+      <div className="-mx-4 -mt-3.5 flex items-center gap-2.5 rounded-t-lg border-b border-warning/40 bg-warning/10 px-4 py-3">
+        <StatusDot tone="warn" />
+        <span className="shrink-0 text-sm font-semibold text-warning-text">
+          Reconnecting…
+        </span>
+        <span className="min-w-0 truncate text-xs text-warning-text/80">
+          {why}
+        </span>
+      </div>
+
+      <div className="space-y-2 pointer-events-none opacity-60 saturate-[0.85]">
+        <p className="text-sm text-muted-foreground">
+          Your bb will be reachable again at:
+        </p>
+        {status.url !== null ? (
+          <UrlHero url={status.url} showOpen={false} />
+        ) : null}
+      </div>
+
+      <SharedPortsSection shares={status.shares} dimmed />
+
+      <div className="-mx-4 mt-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
+        <span className="min-w-0 text-xs text-muted-foreground">
+          Remote devices can&apos;t reach this bb right now. Local access is
+          unaffected.
+        </span>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={DANGER_QUIET_CLASS}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Disconnect…
+        </Button>
+      </div>
+      {disconnectError !== null ? (
+        <p className="text-xs text-destructive-text">{disconnectError}</p>
+      ) : null}
+
+      <DisconnectDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        host={host}
+        pending={disconnecting}
+        onConfirm={disconnect}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section root.
+// ---------------------------------------------------------------------------
+
+function ConnectSettingsSection() {
   const rpc = useRpc();
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetch = useCallback(() => {
     rpc.call("status").then(
@@ -472,40 +1028,79 @@ function RemoteAccessPanel() {
     }
   });
 
+  const showDisconnected = useCallback(() => {
+    // Transient inline receipt (the SDK exposes no toast on this surface):
+    // the silhouette-identical card swap no longer passes silently.
+    setFlash("Remote access disconnected");
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlash(null), 4000);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+    },
+    [],
+  );
+
   if (loadError !== null) {
     return (
-      <div className="mx-auto w-full max-w-2xl">
-        <p className="text-sm text-destructive">
-          Failed to load remote-access status: {loadError}
-        </p>
-      </div>
+      <p className="text-sm text-destructive-text">
+        Failed to load remote-access status: {loadError}
+      </p>
     );
   }
   if (status === null) {
-    return (
-      <div className="mx-auto w-full max-w-2xl">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl rounded-lg border border-border p-4">
-      {status.paired ? (
-        <PairedCard status={status} onChanged={refetch} />
+    <div className="space-y-3">
+      {flash !== null && !status.paired ? (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-md border border-border bg-surface-recessed px-3 py-2 text-xs text-foreground"
+        >
+          <Icon name="Check" className="size-3.5 text-success" />
+          {flash}
+        </div>
+      ) : null}
+      {!status.paired ? (
+        <NotPairedContent
+          dashboardUrl={status.dashboardUrl}
+          onPaired={refetch}
+        />
+      ) : status.state === "reconnecting" ? (
+        <ReconnectingContent
+          status={status}
+          onChanged={refetch}
+          onDisconnected={showDisconnected}
+        />
       ) : (
-        <NotPairedCard onPaired={refetch} />
+        <ConnectedContent
+          status={status}
+          onChanged={refetch}
+          onDisconnected={showDisconnected}
+        />
       )}
     </div>
   );
 }
 
 export default definePluginApp((app) => {
-  app.slots.navPanel({
+  app.slots.settingsSection({
     id: "remote-access",
-    title: "Connect",
+    title: "Remote access",
+    description:
+      "Use this bb from any device, anywhere — powered by getbb.app.",
+    component: ConnectSettingsSection,
+  });
+  app.slots.sidebarFooterAction({
+    id: "remote-access",
+    title: "Remote access",
     icon: "Smartphone",
-    path: PANEL_PATH,
-    component: RemoteAccessPanel,
+    run({ openSettings }) {
+      openSettings();
+    },
   });
 });

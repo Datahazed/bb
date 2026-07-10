@@ -20,9 +20,12 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginNavPanelRegistration,
+  type PluginPendingInteractionRegistration,
   type PluginRpcClient,
   type PluginSdkApp,
+  type PluginSettingsSectionRegistration,
   type PluginSettingsState,
+  type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "../app-contract.js";
 
@@ -193,9 +196,12 @@ export function installTestPluginRuntime(): void {
 
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
+  settingsSections: PluginSettingsSectionRegistration[];
   navPanels: Array<PluginNavPanelRegistration & { chrome: "page" | "none" }>;
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
+  pendingInteractions: PluginPendingInteractionRegistration[];
+  sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
 }
 
@@ -226,6 +232,17 @@ function requireNonEmptyString(
   return value;
 }
 
+function requireOptionalString(
+  kind: string,
+  field: string,
+  value: unknown,
+): string | undefined {
+  if (value !== undefined && typeof value !== "string") {
+    throw new Error(`${kind}: "${field}" must be a string when set`);
+  }
+  return value;
+}
+
 function requireComponent<T>(kind: string, value: unknown): T {
   if (typeof value !== "function") {
     throw new Error(`${kind}: "component" must be a React component function`);
@@ -250,16 +267,22 @@ function collectRegistrations(
 ): CapturedPluginApp {
   const captured: CapturedPluginApp = {
     homepageSections: [],
+    settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    pendingInteractions: [],
+    sidebarFooterActions: [],
     fileOpeners: [],
   };
   const seenIds = {
     homepageSection: new Set<string>(),
+    settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    pendingInteraction: new Set<string>(),
+    sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
   };
 
@@ -272,6 +295,23 @@ function collectRegistrations(
         captured.homepageSections.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      settingsSection(registration) {
+        const kind = "slots.settingsSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.settingsSection, id);
+        const title = requireOptionalString(kind, "title", registration.title);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        captured.settingsSections.push({
+          id,
+          ...(title !== undefined ? { title } : {}),
+          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
         });
       },
@@ -338,6 +378,29 @@ function collectRegistrations(
         captured.composerAccessories.push({
           id,
           component: requireComponent(kind, registration.component),
+        });
+      },
+      pendingInteraction(registration) {
+        const kind = "slots.pendingInteraction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.pendingInteraction, id);
+        captured.pendingInteractions.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      sidebarFooterAction(registration) {
+        const kind = "slots.sidebarFooterAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarFooterAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        captured.sidebarFooterActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          run: registration.run,
         });
       },
       fileOpener(registration) {

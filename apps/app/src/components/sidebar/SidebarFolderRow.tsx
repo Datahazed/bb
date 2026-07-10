@@ -15,11 +15,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -160,18 +156,27 @@ function SidebarFolderRowComponent({
       <span
         className={cn(
           "relative z-10 shrink-0",
-          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          hasActions
+            ? "inline-flex items-center"
+            : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
         {showRollupGlyph ? (
           <span
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-center text-subtle-foreground",
+              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              hasActions && "max-md:pointer-coarse:hidden",
             )}
           >
             <ThreadStatusGlyph
               hasPendingInteraction={activity.pending}
+              isBackgroundAgentActive={activity.backgroundAgent}
+              isBackgroundCommandActive={activity.backgroundCommand}
+              isForegroundAgentWorking={activity.runtimeWorking}
+              isGoalActive={activity.goal}
+              isPlanModeActive={activity.planMode}
               isBusy={activity.working}
               isWorkflowActive={activity.workflow}
               showUnreadBadge={activity.unread}
@@ -179,92 +184,108 @@ function SidebarFolderRowComponent({
             />
           </span>
         ) : null}
+        {hasActions ? (
+          <span
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-mobile={
+              SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+            }
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 inline-flex shrink-0 items-center",
+              SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+            )}
+            onClick={stopActionsClick}
+          >
+            {showRollupGlyph ? (
+              <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+                <ThreadStatusGlyph
+                  hasPendingInteraction={activity.pending}
+                  isBackgroundAgentActive={activity.backgroundAgent}
+                  isBackgroundCommandActive={activity.backgroundCommand}
+                  isForegroundAgentWorking={activity.runtimeWorking}
+                  isGoalActive={activity.goal}
+                  isPlanModeActive={activity.planMode}
+                  isBusy={activity.working}
+                  isWorkflowActive={activity.workflow}
+                  showUnreadBadge={activity.unread}
+                  unreadBadgeTone={activity.unreadError ? "error" : "default"}
+                />
+              </span>
+            ) : null}
+            {hasMenuActions ? (
+              <DropdownMenu onOpenChange={setIsActionsOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`${label} folder actions`}
+                    className={cn(
+                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                      SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    )}
+                  >
+                    <Icon
+                      name="MoreHorizontal"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {onViewArchivedThreads ? (
+                    <DropdownMenuItem onSelect={onViewArchivedThreads}>
+                      <Icon name="Archive" aria-hidden="true" />
+                      Archived threads
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onViewArchivedThreads && (onRename || onRemove) ? (
+                    <DropdownMenuSeparator />
+                  ) : null}
+                  {onRename ? (
+                    <DropdownMenuItem onSelect={onRename}>
+                      <Icon name="Edit" aria-hidden="true" />
+                      Rename
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onRemove ? (
+                    <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+                      <Icon name="Trash2" aria-hidden="true" />
+                      Remove
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            {onCreateThread ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`New thread in ${label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCreateThread();
+                    }}
+                    className={cn(
+                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                    )}
+                  >
+                    <Icon
+                      name="MessageSquarePlus"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New thread</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </span>
+        ) : null}
       </span>
-      {hasActions ? (
-        <span
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-          data-sidebar-hover-actions-mobile={
-            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-          }
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "relative z-10 inline-flex shrink-0 items-center",
-            SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-          )}
-          onClick={stopActionsClick}
-        >
-          {hasMenuActions ? (
-            <DropdownMenu onOpenChange={setIsActionsOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`${label} folder actions`}
-                  className={cn(
-                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                  )}
-                >
-                  <Icon
-                    name="MoreHorizontal"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {onViewArchivedThreads ? (
-                  <DropdownMenuItem onSelect={onViewArchivedThreads}>
-                    <Icon name="Archive" aria-hidden="true" />
-                    Archived threads
-                  </DropdownMenuItem>
-                ) : null}
-                {onViewArchivedThreads && (onRename || onRemove) ? (
-                  <DropdownMenuSeparator />
-                ) : null}
-                {onRename ? (
-                  <DropdownMenuItem onSelect={onRename}>
-                    <Icon name="Edit" aria-hidden="true" />
-                    Rename
-                  </DropdownMenuItem>
-                ) : null}
-                {onRemove ? (
-                  <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-                    <Icon name="Trash2" aria-hidden="true" />
-                    Remove
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          {onCreateThread ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`New thread in ${label}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCreateThread();
-                  }}
-                  className={cn(
-                    "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                  )}
-                >
-                  <Icon
-                    name="MessageSquarePlus"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">New thread</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </span>
-      ) : null}
     </>
   );
 

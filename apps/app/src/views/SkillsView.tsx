@@ -1259,7 +1259,7 @@ export function SkillDetailDialogView({
           kind: "ready",
           file: { name: "SKILL.md", contents: content },
           lineRange: null,
-          showMarkdownModeToggle: false,
+          textPreviewKind: "markdown",
         }}
       />
     </div>

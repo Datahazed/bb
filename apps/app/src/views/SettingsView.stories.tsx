@@ -11,9 +11,13 @@ import type {
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
+import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
 import { PageShell } from "@/components/ui/page-shell";
 import type { ThemePreference } from "@/hooks/useTheme";
+import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
+import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
+  AppearanceSettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
@@ -25,6 +29,11 @@ export default {
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
+
+const audioInputDevices: AudioInputDeviceOption[] = [
+  { deviceId: "macbook-mic", label: "MacBook Pro Microphone" },
+  { deviceId: "studio-mic", label: "Studio Display Microphone" },
+];
 
 const vscodeTarget: WorkspaceOpenTarget = {
   capabilities: {
@@ -127,6 +136,9 @@ function useSettingsStoryState() {
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
+  const [caffeinate, setCaffeinate] = useState(false);
+  const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
+    useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
@@ -138,19 +150,23 @@ function useSettingsStoryState() {
 
   return {
     appearance,
+    caffeinate,
     directoryTargetId,
     experiments,
     fileTargetId,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
+    preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
     setAppearance,
+    setCaffeinate,
     setDirectoryTargetId,
     setExperiments,
     setFileTargetId,
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
+    setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
     setThemePreference,
@@ -158,21 +174,61 @@ function useSettingsStoryState() {
   };
 }
 
+function VoiceInputStory() {
+  const state = useSettingsStoryState();
+
+  return (
+    <VoiceInputSettingsSectionContent
+      devices={audioInputDevices}
+      errorMessage={null}
+      isLoading={false}
+      isSupported={true}
+      onDeviceChange={state.setPreferredAudioInputDeviceId}
+      onRefresh={() => undefined}
+      preferredDeviceId={state.preferredAudioInputDeviceId}
+    />
+  );
+}
+
 function GeneralSettingsStory({
+  caffeinateAvailable = false,
   desktopBrowserAvailable = false,
 }: {
+  caffeinateAvailable?: boolean;
   desktopBrowserAvailable?: boolean;
 }) {
   const state = useSettingsStoryState();
 
   return (
     <GeneralSettingsSection
+      caffeinateAvailable={caffeinateAvailable}
+      caffeinateDisabled={false}
+      caffeinateEnabled={state.caffeinate}
+      desktopBrowserAvailable={desktopBrowserAvailable}
+      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
+      onCaffeinateChange={state.setCaffeinate}
+      onNavigateToThreadAfterCreateChange={
+        state.setNavigateToThreadAfterCreate
+      }
+      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
+      onRichTextEditingChange={state.setRichTextEditing}
+      openLinksInAppBrowser={state.openLinksInAppBrowser}
+      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
+      richTextEditing={state.richTextEditing}
+    />
+  );
+}
+
+function AppearanceSettingsStory() {
+  const state = useSettingsStoryState();
+
+  return (
+    <AppearanceSettingsSection
       appearance={state.appearance}
       appearanceDisabled={false}
       customThemes={["Monochrome Lab", "Low Contrast"]}
-      desktopBrowserAvailable={desktopBrowserAvailable}
       faviconColor={state.appearance.faviconColor}
-      navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }
@@ -180,16 +236,7 @@ function GeneralSettingsStory({
       onFaviconColorChange={(faviconColor) =>
         state.setAppearance((current) => ({ ...current, faviconColor }))
       }
-      onNavigateToThreadAfterCreateChange={
-        state.setNavigateToThreadAfterCreate
-      }
-      onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-      onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-      onRichTextEditingChange={state.setRichTextEditing}
       onThemePreferenceChange={state.setThemePreference}
-      openLinksInAppBrowser={state.openLinksInAppBrowser}
-      rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-      richTextEditing={state.richTextEditing}
       themePreference={state.themePreference}
     />
   );
@@ -250,10 +297,10 @@ function ExperimentsStory({
           popoutChatHotkey,
         }))
       }
-      onMultiMachineEnabledChange={(enabled) =>
+      onBbConnectEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
-          multiMachine: enabled,
+          bbConnect: enabled,
         }))
       }
       onPluginsEnabledChange={(enabled) =>
@@ -262,17 +309,10 @@ function ExperimentsStory({
           plugins: enabled,
         }))
       }
-      onUiForkingEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          uiForking: enabled,
-        }))
-      }
-      multiMachineEnabled={state.experiments.multiMachine}
+      bbConnectEnabled={state.experiments.bbConnect}
       pluginsEnabled={state.experiments.plugins}
       popoutChatEnabled={state.experiments.popoutChat}
       popoutChatHotkey={state.experiments.popoutChatHotkey}
-      uiForkingEnabled={state.experiments.uiForking}
     />
   );
 }
@@ -322,7 +362,9 @@ export function Overview() {
   return (
     <SettingsStoryFrame useShell>
       <GeneralSettingsStory />
+      <AppearanceSettingsStory />
       <UsageLimitsStory />
+      <VoiceInputStory />
       <FilePreferencesStory />
       <ExperimentsStory />
     </SettingsStoryFrame>
@@ -332,7 +374,16 @@ export function Overview() {
 export function General() {
   return (
     <SettingsStoryFrame>
-      <GeneralSettingsStory desktopBrowserAvailable />
+      <GeneralSettingsStory caffeinateAvailable desktopBrowserAvailable />
+      <VoiceInputStory />
+    </SettingsStoryFrame>
+  );
+}
+
+export function Appearance() {
+  return (
+    <SettingsStoryFrame>
+      <AppearanceSettingsStory />
     </SettingsStoryFrame>
   );
 }
@@ -341,6 +392,7 @@ export function UsageAndFiles() {
   return (
     <SettingsStoryFrame>
       <UsageLimitsStory />
+      <VoiceInputStory />
       <FilePreferencesStory />
     </SettingsStoryFrame>
   );

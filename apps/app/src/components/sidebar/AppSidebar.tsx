@@ -27,14 +27,14 @@ import {
   type ProjectListToolActionId,
 } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
@@ -52,7 +52,7 @@ import {
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
 
-const FEEDBACK_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
+const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
@@ -315,9 +315,7 @@ export function AppSidebar({
               onNavigate={closeOnMobile}
               className={cn(
                 "group-data-[collapsible=icon]:hidden",
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                usesDesktopChrome &&
-                  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+                usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
               )}
             />
           </div>
@@ -379,18 +377,23 @@ export function AppSidebar({
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <PluginSidebarFooterActions onNavigate={closeOnMobile} />
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
-                tooltip={{ children: "Feedback", hidden: false, side: "top" }}
-                aria-label="Send feedback"
+                tooltip={{
+                  children: "Report a bug",
+                  hidden: false,
+                  side: "top",
+                }}
+                aria-label="Report a bug"
                 onClick={() => {
                   closeOnMobile();
-                  openUrlInExternalBrowser(FEEDBACK_NEW_ISSUE_URL);
+                  openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
                 }}
               >
-                <Icon name="ChatFeedback" />
-                <span className="sr-only">Feedback</span>
+                <Icon name="Bug" />
+                <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

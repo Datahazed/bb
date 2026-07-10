@@ -1,0 +1,794 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+
+import { cacheKey } from "./cache";
+import { parseClientProtocolVersion } from "./tunnel-do";
+import {
+  TUNNEL_TARGET_HEADER,
+  cacheNamespace,
+  dashboardSignInUrl,
+  requestForTunnelDo,
+} from "./worker";
+
+// ── pure helpers ────────────────────────────────────────────────────────────
+
+describe("connect sign-in page", () => {
+  it("points unauthenticated visitors at the dashboard auth flow with returnTo", () => {
+    expect(
+      dashboardSignInUrl(
+        "https://getbb.app",
+        "https://sawyer.getbb.app/thread/thr_123?view=full",
+      ),
+    ).toBe(
+      "https://getbb.app/dashboard?returnTo=https%3A%2F%2Fsawyer.getbb.app%2Fthread%2Fthr_123%3Fview%3Dfull",
+    );
+  });
+
+  it("uses the configured app origin for staging", () => {
+    expect(
+      dashboardSignInUrl(
+        "https://vibecodethis.site",
+        "https://sawyer.vibecodethis.site/",
+      ),
+    ).toBe(
+      "https://vibecodethis.site/dashboard?returnTo=https%3A%2F%2Fsawyer.vibecodethis.site%2F",
+    );
+  });
+});
+
+describe("requestForTunnelDo", () => {
+  it("sets the target header on share hosts and strips visitor-supplied values", () => {
+    const req = new Request("https://sawyer--8000.getbb.app/", {
+      headers: { [TUNNEL_TARGET_HEADER]: "smuggled", cookie: "a=b" },
+    });
+    const out = requestForTunnelDo(req, "8000");
+    expect(out.headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+    expect(out.headers.get("cookie")).toBe("a=b");
+  });
+
+  it("strips a smuggled target header on bare-handle hosts", () => {
+    const req = new Request("https://sawyer.getbb.app/", {
+      headers: { [TUNNEL_TARGET_HEADER]: "9999" },
+    });
+    const out = requestForTunnelDo(req, null);
+    expect(out.headers.get(TUNNEL_TARGET_HEADER)).toBeNull();
+  });
+});
+
+describe("cache namespace", () => {
+  it("uses the bare handle or the full share label", () => {
+    expect(cacheNamespace("sawyer", null)).toBe("sawyer");
+    expect(cacheNamespace("sawyer", "8000")).toBe("sawyer--8000");
+  });
+
+  it("builds distinct edge-cache keys for bare handle vs share label", () => {
+    const url = new URL("https://example/assets/app.js");
+    const bare = cacheKey("sawyer", url);
+    const share = cacheKey("sawyer--8000", url);
+    expect(bare.url).not.toBe(share.url);
+    expect(bare.url).toContain("/sawyer/assets/app.js");
+    expect(share.url).toContain("/sawyer--8000/assets/app.js");
+  });
+});
+
+describe("parseClientProtocolVersion", () => {
+  it("treats missing or unparsable as 0", () => {
+    expect(parseClientProtocolVersion(null)).toBe(0);
+    expect(parseClientProtocolVersion("")).toBe(0);
+    expect(parseClientProtocolVersion("nope")).toBe(0);
+    expect(parseClientProtocolVersion("-1")).toBe(0);
+  });
+
+  it("parses non-negative integers", () => {
+    expect(parseClientProtocolVersion("0")).toBe(0);
+    expect(parseClientProtocolVersion("1")).toBe(1);
+    expect(parseClientProtocolVersion("12")).toBe(12);
+  });
+});
+
+// ── gate worker (mocked session + DO stub) ──────────────────────────────────
+
+vi.mock("./session.js", () => ({
+  parseCookie: vi.fn(),
+  resolveLabel: vi.fn(),
+  verifyMachineCredential: vi.fn(),
+  verifySessionCookie: vi.fn(),
+}));
+
+vi.mock("./cache.js", async () => {
+  const actual = await vi.importActual<typeof import("./cache.js")>("./cache.js");
+  return {
+    ...actual,
+    serveWithCache: vi.fn(
+      async (
+        _request: Request,
+        _namespace: string,
+        _ctx: ExecutionContext,
+        fetchOrigin: () => Promise<Response>,
+      ) => fetchOrigin(),
+    ),
+  };
+});
+
+vi.mock("drizzle-orm/d1", () => ({
+  drizzle: vi.fn(() => ({})),
+}));
+
+import {
+  parseCookie,
+  resolveLabel,
+  verifyMachineCredential,
+  verifySessionCookie,
+} from "./session.js";
+import { serveWithCache } from "./cache.js";
+import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
+import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
+
+const mockParseCookie = vi.mocked(parseCookie);
+const mockResolveLabel = vi.mocked(resolveLabel);
+const mockVerifyMachine = vi.mocked(verifyMachineCredential);
+const mockVerifySession = vi.mocked(verifySessionCookie);
+const mockServeWithCache = vi.mocked(serveWithCache);
+
+/** A resolved server row; overrides let a test tweak one field. */
+function resolvedServer(over: Partial<{ lastSeenAt: Date | null; userId: string }> = {}) {
+  return {
+    userId: over.userId ?? OWNER,
+    server: {
+      id: "srv1",
+      credentialHash: "abc",
+      revokedAt: null,
+      lastSeenAt: over.lastSeenAt ?? null,
+    },
+  };
+}
+
+const BASE = "getbb.app";
+const OWNER = "user-owner";
+const OTHER = "user-other";
+
+function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
+  const captured: Request[] = [];
+  const stub = {
+    fetch: (req: Request) => {
+      captured.push(req);
+      return Promise.resolve(doFetch(req));
+    },
+  };
+  const env = {
+    TUNNEL_DO: {
+      idFromName: (name: string) => ({ name }),
+      get: () => stub,
+    },
+    DB: {} as D1Database,
+    BASE_DOMAIN: BASE,
+    BETTER_AUTH_SECRET: "test-secret",
+  };
+  const ctx = {
+    waitUntil: vi.fn(),
+    passThroughOnException: vi.fn(),
+  } as unknown as ExecutionContext;
+  return { env, ctx, captured };
+}
+
+function visitorRequest(host: string, path = "/", init: RequestInit = {}): Request {
+  const headers = new Headers(init.headers);
+  headers.set("host", host);
+  return new Request(`https://${host}${path}`, { ...init, headers });
+}
+
+describe("gate worker share hosts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySession.mockResolvedValue(OWNER);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("forwards share hosts to the DO with x-bb-tunnel-target", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/app", {
+        headers: { [TUNNEL_TARGET_HEADER]: "smuggled" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+    expect(mockServeWithCache).toHaveBeenCalledWith(
+      expect.any(Request),
+      "sawyer--8000",
+      ctx,
+      expect.any(Function),
+    );
+  });
+
+  it("strips a smuggled target header on bare hosts", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", {
+        headers: { [TUNNEL_TARGET_HEADER]: "9999" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBeNull();
+    expect(mockServeWithCache).toHaveBeenCalledWith(
+      expect.any(Request),
+      "sawyer",
+      ctx,
+      expect.any(Function),
+    );
+  });
+
+  it("forwards a share host on a non-primary label (single-dash subdomain)", async () => {
+    // `sawyer-desktop` is a second bb's own subdomain, not the account handle;
+    // `--3000` nests its port share. parseVisitorHost splits on the first `--`
+    // only, so the base label stays `sawyer-desktop` and resolves per-bb.
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer-desktop--3000.getbb.app", "/app"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(mockResolveLabel).toHaveBeenCalledWith("sawyer-desktop", expect.anything());
+    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("3000");
+    expect(mockServeWithCache).toHaveBeenCalledWith(
+      expect.any(Request),
+      "sawyer-desktop--3000",
+      ctx,
+      expect.any(Function),
+    );
+  });
+
+  it("returns 401 sign-in page when share host has no session", async () => {
+    mockParseCookie.mockReturnValue(null);
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(401);
+    const html = await res.text();
+    expect(html).toContain("Sign in");
+    expect(html).toContain("sawyer");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("returns 403 when share host session is a different user", async () => {
+    mockVerifySession.mockResolvedValue(OTHER);
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain("not your server");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("returns 404 for /__tunnel and /internal/* on share hosts", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const tunnel = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/__tunnel"),
+      env as never,
+      ctx,
+    );
+    expect(tunnel.status).toBe(404);
+    expect(await tunnel.text()).toContain("not found");
+
+    const internal = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/internal/x"),
+      env as never,
+      ctx,
+    );
+    expect(internal.status).toBe(404);
+    expect(await internal.text()).toContain("not found");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("redirects reserved handles and 404s the apex", async () => {
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const reserved = await worker.fetch(
+      visitorRequest("www.getbb.app", "/docs"),
+      env as never,
+      ctx,
+    );
+    expect(reserved.status).toBe(301);
+    expect(reserved.headers.get("location")).toBe("https://getbb.app/docs");
+
+    const apex = await worker.fetch(
+      new Request("https://getbb.app/", { headers: { host: "getbb.app" } }),
+      env as never,
+      ctx,
+    );
+    expect(apex.status).toBe(404);
+    expect(await apex.text()).toContain("unknown host");
+  });
+
+  it("forwards websocket upgrades on share hosts with the target header", async () => {
+    // Node's Response rejects status 101; the gate only needs the upgrade path.
+    const { env, ctx, captured } = makeEnv(() => new Response("upgraded", { status: 200 }));
+    await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/ws", {
+        headers: { upgrade: "websocket" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+    expect(captured[0].headers.get("upgrade")).toBe("websocket");
+    expect(mockServeWithCache).not.toHaveBeenCalled();
+  });
+
+  it("does not apply machine-credential branch on share hosts", async () => {
+    mockParseCookie.mockReturnValue(null);
+    mockVerifyMachine.mockResolvedValue(OWNER);
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/internal/ws", {
+        headers: { "x-bb-connect-machine": "bbcm_ok" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(404);
+    expect(mockVerifyMachine).not.toHaveBeenCalled();
+    expect(captured).toHaveLength(0);
+  });
+
+  it("rejects invalid share hosts as unknown", async () => {
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer--08000.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("unknown host");
+  });
+});
+
+// ── gate offline page (styled 503 vs plain 503) ─────────────────────────────
+
+const OFFLINE_BODY = "bb connect: this server is offline (no tunnel connected)\n";
+
+function offlineDoResponse(): Response {
+  return new Response(OFFLINE_BODY, {
+    status: 503,
+    headers: { "content-type": "text/plain; charset=utf-8", [TUNNEL_OFFLINE_HEADER]: "1" },
+  });
+}
+
+describe("gate offline page", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySession.mockResolvedValue(OWNER);
+  });
+
+  it("renders the styled offline page on a browser navigation, using last-seen", async () => {
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({ lastSeenAt: new Date(Date.now() - 5 * 60_000) }),
+    );
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("Your bb is offline");
+    expect(html).toContain("Last seen 5 minutes ago");
+    expect(html).toContain('http-equiv="refresh"');
+  });
+
+  it("omits the last-seen sentence when the server never connected", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer({ lastSeenAt: null }));
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    const html = await res.text();
+    expect(html).toContain("Your bb is offline");
+    expect(html).not.toContain("Last seen");
+  });
+
+  it("keeps the plain 503 for non-navigation requests (API/assets/fetch)", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const { env, ctx } = makeEnv(offlineDoResponse);
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/threads", {
+        headers: { accept: "application/json" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(await res.text()).toBe(OFFLINE_BODY);
+  });
+
+  it("does not intercept an origin 503 that lacks the offline marker", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const { env, ctx } = makeEnv(
+      () => new Response("origin down", { status: 503 }),
+    );
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", { headers: { accept: "text/html" } }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe("origin down");
+  });
+});
+
+describe("gate page helpers", () => {
+  it("relativeTime buckets from just-now through calendar date", () => {
+    const now = Date.UTC(2026, 6, 8, 12, 0, 0);
+    expect(relativeTime(new Date(now - 30_000), now)).toBe("just now");
+    expect(relativeTime(new Date(now - 60_000), now)).toBe("1 minute ago");
+    expect(relativeTime(new Date(now - 5 * 60_000), now)).toBe("5 minutes ago");
+    expect(relativeTime(new Date(now - 60 * 60_000), now)).toBe("1 hour ago");
+    expect(relativeTime(new Date(now - 3 * 60 * 60_000), now)).toBe("3 hours ago");
+    // Beyond a day → calendar date, not "N hours ago".
+    expect(relativeTime(new Date(now - 3 * 24 * 60 * 60_000), now)).not.toContain("ago");
+  });
+
+  it("wantsHtml only matches a text/html Accept", () => {
+    expect(wantsHtml(new Request("https://x/", { headers: { accept: "text/html" } }))).toBe(true);
+    expect(
+      wantsHtml(
+        new Request("https://x/", {
+          headers: { accept: "text/html,application/xhtml+xml" },
+        }),
+      ),
+    ).toBe(true);
+    expect(wantsHtml(new Request("https://x/", { headers: { accept: "*/*" } }))).toBe(false);
+    expect(wantsHtml(new Request("https://x/"))).toBe(false);
+  });
+
+  it("offlinePage is a self-retrying styled 503", async () => {
+    const res = offlinePage(null);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toContain("Retry now");
+  });
+});
+
+// ── TunnelDO protocol-version + target stamping ─────────────────────────────
+
+// Node lacks Workers globals used by TunnelDO's constructor.
+class FakeWebSocketRequestResponsePair {
+  constructor(
+    readonly request: string,
+    readonly response: string,
+  ) {}
+}
+vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
+
+type MockState = {
+  addSocket: (ws: WebSocket, tags: string[]) => void;
+  storage: Map<string, unknown>;
+  restore: Promise<void>;
+  api: DurableObjectState;
+};
+
+function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
+  const storage = new Map<string, unknown>(Object.entries(initialStorage));
+  const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
+  let restore = Promise.resolve();
+  const api = {
+    getWebSockets: (tag?: string) =>
+      entries
+        .filter((entry) => tag === undefined || entry.tags.includes(tag))
+        .map((entry) => entry.ws),
+    getTags: (ws: WebSocket) => entries.find((entry) => entry.ws === ws)?.tags ?? [],
+    acceptWebSocket: (ws: WebSocket, tags: string[] = []) => {
+      entries.push({ ws, tags });
+    },
+    setWebSocketAutoResponse: vi.fn(),
+    blockConcurrencyWhile: (fn: () => Promise<void>) => {
+      restore = fn();
+      return restore;
+    },
+    storage: {
+      get: async (key: string) => storage.get(key),
+      put: async (key: string, value: unknown) => {
+        storage.set(key, value);
+      },
+      delete: async (key: string) => {
+        storage.delete(key);
+      },
+      setAlarm: async () => {},
+    },
+  } as unknown as DurableObjectState;
+  return {
+    addSocket: (ws: WebSocket, tags: string[]) => {
+      entries.push({ ws, tags });
+    },
+    storage,
+    get restore() {
+      return restore;
+    },
+    api,
+  };
+}
+
+function makeDoEnv() {
+  return {
+    TUNNEL_DO: {} as DurableObjectNamespace,
+    DB: {} as D1Database,
+    BASE_DOMAIN: BASE,
+    BETTER_AUTH_SECRET: "s",
+  };
+}
+
+function fakeTunnelSocket(send?: (data: ArrayBuffer | ArrayBufferView | string) => void) {
+  return {
+    send: send ?? vi.fn(),
+    close: vi.fn(),
+    deserializeAttachment: () => null,
+  } as unknown as WebSocket;
+}
+
+describe("TunnelDO targeted request with old client", () => {
+  it("returns 502 when client protocol version is < 1", async () => {
+    const state = mockDoState({ protocolVersion: 0 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+
+    // Tunnel must look connected for the version gate (vs 503 offline).
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/", {
+        headers: { [TUNNEL_TARGET_HEADER]: "8000" },
+      }),
+    );
+    expect(res.status).toBe(502);
+    expect(await res.text()).toContain("too old for port sharing");
+  });
+
+  it("refuses targeted websocket upgrades when client is too old", async () => {
+    const state = mockDoState({ protocolVersion: 0 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/ws", {
+        headers: {
+          upgrade: "websocket",
+          [TUNNEL_TARGET_HEADER]: "8000",
+        },
+      }),
+    );
+    expect(res.status).toBe(502);
+    expect(await res.text()).toContain("too old for port sharing");
+  });
+
+  it("stamps target on open-http when protocol version is >= 1", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Uint8Array[] = [];
+      const state = mockDoState({ protocolVersion: 1 });
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      state.addSocket(
+        fakeTunnelSocket((data) => {
+          if (typeof data === "string") return;
+          if (data instanceof ArrayBuffer) {
+            sent.push(new Uint8Array(data));
+          } else {
+            sent.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+          }
+        }),
+        ["tunnel"],
+      );
+
+      const pending = dob.fetch(
+        new Request("https://do.internal/foo", {
+          method: "GET",
+          headers: { [TUNNEL_TARGET_HEADER]: "8000" },
+        }),
+      );
+
+      expect(sent.length).toBeGreaterThanOrEqual(1);
+      const frame = decodeFrame(sent[0]);
+      expect(frame.type).toBe("open-http");
+      if (frame.type !== "open-http") throw new Error("unreachable");
+      expect(frame.target).toBe("8000");
+      expect(frame.path).toBe("/foo");
+      expect(frame.headers.every(([n]) => n.toLowerCase() !== TUNNEL_TARGET_HEADER)).toBe(
+        true,
+      );
+
+      // Resolve the hung proxyHttp promise via its resp-head timeout.
+      vi.advanceTimersByTime(30_000);
+      const timedOut = await pending;
+      expect(timedOut.status).toBe(504);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── TunnelDO response relay ─────────────────────────────────────────────────
+
+/** Tunnel-socket send handler that records binary frames into `sent`. */
+function captureSent(sent: Uint8Array[]) {
+  return (data: ArrayBuffer | ArrayBufferView | string) => {
+    if (typeof data === "string") return;
+    if (data instanceof ArrayBuffer) {
+      sent.push(new Uint8Array(data));
+    } else {
+      sent.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    }
+  };
+}
+
+/** Encode a frame as the ArrayBuffer webSocketMessage receives on the wire. */
+function frameBuffer(frame: Frame): ArrayBuffer {
+  const u8 = encodeFrame(frame);
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
+}
+
+function openHttpStreamId(sent: Uint8Array[], index: number): number {
+  const frame = decodeFrame(sent[index]);
+  if (frame.type !== "open-http") throw new Error(`expected open-http at ${index}`);
+  return frame.streamId;
+}
+
+describe("TunnelDO response relay", () => {
+  it("relays null-body statuses (304/204) bodiless instead of stranding the visitor", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    // A browser revalidating a cached asset (the dev-server reload path).
+    for (const [index, status] of [304, 204].entries()) {
+      const pending = dob.fetch(
+        new Request("https://do.internal/app.js", {
+          headers: { "if-none-match": 'W/"abc"' },
+        }),
+      );
+      const streamId = openHttpStreamId(sent, index);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "resp-head",
+          streamId,
+          status,
+          headers: [
+            ["etag", 'W/"abc"'],
+            ["connection", "keep-alive"],
+          ],
+        }),
+      );
+      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
+      const res = await pending;
+      expect(res.status).toBe(status);
+      expect(res.body).toBeNull();
+      expect(res.headers.get("etag")).toBe('W/"abc"');
+      // Hop headers stay filtered on this path too.
+      expect(res.headers.get("connection")).toBeNull();
+    }
+  });
+
+  it("answers 502 for a response status that cannot be constructed", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    const pending = dob.fetch(new Request("https://do.internal/weird"));
+    const streamId = openHttpStreamId(sent, 0);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({ type: "resp-head", streamId, status: 199, headers: [] }),
+    );
+    const res = await pending;
+    expect(res.status).toBe(502);
+    expect(await res.text()).toContain("unrelayable");
+  });
+
+  it("fails in-flight streams and closes visitor sockets when a new tunnel replaces the old", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const oldTunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(oldTunnel, ["tunnel"]);
+    const visitor = fakeTunnelSocket();
+    state.addSocket(visitor, ["visitor:41"]);
+
+    // One request still awaiting resp-head, one mid-body (its resp-head
+    // timeout is already cleared — the state that used to hang forever).
+    const pendingHead = dob.fetch(new Request("https://do.internal/pending"));
+    const pendingBody = dob.fetch(new Request("https://do.internal/mid-body"));
+    const bodyStreamId = openHttpStreamId(sent, 1);
+    dob.webSocketMessage(
+      oldTunnel,
+      frameBuffer({
+        type: "resp-head",
+        streamId: bodyStreamId,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      }),
+    );
+    const midBodyResponse = await pendingBody;
+    expect(midBodyResponse.status).toBe(200);
+
+    // The client reconnects: acceptTunnel replaces the old socket. Node lacks
+    // WebSocketPair and rejects `new Response(null, {status: 101})`, so both
+    // are emulated for the accept call only.
+    const RealResponse = globalThis.Response;
+    class FakeWebSocketPair {
+      0 = fakeTunnelSocket();
+      1 = fakeTunnelSocket();
+    }
+    class WorkersResponse extends RealResponse {
+      readonly webSocket: WebSocket | null;
+      constructor(
+        body?: BodyInit | null,
+        init?: ResponseInit & { webSocket?: WebSocket | null },
+      ) {
+        if (init?.webSocket != null) {
+          super(null, { status: 200 });
+          Object.defineProperty(this, "status", { value: init.status });
+          this.webSocket = init.webSocket;
+        } else {
+          super(body ?? null, init);
+          this.webSocket = null;
+        }
+      }
+    }
+    globalThis.Response = WorkersResponse as never;
+    (globalThis as { WebSocketPair?: unknown }).WebSocketPair = FakeWebSocketPair;
+    try {
+      const upgrade = await dob.fetch(
+        new Request("https://do.internal/__tunnel?v=1", {
+          headers: { upgrade: "websocket" },
+        }),
+      );
+      expect(upgrade.status).toBe(101);
+    } finally {
+      globalThis.Response = RealResponse;
+      delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+    }
+
+    expect(vi.mocked(oldTunnel.close)).toHaveBeenCalledWith(
+      1000,
+      "replaced by a new tunnel connection",
+    );
+    expect(vi.mocked(visitor.close)).toHaveBeenCalledWith(1001, "tunnel reconnected");
+
+    const headResponse = await pendingHead;
+    expect(headResponse.status).toBe(502);
+    expect(await headResponse.text()).toContain("tunnel reconnected mid-request");
+    // The mid-body response's stream errors out instead of hanging forever.
+    await expect(midBodyResponse.text()).rejects.toBeTruthy();
+  });
+});

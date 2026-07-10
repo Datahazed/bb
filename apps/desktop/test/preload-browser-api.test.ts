@@ -7,6 +7,7 @@ import type {
   BbDesktopBrowserState,
   BbDesktopInfo,
   BbDesktopPopoutThreadChangedPayload,
+  BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -41,8 +42,11 @@ import {
 import {
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
+import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -66,12 +70,19 @@ const electronMock = vi.hoisted(() => {
     updateDownloaded: false,
     version: "0.0.0-test",
   };
+  const desktopWindowState: BbDesktopWindowState = {
+    isFullScreen: false,
+  };
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
+  const exposedNames: string[] = [];
   let currentPopoutThread: BbDesktopPopoutThreadChangedPayload = null;
   let exposedApi: BbDesktopApi | null = null;
   let exposedName: string | null = null;
+  let exposedSpellcheckApi: {
+    getCorrectionContext(word: string): unknown;
+  } | null = null;
 
   return {
     get exposedApi() {
@@ -80,12 +91,18 @@ const electronMock = vi.hoisted(() => {
     get exposedName() {
       return exposedName;
     },
+    exposedNames,
+    get exposedSpellcheckApi() {
+      return exposedSpellcheckApi;
+    },
     invokeCalls,
     listeners,
     sendCalls,
     reset(): void {
       exposedApi = null;
       exposedName = null;
+      exposedSpellcheckApi = null;
+      exposedNames.length = 0;
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
@@ -95,18 +112,34 @@ const electronMock = vi.hoisted(() => {
       currentPopoutThread = thread;
     },
     contextBridge: {
-      exposeInMainWorld(name: string, api: BbDesktopApi): void {
-        exposedName = name;
-        exposedApi = api;
+      exposeInMainWorld(name: string, api: unknown): void {
+        exposedNames.push(name);
+        if (name === "bbDesktop") {
+          exposedName = name;
+          exposedApi = api as BbDesktopApi;
+          return;
+        }
+        if (name !== "bbDesktop") {
+          exposedSpellcheckApi = api as {
+            getCorrectionContext(word: string): unknown;
+          };
+        }
       },
     },
     ipcRenderer: {
       invoke(
         channel: string,
-      ): Promise<BbDesktopInfo | BbDesktopPopoutThreadChangedPayload> {
+      ): Promise<
+        | BbDesktopInfo
+        | BbDesktopPopoutThreadChangedPayload
+        | BbDesktopWindowState
+      > {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:popout:get-current-thread") {
           return Promise.resolve(currentPopoutThread);
+        }
+        if (channel === "bb-desktop:get-window-state") {
+          return Promise.resolve(desktopWindowState);
         }
         return Promise.resolve(desktopInfo);
       },
@@ -117,12 +150,21 @@ const electronMock = vi.hoisted(() => {
         sendCalls.push({ channel, payload });
       },
     },
+    webFrame: {
+      getWordSuggestions(word: string): string[] {
+        return word === "recieve" ? ["receive", "relieve"] : [];
+      },
+      isWordMisspelled(word: string): boolean {
+        return word === "recieve";
+      },
+    },
   };
 });
 
 vi.mock("electron", () => ({
   contextBridge: electronMock.contextBridge,
   ipcRenderer: electronMock.ipcRenderer,
+  webFrame: electronMock.webFrame,
 }));
 
 interface EmitIpcPayloadArgs {
@@ -154,6 +196,27 @@ function emitIpcPayload(args: EmitIpcPayloadArgs): void {
 }
 
 describe("desktop preload browser API", () => {
+  it("exposes a narrow spellcheck helper for desktop context menus", async () => {
+    await loadPreload();
+
+    expect(electronMock.exposedNames).toContain(
+      BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
+    );
+    expect(electronMock.exposedSpellcheckApi).not.toBeNull();
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("recieve"),
+    ).toEqual({
+      dictionarySuggestions: ["receive", "relieve"],
+      misspelledWord: "recieve",
+    });
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("receive"),
+    ).toBeNull();
+    expect(
+      electronMock.exposedSpellcheckApi?.getCorrectionContext("two words"),
+    ).toBeNull();
+  });
+
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const api = await loadPreload();
     const attachRequest = {
@@ -228,6 +291,9 @@ describe("desktop preload browser API", () => {
     await expect(api.popout.getCurrentThread()).resolves.toBeNull();
     api.setTheme("dark");
     await api.checkForUpdates();
+    await expect(api.getWindowState?.()).resolves.toEqual({
+      isFullScreen: false,
+    });
     await api.installUpdate();
 
     expect(electronMock.sendCalls).toEqual([
@@ -291,6 +357,9 @@ describe("desktop preload browser API", () => {
       BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
     );
     expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
     );
     expect(electronMock.invokeCalls).toContain(
@@ -307,6 +376,7 @@ describe("desktop preload browser API", () => {
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
+    const windowStates: BbDesktopWindowState[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
       url: "https://example.com/",
@@ -347,6 +417,9 @@ describe("desktop preload browser API", () => {
       closeWindowRequestCount += 1;
       return true;
     });
+    api.onWindowStateChange?.((windowState) => {
+      windowStates.push(windowState);
+    });
     api.popout.onThreadChanged((thread) => {
       popoutThreads.push(thread);
     });
@@ -368,6 +441,10 @@ describe("desktop preload browser API", () => {
       payload: { tabId: "browser:a", dataUrl: 42 },
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+      payload: { isFullScreen: false, extra: true },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
       payload: state,
     });
@@ -382,6 +459,10 @@ describe("desktop preload browser API", () => {
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+      payload: { isFullScreen: true },
     });
     emitIpcPayload({
       channel: BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
@@ -408,6 +489,7 @@ describe("desktop preload browser API", () => {
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
     expect(electronMock.sendCalls).toContainEqual({

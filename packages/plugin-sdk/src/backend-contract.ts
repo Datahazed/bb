@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
+import type { JsonValue } from "@bb/domain";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -241,6 +242,38 @@ export interface PluginCliContext {
   cwd?: string;
   threadId?: string;
   projectId?: string;
+  /** Aborted when the invoking CLI HTTP request disconnects. */
+  signal?: AbortSignal;
+}
+
+export type PluginInteractionCancelReason =
+  | "user"
+  | "request-aborted"
+  | "thread-stopped"
+  | "thread-deleted"
+  | "plugin-disposed"
+  | "server-restarted"
+  | "timeout";
+
+export type PluginInteractionResult =
+  | { outcome: "submitted"; value: JsonValue }
+  | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
+
+export interface PluginInteractionRequest {
+  threadId: string;
+  rendererId: string;
+  title: string;
+  payload: JsonValue;
+  /** Defaults to ten minutes; capped at one hour. */
+  timeoutMs?: number;
+}
+
+export interface PluginInteractions {
+  /** Block until the app submits or cancels a plugin-owned composer form. */
+  request(
+    request: PluginInteractionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
 }
 
 export interface PluginCliResult {
@@ -339,6 +372,19 @@ export interface PluginAgents {
       ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
     },
   ): void;
+  /**
+   * Contribute a dynamic section appended to thread instructions. The
+   * provider runs when a thread's runtime command config is resolved
+   * (thread.start / turn.submit); return null to contribute nothing for
+   * that resolution. Must be synchronous and fast — it sits on the
+   * thread-start path. A repeated call replaces this plugin's previous
+   * provider. Output longer than 4096 characters is truncated; a throwing
+   * provider is logged against the plugin and contributes nothing.
+   * Side-chat threads never receive plugin instructions.
+   */
+  contributeInstructions(
+    provider: (ctx: { threadId: string; projectId: string }) => string | null,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,9 +424,12 @@ export interface PluginThreadActionRegistration {
   ): PluginThreadActionResult | Promise<PluginThreadActionResult>;
 }
 
+export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
+
 /** Search context handed to a mention provider (design §4.9). `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 export interface PluginMentionSearchContext {
+  trigger: PluginMentionTrigger;
   query: string;
   projectId: string | null;
   threadId: string | null;
@@ -402,9 +451,15 @@ export interface PluginMentionProviderRegistration {
   /** Section label shown above this provider's rows in the mention menu. */
   label: string;
   /**
-   * Runs server-side as the user types after `@` in the composer. Each call
-   * is time-boxed (2s) and failure-isolated: a slow or throwing provider
-   * contributes an empty list — it can never break the mention menu.
+   * Composer trigger characters this provider should answer. Omit to use the
+   * default `@` mention trigger. Valid triggers are `@`, `#`, `$`, `!`, and `~`.
+   */
+  triggers?: readonly PluginMentionTrigger[];
+  /**
+   * Runs server-side as the user types after one of this provider's triggers
+   * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
+   * or throwing provider contributes an empty list — it can never break the
+   * mention menu.
    */
   search(
     ctx: PluginMentionSearchContext,
@@ -426,10 +481,11 @@ export interface PluginUi {
    */
   registerThreadAction(action: PluginThreadActionRegistration): void;
   /**
-   * Register an `@`-mention provider for the shipped app's composer
-   * (design §4.9). Items group under `label` in the mention menu; a picked
-   * item becomes a `{ kind: "plugin" }` mention resource whose context is
-   * resolved once at send time. Multiple providers per plugin; ids must be
+   * Register a mention provider for the shipped app's composer (design §4.9).
+   * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or
+   * `~` with `triggers`. Items group under `label` in the mention menu; a
+   * picked item becomes a `{ kind: "plugin" }` mention resource whose context
+   * is resolved once at send time. Multiple providers per plugin; ids must be
    * unique within the plugin.
    */
   registerMentionProvider(provider: PluginMentionProviderRegistration): void;
@@ -489,6 +545,8 @@ export interface BbPluginApi {
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */
   readonly cli: PluginCli;
+  /** Secure, user-mediated pending interactions rendered by this plugin. */
+  readonly interactions: PluginInteractions;
   /** Per-turn agent context contributions (design §4.4). */
   readonly agents: PluginAgents;
   /** Host-rendered UI contributions (design §4.9). */

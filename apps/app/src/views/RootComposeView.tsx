@@ -11,7 +11,6 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
-  isActiveTerminalSessionStatus,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
@@ -57,6 +56,7 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -430,7 +430,6 @@ interface BuildRootComposeTerminalSessionsArgs {
 }
 
 interface RootComposeRightPanelToggleProps {
-  activeTerminalCount: number;
   isOpen: boolean;
   onToggle: () => void;
 }
@@ -451,7 +450,6 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
 }
 
 function RootComposeRightPanelToggle({
-  activeTerminalCount,
   isOpen,
   onToggle,
 }: RootComposeRightPanelToggleProps) {
@@ -470,14 +468,6 @@ function RootComposeRightPanelToggle({
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
-      {activeTerminalCount > 0 ? (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
-        >
-          {activeTerminalCount > 9 ? "9+" : activeTerminalCount}
-        </span>
-      ) : null}
     </Button>
   );
 }
@@ -2024,18 +2014,13 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsListLoaded = loadedTerminalSessions !== undefined;
-  const activeTerminalCount = useMemo(
-    () =>
-      terminalSessions.filter((session) =>
-        isActiveTerminalSessionStatus(session.status),
-      ).length,
-    [terminalSessions],
-  );
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
+    useState<BrowserAddressFocusRequest | null>(null);
   const {
     activePluginPanelTab,
     activeHostFileEnvironmentId,
@@ -2233,6 +2218,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
+        triggers: promptMentions.triggers,
         suggestions: promptMentions.suggestions,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
@@ -2255,6 +2241,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       promptMentions.isLoading,
       promptMentions.setQuery,
       promptMentions.suggestions,
+      promptMentions.triggers,
       resolveMentionLink,
       commandSuggestions.isError,
       commandSuggestions.hasMore,
@@ -2280,7 +2267,14 @@ export function RootComposeView(props: RootComposeViewProps) {
   }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab, props.surface]);
   const openBrowserTab = useCallback(
     (url?: string) => {
-      openTab({ kind: "browser", url: url ?? "" });
+      const browserUrl = url ?? "";
+      const tab = openTab({ kind: "browser", url: browserUrl });
+      if (browserUrl.length === 0 && tab?.kind === "browser") {
+        setBrowserAddressFocusRequest((current) => ({
+          requestId: (current?.requestId ?? 0) + 1,
+          tabId: tab.id,
+        }));
+      }
     },
     [openTab],
   );
@@ -2297,6 +2291,17 @@ export function RootComposeView(props: RootComposeViewProps) {
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
+  const handleBrowserAddressFocusRequestConsumed = useCallback(
+    (request: BrowserAddressFocusRequest) => {
+      setBrowserAddressFocusRequest((current) =>
+        current?.requestId === request.requestId &&
+        current.tabId === request.tabId
+          ? null
+          : current,
+      );
+    },
+    [],
+  );
   const browserTabIds = useMemo(
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
@@ -2329,6 +2334,10 @@ export function RootComposeView(props: RootComposeViewProps) {
         <BrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
+          addressFocusRequest={browserAddressFocusRequest}
+          onAddressFocusRequestConsumed={
+            handleBrowserAddressFocusRequestConsumed
+          }
           environmentId={rootPanelEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={rootPanelThreadId}
@@ -2338,7 +2347,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [
       activeBrowserTab?.id,
+      browserAddressFocusRequest,
       browserTabs,
+      handleBrowserAddressFocusRequestConsumed,
       rootPanelEnvironmentId,
       rootPanelThreadId,
       updateBrowserTab,
@@ -2984,7 +2995,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
       >
         <RootComposeRightPanelToggle
-          activeTerminalCount={activeTerminalCount}
           isOpen={isSecondaryPanelOpen}
           onToggle={handleToggleSecondaryPanel}
         />

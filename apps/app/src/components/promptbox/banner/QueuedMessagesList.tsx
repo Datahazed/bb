@@ -1,4 +1,15 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   DndContext,
   KeyboardSensor,
@@ -19,7 +30,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Transform } from "@dnd-kit/utilities";
-import type { ThreadQueuedMessage } from "@bb/domain";
+import type {
+  PromptInput,
+  PromptTextMention,
+  ThreadQueuedMessage,
+} from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -38,9 +53,16 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
-  getQueuedMessageVisibleText,
 } from "@/views/thread-detail/threadQueuedMessages";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { shiftMentionsToTextRange } from "@/components/thread/timeline/ConversationMessageMentions";
+import {
+  buildPromptMentionComponent,
+  remarkPromptMentions,
+  substitutePromptMentions,
+} from "@/components/ui/markdown-prompt-mentions";
+import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -52,6 +74,7 @@ export interface QueuedMessageGroupBoundaryRequest {
 
 export interface QueuedMessagesListProps {
   queuedMessages: readonly ThreadQueuedMessage[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   sendDisabled: boolean;
   actionDisabled: boolean;
   processingMessageId: string | null;
@@ -63,13 +86,14 @@ export interface QueuedMessagesListProps {
   onDelete: (id: string) => void;
 }
 
-interface QueuedMessagePreviewSegment {
-  kind: "quote" | "text";
+interface QueuedMessagePreviewText {
+  mentions: PromptTextMention[];
   text: string;
 }
 
 interface QueuedMessageRowProps {
   queuedMessage: ThreadQueuedMessage;
+  resolveMentionLink?: PromptMentionLinkResolver;
   index: number;
   isProcessing: boolean;
   processingLabel: string;
@@ -82,6 +106,100 @@ interface QueuedMessageRowProps {
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
+
+const QUEUED_MARKDOWN_PREVIEW_CLASS = cn(
+  "line-clamp-1 min-w-0 !text-xs !leading-4",
+);
+
+const QUEUED_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkPromptMentions];
+
+function compactInline(children: ReactNode): ReactElement {
+  return <span>{children} </span>;
+}
+
+const QUEUED_MARKDOWN_COMPONENTS: Components = {
+  a: ({ children }) => <span>{children}</span>,
+  blockquote: ({ children }) => (
+    <span className="inline border-l-2 border-surface-selected-border pl-2 text-muted-foreground">
+      {children}
+    </span>
+  ),
+  br: () => " ",
+  code: ({ children }) => (
+    <code className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs">
+      {children}
+    </code>
+  ),
+  h1: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  h2: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  h3: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  h4: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  h5: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  h6: ({ children }) => (
+    <span className="font-semibold text-foreground">{children} </span>
+  ),
+  img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+  li: ({ children }) => <span>{children} </span>,
+  ol: ({ children }) => <span>{children}</span>,
+  p: ({ children }) => compactInline(children),
+  pre: ({ children }) => <span>{children}</span>,
+  table: ({ children }) => <span>{children}</span>,
+  tbody: ({ children }) => <span>{children}</span>,
+  td: ({ children }) => <span>{children} </span>,
+  th: ({ children }) => <span>{children} </span>,
+  thead: ({ children }) => <span>{children}</span>,
+  tr: ({ children }) => <span>{children} </span>,
+  ul: ({ children }) => <span>{children}</span>,
+};
+
+function CompactQueuedMarkdownPreview({
+  preview,
+  resolveMentionLink,
+}: {
+  preview: QueuedMessagePreviewText;
+  resolveMentionLink?: PromptMentionLinkResolver;
+}) {
+  const promptMentionSubstitution = useMemo(
+    () => substitutePromptMentions(preview.text, preview.mentions),
+    [preview.mentions, preview.text],
+  );
+  const markdownContent = useMemo(
+    () =>
+      normalizePromptBlockquoteBoundaries(promptMentionSubstitution.content),
+    [promptMentionSubstitution.content],
+  );
+  const components = useMemo<Components>(
+    () => ({
+      ...QUEUED_MARKDOWN_COMPONENTS,
+      "bb-prompt-mention": buildPromptMentionComponent({
+        mentions: promptMentionSubstitution.mentions,
+        resolveMentionLink,
+      }),
+    }),
+    [promptMentionSubstitution.mentions, resolveMentionLink],
+  );
+
+  return (
+    <span className={QUEUED_MARKDOWN_PREVIEW_CLASS}>
+      <ReactMarkdown
+        components={components}
+        remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
+      >
+        {markdownContent}
+      </ReactMarkdown>
+    </span>
+  );
+}
 
 function collectLeadQueuedMessageGroupIds(
   queuedMessages: readonly ThreadQueuedMessage[],
@@ -239,73 +357,88 @@ export function clampQueuedMessageDragTransform({
   };
 }
 
-function isQuoteLine(line: string): boolean {
-  return line === ">" || line.startsWith("> ");
+function visibleQueuedMessageTextChunks(
+  input: readonly PromptInput[],
+): Extract<PromptInput, { type: "text" }>[] {
+  return input.filter(
+    (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
+      chunk.type === "text" && chunk.visibility !== "agent-only",
+  );
 }
 
-function stripQuotePrefix(line: string): string {
-  if (line.startsWith("> ")) return line.slice(2);
-  if (line === ">") return "";
-  return line;
+function shiftMentionsBy(
+  mentions: readonly PromptTextMention[],
+  offset: number,
+): PromptTextMention[] {
+  if (offset === 0) return [...mentions];
+  return mentions.map((mention) => ({
+    ...mention,
+    start: mention.start + offset,
+    end: mention.end + offset,
+  }));
 }
 
-function normalizePreviewSegmentText(lines: readonly string[]): string {
-  return lines.join(" ").replace(/\s+/g, " ").trim();
-}
-
-function buildQueuedMessagePreviewSegments(
-  queuedMessage: ThreadQueuedMessage,
-): QueuedMessagePreviewSegment[] {
-  const text = getQueuedMessageVisibleText(queuedMessage.content);
-  if (!text.split("\n").some(isQuoteLine)) {
-    return [
-      {
-        kind: "text",
-        text: formatQueuedMessagePreview(queuedMessage.content, {
-          truncate: false,
-        }),
-      },
-    ];
+function trimQueuedMessagePreviewTextRange({
+  mentions,
+  rangeEnd,
+  rangeStart,
+  text,
+}: {
+  mentions: readonly PromptTextMention[];
+  rangeEnd: number;
+  rangeStart: number;
+  text: string;
+}): QueuedMessagePreviewText | null {
+  const rawText = text.slice(rangeStart, rangeEnd);
+  const leadingWhitespaceLength =
+    rawText.length - rawText.trimStart().length;
+  const trimmedRelativeEnd = rawText.trimEnd().length;
+  if (trimmedRelativeEnd <= leadingWhitespaceLength) {
+    return null;
   }
 
-  const lines = text.split("\n");
-  const segments: QueuedMessagePreviewSegment[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    const quote = isQuoteLine(lines[index]!);
-    let end = index;
-    while (end < lines.length && isQuoteLine(lines[end]!) === quote) {
-      end += 1;
-    }
-    const groupLines = lines.slice(index, end);
-    const segmentText = normalizePreviewSegmentText(
-      quote ? groupLines.map(stripQuotePrefix) : groupLines,
-    );
-    if (segmentText.length > 0) {
-      segments.push({
-        kind: quote ? "quote" : "text",
-        text: segmentText,
-      });
-    }
-    index = end;
+  const trimmedStart = rangeStart + leadingWhitespaceLength;
+  const trimmedEnd = rangeStart + trimmedRelativeEnd;
+  return {
+    text: text.slice(trimmedStart, trimmedEnd),
+    mentions: shiftMentionsToTextRange({
+      mentions,
+      rangeStart: trimmedStart,
+      rangeEnd: trimmedEnd,
+    }),
+  };
+}
+
+function buildQueuedMessagePreviewText(
+  input: readonly PromptInput[],
+): QueuedMessagePreviewText {
+  let text = "";
+  const mentions: PromptTextMention[] = [];
+
+  for (const chunk of visibleQueuedMessageTextChunks(input)) {
+    const trimmedChunk = trimQueuedMessagePreviewTextRange({
+      text: chunk.text,
+      mentions: chunk.mentions,
+      rangeStart: 0,
+      rangeEnd: chunk.text.length,
+    });
+    if (!trimmedChunk) continue;
+
+    const separator = text.length > 0 ? "\n\n" : "";
+    const offset = text.length + separator.length;
+    text += separator + trimmedChunk.text;
+    mentions.push(...shiftMentionsBy(trimmedChunk.mentions, offset));
   }
 
-  return segments.length > 0
-    ? segments
-    : [
-        {
-          kind: "text",
-          text: formatQueuedMessagePreview(queuedMessage.content, {
-            truncate: false,
-          }),
-        },
-      ];
+  return { text, mentions };
 }
 
 function QueuedMessagePreview({
   queuedMessage,
+  resolveMentionLink,
 }: {
   queuedMessage: ThreadQueuedMessage;
+  resolveMentionLink?: PromptMentionLinkResolver;
 }) {
   const preview = useMemo(
     () =>
@@ -314,43 +447,31 @@ function QueuedMessagePreview({
       }),
     [queuedMessage.content],
   );
-  const segments = useMemo(
-    () => buildQueuedMessagePreviewSegments(queuedMessage),
-    [queuedMessage],
+  const markdownPreview = useMemo(
+    () => buildQueuedMessagePreviewText(queuedMessage.content),
+    [queuedMessage.content],
   );
 
   return (
     <div
-      className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
+      className="fade-clip-right min-w-0 flex-1 overflow-hidden text-foreground"
       title={preview}
     >
-      <div className="flex min-w-0 max-w-full items-center gap-1.5">
-        {segments.map((segment, index) =>
-          segment.kind === "quote" ? (
-            <blockquote
-              key={`${segment.kind}-${index}`}
-              className="m-0 inline-flex min-w-0 shrink items-center border-l-2 border-surface-selected-border pl-2 text-muted-foreground"
-            >
-              <span className="min-w-0 overflow-hidden whitespace-nowrap">
-                {segment.text}
-              </span>
-            </blockquote>
-          ) : (
-            <span
-              key={`${segment.kind}-${index}`}
-              className="min-w-0 shrink overflow-hidden whitespace-nowrap"
-            >
-              {segment.text}
-            </span>
-          ),
-        )}
-      </div>
+      {markdownPreview.text.length > 0 ? (
+        <CompactQueuedMarkdownPreview
+          preview={markdownPreview}
+          resolveMentionLink={resolveMentionLink}
+        />
+      ) : (
+        <span className={QUEUED_MARKDOWN_PREVIEW_CLASS}>{preview}</span>
+      )}
     </div>
   );
 }
 
 const QueuedMessageRow = memo(function QueuedMessageRow({
   queuedMessage,
+  resolveMentionLink,
   index,
   isProcessing,
   processingLabel,
@@ -427,7 +548,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-            <QueuedMessagePreview queuedMessage={queuedMessage} />
+            <QueuedMessagePreview
+              queuedMessage={queuedMessage}
+              resolveMentionLink={resolveMentionLink}
+            />
             {attachmentCount > 0 ? (
               <span className="shrink-0 text-subtle-foreground opacity-70">
                 {attachmentCount === 1
@@ -541,6 +665,7 @@ function SortableGroupDivider({ disabled }: { disabled: boolean }) {
 
 export function QueuedMessagesList({
   queuedMessages,
+  resolveMentionLink,
   sendDisabled,
   actionDisabled,
   processingMessageId,
@@ -744,6 +869,7 @@ export function QueuedMessagesList({
                       <QueuedMessageRow
                         key={queuedMessage.id}
                         queuedMessage={queuedMessage}
+                        resolveMentionLink={resolveMentionLink}
                         index={index}
                         isProcessing={processingMessageId === queuedMessage.id}
                         processingLabel={processingLabel}

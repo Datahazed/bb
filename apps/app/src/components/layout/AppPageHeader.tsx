@@ -7,12 +7,14 @@ import {
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
@@ -38,7 +40,12 @@ export function AppPageHeader({
   const isSidebarShowing = useIsSidebarShowing();
   const isCompactViewport = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
+    desktopInfo,
+    windowState: desktopWindowState,
+  });
   const shouldReserveSidebarTrigger =
     isCompactViewport || !isSidebarShowing;
   return (
@@ -61,20 +68,21 @@ export function AppPageHeader({
           // axis.
           CHROME_ROW_CLASS,
           "gap-1 md:gap-2",
-          // In macOS desktop chrome, drop the header content onto the native
-          // traffic-light axis (which renders ~2 CSS px below the row center) so
-          // the title bar lines up with the lights, the pinned collapse trigger,
-          // and the sidebar arrows. No-op in the web build (no traffic lights).
-          usesDesktopChrome && MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+          // In macOS desktop chrome, keep header content on the shared native
+          // traffic-light axis so the title bar lines up with the lights, the
+          // pinned collapse trigger, and the sidebar arrows. No-op in the web
+          // build (no traffic lights).
+          usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           // The sidebar toggle is pinned at the app's top-left (see AppLayout's
-          // SidebarTriggerOverlay). On desktop, reserve its footprint only when
-          // the sidebar is collapsed and content shares that row with the fixed
-          // button. On compact viewports, the sidebar opens as an overlay that
-          // covers the header, so keep the reserve stable across open/closed
-          // drawer state instead of shifting content behind the overlay.
+          // SidebarTriggerOverlay). Reserve the fixed button's footprint when
+          // the sidebar is collapsed and content shares that row with it; macOS
+          // traffic lights add extra left space only while they are visible. On
+          // compact viewports, the sidebar opens as an overlay that covers the
+          // header, so keep the reserve stable across open/closed drawer state
+          // instead of shifting content behind the overlay.
           "transition-[padding] duration-200 ease-linear",
           shouldReserveSidebarTrigger &&
-            (usesDesktopChrome
+            (reserveMacosTrafficLights
               ? MACOS_COLLAPSED_HEADER_RESERVE_CLASS
               : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),
         )}

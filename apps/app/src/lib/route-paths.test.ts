@@ -171,6 +171,8 @@ describe("route path helpers", () => {
         "/popout/projects/proj_standard/threads/thr_standard",
       ],
       ["/settings", "/settings"],
+      ["/settings/:section", "/settings/general"],
+      ["/settings/plugins/:pluginId", "/settings/plugins/github"],
       ["/tools", "/tools"],
       ["/tools/skills", "/tools/skills"],
       [

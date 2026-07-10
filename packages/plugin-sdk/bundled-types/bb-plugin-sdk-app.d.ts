@@ -6,6 +6,11 @@
 
 import { ComponentType } from 'react';
 
+interface JsonObject {
+    [key: string]: JsonValue;
+}
+type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
  * the runtime export-name list, with no side effects. This module is what the
@@ -20,6 +25,13 @@ import { ComponentType } from 'react';
 interface PluginHomepageSectionProps {
     /** Project in view on the compose surface; null when none is selected. */
     projectId: string | null;
+}
+/**
+ * Props passed to a `settingsSection` component.
+ *
+ * Deliberately empty in V1; versioned additive like the other slot props.
+ */
+interface PluginSettingsSectionProps {
 }
 /** Props passed to a `navPanel` component (it owns its whole route). */
 interface PluginNavPanelProps {
@@ -48,6 +60,25 @@ interface PluginComposerAccessoryProps {
     projectId: string | null;
     threadId: string | null;
 }
+interface PluginPendingInteractionView {
+    id: string;
+    threadId: string;
+    title: string;
+    payload: JsonValue;
+    createdAt: number;
+    expiresAt: number | null;
+}
+interface PluginPendingInteractionProps {
+    interaction: PluginPendingInteractionView;
+    submit(value: JsonValue): Promise<void>;
+    cancel(): Promise<void>;
+}
+/**
+ * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
+ * Deliberately empty; the registration's `run` carries the behavior.
+ */
+interface PluginSidebarFooterActionProps {
+}
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -75,6 +106,18 @@ interface PluginHomepageSectionRegistration {
     id: string;
     title: string;
     component: ComponentType<PluginHomepageSectionProps>;
+}
+interface PluginSettingsSectionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Optional host-rendered section heading. */
+    title?: string;
+    /**
+     * Optional one-line host-rendered subheading under `title`, in the built-in
+     * SettingsSection idiom (ignored when `title` is absent).
+     */
+    description?: string;
+    component: ComponentType<PluginSettingsSectionProps>;
 }
 interface PluginNavPanelRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -143,6 +186,39 @@ interface PluginComposerAccessoryRegistration {
     id: string;
     component: ComponentType<PluginComposerAccessoryProps>;
 }
+interface PluginPendingInteractionRegistration {
+    /** Matches `rendererId` passed to `bb.interactions.request`. */
+    id: string;
+    component: ComponentType<PluginPendingInteractionProps>;
+}
+/** Context handed to a `sidebarFooterAction`'s `run`. */
+interface PluginSidebarFooterActionContext {
+    /**
+     * Navigate to this plugin's Settings detail page
+     * (`/settings/plugins/<pluginId>`), where declarative settings and
+     * `settingsSection` slots render.
+     */
+    openSettings(): void;
+}
+/**
+ * An icon button in the app sidebar footer (next to Settings / bug report).
+ * Host-rendered for consistent chrome — plugins supply icon, label, and
+ * `run` behavior only.
+ */
+interface PluginSidebarFooterActionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Tooltip and accessible label for the icon button. */
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    /**
+     * Runs when the user activates the action (e.g. call `openSettings()`,
+     * open a panel via other surfaces, toast). Errors (sync or async) are
+     * contained and logged; they never break the sidebar.
+     */
+    run(context: PluginSidebarFooterActionContext): void | Promise<void>;
+}
 /**
  * Register this plugin as a viewer/editor for file extensions. The user
  * picks (and can set as default) an opener per extension via the file tab's
@@ -163,9 +239,12 @@ interface PluginFileOpenerRegistration {
 }
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
+    settingsSection(registration: PluginSettingsSectionRegistration): void;
     navPanel(registration: PluginNavPanelRegistration): void;
     threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
     composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+    pendingInteraction(registration: PluginPendingInteractionRegistration): void;
+    sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
 }
 interface PluginAppBuilder {
@@ -309,4 +388,4 @@ declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
 export { PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginRpcClient, PluginSdkApp, PluginSettingsState, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
+export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };

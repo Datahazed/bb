@@ -26,7 +26,12 @@ import {
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import type { AvailableModel, PromptInput } from "@bb/domain";
+import {
+  reasoningEffortsForLevels,
+  type AvailableModel,
+  type PromptInput,
+  type ReasoningLevel,
+} from "@bb/domain";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
 import {
   decodeToolCallResponsePayload,
@@ -47,6 +52,9 @@ import {
   acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
+  type AcpBridgeNativeReasoning,
+  type AcpBridgePermissionCli,
+  type AcpBridgeReasoningCli,
   type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
 } from "../bridge-protocol.js";
@@ -361,6 +369,213 @@ const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
 
+function reasoningSupportFromCli(
+  reasoningCli: AcpBridgeReasoningCli | undefined,
+):
+  | Pick<
+      AvailableModel,
+      "supportedReasoningEfforts" | "defaultReasoningEffort"
+    >
+  | undefined {
+  if (reasoningCli === undefined) {
+    return undefined;
+  }
+  const supportedLevels = reasoningCli.supportedLevels;
+  const defaultReasoningEffort =
+    reasoningCli.defaultLevel !== undefined &&
+    supportedLevels.includes(reasoningCli.defaultLevel)
+      ? reasoningCli.defaultLevel
+      : supportedLevels.includes("medium")
+        ? "medium"
+        : supportedLevels[0];
+  return {
+    supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
+    defaultReasoningEffort,
+  };
+}
+
+function reasoningSupportFromNativeHint(
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+):
+  | Pick<
+      AvailableModel,
+      "supportedReasoningEfforts" | "defaultReasoningEffort"
+    >
+  | undefined {
+  if (nativeReasoning === undefined) {
+    return undefined;
+  }
+  const supportedLevels = nativeReasoning.supportedLevels;
+  const defaultReasoningEffort =
+    nativeReasoning.defaultLevel !== undefined &&
+    supportedLevels.includes(nativeReasoning.defaultLevel)
+      ? nativeReasoning.defaultLevel
+      : supportedLevels.includes("medium")
+        ? "medium"
+        : supportedLevels[0];
+  return {
+    supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
+    defaultReasoningEffort,
+  };
+}
+
+function applyReasoningCliToModel(
+  model: AvailableModel,
+  reasoningCli: AcpBridgeReasoningCli | undefined,
+): AvailableModel {
+  const reasoningSupport = reasoningSupportFromCli(reasoningCli);
+  return reasoningSupport === undefined
+    ? model
+    : {
+        ...model,
+        ...reasoningSupport,
+      };
+}
+
+function modelHasOnlyAgentManagedReasoning(model: AvailableModel): boolean {
+  return (
+    model.supportedReasoningEfforts.length === 1 &&
+    model.supportedReasoningEfforts[0]?.reasoningEffort === "medium" &&
+    model.defaultReasoningEffort === "medium"
+  );
+}
+
+function applyNativeReasoningHintToModel(
+  model: AvailableModel,
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+): AvailableModel {
+  const reasoningSupport = reasoningSupportFromNativeHint(nativeReasoning);
+  return reasoningSupport === undefined ||
+    !modelHasOnlyAgentManagedReasoning(model)
+    ? model
+    : {
+        ...model,
+        ...reasoningSupport,
+      };
+}
+
+function applyConfiguredReasoningToModel(
+  model: AvailableModel,
+  args: {
+    reasoningCli: AcpBridgeReasoningCli | undefined;
+    nativeReasoning: AcpBridgeNativeReasoning | undefined;
+  },
+): AvailableModel {
+  return args.reasoningCli !== undefined
+    ? applyReasoningCliToModel(model, args.reasoningCli)
+    : applyNativeReasoningHintToModel(model, args.nativeReasoning);
+}
+
+function applyConfiguredReasoningToModels(
+  models: readonly AvailableModel[],
+  args: {
+    reasoningCli: AcpBridgeReasoningCli | undefined;
+    nativeReasoning: AcpBridgeNativeReasoning | undefined;
+  },
+): AvailableModel[] {
+  return models.map((model) => applyConfiguredReasoningToModel(model, args));
+}
+
+function resolveReasoningCliValue(args: {
+  reasoningCli: AcpBridgeReasoningCli;
+  reasoningLevel: ReasoningLevel;
+}): string | undefined {
+  const override = args.reasoningCli.levelValues?.[args.reasoningLevel];
+  if (override !== undefined) {
+    return override;
+  }
+  return args.reasoningCli.supportedLevels.includes(args.reasoningLevel)
+    ? args.reasoningLevel
+    : undefined;
+}
+
+function nativeReasoningLevelToValue(args: {
+  nativeReasoning: AcpBridgeNativeReasoning;
+  reasoningLevel: ReasoningLevel;
+}): string | undefined {
+  const override =
+    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  if (override !== undefined) {
+    return override;
+  }
+  return args.nativeReasoning.supportedLevels.includes(args.reasoningLevel)
+    ? args.reasoningLevel
+    : undefined;
+}
+
+function nativeReasoningToThoughtLevelOption(
+  nativeReasoning: AcpBridgeNativeReasoning | undefined,
+): AcpConfigOption | undefined {
+  if (nativeReasoning === undefined) {
+    return undefined;
+  }
+  const options = nativeReasoning.supportedLevels.flatMap((level) => {
+    const value = nativeReasoningLevelToValue({
+      nativeReasoning,
+      reasoningLevel: level,
+    });
+    return value === undefined
+      ? []
+      : [
+          {
+            value,
+            name: value,
+          },
+        ];
+  });
+  const currentValue =
+    nativeReasoning.defaultLevel === undefined
+      ? undefined
+      : nativeReasoningLevelToValue({
+          nativeReasoning,
+          reasoningLevel: nativeReasoning.defaultLevel,
+        });
+  return {
+    id: nativeReasoning.configId,
+    category: "thought_level",
+    type: "select",
+    ...(currentValue !== undefined ? { currentValue } : {}),
+    options,
+  };
+}
+
+function permissionCliArgsForMode(
+  permissionCli: AcpBridgePermissionCli | undefined,
+  permissionMode: AcpSessionPolicy["permissionMode"],
+): string[] {
+  if (permissionCli === undefined) {
+    return [];
+  }
+  switch (permissionMode) {
+    case "full":
+      return permissionCli.full ?? [];
+    case "workspace-write":
+      return permissionCli.workspaceWrite ?? [];
+    case "readonly":
+      return permissionCli.readonly ?? [];
+  }
+}
+
+function applyPermissionCliArgs(
+  agentArgs: readonly string[],
+  permissionCli: AcpBridgePermissionCli | undefined,
+  permissionMode: AcpSessionPolicy["permissionMode"],
+): string[] {
+  const permissionArgs = permissionCliArgsForMode(permissionCli, permissionMode);
+  if (permissionArgs.length === 0) {
+    return [...agentArgs];
+  }
+  const insertAfterArgs = Math.min(
+    permissionCli?.insertAfterArgs ?? 0,
+    agentArgs.length,
+  );
+  return [
+    ...agentArgs.slice(0, insertAfterArgs),
+    ...permissionArgs,
+    ...agentArgs.slice(insertAfterArgs),
+  ];
+}
+
 interface AcpDynamicToolBridge {
   host: string;
   port: number;
@@ -388,6 +603,45 @@ let cachedSessionDiscoveredModels: {
   models: AvailableModel[];
   fetchedAt: number;
 } | null = null;
+
+function resolveAcpAuthMethodId(
+  authMethods: readonly { id: string }[] | undefined,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  // Grok is currently the only known ACP agent that advertises auth methods.
+  // Keep this preference local until another authenticated ACP provider needs
+  // a data-driven policy; cached_token is an ACP-side local-login flow.
+  const methodIds = new Set((authMethods ?? []).map((method) => method.id));
+  if (methodIds.size === 0) {
+    return undefined;
+  }
+  if (env.XAI_API_KEY && methodIds.has("xai.api_key")) {
+    return "xai.api_key";
+  }
+  if (methodIds.has("cached_token")) {
+    return "cached_token";
+  }
+  return undefined;
+}
+
+async function authenticateAcpAgent(args: {
+  connection: AcpAgentConnection;
+  env: Record<string, string | undefined>;
+  initializeResult: { authMethods?: readonly { id: string }[] };
+}): Promise<void> {
+  const methodId = resolveAcpAuthMethodId(
+    args.initializeResult.authMethods,
+    args.env,
+  );
+  if (methodId === undefined) {
+    return;
+  }
+  await args.connection.request({
+    method: "authenticate",
+    params: { methodId, _meta: { headless: true } },
+    resultSchema: z.unknown(),
+  });
+}
 
 /**
  * Run the agent's model list command and build the variant catalog, cached
@@ -458,11 +712,15 @@ async function loadSessionDiscoveredModels(
     return cachedSessionDiscoveredModels.models;
   }
 
+  const childEnv = {
+    ...withoutBridgeRuntimeEnv(process.env),
+    ...(agent.envVars ?? {}),
+  };
   const connection = createAcpAgentConnection({
     command: agent.command,
     args: agent.args,
     cwd: agent.cwd ?? process.cwd(),
-    env: { ...withoutBridgeRuntimeEnv(process.env), ...(agent.envVars ?? {}) },
+    env: childEnv,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(-32601, "ACP model discovery does not support requests");
@@ -485,7 +743,7 @@ async function loadSessionDiscoveredModels(
   try {
     const newSession = await Promise.race([
       (async () => {
-        await connection.request({
+        const initializeResult = await connection.request({
           method: "initialize",
           params: {
             protocolVersion: ACP_PROTOCOL_VERSION,
@@ -496,6 +754,11 @@ async function loadSessionDiscoveredModels(
             },
           },
           resultSchema: acpInitializeResultSchema,
+        });
+        await authenticateAcpAgent({
+          connection,
+          env: childEnv,
+          initializeResult,
         });
         return await connection.request({
           method: "session/new",
@@ -658,49 +921,70 @@ function isAuthRequiredModelListError(
 }
 
 /**
- * Resolve the session's model pin to the exact raw agent id and compose the
- * launch args: `<selectFlag> <id>` precedes the agent args because agent
- * CLIs treat the flag as a global option (`agent --model X acp`). When the
- * requested reasoning level has no variant (or the catalog is unavailable),
- * the family id launches as-is — it is a real agent id at its default effort.
+ * Resolve the session's model pin to the exact raw agent id and compose global
+ * launch args before the ACP subcommand. CLI model selection still resolves
+ * reasoning by model-id variant; agents such as Grok can additionally receive
+ * reasoning as a separate global flag (`grok --reasoning-effort high agent
+ * stdio`).
  */
 async function resolveAgentLaunchArgs(
   params: AcpBridgeThreadStartParams,
 ): Promise<{ args: string[]; warning: string | undefined }> {
   const selection = params.modelSelection;
-  if (!selection || !("selectFlag" in selection)) {
-    return { args: [...params.agent.args], warning: undefined };
-  }
-  let resolved: string | undefined;
+  const agentArgs = applyPermissionCliArgs(
+    params.agent.args,
+    params.permissionCli,
+    params.permissionMode,
+  );
+  const prefixArgs: string[] = [];
   let warning: string | undefined;
-  // Resolve whenever the selection narrows the raw id: an explicit reasoning
-  // effort, or Fast mode (which picks the model's `-fast` twin).
+
+  if (selection && "selectFlag" in selection) {
+    let resolved: string | undefined;
+    const variantReasoningLevel =
+      params.reasoningCli === undefined ? selection.reasoningLevel : undefined;
+    // Resolve whenever the selection narrows the raw id: an explicit reasoning
+    // effort, or Fast mode (which picks the model's `-fast` twin).
+    if (
+      variantReasoningLevel !== undefined ||
+      selection.serviceTier === "fast"
+    ) {
+      // Prefer the catalog cached by the last model/list (the picker the
+      // selection came from) over re-running the list command per spawn.
+      const key = JSON.stringify(selection.listCommand);
+      const catalog =
+        cachedModelCatalog?.key === key
+          ? cachedModelCatalog.catalog
+          : await loadAgentModelCatalog(selection.listCommand);
+      resolved = catalog?.resolveVariant({
+        model: selection.model,
+        reasoningLevel: variantReasoningLevel,
+        serviceTier: selection.serviceTier,
+      });
+      if (resolved === undefined && variantReasoningLevel !== undefined) {
+        warning = `Model "${selection.model}" has no ${variantReasoningLevel} reasoning variant; launching it at its default effort.`;
+      }
+    }
+    prefixArgs.push(selection.selectFlag, resolved ?? selection.model);
+  }
+
   if (
-    selection.reasoningLevel !== undefined ||
-    selection.serviceTier === "fast"
+    params.reasoningCli !== undefined &&
+    params.launchReasoningLevel !== undefined
   ) {
-    // Prefer the catalog cached by the last model/list (the picker the
-    // selection came from) over re-running the list command per spawn.
-    const key = JSON.stringify(selection.listCommand);
-    const catalog =
-      cachedModelCatalog?.key === key
-        ? cachedModelCatalog.catalog
-        : await loadAgentModelCatalog(selection.listCommand);
-    resolved = catalog?.resolveVariant({
-      model: selection.model,
-      reasoningLevel: selection.reasoningLevel,
-      serviceTier: selection.serviceTier,
+    const reasoningValue = resolveReasoningCliValue({
+      reasoningCli: params.reasoningCli,
+      reasoningLevel: params.launchReasoningLevel,
     });
-    if (resolved === undefined && selection.reasoningLevel !== undefined) {
-      warning = `Model "${selection.model}" has no ${selection.reasoningLevel} reasoning variant; launching it at its default effort.`;
+    if (reasoningValue !== undefined) {
+      prefixArgs.push(params.reasoningCli.flag, reasoningValue);
+    } else if (warning === undefined) {
+      warning = `Reasoning level "${params.launchReasoningLevel}" is not supported by this ACP agent's launch flag; launching it at its default effort.`;
     }
   }
+
   return {
-    args: [
-      selection.selectFlag,
-      resolved ?? selection.model,
-      ...params.agent.args,
-    ],
+    args: [...prefixArgs, ...agentArgs],
     warning,
   };
 }
@@ -711,6 +995,7 @@ async function selectAcpNativeModel(args: {
   configOptions: readonly AcpConfigOption[] | undefined;
   models: AcpSessionModels | undefined;
   modelSelection: AcpBridgeThreadStartParams["modelSelection"];
+  nativeReasoning: AcpBridgeNativeReasoning | undefined;
 }): Promise<void> {
   const selection = args.modelSelection;
   if (!selection || !("modelId" in selection)) {
@@ -767,6 +1052,7 @@ async function selectAcpNativeModel(args: {
     sessionId: args.sessionId,
     configOptions,
     modelSelection: selection,
+    nativeReasoning: args.nativeReasoning,
   });
 }
 
@@ -778,14 +1064,15 @@ async function selectAcpNativeReasoning(args: {
     AcpBridgeThreadStartParams["modelSelection"],
     { modelId: string }
   >;
+  nativeReasoning: AcpBridgeNativeReasoning | undefined;
 }): Promise<void> {
   const reasoningLevel = args.modelSelection.reasoningLevel;
   if (reasoningLevel === undefined) {
     return;
   }
-  const thoughtLevelOption = findAcpThoughtLevelConfigOption(
-    args.configOptions,
-  );
+  const thoughtLevelOption =
+    findAcpThoughtLevelConfigOption(args.configOptions) ??
+    nativeReasoningToThoughtLevelOption(args.nativeReasoning);
   if (!thoughtLevelOption) {
     return;
   }
@@ -1174,11 +1461,15 @@ async function startAgentSession(
   // The connection handlers close over `session`; they only fire after the
   // child process emits events, by which point the session is constructed.
   let session: AcpThreadSession;
+  const childEnv = {
+    ...withoutBridgeRuntimeEnv(process.env),
+    ...params.envVars,
+  };
   const connection = createAcpAgentConnection({
     command: params.agent.command,
     args: launch.args,
     cwd: params.cwd,
-    env: { ...withoutBridgeRuntimeEnv(process.env), ...params.envVars },
+    env: childEnv,
     onNotification: (method, notificationParams) =>
       handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>
@@ -1233,6 +1524,11 @@ async function startAgentSession(
       },
       resultSchema: acpInitializeResultSchema,
     });
+    await authenticateAcpAgent({
+      connection,
+      env: childEnv,
+      initializeResult,
+    });
     session.supportsImageInput =
       initializeResult.agentCapabilities?.promptCapabilities?.image ?? false;
     const supportsLoadSession =
@@ -1277,6 +1573,7 @@ async function startAgentSession(
         configOptions: newSession.configOptions,
         models: newSession.models,
         modelSelection: params.modelSelection,
+        nativeReasoning: params.nativeReasoning,
       });
       if (request.kind === "resume") {
         sendNotification(ACP_WARNING_METHOD, {
@@ -1291,6 +1588,7 @@ async function startAgentSession(
         configOptions: loadedConfigOptions,
         models: loadedModels,
         modelSelection: params.modelSelection,
+        nativeReasoning: params.nativeReasoning,
       });
     }
 
@@ -1474,7 +1772,13 @@ async function handleRequest(
       if (catalog) {
         sendResult(
           request.id,
-          splitPrimaryModels(catalog.models, request.params.primaryModels),
+          splitPrimaryModels(
+            applyConfiguredReasoningToModels(catalog.models, {
+              reasoningCli: request.params.reasoningCli,
+              nativeReasoning: request.params.nativeReasoning,
+            }),
+            request.params.primaryModels,
+          ),
         );
         return;
       }
@@ -1484,13 +1788,21 @@ async function handleRequest(
           : null;
       if (sessionDiscoveredModels) {
         sendResult(request.id, {
-          models: sessionDiscoveredModels,
+          models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
+            reasoningCli: request.params.reasoningCli,
+            nativeReasoning: request.params.nativeReasoning,
+          }),
           selectedOnlyModels: [],
         });
         return;
       }
       sendResult(request.id, {
-        models: [ACP_DEFAULT_MODEL],
+        models: [
+          applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
+            reasoningCli: request.params.reasoningCli,
+            nativeReasoning: request.params.nativeReasoning,
+          }),
+        ],
         selectedOnlyModels: [],
       });
       return;

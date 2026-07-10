@@ -64,21 +64,30 @@ describe("appendCustomModels", () => {
     ).toEqual(["low", "medium", "high", "xhigh", "ultracode", "max"]);
   });
 
-  it("caps codex and pi custom models at xhigh (no max)", () => {
-    for (const providerId of ["codex", "pi"] as const) {
-      const { models } = appendCustomModels({
-        customModels: [{ providerId, model: "custom-model" }],
-        models: [],
-        providerId,
-        selectedOnlyModels: [],
-      });
+  it("uses the provider reasoning ladder for codex and pi custom models", () => {
+    const { models: codexModels } = appendCustomModels({
+      customModels: [{ providerId: "codex", model: "custom-model" }],
+      models: [],
+      providerId: "codex",
+      selectedOnlyModels: [],
+    });
+    expect(
+      codexModels[0].supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
-      expect(
-        models[0].supportedReasoningEfforts.map(
-          (effort) => effort.reasoningEffort,
-        ),
-      ).toEqual(["low", "medium", "high", "xhigh"]);
-    }
+    const { models: piModels } = appendCustomModels({
+      customModels: [{ providerId: "pi", model: "custom-model" }],
+      models: [],
+      providerId: "pi",
+      selectedOnlyModels: [],
+    });
+    expect(
+      piModels[0].supportedReasoningEfforts.map(
+        (effort) => effort.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
   it("falls back to the model id when displayName is omitted", () => {
@@ -247,6 +256,173 @@ describe("resolveSystemExecutionOptions", () => {
           command: "opencode",
           args: ["acp"],
           env: {},
+        },
+      });
+    });
+  });
+
+  it("includes installed Grok Build ACP and sends its launch spec when loading models", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-grok-installed",
+      });
+      const catalogModel = availableModelFixture({
+        model: "grok-4.5",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-grok",
+                  executablePath:
+                    agent.id === "acp-grok"
+                      ? "/Users/example/.grok/bin/grok"
+                      : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-grok",
+      });
+
+      expect(response.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "acp-grok",
+            displayName: "Grok Build",
+            available: true,
+          }),
+        ]),
+      );
+      expect(response.models).toEqual([catalogModel]);
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status", "provider.list_models"],
+      );
+      expect(responder.requests[1].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-grok",
+        acpLaunchSpec: {
+          displayName: "Grok Build",
+          command: "grok",
+          args: ["agent", "stdio"],
+          env: {},
+          modelCli: {
+            listArgs: ["models"],
+            selectFlag: "--model",
+            primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
+          },
+          permissionCli: {
+            full: ["--always-approve"],
+            insertAfterArgs: 1,
+          },
+          reasoningCli: {
+            flag: "--reasoning-effort",
+            supportedLevels: ["low", "medium", "high"],
+            levelValues: {
+              none: "low",
+              xhigh: "high",
+              ultracode: "high",
+              max: "high",
+            },
+            defaultLevel: "high",
+          },
+        },
+      });
+    });
+  });
+
+  it("includes installed Hermes Agent ACP and sends its launch spec when loading models", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-hermes-installed",
+      });
+      const catalogModel = availableModelFixture({
+        model: "openrouter:openai/gpt-5.5",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-hermes-agent",
+                  executablePath:
+                    agent.id === "acp-hermes-agent"
+                      ? "/Users/example/.local/bin/hermes"
+                      : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-hermes-agent",
+      });
+
+      expect(response.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "acp-hermes-agent",
+            displayName: "Hermes Agent",
+            available: true,
+          }),
+        ]),
+      );
+      expect(response.models).toEqual([catalogModel]);
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status", "provider.list_models"],
+      );
+      expect(responder.requests[1].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-hermes-agent",
+        acpLaunchSpec: {
+          displayName: "Hermes Agent",
+          command: "hermes",
+          args: ["acp"],
+          env: {},
+          nativeReasoning: {
+            configId: "reasoning_effort",
+            supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+            defaultLevel: "medium",
+          },
         },
       });
     });
@@ -486,8 +662,9 @@ describe("resolveSystemExecutionOptions", () => {
           sessionId: session.id,
           handle: (request) => {
             if (request.command.type === "known_acp_agents.status") {
-              // acp-omp is a known agent that is not overridden by custom
-              // config here, so the server probes host install status for it.
+              // acp-omp, acp-grok, and acp-hermes-agent are known agents that
+              // are not overridden by custom config here, so the server probes
+              // host install status for them.
               return { ok: true, result: { agents: [] } };
             }
             if (request.command.type === "provider.list_models") {
@@ -660,7 +837,7 @@ describe("resolveSystemExecutionOptions", () => {
               id: "acp-example-agent",
               displayName: "Example Agent",
               available: true,
-              composerActions: [],
+              composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
                 supportsFork: false,
                 supportsServiceTier: true,

@@ -29,6 +29,10 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
   isBusyThread,
   isRuntimeBusyThread,
@@ -97,7 +101,6 @@ interface ThreadRowContainerArgs {
   className: string;
   dragBindings?: SidebarSortableDragBindings;
   onClickCapture?: ThreadRowClickCaptureHandler;
-  showDragCursor: boolean;
   stickyLevel?: number;
   style: CSSProperties;
 }
@@ -123,22 +126,18 @@ function renderThreadRowContainer({
   className,
   dragBindings,
   onClickCapture,
-  showDragCursor,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  // Draggable rows show a grab cursor over the whole row.
-  const containerClassName = cn(
-    className,
-    showDragCursor && "cursor-grab active:cursor-grabbing",
-  );
+  // Never show a grab cursor on thread rows. Folder DnD still works after the
+  // activation distance; the link still selects on click.
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
-        className={containerClassName}
+        className={className}
         style={style}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
@@ -152,7 +151,7 @@ function renderThreadRowContainer({
   return (
     <div
       ref={dragBindings?.setActivatorNodeRef}
-      className={containerClassName}
+      className={className}
       style={style}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
@@ -165,6 +164,11 @@ function renderThreadRowContainer({
 
 interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
+  isBackgroundAgentActive: boolean;
+  isBackgroundCommandActive: boolean;
+  isForegroundAgentWorking: boolean;
+  isGoalActive: boolean;
+  isPlanModeActive: boolean;
   isBusy: boolean;
   isWorkflowActive: boolean;
   showUnreadBadge: boolean;
@@ -177,6 +181,11 @@ interface ThreadUnreadBadgeLabelArgs {
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
@@ -206,6 +215,20 @@ export function ThreadStatusGlyph({
     );
   }
 
+  if (isForegroundAgentWorking) {
+    return (
+      <Icon
+        name="Loading"
+        className={cn(
+          "animate-spin",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Agent working"
+      />
+    );
+  }
+
   if (isWorkflowActive) {
     return (
       <Icon
@@ -216,6 +239,62 @@ export function ThreadStatusGlyph({
           COARSE_POINTER_ICON_SIZE_CLASS,
         )}
         aria-label="Workflow running"
+      />
+    );
+  }
+
+  if (isBackgroundAgentActive) {
+    return (
+      <Icon
+        name="UserRoundPlus"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background agent running"
+      />
+    );
+  }
+
+  if (isBackgroundCommandActive) {
+    return (
+      <Icon
+        name="Terminal"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Background command running"
+      />
+    );
+  }
+
+  if (isPlanModeActive) {
+    return (
+      <Icon
+        name="ListTodo"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Plan mode active"
+      />
+    );
+  }
+
+  if (isGoalActive) {
+    return (
+      <Icon
+        name="Target"
+        className={cn(
+          "animate-shine-icon",
+          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+        aria-label="Goal active"
       />
     );
   }
@@ -254,13 +333,26 @@ type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
 
 function ThreadTrailingIndicator({
   hasPendingInteraction,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
   isBusy,
   isWorkflowActive,
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph =
-    hasPendingInteraction || isBusy || isWorkflowActive || showUnreadBadge;
+    hasPendingInteraction ||
+    isBackgroundAgentActive ||
+    isBackgroundCommandActive ||
+    isForegroundAgentWorking ||
+    isGoalActive ||
+    isPlanModeActive ||
+    isBusy ||
+    isWorkflowActive ||
+    showUnreadBadge;
 
   if (!showStatusGlyph) {
     return null;
@@ -275,6 +367,11 @@ function ThreadTrailingIndicator({
     >
       <ThreadStatusGlyph
         hasPendingInteraction={hasPendingInteraction}
+        isBackgroundAgentActive={isBackgroundAgentActive}
+        isBackgroundCommandActive={isBackgroundCommandActive}
+        isForegroundAgentWorking={isForegroundAgentWorking}
+        isGoalActive={isGoalActive}
+        isPlanModeActive={isPlanModeActive}
         isBusy={isBusy}
         isWorkflowActive={isWorkflowActive}
         showUnreadBadge={showUnreadBadge}
@@ -305,11 +402,23 @@ function ThreadRowComponent({
     isRuntimeBusyThread(thread) && !hasPendingInteraction;
   const threadWorkflowActive =
     !hasPendingInteraction && hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive =
+    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadBackgroundCommandActive =
+    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive =
+    !hasPendingInteraction && hasActivePlanModeActivity(thread);
+  const threadGoalActive =
+    !hasPendingInteraction && hasActiveGoalActivity(thread);
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
+  const threadUnreadDone = isUnreadDoneThread(thread);
+  const threadUnreadError = threadUnreadDone && thread.status === "error";
   const showUnreadBadge =
-    !hasPendingInteraction && !threadIsBusy && isUnreadDoneThread(thread);
-  const unreadBadgeTone: SidebarUnreadDotTone =
-    showUnreadBadge && thread.status === "error" ? "error" : "default";
+    threadUnreadError ||
+    (!hasPendingInteraction && !threadIsBusy && threadUnreadDone);
+  const unreadBadgeTone: SidebarUnreadDotTone = threadUnreadError
+    ? "error"
+    : "default";
   const threadTitle = getThreadDisplayTitle(thread);
   // Inside a folder the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
@@ -334,7 +443,21 @@ function ThreadRowComponent({
   const trailingIsWorkflowActive = hasHiddenChildren
     ? threadWorkflowActive || childActivity.workflow
     : threadWorkflowActive;
-  const trailingIsBusy = trailingRuntimeBusy;
+  const trailingBackgroundAgentActive = hasHiddenChildren
+    ? threadBackgroundAgentActive || childActivity.backgroundAgent
+    : threadBackgroundAgentActive;
+  const trailingBackgroundCommandActive = hasHiddenChildren
+    ? threadBackgroundCommandActive || childActivity.backgroundCommand
+    : threadBackgroundCommandActive;
+  const trailingPlanModeActive = hasHiddenChildren
+    ? threadPlanModeActive || childActivity.planMode
+    : threadPlanModeActive;
+  const trailingGoalActive = hasHiddenChildren
+    ? threadGoalActive || childActivity.goal
+    : threadGoalActive;
+  const trailingIsBusy = hasHiddenChildren
+    ? threadIsBusy || childActivity.working
+    : threadIsBusy;
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
@@ -344,7 +467,6 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
-  const showDragCursor = rowDragBindings !== undefined && thread.pinnedAt === null;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -384,12 +506,7 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        className={cn(
-          "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
-          // Draggable rows show a grab affordance; the link still selects on
-          // click since a drag needs the activation distance.
-          showDragCursor && "cursor-grab active:cursor-grabbing",
-        )}
+        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate" title={labelTitle}>
@@ -427,6 +544,11 @@ function ThreadRowComponent({
           >
             <ThreadTrailingIndicator
               hasPendingInteraction={trailingHasPendingInteraction}
+              isBackgroundAgentActive={trailingBackgroundAgentActive}
+              isBackgroundCommandActive={trailingBackgroundCommandActive}
+              isForegroundAgentWorking={trailingRuntimeBusy}
+              isGoalActive={trailingGoalActive}
+              isPlanModeActive={trailingPlanModeActive}
               isBusy={trailingIsBusy}
               isWorkflowActive={trailingIsWorkflowActive}
               showUnreadBadge={trailingShowUnreadBadge}
@@ -461,7 +583,6 @@ function ThreadRowComponent({
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,
-    showDragCursor,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });

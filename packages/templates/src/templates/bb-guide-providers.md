@@ -17,11 +17,14 @@ When provider and model are omitted from bb thread spawn, the project's remember
 defaults apply.
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, opencode or omp on PATH appears as provider acp-opencode or
-acp-omp.
+host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
+on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
+acp-hermes-agent.
 
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
 and run bb-app config refresh; there is no set/unset CLI surface for this list.
 Custom config wins if it uses the same provider id as a known ACP agent; for
-example, override acp-opencode with id opencode.
+example, override acp-opencode with id opencode. Use modelCli for CLI model
+listing/selection, reasoningCli for launch-time reasoning flags, and
+nativeReasoning for ACP session/set_config_option reasoning.

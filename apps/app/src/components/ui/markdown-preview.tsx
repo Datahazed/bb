@@ -15,6 +15,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import type {
@@ -49,8 +53,9 @@ import {
   type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 import {
-  MarkdownLocalFileOpenWithContext,
+  MarkdownLocalFileContextMenuContext,
   type MarkdownLinkRouting,
+  type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import {
@@ -64,6 +69,7 @@ import {
   type IndexedPromptMention,
   type MarkdownPromptMentions,
 } from "./markdown-prompt-mentions.js";
+import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -481,10 +487,10 @@ function MarkdownAnchor({
         })
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
-  const getOpenWithItems = useContext(MarkdownLocalFileOpenWithContext);
-  const openWithItems =
-    localFileLink !== null && getOpenWithItems !== null
-      ? getOpenWithItems(localFileLink)
+  const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
+  const contextMenuItems =
+    localFileLink !== null && getContextMenuItems !== null
+      ? getContextMenuItems(localFileLink)
       : null;
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
@@ -532,22 +538,39 @@ function MarkdownAnchor({
       ) : null}
     </RouteAnchor>
   );
-  if (openWithItems === null || openWithItems.length === 0) {
+  if (contextMenuItems === null || contextMenuItems.length === 0) {
     return anchor;
   }
-  // Local file links with viewer choices get a right-click "Open with" menu
-  // (per-open override of the extension's default opener).
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{anchor}</ContextMenuTrigger>
-      <ContextMenuContent>
-        {openWithItems.map((item) => (
-          <ContextMenuItem key={item.id} onSelect={item.onSelect}>
-            {item.label}
-          </ContextMenuItem>
-        ))}
+      <ContextMenuContent className="min-w-44">
+        {contextMenuItems.map(renderMarkdownLocalFileContextMenuItem)}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+function renderMarkdownLocalFileContextMenuItem(
+  item: MarkdownLocalFileContextMenuItem,
+) {
+  if (item.type === "separator") {
+    return <ContextMenuSeparator key={item.id} />;
+  }
+  if (item.type === "submenu") {
+    return (
+      <ContextMenuSub key={item.id}>
+        <ContextMenuSubTrigger>{item.label}</ContextMenuSubTrigger>
+        <ContextMenuSubContent className="min-w-44">
+          {item.items.map(renderMarkdownLocalFileContextMenuItem)}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    );
+  }
+  return (
+    <ContextMenuItem key={item.id} onSelect={item.onSelect}>
+      {item.label}
+    </ContextMenuItem>
   );
 }
 
@@ -978,104 +1001,6 @@ function useMarkdownContentWidthVariable() {
 
 const FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
-const MARKDOWN_FENCE_START_PATTERN = /^(?: {0,3})(`{3,}|~{3,})/u;
-
-interface MarkdownFence {
-  character: string;
-  length: number;
-}
-
-function trimMarkdownLineCarriageReturn(line: string): string {
-  return line.endsWith("\r") ? line.slice(0, -1) : line;
-}
-
-function isPromptMarkdownBlankLine(line: string): boolean {
-  return /^[ \t]*$/u.test(trimMarkdownLineCarriageReturn(line));
-}
-
-function isPromptMarkdownBlockquoteLine(line: string): boolean {
-  return /^ {0,3}>/u.test(trimMarkdownLineCarriageReturn(line));
-}
-
-function parseMarkdownFenceStart(line: string): MarkdownFence | null {
-  const match = MARKDOWN_FENCE_START_PATTERN.exec(
-    trimMarkdownLineCarriageReturn(line),
-  );
-  const marker = match?.[1];
-  if (marker === undefined) {
-    return null;
-  }
-  return { character: marker[0]!, length: marker.length };
-}
-
-function isMarkdownFenceClose(line: string, fence: MarkdownFence): boolean {
-  const value = trimMarkdownLineCarriageReturn(line);
-  const leadingSpaces = /^ {0,3}/u.exec(value)?.[0].length ?? 0;
-  let index = leadingSpaces;
-  while (value[index] === fence.character) {
-    index += 1;
-  }
-  return (
-    index - leadingSpaces >= fence.length &&
-    /^[ \t]*$/u.test(value.slice(index))
-  );
-}
-
-/**
- * Older authored prompt bodies could store a quote immediately followed by an
- * unprefixed reply line. CommonMark treats that as a lazy blockquote
- * continuation, so make the legacy block boundary explicit before handing
- * prompt markdown to `react-markdown`.
- */
-function normalizePromptBlockquoteBoundaries(markdown: string): string {
-  const lines = markdown.split("\n");
-  if (lines.length < 2) {
-    return markdown;
-  }
-
-  const normalizedLines: string[] = [];
-  let activeFence: MarkdownFence | null = null;
-  let previousNonblankLineWasBlockquote: boolean | null = null;
-
-  for (const line of lines) {
-    if (activeFence !== null) {
-      normalizedLines.push(line);
-      if (isMarkdownFenceClose(line, activeFence)) {
-        activeFence = null;
-      }
-      continue;
-    }
-
-    const lineIsBlank = isPromptMarkdownBlankLine(line);
-    const lineIsBlockquote = isPromptMarkdownBlockquoteLine(line);
-    if (
-      !lineIsBlank &&
-      previousNonblankLineWasBlockquote === true &&
-      !lineIsBlockquote
-    ) {
-      const previousLine = normalizedLines[normalizedLines.length - 1];
-      if (
-        previousLine !== undefined &&
-        !isPromptMarkdownBlankLine(previousLine)
-      ) {
-        normalizedLines.push("");
-      }
-    }
-
-    normalizedLines.push(line);
-
-    if (lineIsBlank) {
-      continue;
-    }
-
-    previousNonblankLineWasBlockquote = lineIsBlockquote;
-    if (!lineIsBlockquote) {
-      activeFence = parseMarkdownFenceStart(line);
-    }
-  }
-
-  return normalizedLines.join("\n");
-}
 
 /**
  * Splits a leading YAML frontmatter block (`---` … `---` at the very start of

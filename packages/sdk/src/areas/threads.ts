@@ -2,6 +2,7 @@ import {
   parseThreadEventRow,
   type PromptInput,
   type PendingInteractionResolution,
+  type JsonValue,
   type ThreadStatus,
 } from "@bb/domain";
 import type {
@@ -24,7 +25,7 @@ import type {
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
-export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 30_000;
+export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
@@ -59,6 +60,14 @@ export type ThreadInteractionResolveResult = PublicApiOutput<
   "/threads/:id/interactions/:interactionId/resolve",
   "$post"
 >;
+export type ThreadInteractionRespondResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId/respond",
+  "$post"
+>;
+export type ThreadInteractionCancelResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId/cancel",
+  "$post"
+>;
 export type ThreadEventsListResult = PublicApiOutput<
   "/threads/:id/events",
   "$get"
@@ -72,7 +81,7 @@ export type ThreadTimelineResult = PublicApiOutput<
   "$get"
 >;
 export type ThreadArchiveResult = PublicApiOutput<
-  "/threads/:id/archive",
+  "/threads/:id/archive-all",
   "$post"
 >;
 export type ThreadOpenResult = PublicApiOutput<"/threads/:id/open", "$post">;
@@ -215,6 +224,10 @@ export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
   resolution: PendingInteractionResolution;
 }
 
+export interface ThreadInteractionRespondArgs extends ThreadInteractionGetArgs {
+  value: JsonValue;
+}
+
 export type ThreadWaitTarget =
   | { kind: "status"; status: ThreadStatus }
   | { kind: "event"; eventType: string };
@@ -275,11 +288,17 @@ export class ThreadWaitUnreachableError extends Error {
 }
 
 export interface ThreadInteractionsArea {
+  cancel(
+    args: ThreadInteractionGetArgs,
+  ): Promise<ThreadInteractionCancelResult>;
   get(args: ThreadInteractionGetArgs): Promise<ThreadInteractionGetResult>;
   list(args: ThreadInteractionListArgs): Promise<ThreadInteractionListResult>;
   resolve(
     args: ThreadInteractionResolveArgs,
   ): Promise<ThreadInteractionResolveResult>;
+  respond(
+    args: ThreadInteractionRespondArgs,
+  ): Promise<ThreadInteractionRespondResult>;
 }
 
 export interface ThreadEventsArea {
@@ -525,6 +544,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   const interactions: ThreadInteractionsArea = {
+    async cancel(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].interactions[
+          ":interactionId"
+        ].cancel.$post({
+          param: { id: input.threadId, interactionId: input.interactionId },
+        }),
+      );
+    },
     async get(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].interactions[":interactionId"].$get({
@@ -552,6 +580,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             interactionId: input.interactionId,
           },
           json: input.resolution,
+        }),
+      );
+    },
+    async respond(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].interactions[
+          ":interactionId"
+        ].respond.$post({
+          param: { id: input.threadId, interactionId: input.interactionId },
+          json: { value: input.value },
         }),
       );
     },
@@ -620,12 +658,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   };
   return {
     async archive(input) {
-      await transport.readVoid(
-        transport.api.v1.threads[":id"].archive.$post({
+      // Match the UI: archiving a parent also archives assigned children and
+      // source-derived side chats via the cascade archive-all route.
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["archive-all"].$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async delete(input) {
       await transport.readVoid(

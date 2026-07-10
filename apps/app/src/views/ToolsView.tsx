@@ -762,7 +762,9 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
   const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
-  const listQuery = usePluginList({ includeExperimentDisabled: true });
+  // Installed and builtin plugins remain real resources even when the
+  // experiment that allows new user plugin installation is disabled.
+  const listQuery = usePluginList({ enabled: true });
   const plugins = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const {

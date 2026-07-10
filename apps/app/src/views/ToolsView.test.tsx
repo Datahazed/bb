@@ -14,8 +14,10 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     status: "running",
     statusDetail: null,
     description: "Linear integration.",
+    displayName: "Linear",
     logoUrl: null,
     logoDarkUrl: null,
+    hasSettings: false,
     ...overrides,
   };
 }

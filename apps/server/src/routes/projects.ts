@@ -82,7 +82,7 @@ import {
 import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import {
-  assertUsableHostId,
+  assertPrimaryHostId,
   requirePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 
@@ -304,7 +304,7 @@ function resolveEnvironmentPath(
   if (environment.projectId !== args.projectId) {
     throw new ApiError(404, "environment_not_found", "Environment not found");
   }
-  assertUsableHostId(deps, { hostId: environment.hostId });
+  assertPrimaryHostId(deps, { hostId: environment.hostId });
   return { hostId: environment.hostId, path: environment.path };
 }
 
@@ -325,7 +325,7 @@ function resolveProjectSourcePath(
   args: ResolveProjectSourcePathArgs,
 ): ResolvedHostPath {
   const hostId = args.hostId ?? requirePrimaryHostId(deps);
-  assertUsableHostId(deps, { hostId });
+  assertPrimaryHostId(deps, { hostId });
   const source = getProjectSourceByHost(deps.db, args.projectId, hostId);
   if (!source || source.type !== "local_path") {
     throw new ApiError(
@@ -361,7 +361,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const { source } = payload;
     if (source.type === "local_path") {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
-      assertUsableHostId(deps, { hostId: source.hostId });
+      assertPrimaryHostId(deps, { hostId: source.hostId });
     }
     const { project } = createProject(deps.db, deps.hub, {
       name: payload.name,
@@ -451,7 +451,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     requirePublicStandardProject(deps.db, context.req.param("id"));
     if (payload.type === "local_path") {
       requireNonDestroyedHostWithStatus(deps, payload.hostId);
-      assertUsableHostId(deps, { hostId: payload.hostId });
+      assertPrimaryHostId(deps, { hostId: payload.hostId });
     }
     const source = createProjectSource(deps.db, deps.hub, {
       projectId: context.req.param("id"),
@@ -467,7 +467,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       sourceId: context.req.param("sourceId"),
     });
     if (existing.type === "local_path") {
-      assertUsableHostId(deps, { hostId: existing.hostId });
+      assertPrimaryHostId(deps, { hostId: existing.hostId });
     }
     if (payload.type !== existing.type) {
       throw new ApiError(
@@ -605,8 +605,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
 
-    // Providers without a command surface (pi, anything unknown) have no
-    // typeahead entries, so skip the daemon roundtrip entirely.
+    // Providers without a skills composer action have no typeahead entries,
+    // so skip the daemon roundtrip entirely.
     if (!providerHasCommandSurface(query.provider)) {
       return context.json({ commands: [], truncated: false });
     }

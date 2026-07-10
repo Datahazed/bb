@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   markThreadDeleted,
   setExperiments,
@@ -10,13 +10,14 @@ import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
+import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
 import {
-  buildAcpLaunchSpec,
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../src/services/threads/thread-commands.js";
@@ -79,28 +80,6 @@ async function writeWorkspaceAgentInstructions(
 }
 
 describe("thread runtime config", () => {
-  it("omits empty custom ACP modelCli from launch specs", () => {
-    expect(
-      buildAcpLaunchSpec({
-        id: "custom",
-        displayName: "Custom ACP",
-        command: "custom-agent",
-        args: [],
-        env: {},
-        modelCli: {
-          listArgs: [],
-          selectFlag: "--model",
-          primaryModels: ["model-a"],
-        },
-      }),
-    ).toEqual({
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: [],
-      env: {},
-    });
-  });
-
   it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
     await withTestHarness(
       {
@@ -209,88 +188,141 @@ describe("thread runtime config", () => {
     );
   });
 
-  it("attaches known ACP launch specs to thread start and turn submit commands", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-known-acp",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/known-acp",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "acp-opencode",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-opencode",
-        threadId: thread.id,
-      });
-      const execution = {
-        model: "opencode/default",
-        permissionMode: "workspace-write",
-        reasoningLevel: "medium",
-        serviceTier: "default",
-        source: "client/turn/requested",
-      } as const;
-      const expectedSpec = {
+  it.each([
+    {
+      expectedSpec: {
         displayName: "opencode",
         command: "opencode",
         args: ["acp"],
         env: {},
-      };
+      },
+      providerId: "acp-opencode",
+      requestedModel: "opencode/default",
+    },
+    {
+      expectedSpec: {
+        displayName: "Grok Build",
+        command: "grok",
+        args: ["agent", "stdio"],
+        env: {},
+        modelCli: {
+          listArgs: ["models"],
+          selectFlag: "--model",
+          primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
+        },
+        permissionCli: {
+          full: ["--always-approve"],
+          insertAfterArgs: 1,
+        },
+        reasoningCli: {
+          flag: "--reasoning-effort",
+          supportedLevels: ["low", "medium", "high"],
+          levelValues: {
+            none: "low",
+            xhigh: "high",
+            ultracode: "high",
+            max: "high",
+          },
+          defaultLevel: "high",
+        },
+      },
+      providerId: "acp-grok",
+      requestedModel: "grok-4.5",
+    },
+    {
+      expectedSpec: {
+        displayName: "Hermes Agent",
+        command: "hermes",
+        args: ["acp"],
+        env: {},
+        nativeReasoning: {
+          configId: "reasoning_effort",
+          supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+          defaultLevel: "medium",
+        },
+      },
+      providerId: "acp-hermes-agent",
+      requestedModel: "acp-default",
+    },
+  ])(
+    "attaches known ACP launch specs for $providerId to thread start and turn submit commands",
+    async ({ expectedSpec, providerId, requestedModel }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-runtime-known-${providerId}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/known-acp",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: `provider-${providerId}`,
+          threadId: thread.id,
+        });
+        const execution = {
+          model: requestedModel,
+          permissionMode: "workspace-write",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        } as const;
 
-      const startCommand = await buildThreadStartCommand(harness.deps, {
-        environment,
-        execution,
-        fork: null,
-        permissionEscalation: "ask",
-        input: textInput("hello"),
-        projectId: project.id,
-        providerId: "acp-opencode",
-        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
-        syncGeneratedTitle: false,
-        thread,
-      });
-      expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
-      expect(startCommand.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: "update_environment_directory",
-        }),
-      ]);
-      expect(startCommand.instructions).toContain(
-        "update_environment_directory",
-      );
-
-      const submitCommand = await prepareTurnSubmitCommandPayload(
-        harness.deps,
-        {
+        const startCommand = await buildThreadStartCommand(harness.deps, {
           environment,
           execution,
+          fork: null,
           permissionEscalation: "ask",
-          input: textInput("continue"),
-          target: { mode: "start" },
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+          syncGeneratedTitle: false,
           thread,
-        },
-      );
-      expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-      expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
-      expect(submitCommand.resumeContext.dynamicTools).toEqual([
-        expect.objectContaining({
-          name: "update_environment_directory",
-        }),
-      ]);
-      expect(submitCommand.resumeContext.instructions).toContain(
-        "update_environment_directory",
-      );
-    });
-  });
+        });
+        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(startCommand.instructions).toContain(
+          "update_environment_directory",
+        );
+
+        const submitCommand = await prepareTurnSubmitCommandPayload(
+          harness.deps,
+          {
+            environment,
+            execution,
+            permissionEscalation: "ask",
+            input: textInput("continue"),
+            target: { mode: "start" },
+            thread,
+          },
+        );
+        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.dynamicTools).toEqual([
+          expect.objectContaining({
+            name: "update_environment_directory",
+          }),
+        ]);
+        expect(submitCommand.resumeContext.instructions).toContain(
+          "update_environment_directory",
+        );
+      });
+    },
+  );
 
   it.each([
     {
@@ -580,12 +612,12 @@ describe("thread runtime config", () => {
           threadId: thread.id,
           requestedExecution: {
             model: "gpt-5.4",
-            reasoningLevel: "max",
+            reasoningLevel: "ultracode",
             source: "client/turn/requested",
           },
         }),
       ).rejects.toThrow(
-        "Provider codex does not support max reasoning level. Supported reasoning levels: low, medium, high, xhigh.",
+        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: low, medium, high, xhigh, max, ultra.",
       );
     });
   });
@@ -715,12 +747,11 @@ describe("thread runtime config", () => {
       });
 
       setExperiments(harness.db, {
+        bbConnect: false,
         claudeCodeMockCliTraffic: true,
-        multiMachine: false,
         popoutChat: false,
         popoutChatHotkey: "Alt+Space",
         plugins: false,
-        uiForking: false,
       });
 
       expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
@@ -1126,6 +1157,265 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions.indexOf(userSource)).toBeLessThan(
         runtimeConfig.instructions.indexOf(workspaceSource),
       );
+    });
+  });
+
+  describe("plugin contributeInstructions assembly", () => {
+    afterEach(() => {
+      // withTestHarness rebinds this on each createApp; clear so a later
+      // isolated test doesn't see a leftover stub if harness cleanup races.
+      setPluginAgentContributions(undefined);
+    });
+
+    function stubContributions(args: {
+      tools?: PluginAgentToolContribution[];
+      instructions?: Array<{
+        pluginId: string;
+        provider: (ctx: {
+          threadId: string;
+          projectId: string;
+        }) => string | null;
+      }>;
+    }): void {
+      setPluginAgentContributions({
+        listSkillsRootPaths: () => [],
+        listAgentTools: () => args.tools ?? [],
+        listInstructionContributions: () => args.instructions ?? [],
+        findAgentTool: () => undefined,
+        invokeAgentTool: async () => ({
+          success: false,
+          contentItems: [{ type: "inputText", text: "unused" }],
+        }),
+        resolveMention: async () => ({
+          ok: false,
+          error: "unused in runtime-config tests",
+        }),
+      });
+    }
+
+    it("appends attributed plugin instructions after tool snippets and before data-dir instructions", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr";
+        seedHostSession(harness.deps, { id: hostId });
+        const workspacePath = path.join(
+          harness.config.dataDir,
+          "plugin-instr-workspace",
+        );
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "codex",
+        });
+        await writeDataDirAgentInstructions({
+          content: "# User Rules\n\nPrefer concise progress updates.\n",
+          dataDir: harness.config.dataDir,
+        });
+
+        stubContributions({
+          tools: [
+            {
+              pluginId: "tooldemo",
+              tool: {
+                name: "demo_lookup",
+                description: "Look up demo data",
+                inputSchema: { type: "object" },
+              },
+              instructions: "Call demo_lookup before guessing.",
+            },
+          ],
+          instructions: [
+            {
+              pluginId: "connect",
+              provider: ({ threadId, projectId }) =>
+                `Remote session for ${threadId} in ${projectId}`,
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        const toolHeader =
+          'The following instructions come from the BB plugin "tooldemo" for its tool "demo_lookup":';
+        const pluginHeader =
+          'The following instructions come from the BB plugin "connect":';
+        const dataDirHeader =
+          "The following user instructions come from <dataDir>/AGENTS.md:";
+        const instructions = runtimeConfig.instructions;
+        expect(instructions).toContain(toolHeader);
+        expect(instructions).toContain("Call demo_lookup before guessing.");
+        expect(instructions).toContain(pluginHeader);
+        expect(instructions).toContain(
+          `Remote session for ${thread.id} in ${project.id}`,
+        );
+        expect(instructions).toContain(dataDirHeader);
+        expect(instructions.indexOf(toolHeader)).toBeLessThan(
+          instructions.indexOf(pluginHeader),
+        );
+        expect(instructions.indexOf(pluginHeader)).toBeLessThan(
+          instructions.indexOf(dataDirHeader),
+        );
+      });
+    });
+
+    it("skips null/empty providers, truncates long text, and isolates throws", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-edge";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-edge",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-edge",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+
+        const longBody = "x".repeat(5000);
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "nuller",
+              provider: () => null,
+            },
+            {
+              pluginId: "blank",
+              provider: () => "   \n\t  ",
+            },
+            {
+              pluginId: "boom",
+              provider: () => {
+                throw new Error("provider boom");
+              },
+            },
+            {
+              pluginId: "verbose",
+              provider: () => longBody,
+            },
+            {
+              pluginId: "ok",
+              provider: () => "still contributes",
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        const instructions = runtimeConfig.instructions;
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "nuller":',
+        );
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "blank":',
+        );
+        expect(instructions).not.toContain(
+          'The following instructions come from the BB plugin "boom":',
+        );
+        expect(instructions).toContain(
+          'The following instructions come from the BB plugin "verbose":',
+        );
+        expect(instructions).toContain(
+          'The following instructions come from the BB plugin "ok":',
+        );
+        expect(instructions).toContain("still contributes");
+        // Truncated to 4096 chars — the full 5000-x body must not appear.
+        expect(instructions).not.toContain(longBody);
+        expect(instructions).toContain("x".repeat(4096));
+        expect(instructions).not.toContain("x".repeat(4097));
+      });
+    });
+
+    it("does not apply plugin instruction contributions to side-chat threads", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-side";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-side",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-side",
+        });
+        const mainThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        const sideChatThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          originKind: "side-chat",
+          sourceThreadId: mainThread.id,
+        });
+
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "connect",
+              provider: () => "should not reach side chat",
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread: sideChatThread,
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+              workspaceProvisionType: environment.workspaceProvisionType,
+            },
+          },
+        );
+
+        expect(runtimeConfig.instructions).not.toContain(
+          'The following instructions come from the BB plugin "connect":',
+        );
+        expect(runtimeConfig.instructions).not.toContain(
+          "should not reach side chat",
+        );
+      });
     });
   });
 });

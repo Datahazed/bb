@@ -104,7 +104,97 @@ function WorkflowActiveThreadRow() {
       thread={makeThread({
         title: "Background workflow audit",
         titleFallback: "Background workflow audit",
-        activity: { activeWorkflowCount: 1 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function BackgroundCommandActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Background pixel gate",
+        titleFallback: "Background pixel gate",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function BackgroundAgentActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Background agent review",
+        titleFallback: "Background agent review",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function PlanModeActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Plan mode investigation",
+        titleFallback: "Plan mode investigation",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      })}
+      isActive={false}
+      options={defaultOption}
+    />
+  );
+}
+
+function GoalActiveThreadRow() {
+  return (
+    <StoryThreadRow
+      projectId="proj_demo"
+      thread={makeThread({
+        title: "Goal-driven cleanup",
+        titleFallback: "Goal-driven cleanup",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
       })}
       isActive={false}
       options={defaultOption}
@@ -124,7 +214,13 @@ function WorkflowAndRuntimeActiveThreadRow() {
           displayStatus: "active",
           hostReconnectGraceExpiresAt: null,
         },
-        activity: { activeWorkflowCount: 1 },
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
       })}
       isActive={false}
       options={defaultOption}
@@ -263,8 +359,40 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="active background agent"
+        hint="background agent is active - far-right reserved slot shows the animated delegated-agent glyph"
+      >
+        <SidebarStage>
+          <BackgroundAgentActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active background command"
+        hint="background shell command is active - far-right reserved slot shows the animated terminal glyph"
+      >
+        <SidebarStage>
+          <BackgroundCommandActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active plan mode"
+        hint="plan-mode banner is active - far-right reserved slot shows the animated plan glyph"
+      >
+        <SidebarStage>
+          <PlanModeActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="active goal"
+        hint="goal banner is active - far-right reserved slot shows the animated target glyph"
+      >
+        <SidebarStage>
+          <GoalActiveThreadRow />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="active workflow + runtime"
-        hint="workflow activity wins over the generic runtime spinner so the sidebar matches the workflow banner"
+        hint="foreground agent activity wins over workflow activity"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />
@@ -584,7 +712,7 @@ export function ActiveWorkflow() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="the workflow glyph still shows when the foreground runtime is active"
+        hint="foreground runtime takes precedence over workflow activity"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />

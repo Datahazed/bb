@@ -102,6 +102,87 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
+  it("keeps custom ACP reasoningCli config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          reasoningCli: {
+            flag: "--reasoning-effort",
+            supportedLevels: ["low", "medium", "high"],
+            levelValues: { max: "high" },
+            defaultLevel: "high",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      reasoningCli: {
+        flag: "--reasoning-effort",
+        supportedLevels: ["low", "medium", "high"],
+        levelValues: { max: "high" },
+        defaultLevel: "high",
+      },
+    });
+  });
+
+  it("keeps custom ACP nativeReasoning config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          nativeReasoning: {
+            configId: "reasoning_effort",
+            supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+            defaultLevel: "medium",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      nativeReasoning: {
+        configId: "reasoning_effort",
+        supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
+        defaultLevel: "medium",
+      },
+    });
+  });
+
+  it("rejects custom ACP reasoningCli defaults outside supported levels", () => {
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          {
+            id: "my-agent",
+            displayName: "My Agent",
+            command: "my-agent",
+            reasoningCli: {
+              flag: "--reasoning-effort",
+              supportedLevels: ["low", "medium"],
+              defaultLevel: "high",
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects custom ACP agents with invalid ids, missing commands, collisions, and duplicates", () => {
     expect(
       bbAppManagedConfigSchema.safeParse({
