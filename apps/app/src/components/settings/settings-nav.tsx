@@ -13,6 +13,7 @@ import { isDesktopServersAvailable } from "@/lib/bb-desktop";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
 
@@ -41,6 +42,17 @@ export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
+export const SETTINGS_PROVIDER_ENTRIES = [
+  { id: "codex", label: "Codex" },
+  { id: "claude-code", label: "Claude Code" },
+] as const;
+export type SettingsProviderId =
+  (typeof SETTINGS_PROVIDER_ENTRIES)[number]["id"];
+
+function isSettingsProviderId(value: string): value is SettingsProviderId {
+  return SETTINGS_PROVIDER_ENTRIES.some((provider) => provider.id === value);
+}
+
 export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
@@ -48,12 +60,15 @@ export function isSettingsSectionId(value: string): value is SettingsSectionId {
 export interface SettingsNavState {
   /** Plugin id from /settings/plugins/:pluginId, else null. */
   activePluginId: string | null;
+  /** Provider id from /settings/providers/:providerId, else null. */
+  activeProviderId: SettingsProviderId | null;
   /** Selected bucket; null while a plugin page is active. */
   activeSection: SettingsSectionId | null;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
   /** Enabled plugins that declared settings or settingsSection slots. */
   pluginEntries: PluginListItem[];
+  providerEntries: typeof SETTINGS_PROVIDER_ENTRIES;
   /** Buckets visible on this host (files/plugins hide when irrelevant). */
   sections: readonly SettingsNavSection[];
 }
@@ -77,17 +92,29 @@ export function useSettingsNavState(): SettingsNavState {
   });
 
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
+  const providerMatch = matchPath(
+    SETTINGS_PROVIDER_ROUTE_PATH,
+    location.pathname,
+  );
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
   const activePluginId = pluginMatch?.params.pluginId ?? null;
+  const providerParam = providerMatch?.params.providerId;
+  const activeProviderId =
+    providerParam !== undefined && isSettingsProviderId(providerParam)
+      ? providerParam
+      : null;
   const sectionParam =
-    activePluginId === null ? sectionMatch?.params.section : undefined;
+    activePluginId === null && providerMatch === null
+      ? sectionMatch?.params.section
+      : undefined;
   const hasUnknownSection =
-    sectionParam !== undefined && !isSettingsSectionId(sectionParam);
+    (sectionParam !== undefined && !isSettingsSectionId(sectionParam)) ||
+    (providerParam !== undefined && !isSettingsProviderId(providerParam));
   const activeSection: SettingsSectionId | null =
-    activePluginId !== null
+    activePluginId !== null || providerMatch !== null
       ? null
       : sectionParam !== undefined && isSettingsSectionId(sectionParam)
         ? sectionParam
@@ -114,9 +141,11 @@ export function useSettingsNavState(): SettingsNavState {
 
   return {
     activePluginId,
+    activeProviderId,
     activeSection,
     hasUnknownSection,
     pluginEntries,
+    providerEntries: SETTINGS_PROVIDER_ENTRIES,
     sections,
   };
 }
