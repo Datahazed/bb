@@ -20,6 +20,12 @@ import {
 import type { PluginLogger } from "@bb/plugin-sdk";
 import type { ConnectCredential, CredentialStore } from "./credential.js";
 import {
+  ConnectListError,
+  fetchAccountServers,
+  withAccountServerUrls,
+  type ListAccountServersResult,
+} from "./list-servers.js";
+import {
   asConnectPairError,
   DEFAULT_CONNECT_BASE_URL,
   deriveConnectBaseUrl,
@@ -578,6 +584,26 @@ export class ConnectTunnel {
 
   listShares(): Array<{ port: number; url: string }> {
     return this.options.shares.list().map(({ port, url }) => ({ port, url }));
+  }
+
+  /**
+   * List every bb server on the paired account (via the connect gate).
+   * Returns this server's handle so callers can dedupe self. Each row includes
+   * the public connect URL (`https://<handle>.…`) derived from the credential.
+   */
+  async listAccountServers(): Promise<ListAccountServersResult> {
+    const credential = this.credential;
+    if (credential === null) {
+      throw new ConnectListError(
+        "not_paired",
+        "this bb is not connected to getbb.app — run `bb connect` for how to pair",
+      );
+    }
+    const servers = withAccountServerUrls(
+      await fetchAccountServers(credential),
+      credential,
+    );
+    return { servers, selfHandle: credential.handle };
   }
 
   status(): ConnectStatus {
