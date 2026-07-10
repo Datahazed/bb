@@ -193,7 +193,12 @@ export function useCommandSuggestions(
       promptActionSuggestions,
       discoveredSuggestions,
     );
-  }, [commandsQuery.data?.pages, isActive, promptActionSuggestions]);
+  }, [
+    args.providerId,
+    commandsQuery.data?.pages,
+    isActive,
+    promptActionSuggestions,
+  ]);
 
   const hasMore = isActive && commandsQuery.hasNextPage === true;
   const isLoadingMore = isActive && commandsQuery.isFetchingNextPage;
