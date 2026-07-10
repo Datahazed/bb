@@ -61,6 +61,7 @@ import {
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   ThreadFolderCreateDialog,
   ThreadFolderRenameDialog,
@@ -161,11 +162,11 @@ import {
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
 import {
-  getSidebarThreadSearchShortcutLabel,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchInputController,
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -1020,7 +1021,8 @@ export function ProjectListActionButtons({
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const threadSearchShortcut = getSidebarThreadSearchShortcutLabel();
+  const newThreadShortcut = useAppCommandShortcut("thread.new");
+  const threadSearchShortcut = useAppCommandShortcut("thread.search");
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".
@@ -1078,23 +1080,38 @@ export function ProjectListActionButtons({
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
             onClick={onNewChat}
             disabled={isNewChatDisabled}
+            aria-label={
+              newThreadShortcut
+                ? `New thread (${newThreadShortcut.label})`
+                : "New thread"
+            }
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
           >
             <Icon name="MessageSquarePlus" />
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="min-w-0 truncate text-left">
               New thread
             </span>
+            <AppCommandShortcutHint shortcut={newThreadShortcut} />
           </Button>
           {threadSearch ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`Search threads (${threadSearchShortcut})`}
-              className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-              onClick={threadSearch.onActivate}
-            >
-              <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-            </Button>
+            <span className="flex shrink-0 items-center gap-1">
+              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={
+                  threadSearchShortcut
+                    ? `Search threads (${threadSearchShortcut.label})`
+                    : "Search threads"
+                }
+                aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={threadSearch.onActivate}
+              >
+                <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+              </Button>
+            </span>
           ) : null}
         </div>
       )}

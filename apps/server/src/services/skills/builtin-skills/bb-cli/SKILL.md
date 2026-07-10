@@ -40,6 +40,11 @@ message agents, or inspect projects, providers, and environments.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
+- Settings → Keyboard records server-backed per-command shortcut overrides.
+  Reset returns to bb's current default; Clear disables the command. Non-native
+  actions apply in browser and desktop clients, and desktop menu accelerators
+  use the same resolved bindings. For details, read
+  `references/app-settings.md`.
 
 ## Agent Instructions
 

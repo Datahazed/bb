@@ -94,6 +94,40 @@ stops that process. It only blocks idle sleep: closing a laptop lid or choosing
 Sleep manually still sleeps the Mac. The toggle is hidden unless the connected
 primary host daemon reports macOS.
 
+## Keyboard Shortcuts
+
+Settings → Keyboard edits app command shortcuts. Overrides are stored in the
+server database, applied live to every connected window, and kept across
+restarts. Resetting a shortcut removes its override so future bb releases can
+continue to update the default. Clearing a shortcut explicitly disables that
+command. Command context and native-only availability remain server-owned and
+are not editable. Actions supported by both clients use the same resolved
+bindings in the browser and desktop app; browsers may still reserve some chords
+before bb receives them.
+
+`Mod` means Command on macOS and Control on Windows/Linux.
+
+| Area      | Command                       | Default                       | Availability             |
+| --------- | ----------------------------- | ----------------------------- | ------------------------ |
+| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`       | Desktop / web            |
+| Threads   | Search threads                | `Mod+K`                       | All clients              |
+| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web       |
+| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | All clients              |
+| Window    | New window                    | `Mod+Shift+N`                 | Desktop                  |
+| Window    | Settings                      | `Mod+,`                       | All clients              |
+| Layout    | Toggle sidebar                | `Mod+\`                       | All clients              |
+| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`   | All clients              |
+| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | All clients              |
+| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop         |
+| Workspace | Open in preferred app         | `Mod+O`                       | All clients              |
+| Composer  | Toggle model picker           | `Mod+Shift+M`                 | All clients              |
+| Browser   | Focus location / reload       | `Mod+L` / `Mod+R`             | Desktop embedded browser |
+| Questions | Choose visible answer 1–9     | `1` … `9`                     | While a question is open |
+
+The desktop application menu uses the same resolved bindings for New Thread,
+New Window, New Tab, Close, and Settings. There is no separate menu shortcut
+configuration.
+
 `BB_SERVER_URL` does not change where full `npx bb-app` startup binds locally.
 It is for commands that need to target an already-running server, such as the
 bundled `bb` CLI or a standalone host daemon. The CLI can omit it when targeting

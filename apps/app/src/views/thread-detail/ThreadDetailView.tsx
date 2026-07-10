@@ -216,7 +216,9 @@ import {
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
-import { isThreadNewTabKeyboardShortcut } from "./threadDetailNewTabShortcut";
+import {
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1129,30 +1131,29 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openNewTab]);
+  useAppCommandHandler("panel.newTab", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
+  useAppCommandHandler("file.quickOpen", () => {
+    if (props.surface !== "page") return false;
+    handleOpenNewTab();
+    return true;
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;
     }
     const desktopInfo = getBbDesktopInfo();
-    if (desktopInfo === null || desktopInfo.onOpenNewTab === undefined) {
+    if (
+      desktopInfo === null ||
+      desktopInfo.onAppCommand !== undefined ||
+      desktopInfo.onOpenNewTab === undefined
+    ) {
       return;
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
-  }, [handleOpenNewTab, props.surface]);
-  useEffect(() => {
-    if (props.surface !== "page" || getBbDesktopInfo() === null) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isThreadNewTabKeyboardShortcut(event)) {
-        return;
-      }
-      event.preventDefault();
-      handleOpenNewTab();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleOpenNewTab, props.surface]);
   const handleOpenBrowser = useCallback(() => {
     openBrowserTabAndReveal();
@@ -1182,6 +1183,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     setActiveFixedTerminal,
     threadId,
   ]);
+  useAppCommandHandler("terminal.open", () => {
+    if (
+      props.surface !== "page" ||
+      !canCreateTerminal ||
+      createTerminal.isPending ||
+      !threadId
+    ) {
+      return false;
+    }
+    handleStartTerminal();
+    return true;
+  });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
@@ -1238,6 +1251,32 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
+  useAppCommandHandler("panel.toggle", () => {
+    if (props.surface !== "page") return false;
+    toggleSecondaryPanel();
+    return true;
+  });
+  useAppCommandHandler("panel.close", () => {
+    if (props.surface !== "page") return false;
+    return handleCloseWindowRequest();
+  });
+  useAppCommandHandler("diff.toggle", () => {
+    if (
+      props.surface !== "page" ||
+      !canUseGitUi
+    ) {
+      return false;
+    }
+    if (
+      isSecondaryPanelOpen &&
+      activeFixedSecondaryTab?.kind === "git-diff"
+    ) {
+      closeSecondaryPanel();
+    } else {
+      openSecondaryPanelDiffPanel();
+    }
+    return true;
+  });
   useEffect(() => {
     if (props.surface !== "page") {
       return;
@@ -1885,6 +1924,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     canOpenPreferredFileTarget,
     openPathInPreferredFileTarget,
   ]);
+  useAppCommandHandler("workspace.openPreferred", () => {
+    if (props.surface !== "page") return false;
+    if (activeWorkspaceFilePath && handleOpenFileInEditor) {
+      handleOpenFileInEditor(activeWorkspaceFilePath);
+      return true;
+    }
+    if (activeHostFilePath && handleOpenHostFileInEditor) {
+      handleOpenHostFileInEditor(activeHostFilePath);
+      return true;
+    }
+    if (activeStorageFilePath && handleOpenStorageFileInEditor) {
+      handleOpenStorageFileInEditor(activeStorageFilePath);
+      return true;
+    }
+    return false;
+  });
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,
