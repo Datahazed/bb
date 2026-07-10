@@ -94,6 +94,37 @@ function getOnlyTimelineWebWorkRow(
   return row;
 }
 
+function legacyCodexSubagentStarted(
+  event: TimelineEventFactory,
+  args: {
+    agentPath: string;
+    agentThreadId: string;
+    callId: string;
+    kind?: "started" | "interacted" | "interrupted";
+    parentProviderThreadId: string;
+    parentTurnId: string;
+  },
+): TimelineFixtureEvent {
+  return event.providerUnhandled({
+    rawType: "item/completed",
+    rawEvent: {
+      jsonrpc: "2.0",
+      method: "item/completed",
+      params: {
+        threadId: args.parentProviderThreadId,
+        turnId: args.parentTurnId,
+        item: {
+          type: "subAgentActivity",
+          id: args.callId,
+          kind: args.kind ?? "started",
+          agentThreadId: args.agentThreadId,
+          agentPath: args.agentPath,
+        },
+      },
+    },
+  });
+}
+
 describe("timeline CLI rendering snapshots", () => {
   it("keeps accepted steer rows outside summaries while preserving summary segments", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
@@ -1134,6 +1165,347 @@ describe("timeline CLI rendering snapshots", () => {
         delegation.childRows.some((row) => row.kind === "turn"),
       ),
     ).toBe(false);
+  });
+
+  it("repairs legacy Codex subagent activity into nested delegations", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/renderer_fixes",
+        agentThreadId: "renderer-provider",
+        callId: "spawn-renderer",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      event.turnStarted({ turnId: "renderer-turn" }),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/storage_fixes",
+        agentThreadId: "storage-provider",
+        callId: "spawn-storage",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      event.turnStarted({ turnId: "storage-turn" }),
+      event.assistantCompleted({
+        itemId: "renderer-result",
+        turnId: "renderer-turn",
+        text: "Renderer fixed.",
+      }),
+      event.turnCompleted({ turnId: "renderer-turn" }),
+      event.assistantCompleted({
+        itemId: "storage-result",
+        turnId: "storage-turn",
+        text: "Storage fixed.",
+      }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "A steer targeted the child turn.",
+        turnId: "storage-turn",
+      }),
+      event.turnCompleted({ turnId: "storage-turn" }),
+      event.assistantCompleted({
+        itemId: "root-result",
+        text: "All work complete.",
+      }),
+      event.turnCompleted(),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegations = allRows.filter(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const topLevelChildTurns = timeline.rows.filter(
+      (row) =>
+        row.kind === "turn" &&
+        (row.turnId === "renderer-turn" || row.turnId === "storage-turn"),
+    );
+
+    expect(delegations).toHaveLength(2);
+    expect(delegations.map((delegation) => delegation.status)).toEqual([
+      "completed",
+      "completed",
+    ]);
+    expect(topLevelChildTurns).toHaveLength(0);
+    expect(delegations[0]?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Renderer fixed.",
+          turnId: "renderer-turn",
+        }),
+      ]),
+    );
+    expect(delegations[1]?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Storage fixed.",
+          turnId: "storage-turn",
+        }),
+      ]),
+    );
+  });
+
+  it("does not attach a later accepted root turn to a legacy Codex delegation", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const rootStarted = event.turnStarted();
+    const subagentStarted = legacyCodexSubagentStarted(event, {
+      agentPath: "/root/reviewer",
+      agentThreadId: "reviewer-provider",
+      callId: "spawn-reviewer",
+      parentProviderThreadId: "root-provider",
+      parentTurnId: "root-turn",
+    });
+    const followUp = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Human follow-up",
+    });
+    const timeline = renderIdleTimeline([
+      rootStarted,
+      subagentStarted,
+      followUp,
+      event.turnStarted({ turnId: "human-turn" }),
+      event.inputAccepted({
+        clientRequestId: followUp.data.requestId,
+        turnId: "human-turn",
+      }),
+      event.assistantCompleted({
+        itemId: "human-result",
+        text: "Answered the human.",
+        turnId: "human-turn",
+      }),
+      event.turnCompleted({ turnId: "human-turn" }),
+      event.turnStarted({ turnId: "reviewer-turn" }),
+      event.assistantCompleted({
+        itemId: "reviewer-result",
+        text: "Review complete.",
+        turnId: "reviewer-turn",
+      }),
+      event.turnCompleted({ turnId: "reviewer-turn" }),
+      event.turnCompleted(),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Review complete.",
+          turnId: "reviewer-turn",
+        }),
+      ]),
+    );
+    expect(delegation?.childRows).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ turnId: "human-turn" }),
+      ]),
+    );
+    expect(allRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Answered the human.",
+          turnId: "human-turn",
+        }),
+      ]),
+    );
+  });
+
+  it("does not let an interrupted legacy subagent consume a later child turn", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/first",
+        agentThreadId: "first-provider",
+        callId: "spawn-first",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/second",
+        agentThreadId: "second-provider",
+        callId: "spawn-second",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/first",
+        agentThreadId: "first-provider",
+        callId: "first-interrupted",
+        kind: "interrupted",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      event.turnStarted({ turnId: "second-turn" }),
+      event.assistantCompleted({
+        itemId: "second-result",
+        turnId: "second-turn",
+        text: "Second finished.",
+      }),
+      event.turnCompleted({ turnId: "second-turn" }),
+      event.turnCompleted(),
+    ]);
+
+    const delegations = flattenTimelineRows(timeline.rows).filter(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+
+    expect(delegations).toHaveLength(2);
+    expect(delegations.map((delegation) => delegation.status)).toEqual([
+      "interrupted",
+      "completed",
+    ]);
+    expect(delegations[0]?.childRows).toHaveLength(0);
+    expect(delegations[1]?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Second finished.",
+          turnId: "second-turn",
+        }),
+      ]),
+    );
+  });
+
+  it("completes a legacy delegation when its child turn is already parented", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      legacyCodexSubagentStarted(event, {
+        agentPath: "/root/reviewer",
+        agentThreadId: "reviewer-provider",
+        callId: "spawn-reviewer",
+        parentProviderThreadId: "root-provider",
+        parentTurnId: "root-turn",
+      }),
+      event.turnStarted({
+        turnId: "reviewer-turn",
+        parentToolCallId: "spawn-reviewer",
+      }),
+      event.assistantCompleted({
+        itemId: "reviewer-result",
+        turnId: "reviewer-turn",
+        text: "Review complete.",
+      }),
+      event.turnCompleted({ turnId: "reviewer-turn" }),
+      event.turnCompleted(),
+    ]);
+
+    const delegation = flattenTimelineRows(timeline.rows).find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+
+    expect(delegation).toMatchObject({
+      status: "completed",
+      childRows: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Review complete.",
+          turnId: "reviewer-turn",
+        }),
+      ]),
+    });
+  });
+
+  it("ignores duplicate legacy Codex subagent starts", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const started = {
+      agentPath: "/root/reviewer",
+      agentThreadId: "reviewer-provider",
+      callId: "spawn-reviewer",
+      parentProviderThreadId: "root-provider",
+      parentTurnId: "root-turn",
+    };
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      legacyCodexSubagentStarted(event, started),
+      legacyCodexSubagentStarted(event, started),
+      event.turnStarted({ turnId: "reviewer-turn" }),
+      event.assistantCompleted({
+        itemId: "reviewer-result",
+        turnId: "reviewer-turn",
+        text: "Review complete.",
+      }),
+      event.turnCompleted({ turnId: "reviewer-turn" }),
+      event.turnStarted({ turnId: "later-turn" }),
+      event.assistantCompleted({
+        itemId: "later-result",
+        turnId: "later-turn",
+        text: "Later root work.",
+      }),
+    ]);
+
+    const delegations = flattenTimelineRows(timeline.rows).filter(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+
+    expect(delegations).toHaveLength(1);
+    expect(delegations[0]).toMatchObject({ status: "completed" });
+    expect(timeline.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          text: "Later root work.",
+          turnId: "later-turn",
+        }),
+      ]),
+    );
+    expect(delegations[0]?.childRows).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ turnId: "later-turn" }),
+      ]),
+    );
   });
 
   it("does not attach later root turns to Claude receiver-thread delegations", () => {

@@ -60,6 +60,7 @@ function getReconnectState(decoded: ThreadEvent): ReconnectState | null {
 export function parseErrorMessage(
   decoded: ThreadEvent,
   meta: EventMeta,
+  parentToolCallId?: string,
 ): EventProjectionErrorMessage | null {
   if (decoded.type !== "provider/error" && decoded.type !== "system/error")
     return null;
@@ -74,6 +75,7 @@ export function parseErrorMessage(
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     scope: decoded.scope,
+    ...(parentToolCallId ? { parentToolCallId } : {}),
     rawType: decoded.type,
     message: message || "Error event",
     detail: detail && detail !== message ? detail : null,

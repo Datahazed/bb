@@ -92,6 +92,7 @@ import {
 } from "./event-projection-state.js";
 import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
 import { projectAssistantAndReasoningEvent } from "./assistant-event-projection.js";
+import { repairLegacyCodexSubagentProjection } from "./legacy-codex-subagent-projection.js";
 
 // --- Projection state machine ---
 
@@ -900,7 +901,7 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const error = parseErrorMessage(decoded, meta);
+    const error = parseErrorMessage(decoded, meta, eventParentToolCallId);
     if (error) {
       flushToolActivityBeforeNonToolMessage(state);
       state.messages.push(error);
@@ -998,7 +999,9 @@ export function buildEventProjectionEntries(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = repairLegacyCodexSubagentProjection(
+    getOrderedThreadEvents(events),
+  );
   const flatProjection = buildFlatProjectionData({
     acceptedClientRequestContext:
       options.acceptedClientRequestContext ??
@@ -1033,6 +1036,8 @@ export function buildEventProjection(
     };
   }
 
-  const orderedEvents = getOrderedThreadEvents(events);
+  const orderedEvents = repairLegacyCodexSubagentProjection(
+    getOrderedThreadEvents(events),
+  );
   return buildFullEventProjection(orderedEvents, options);
 }

@@ -256,6 +256,127 @@ function tryReadClientTurnRequestedRequestId(
   return event.requestId;
 }
 
+function collectAcceptedRootTurnIds(
+  rows: readonly StoredEventRow[],
+): ReadonlySet<string> {
+  const isRootTargetByRequestId = new Map<ClientTurnRequestId, boolean>();
+  for (const row of rows) {
+    if (row.type !== "client/turn/requested") {
+      continue;
+    }
+    const event = parseStoredEvent(row);
+    if (event.type !== "client/turn/requested") {
+      continue;
+    }
+    isRootTargetByRequestId.set(
+      event.requestId,
+      event.target.kind === "new-turn" || event.target.kind === "thread-start",
+    );
+  }
+
+  const turnIds = new Set<string>();
+  for (const row of rows) {
+    if (row.type !== "turn/input/accepted") {
+      continue;
+    }
+    const event = parseStoredEvent(row);
+    if (
+      event.type === "turn/input/accepted" &&
+      event.scope.kind === "turn" &&
+      isRootTargetByRequestId.get(event.clientRequestId)
+    ) {
+      turnIds.add(event.scope.turnId);
+    }
+  }
+  return turnIds;
+}
+
+function isLegacyCodexSubagentStarted(row: StoredEventRow): boolean {
+  if (
+    row.type !== "provider/unhandled" ||
+    row.scopeKind !== "turn" ||
+    row.turnId === null ||
+    row.providerThreadId === null
+  ) {
+    return false;
+  }
+  const data = parseStoredEventData(row);
+  if (data.providerId !== "codex") {
+    return false;
+  }
+  const rawEvent = asRecord(data.rawEvent);
+  const params = rawEvent ? asRecord(rawEvent.params) : null;
+  const item = params ? asRecord(params.item) : null;
+  return (
+    rawEvent?.jsonrpc === "2.0" &&
+    rawEvent.method === "item/completed" &&
+    params?.threadId === row.providerThreadId &&
+    params.turnId === row.turnId &&
+    item?.type === "subAgentActivity" &&
+    item.kind === "started" &&
+    typeof item.id === "string" &&
+    item.id.length > 0 &&
+    typeof item.agentThreadId === "string" &&
+    item.agentThreadId.length > 0 &&
+    typeof item.agentPath === "string" &&
+    item.agentPath.length > 0
+  );
+}
+
+/**
+ * Legacy Codex rows did not persist child turn parent tool-call IDs. Keep the
+ * full recovered child lineage in a turn-detail selection so the projection
+ * repair can reconstruct it in memory.
+ */
+function collectLegacyCodexChildTurnIds(
+  rows: readonly StoredEventRow[],
+  requestedTurnId: string,
+): ReadonlySet<string> {
+  const acceptedRootTurnIds = collectAcceptedRootTurnIds(rows);
+  const recoveredParentTurnIds = new Set([requestedTurnId]);
+  const pendingByProviderThreadId = new Map<string, number>();
+  const childTurnIds = new Set<string>();
+
+  for (const row of rows) {
+    const providerThreadId = row.providerThreadId;
+    if (
+      isLegacyCodexSubagentStarted(row) &&
+      row.turnId !== null &&
+      recoveredParentTurnIds.has(row.turnId)
+    ) {
+      if (providerThreadId === null) {
+        continue;
+      }
+      const count = pendingByProviderThreadId.get(providerThreadId) ?? 0;
+      pendingByProviderThreadId.set(providerThreadId, count + 1);
+      continue;
+    }
+    if (
+      row.type !== "turn/started" ||
+      row.scopeKind !== "turn" ||
+      row.turnId === null ||
+      row.turnId === requestedTurnId ||
+      providerThreadId === null ||
+      acceptedRootTurnIds.has(row.turnId) ||
+      getStoredEventParentToolCallId(row)
+    ) {
+      continue;
+    }
+    const pending = pendingByProviderThreadId.get(providerThreadId) ?? 0;
+    if (pending === 0) {
+      continue;
+    }
+    childTurnIds.add(row.turnId);
+    recoveredParentTurnIds.add(row.turnId);
+    if (pending === 1) {
+      pendingByProviderThreadId.delete(providerThreadId);
+    } else {
+      pendingByProviderThreadId.set(providerThreadId, pending - 1);
+    }
+  }
+  return childTurnIds;
+}
+
 function tryReadSteerClientTurnRequestedRequestId(
   row: StoredEventRow,
 ): ClientTurnRequestId | null {
@@ -534,10 +655,18 @@ function partitionAcceptedInputRowsByRequestedTurn(
 function filterExactEventRowsForRequestedTurn(
   args: FilterExactEventRowsForRequestedTurnArgs,
 ): FilterExactEventRowsForRequestedTurnResult {
+  const legacyChildTurnIds = collectLegacyCodexChildTurnIds(
+    args.exactEventRows,
+    args.turnId,
+  );
   const rows: StoredEventRow[] = [];
   let removedRows = false;
   for (const row of args.exactEventRows) {
-    if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
+    if (
+      row.scopeKind === "turn" &&
+      row.turnId !== args.turnId &&
+      (row.turnId === null || !legacyChildTurnIds.has(row.turnId))
+    ) {
       removedRows = true;
       continue;
     }

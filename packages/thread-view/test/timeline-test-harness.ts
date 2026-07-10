@@ -213,6 +213,7 @@ interface SystemErrorArgs extends EventFactoryRowOptions {
   code?: string;
   detail?: string;
   message: string;
+  turnId?: string;
 }
 
 interface ProviderErrorArgs extends ProviderTurnEventOptions {
@@ -806,7 +807,13 @@ export function createTimelineEventFactory(
       };
     },
     systemError(args) {
-      const base = nextThreadScopedRowBase("system-error", args);
+      const base =
+        args.turnId !== undefined
+          ? {
+              ...nextRowBase("system-error", args),
+              scope: turnScope(args.turnId),
+            }
+          : nextThreadScopedRowBase("system-error", args);
       return {
         ...base,
         type: "system/error",

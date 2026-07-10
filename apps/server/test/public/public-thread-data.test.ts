@@ -1294,6 +1294,243 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates legacy Codex delegated child rows in parent turn-summary details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const providerThreadId = "provider-thread-1";
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 2,
+        type: "provider/unhandled",
+        data: {
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: providerThreadId,
+              turnId: "parent-turn",
+              item: {
+                type: "subAgentActivity",
+                id: "legacy-agent-call",
+                kind: "started",
+                agentThreadId: "legacy-child-provider",
+                agentPath: "/root/reviewer",
+              },
+            },
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 3,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            text: "Legacy child completed the review.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("child-turn"),
+        sequence: 5,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId,
+        scope: turnScope("parent-turn"),
+        sequence: 6,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const parentTurnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow =>
+          row.kind === "turn" && row.turnId === "parent-turn",
+      );
+      expect(parentTurnRow).toBeDefined();
+      if (!parentTurnRow) {
+        throw new Error("Expected parent turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+      const delegation = details.rows.find(
+        (
+          row,
+        ): row is Extract<
+          TimelineRow,
+          { kind: "work"; workKind: "delegation" }
+        > => row.kind === "work" && row.workKind === "delegation",
+      );
+
+      expect(delegation).toMatchObject({
+        status: "completed",
+        childRows: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "conversation",
+            text: "Legacy child completed the review.",
+          }),
+        ]),
+      });
+    });
+  });
+
+  it("hydrates nested legacy Codex delegated rows in parent turn-summary details", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const providerThreadId = "provider-thread-1";
+
+      const legacyStarted = (turnId: string, callId: string) => ({
+        providerId: "codex",
+        rawType: "item/completed",
+        rawEvent: {
+          jsonrpc: "2.0" as const,
+          method: "item/completed",
+          params: {
+            threadId: providerThreadId,
+            turnId,
+            item: {
+              type: "subAgentActivity",
+              id: callId,
+              kind: "started" as const,
+              agentThreadId: `${callId}-provider`,
+              agentPath: `/root/${callId}`,
+            },
+          },
+        },
+      });
+      const seed = (
+        sequence: number,
+        scopeTurnId: string,
+        type: "item/completed" | "provider/unhandled" | "turn/completed" | "turn/started",
+        data: Record<string, unknown>,
+      ) => {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          scope: turnScope(scopeTurnId),
+          sequence,
+          type,
+          data,
+        });
+      };
+
+      seed(1, "parent-turn", "turn/started", {});
+      seed(2, "parent-turn", "provider/unhandled", legacyStarted("parent-turn", "child-call"));
+      seed(3, "child-turn", "turn/started", {});
+      seed(4, "child-turn", "provider/unhandled", legacyStarted("child-turn", "grandchild-call"));
+      seed(5, "grandchild-turn", "turn/started", {});
+      seed(6, "grandchild-turn", "item/completed", {
+        item: {
+          type: "agentMessage",
+          id: "grandchild-message",
+          text: "Grandchild completed the review.",
+        },
+      });
+      seed(7, "grandchild-turn", "turn/completed", { status: "completed" });
+      seed(8, "child-turn", "turn/completed", { status: "completed" });
+      seed(9, "parent-turn", "turn/completed", { status: "completed" });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const parentTurnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow =>
+          row.kind === "turn" && row.turnId === "parent-turn",
+      );
+      expect(parentTurnRow).toBeDefined();
+      if (!parentTurnRow) {
+        throw new Error("Expected parent turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+      const outerDelegation = details.rows.find(
+        (
+          row,
+        ): row is Extract<
+          TimelineRow,
+          { kind: "work"; workKind: "delegation" }
+        > => row.kind === "work" && row.workKind === "delegation",
+      );
+      const nestedDelegation = outerDelegation?.childRows.find(
+        (
+          row,
+        ): row is Extract<
+          TimelineRow,
+          { kind: "work"; workKind: "delegation" }
+        > => row.kind === "work" && row.workKind === "delegation",
+      );
+
+      expect(nestedDelegation).toMatchObject({
+        status: "completed",
+        childRows: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "conversation",
+            text: "Grandchild completed the review.",
+          }),
+        ]),
+      });
+    });
+  });
+
   it("hydrates turn-summary details with future accepted input context", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
