@@ -18,6 +18,10 @@ type FetchLike = (
 
 export interface PluginListItem {
   id: string;
+  /** Installed source spec; null only when talking to an older server. */
+  source: string | null;
+  /** Host path containing the plugin; null only when unavailable. */
+  rootDir: string | null;
   version: string;
   enabled: boolean;
   status: string;
@@ -44,6 +48,8 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
   }
   return {
     id: item.id,
+    source: typeof item.source === "string" ? item.source : null,
+    rootDir: typeof item.rootDir === "string" ? item.rootDir : null,
     version: item.version,
     enabled: item.enabled,
     status: item.status,

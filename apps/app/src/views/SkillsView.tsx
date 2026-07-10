@@ -34,7 +34,17 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { PageShell } from "@/components/ui/page-shell.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog";
 import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import {
@@ -329,24 +339,42 @@ function skillDescription(skill: SkillSummary): string {
 function SkillRow({
   skill,
   onSelect,
+  onEdit,
+  onDelete,
 }: {
   skill: SkillSummary;
   onSelect: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const description = skillDescription(skill);
+  const actions =
+    onEdit || onDelete ? (
+      <>
+        {onEdit ? (
+          <ResourceActionButton
+            label={`Edit ${skill.name}`}
+            icon="Edit"
+            onClick={onEdit}
+          />
+        ) : null}
+        {onDelete ? (
+          <ResourceActionButton
+            label={`Delete ${skill.name}`}
+            icon="Trash2"
+            tone="destructive"
+            onClick={onDelete}
+          />
+        ) : null}
+      </>
+    ) : undefined;
   return (
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       description={description}
       onOpen={onSelect}
-      actions={
-        <ResourceActionButton
-          label={`Open ${skill.name}`}
-          icon="ChevronRight"
-          onClick={onSelect}
-        />
-      }
+      actions={actions}
     />
   );
 }
@@ -729,6 +757,8 @@ export interface SkillsOverviewProps {
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
+  onEditSkill?: (skill: SkillSummary) => void;
+  onDeleteSkill?: (skill: SkillSummary) => void;
   onSelectRegistrySkill?: (skill: RegistrySkill) => void;
   onQueryChange?: (query: string) => void;
   onInstallRegistrySkill?: (skill: RegistrySkill) => void;
@@ -757,6 +787,8 @@ export function SkillsOverview({
   registryBrowseAction,
   onCreateSkill,
   onSelectSkill,
+  onEditSkill,
+  onDeleteSkill,
   onSelectRegistrySkill = () => {},
   onQueryChange = () => {},
   onInstallRegistrySkill = () => {},
@@ -923,6 +955,16 @@ export function SkillsOverview({
               key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
               skill={skill}
               onSelect={() => onSelectSkill(skill)}
+              onEdit={
+                skill.manageable && onEditSkill
+                  ? () => onEditSkill(skill)
+                  : undefined
+              }
+              onDelete={
+                skill.manageable && onDeleteSkill
+                  ? () => onDeleteSkill(skill)
+                  : undefined
+              }
             />
           ))}
         </ResourceListPanel>
@@ -994,12 +1036,17 @@ export interface SkillDetailDialogViewProps {
   /** Already-fetched SKILL.md source. */
   content: string;
   isLoadingContent: boolean;
+  /** A background refetch is checking for out-of-band SKILL.md changes. */
+  isRefreshingContent: boolean;
   isContentError: boolean;
   /** Expose inline Edit + Delete (manageable bb user/project skills only). */
   canManage: boolean;
   canOpenInEditor: boolean;
+  initiallyEditing?: boolean;
   isSaving: boolean;
   isDeleting: boolean;
+  /** Clears one-shot route state after overview-row Edit enters edit mode. */
+  onInitialEditStarted?: () => void;
   /**
    * Persist edited content. Resolves `true` when the save succeeded so the view
    * leaves edit mode; `false` keeps the draft for retry.
@@ -1023,19 +1070,26 @@ function SkillPathCopyButton({ path }: { path: string }) {
   }, [path]);
 
   return (
-    <button
-      type="button"
-      aria-label={`Copy skill path: ${path}`}
-      onClick={handleCopy}
-      className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span className="truncate font-mono">{path}</span>
-      <Icon
-        name={copied ? "Check" : "Copy"}
-        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        aria-hidden
-      />
-    </button>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Copy skill path: ${path}`}
+            onClick={handleCopy}
+            className="group -ml-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <span className="truncate font-mono">{path}</span>
+            <Icon
+              name={copied ? "Check" : "Copy"}
+              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1050,11 +1104,14 @@ export function SkillDetailDialogView({
   skill,
   content,
   isLoadingContent,
+  isRefreshingContent,
   isContentError,
   canManage,
   canOpenInEditor,
+  initiallyEditing = false,
   isSaving,
   isDeleting,
+  onInitialEditStarted = () => {},
   onSave,
   onDelete,
   onOpenInEditor,
@@ -1062,11 +1119,42 @@ export function SkillDetailDialogView({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const initialEditConsumedRef = useRef<string | null>(null);
 
   useEffect(() => {
     setEditing(false);
     setConfirmingDelete(false);
+    initialEditConsumedRef.current = null;
   }, [skill?.scope, skill?.name, skill?.provider]);
+
+  useEffect(() => {
+    if (
+      !initiallyEditing ||
+      !canManage ||
+      skill === null ||
+      isLoadingContent ||
+      isRefreshingContent ||
+      isContentError
+    ) {
+      return;
+    }
+    const editKey = `${skill.scope}:${skill.provider ?? "bb"}:${skill.name}`;
+    if (initialEditConsumedRef.current === editKey) return;
+    initialEditConsumedRef.current = editKey;
+    setConfirmingDelete(false);
+    setDraft(content);
+    setEditing(true);
+    onInitialEditStarted();
+  }, [
+    canManage,
+    content,
+    initiallyEditing,
+    isContentError,
+    isLoadingContent,
+    isRefreshingContent,
+    onInitialEditStarted,
+    skill,
+  ]);
 
   async function handleSave() {
     if (await onSave(draft)) {
@@ -1088,47 +1176,22 @@ export function SkillDetailDialogView({
     setEditing(true);
   }
 
-  const actionRow = editing ? (
+  const sectionActions = editing ? (
     <>
-      <Button
-        variant="outline"
-        size="sm"
+      <ResourceActionButton
+        label="Cancel editing"
+        icon="X"
         disabled={isSaving}
         onClick={() => setEditing(false)}
-      >
-        Cancel
-      </Button>
-      <Button
-        size="sm"
+      />
+      <ResourceActionButton
+        label="Save skill"
+        icon="Check"
         disabled={isSaving || isLoadingContent}
         onClick={handleSave}
-      >
-        Save
-      </Button>
+      />
     </>
-  ) : confirmingDelete ? (
-    <>
-      <span className="mr-auto self-center text-xs text-muted-foreground">
-        Delete this skill?
-      </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setConfirmingDelete(false)}
-      >
-        Cancel
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="text-destructive hover:text-destructive"
-        disabled={isDeleting}
-        onClick={onDelete}
-      >
-        Delete
-      </Button>
-    </>
-  ) : null;
+  ) : undefined;
 
   if (skill === null) return null;
   const detailStatusLabel =
@@ -1147,7 +1210,7 @@ export function SkillDetailDialogView({
                 {
                   label: "Edit",
                   icon: "Edit" as const,
-                  disabled: isLoadingContent,
+                  disabled: isLoadingContent || isRefreshingContent,
                   onSelect: startEditing,
                 },
               ]
@@ -1213,20 +1276,28 @@ export function SkillDetailDialogView({
       }
       overflowMenu={headerActions}
       metadata={<SkillPathCopyButton path={skill.filePath} />}
-      modeActions={actionRow}
     >
-      <ResourceDetailSection label="SKILL.md">
+      <ResourceDetailSection label="SKILL.md" actions={sectionActions}>
         {contentBody}
-        {editing || confirmingDelete ? (
+        {editing ? (
           <span className="sr-only">Skill edit mode is active.</span>
         ) : null}
       </ResourceDetailSection>
-
-      {confirmingDelete && !editing ? (
-        <p className="text-xs text-muted-foreground">
-          This deletes the local skill file from the selected scope.
-        </p>
-      ) : null}
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={(open) => {
+          if (!isDeleting) setConfirmingDelete(open);
+        }}
+      >
+        <ConfirmDeleteDialogContent
+          title="Delete skill?"
+          description={`Delete "${skill.name}" from its bb scope? This cannot be undone.`}
+          confirmLabel="Delete skill"
+          pending={isDeleting}
+          onConfirm={onDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      </ConfirmDeleteDialog>
     </ResourceDetailPage>
   );
 }
@@ -1240,10 +1311,14 @@ function SkillDetailPage({
   projectId,
   skill,
   onClose,
+  initiallyEditing = false,
+  onInitialEditStarted,
 }: {
   projectId: string;
   skill: SkillSummary | null;
   onClose: () => void;
+  initiallyEditing?: boolean;
+  onInitialEditStarted?: () => void;
 }) {
   const contentQuery = useSkillContent(projectId, skill);
   const updateSkill = useUpdateSkill(projectId);
@@ -1263,11 +1338,14 @@ function SkillDetailPage({
       skill={skill}
       content={contentQuery.data?.content ?? ""}
       isLoadingContent={contentQuery.isLoading}
+      isRefreshingContent={contentQuery.isFetching}
       isContentError={contentQuery.isError}
       canManage={skill?.manageable === true && deletableScope !== null}
       canOpenInEditor={skill !== null && canOpenPreferredFileTarget}
+      initiallyEditing={initiallyEditing}
       isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
+      onInitialEditStarted={onInitialEditStarted}
       onSave={async (content) => {
         if (!skill || deletableScope === null) return false;
         try {
@@ -1316,7 +1394,9 @@ export function SkillsLibrary() {
     registrySkillId?: string;
   }>();
   const [query, setQuery] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
+  const deleteSkill = useDeleteSkill(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? EMPTY_SKILLS;
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
@@ -1406,13 +1486,14 @@ export function SkillsLibrary() {
     [providerStatus, registryInstall],
   );
   const openSkill = useCallback(
-    (skill: SkillSummary) => {
+    (skill: SkillSummary, options?: { editing?: boolean }) => {
       navigate(
         getSkillDetailRoutePath({
           scope: skill.scope,
           providerId: skill.provider,
           skillName: skill.name,
         }),
+        options?.editing ? { state: { editSkill: true } } : undefined,
       );
     },
     [navigate],
@@ -1426,6 +1507,27 @@ export function SkillsLibrary() {
   const closeSkillDetail = useCallback(() => {
     navigate(getSkillsRoutePath());
   }, [navigate]);
+  const confirmDeleteSkill = useCallback(() => {
+    if (
+      deleteTarget === null ||
+      (deleteTarget.scope !== "bb-user" && deleteTarget.scope !== "bb-project")
+    ) {
+      return;
+    }
+    deleteSkill.mutate(
+      {
+        scope: deleteTarget.scope,
+        name: deleteTarget.name,
+        environmentId: null,
+      },
+      {
+        onSuccess: () => {
+          appToast.success("Skill deleted");
+          setDeleteTarget(null);
+        },
+      },
+    );
+  }, [deleteSkill, deleteTarget]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -1447,6 +1549,14 @@ export function SkillsLibrary() {
       : null;
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath();
+  const initiallyEditingSelectedSkill =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "editSkill" in location.state &&
+    location.state.editSkill === true;
+  const clearInitialEditState = useCallback(() => {
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, navigate]);
   return (
     <>
       {selectedSkill ? (
@@ -1454,6 +1564,8 @@ export function SkillsLibrary() {
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}
           onClose={closeSkillDetail}
+          initiallyEditing={initiallyEditingSelectedSkill}
+          onInitialEditStarted={clearInitialEditState}
         />
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
@@ -1502,6 +1614,8 @@ export function SkillsLibrary() {
           }
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}
+          onEditSkill={(skill) => openSkill(skill, { editing: true })}
+          onDeleteSkill={setDeleteTarget}
           onSelectRegistrySkill={openRegistrySkill}
           onQueryChange={setQuery}
           onInstallRegistrySkill={installRegistry}
@@ -1512,6 +1626,23 @@ export function SkillsLibrary() {
           onRetryRegistry={() => void registryQuery.refetch()}
         />
       )}
+      <ConfirmDeleteDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteSkill.isPending) setDeleteTarget(null);
+        }}
+      >
+        {deleteTarget ? (
+          <ConfirmDeleteDialogContent
+            title="Delete skill?"
+            description={`Delete "${deleteTarget.name}" from its bb scope? This cannot be undone.`}
+            confirmLabel="Delete skill"
+            pending={deleteSkill.isPending}
+            onConfirm={confirmDeleteSkill}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
     </>
   );
 }

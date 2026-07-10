@@ -141,6 +141,7 @@ function Story(props: Partial<SkillsOverviewProps>) {
         skill={selected}
         content={SAMPLE_SKILL_MD}
         isLoadingContent={false}
+        isRefreshingContent={false}
         isContentError={false}
         canManage={storyCanManage(selected)}
         canOpenInEditor={false}

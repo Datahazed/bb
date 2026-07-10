@@ -29,6 +29,12 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { Textarea } from "@bb/shared-ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import {
@@ -81,6 +87,7 @@ interface ResourceListRowFixture {
   id: string;
   title: string;
   description: string;
+  manageable?: boolean;
   environment?: StoryEnvironmentDisplay;
   provider?: ProviderId;
   icon?: IconName;
@@ -162,6 +169,12 @@ const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
         title: "skill-creator",
         description: "Create new bb skills and improve existing ones.",
       },
+      {
+        id: "release-playbook",
+        title: "release-playbook",
+        description: "Apply the team's reusable release process.",
+        manageable: true,
+      },
     ],
   },
   {
@@ -228,11 +241,13 @@ const PLUGIN_SECTIONS: readonly ResourceSectionFixture[] = [
         id: "automations",
         title: "automations",
         description: "Run scheduled bb work across projects and folders.",
+        manageable: true,
       },
       {
         id: "connect",
         title: "connect",
         description: "Remote access via getbb.app.",
+        manageable: true,
       },
     ],
   },
@@ -393,12 +408,6 @@ function ResourceLeading({
       className="size-4 text-muted-foreground"
       aria-hidden
     />
-  );
-}
-
-function RowOpenAction({ label }: { label: string }) {
-  return (
-    <ResourceActionButton label={label} icon="ChevronRight" onClick={NOOP} />
   );
 }
 
@@ -625,7 +634,6 @@ function ResourceRowsList({
   sortMode,
   sortDirection,
   fallbackIcon,
-  kind,
 }: {
   sections: readonly ResourceSectionFixture[];
   query: string;
@@ -633,7 +641,6 @@ function ResourceRowsList({
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
   fallbackIcon: IconName;
-  kind: "skill" | "plugin";
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = sections
@@ -684,18 +691,21 @@ function ResourceRowsList({
           muted={row.muted}
           onOpen={NOOP}
           actions={
-            kind === "plugin" ? (
+            row.manageable ? (
               <>
                 <ResourceActionButton
-                  label={row.muted ? "Enable" : "Disable"}
-                  icon={row.muted ? "Play" : "Pause"}
+                  label={`Edit ${row.title}`}
+                  icon="Edit"
                   onClick={NOOP}
                 />
-                <RowOpenAction label={`Open ${row.title}`} />
+                <ResourceActionButton
+                  label={`Delete ${row.title}`}
+                  icon="Trash2"
+                  tone="destructive"
+                  onClick={NOOP}
+                />
               </>
-            ) : (
-              <RowOpenAction label={`Open ${row.title}`} />
-            )
+            ) : undefined
           }
         />
       ))}
@@ -760,32 +770,29 @@ function StoryInstallButton({
 }
 
 function RegistryBrowseSource({
-  showAll,
   installedSkillIds,
   onInstall,
   onSeeAll,
 }: {
-  showAll: boolean;
   installedSkillIds: ReadonlySet<string>;
   onInstall: (id: string) => void;
   onSeeAll: () => void;
 }) {
-  const rows = showAll
-    ? REGISTRY_SOURCE_ROWS
-    : REGISTRY_SOURCE_ROWS.slice(0, 3);
+  const availableRows = REGISTRY_SOURCE_ROWS.filter(
+    (row) => !installedSkillIds.has(row.id),
+  );
+  const rows = availableRows.slice(0, 3);
   return (
     <ResourceSourceShelf
       label="Browse"
       attribution={<SkillsShAttributionLink />}
       scrollOverlay={
-        REGISTRY_SOURCE_ROWS.length > rows.length ? (
+        availableRows.length > rows.length ? (
           <OverflowFade placement="right" tone="recessed" />
         ) : undefined
       }
       browseAction={
-        showAll ? undefined : (
-          <ResourceShelfSeeAllAction type="button" onClick={onSeeAll} />
-        )
+        <ResourceShelfSeeAllAction type="button" onClick={onSeeAll} />
       }
     >
       {rows.map((row) => (
@@ -809,6 +816,73 @@ function RegistryBrowseSource({
         </ResourceSourceItem>
       ))}
     </ResourceSourceShelf>
+  );
+}
+
+function RegistryBrowseAllSurface({
+  installedSkillIds,
+  onInstall,
+}: {
+  installedSkillIds: ReadonlySet<string>;
+  onInstall: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [direction, setDirection] = useState<"asc" | "desc">("desc");
+  const normalizedQuery = query.trim().toLowerCase();
+  const rows = REGISTRY_SOURCE_ROWS.filter((row) =>
+    [row.title, row.source, row.summary]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery),
+  );
+  if (direction === "asc") rows.reverse();
+
+  return (
+    <div className="space-y-4">
+      <ResourceTabDescription>
+        Browse every skill available from skills.sh and install it for all
+        configured agents at user scope.
+      </ResourceTabDescription>
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search skills.sh"
+        onSearchChange={setQuery}
+        controls={
+          <ResourceSortMenu
+            value="installs"
+            direction={direction}
+            options={[{ id: "installs", label: "Install count" }]}
+            onChange={() =>
+              setDirection((current) => (current === "asc" ? "desc" : "asc"))
+            }
+          />
+        }
+      />
+      <div className="flex justify-end px-1">
+        <SkillsShAttributionLink />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {rows.map((row) => (
+          <ResourceBrowseCard
+            key={row.id}
+            title={row.title}
+            byline={`by ${row.source}`}
+            description={row.summary}
+            openLabel={`Open ${row.title}`}
+            onOpen={NOOP}
+            headerAction={
+              <StoryInstallButton
+                installed={installedSkillIds.has(row.id)}
+                onInstall={() => onInstall(row.id)}
+              />
+            }
+            footerMeta={
+              <StorySocialProof installs={row.installs} stars={row.stars} />
+            }
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1023,9 +1097,17 @@ function SkillsOverviewSurface({
       id: `installed-${id}`,
       title: row.title,
       description: row.summary,
-      provider: "bb",
+      provider: "codex",
       icon: "Zap",
     });
+  }
+  if (showAllBrowse) {
+    return (
+      <RegistryBrowseAllSurface
+        installedSkillIds={installedSkillIds}
+        onInstall={handleRegistryInstall}
+      />
+    );
   }
   return (
     <div className="space-y-4">
@@ -1034,7 +1116,6 @@ function SkillsOverviewSurface({
         created in bb are available across every agent you use in bb.
       </ResourceTabDescription>
       <RegistryBrowseSource
-        showAll={showAllBrowse}
         installedSkillIds={installedSkillIds}
         onInstall={handleRegistryInstall}
         onSeeAll={() => setShowAllBrowse(true)}
@@ -1068,7 +1149,6 @@ function SkillsOverviewSurface({
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="Zap"
-        kind="skill"
       />
     </div>
   );
@@ -1132,7 +1212,6 @@ function PluginsOverviewSurface({
         sortMode={sort}
         sortDirection={direction}
         fallbackIcon="ElectricPlugs"
-        kind="plugin"
       />
     </div>
   );
@@ -1560,7 +1639,7 @@ function AutomationDetailContent({
             { kind: "separator" },
             {
               label: "Run now",
-              icon: "ArrowReloadHorizontal",
+              icon: "Play",
               onSelect: NOOP,
             },
             { kind: "separator" },
@@ -1578,30 +1657,27 @@ function AutomationDetailContent({
           items={[automationFixtureScheduleMeta(fixture, enabled)]}
         />
       }
-      modeActions={
-        editing ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={cancelEditing}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!canSave}
-              onClick={saveEditing}
-            >
-              Save
-            </Button>
-          </>
-        ) : null
-      }
     >
-      <ResourceDetailSection label="Configuration">
+      <ResourceDetailSection
+        label="Configuration"
+        actions={
+          editing ? (
+            <>
+              <ResourceActionButton
+                label="Cancel editing"
+                icon="X"
+                onClick={cancelEditing}
+              />
+              <ResourceActionButton
+                label="Save automation"
+                icon="Check"
+                disabled={!canSave}
+                onClick={saveEditing}
+              />
+            </>
+          ) : undefined
+        }
+      >
         <ResourcePropertyList>
           {editing ? (
             <ResourceProperty label="Name">
@@ -1868,19 +1944,26 @@ function StoryPathCopyButton({ path }: { path: string }) {
   }
 
   return (
-    <button
-      type="button"
-      aria-label={`Copy skill path: ${path}`}
-      onClick={handleCopy}
-      className="group inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span className="truncate font-mono">{path}</span>
-      <Icon
-        name={copied ? "Check" : "Copy"}
-        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        aria-hidden
-      />
-    </button>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Copy skill path: ${path}`}
+            onClick={handleCopy}
+            className="group -ml-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <span className="truncate font-mono">{path}</span>
+            <Icon
+              name={copied ? "Check" : "Copy"}
+              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1937,22 +2020,23 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
   const [savedMarkdown, setSavedMarkdown] = useState(fixture.markdown);
   const [draft, setDraft] = useState(fixture.markdown);
 
-  const actions = editing ? (
+  const sectionActions = editing ? (
     <>
-      <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
-        Cancel
-      </Button>
-      <Button
-        size="sm"
+      <ResourceActionButton
+        label="Cancel editing"
+        icon="X"
+        onClick={() => setEditing(false)}
+      />
+      <ResourceActionButton
+        label="Save skill"
+        icon="Check"
         onClick={() => {
           setSavedMarkdown(draft);
           setEditing(false);
         }}
-      >
-        Save
-      </Button>
+      />
     </>
-  ) : null;
+  ) : undefined;
 
   return (
     <ResourceDetailPage
@@ -1984,9 +2068,8 @@ function SkillDetailContent({ fixture }: { fixture: SkillDetailFixture }) {
         />
       }
       metadata={<StoryPathCopyButton path={fixture.path} />}
-      modeActions={actions}
     >
-      <ResourceDetailSection label="SKILL.md">
+      <ResourceDetailSection label="SKILL.md" actions={sectionActions}>
         {editing ? (
           <textarea
             value={draft}
@@ -2211,8 +2294,20 @@ function PluginDetailContent({ fixture }: { fixture: PluginDetailFixture }) {
       onEnabledChange={setEnabled}
       overflowItems={[
         {
+          label: "Edit",
+          icon: "Edit",
+          onSelect: NOOP,
+        },
+        {
           label: "Reload",
           icon: "ArrowReloadHorizontal",
+          onSelect: NOOP,
+        },
+        { kind: "separator" },
+        {
+          label: "Delete",
+          icon: "Trash2",
+          tone: "destructive",
           onSelect: NOOP,
         },
       ]}

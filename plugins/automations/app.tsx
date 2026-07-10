@@ -877,87 +877,6 @@ function AutomationBrowseShelf({
   );
 }
 
-function AutomationOverviewPreview() {
-  const navigate = useBbNavigate();
-  const { entries, error, refetch } = useOverview();
-
-  if (error !== null) {
-    return (
-      <ResourceListState
-        state="error"
-        message="Couldn't load automations."
-        onRetry={refetch}
-      />
-    );
-  }
-  if (entries === null) {
-    return <ResourceListState state="loading" message="Loading automations" />;
-  }
-  if (entries.length === 0) {
-    return (
-      <ResourceListState state="empty" message="No automations installed." />
-    );
-  }
-
-  return (
-    <ResourceListPanel maxHeightClassName="max-h-72">
-      {entries.slice(0, 5).map((entry) => {
-        const { automation } = entry;
-        const route = routeOf(automation);
-        const completedOneShot = isCompletedOneShotAutomation({
-          enabled: automation.enabled,
-          trigger: automation.trigger,
-          runCount: automation.runCount,
-        });
-        const environmentDisplay = automationEnvironmentDisplay(
-          automation.execution,
-        );
-        return (
-          <ResourceRow
-            key={automation.id}
-            leading={<AutomationRowLeading automation={automation} />}
-            title={automation.name}
-            description={
-              <span className="inline-flex min-w-0 items-center gap-1.5">
-                <span className="truncate">
-                  {formatAutomationTrigger(automation.trigger)}
-                </span>
-                {environmentDisplay ? (
-                  <>
-                    <span aria-hidden>·</span>
-                    <AutomationEnvironmentInline display={environmentDisplay} />
-                  </>
-                ) : null}
-                <span aria-hidden>·</span>
-                <span className="truncate">
-                  {automationLocationLabel(entry)}
-                </span>
-              </span>
-            }
-            muted={completedOneShot}
-            onOpen={() =>
-              navigate.toPluginPanel(PANEL_PATH, {
-                subPath: `${route.projectId}/${route.automationId}`,
-              })
-            }
-            actions={
-              <ResourceActionButton
-                label={`Open ${automation.name}`}
-                icon="ChevronRight"
-                onClick={() =>
-                  navigate.toPluginPanel(PANEL_PATH, {
-                    subPath: `${route.projectId}/${route.automationId}`,
-                  })
-                }
-              />
-            }
-          />
-        );
-      })}
-    </ResourceListPanel>
-  );
-}
-
 function AutomationBrowsePage({
   onCreate,
 }: {
@@ -1469,6 +1388,22 @@ function DetailView({
     draftBody.trim().length > 0 &&
     !saving &&
     !actionPending;
+  const configurationActions = editing ? (
+    <>
+      <ResourceActionButton
+        label="Cancel editing"
+        icon="X"
+        disabled={saving}
+        onClick={closeEdit}
+      />
+      <ResourceActionButton
+        label="Save automation"
+        icon="Check"
+        disabled={!canSaveEdit}
+        onClick={saveEdit}
+      />
+    </>
+  ) : undefined;
 
   return (
     <ResourceDetailPage
@@ -1506,7 +1441,7 @@ function DetailView({
             { kind: "separator" },
             {
               label: "Run now",
-              icon: "ArrowReloadHorizontal",
+              icon: "Play",
               onSelect: () => runAction("run"),
             },
             { kind: "separator" },
@@ -1520,31 +1455,11 @@ function DetailView({
         />
       }
       metadata={<ResourceMeta items={[automationScheduleLabel(automation)]} />}
-      modeActions={
-        editing ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={saving}
-              onClick={closeEdit}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!canSaveEdit}
-              onClick={saveEdit}
-            >
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </>
-        ) : null
-      }
     >
-      <ResourceDetailSection label="Configuration">
+      <ResourceDetailSection
+        label="Configuration"
+        actions={configurationActions}
+      >
         <ResourcePropertyList>
           {editing ? (
             <ResourceProperty label="Name">
@@ -1694,9 +1609,6 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 
   if (subPath === "browse") {
     return <AutomationBrowsePage onCreate={createViaChat} />;
-  }
-  if (subPath === "preview") {
-    return <AutomationOverviewPreview />;
   }
   if (parsedRoute !== null) {
     return (

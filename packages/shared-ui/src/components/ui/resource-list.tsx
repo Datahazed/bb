@@ -696,16 +696,23 @@ export function ResourcePropertyList({ children }: { children: ReactNode }) {
 
 export function ResourceDetailSection({
   label,
+  actions,
   children,
 }: {
   label: ReactNode;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-medium uppercase text-muted-foreground">
-        {label}
-      </h2>
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <h2 className="text-xs font-medium uppercase text-muted-foreground">
+          {label}
+        </h2>
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-0.5">{actions}</div>
+        ) : null}
+      </div>
       {children}
     </section>
   );

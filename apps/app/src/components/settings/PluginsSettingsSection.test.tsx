@@ -122,6 +122,8 @@ describe("PluginRow settings gating", () => {
   function rowPlugin(status: string, logoUrl: string | null = null) {
     return {
       id: "linear",
+      source: "path:/plugins/linear",
+      rootDir: "/plugins/linear",
       version: "0.1.0",
       enabled: true,
       status,

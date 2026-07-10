@@ -15,6 +15,10 @@ import {
   getCreateExamples,
 } from "@/components/create-via-prompt-examples";
 import { appToast } from "@/components/ui/app-toast";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog";
 import { Button } from "@bb/shared-ui/button";
 import {
   ResourceActionButton,
@@ -44,6 +48,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useProjectSkills } from "@/hooks/queries/skills-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
   createDiffWorker,
   getDiffWorkerPoolSize,
@@ -163,14 +168,18 @@ function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
   return <BbMark />;
 }
 
-function PluginListRow({
+export function PluginListRow({
   plugin,
   pending,
-  onToggle,
+  editDisabled,
+  onEdit,
+  onDelete,
 }: {
   plugin: PluginListItem;
   pending: boolean;
-  onToggle: (plugin: PluginListItem) => void;
+  editDisabled: boolean;
+  onEdit: (plugin: PluginListItem) => void;
+  onDelete: (plugin: PluginListItem) => void;
 }) {
   const navigate = useNavigate();
   const detailPath = getPluginDetailRoutePath({ pluginId: plugin.id });
@@ -194,16 +203,17 @@ function PluginListRow({
       actions={
         <>
           <ResourceActionButton
-            label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
-            icon={plugin.enabled ? "Pause" : "Play"}
-            disabled={pending}
-            onClick={() => onToggle(plugin)}
+            label={`Edit ${plugin.id}`}
+            icon="Edit"
+            disabled={pending || editDisabled}
+            onClick={() => onEdit(plugin)}
           />
           <ResourceActionButton
-            label={`Open ${plugin.id}`}
-            icon="ChevronRight"
+            label={`Delete ${plugin.id}`}
+            icon="Trash2"
+            tone="destructive"
             disabled={pending}
-            onClick={() => void navigate(detailPath)}
+            onClick={() => onDelete(plugin)}
           />
         </>
       }
@@ -368,13 +378,6 @@ function ProviderInstalledPluginRow({
       title={plugin.name}
       description={description}
       onOpen={() => void navigate(detailPath)}
-      actions={
-        <ResourceActionButton
-          label={`Open ${plugin.name}`}
-          icon="ChevronRight"
-          onClick={() => void navigate(detailPath)}
-        />
-      }
     />
   );
 }
@@ -516,14 +519,20 @@ function PluginDetail({
   isLoading,
   plugin,
   pending,
+  editDisabled,
   onToggle,
   onReload,
+  onEdit,
+  onDelete,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
   pending: boolean;
+  editDisabled: boolean;
   onToggle: (plugin: PluginListItem) => void;
   onReload: (plugin: PluginListItem) => void;
+  onEdit: (plugin: PluginListItem) => void;
+  onDelete: (plugin: PluginListItem) => void;
 }) {
   if (isLoading) {
     return <PluginsLoadingRows />;
@@ -540,17 +549,34 @@ function PluginDetail({
       leading={<PluginListLogo plugin={plugin} />}
       title={plugin.id}
       health={pluginDetailHealth(plugin)}
-      metadata={[`v${plugin.version}`]}
+      metadata={[
+        ...(plugin.source !== null ? [plugin.source] : []),
+        `v${plugin.version}`,
+      ]}
       description={plugin.description ?? plugin.statusDetail}
       enabled={plugin.enabled}
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
       overflowItems={[
         {
+          label: "Edit",
+          icon: "Edit",
+          disabled: pending || editDisabled,
+          onSelect: () => onEdit(plugin),
+        },
+        {
           label: "Reload",
           icon: "ArrowReloadHorizontal",
           disabled: pending,
           onSelect: () => onReload(plugin),
+        },
+        { kind: "separator" },
+        {
+          label: "Delete",
+          icon: "Trash2",
+          tone: "destructive",
+          disabled: pending,
+          onSelect: () => onDelete(plugin),
         },
       ]}
       properties={
@@ -733,11 +759,18 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const [providerFilters, setProviderFilters] = useState<ToolProviderFilter[]>(
     [],
   );
+  const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
   const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
   const listQuery = usePluginList({ includeExperimentDisabled: true });
   const plugins = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
+  const {
+    canOpenPreferredDirectoryTarget,
+    openPathInPreferredDirectoryTarget,
+  } = useLocalOpenTargets({
+    enabled: plugins.some((plugin) => plugin.rootDir !== null),
+  });
   const providerPlugins = useMemo(
     () => providerPluginsFromSkills(skillsQuery.data?.skills ?? []),
     [skillsQuery.data],
@@ -860,6 +893,26 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
+  const pluginDelete = useMutation({
+    mutationFn: async (plugin: PluginListItem) => {
+      const response = await fetch(
+        `/api/v1/plugins/${encodeURIComponent(plugin.id)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw new Error("Failed to delete plugin");
+    },
+    onSuccess: (_data, deletedPlugin) => {
+      appToast.success("Plugin deleted");
+      setDeleteTarget(null);
+      if (pluginId === deletedPlugin.id) {
+        navigate(getPluginsRoutePath());
+      }
+      return listQuery.refetch();
+    },
+    onError: (error) => {
+      appToast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
     pluginId !== undefined
@@ -880,7 +933,9 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       ? pluginToggle.variables.id
       : pluginReload.isPending && pluginReload.variables
         ? pluginReload.variables.id
-        : null;
+        : pluginDelete.isPending && pluginDelete.variables
+          ? pluginDelete.variables.id
+          : null;
   const hasPluginRows = pluginRows.length > 0;
   const handleCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
@@ -892,6 +947,16 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       },
     });
   };
+  const handleEditPlugin = useCallback(
+    (plugin: PluginListItem) => {
+      if (plugin.rootDir === null || !canOpenPreferredDirectoryTarget) return;
+      void openPathInPreferredDirectoryTarget({
+        path: plugin.rootDir,
+        lineNumber: null,
+      });
+    },
+    [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
+  );
   const isBrowsePage = location.pathname === getPluginBrowseRoutePath();
 
   const toolbar =
@@ -982,8 +1047,14 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
               pending={
                 selectedPlugin !== null && pendingPluginId === selectedPlugin.id
               }
+              editDisabled={
+                selectedPlugin?.rootDir == null ||
+                !canOpenPreferredDirectoryTarget
+              }
               onToggle={(target) => pluginToggle.mutate(target)}
               onReload={(target) => pluginReload.mutate(target)}
+              onEdit={handleEditPlugin}
+              onDelete={setDeleteTarget}
             />
           )
         ) : listQuery.isError ? (
@@ -1032,13 +1103,35 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
                     key={row.id}
                     plugin={row.plugin}
                     pending={pendingPluginId === row.plugin.id}
-                    onToggle={(target) => pluginToggle.mutate(target)}
+                    editDisabled={
+                      row.plugin.rootDir === null ||
+                      !canOpenPreferredDirectoryTarget
+                    }
+                    onEdit={handleEditPlugin}
+                    onDelete={setDeleteTarget}
                   />
                 ),
               )}
             </ResourceListPanel>
           </>
         )}
+        <ConfirmDeleteDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !pluginDelete.isPending) setDeleteTarget(null);
+          }}
+        >
+          {deleteTarget ? (
+            <ConfirmDeleteDialogContent
+              title="Delete plugin?"
+              description={`Delete "${deleteTarget.id}" and its settings? This cannot be undone.`}
+              confirmLabel="Delete plugin"
+              pending={pluginDelete.isPending}
+              onConfirm={() => pluginDelete.mutate(deleteTarget)}
+              onCancel={() => setDeleteTarget(null)}
+            />
+          ) : null}
+        </ConfirmDeleteDialog>
       </div>
     </div>
   );
