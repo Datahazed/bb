@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Story } from "@ladle/react";
+import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -72,6 +71,19 @@ import {
   makeHost,
   makeTypeaheadConfig,
 } from "../../../.ladle/story-fixtures";
+
+interface StoryArgType {
+  options?: readonly unknown[];
+  control?: {
+    type: string;
+    labels?: Record<string, string>;
+  };
+}
+
+type Story<Props> = FC<Props> & {
+  args?: Partial<Props>;
+  argTypes?: Partial<Record<keyof Props, StoryArgType>>;
+};
 
 export default {
   title: "Tools/Resource System",
