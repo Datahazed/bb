@@ -51,6 +51,13 @@ import {
   haveSameSidebarThreadSearchNavigationItems,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
+import {
+  EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
+  getSidebarThreadShortcutIndex,
+  getSidebarThreadShortcutTargets,
+  SidebarThreadShortcutKeysContext,
+  type SidebarThreadShortcutTarget,
+} from "./sidebarThreadShortcuts";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -93,6 +100,13 @@ export function AppSidebar({
   const [threadSearchActiveIndex, setThreadSearchActiveIndex] = useState(0);
   const [threadSearchNavigationItems, setThreadSearchNavigationItems] =
     useState<readonly SidebarThreadSearchNavigationItem[]>([]);
+  const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
+    ReadonlyMap<string, string>
+  >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const threadShortcutTargetsRef = useRef<
+    readonly SidebarThreadShortcutTarget[]
+  >([]);
   const threadSearchInputRef = useRef<HTMLInputElement | null>(null);
   const isPointerCoarse = usePointerCoarse();
   const threadSearchActiveDescendantId =
@@ -199,6 +213,19 @@ export function AppSidebar({
           ? "skills"
           : null;
 
+  const showThreadShortcuts = useCallback(() => {
+    const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
+    threadShortcutTargetsRef.current = targets;
+    setThreadShortcutKeysById(
+      new Map(targets.map((target) => [target.threadId, target.key])),
+    );
+  }, []);
+
+  const hideThreadShortcuts = useCallback(() => {
+    threadShortcutTargetsRef.current = [];
+    setThreadShortcutKeysById(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
+  }, []);
+
   const handleThreadSearchKeyDown = useCallback<
     KeyboardEventHandler<HTMLDivElement>
   >(
@@ -270,6 +297,21 @@ export function AppSidebar({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Meta") {
+        showThreadShortcuts();
+        return;
+      }
+
+      const threadShortcutIndex = getSidebarThreadShortcutIndex(event);
+      if (threadShortcutIndex !== null) {
+        const target = threadShortcutTargetsRef.current[threadShortcutIndex];
+        if (target) {
+          event.preventDefault();
+          target.element.click();
+        }
+        return;
+      }
+
       if (
         event.key.toLowerCase() !== "k" ||
         event.shiftKey ||
@@ -282,13 +324,25 @@ export function AppSidebar({
       handleThreadSearchActivate();
     };
 
+    const handleGlobalKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Meta") {
+        hideThreadShortcuts();
+      }
+    };
+
     window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [handleThreadSearchActivate]);
+    window.addEventListener("keyup", handleGlobalKeyUp);
+    window.addEventListener("blur", hideThreadShortcuts);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+      window.removeEventListener("keyup", handleGlobalKeyUp);
+      window.removeEventListener("blur", hideThreadShortcuts);
+    };
+  }, [handleThreadSearchActivate, hideThreadShortcuts, showThreadShortcuts]);
 
   return (
-    <>
-      <Sidebar onKeyDown={handleThreadSearchKeyDown}>
+    <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
+      <Sidebar ref={sidebarRef} onKeyDown={handleThreadSearchKeyDown}>
         {showTopReserve ? (
           /* Top reserve that keeps the sidebar's content (New Thread / New
              Projects) anchored below the title-bar chrome, mirroring
@@ -409,6 +463,6 @@ export function AppSidebar({
           onMouseDown={onResizeMouseDown}
         />
       </Sidebar>
-    </>
+    </SidebarThreadShortcutKeysContext.Provider>
   );
 }

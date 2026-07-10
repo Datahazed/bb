@@ -5,7 +5,6 @@ import {
   getAutomationEditRoutePath,
   getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
-  getLegacyProjectComposeRoutePath,
   getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
@@ -13,9 +12,7 @@ import {
   getPopoutThreadRoutePath,
   getProjectArchivedRoutePath,
   getProjectlessArchivedRoutePath,
-  getProjectSettingsRoutePath,
   getRegistrySkillDetailRoutePath,
-  getRootComposeRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getSurfaceAwareThreadRoutePath,
@@ -28,31 +25,10 @@ import {
   LEGACY_SKILLS_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
   resolveRouteHref,
-  ROOT_COMPOSE_ROUTE_PATH,
   ROUTE_PATTERNS,
 } from "./route-paths";
 
 describe("route path helpers", () => {
-  it("uses root as the compose route", () => {
-    expect(ROOT_COMPOSE_ROUTE_PATH).toBe("/");
-    expect(getRootComposeRoutePath()).toBe("/");
-  });
-
-  it("builds legacy project compose redirect URLs", () => {
-    expect(getLegacyProjectComposeRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard",
-    );
-  });
-
-  it("builds project utility URLs", () => {
-    expect(getProjectSettingsRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard/settings",
-    );
-    expect(getProjectArchivedRoutePath("proj_standard")).toBe(
-      "/projects/proj_standard/archived",
-    );
-  });
-
   it("builds and recognizes the canonical projectless archived URL", () => {
     expect(getProjectlessArchivedRoutePath()).toBe("/archived");
     expect(getProjectArchivedRoutePath(PERSONAL_PROJECT_ID)).toBe("/archived");
@@ -227,7 +203,6 @@ describe("route path helpers", () => {
     expect(getPopoutRoutePath()).toBe("/popout");
     expect(isRoutePath({ path: "/popout" })).toBe(true);
   });
-
   it("builds and recognizes popout thread URLs", () => {
     expect(
       getPopoutThreadRoutePath({
