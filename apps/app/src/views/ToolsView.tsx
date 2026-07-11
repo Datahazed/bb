@@ -19,23 +19,19 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
-import { Button } from "@bb/shared-ui/button";
 import {
   ResourceActionButton,
-  ResourceBrowseCard,
   ResourceListPanel,
   ResourceListState,
   ResourceMultiSelectMenu,
+  ResourceOverviewPage,
   ResourceRow,
-  ResourceShelfSeeAllAction,
+  ResourceRowDetailChevron,
   ResourceSortMenu,
-  ResourceSourceItem,
-  ResourceSourceShelf,
-  ResourceTabDescription,
+  ResourceTemplateBrowseCard,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
@@ -200,6 +196,7 @@ export function PluginListRow({
       }
       description={description}
       onOpen={() => void navigate(detailPath)}
+      trailingVisual={<ResourceRowDetailChevron />}
       actions={
         <>
           <ResourceActionButton
@@ -378,6 +375,7 @@ function ProviderInstalledPluginRow({
       title={plugin.name}
       description={description}
       onOpen={() => void navigate(detailPath)}
+      trailingVisual={<ResourceRowDetailChevron />}
     />
   );
 }
@@ -617,15 +615,7 @@ function ProviderPluginDetail({
           content: (
             <div className="space-y-1">
               {plugin.skillNames.map((skillName) => (
-                <div
-                  key={skillName}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-                >
-                  <Icon
-                    name="Zap"
-                    className="size-4 shrink-0 text-muted-foreground"
-                    aria-hidden
-                  />
+                <div key={skillName} className="rounded-md px-3 py-2 text-sm">
                   <span className="min-w-0 flex-1 truncate">{skillName}</span>
                 </div>
               ))}
@@ -634,73 +624,6 @@ function ProviderPluginDetail({
         },
       ]}
     />
-  );
-}
-
-function PluginBrowseCard({
-  example,
-  onCreate,
-}: {
-  example: ReturnType<typeof getCreateExamples>["examples"][number];
-  onCreate: (prompt?: string) => void;
-}) {
-  return (
-    <ResourceBrowseCard
-      leading={
-        <Icon
-          name="ElectricPlugs"
-          className="size-5 text-muted-foreground"
-          aria-hidden
-        />
-      }
-      title={example.label}
-      byline="Starter template"
-      description={example.description}
-      openLabel={`Use ${example.label} template`}
-      headerAction={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => onCreate(example.prompt)}
-        >
-          Use template
-        </Button>
-      }
-      onOpen={() => onCreate(example.prompt)}
-    />
-  );
-}
-
-function PluginBrowseShelf({
-  onCreate,
-  onBrowseAll,
-}: {
-  onCreate: (prompt?: string) => void;
-  onBrowseAll: () => void;
-}) {
-  const { examples } = getCreateExamples("plugin");
-  return (
-    <ResourceSourceShelf
-      label="Browse"
-      leading={
-        <Icon
-          name="ElectricPlugs"
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      }
-      browseAction={
-        <ResourceShelfSeeAllAction type="button" onClick={onBrowseAll} />
-      }
-    >
-      {examples.map((example) => (
-        <ResourceSourceItem key={example.label}>
-          <PluginBrowseCard example={example} onCreate={onCreate} />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
   );
 }
 
@@ -740,10 +663,11 @@ function PluginBrowsePage({
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visibleExamples.map((example) => (
-            <PluginBrowseCard
+            <ResourceTemplateBrowseCard
               key={example.label}
-              example={example}
-              onCreate={onCreate}
+              title={example.label}
+              description={example.description}
+              onUse={() => onCreate(example.prompt)}
             />
           ))}
         </div>
@@ -961,13 +885,70 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   );
   const isBrowsePage = location.pathname === getPluginBrowseRoutePath();
 
-  const toolbar =
-    pluginId === undefined && !isBrowsePage ? (
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search plugins"
-        onSearchChange={setQuery}
-        controls={
+  const overviewBody = listQuery.isError ? (
+    <ResourceListState
+      state="error"
+      message="Couldn't load plugins."
+      onRetry={() => void listQuery.refetch()}
+    />
+  ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
+    <PluginsLoadingRows />
+  ) : !hasPluginRows ? (
+    <ResourceListState state="empty" message="No plugins installed." />
+  ) : visiblePluginRows.length === 0 ? (
+    <ResourceListState
+      state="empty"
+      message={
+        normalizedQuery === ""
+          ? "No plugins match these agents."
+          : `No plugins match "${query}"`
+      }
+    />
+  ) : (
+    <ResourceListPanel>
+      {visiblePluginRows.map((row) =>
+        row.kind === "provider" ? (
+          <ProviderInstalledPluginRow key={row.id} plugin={row.plugin} />
+        ) : (
+          <PluginListRow
+            key={row.id}
+            plugin={row.plugin}
+            pending={pendingPluginId === row.plugin.id}
+            editDisabled={
+              row.plugin.rootDir === null || !canOpenPreferredDirectoryTarget
+            }
+            onEdit={handleEditPlugin}
+            onDelete={setDeleteTarget}
+          />
+        ),
+      )}
+    </ResourceListPanel>
+  );
+  const browseExamples = getCreateExamples("plugin").examples;
+  const overview = (
+    <ResourceOverviewPage
+      description="Manage bb plugins and provider capabilities. Plugins add surfaces, commands, background services, and reusable capabilities."
+      browse={{
+        icon: "ElectricPlugs",
+        onBrowseAll: () => navigate(getPluginBrowseRoutePath()),
+        items: browseExamples.map((example) => ({
+          id: example.label,
+          content: (
+            <ResourceTemplateBrowseCard
+              title={example.label}
+              description={example.description}
+              onUse={() => handleCreatePlugin(example.prompt)}
+            />
+          ),
+        })),
+      }}
+      installed={{
+        headingId: "installed-plugins-heading",
+        label: "Installed plugins",
+        searchValue: query,
+        searchPlaceholder: "Search plugins",
+        onSearchChange: setQuery,
+        controls: (
           <>
             <ResourceMultiSelectMenu
               label="Agent"
@@ -987,36 +968,23 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
                   label: "Agent",
                   disabled: providerBucketCount <= 1,
                 },
-                { id: "alpha", label: "Alphabetical" },
+                { id: "alpha", label: "Plugin name" },
               ]}
               onChange={handleSortChange}
             />
           </>
-        }
-        action={
+        ),
+        action: (
           <CreateWithTemplatesButton
             kind="plugin"
             label="New plugin"
             onCreate={handleCreatePlugin}
           />
-        }
-      />
-    ) : null;
-  const overviewHeader =
-    pluginId === undefined && !isBrowsePage ? (
-      <>
-        <ResourceTabDescription>
-          Plugins add bb surfaces, commands, background services, and
-          provider-specific capabilities. Browse installable templates first,
-          then search and manage installed plugins.
-        </ResourceTabDescription>
-        <PluginBrowseShelf
-          onCreate={handleCreatePlugin}
-          onBrowseAll={() => navigate(getPluginBrowseRoutePath())}
-        />
-        {toolbar}
-      </>
-    ) : null;
+        ),
+        body: overviewBody,
+      }}
+    />
+  );
 
   return (
     <div className="h-full overflow-y-auto">
@@ -1059,63 +1027,8 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
               onDelete={setDeleteTarget}
             />
           )
-        ) : listQuery.isError ? (
-          <>
-            {overviewHeader}
-            <ResourceListState
-              state="error"
-              message="Couldn't load plugins."
-              onRetry={() => void listQuery.refetch()}
-            />
-          </>
-        ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
-          <>
-            {overviewHeader}
-            <PluginsLoadingRows />
-          </>
-        ) : !hasPluginRows ? (
-          <>
-            {overviewHeader}
-            <ResourceListState state="empty" message="No plugins installed." />
-          </>
-        ) : visiblePluginRows.length === 0 ? (
-          <>
-            {overviewHeader}
-            <ResourceListState
-              state="empty"
-              message={
-                normalizedQuery === ""
-                  ? "No plugins match these agents."
-                  : `No plugins match "${query}"`
-              }
-            />
-          </>
         ) : (
-          <>
-            {overviewHeader}
-            <ResourceListPanel>
-              {visiblePluginRows.map((row) =>
-                row.kind === "provider" ? (
-                  <ProviderInstalledPluginRow
-                    key={row.id}
-                    plugin={row.plugin}
-                  />
-                ) : (
-                  <PluginListRow
-                    key={row.id}
-                    plugin={row.plugin}
-                    pending={pendingPluginId === row.plugin.id}
-                    editDisabled={
-                      row.plugin.rootDir === null ||
-                      !canOpenPreferredDirectoryTarget
-                    }
-                    onEdit={handleEditPlugin}
-                    onDelete={setDeleteTarget}
-                  />
-                ),
-              )}
-            </ResourceListPanel>
-          </>
+          overview
         )}
         <ConfirmDeleteDialog
           open={deleteTarget !== null}

@@ -66,6 +66,11 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
         description:
           "adds bb CLI commands for the team's deploy and rollback workflow",
       },
+      {
+        label: "Issue mentions",
+        description:
+          "connects Linear issues to the prompt box with searchable mentions and agent-ready context",
+      },
     ],
   },
   automation: {
@@ -87,6 +92,11 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
         label: "Release readiness",
         description:
           "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
+      },
+      {
+        label: "Stale worktrees",
+        description:
+          "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
       },
     ],
   },

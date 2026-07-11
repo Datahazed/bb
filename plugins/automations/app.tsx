@@ -39,24 +39,23 @@ import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-poin
 import { Input } from "@bb/shared-ui/input";
 import {
   ResourceActionButton,
-  ResourceBrowseCard,
   ResourceCreateButton,
   ResourceDetailPage,
   ResourceDetailSection,
   ResourceListPanel,
   ResourceListState,
+  ResourceLocationMeta,
   ResourceMeta,
   ResourceMultiSelectMenu,
+  ResourceOverviewPage,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceShelfSeeAllAction,
+  ResourceRowDetailChevron,
   ResourceSortMenu,
-  ResourceSourceItem,
-  ResourceSourceShelf,
   ResourceStatus,
-  ResourceTabDescription,
+  ResourceTemplateBrowseCard,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -95,11 +94,17 @@ const AUTOMATION_CREATE_TEMPLATES = [
       "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
     prompt: `${CREATE_AUTOMATION_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
   },
+  {
+    label: "Stale worktrees",
+    description:
+      "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
+  },
 ] as const;
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
-type AutomationLocationFilter = `project:${string}` | `folder:${string}`;
-type AutomationSortMode = "location" | "alpha";
+type AutomationProjectFilter = `project:${string}`;
+type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
 
 // ---------------------------------------------------------------------------
@@ -670,20 +675,11 @@ function automationProjectLabel(
   return project.id === PERSONAL_PROJECT_ID ? "Personal" : project.name;
 }
 
-function automationLocationLabel(entry: OverviewEntry): string {
-  const projectLabel = automationProjectLabel(entry.project);
-  return entry.folder == null
-    ? projectLabel
-    : `${projectLabel} / ${entry.folder.name}`;
-}
-
-function automationLocationFilterId(
+function automationProjectFilterId(
   entry: OverviewEntry,
-): AutomationLocationFilter {
+): AutomationProjectFilter {
   const projectId = entry.project?.id ?? entry.automation.projectId;
-  return entry.folder == null
-    ? `project:${projectId}`
-    : `folder:${projectId}/${entry.folder.id}`;
+  return `project:${projectId}`;
 }
 
 function applyAutomationSortDirection(
@@ -775,17 +771,21 @@ function OverviewRow({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
-  const description = `${formatAutomationTrigger(
-    automation.trigger,
-  )} · ${automationLocationLabel(entry)}`;
+  const triggerLabel = formatAutomationTrigger(automation.trigger);
+  const projectLabel = automationProjectLabel(entry.project);
 
   return (
     <ResourceRow
       leading={<AutomationRowLeading automation={automation} />}
       title={automation.name}
-      description={description}
+      description={
+        <ResourceMeta
+          items={[triggerLabel, <ResourceLocationMeta label={projectLabel} />]}
+        />
+      }
       muted={completedOneShot}
       onOpen={() => onNavigate(route)}
+      trailingVisual={<ResourceRowDetailChevron />}
       actions={
         <>
           <ResourceActionButton
@@ -808,72 +808,6 @@ function OverviewRow({
         </>
       }
     />
-  );
-}
-
-function AutomationTemplateCard({
-  template,
-  onCreate,
-}: {
-  template: (typeof AUTOMATION_CREATE_TEMPLATES)[number];
-  onCreate: (prompt?: string) => void;
-}) {
-  return (
-    <ResourceBrowseCard
-      leading={
-        <Icon
-          name="TimeSchedule"
-          className="size-5 text-muted-foreground"
-          aria-hidden
-        />
-      }
-      title={template.label}
-      byline="Starter template"
-      description={template.description}
-      openLabel={`Use ${template.label} template`}
-      headerAction={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => onCreate(template.prompt)}
-        >
-          Use template
-        </Button>
-      }
-      onOpen={() => onCreate(template.prompt)}
-    />
-  );
-}
-
-function AutomationBrowseShelf({
-  onCreate,
-  onBrowseAll,
-}: {
-  onCreate: (prompt?: string) => void;
-  onBrowseAll: () => void;
-}) {
-  return (
-    <ResourceSourceShelf
-      label="Browse"
-      leading={
-        <Icon
-          name="TimeSchedule"
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      }
-      browseAction={
-        <ResourceShelfSeeAllAction type="button" onClick={onBrowseAll} />
-      }
-    >
-      {AUTOMATION_CREATE_TEMPLATES.map((template) => (
-        <ResourceSourceItem key={template.label}>
-          <AutomationTemplateCard template={template} onCreate={onCreate} />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
   );
 }
 
@@ -912,10 +846,11 @@ function AutomationBrowsePage({
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visibleTemplates.map((template) => (
-            <AutomationTemplateCard
+            <ResourceTemplateBrowseCard
               key={template.label}
-              template={template}
-              onCreate={onCreate}
+              title={template.label}
+              description={template.description}
+              onUse={() => onCreate(template.prompt)}
             />
           ))}
         </div>
@@ -937,8 +872,8 @@ function OverviewView({
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [locationFilters, setLocationFilters] = useState<
-    AutomationLocationFilter[]
+  const [projectFilters, setProjectFilters] = useState<
+    AutomationProjectFilter[]
   >([]);
   const [sortMode, setSortMode] = useState<AutomationSortMode>("alpha");
   const [sortDirection, setSortDirection] =
@@ -986,43 +921,41 @@ function OverviewView({
   );
 
   const normalizedQuery = query.trim().toLowerCase();
-  const locationCounts = useMemo(() => {
-    const counts = new Map<AutomationLocationFilter, number>();
+  const projectCounts = useMemo(() => {
+    const counts = new Map<AutomationProjectFilter, number>();
     for (const entry of entries ?? []) {
-      const location = automationLocationFilterId(entry);
-      counts.set(location, (counts.get(location) ?? 0) + 1);
+      const project = automationProjectFilterId(entry);
+      counts.set(project, (counts.get(project) ?? 0) + 1);
     }
     return counts;
   }, [entries]);
-  const locationBucketCount = locationCounts.size;
-  const locationOptions = useMemo(() => {
-    const options = new Map<AutomationLocationFilter, string>();
+  const projectBucketCount = projectCounts.size;
+  const projectOptions = useMemo(() => {
+    const options = new Map<AutomationProjectFilter, string>();
     for (const entry of entries ?? []) {
-      options.set(
-        automationLocationFilterId(entry),
-        automationLocationLabel(entry),
-      );
+      const projectLabel = automationProjectLabel(entry.project);
+      options.set(automationProjectFilterId(entry), projectLabel);
     }
     return [...options].map(([id, label]) => ({ id, label }));
   }, [entries]);
   useEffect(() => {
-    setLocationFilters((current) =>
-      current.filter((location) => locationCounts.has(location)),
+    setProjectFilters((current) =>
+      current.filter((project) => projectCounts.has(project)),
     );
-  }, [locationCounts]);
+  }, [projectCounts]);
   useEffect(() => {
-    if (sortMode === "location" && locationBucketCount <= 1) {
+    if (sortMode === "project" && projectBucketCount <= 1) {
       setSortMode("alpha");
       setSortDirection("asc");
     }
-  }, [locationBucketCount, sortMode]);
+  }, [projectBucketCount, sortMode]);
   const filteredEntries = useMemo(() => {
     if (entries === null) return [];
     return entries.filter((entry) => {
-      const { automation, folder, project } = entry;
+      const { automation, project } = entry;
       if (
-        locationFilters.length > 0 &&
-        !locationFilters.includes(automationLocationFilterId(entry))
+        projectFilters.length > 0 &&
+        !projectFilters.includes(automationProjectFilterId(entry))
       ) {
         return false;
       }
@@ -1030,18 +963,17 @@ function OverviewView({
       return [
         automation.name,
         project.name,
-        folder?.name,
         automationScheduleLabel(automation),
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
     });
-  }, [entries, locationFilters, normalizedQuery]);
+  }, [entries, normalizedQuery, projectFilters]);
   const visibleEntries = useMemo(() => {
     return [...filteredEntries].sort((left, right) => {
       const base =
-        sortMode === "location"
-          ? automationLocationLabel(left).localeCompare(
-              automationLocationLabel(right),
+        sortMode === "project"
+          ? automationProjectLabel(left.project).localeCompare(
+              automationProjectLabel(right.project),
             ) || left.automation.name.localeCompare(right.automation.name)
           : left.automation.name.localeCompare(right.automation.name);
       return applyAutomationSortDirection(base, sortDirection);
@@ -1049,8 +981,8 @@ function OverviewView({
   }, [filteredEntries, sortDirection, sortMode]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
-      if (nextSort !== "location" && nextSort !== "alpha") return;
-      if (nextSort === "location" && locationBucketCount <= 1) return;
+      if (nextSort !== "project" && nextSort !== "alpha") return;
+      if (nextSort === "project" && projectBucketCount <= 1) return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
@@ -1058,7 +990,7 @@ function OverviewView({
       setSortMode(nextSort);
       setSortDirection("asc");
     },
-    [locationBucketCount, sortMode],
+    [projectBucketCount, sortMode],
   );
 
   let body: ReactNode;
@@ -1082,7 +1014,7 @@ function OverviewView({
         state="empty"
         message={
           normalizedQuery === ""
-            ? "No automations match these locations."
+            ? "No automations match these projects."
             : `No automations match "${query}"`
         }
       />
@@ -1105,55 +1037,66 @@ function OverviewView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
-      <ResourceTabDescription>
-        Automations run scheduled bb work across projects and folders. Browse
-        starter automations first, then search and manage the automations
-        already installed in this workspace.
-      </ResourceTabDescription>
-      <AutomationBrowseShelf
-        onCreate={createViaChat}
-        onBrowseAll={onBrowseAll}
-      />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search automations"
-        onSearchChange={setQuery}
-        controls={
-          <>
-            <ResourceMultiSelectMenu
-              label="Project / folder"
-              icon="Layers"
-              selectedValues={locationFilters}
-              options={locationOptions}
-              onChange={(values) =>
-                setLocationFilters(values as AutomationLocationFilter[])
-              }
+    <>
+      <ResourceOverviewPage
+        className="mx-auto w-full max-w-5xl"
+        description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+        browse={{
+          icon: "TimeSchedule",
+          onBrowseAll,
+          items: AUTOMATION_CREATE_TEMPLATES.map((template) => ({
+            id: template.label,
+            content: (
+              <ResourceTemplateBrowseCard
+                title={template.label}
+                description={template.description}
+                onUse={() => createViaChat(template.prompt)}
+              />
+            ),
+          })),
+        }}
+        installed={{
+          headingId: "installed-automations-heading",
+          label: "Installed automations",
+          searchValue: query,
+          searchPlaceholder: "Search automations",
+          onSearchChange: setQuery,
+          controls: (
+            <>
+              <ResourceMultiSelectMenu
+                label="Projects"
+                icon="Layers"
+                selectedValues={projectFilters}
+                options={projectOptions}
+                onChange={(values) =>
+                  setProjectFilters(values as AutomationProjectFilter[])
+                }
+              />
+              <ResourceSortMenu
+                value={sortMode}
+                direction={sortDirection}
+                options={[
+                  {
+                    id: "project",
+                    label: "Project",
+                    disabled: projectBucketCount <= 1,
+                  },
+                  { id: "alpha", label: "Automation name" },
+                ]}
+                onChange={handleSortChange}
+              />
+            </>
+          ),
+          action: (
+            <ResourceCreateButton
+              label="New automation"
+              templates={AUTOMATION_CREATE_TEMPLATES}
+              onCreate={createViaChat}
             />
-            <ResourceSortMenu
-              value={sortMode}
-              direction={sortDirection}
-              options={[
-                {
-                  id: "location",
-                  label: "Project / folder",
-                  disabled: locationBucketCount <= 1,
-                },
-                { id: "alpha", label: "Alphabetical" },
-              ]}
-              onChange={handleSortChange}
-            />
-          </>
-        }
-        action={
-          <ResourceCreateButton
-            label="New automation"
-            templates={AUTOMATION_CREATE_TEMPLATES}
-            onCreate={createViaChat}
-          />
-        }
+          ),
+          body,
+        }}
       />
-      {body}
       <DeleteAutomationDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -1164,7 +1107,7 @@ function OverviewView({
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </>
   );
 }
 

@@ -80,6 +80,15 @@ export function ResourceMeta({
   );
 }
 
+export function ResourceLocationMeta({ label }: { label: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={label}>
+      <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
+    </span>
+  );
+}
+
 export function ResourceCardStat({
   icon,
   iconClassName,
@@ -112,6 +121,7 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
+  containedControls = false,
   controlsClassName,
   action,
 }: {
@@ -120,6 +130,7 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
+  containedControls?: boolean;
   controlsClassName?: string;
   action?: ReactNode;
 }) {
@@ -141,7 +152,12 @@ export function ResourceToolbar({
       </div>
       {controls ? (
         <div
-          className={cn("flex shrink-0 items-center gap-1", controlsClassName)}
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            containedControls &&
+              "h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm",
+            controlsClassName,
+          )}
         >
           {controls}
         </div>
@@ -162,7 +178,21 @@ export function ResourceTabDescription({ children }: { children: ReactNode }) {
 export interface ResourceOption {
   id: string;
   label: string;
+  description?: string;
   disabled?: boolean;
+}
+
+function ResourceOptionContent({ option }: { option: ResourceOption }) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="truncate text-xs">{option.label}</span>
+      {option.description ? (
+        <span className="truncate text-2xs text-subtle-foreground">
+          {option.description}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 function ResourceMenuTrigger({
@@ -234,7 +264,7 @@ export function ResourceOptionMenu({
               }}
               className="flex items-center justify-between gap-3"
             >
-              <span className="truncate text-xs">{option.label}</span>
+              <ResourceOptionContent option={option} />
               <Icon
                 name="Check"
                 aria-hidden
@@ -303,7 +333,7 @@ export function ResourceMultiSelectMenu({
             onSelect={(event) => event.preventDefault()}
             onCheckedChange={(checked) => updateValue(option, checked === true)}
           >
-            <span className="truncate text-xs">{option.label}</span>
+            <ResourceOptionContent option={option} />
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>
@@ -342,7 +372,7 @@ export function ResourceSortMenu({
               }}
               className="flex items-center justify-between gap-3"
             >
-              <span className="truncate text-xs">{option.label}</span>
+              <ResourceOptionContent option={option} />
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden
@@ -406,7 +436,7 @@ export function ResourceCreateButton({
         className="rounded-r-none"
         onClick={() => onCreate()}
       >
-        <Icon name="Plus" className="size-4" aria-hidden />
+        <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
         {label}
       </Button>
       <DropdownMenu>
@@ -590,7 +620,7 @@ export function ResourceRow({
   className,
   onOpen,
 }: {
-  leading: ReactNode;
+  leading?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   status?: ReactNode;
@@ -604,10 +634,15 @@ export function ResourceRow({
   onOpen: () => void;
 }) {
   const rowState = state ?? status;
+  const hasLeading =
+    leading !== undefined && leading !== null && leading !== false;
   return (
     <div
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+        "group grid min-w-0 cursor-pointer items-center gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+        hasLeading
+          ? "grid-cols-[1rem_minmax(0,1fr)_auto]"
+          : "grid-cols-[minmax(0,1fr)_auto]",
         selected && "bg-state-active",
         muted && "opacity-60",
         className,
@@ -617,9 +652,11 @@ export function ResourceRow({
         onOpen();
       }}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {leading}
-      </span>
+      {hasLeading ? (
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {leading}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={onOpen}
@@ -652,13 +689,23 @@ export function ResourceRow({
             </span>
           ) : null}
           {trailingVisual ? (
-            <span className="pointer-events-none flex size-6 shrink-0 items-center justify-center">
+            <span className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 hover:bg-state-hover">
               {trailingVisual}
             </span>
           ) : null}
         </span>
       ) : null}
     </div>
+  );
+}
+
+export function ResourceRowDetailChevron() {
+  return (
+    <Icon
+      name="ChevronRight"
+      className="size-4 text-muted-foreground/65 transition-colors duration-150 ease-out group-hover:text-foreground group-focus-within:text-foreground"
+      aria-hidden
+    />
   );
 }
 
@@ -839,12 +886,161 @@ export function ResourceSectionTitle({
   );
 }
 
+export function ResourceOverview({
+  description,
+  browse,
+  className,
+  children,
+}: {
+  description: ReactNode;
+  browse?: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("space-y-4", className)}>
+      <ResourceTabDescription>{description}</ResourceTabDescription>
+      {browse}
+      {children}
+    </div>
+  );
+}
+
+export function ResourceOverviewSection({
+  id,
+  label,
+  toolbar,
+  className,
+  children,
+}: {
+  id: string;
+  label: ReactNode;
+  toolbar: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className={cn("space-y-2", className)}>
+      <ResourceSectionTitle id={id} className="px-3">
+        {label}
+      </ResourceSectionTitle>
+      {toolbar}
+      {children}
+    </section>
+  );
+}
+
+export interface ResourceBrowseSectionItem {
+  id: string;
+  content: ReactNode;
+}
+
+export function ResourceBrowseSection({
+  icon,
+  attribution,
+  onBrowseAll,
+  items,
+  state,
+}: {
+  icon: IconName;
+  attribution?: ReactNode;
+  onBrowseAll?: () => void;
+  items?: readonly ResourceBrowseSectionItem[];
+  state?: ReactNode;
+}) {
+  const visibleItems = items ?? [];
+  const shouldShowOverflowFade = visibleItems.length > 3;
+  if (state === undefined && visibleItems.length === 0) return null;
+
+  return (
+    <ResourceSourceShelf
+      label="Browse"
+      leading={
+        <Icon
+          name={icon}
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+      }
+      attribution={attribution}
+      browseAction={
+        onBrowseAll ? (
+          <ResourceShelfSeeAllAction type="button" onClick={onBrowseAll} />
+        ) : undefined
+      }
+      contentMode={state === undefined ? "rail" : "panel"}
+      scrollOverlay={
+        state === undefined && shouldShowOverflowFade ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 w-[var(--resource-source-shelf-fade-ramp)] bg-gradient-to-r from-transparent to-surface-recessed-solid"
+          />
+        ) : undefined
+      }
+    >
+      {state ??
+        visibleItems.map((item) => (
+          <ResourceSourceItem key={item.id}>{item.content}</ResourceSourceItem>
+        ))}
+    </ResourceSourceShelf>
+  );
+}
+
+export function ResourceOverviewPage({
+  description,
+  browse,
+  installed,
+  className,
+}: {
+  description: ReactNode;
+  browse: ComponentProps<typeof ResourceBrowseSection>;
+  installed: {
+    headingId: string;
+    label: ReactNode;
+    searchValue: string;
+    searchPlaceholder: string;
+    searchLabel?: string;
+    onSearchChange: (value: string) => void;
+    controls?: ReactNode;
+    action?: ReactNode;
+    body: ReactNode;
+  };
+  className?: string;
+}) {
+  return (
+    <ResourceOverview
+      className={className}
+      description={description}
+      browse={<ResourceBrowseSection {...browse} />}
+    >
+      <ResourceOverviewSection
+        id={installed.headingId}
+        label={installed.label}
+        toolbar={
+          <ResourceToolbar
+            searchValue={installed.searchValue}
+            searchPlaceholder={installed.searchPlaceholder}
+            searchLabel={installed.searchLabel}
+            onSearchChange={installed.onSearchChange}
+            containedControls
+            controls={installed.controls}
+            action={installed.action}
+          />
+        }
+      >
+        {installed.body}
+      </ResourceOverviewSection>
+    </ResourceOverview>
+  );
+}
+
 export function ResourceSourceShelf({
   label,
   attribution,
   leading,
   browseAction,
   scrollOverlay,
+  contentMode = "rail",
   children,
 }: {
   label: ReactNode;
@@ -852,6 +1048,7 @@ export function ResourceSourceShelf({
   leading?: ReactNode;
   browseAction?: ReactNode;
   scrollOverlay?: ReactNode;
+  contentMode?: "rail" | "panel";
   children: ReactNode;
 }) {
   return (
@@ -877,18 +1074,22 @@ export function ResourceSourceShelf({
         ) : null}
       </div>
       <div className="rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]">
-        <div className="relative">
-          <div className="-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]">
-            <div className="flex w-full snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]">
-              {children}
+        {contentMode === "panel" ? (
+          children
+        ) : (
+          <div className="relative">
+            <div className="-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]">
+              <div className="flex w-full snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]">
+                {children}
+              </div>
             </div>
+            {scrollOverlay ? (
+              <div className="pointer-events-none absolute inset-x-0 top-[var(--resource-source-shelf-shadow-bleed)] bottom-[var(--resource-source-shelf-shadow-bleed)]">
+                {scrollOverlay}
+              </div>
+            ) : null}
           </div>
-          {scrollOverlay ? (
-            <div className="pointer-events-none absolute inset-x-0 top-[var(--resource-source-shelf-shadow-bleed)] bottom-[var(--resource-source-shelf-shadow-bleed)]">
-              {scrollOverlay}
-            </div>
-          ) : null}
-        </div>
+        )}
       </div>
     </section>
   );
@@ -1036,6 +1237,40 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
     </div>
+  );
+}
+
+export function ResourceTemplateBrowseCard({
+  title,
+  description,
+  actionLabel = "Use template",
+  onUse,
+}: {
+  title: string;
+  description: ReactNode;
+  actionLabel?: string;
+  onUse: () => void;
+}) {
+  return (
+    <ResourceBrowseCard
+      title={title}
+      byline="Starter template"
+      description={description}
+      openLabel={`${actionLabel}: ${title}`}
+      headerAction={
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 bg-transparent px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          onClick={onUse}
+        >
+          <Icon name="MessageCirclePlus" className="size-3.5" aria-hidden />
+          {actionLabel}
+        </Button>
+      }
+      onOpen={onUse}
+    />
   );
 }
 

@@ -286,6 +286,7 @@ const ICON_MAP = {
   MailOpen: MailOpen01Icon,
   Maximize2: ArrowExpand01Icon,
   MessageQuestion: MessageQuestionIcon,
+  MessageCirclePlus: BubbleChatAddIcon,
   MessageSquarePlus: BubbleChatAddIcon,
   MessageSquare: BubbleChatIcon,
   Mic: Mic02Icon,

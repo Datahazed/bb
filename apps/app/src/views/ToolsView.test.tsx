@@ -48,6 +48,8 @@ describe("PluginListRow", () => {
 
     expect(markup).toContain('aria-label="Edit linear"');
     expect(markup).toContain('aria-label="Delete linear"');
+    expect(markup).not.toContain("group-hover:translate-x-1");
+    expect(markup).toContain("hover:bg-state-hover");
     expect(markup).not.toContain('aria-label="Disable linear"');
     expect(markup).not.toContain('aria-label="Enable linear"');
   });

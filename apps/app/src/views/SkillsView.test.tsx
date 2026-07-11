@@ -85,7 +85,7 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Sort");
     expect(markup).toContain("Installed skills");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
-    expect(markup).toContain("group-hover:translate-x-1");
+    expect(markup).not.toContain("group-hover:translate-x-1");
     expect(markup).toContain("text-muted-foreground/65");
     expect(markup).toContain(
       "h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5",
@@ -263,10 +263,15 @@ describe("SkillsOverview", () => {
     expect(row?.className).toContain("cursor-pointer");
     const caret = row?.querySelector('[data-icon="ChevronRight"]');
     expect(caret?.classList.contains("text-muted-foreground/65")).toBe(true);
-    expect(caret?.classList.contains("group-hover:translate-x-1")).toBe(true);
+    expect(caret?.classList.contains("group-hover:translate-x-1")).toBe(false);
+    expect(caret?.classList.contains("transition-colors")).toBe(true);
     expect(caret?.closest("button")).toBeNull();
-    fireEvent.click(row!);
+    const caretTarget = caret?.parentElement;
+    expect(caretTarget?.classList.contains("hover:bg-state-hover")).toBe(true);
+    fireEvent.click(caretTarget!);
     expect(onSelectSkill).toHaveBeenCalledOnce();
+    fireEvent.click(row!);
+    expect(onSelectSkill).toHaveBeenCalledTimes(2);
   });
 
   it("keeps create out of the list (templates live in the menu, not a panel)", () => {

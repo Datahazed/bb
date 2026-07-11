@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FC,
+  type ReactNode,
+} from "react";
 import type { PromptTextMention } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -12,19 +19,20 @@ import {
   ResourceDetailPage,
   ResourceDetailSection,
   ResourceListPanel,
+  ResourceLocationMeta,
   ResourceMeta,
   ResourceMultiSelectMenu,
+  ResourceBrowseSection,
+  ResourceOverviewPage,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceSectionTitle,
-  ResourceShelfSeeAllAction,
+  ResourceRowDetailChevron,
   ResourceSortMenu,
-  ResourceSourceItem,
-  ResourceSourceShelf,
   ResourceState,
   ResourceTabDescription,
+  ResourceTemplateBrowseCard,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -54,7 +62,6 @@ import type {
 } from "@/components/promptbox/PromptBoxInternal";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
-import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   CREATE_AUTOMATION_PROMPT,
   CREATE_SKILL_PROMPT,
@@ -561,13 +568,7 @@ function StoryEnvironmentInline({
   );
 }
 
-function ResourceLeading({
-  row,
-  fallbackIcon,
-}: {
-  row: ResourceListRowFixture;
-  fallbackIcon: IconName;
-}) {
+function ResourceLeading({ row }: { row: ResourceListRowFixture }) {
   if (row.rowSignal === "failed") {
     return (
       <Icon
@@ -592,13 +593,13 @@ function ResourceLeading({
   if (row.provider) {
     return <ProviderMark provider={row.provider} />;
   }
-  return (
+  return row.icon ? (
     <Icon
-      name={row.icon ?? fallbackIcon}
+      name={row.icon}
       className="size-4 text-muted-foreground"
       aria-hidden
     />
-  );
+  ) : null;
 }
 
 function AutomationRowActions() {
@@ -825,7 +826,6 @@ function ResourceRowsList({
   providerFilters,
   sortMode,
   sortDirection,
-  fallbackIcon,
   showOpenAction = false,
   showDisabledManageActions = false,
 }: {
@@ -834,7 +834,6 @@ function ResourceRowsList({
   providerFilters: readonly ProviderFilterId[];
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
-  fallbackIcon: IconName;
   showOpenAction?: boolean;
   showDisabledManageActions?: boolean;
 }) {
@@ -880,7 +879,7 @@ function ResourceRowsList({
       {rows.map((row) => (
         <ResourceRow
           key={row.id}
-          leading={<ResourceLeading row={row} fallbackIcon={fallbackIcon} />}
+          leading={<ResourceLeading row={row} />}
           title={row.title}
           description={row.description}
           state={row.state}
@@ -928,13 +927,7 @@ function ResourceRowsList({
             ) : undefined
           }
           trailingVisual={
-            showOpenAction ? (
-              <Icon
-                name="ChevronRight"
-                className="size-4 text-muted-foreground/65 transition-[color,transform] duration-150 ease-out group-hover:translate-x-1 group-hover:text-foreground group-focus-within:translate-x-1 group-focus-within:text-foreground"
-                aria-hidden
-              />
-            ) : undefined
+            showOpenAction ? <ResourceRowDetailChevron /> : undefined
           }
         />
       ))}
@@ -982,6 +975,10 @@ function SkillsShAttributionLink() {
   );
 }
 
+function registryFixtureProvider(row: RegistrySourceFixture): ProviderId {
+  return row.source.startsWith("anthropics/") ? "claude-code" : "codex";
+}
+
 function StoryInstallButton({
   installed,
   skillName,
@@ -1021,7 +1018,7 @@ function StoryInstallButton({
   );
 }
 
-function RegistryBrowseSource({
+function registryBrowseConfig({
   installedSkillIds,
   onInstall,
   onSelect,
@@ -1031,48 +1028,35 @@ function RegistryBrowseSource({
   onInstall: (id: string) => void;
   onSelect: (id: string) => void;
   onSeeAll: () => void;
-}) {
+}): ComponentProps<typeof ResourceBrowseSection> {
   const rows = REGISTRY_FIRST_PAGE_ROWS;
-  return (
-    <ResourceSourceShelf
-      label="Browse"
-      attribution={<SkillsShAttributionLink />}
-      scrollOverlay={
-        rows.length > 3 ? (
-          <OverflowFade
-            placement="right"
-            tone="recessed"
-            className="w-[var(--resource-source-shelf-fade-ramp)]"
-          />
-        ) : undefined
-      }
-      browseAction={
-        <ResourceShelfSeeAllAction type="button" onClick={onSeeAll} />
-      }
-    >
-      {rows.map((row) => (
-        <ResourceSourceItem key={row.id}>
-          <ResourceBrowseCard
-            title={row.title}
-            byline={`by ${row.source}`}
-            description={row.summary}
-            openLabel={`View details for ${row.title}`}
-            onOpen={() => onSelect(row.id)}
-            headerAction={
-              <StoryInstallButton
-                installed={installedSkillIds.has(row.id)}
-                skillName={row.title}
-                onInstall={() => onInstall(row.id)}
-              />
-            }
-            footerMeta={
-              <StorySocialProof installs={row.installs} stars={row.stars} />
-            }
-          />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
-  );
+  return {
+    icon: "Zap",
+    attribution: <SkillsShAttributionLink />,
+    onBrowseAll: onSeeAll,
+    items: rows.map((row) => ({
+      id: row.id,
+      content: (
+        <ResourceBrowseCard
+          title={row.title}
+          byline={`by ${row.source}`}
+          description={row.summary}
+          openLabel={`View details for ${row.title}`}
+          onOpen={() => onSelect(row.id)}
+          headerAction={
+            <StoryInstallButton
+              installed={installedSkillIds.has(row.id)}
+              skillName={row.title}
+              onInstall={() => onInstall(row.id)}
+            />
+          }
+          footerMeta={
+            <StorySocialProof installs={row.installs} stars={row.stars} />
+          }
+        />
+      ),
+    })),
+  };
 }
 
 function RegistryBrowseAllSurface({
@@ -1148,7 +1132,7 @@ function RegistryBrowseAllSurface({
         {rows.map((row) => (
           <ResourceRow
             key={row.id}
-            leading={<Icon name="Zap" className="size-4" aria-hidden />}
+            leading={<ProviderMark provider={registryFixtureProvider(row)} />}
             title={row.title}
             description={
               <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -1204,7 +1188,7 @@ function RegistrySkillStoryDetail({
           Back to skills
         </Button>
       }
-      leading={<Icon name="Zap" className="size-4" aria-hidden />}
+      leading={<ProviderMark provider={registryFixtureProvider(row)} />}
       title={row.title}
       info={<StorySocialProof installs={row.installs} stars={row.stars} />}
       metadata={<ResourceMeta items={["skills.sh", row.source]} />}
@@ -1233,13 +1217,11 @@ function RegistrySkillStoryDetail({
   );
 }
 
-function TemplateBrowseCards({
-  label,
+function templateBrowseConfig({
   icon,
   templates,
   onCreate,
 }: {
-  label: string;
   icon: IconName;
   templates: readonly {
     label: string;
@@ -1247,112 +1229,49 @@ function TemplateBrowseCards({
     prompt: string;
   }[];
   onCreate: (prompt: string) => void;
-}) {
-  return (
-    <ResourceSourceShelf
-      label={label}
-      leading={<Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
-      browseAction={<ResourceShelfSeeAllAction type="button" onClick={NOOP} />}
-    >
-      {templates.map((template) => (
-        <ResourceSourceItem key={`${label}-${template.label}`}>
-          <ResourceBrowseCard
-            leading={
-              <Icon
-                name={icon}
-                className="size-5 text-muted-foreground"
-                aria-hidden
-              />
-            }
-            title={template.label}
-            byline="Starter template"
-            description={template.description}
-            openLabel={`Use ${template.label} template`}
-            headerAction={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => onCreate(template.prompt)}
-              >
-                Use template
-              </Button>
-            }
-            onOpen={() => onCreate(template.prompt)}
-          />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
-  );
-}
-
-function PluginBrowseCards({
-  onCreate,
-}: {
-  onCreate: (prompt: string) => void;
-}) {
-  return (
-    <TemplateBrowseCards
-      label="Browse"
-      icon="ElectricPlugs"
-      templates={getCreateExamples("plugin").examples}
-      onCreate={onCreate}
-    />
-  );
-}
-
-function AutomationBrowseCards({
-  onCreate,
-}: {
-  onCreate: (prompt: string) => void;
-}) {
-  return (
-    <TemplateBrowseCards
-      label="Browse"
-      icon="TimeSchedule"
-      templates={getCreateExamples("automation").examples}
-      onCreate={onCreate}
-    />
-  );
+}): ComponentProps<typeof ResourceBrowseSection> {
+  return {
+    icon,
+    onBrowseAll: NOOP,
+    items: templates.map((template) => ({
+      id: template.label,
+      content: (
+        <ResourceTemplateBrowseCard
+          title={template.label}
+          description={template.description}
+          onUse={() => onCreate(template.prompt)}
+        />
+      ),
+    })),
+  };
 }
 
 function AutomationsList({
   query,
-  locationFilters,
+  projectFilters,
   sort,
   direction,
 }: {
   query: string;
-  locationFilters: readonly string[];
-  sort: "location" | "alpha";
+  projectFilters: readonly string[];
+  sort: "project" | "alpha";
   direction: "asc" | "desc";
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = AUTOMATION_ROWS.filter((row) =>
-    [
-      row.project,
-      row.folder,
-      row.title,
-      row.description,
-      row.environment?.label,
-    ]
+    [row.project, row.title, row.description, row.environment?.label]
       .join(" ")
       .toLowerCase()
       .includes(normalizedQuery),
   )
     .filter((row) => {
-      if (locationFilters.length === 0) return true;
-      return locationFilters.includes(
-        `${row.project?.toLowerCase()}/${row.folder?.toLowerCase()}`,
-      );
+      if (projectFilters.length === 0) return true;
+      return projectFilters.includes(row.project?.toLowerCase() ?? "");
     })
     .sort((left, right) => {
-      const leftLocation = `${left.project ?? ""} / ${left.folder ?? ""}`;
-      const rightLocation = `${right.project ?? ""} / ${right.folder ?? ""}`;
       const base =
-        sort === "location"
-          ? leftLocation.localeCompare(rightLocation) ||
+        sort === "project"
+          ? (left.project ?? "").localeCompare(right.project ?? "") ||
             left.title.localeCompare(right.title)
           : left.title.localeCompare(right.title);
       return direction === "asc" ? base : -base;
@@ -1370,28 +1289,24 @@ function AutomationsList({
       {rows.map((row) => (
         <ResourceRow
           key={row.id}
-          leading={<ResourceLeading row={row} fallbackIcon="TimeSchedule" />}
+          leading={<ResourceLeading row={row} />}
           title={row.title}
           description={
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <span className="truncate">{row.description}</span>
-              {row.environment ? (
-                <>
-                  <span aria-hidden>·</span>
+            <ResourceMeta
+              items={[
+                row.description,
+                row.environment ? (
                   <StoryEnvironmentInline display={row.environment} />
-                </>
-              ) : null}
-              <span aria-hidden>·</span>
-              <span className="truncate">
-                {row.project}
-                {row.folder ? ` / ${row.folder}` : ""}
-              </span>
-            </span>
+                ) : null,
+                <ResourceLocationMeta label={row.project ?? "Workspace"} />,
+              ]}
+            />
           }
           state={row.state}
           selected={row.selected}
           onOpen={NOOP}
           actions={<AutomationRowActions />}
+          trailingVisual={<ResourceRowDetailChevron />}
         />
       ))}
     </ResourceListPanel>
@@ -1481,57 +1396,51 @@ function SkillsOverviewSurface({
     );
   }
   return (
-    <div className="space-y-4">
-      <ResourceTabDescription>
-        Manage skills from bb and your configured agents. bb skills work across
-        every agent you use in bb.
-      </ResourceTabDescription>
-      <RegistryBrowseSource
-        installedSkillIds={installedSkillIds}
-        onInstall={handleRegistryInstall}
-        onSelect={setSelectedRegistryId}
-        onSeeAll={() => setShowAllBrowse(true)}
-      />
-      <section aria-labelledby="story-installed-skills" className="space-y-2">
-        <ResourceSectionTitle id="story-installed-skills" className="px-3">
-          Installed skills
-        </ResourceSectionTitle>
-        <ResourceToolbar
-          searchValue={query}
-          searchPlaceholder="Search skills"
-          onSearchChange={setQuery}
-          controlsClassName="h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm"
-          controls={
-            <StoryListControls
-              providerFilters={providerFilters}
-              sort={sort}
-              direction={direction}
-              availableProviders={providerBuckets}
-              onProviderFiltersChange={setProviderFilters}
-              onSortChange={updateSort}
-              alphaLabel="Skill name"
-            />
-          }
-          action={
-            <CreateWithTemplatesButton
-              kind="skill"
-              label="New bb skill"
-              onCreate={onCreate}
-            />
-          }
-        />
-        <ResourceRowsList
-          sections={skillSections}
-          query={query}
-          providerFilters={providerFilters}
-          sortMode={sort}
-          sortDirection={direction}
-          fallbackIcon="Zap"
-          showOpenAction
-          showDisabledManageActions
-        />
-      </section>
-    </div>
+    <ResourceOverviewPage
+      description="Manage skills from bb and your configured agents. bb skills work across every agent you use in bb."
+      browse={registryBrowseConfig({
+        installedSkillIds,
+        onInstall: handleRegistryInstall,
+        onSelect: setSelectedRegistryId,
+        onSeeAll: () => setShowAllBrowse(true),
+      })}
+      installed={{
+        headingId: "story-installed-skills",
+        label: "Installed skills",
+        searchValue: query,
+        searchPlaceholder: "Search skills",
+        onSearchChange: setQuery,
+        controls: (
+          <StoryListControls
+            providerFilters={providerFilters}
+            sort={sort}
+            direction={direction}
+            availableProviders={providerBuckets}
+            onProviderFiltersChange={setProviderFilters}
+            onSortChange={updateSort}
+            alphaLabel="Skill name"
+          />
+        ),
+        action: (
+          <CreateWithTemplatesButton
+            kind="skill"
+            label="New bb skill"
+            onCreate={onCreate}
+          />
+        ),
+        body: (
+          <ResourceRowsList
+            sections={skillSections}
+            query={query}
+            providerFilters={providerFilters}
+            sortMode={sort}
+            sortDirection={direction}
+            showOpenAction
+            showDisabledManageActions
+          />
+        ),
+      }}
+    />
   );
 }
 
@@ -1557,18 +1466,20 @@ function PluginsOverviewSurface({
     }
   }
   return (
-    <div className="space-y-4">
-      <ResourceTabDescription>
-        Plugins add bb surfaces, commands, background services, and
-        provider-specific capabilities. Browse installable templates first, then
-        search and manage installed plugins.
-      </ResourceTabDescription>
-      <PluginBrowseCards onCreate={onCreate} />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search plugins"
-        onSearchChange={setQuery}
-        controls={
+    <ResourceOverviewPage
+      description="Manage bb plugins and provider capabilities. Plugins add surfaces, commands, background services, and reusable capabilities."
+      browse={templateBrowseConfig({
+        icon: "ElectricPlugs",
+        templates: getCreateExamples("plugin").examples,
+        onCreate,
+      })}
+      installed={{
+        headingId: "story-installed-plugins",
+        label: "Installed plugins",
+        searchValue: query,
+        searchPlaceholder: "Search plugins",
+        onSearchChange: setQuery,
+        controls: (
           <StoryListControls
             providerFilters={providerFilters}
             sort={sort}
@@ -1576,25 +1487,28 @@ function PluginsOverviewSurface({
             availableProviders={providerBuckets}
             onProviderFiltersChange={setProviderFilters}
             onSortChange={updateSort}
+            alphaLabel="Plugin name"
           />
-        }
-        action={
+        ),
+        action: (
           <CreateWithTemplatesButton
             kind="plugin"
             label="New plugin"
             onCreate={onCreate}
           />
-        }
-      />
-      <ResourceRowsList
-        sections={PLUGIN_SECTIONS}
-        query={query}
-        providerFilters={providerFilters}
-        sortMode={sort}
-        sortDirection={direction}
-        fallbackIcon="ElectricPlugs"
-      />
-    </div>
+        ),
+        body: (
+          <ResourceRowsList
+            sections={PLUGIN_SECTIONS}
+            query={query}
+            providerFilters={providerFilters}
+            sortMode={sort}
+            sortDirection={direction}
+            showOpenAction
+          />
+        ),
+      }}
+    />
   );
 }
 
@@ -1604,14 +1518,14 @@ function AutomationsOverviewSurface({
   onCreate: (prompt?: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [locationFilters, setLocationFilters] = useState<string[]>([]);
-  const [sort, setSort] = useState<"location" | "alpha">("alpha");
+  const [projectFilters, setProjectFilters] = useState<string[]>([]);
+  const [sort, setSort] = useState<"project" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const locationBucketCount = new Set(
-    AUTOMATION_ROWS.map((row) => `${row.project ?? ""}/${row.folder ?? ""}`),
+  const projectBucketCount = new Set(
+    AUTOMATION_ROWS.map((row) => row.project ?? ""),
   ).size;
-  function updateSort(nextSort: "location" | "alpha") {
-    if (nextSort === "location" && locationBucketCount <= 1) return;
+  function updateSort(nextSort: "project" | "alpha") {
+    if (nextSort === "project" && projectBucketCount <= 1) return;
     if (nextSort === sort) {
       setDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
@@ -1620,60 +1534,63 @@ function AutomationsOverviewSurface({
     }
   }
   return (
-    <div className="space-y-4">
-      <ResourceTabDescription>
-        Automations run scheduled bb work across projects and folders. Browse
-        starter automations first, then search and manage the automations
-        already installed in this workspace.
-      </ResourceTabDescription>
-      <AutomationBrowseCards onCreate={onCreate} />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search automations"
-        onSearchChange={setQuery}
-        controls={
+    <ResourceOverviewPage
+      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+      browse={templateBrowseConfig({
+        icon: "TimeSchedule",
+        templates: getCreateExamples("automation").examples,
+        onCreate,
+      })}
+      installed={{
+        headingId: "story-installed-automations",
+        label: "Installed automations",
+        searchValue: query,
+        searchPlaceholder: "Search automations",
+        onSearchChange: setQuery,
+        controls: (
           <>
             <ResourceMultiSelectMenu
-              label="Project / folder"
+              label="Projects"
               icon="Layers"
-              selectedValues={locationFilters}
+              selectedValues={projectFilters}
               options={[
-                { id: "bb/reviews", label: "bb / Reviews" },
-                { id: "bb/maintenance", label: "bb / Maintenance" },
-                { id: "moss/ci", label: "moss / CI" },
+                { id: "bb", label: "bb" },
+                { id: "moss", label: "moss" },
               ]}
-              onChange={setLocationFilters}
+              onChange={setProjectFilters}
             />
             <ResourceSortMenu
               value={sort}
               direction={direction}
               options={[
                 {
-                  id: "location",
-                  label: "Project / folder",
-                  disabled: locationBucketCount <= 1,
+                  id: "project",
+                  label: "Project",
+                  disabled: projectBucketCount <= 1,
                 },
-                { id: "alpha", label: "Alphabetical" },
+                { id: "alpha", label: "Automation name" },
               ]}
-              onChange={(value) => updateSort(value as "location" | "alpha")}
+              onChange={(value) => updateSort(value as "project" | "alpha")}
             />
           </>
-        }
-        action={
+        ),
+        action: (
           <CreateWithTemplatesButton
             kind="automation"
             label="New automation"
             onCreate={onCreate}
           />
-        }
-      />
-      <AutomationsList
-        query={query}
-        locationFilters={locationFilters}
-        sort={sort}
-        direction={direction}
-      />
-    </div>
+        ),
+        body: (
+          <AutomationsList
+            query={query}
+            projectFilters={projectFilters}
+            sort={sort}
+            direction={direction}
+          />
+        ),
+      }}
+    />
   );
 }
 

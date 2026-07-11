@@ -25,7 +25,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
-  { icon: "Layers", id: "plugins", label: "Plugins" },
+  { icon: "ElectricPlugs", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
 ] as const satisfies readonly {
   icon: IconName;
@@ -37,9 +37,7 @@ export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
-export function isSettingsSectionId(
-  value: string,
-): value is SettingsSectionId {
+export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 

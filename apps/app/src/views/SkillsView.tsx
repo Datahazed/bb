@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -8,7 +8,6 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { appToast } from "@/components/ui/app-toast";
-import { OverflowFade } from "@/components/ui/overflow-fade";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import {
   ResourceActionButton,
@@ -20,17 +19,15 @@ import {
   ResourceListState,
   ResourceMeta,
   ResourceMultiSelectMenu,
+  ResourceBrowseSection,
+  ResourceOverviewPage,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
-  ResourceSectionTitle,
-  ResourceShelfSeeAllAction,
+  ResourceRowDetailChevron,
   ResourceSortMenu,
-  ResourceSourceItem,
-  ResourceSourceShelf,
   ResourceStatus,
-  ResourceTabDescription,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Icon } from "@bb/shared-ui/icon";
@@ -409,13 +406,7 @@ function SkillRow({
       description={description}
       onOpen={onSelect}
       actions={actions}
-      trailingVisual={
-        <Icon
-          name="ChevronRight"
-          className="size-4 text-muted-foreground/65 transition-[color,transform] duration-150 ease-out group-hover:translate-x-1 group-hover:text-foreground group-focus-within:translate-x-1 group-focus-within:text-foreground"
-          aria-hidden
-        />
-      }
+      trailingVisual={<ResourceRowDetailChevron />}
     />
   );
 }
@@ -588,12 +579,12 @@ function SkillsShAttributionLink() {
   );
 }
 
-function RegistrySkillsSource({
+function useRegistrySkillsBrowse({
   skills,
   isLoading,
   hasError,
   pendingSkillId,
-  browseAction,
+  onBrowseAll,
   onRetry,
   onInstall,
   onSelect,
@@ -603,12 +594,12 @@ function RegistrySkillsSource({
   isLoading: boolean;
   hasError: boolean;
   pendingSkillId: string | null;
-  browseAction?: ReactNode;
+  onBrowseAll?: () => void;
   onRetry?: () => void;
   onInstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   isInstalled: (skill: RegistrySkill) => boolean;
-}) {
+}): ComponentProps<typeof ResourceBrowseSection> {
   const visibleSkills = useMemo(
     () =>
       [...skills].sort(
@@ -618,73 +609,70 @@ function RegistrySkillsSource({
     [skills],
   );
   if (hasError) {
-    return (
-      <EmptyStatePanel role="alert" className="py-6">
-        <div className="flex flex-col items-center gap-2">
-          <span>Couldn't load skills.sh.</span>
-          <SkillsShAttributionLink />
-          {onRetry ? (
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              Retry
-            </Button>
-          ) : null}
-        </div>
-      </EmptyStatePanel>
-    );
+    return {
+      icon: "Zap",
+      attribution: <SkillsShAttributionLink />,
+      onBrowseAll,
+      state: (
+        <EmptyStatePanel role="alert" className="py-6">
+          <div className="flex flex-col items-center gap-2">
+            <span>Couldn't load skills.sh.</span>
+            {onRetry ? (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        </EmptyStatePanel>
+      ),
+    };
   }
 
   if (isLoading) {
-    return (
-      <ResourceSourceShelf
-        label="Browse"
-        attribution={<SkillsShAttributionLink />}
-      >
-        {["w-36", "w-48", "w-28"].map((nameWidth) => (
-          <ResourceSourceItem key={nameWidth}>
-            <div className="flex items-center gap-[var(--resource-source-shelf-label-gap)] p-[var(--resource-source-shelf-inset)]">
-              <Skeleton className="size-4 rounded" />
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <Skeleton className={cn("h-3.5", nameWidth)} />
-                <Skeleton className="h-3 w-40" />
-              </div>
-              <Skeleton className="h-7 w-16" />
-            </div>
-          </ResourceSourceItem>
-        ))}
-      </ResourceSourceShelf>
-    );
+    return {
+      icon: "Zap",
+      attribution: <SkillsShAttributionLink />,
+      onBrowseAll,
+      items: ["w-36", "w-48", "w-28"].map((nameWidth) => ({
+        id: nameWidth,
+        content: (
+          <ResourceBrowseCard
+            title={<Skeleton className={cn("h-3.5", nameWidth)} />}
+            byline={<Skeleton className="h-3 w-40" />}
+            description={<Skeleton className="h-14 w-full" />}
+            headerAction={<Skeleton className="h-7 w-16" />}
+          />
+        ),
+      })),
+    };
   }
 
-  if (visibleSkills.length === 0) return null;
+  if (visibleSkills.length === 0) {
+    return {
+      icon: "Zap",
+      attribution: <SkillsShAttributionLink />,
+      onBrowseAll,
+      items: [],
+    };
+  }
 
-  return (
-    <ResourceSourceShelf
-      label="Browse"
-      attribution={<SkillsShAttributionLink />}
-      browseAction={browseAction}
-      scrollOverlay={
-        visibleSkills.length > 3 ? (
-          <OverflowFade
-            placement="right"
-            tone="recessed"
-            className="w-[var(--resource-source-shelf-fade-ramp)]"
-          />
-        ) : undefined
-      }
-    >
-      {visibleSkills.map((skill) => (
-        <ResourceSourceItem key={skill.id}>
-          <RegistrySkillSourceItem
-            skill={skill}
-            installed={isInstalled(skill)}
-            pending={pendingSkillId === skill.id}
-            onInstall={onInstall}
-            onSelect={onSelect}
-          />
-        </ResourceSourceItem>
-      ))}
-    </ResourceSourceShelf>
-  );
+  return {
+    icon: "Zap",
+    attribution: <SkillsShAttributionLink />,
+    onBrowseAll,
+    items: visibleSkills.map((skill) => ({
+      id: skill.id,
+      content: (
+        <RegistrySkillSourceItem
+          skill={skill}
+          installed={isInstalled(skill)}
+          pending={pendingSkillId === skill.id}
+          onInstall={onInstall}
+          onSelect={onSelect}
+        />
+      ),
+    })),
+  };
 }
 
 export function RegistrySkillsBrowsePage({
@@ -858,7 +846,7 @@ export interface SkillsOverviewProps {
   registryIsLoading?: boolean;
   registryHasError?: boolean;
   pendingRegistrySkillId?: string | null;
-  registryBrowseAction?: ReactNode;
+  onBrowseRegistry?: () => void;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
@@ -886,7 +874,7 @@ export function SkillsOverview({
   registryIsLoading = false,
   registryHasError = false,
   pendingRegistrySkillId = null,
-  registryBrowseAction,
+  onBrowseRegistry,
   onCreateSkill,
   onSelectSkill,
   onEditSkill,
@@ -975,108 +963,104 @@ export function SkillsOverview({
     },
     [providerBucketCount, sortMode],
   );
-  return (
-    <div className="space-y-4">
-      <ResourceTabDescription>
-        Manage skills from bb and your configured agents. bb skills work across
-        every agent you use in bb.
-      </ResourceTabDescription>
-      <RegistrySkillsSource
-        skills={registrySkills}
-        isLoading={registryIsLoading}
-        hasError={registryHasError}
-        pendingSkillId={pendingRegistrySkillId}
-        browseAction={registryBrowseAction}
-        onRetry={onRetryRegistry}
-        onInstall={onInstallRegistrySkill}
-        onSelect={onSelectRegistrySkill}
-        isInstalled={isRegistrySkillInstalled}
-      />
-      <section aria-labelledby="installed-skills-heading" className="space-y-2">
-        <ResourceSectionTitle id="installed-skills-heading" className="px-3">
-          Installed skills
-        </ResourceSectionTitle>
-        <ResourceToolbar
-          searchValue={query}
-          searchPlaceholder="Search skills"
-          onSearchChange={onQueryChange}
-          controlsClassName="h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm"
-          controls={
-            <>
-              <ResourceMultiSelectMenu
-                label="Agent"
-                icon="Layers"
-                selectedValues={providerFilters}
-                options={providerOptions}
-                onChange={(values) =>
-                  setProviderFilters(values as ResourceProviderFilter[])
-                }
-              />
-              <ResourceSortMenu
-                value={sortMode}
-                direction={sortDirection}
-                options={[
-                  {
-                    id: "provider",
-                    label: "Agent",
-                    disabled: providerBucketCount <= 1,
-                  },
-                  { id: "alpha", label: "Skill name" },
-                ]}
-                onChange={handleSortChange}
-              />
-            </>
+  const browse = useRegistrySkillsBrowse({
+    skills: registrySkills,
+    isLoading: registryIsLoading,
+    hasError: registryHasError,
+    pendingSkillId: pendingRegistrySkillId,
+    onBrowseAll: onBrowseRegistry,
+    onRetry: onRetryRegistry,
+    onInstall: onInstallRegistrySkill,
+    onSelect: onSelectRegistrySkill,
+    isInstalled: isRegistrySkillInstalled,
+  });
+  const installedBody = hasError ? (
+    <ResourceListState
+      state="error"
+      message="Couldn't load skills."
+      onRetry={onRetry}
+    />
+  ) : isLoading ? (
+    <ResourceListState state="loading" message="Loading skills" />
+  ) : visibleSkills.length === 0 ? (
+    <ResourceListState
+      state="empty"
+      message={
+        normalizedQuery === "" && providerFilters.length === 0
+          ? "No skills installed."
+          : normalizedQuery === ""
+            ? "No skills match these agents."
+            : `No skills match "${query}"`
+      }
+    />
+  ) : (
+    <ResourceListPanel>
+      {visibleSkills.map((skill) => (
+        <SkillRow
+          key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+          skill={skill}
+          onSelect={() => onSelectSkill(skill)}
+          onEdit={
+            skill.manageable && onEditSkill
+              ? () => onEditSkill(skill)
+              : undefined
           }
-          action={
-            <CreateWithTemplatesButton
-              kind="skill"
-              label="New bb skill"
-              onCreate={onCreateSkill}
-            />
+          onDelete={
+            skill.manageable && onDeleteSkill
+              ? () => onDeleteSkill(skill)
+              : undefined
           }
         />
-        {hasError ? (
-          <ResourceListState
-            state="error"
-            message="Couldn't load skills."
-            onRetry={onRetry}
+      ))}
+    </ResourceListPanel>
+  );
+
+  return (
+    <ResourceOverviewPage
+      description="Manage skills from bb and your configured agents. bb skills work across every agent you use in bb."
+      browse={browse}
+      installed={{
+        headingId: "installed-skills-heading",
+        label: "Installed skills",
+        searchValue: query,
+        searchPlaceholder: "Search skills",
+        onSearchChange: onQueryChange,
+        controls: (
+          <>
+            <ResourceMultiSelectMenu
+              label="Agent"
+              icon="Layers"
+              selectedValues={providerFilters}
+              options={providerOptions}
+              onChange={(values) =>
+                setProviderFilters(values as ResourceProviderFilter[])
+              }
+            />
+            <ResourceSortMenu
+              value={sortMode}
+              direction={sortDirection}
+              options={[
+                {
+                  id: "provider",
+                  label: "Agent",
+                  disabled: providerBucketCount <= 1,
+                },
+                { id: "alpha", label: "Skill name" },
+              ]}
+              onChange={handleSortChange}
+            />
+          </>
+        ),
+        action: (
+          <CreateWithTemplatesButton
+            kind="skill"
+            label="New bb skill"
+            onCreate={onCreateSkill}
           />
-        ) : isLoading ? (
-          <ResourceListState state="loading" message="Loading skills" />
-        ) : visibleSkills.length === 0 ? (
-          <ResourceListState
-            state="empty"
-            message={
-              normalizedQuery === "" && providerFilters.length === 0
-                ? "No skills installed."
-                : normalizedQuery === ""
-                  ? "No skills match these agents."
-                  : `No skills match "${query}"`
-            }
-          />
-        ) : (
-          <ResourceListPanel>
-            {visibleSkills.map((skill) => (
-              <SkillRow
-                key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
-                skill={skill}
-                onSelect={() => onSelectSkill(skill)}
-                onEdit={
-                  skill.manageable && onEditSkill
-                    ? () => onEditSkill(skill)
-                    : undefined
-                }
-                onDelete={
-                  skill.manageable && onDeleteSkill
-                    ? () => onDeleteSkill(skill)
-                    : undefined
-                }
-              />
-            ))}
-          </ResourceListPanel>
-        )}
-      </section>
-    </div>
+        ),
+        body: installedBody,
+      }}
+    />
   );
 }
 
@@ -1720,15 +1704,10 @@ export function SkillsLibrary() {
           }
           registryHasError={registryQuery.isError}
           pendingRegistrySkillId={pendingRegistrySkillId}
-          registryBrowseAction={
-            <ResourceShelfSeeAllAction
-              type="button"
-              onClick={() => {
-                setRegistryPage(0);
-                navigate(getRegistrySkillsRoutePath());
-              }}
-            />
-          }
+          onBrowseRegistry={() => {
+            setRegistryPage(0);
+            navigate(getRegistrySkillsRoutePath());
+          }}
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}
           onEditSkill={(skill) => openSkill(skill, { editing: true })}
