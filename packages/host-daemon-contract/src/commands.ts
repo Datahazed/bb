@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 49 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 50 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -626,6 +626,23 @@ const hostListSkillsCommandSchema = z.object({
   builtinSkillsRootPath: z.string().min(1),
 });
 
+const registrySkillNamePattern =
+  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const registryPackageRefPattern = /^(?!-)\S+$/u;
+
+/**
+ * Import one skills.sh package into bb's host-local user skill root. The daemon
+ * owns extraction, validation, confinement, and the final atomic filesystem
+ * write; the server supplies only registry identity selected by product policy.
+ */
+const hostInstallRegistrySkillCommandSchema = z
+  .object({
+    type: z.literal("host.install_registry_skill"),
+    packageRef: z.string().min(1).max(2_048).regex(registryPackageRefPattern),
+    skillId: z.string().max(64).regex(registrySkillNamePattern),
+  })
+  .strict();
+
 /** Only bb-owned skill scopes are deletable; provider skills are read-only. */
 export const deletableSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
@@ -1061,6 +1078,10 @@ const skillListResultSchema = z.object({
   skills: z.array(discoveredSkillSchema),
 });
 
+const installRegistrySkillResultSchema = z.object({
+  filePath: z.string(),
+});
+
 const deleteSkillResultSchema = z.object({
   deletedPath: z.string(),
 });
@@ -1433,6 +1454,17 @@ export const hostDaemonCommandRegistry = {
     resultSchema: skillListResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Host-local bb-user skill import. Non-retryable because a transient failure
+  // must not silently re-run an external package install or filesystem write.
+  "host.install_registry_skill": defineHostDaemonCommandDescriptor({
+    type: "host.install_registry_skill",
+    schema: hostInstallRegistrySkillCommandSchema,
+    resultSchema: installRegistrySkillResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

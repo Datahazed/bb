@@ -69,22 +69,22 @@ const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
   above: {
     background: "bg-gradient-to-b from-transparent to-background",
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
-    recessed: "bg-gradient-to-b from-transparent to-surface-recessed",
+    recessed: "bg-gradient-to-b from-transparent to-surface-recessed-solid",
   },
   below: {
     background: "bg-gradient-to-b to-transparent from-background",
     sidebar: "bg-gradient-to-b to-transparent from-sidebar",
-    recessed: "bg-gradient-to-b to-transparent from-surface-recessed",
+    recessed: "bg-gradient-to-b to-transparent from-surface-recessed-solid",
   },
   left: {
     background: "bg-gradient-to-l from-transparent to-background",
     sidebar: "bg-gradient-to-l from-transparent to-sidebar",
-    recessed: "bg-gradient-to-l from-transparent to-surface-recessed",
+    recessed: "bg-gradient-to-l from-transparent to-surface-recessed-solid",
   },
   right: {
     background: "bg-gradient-to-r from-transparent to-background",
     sidebar: "bg-gradient-to-r from-transparent to-sidebar",
-    recessed: "bg-gradient-to-r from-transparent to-surface-recessed",
+    recessed: "bg-gradient-to-r from-transparent to-surface-recessed-solid",
   },
 };
 

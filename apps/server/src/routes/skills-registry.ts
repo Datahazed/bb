@@ -1,20 +1,22 @@
-import { spawn } from "node:child_process";
 import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
+import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
 import { resolveCommandWorkspace } from "../services/threads/provider-command-typeahead.js";
 
 const SKILLS_BASE_URL = "https://www.skills.sh";
-const REGISTRY_LIMIT = 100;
+const DEFAULT_PAGE_SIZE = 24;
+const MAX_PAGE = 100_000;
+const MAX_PAGE_SIZE = 100;
+const MAX_SEARCH_RESULTS = 200;
 const DETAIL_PREVIEW_LIMIT = 10;
 const GITHUB_STARS_PREVIEW_LIMIT = 48;
 const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
-const INSTALL_TIMEOUT_MS = 120_000;
-
-const SUPPORTED_INSTALL_PROVIDERS = ["claude-code", "codex"] as const;
-type SkillInstallProvider = (typeof SUPPORTED_INSTALL_PROVIDERS)[number];
-type SkillInstallScope = "user" | "project";
+const REGISTRY_INSTALL_RPC_TIMEOUT_MS = 130_000;
+const REGISTRY_SKILL_NAME_PATTERN =
+  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const REGISTRY_SOURCE_PATTERN = /^(?!-)\S+$/u;
 
 interface RegistrySkill {
   id: string;
@@ -30,6 +32,18 @@ interface RegistrySkill {
   worksWith: string[];
 }
 
+interface RegistryPagination {
+  page: number;
+  perPage: number;
+  total: number;
+  hasMore: boolean;
+}
+
+interface RegistrySkillsPage {
+  skills: RegistrySkill[];
+  pagination: RegistryPagination;
+}
+
 interface SkillsApiSkill {
   id: string;
   slug: string;
@@ -38,6 +52,12 @@ interface SkillsApiSkill {
   installs: number;
   installUrl: string | null;
   url: string;
+}
+
+interface SkillsApiPage {
+  skills: SkillsApiSkill[];
+  total: number;
+  hasMore: boolean;
 }
 
 const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
@@ -143,7 +163,6 @@ function parsePublicHomepageSkills(html: string): RegistrySkill[] {
       summary: null,
       worksWith: ["Claude Code", "Codex"],
     });
-    if (byId.size >= REGISTRY_LIMIT) break;
   }
   return [...byId.values()];
 }
@@ -182,7 +201,7 @@ function isApiSkill(value: unknown): value is SkillsApiSkill {
   );
 }
 
-async function fetchRegistryJson(url: URL): Promise<SkillsApiSkill[] | null> {
+async function fetchRegistryJson(url: URL): Promise<SkillsApiPage | null> {
   const token = process.env.VERCEL_OIDC_TOKEN;
   if (!token) return null;
   const response = await fetch(url, {
@@ -191,15 +210,30 @@ async function fetchRegistryJson(url: URL): Promise<SkillsApiSkill[] | null> {
   if (!response.ok) return null;
   const body = (await response.json().catch(() => null)) as {
     data?: unknown;
+    count?: unknown;
+    pagination?: unknown;
   } | null;
-  return Array.isArray(body?.data)
-    ? body.data.filter(isApiSkill).slice(0, REGISTRY_LIMIT)
-    : null;
+  if (!Array.isArray(body?.data)) return null;
+  const skills = body.data.filter(isApiSkill);
+  const pagination = isRecord(body.pagination) ? body.pagination : null;
+  const total =
+    pagination && typeof pagination.total === "number"
+      ? pagination.total
+      : typeof body.count === "number"
+        ? body.count
+        : skills.length;
+  const hasMore =
+    pagination && typeof pagination.hasMore === "boolean"
+      ? pagination.hasMore
+      : false;
+  return { skills, total, hasMore };
 }
 
 async function fetchPublicDirectorySkills(
   query: string,
-): Promise<RegistrySkill[]> {
+  page: number,
+  perPage: number,
+): Promise<RegistrySkillsPage> {
   const response = await fetch(`${SKILLS_BASE_URL}/`);
   if (!response.ok) {
     throw new ApiError(
@@ -210,13 +244,28 @@ async function fetchPublicDirectorySkills(
   }
   const skills = parsePublicHomepageSkills(await response.text());
   const normalizedQuery = query.trim().toLowerCase();
-  return normalizedQuery.length === 0
-    ? skills
-    : skills.filter(
-        (skill) =>
-          skill.name.toLowerCase().includes(normalizedQuery) ||
-          skill.source.toLowerCase().includes(normalizedQuery),
-      );
+  const filtered =
+    normalizedQuery.length === 0
+      ? skills
+      : skills.filter(
+          (skill) =>
+            skill.name.toLowerCase().includes(normalizedQuery) ||
+            skill.source.toLowerCase().includes(normalizedQuery),
+        );
+  const ranked = [...filtered].sort(
+    (left, right) =>
+      right.installs - left.installs || left.name.localeCompare(right.name),
+  );
+  const start = page * perPage;
+  return {
+    skills: ranked.slice(start, start + perPage),
+    pagination: {
+      page,
+      perPage,
+      total: ranked.length,
+      hasMore: start + perPage < ranked.length,
+    },
+  };
 }
 
 async function hydrateDetails(
@@ -313,21 +362,30 @@ async function hydrateGithubStars(
   );
 }
 
-async function listRegistrySkills(query: string): Promise<RegistrySkill[]> {
+async function listRegistrySkills(
+  query: string,
+  page: number,
+  perPage: number,
+): Promise<RegistrySkillsPage> {
+  const normalizedQuery = query.trim();
   const apiUrl = new URL(
-    query.trim().length > 0 ? "/api/v1/skills/search" : "/api/v1/skills",
+    normalizedQuery.length > 0 ? "/api/v1/skills/search" : "/api/v1/skills",
     SKILLS_BASE_URL,
   );
-  if (query.trim().length > 0) {
-    apiUrl.searchParams.set("q", query.trim());
-    apiUrl.searchParams.set("limit", String(REGISTRY_LIMIT));
+  if (normalizedQuery.length > 0) {
+    apiUrl.searchParams.set("q", normalizedQuery);
+    apiUrl.searchParams.set("limit", String(MAX_SEARCH_RESULTS));
   } else {
     apiUrl.searchParams.set("view", "all-time");
-    apiUrl.searchParams.set("per_page", String(REGISTRY_LIMIT));
+    apiUrl.searchParams.set("page", String(page));
+    apiUrl.searchParams.set("per_page", String(perPage));
   }
-  const apiSkills = await fetchRegistryJson(apiUrl);
-  const skills =
-    apiSkills?.map((skill) => ({
+  const apiPage = await fetchRegistryJson(apiUrl);
+  const publicPage = apiPage
+    ? null
+    : await fetchPublicDirectorySkills(normalizedQuery, page, perPage);
+  const mappedApiSkills =
+    apiPage?.skills.map((skill) => ({
       id: skill.id,
       source: skill.source,
       skillId: skill.slug,
@@ -339,34 +397,54 @@ async function listRegistrySkills(query: string): Promise<RegistrySkill[]> {
       topic: "Agent workflows",
       summary: null,
       worksWith: ["Claude Code", "Codex"],
-    })) ?? (await fetchPublicDirectorySkills(query));
+    })) ?? null;
+  const start = page * perPage;
+  const skills =
+    mappedApiSkills === null
+      ? (publicPage?.skills ?? [])
+      : normalizedQuery.length > 0
+        ? mappedApiSkills.slice(start, start + perPage)
+        : mappedApiSkills;
+  const pagination =
+    publicPage?.pagination ??
+    ({
+      page,
+      perPage,
+      total: apiPage?.total ?? skills.length,
+      hasMore:
+        normalizedQuery.length > 0
+          ? start + perPage < (apiPage?.total ?? 0)
+          : (apiPage?.hasMore ?? false),
+    } satisfies RegistryPagination);
   const hydrated = await hydrateGithubStars(await hydrateDetails(skills));
   lastRegistrySkills = hydrated;
-  return hydrated;
+  return { skills: hydrated, pagination };
 }
 
-function filterRegistryFallback(query: string): RegistrySkill[] {
+function filterRegistryFallback(
+  query: string,
+  page: number,
+  perPage: number,
+): RegistrySkillsPage {
   const normalizedQuery = query.trim().toLowerCase();
   const fallback = lastRegistrySkills ?? [...FALLBACK_REGISTRY_SKILLS];
-  return normalizedQuery.length === 0
-    ? fallback
-    : fallback.filter(
-        (skill) =>
-          skill.name.toLowerCase().includes(normalizedQuery) ||
-          skill.source.toLowerCase().includes(normalizedQuery),
-      );
-}
-
-function parseProviders(value: unknown): SkillInstallProvider[] {
-  if (!Array.isArray(value)) return [];
-  const providers = value.filter((provider): provider is SkillInstallProvider =>
-    SUPPORTED_INSTALL_PROVIDERS.includes(provider as SkillInstallProvider),
-  );
-  return [...new Set(providers)];
-}
-
-function parseInstallScope(value: unknown): SkillInstallScope | null {
-  return value === "user" || value === "project" ? value : null;
+  const filtered =
+    normalizedQuery.length === 0
+      ? fallback
+      : fallback.filter(
+          (skill) =>
+            skill.name.toLowerCase().includes(normalizedQuery) ||
+            skill.source.toLowerCase().includes(normalizedQuery),
+        );
+  return {
+    skills: filtered,
+    pagination: {
+      page,
+      perPage,
+      total: page * perPage + filtered.length,
+      hasMore: false,
+    },
+  };
 }
 
 function packageRefForSource(source: string): string {
@@ -375,139 +453,96 @@ function packageRefForSource(source: string): string {
   return source.includes(".") ? `https://${source}` : source;
 }
 
-function runSkillsInstall(args: {
-  cwd: string;
-  provider: SkillInstallProvider;
-  packageRef: string;
-  skillId: string;
-  scope: SkillInstallScope;
-}): Promise<{ ok: boolean; stdout: string; stderr: string; command: string }> {
-  const commandArgs = [
-    "-y",
-    "skills@latest",
-    "add",
-    args.packageRef,
-    "--agent",
-    args.provider,
-    "--skill",
-    args.skillId,
-    "--yes",
-    ...(args.scope === "user" ? ["--global"] : []),
-  ];
-  return new Promise((resolve) => {
-    const child = spawn("npx", commandArgs, { cwd: args.cwd });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-    }, INSTALL_TIMEOUT_MS);
-    child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        ok: false,
-        stdout,
-        stderr: stderr.length > 0 ? stderr : error.message,
-        command: `npx ${commandArgs.join(" ")}`,
-      });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        ok: code === 0,
-        stdout,
-        stderr,
-        command: `npx ${commandArgs.join(" ")}`,
-      });
-    });
-  });
+function parsePageParameter(value: string | undefined): number {
+  if (value === undefined) return 0;
+  const page = Number(value);
+  if (!/^\d+$/u.test(value) || !Number.isSafeInteger(page) || page > MAX_PAGE) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `page must be a nonnegative integer no greater than ${MAX_PAGE}`,
+    );
+  }
+  return page;
+}
+
+function parsePerPageParameter(value: string | undefined): number {
+  if (value === undefined) return DEFAULT_PAGE_SIZE;
+  if (!/^\d+$/u.test(value)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "perPage must be a positive integer",
+    );
+  }
+  const perPage = Number(value);
+  if (
+    !Number.isSafeInteger(perPage) ||
+    perPage < 1 ||
+    perPage > MAX_PAGE_SIZE
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `perPage must be between 1 and ${MAX_PAGE_SIZE}`,
+    );
+  }
+  return perPage;
 }
 
 export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
   app.get("/skills-registry", async (context) => {
     const query = context.req.query("q") ?? "";
+    const page = parsePageParameter(context.req.query("page"));
+    const perPage = parsePerPageParameter(context.req.query("perPage"));
     try {
-      return context.json({ skills: await listRegistrySkills(query) });
+      return context.json(await listRegistrySkills(query, page, perPage));
     } catch (error) {
+      if (error instanceof ApiError && error.status < 500) throw error;
       deps.logger.warn(
         {
           error: error instanceof Error ? error.message : String(error),
         },
         "skills.sh registry fetch failed; using fallback data",
       );
-      return context.json({ skills: filterRegistryFallback(query) });
+      return context.json(filterRegistryFallback(query, page, perPage));
     }
   });
 
   app.post("/skills-registry/install", async (context) => {
-    const body = (await context.req.json().catch(() => null)) as {
-      source?: unknown;
-      skillId?: unknown;
-      scope?: unknown;
-      providers?: unknown;
-      projectId?: unknown;
-      environmentId?: unknown;
-    } | null;
+    const body: unknown = await context.req.json().catch(() => null);
+    const allowedKeys = new Set(["source", "skillId", "projectId"]);
     if (
-      body === null ||
+      !isRecord(body) ||
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
       typeof body.source !== "string" ||
-      typeof body.skillId !== "string"
+      body.source.length === 0 ||
+      body.source.length > 2_048 ||
+      !REGISTRY_SOURCE_PATTERN.test(body.source) ||
+      typeof body.skillId !== "string" ||
+      !REGISTRY_SKILL_NAME_PATTERN.test(body.skillId) ||
+      typeof body.projectId !== "string"
     ) {
-      throw new ApiError(400, "invalid_request", "Expected source and skillId");
-    }
-    const providers = parseProviders(body.providers);
-    const scope = parseInstallScope(body.scope);
-    if (providers.length === 0 || scope === null) {
       throw new ApiError(
         400,
         "invalid_request",
-        "Expected providers and scope",
+        "Expected source, skillId, and projectId",
       );
     }
-
-    let cwd = deps.config.dataDir;
-    if (scope === "project") {
-      if (typeof body.projectId !== "string") {
-        throw new ApiError(
-          400,
-          "invalid_request",
-          "Project scope requires a project",
-        );
-      }
-      requirePublicProject(deps.db, body.projectId);
-      const workspace = resolveCommandWorkspace(deps, {
-        projectId: body.projectId,
-        environmentId:
-          typeof body.environmentId === "string" ? body.environmentId : null,
-      });
-      if (workspace.cwd === null) {
-        throw new ApiError(
-          409,
-          "invalid_request",
-          "No workspace resolved for this project's skills",
-        );
-      }
-      cwd = workspace.cwd;
-    }
-
-    const packageRef = packageRefForSource(body.source);
-    const results = [];
-    for (const provider of providers) {
-      results.push(
-        await runSkillsInstall({
-          cwd,
-          provider,
-          packageRef,
-          skillId: body.skillId,
-          scope,
-        }),
-      );
-    }
-    return context.json({ ok: results.every((result) => result.ok), results });
+    requirePublicProject(deps.db, body.projectId);
+    const workspace = resolveCommandWorkspace(deps, {
+      projectId: body.projectId,
+      environmentId: null,
+    });
+    const result = await callHostOnlineRpc(deps, {
+      hostId: workspace.hostId,
+      timeoutMs: REGISTRY_INSTALL_RPC_TIMEOUT_MS,
+      command: {
+        type: "host.install_registry_skill",
+        packageRef: packageRefForSource(body.source),
+        skillId: body.skillId,
+      },
+    });
+    return context.json({ ok: true, filePath: result.filePath });
   });
 }

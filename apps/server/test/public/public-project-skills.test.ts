@@ -31,6 +31,7 @@ function registerSkillRpc(
     sessionId: string;
     skillsByProvider?: Record<string, DiscoveredSkill[]>;
     deletedPath?: string;
+    installedFilePath?: string;
   },
 ): SkillRpcStub {
   const stub: SkillRpcStub = { requests: [] };
@@ -52,6 +53,16 @@ function registerSkillRpc(
           result: { deletedPath: args.deletedPath ?? "/deleted" },
         };
       }
+      if (request.command.type === "host.install_registry_skill") {
+        return {
+          ok: true,
+          result: {
+            filePath:
+              args.installedFilePath ??
+              "/data/skills/imported-skill/SKILL.md",
+          },
+        };
+      }
       throw new Error(`Unexpected RPC command ${request.command.type}`);
     },
   });
@@ -68,6 +79,102 @@ function discovered(
 }
 
 describe("public project skills route", () => {
+  it("imports a registry package as one host-local bb user skill", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-registry-install",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/registry-install-project",
+      });
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        installedFilePath: "/data/skills/find-skills/SKILL.md",
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source: "github.com/vercel-labs/skills",
+            skillId: "find-skills",
+            projectId: project.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({
+        ok: true,
+        filePath: "/data/skills/find-skills/SKILL.md",
+      });
+      expect(stub.requests.map((request) => request.command)).toContainEqual({
+        type: "host.install_registry_skill",
+        packageRef: "vercel-labs/skills",
+        skillId: "find-skills",
+      });
+    });
+  });
+
+  it("rejects obsolete provider install fields", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-registry-invalid",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/registry-invalid-project",
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source: "vercel-labs/skills",
+            skillId: "find-skills",
+            projectId: project.id,
+            providers: ["codex"],
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  it("rejects a registry source that could be parsed as a CLI option", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-registry-option-source",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/registry-option-source-project",
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source: "--help",
+            skillId: "find-skills",
+            projectId: project.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   it("maps scope, de-dupes shared bb skills, and sorts the listing", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

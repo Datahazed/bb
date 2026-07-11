@@ -74,6 +74,11 @@
       "types": "./src/components/ui/checkbox.tsx",
       "default": "./src/components/ui/checkbox.tsx"
     },
+    "./chrome-style-tokens": {
+      "source": "./src/components/ui/chrome-style-tokens.ts",
+      "types": "./src/components/ui/chrome-style-tokens.ts",
+      "default": "./src/components/ui/chrome-style-tokens.ts"
+    },
     "./coarse-pointer-sizing": {
       "source": "./src/components/ui/coarse-pointer-sizing.ts",
       "types": "./src/components/ui/coarse-pointer-sizing.ts",

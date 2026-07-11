@@ -4,7 +4,6 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
-import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -25,6 +24,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceSectionTitle,
   ResourceShelfSeeAllAction,
   ResourceSortMenu,
   ResourceSourceItem,
@@ -59,14 +59,12 @@ import {
   getSkillsRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import {
   useDeleteSkill,
   useProjectSkills,
   useSkillContent,
   useUpdateSkill,
 } from "@/hooks/queries/skills-queries";
-import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 const SKILL_PROVIDER_ROUTE_IDS = ["bb", "claude-code", "codex"] as const;
@@ -100,21 +98,35 @@ export interface RegistrySkill {
   worksWith: string[];
 }
 
+export interface RegistryPagination {
+  page: number;
+  perPage: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface RegistrySkillsPage {
+  skills: RegistrySkill[];
+  pagination: RegistryPagination;
+}
+
 export type RegistryProvider = "claude-code" | "codex";
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
-const EMPTY_REGISTRY_PROVIDER_SET = new Set<RegistryProvider>();
-const SKILLS_SH_URL = "https://www.skills.sh/";
-const DEFAULT_PROVIDER_STATUS: Record<RegistryProvider, boolean> = {
-  "claude-code": false,
-  codex: false,
+const NOOP = () => {};
+const REGISTRY_PAGE_SIZE = 24;
+const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
+  page: 0,
+  perPage: REGISTRY_PAGE_SIZE,
+  total: 0,
+  hasMore: false,
 };
+const SKILLS_SH_URL = "https://www.skills.sh/";
 
 const REGISTRY_PROVIDERS = [
-  { id: "claude-code", cliKey: "claudeCode", label: "Claude Code" },
-  { id: "codex", cliKey: "codex", label: "Codex" },
+  { id: "claude-code", label: "Claude Code" },
+  { id: "codex", label: "Codex" },
 ] as const satisfies readonly {
   id: RegistryProvider;
-  cliKey: "claudeCode" | "codex";
   label: string;
 }[];
 
@@ -185,31 +197,49 @@ function parseRegistrySkills(value: unknown): RegistrySkill[] {
   return parsed;
 }
 
-export async function fetchRegistrySkills(
-  query: string,
-): Promise<RegistrySkill[]> {
+export async function fetchRegistrySkills(args: {
+  query: string;
+  page: number;
+  perPage?: number;
+}): Promise<RegistrySkillsPage> {
   const params = new URLSearchParams();
-  if (query.trim().length > 0) params.set("q", query.trim());
-  const suffix = params.toString();
-  const response = await fetch(
-    `/api/v1/skills-registry${suffix ? `?${suffix}` : ""}`,
-  );
+  if (args.query.trim().length > 0) params.set("q", args.query.trim());
+  params.set("page", String(args.page));
+  params.set("perPage", String(args.perPage ?? REGISTRY_PAGE_SIZE));
+  const response = await fetch(`/api/v1/skills-registry?${params.toString()}`);
   if (!response.ok) throw new Error("Failed to load skills registry");
-  return parseRegistrySkills(await response.json());
+  const body = await response.json();
+  if (!isRecord(body) || !isRecord(body.pagination)) {
+    throw new Error("Invalid skills registry response");
+  }
+  const { page, perPage, total, hasMore } = body.pagination;
+  if (
+    typeof page !== "number" ||
+    !Number.isInteger(page) ||
+    page < 0 ||
+    typeof perPage !== "number" ||
+    !Number.isInteger(perPage) ||
+    perPage < 1 ||
+    typeof total !== "number" ||
+    !Number.isInteger(total) ||
+    total < 0 ||
+    typeof hasMore !== "boolean"
+  ) {
+    throw new Error("Invalid skills registry pagination");
+  }
+  return {
+    skills: parseRegistrySkills(body),
+    pagination: { page, perPage, total, hasMore },
+  };
 }
 
-export async function installRegistrySkill(args: {
-  skill: RegistrySkill;
-  providers: RegistryProvider[];
-}) {
+export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   const response = await fetch("/api/v1/skills-registry/install", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       source: args.skill.source,
       skillId: args.skill.skillId,
-      scope: "user",
-      providers: args.providers,
       projectId: PERSONAL_PROJECT_ID,
     }),
   });
@@ -245,15 +275,6 @@ export function formatInstallCount(count: number): string {
   return String(count);
 }
 
-export function providerStatusFromCli(
-  data: ProviderCliStatusResponse | undefined,
-): Record<RegistryProvider, boolean> {
-  return {
-    "claude-code": data?.claudeCode?.installed === true,
-    codex: data?.codex?.installed === true,
-  };
-}
-
 function providerLabel(providerId: SkillProvider | null): string {
   if (providerId === null) {
     return "bb";
@@ -263,7 +284,7 @@ function providerLabel(providerId: SkillProvider | null): string {
 
 type ResourceProviderFilter = "bb" | SkillProvider;
 type ResourceSortMode = "provider" | "alpha";
-type RegistrySkillSortMode = "installs" | "alpha";
+type RegistrySkillSortMode = "installs" | "stars" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
 const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
@@ -348,26 +369,44 @@ function SkillRow({
   onDelete?: () => void;
 }) {
   const description = skillDescription(skill);
-  const actions =
-    onEdit || onDelete ? (
-      <>
-        {onEdit ? (
-          <ResourceActionButton
-            label={`Edit ${skill.name}`}
-            icon="Edit"
-            onClick={onEdit}
-          />
-        ) : null}
-        {onDelete ? (
-          <ResourceActionButton
-            label={`Delete ${skill.name}`}
-            icon="Trash2"
-            tone="destructive"
-            onClick={onDelete}
-          />
-        ) : null}
-      </>
-    ) : undefined;
+  const showDisabledManageActions = !skill.manageable;
+  const readOnlyReason =
+    skill.scope === "bb-builtin"
+      ? "Built-in skill"
+      : skill.provider !== null
+        ? `Managed by ${providerLabel(skill.provider)}`
+        : "Read-only skill";
+  const actions = (
+    <>
+      {onEdit || showDisabledManageActions ? (
+        <ResourceActionButton
+          label={`Edit ${skill.name}`}
+          icon="Edit"
+          disabled={!onEdit}
+          disabledReason={!onEdit ? readOnlyReason : undefined}
+          onClick={onEdit ?? NOOP}
+        />
+      ) : null}
+      {onDelete || showDisabledManageActions ? (
+        <ResourceActionButton
+          label={`Delete ${skill.name}`}
+          icon="Trash2"
+          tone="destructive"
+          disabled={!onDelete}
+          disabledReason={!onDelete ? readOnlyReason : undefined}
+          onClick={onDelete ?? NOOP}
+        />
+      ) : null}
+      <ResourceActionButton
+        label={`Open ${skill.name}`}
+        tooltipLabel="View details"
+        tooltipSide="bottom"
+        icon="ChevronRight"
+        className="transition-transform duration-150 ease-out group-hover:translate-x-0.5 focus-visible:translate-x-0.5"
+        onClick={onSelect}
+      />
+    </>
+  );
   return (
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
@@ -378,13 +417,6 @@ function SkillRow({
     />
   );
 }
-function registryProviderLabel(providerId: RegistryProvider): string {
-  return (
-    REGISTRY_PROVIDERS.find((provider) => provider.id === providerId)?.label ??
-    providerId
-  );
-}
-
 function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
   const installs = formatInstallCount(skill.installs);
   const stars = skill.stars !== null ? formatInstallCount(skill.stars) : null;
@@ -392,12 +424,17 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
     <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
       <ResourceCardStat
         icon="Download"
+        iconClassName="text-success"
         accessibleLabel={`${installs} installs`}
       >
         {installs}
       </ResourceCardStat>
       {stars !== null ? (
-        <ResourceCardStat icon="Star" accessibleLabel={`${stars} stars`}>
+        <ResourceCardStat
+          icon="Star"
+          iconClassName="fill-attention/20 text-attention"
+          accessibleLabel={`${stars} stars`}
+        >
           {stars}
         </ResourceCardStat>
       ) : null}
@@ -407,45 +444,43 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
 
 function RegistryInstallButton({
   skill,
-  installedProviders,
-  providerStatus,
+  installed,
   pending,
   onInstall,
 }: {
   skill: RegistrySkill;
-  installedProviders: ReadonlySet<RegistryProvider>;
-  providerStatus: Record<RegistryProvider, boolean>;
+  installed: boolean;
   pending: boolean;
   onInstall: (skill: RegistrySkill) => void;
 }) {
-  const configuredProviders = REGISTRY_PROVIDERS.filter(
-    (provider) => providerStatus[provider.id],
-  ).map((provider) => provider.id);
-  const fullyInstalled =
-    configuredProviders.length > 0 &&
-    configuredProviders.every((provider) => installedProviders.has(provider));
-  const disabled =
-    pending || fullyInstalled || configuredProviders.length === 0;
-  const label = pending
-    ? "Installing"
-    : fullyInstalled
-      ? "Installed"
-      : "Install";
+  if (installed) {
+    return (
+      <span
+        aria-label={`Installed ${skill.name} as a bb skill`}
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-recessed-soft-solid px-2 text-xs text-muted-foreground"
+      >
+        <Icon name="Download" className="size-3.5 text-success" aria-hidden />
+        Installed
+      </span>
+    );
+  }
+  const label = pending ? "Installing" : "Install";
 
   return (
     <Button
       type="button"
-      variant={fullyInstalled ? "secondary" : "outline"}
+      variant="ghost"
       size="sm"
-      className="h-7 shrink-0 px-2 text-xs"
-      disabled={disabled}
-      aria-label={
-        configuredProviders.length === 0
-          ? `Install ${skill.name}; no agents configured`
-          : `${label} ${skill.name} for all configured agents`
-      }
+      className="h-7 shrink-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      disabled={pending}
+      aria-label={`${label} ${skill.name} as a bb skill`}
       onClick={() => onInstall(skill)}
     >
+      <Icon
+        name="Download"
+        className="size-3.5 text-muted-foreground"
+        aria-hidden
+      />
       {label}
     </Button>
   );
@@ -453,15 +488,13 @@ function RegistryInstallButton({
 
 function RegistrySkillSourceItem({
   skill,
-  installedProviders,
-  providerStatus,
+  installed,
   onInstall,
   onSelect,
   pending,
 }: {
   skill: RegistrySkill;
-  installedProviders: ReadonlySet<RegistryProvider>;
-  providerStatus: Record<RegistryProvider, boolean>;
+  installed: boolean;
   onInstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   pending: boolean;
@@ -471,18 +504,60 @@ function RegistrySkillSourceItem({
       title={skill.name}
       byline={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
-      openLabel={`Open ${skill.name}`}
+      openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
         <RegistryInstallButton
           skill={skill}
-          installedProviders={installedProviders}
-          providerStatus={providerStatus}
+          installed={installed}
           pending={pending}
           onInstall={onInstall}
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
+    />
+  );
+}
+
+function RegistrySkillRow({
+  skill,
+  installed,
+  pending,
+  onInstall,
+  onSelect,
+}: {
+  skill: RegistrySkill;
+  installed: boolean;
+  pending: boolean;
+  onInstall: (skill: RegistrySkill) => void;
+  onSelect: (skill: RegistrySkill) => void;
+}) {
+  return (
+    <ResourceRow
+      leading={<RegistrySkillLeading skill={skill} />}
+      title={skill.name}
+      description={
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0">
+            by {formatRegistrySource(skill.source)}
+          </span>
+          <span aria-hidden>·</span>
+          <span className="truncate">
+            {skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
+          </span>
+        </span>
+      }
+      state={<RegistrySkillSocialProof skill={skill} />}
+      onOpen={() => onSelect(skill)}
+      actionsVisibility="always"
+      actions={
+        <RegistryInstallButton
+          skill={skill}
+          installed={installed}
+          pending={pending}
+          onInstall={onInstall}
+        />
+      }
     />
   );
 }
@@ -504,9 +579,11 @@ function SkillsShAttributionLink() {
       href={SKILLS_SH_URL}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/50 hover:text-subtle-foreground/80 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>powered by skills.sh</span>
+      <span>
+        powered by <span className="font-mono">skills.sh</span>
+      </span>
     </a>
   );
 }
@@ -515,37 +592,30 @@ function RegistrySkillsSource({
   skills,
   isLoading,
   hasError,
-  providerStatus,
   pendingSkillId,
   browseAction,
   onRetry,
   onInstall,
   onSelect,
-  getInstalledProviders,
+  isInstalled,
 }: {
   skills: readonly RegistrySkill[];
   isLoading: boolean;
   hasError: boolean;
-  providerStatus: Record<RegistryProvider, boolean>;
   pendingSkillId: string | null;
   browseAction?: ReactNode;
   onRetry?: () => void;
   onInstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
-  getInstalledProviders: (
-    skill: RegistrySkill,
-  ) => ReadonlySet<RegistryProvider>;
+  isInstalled: (skill: RegistrySkill) => boolean;
 }) {
-  const availableSkills = useMemo(
+  const visibleSkills = useMemo(
     () =>
-      skills
-        .filter((skill) => getInstalledProviders(skill).size === 0)
-        .sort(
-          (left, right) =>
-            right.installs - left.installs ||
-            left.name.localeCompare(right.name),
-        ),
-    [getInstalledProviders, skills],
+      [...skills].sort(
+        (left, right) =>
+          right.installs - left.installs || left.name.localeCompare(right.name),
+      ),
+    [skills],
   );
   if (hasError) {
     return (
@@ -571,7 +641,7 @@ function RegistrySkillsSource({
       >
         {["w-36", "w-48", "w-28"].map((nameWidth) => (
           <ResourceSourceItem key={nameWidth}>
-            <div className="flex items-center gap-1.5 px-3 py-2">
+            <div className="flex items-center gap-[var(--resource-source-shelf-label-gap)] p-[var(--resource-source-shelf-inset)]">
               <Skeleton className="size-4 rounded" />
               <div className="min-w-0 flex-1 space-y-1.5">
                 <Skeleton className={cn("h-3.5", nameWidth)} />
@@ -585,7 +655,7 @@ function RegistrySkillsSource({
     );
   }
 
-  if (availableSkills.length === 0) return null;
+  if (visibleSkills.length === 0) return null;
 
   return (
     <ResourceSourceShelf
@@ -593,17 +663,20 @@ function RegistrySkillsSource({
       attribution={<SkillsShAttributionLink />}
       browseAction={browseAction}
       scrollOverlay={
-        availableSkills.length > 3 ? (
-          <OverflowFade placement="right" tone="recessed" />
+        visibleSkills.length > 3 ? (
+          <OverflowFade
+            placement="right"
+            tone="recessed"
+            className="w-[var(--resource-source-shelf-fade-ramp)]"
+          />
         ) : undefined
       }
     >
-      {availableSkills.map((skill) => (
+      {visibleSkills.map((skill) => (
         <ResourceSourceItem key={skill.id}>
           <RegistrySkillSourceItem
             skill={skill}
-            installedProviders={getInstalledProviders(skill)}
-            providerStatus={providerStatus}
+            installed={isInstalled(skill)}
             pending={pendingSkillId === skill.id}
             onInstall={onInstall}
             onSelect={onSelect}
@@ -614,32 +687,32 @@ function RegistrySkillsSource({
   );
 }
 
-function RegistrySkillsBrowsePage({
+export function RegistrySkillsBrowsePage({
   skills,
+  pagination,
   isLoading,
   hasError,
   query,
-  providerStatus,
   pendingSkillId,
   onRetry,
   onQueryChange,
+  onPageChange,
   onInstall,
   onSelect,
-  getInstalledProviders,
+  isInstalled,
 }: {
   skills: readonly RegistrySkill[];
+  pagination: RegistryPagination;
   isLoading: boolean;
   hasError: boolean;
   query: string;
-  providerStatus: Record<RegistryProvider, boolean>;
   pendingSkillId: string | null;
   onRetry?: () => void;
   onQueryChange: (query: string) => void;
+  onPageChange: (page: number) => void;
   onInstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
-  getInstalledProviders: (
-    skill: RegistrySkill,
-  ) => ReadonlySet<RegistryProvider>;
+  isInstalled: (skill: RegistrySkill) => boolean;
 }) {
   const [sortMode, setSortMode] = useState<RegistrySkillSortMode>("installs");
   const [sortDirection, setSortDirection] =
@@ -650,19 +723,28 @@ function RegistrySkillsBrowsePage({
         sortMode === "installs"
           ? left.installs - right.installs ||
             left.name.localeCompare(right.name)
-          : left.name.localeCompare(right.name);
+          : sortMode === "stars"
+            ? (left.stars ?? -1) - (right.stars ?? -1) ||
+              left.name.localeCompare(right.name)
+            : left.name.localeCompare(right.name);
       return applySortDirection(base, sortDirection);
     });
   }, [skills, sortDirection, sortMode]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
-      if (nextSort !== "installs" && nextSort !== "alpha") return;
+      if (
+        nextSort !== "installs" &&
+        nextSort !== "stars" &&
+        nextSort !== "alpha"
+      ) {
+        return;
+      }
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
       }
       setSortMode(nextSort);
-      setSortDirection(nextSort === "installs" ? "desc" : "asc");
+      setSortDirection(nextSort === "alpha" ? "asc" : "desc");
     },
     [sortMode],
   );
@@ -679,7 +761,8 @@ function RegistrySkillsBrowsePage({
             direction={sortDirection}
             options={[
               { id: "installs", label: "Install count" },
-              { id: "alpha", label: "Alphabetical" },
+              { id: "stars", label: "Stars" },
+              { id: "alpha", label: "Skill name" },
             ]}
             onChange={handleSortChange}
           />
@@ -700,24 +783,11 @@ function RegistrySkillsBrowsePage({
           </div>
         </EmptyStatePanel>
       ) : isLoading ? (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-busy>
-          {["w-36", "w-44", "w-32", "w-40", "w-28", "w-48"].map((nameWidth) => (
-            <div
-              key={nameWidth}
-              className="min-h-40 rounded-md border border-border bg-background p-3"
-            >
-              <div className="flex items-center gap-2">
-                <Skeleton className="size-9 rounded-md" />
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <Skeleton className={cn("h-3.5", nameWidth)} />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              </div>
-              <Skeleton className="mt-4 h-3 w-full" />
-              <Skeleton className="mt-2 h-3 w-3/4" />
-            </div>
-          ))}
-        </div>
+        <ResourceListState
+          state="loading"
+          message="Loading skills.sh skills"
+          loadingRows={REGISTRY_PAGE_SIZE}
+        />
       ) : skills.length === 0 ? (
         <EmptyStatePanel className="py-6">
           {query.trim().length === 0
@@ -725,20 +795,56 @@ function RegistrySkillsBrowsePage({
             : `No skills.sh resources match "${query}"`}
         </EmptyStatePanel>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <ResourceListPanel maxHeightClassName="max-h-none">
           {sortedSkills.map((skill) => (
-            <RegistrySkillSourceItem
+            <RegistrySkillRow
               key={skill.id}
               skill={skill}
-              installedProviders={getInstalledProviders(skill)}
-              providerStatus={providerStatus}
+              installed={isInstalled(skill)}
               pending={pendingSkillId === skill.id}
               onInstall={onInstall}
               onSelect={onSelect}
             />
           ))}
-        </div>
+        </ResourceListPanel>
       )}
+      {pagination.total > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <span className="text-xs text-subtle-foreground">
+            {pagination.page * pagination.perPage + 1}–
+            {Math.min(
+              pagination.page * pagination.perPage + skills.length,
+              pagination.total,
+            )}{" "}
+            of {pagination.total}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pagination.page === 0}
+              onClick={() => onPageChange(pagination.page - 1)}
+            >
+              <Icon name="ChevronLeft" aria-hidden />
+              Previous
+            </Button>
+            <span className="min-w-20 text-center text-xs text-muted-foreground">
+              Page {pagination.page + 1}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!pagination.hasMore}
+              onClick={() => onPageChange(pagination.page + 1)}
+            >
+              Next
+              <Icon name="ChevronRight" aria-hidden />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -751,7 +857,6 @@ export interface SkillsOverviewProps {
   registrySkills?: readonly RegistrySkill[];
   registryIsLoading?: boolean;
   registryHasError?: boolean;
-  providerStatus?: Record<RegistryProvider, boolean>;
   pendingRegistrySkillId?: string | null;
   registryBrowseAction?: ReactNode;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
@@ -762,9 +867,7 @@ export interface SkillsOverviewProps {
   onSelectRegistrySkill?: (skill: RegistrySkill) => void;
   onQueryChange?: (query: string) => void;
   onInstallRegistrySkill?: (skill: RegistrySkill) => void;
-  getInstalledProvidersForRegistrySkill?: (
-    skill: RegistrySkill,
-  ) => ReadonlySet<RegistryProvider>;
+  isRegistrySkillInstalled?: (skill: RegistrySkill) => boolean;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
   onRetryRegistry?: () => void;
@@ -782,7 +885,6 @@ export function SkillsOverview({
   registrySkills = [],
   registryIsLoading = false,
   registryHasError = false,
-  providerStatus = DEFAULT_PROVIDER_STATUS,
   pendingRegistrySkillId = null,
   registryBrowseAction,
   onCreateSkill,
@@ -792,7 +894,7 @@ export function SkillsOverview({
   onSelectRegistrySkill = () => {},
   onQueryChange = () => {},
   onInstallRegistrySkill = () => {},
-  getInstalledProvidersForRegistrySkill = () => EMPTY_REGISTRY_PROVIDER_SET,
+  isRegistrySkillInstalled = () => false,
   onRetry,
   onRetryRegistry,
 }: SkillsOverviewProps) {
@@ -883,106 +985,109 @@ export function SkillsOverview({
         skills={registrySkills}
         isLoading={registryIsLoading}
         hasError={registryHasError}
-        providerStatus={providerStatus}
         pendingSkillId={pendingRegistrySkillId}
         browseAction={registryBrowseAction}
         onRetry={onRetryRegistry}
         onInstall={onInstallRegistrySkill}
         onSelect={onSelectRegistrySkill}
-        getInstalledProviders={getInstalledProvidersForRegistrySkill}
+        isInstalled={isRegistrySkillInstalled}
       />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search skills"
-        onSearchChange={onQueryChange}
-        controls={
-          <>
-            <ResourceMultiSelectMenu
-              label="Agent"
-              icon="Layers"
-              selectedValues={providerFilters}
-              options={providerOptions}
-              onChange={(values) =>
-                setProviderFilters(values as ResourceProviderFilter[])
-              }
+      <section aria-labelledby="installed-skills-heading" className="space-y-2">
+        <ResourceSectionTitle id="installed-skills-heading" className="px-3">
+          Installed skills
+        </ResourceSectionTitle>
+        <ResourceToolbar
+          searchValue={query}
+          searchPlaceholder="Search skills"
+          onSearchChange={onQueryChange}
+          controlsClassName="h-8 gap-0 overflow-hidden rounded-md border border-input bg-background divide-x divide-border [&>button]:size-[1.875rem] [&>button]:rounded-none"
+          controls={
+            <>
+              <ResourceMultiSelectMenu
+                label="Agent"
+                icon="Layers"
+                selectedValues={providerFilters}
+                options={providerOptions}
+                onChange={(values) =>
+                  setProviderFilters(values as ResourceProviderFilter[])
+                }
+              />
+              <ResourceSortMenu
+                value={sortMode}
+                direction={sortDirection}
+                options={[
+                  {
+                    id: "provider",
+                    label: "Agent",
+                    disabled: providerBucketCount <= 1,
+                  },
+                  { id: "alpha", label: "Skill name" },
+                ]}
+                onChange={handleSortChange}
+              />
+            </>
+          }
+          action={
+            <CreateWithTemplatesButton
+              kind="skill"
+              label="New bb skill"
+              onCreate={onCreateSkill}
             />
-            <ResourceSortMenu
-              value={sortMode}
-              direction={sortDirection}
-              options={[
-                {
-                  id: "provider",
-                  label: "Agent",
-                  disabled: providerBucketCount <= 1,
-                },
-                { id: "alpha", label: "Alphabetical" },
-              ]}
-              onChange={handleSortChange}
-            />
-          </>
-        }
-        action={
-          <CreateWithTemplatesButton
-            kind="skill"
-            label="New bb skill"
-            onCreate={onCreateSkill}
-          />
-        }
-      />
-      {hasError ? (
-        <ResourceListState
-          state="error"
-          message="Couldn't load skills."
-          onRetry={onRetry}
-        />
-      ) : isLoading ? (
-        <ResourceListState state="loading" message="Loading skills" />
-      ) : visibleSkills.length === 0 ? (
-        <ResourceListState
-          state="empty"
-          message={
-            normalizedQuery === "" && providerFilters.length === 0
-              ? "No skills installed."
-              : normalizedQuery === ""
-                ? "No skills match these agents."
-                : `No skills match "${query}"`
           }
         />
-      ) : (
-        <ResourceListPanel>
-          {visibleSkills.map((skill) => (
-            <SkillRow
-              key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
-              skill={skill}
-              onSelect={() => onSelectSkill(skill)}
-              onEdit={
-                skill.manageable && onEditSkill
-                  ? () => onEditSkill(skill)
-                  : undefined
-              }
-              onDelete={
-                skill.manageable && onDeleteSkill
-                  ? () => onDeleteSkill(skill)
-                  : undefined
-              }
-            />
-          ))}
-        </ResourceListPanel>
-      )}
+        {hasError ? (
+          <ResourceListState
+            state="error"
+            message="Couldn't load skills."
+            onRetry={onRetry}
+          />
+        ) : isLoading ? (
+          <ResourceListState state="loading" message="Loading skills" />
+        ) : visibleSkills.length === 0 ? (
+          <ResourceListState
+            state="empty"
+            message={
+              normalizedQuery === "" && providerFilters.length === 0
+                ? "No skills installed."
+                : normalizedQuery === ""
+                  ? "No skills match these agents."
+                  : `No skills match "${query}"`
+            }
+          />
+        ) : (
+          <ResourceListPanel>
+            {visibleSkills.map((skill) => (
+              <SkillRow
+                key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+                skill={skill}
+                onSelect={() => onSelectSkill(skill)}
+                onEdit={
+                  skill.manageable && onEditSkill
+                    ? () => onEditSkill(skill)
+                    : undefined
+                }
+                onDelete={
+                  skill.manageable && onDeleteSkill
+                    ? () => onDeleteSkill(skill)
+                    : undefined
+                }
+              />
+            ))}
+          </ResourceListPanel>
+        )}
+      </section>
     </div>
   );
 }
 
 function RegistrySkillDetailView({
   skill,
-  installedProviders,
-  providerStatus,
+  installed,
   pending,
   onInstall,
 }: {
   skill: RegistrySkill;
-  installedProviders: ReadonlySet<RegistryProvider>;
-  providerStatus: Record<RegistryProvider, boolean>;
+  installed: boolean;
   pending: boolean;
   onInstall: (skill: RegistrySkill) => void;
 }) {
@@ -1000,8 +1105,7 @@ function RegistrySkillDetailView({
       modeActions={
         <RegistryInstallButton
           skill={skill}
-          installedProviders={installedProviders}
-          providerStatus={providerStatus}
+          installed={installed}
           pending={pending}
           onInstall={onInstall}
         />
@@ -1020,9 +1124,9 @@ function RegistrySkillDetailView({
           <ResourceProperty label="Works with">
             {skill.worksWith.join(", ")}
           </ResourceProperty>
-          {installedProviders.size > 0 ? (
-            <ResourceProperty label="Installed on">
-              {[...installedProviders].map(registryProviderLabel).join(", ")}
+          {installed ? (
+            <ResourceProperty label="Installed as">
+              bb user skill
             </ResourceProperty>
           ) : null}
         </ResourcePropertyList>
@@ -1394,30 +1498,41 @@ export function SkillsLibrary() {
     registrySkillId?: string;
   }>();
   const [query, setQuery] = useState("");
+  const [registryPage, setRegistryPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
+  const [confirmedRegistryInstalls, setConfirmedRegistryInstalls] = useState<
+    Set<string>
+  >(() => new Set());
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const deleteSkill = useDeleteSkill(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? EMPTY_SKILLS;
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
-  const primaryHost = usePrimaryHost();
-  const providerCliStatus = useHostProviderCliStatus({
-    hostId: primaryHost?.id ?? null,
-    enabled: primaryHost !== null,
-  });
-  const providerStatus = useMemo(
-    () => providerStatusFromCli(providerCliStatus.data),
-    [providerCliStatus.data],
-  );
+  const isRegistryBrowseRoute =
+    location.pathname === getRegistrySkillsRoutePath();
+  const registryRequestPage =
+    isRegistryBrowseRoute || routeRegistrySkillId !== undefined
+      ? registryPage
+      : 0;
   const registryQuery = useQuery({
-    queryKey: ["skills-registry", query.trim()],
-    queryFn: () => fetchRegistrySkills(query),
+    queryKey: ["skills-registry", query.trim(), registryRequestPage],
+    queryFn: () =>
+      fetchRegistrySkills({
+        query,
+        page: registryRequestPage,
+        perPage: REGISTRY_PAGE_SIZE,
+      }),
     staleTime: 60_000,
   });
   const registryInstall = useMutation({
     mutationFn: installRegistrySkill,
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      setConfirmedRegistryInstalls((current) => {
+        const next = new Set(current);
+        next.add(variables.skill.id);
+        return next;
+      });
       appToast.success("Skill installed");
       void skillsQuery.refetch();
     },
@@ -1448,42 +1563,36 @@ export function SkillsLibrary() {
       return null;
     }
     return (
-      (registryQuery.data ?? []).find(
+      (registryQuery.data?.skills ?? []).find(
         (skill) =>
           skill.id === routeRegistrySkillId ||
           skill.skillId === routeRegistrySkillId,
       ) ?? null
     );
   }, [registryQuery.data, routeRegistrySkillId]);
-  const installedProvidersForRegistrySkill = useCallback(
-    (skill: RegistrySkill): ReadonlySet<RegistryProvider> => {
+  const isRegistrySkillInstalled = useCallback(
+    (skill: RegistrySkill): boolean => {
       const names = new Set([
         normalizeSkillName(skill.skillId),
         normalizeSkillName(skill.name),
       ]);
-      return new Set(
-        REGISTRY_PROVIDERS.flatMap((provider) =>
-          skills.some(
-            (installedSkill) =>
-              installedSkill.provider === provider.id &&
-              names.has(normalizeSkillName(installedSkill.name)),
-          )
-            ? [provider.id]
-            : [],
-        ),
+      return (
+        confirmedRegistryInstalls.has(skill.id) ||
+        skills.some(
+          (installedSkill) =>
+            installedSkill.scope === "bb-user" &&
+            installedSkill.provider === null &&
+            names.has(normalizeSkillName(installedSkill.name)),
+        )
       );
     },
-    [skills],
+    [confirmedRegistryInstalls, skills],
   );
   const installRegistry = useCallback(
     (skill: RegistrySkill) => {
-      const providers = REGISTRY_PROVIDERS.filter(
-        (provider) => providerStatus[provider.id],
-      ).map((provider) => provider.id);
-      if (providers.length === 0) return;
-      registryInstall.mutate({ skill, providers });
+      registryInstall.mutate({ skill });
     },
-    [providerStatus, registryInstall],
+    [registryInstall],
   );
   const openSkill = useCallback(
     (skill: SkillSummary, options?: { editing?: boolean }) => {
@@ -1500,10 +1609,15 @@ export function SkillsLibrary() {
   );
   const openRegistrySkill = useCallback(
     (skill: RegistrySkill) => {
+      if (!isRegistryBrowseRoute) setRegistryPage(0);
       navigate(getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }));
     },
-    [navigate],
+    [isRegistryBrowseRoute, navigate],
   );
+  const handleRegistryQueryChange = useCallback((nextQuery: string) => {
+    setQuery(nextQuery);
+    setRegistryPage(0);
+  }, []);
   const closeSkillDetail = useCallback(() => {
     navigate(getSkillsRoutePath());
   }, [navigate]);
@@ -1547,8 +1661,6 @@ export function SkillsLibrary() {
     registryInstall.isPending && registryInstall.variables
       ? registryInstall.variables.skill.id
       : null;
-  const isRegistryBrowseRoute =
-    location.pathname === getRegistrySkillsRoutePath();
   const initiallyEditingSelectedSkill =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -1570,28 +1682,31 @@ export function SkillsLibrary() {
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
-          installedProviders={installedProvidersForRegistrySkill(
-            selectedRegistrySkill,
-          )}
-          providerStatus={providerStatus}
+          installed={isRegistrySkillInstalled(selectedRegistrySkill)}
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
           onInstall={installRegistry}
         />
       ) : isRegistryBrowseRoute ? (
         <RegistrySkillsBrowsePage
-          skills={registryQuery.data ?? []}
+          skills={registryQuery.data?.skills ?? []}
+          pagination={
+            registryQuery.data?.pagination ?? {
+              ...EMPTY_REGISTRY_PAGINATION,
+              page: registryRequestPage,
+            }
+          }
           isLoading={
             registryQuery.isFetching && registryQuery.data === undefined
           }
           hasError={registryQuery.isError}
           query={query}
-          providerStatus={providerStatus}
           pendingSkillId={pendingRegistrySkillId}
           onRetry={() => void registryQuery.refetch()}
-          onQueryChange={setQuery}
+          onQueryChange={handleRegistryQueryChange}
+          onPageChange={setRegistryPage}
           onInstall={installRegistry}
           onSelect={openRegistrySkill}
-          getInstalledProviders={installedProvidersForRegistrySkill}
+          isInstalled={isRegistrySkillInstalled}
         />
       ) : (
         <SkillsOverview
@@ -1599,17 +1714,19 @@ export function SkillsLibrary() {
           isLoading={isLoading}
           hasError={hasError}
           query={query}
-          registrySkills={registryQuery.data ?? []}
+          registrySkills={registryQuery.data?.skills ?? []}
           registryIsLoading={
             registryQuery.isFetching && registryQuery.data === undefined
           }
           registryHasError={registryQuery.isError}
-          providerStatus={providerStatus}
           pendingRegistrySkillId={pendingRegistrySkillId}
           registryBrowseAction={
             <ResourceShelfSeeAllAction
               type="button"
-              onClick={() => navigate(getRegistrySkillsRoutePath())}
+              onClick={() => {
+                setRegistryPage(0);
+                navigate(getRegistrySkillsRoutePath());
+              }}
             />
           }
           onCreateSkill={handleCreateSkill}
@@ -1617,11 +1734,9 @@ export function SkillsLibrary() {
           onEditSkill={(skill) => openSkill(skill, { editing: true })}
           onDeleteSkill={setDeleteTarget}
           onSelectRegistrySkill={openRegistrySkill}
-          onQueryChange={setQuery}
+          onQueryChange={handleRegistryQueryChange}
           onInstallRegistrySkill={installRegistry}
-          getInstalledProvidersForRegistrySkill={
-            installedProvidersForRegistrySkill
-          }
+          isRegistrySkillInstalled={isRegistrySkillInstalled}
           onRetry={() => void skillsQuery.refetch()}
           onRetryRegistry={() => void registryQuery.refetch()}
         />

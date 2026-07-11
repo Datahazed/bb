@@ -226,6 +226,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.install_registry_skill": {
+    filePath: "/home/user/.bb/skills/review/SKILL.md",
+  },
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
   },

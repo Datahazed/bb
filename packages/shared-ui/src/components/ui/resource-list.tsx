@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { CHROME_SECTION_LABEL_CLASS } from "./chrome-style-tokens";
 import { Button, type ButtonProps } from "./button";
 import { EmptyStatePanel } from "./empty-state";
 import {
@@ -82,19 +83,25 @@ export function ResourceMeta({
 
 export function ResourceCardStat({
   icon,
+  iconClassName,
   accessibleLabel,
   children,
 }: {
   icon: IconName;
+  iconClassName?: string;
   accessibleLabel?: string;
   children: ReactNode;
 }) {
   return (
     <span
       aria-label={accessibleLabel}
-      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed px-1.5 py-1 text-muted-foreground"
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed-soft-solid px-1.5 py-1 text-muted-foreground"
     >
-      <Icon name={icon} className="size-3 shrink-0" aria-hidden />
+      <Icon
+        name={icon}
+        className={cn("size-3 shrink-0", iconClassName)}
+        aria-hidden
+      />
       <span>{children}</span>
     </span>
   );
@@ -106,6 +113,7 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
+  controlsClassName,
   action,
 }: {
   searchValue: string;
@@ -113,6 +121,7 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
+  controlsClassName?: string;
   action?: ReactNode;
 }) {
   return (
@@ -132,7 +141,14 @@ export function ResourceToolbar({
         />
       </div>
       {controls ? (
-        <div className="flex shrink-0 items-center gap-1">{controls}</div>
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            controlsClassName,
+          )}
+        >
+          {controls}
+        </div>
       ) : null}
       {action}
     </div>
@@ -471,7 +487,11 @@ export function ResourceOverflowMenu({
           <Icon name="MoreHorizontal" className="size-4" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44" mobileTitle={label}>
+      <DropdownMenuContent
+        align="end"
+        className="w-max min-w-32 max-w-64"
+        mobileTitle={label}
+      >
         {items.map((item, index) =>
           item.kind === "separator" ? (
             <DropdownMenuSeparator key={`separator-${index}`} />
@@ -500,15 +520,23 @@ export function ResourceOverflowMenu({
 
 export function ResourceActionButton({
   label,
+  tooltipLabel,
+  tooltipSide,
   icon,
   tone = "muted",
   disabled = false,
+  disabledReason,
+  className,
   onClick,
 }: {
   label: string;
+  tooltipLabel?: string;
+  tooltipSide?: ComponentProps<typeof TooltipContent>["side"];
   icon: IconName;
   tone?: "muted" | "destructive";
   disabled?: boolean;
+  disabledReason?: string;
+  className?: string;
   onClick: () => void;
 }) {
   return (
@@ -522,15 +550,31 @@ export function ResourceActionButton({
             className={cn(
               "size-6 p-0 text-muted-foreground hover:text-foreground",
               tone === "destructive" && "hover:text-destructive",
+              disabled &&
+                disabledReason !== undefined &&
+                "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground",
+              className,
             )}
             aria-label={label}
-            disabled={disabled}
-            onClick={onClick}
+            aria-disabled={disabled || undefined}
+            disabled={disabled && disabledReason === undefined}
+            onClick={(event) => {
+              if (disabled) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
+              onClick();
+            }}
           >
             <Icon name={icon} className="size-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent side={tooltipSide}>
+          {disabled && disabledReason
+            ? disabledReason
+            : (tooltipLabel ?? label)}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -565,7 +609,7 @@ export function ResourceRow({
   return (
     <div
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
         selected && "bg-state-active",
         muted && "opacity-60",
         className,
@@ -575,13 +619,13 @@ export function ResourceRow({
         onOpen();
       }}
     >
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         {leading}
       </span>
       <button
         type="button"
         onClick={onOpen}
-        className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -599,7 +643,7 @@ export function ResourceRow({
         <span
           data-row-action
           className={cn(
-            "mt-0.5 flex shrink-0 items-center gap-0.5 transition-opacity",
+            "flex shrink-0 items-center gap-0.5 transition-opacity",
             actionsVisibility === "hover" &&
               "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
           )}
@@ -628,7 +672,7 @@ export function ResourceListPanel({
       )}
     >
       <div className={cn("overflow-y-auto pr-1", maxHeightClassName)}>
-        <div className="space-y-0">{children}</div>
+        <div className="cursor-default space-y-0.5">{children}</div>
       </div>
     </div>
   );
@@ -655,7 +699,7 @@ export function ResourceListState({
           {Array.from({ length: loadingRows }, (_, index) => (
             <div
               key={index}
-              className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-3 px-3 py-2"
+              className="grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-3 px-3 py-2"
             >
               <Skeleton className="size-4 rounded-sm" />
               <div className="space-y-1.5">
@@ -773,6 +817,21 @@ export function ResourceSection({
   );
 }
 
+export function ResourceSectionTitle({
+  className,
+  ...props
+}: ComponentProps<"h2">) {
+  return (
+    <h2
+      className={cn(
+        CHROME_SECTION_LABEL_CLASS,
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function ResourceSourceShelf({
   label,
   attribution,
@@ -789,11 +848,13 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="w-full max-w-full space-y-2 rounded-lg bg-surface-recessed/70 p-2 text-popover-foreground">
-      <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-1.5">
+    <section className="w-full max-w-full space-y-[var(--resource-source-shelf-section-gap)] rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)] text-popover-foreground">
+      <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)] text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)]">
           {leading}
-          <span className="truncate font-medium">{label}</span>
+          <ResourceSectionTitle className="truncate">
+            {label}
+          </ResourceSectionTitle>
           {attribution !== undefined &&
           attribution !== null &&
           attribution !== false ? (
@@ -809,12 +870,16 @@ export function ResourceSourceShelf({
         ) : null}
       </div>
       <div className="relative">
-        <div className="overflow-x-auto">
-          <div className="flex w-full snap-x snap-mandatory gap-1">
+        <div className="-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]">
+          <div className="flex w-full snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]">
             {children}
           </div>
         </div>
-        {scrollOverlay}
+        {scrollOverlay ? (
+          <div className="pointer-events-none absolute inset-x-0 top-[var(--resource-source-shelf-shadow-bleed)] bottom-[var(--resource-source-shelf-shadow-bleed)]">
+            {scrollOverlay}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -829,7 +894,7 @@ export function ResourceShelfAction({
       variant="ghost"
       size="sm"
       className={cn(
-        "h-auto shrink-0 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground",
+        "h-auto shrink-0 rounded-md px-[var(--resource-source-shelf-action-inline)] py-[var(--resource-source-shelf-action-block)] text-xs font-normal text-muted-foreground hover:bg-state-hover hover:text-foreground",
         className,
       )}
       {...props}
@@ -842,9 +907,8 @@ export function ResourceShelfSeeAllAction({
   ...props
 }: Omit<ButtonProps, "children" | "size" | "variant">) {
   return (
-    <ResourceShelfAction className={cn("gap-0.5", className)} {...props}>
+    <ResourceShelfAction className={className} {...props}>
       See all
-      <Icon name="ChevronRight" className="size-3.5" aria-hidden />
     </ResourceShelfAction>
   );
 }
@@ -859,7 +923,7 @@ export function ResourceSourceItem({
   return (
     <div
       className={cn(
-        "w-[22rem] shrink-0 snap-start md:w-[calc((100%_-_0.5rem)/3)]",
+        "w-[22rem] shrink-0 snap-start md:w-[var(--resource-source-shelf-item-width)]",
         className,
       )}
     >
@@ -867,6 +931,18 @@ export function ResourceSourceItem({
     </div>
   );
 }
+
+type ResourceBrowseCardProps = {
+  leading?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  byline?: ReactNode;
+  headerAction?: ReactNode;
+  footerMeta?: ReactNode;
+} & (
+  | { openLabel: string; onOpen: () => void }
+  | { openLabel?: undefined; onOpen?: undefined }
+);
 
 export function ResourceBrowseCard({
   leading,
@@ -877,26 +953,25 @@ export function ResourceBrowseCard({
   footerMeta,
   openLabel,
   onOpen,
-}: {
-  leading?: ReactNode;
-  title: ReactNode;
-  description?: ReactNode;
-  byline?: ReactNode;
-  headerAction?: ReactNode;
-  footerMeta?: ReactNode;
-  openLabel: string;
-  onOpen: () => void;
-}) {
+}: ResourceBrowseCardProps) {
   const hasLeading =
     leading !== undefined && leading !== null && leading !== false;
   return (
-    <div className="group relative flex h-full min-h-36 w-full flex-col rounded-md border border-border bg-background p-3 text-left shadow-sm transition-colors hover:bg-state-hover">
-      <button
-        type="button"
-        aria-label={openLabel}
-        onClick={onOpen}
-        className="absolute inset-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
+    <div
+      className={cn(
+        "group relative flex h-full min-h-32 w-full flex-col rounded-md border border-border bg-background p-[var(--resource-source-shelf-inset)] text-left shadow-xs",
+        onOpen &&
+          "transition-[border-color,box-shadow] duration-150 hover:border-[color:var(--resource-source-shelf-card-hover-border)] hover:shadow-[var(--resource-source-shelf-card-hover-shadow)]",
+      )}
+    >
+      {onOpen ? (
+        <button
+          type="button"
+          aria-label={openLabel}
+          onClick={onOpen}
+          className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      ) : null}
       <div
         className={cn(
           "pointer-events-none relative grid min-w-0 gap-x-2 gap-y-2",
@@ -923,11 +998,12 @@ export function ResourceBrowseCard({
         {headerAction ? (
           <span
             onClick={(event) => {
+              if (!onOpen) return;
               if (targetsResourceAction(event.target)) return;
               onOpen();
             }}
             className={cn(
-              "pointer-events-auto row-start-1 flex max-w-28 shrink-0 flex-wrap items-start justify-end gap-1 text-[11px] leading-none [&>*]:max-w-full [&>*]:justify-end",
+              "pointer-events-auto row-start-1 flex shrink-0 flex-nowrap items-start justify-end gap-[var(--resource-source-shelf-card-action-gap)] whitespace-nowrap text-[11px] leading-none",
               hasLeading ? "col-start-3" : "col-start-2",
             )}
           >
@@ -937,7 +1013,7 @@ export function ResourceBrowseCard({
         {description ? (
           <span
             className={cn(
-              "line-clamp-3 rounded-md bg-surface-recessed/70 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
+              "min-h-14 line-clamp-2 rounded-md bg-surface-recessed/50 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
               hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
             )}
           >
@@ -946,7 +1022,7 @@ export function ResourceBrowseCard({
         ) : null}
       </div>
       {footerMeta ? (
-        <span className="pointer-events-none relative mt-auto flex items-center justify-start pt-3">
+        <span className="pointer-events-none relative mt-auto flex items-center justify-end pt-2">
           {footerMeta}
         </span>
       ) : null}

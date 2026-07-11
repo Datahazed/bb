@@ -307,6 +307,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.caffeinate"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
     onlineRpcResponseSuccessSchemaFor("host.list_skills"),
+    onlineRpcResponseSuccessSchemaFor("host.install_registry_skill"),
     onlineRpcResponseSuccessSchemaFor("host.delete_skill"),
     onlineRpcResponseSuccessSchemaFor("host.write_skill"),
     onlineRpcResponseSuccessSchemaFor("host.file_metadata"),

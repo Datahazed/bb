@@ -18,6 +18,7 @@ import {
   ResourceProperty,
   ResourcePropertyList,
   ResourceRow,
+  ResourceSectionTitle,
   ResourceShelfSeeAllAction,
   ResourceSortMenu,
   ResourceSourceItem,
@@ -83,6 +84,7 @@ interface StoryArgType {
 type Story<Props> = FC<Props> & {
   args?: Partial<Props>;
   argTypes?: Partial<Record<keyof Props, StoryArgType>>;
+  storyName?: string;
 };
 
 export default {
@@ -100,6 +102,7 @@ interface ResourceListRowFixture {
   title: string;
   description: string;
   manageable?: boolean;
+  builtIn?: boolean;
   environment?: StoryEnvironmentDisplay;
   provider?: ProviderId;
   icon?: IconName;
@@ -175,11 +178,13 @@ const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
         title: "bb-cli",
         description:
           "Inspect and manage bb projects, threads, and automations.",
+        builtIn: true,
       },
       {
         id: "skill-creator",
         title: "skill-creator",
         description: "Create new bb skills and improve existing ones.",
+        builtIn: true,
       },
       {
         id: "release-playbook",
@@ -206,40 +211,213 @@ const SKILL_SECTIONS: readonly ResourceSectionFixture[] = [
       },
     ],
   },
+  {
+    key: "claude-code",
+    label: "Claude Code",
+    provider: "claude-code",
+    rows: [
+      {
+        id: "moss-notes",
+        title: "moss-notes",
+        description: "Author and edit Moss notes.",
+      },
+    ],
+  },
 ];
 
-const REGISTRY_SOURCE_ROWS: readonly RegistrySourceFixture[] = [
+const REGISTRY_FIRST_PAGE_ROWS: readonly RegistrySourceFixture[] = [
   {
-    id: "moss-notes",
-    title: "moss-skills/moss-notes",
-    source: "moss-skills",
-    summary: "Author and edit Moss notes with the current Moss syntax.",
-    installs: "3.4K",
-    stars: "25.6K",
+    id: "find-skills",
+    title: "find-skills",
+    source: "vercel-labs/skills",
+    summary: "Discover and install specialized agent skills.",
+    installs: "2.4M",
+    stars: "25.8K",
   },
   {
-    id: "review-loop",
-    title: "bb/review-loop",
-    source: "bb",
-    summary: "Run a staged review loop and apply prioritized fixes.",
-    installs: "1.3K",
-    stars: "4.8K",
+    id: "frontend-design",
+    title: "frontend-design",
+    source: "anthropics/skills",
+    summary: "Build distinctive, production-grade frontend interfaces.",
+    installs: "649.6K",
+    stars: "160.2K",
   },
   {
-    id: "product-design-audit",
-    title: "openai/product-design-audit",
-    source: "openai",
-    summary: "Capture screenshots and critique a product flow before build.",
-    installs: "920",
-    stars: "2.1K",
+    id: "vercel-react-best-practices",
+    title: "vercel-react-best-practices",
+    source: "vercel-labs/agent-skills",
+    summary: "Apply React and Next.js performance conventions.",
+    installs: "542.2K",
+    stars: "28.9K",
   },
   {
-    id: "github-triage",
-    title: "bb/github-triage",
-    source: "bb",
-    summary: "Find actionable GitHub PR and issue follow-up for agents.",
-    installs: "740",
-    stars: "1.5K",
+    id: "agent-browser",
+    title: "agent-browser",
+    source: "vercel-labs/agent-browser",
+    summary:
+      "Automate browser navigation, interaction, screenshots, form filling, and local UI verification from an agent-friendly command-line workflow with reusable browser sessions.",
+    installs: "533.3K",
+    stars: "38.3K",
+  },
+  {
+    id: "grill-me",
+    title: "grill-me",
+    source: "mattpocock/skills",
+    summary: "Pressure-test your understanding through focused questions.",
+    installs: "516.0K",
+    stars: "164.9K",
+  },
+  {
+    id: "web-design-guidelines",
+    title: "web-design-guidelines",
+    source: "vercel-labs/agent-skills",
+    summary: "Review web interfaces against practical design guidelines.",
+    installs: "454.4K",
+    stars: "28.9K",
+  },
+  {
+    id: "microsoft-foundry",
+    title: "microsoft-foundry",
+    source: "microsoft/azure-skills",
+    summary: "Build and operate AI solutions with Microsoft Foundry.",
+    installs: "446.6K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-ai",
+    title: "azure-ai",
+    source: "microsoft/azure-skills",
+    summary: "Design and implement AI workloads on Azure.",
+    installs: "443.3K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-deploy",
+    title: "azure-deploy",
+    source: "microsoft/azure-skills",
+    summary: "Deploy applications and infrastructure to Azure.",
+    installs: "443.0K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-diagnostics",
+    title: "azure-diagnostics",
+    source: "microsoft/azure-skills",
+    summary: "Investigate and resolve Azure service issues.",
+    installs: "442.9K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-prepare",
+    title: "azure-prepare",
+    source: "microsoft/azure-skills",
+    summary: "Prepare projects and environments for Azure deployment.",
+    installs: "442.8K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-storage",
+    title: "azure-storage",
+    source: "microsoft/azure-skills",
+    summary: "Choose and configure Azure storage services.",
+    installs: "442.4K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-validate",
+    title: "azure-validate",
+    source: "microsoft/azure-skills",
+    summary: "Validate Azure projects before deployment.",
+    installs: "442.1K",
+    stars: "1.3K",
+  },
+  {
+    id: "entra-app-registration",
+    title: "entra-app-registration",
+    source: "microsoft/azure-skills",
+    summary: "Configure Microsoft Entra application registrations.",
+    installs: "442.0K",
+    stars: "1.3K",
+  },
+  {
+    id: "appinsights-instrumentation",
+    title: "appinsights-instrumentation",
+    source: "microsoft/azure-skills",
+    summary: "Instrument applications with Azure Application Insights.",
+    installs: "441.9K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-compliance",
+    title: "azure-compliance",
+    source: "microsoft/azure-skills",
+    summary: "Assess Azure resources against compliance requirements.",
+    installs: "441.8K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-resource-lookup",
+    title: "azure-resource-lookup",
+    source: "microsoft/azure-skills",
+    summary: "Find and inspect resources across Azure environments.",
+    installs: "441.8K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-rbac",
+    title: "azure-rbac",
+    source: "microsoft/azure-skills",
+    summary: "Design and troubleshoot Azure role-based access control.",
+    installs: "441.8K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-aigateway",
+    title: "azure-aigateway",
+    source: "microsoft/azure-skills",
+    summary: "Configure gateway patterns for Azure AI services.",
+    installs: "441.7K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-kusto",
+    title: "azure-kusto",
+    source: "microsoft/azure-skills",
+    summary: "Query and analyze telemetry with Azure Data Explorer.",
+    installs: "441.7K",
+    stars: "1.3K",
+  },
+  {
+    id: "azure-resource-visualizer",
+    title: "azure-resource-visualizer",
+    source: "microsoft/azure-skills",
+    summary: "Visualize relationships between Azure resources.",
+    installs: "441.7K",
+    stars: "1.3K",
+  },
+  {
+    id: "grill-with-docs",
+    title: "grill-with-docs",
+    source: "mattpocock/skills",
+    summary: "Test your knowledge against a supplied documentation set.",
+    installs: "432.2K",
+    stars: "164.9K",
+  },
+  {
+    id: "azure-messaging",
+    title: "azure-messaging",
+    source: "microsoft/azure-skills",
+    summary: "Build messaging workflows with Azure services.",
+    installs: "431.4K",
+    stars: "1.3K",
+  },
+  {
+    id: "improve-codebase-architecture",
+    title: "improve-codebase-architecture",
+    source: "mattpocock/skills",
+    summary: "Identify and execute high-value architectural improvements.",
+    installs: "425.5K",
+    stars: "164.9K",
   },
 ];
 
@@ -457,6 +635,7 @@ function StoryListControls({
   availableProviders,
   onProviderFiltersChange,
   onSortChange,
+  alphaLabel = "Alphabetical",
 }: {
   providerFilters: readonly ProviderFilterId[];
   sort: "provider" | "alpha";
@@ -464,6 +643,7 @@ function StoryListControls({
   availableProviders: ReadonlySet<ProviderId>;
   onProviderFiltersChange: (providers: ProviderFilterId[]) => void;
   onSortChange: (sort: "provider" | "alpha") => void;
+  alphaLabel?: string;
 }) {
   const providerSortDisabled = availableProviders.size <= 1;
   return (
@@ -490,7 +670,7 @@ function StoryListControls({
             label: "Agent",
             disabled: providerSortDisabled,
           },
-          { id: "alpha", label: "Alphabetical" },
+          { id: "alpha", label: alphaLabel },
         ]}
         onChange={(value) => onSortChange(value as "provider" | "alpha")}
       />
@@ -646,6 +826,8 @@ function ResourceRowsList({
   sortMode,
   sortDirection,
   fallbackIcon,
+  showOpenAction = false,
+  showDisabledManageActions = false,
 }: {
   sections: readonly ResourceSectionFixture[];
   query: string;
@@ -653,6 +835,8 @@ function ResourceRowsList({
   sortMode: "provider" | "alpha";
   sortDirection: "asc" | "desc";
   fallbackIcon: IconName;
+  showOpenAction?: boolean;
+  showDisabledManageActions?: boolean;
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = sections
@@ -703,19 +887,56 @@ function ResourceRowsList({
           muted={row.muted}
           onOpen={NOOP}
           actions={
-            row.manageable ? (
+            row.manageable ||
+            row.builtIn ||
+            showDisabledManageActions ||
+            showOpenAction ? (
               <>
-                <ResourceActionButton
-                  label={`Edit ${row.title}`}
-                  icon="Edit"
-                  onClick={NOOP}
-                />
-                <ResourceActionButton
-                  label={`Delete ${row.title}`}
-                  icon="Trash2"
-                  tone="destructive"
-                  onClick={NOOP}
-                />
+                {row.manageable || row.builtIn || showDisabledManageActions ? (
+                  <>
+                    <ResourceActionButton
+                      label={`Edit ${row.title}`}
+                      icon="Edit"
+                      disabled={!row.manageable}
+                      disabledReason={
+                        !row.manageable
+                          ? row.builtIn
+                            ? "Built-in skill"
+                            : row.provider
+                              ? `Managed by ${PROVIDER_FILTER_LABELS[row.provider]}`
+                              : "Read-only skill"
+                          : undefined
+                      }
+                      onClick={NOOP}
+                    />
+                    <ResourceActionButton
+                      label={`Delete ${row.title}`}
+                      icon="Trash2"
+                      tone="destructive"
+                      disabled={!row.manageable}
+                      disabledReason={
+                        !row.manageable
+                          ? row.builtIn
+                            ? "Built-in skill"
+                            : row.provider
+                              ? `Managed by ${PROVIDER_FILTER_LABELS[row.provider]}`
+                              : "Read-only skill"
+                          : undefined
+                      }
+                      onClick={NOOP}
+                    />
+                  </>
+                ) : null}
+                {showOpenAction ? (
+                  <ResourceActionButton
+                    label={`Open ${row.title}`}
+                    tooltipLabel="View details"
+                    tooltipSide="bottom"
+                    icon="ChevronRight"
+                    className="transition-transform duration-150 ease-out group-hover:translate-x-0.5 focus-visible:translate-x-0.5"
+                    onClick={NOOP}
+                  />
+                ) : null}
               </>
             ) : undefined
           }
@@ -736,11 +957,16 @@ function StorySocialProof({
     <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
       <ResourceCardStat
         icon="Download"
+        iconClassName="text-success"
         accessibleLabel={`${installs} installs`}
       >
         {installs}
       </ResourceCardStat>
-      <ResourceCardStat icon="Star" accessibleLabel={`${stars} stars`}>
+      <ResourceCardStat
+        icon="Star"
+        iconClassName="fill-attention/20 text-attention"
+        accessibleLabel={`${stars} stars`}
+      >
         {stars}
       </ResourceCardStat>
     </span>
@@ -753,30 +979,50 @@ function SkillsShAttributionLink() {
       href={SKILLS_SH_URL}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/50 hover:text-subtle-foreground/80 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>powered by skills.sh</span>
+      <span>
+        powered by <span className="font-mono">skills.sh</span>
+      </span>
     </a>
   );
 }
 
 function StoryInstallButton({
   installed,
+  skillName,
   onInstall,
 }: {
   installed: boolean;
+  skillName: string;
   onInstall: () => void;
 }) {
+  if (installed) {
+    return (
+      <span
+        aria-label={`Installed ${skillName} as a bb skill`}
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-recessed-soft-solid px-2 text-xs text-muted-foreground"
+      >
+        <Icon name="Download" className="size-3.5 text-success" aria-hidden />
+        Installed
+      </span>
+    );
+  }
   return (
     <Button
       type="button"
-      variant={installed ? "secondary" : "outline"}
+      variant="ghost"
       size="sm"
-      className="h-7 px-2 text-xs"
-      disabled={installed}
+      className="h-7 bg-transparent px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      aria-label={`Install ${skillName} as a bb skill`}
       onClick={onInstall}
     >
-      {installed ? "Installed" : "Install"}
+      <Icon
+        name="Download"
+        className="size-3.5 text-muted-foreground"
+        aria-hidden
+      />
+      Install
     </Button>
   );
 }
@@ -784,23 +1030,26 @@ function StoryInstallButton({
 function RegistryBrowseSource({
   installedSkillIds,
   onInstall,
+  onSelect,
   onSeeAll,
 }: {
   installedSkillIds: ReadonlySet<string>;
   onInstall: (id: string) => void;
+  onSelect: (id: string) => void;
   onSeeAll: () => void;
 }) {
-  const availableRows = REGISTRY_SOURCE_ROWS.filter(
-    (row) => !installedSkillIds.has(row.id),
-  );
-  const rows = availableRows.slice(0, 3);
+  const rows = REGISTRY_FIRST_PAGE_ROWS;
   return (
     <ResourceSourceShelf
       label="Browse"
       attribution={<SkillsShAttributionLink />}
       scrollOverlay={
-        availableRows.length > rows.length ? (
-          <OverflowFade placement="right" tone="recessed" />
+        rows.length > 3 ? (
+          <OverflowFade
+            placement="right"
+            tone="recessed"
+            className="w-[var(--resource-source-shelf-fade-ramp)]"
+          />
         ) : undefined
       }
       browseAction={
@@ -813,11 +1062,12 @@ function RegistryBrowseSource({
             title={row.title}
             byline={`by ${row.source}`}
             description={row.summary}
-            openLabel={`Open ${row.title}`}
-            onOpen={NOOP}
+            openLabel={`View details for ${row.title}`}
+            onOpen={() => onSelect(row.id)}
             headerAction={
               <StoryInstallButton
                 installed={installedSkillIds.has(row.id)}
+                skillName={row.title}
                 onInstall={() => onInstall(row.id)}
               />
             }
@@ -834,26 +1084,49 @@ function RegistryBrowseSource({
 function RegistryBrowseAllSurface({
   installedSkillIds,
   onInstall,
+  onSelect,
 }: {
   installedSkillIds: ReadonlySet<string>;
   onInstall: (id: string) => void;
+  onSelect: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"installs" | "stars" | "alpha">("installs");
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const normalizedQuery = query.trim().toLowerCase();
-  const rows = REGISTRY_SOURCE_ROWS.filter((row) =>
+  const rows = REGISTRY_FIRST_PAGE_ROWS.filter((row) =>
     [row.title, row.source, row.summary]
       .join(" ")
       .toLowerCase()
       .includes(normalizedQuery),
-  );
-  if (direction === "asc") rows.reverse();
+  ).sort((left, right) => {
+    const metric = (value: string) => {
+      const amount = Number.parseFloat(value);
+      return value.endsWith("K") ? amount * 1_000 : amount;
+    };
+    const base =
+      sort === "installs"
+        ? metric(left.installs) - metric(right.installs)
+        : sort === "stars"
+          ? metric(left.stars) - metric(right.stars)
+          : left.title.localeCompare(right.title);
+    return direction === "asc" ? base : -base;
+  });
+
+  function updateSort(nextSort: "installs" | "stars" | "alpha") {
+    if (nextSort === sort) {
+      setDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSort(nextSort);
+    setDirection(nextSort === "alpha" ? "asc" : "desc");
+  }
 
   return (
     <div className="space-y-4">
       <ResourceTabDescription>
-        Browse every skill available from skills.sh and install it for all
-        configured agents at user scope.
+        Browse every skill available from skills.sh and import it as a
+        manageable bb user skill.
       </ResourceTabDescription>
       <ResourceToolbar
         searchValue={query}
@@ -861,11 +1134,15 @@ function RegistryBrowseAllSurface({
         onSearchChange={setQuery}
         controls={
           <ResourceSortMenu
-            value="installs"
+            value={sort}
             direction={direction}
-            options={[{ id: "installs", label: "Install count" }]}
-            onChange={() =>
-              setDirection((current) => (current === "asc" ? "desc" : "asc"))
+            options={[
+              { id: "installs", label: "Install count" },
+              { id: "stars", label: "Stars" },
+              { id: "alpha", label: "Skill name" },
+            ]}
+            onChange={(value) =>
+              updateSort(value as "installs" | "stars" | "alpha")
             }
           />
         }
@@ -873,28 +1150,92 @@ function RegistryBrowseAllSurface({
       <div className="flex justify-end px-1">
         <SkillsShAttributionLink />
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <ResourceListPanel maxHeightClassName="max-h-none">
         {rows.map((row) => (
-          <ResourceBrowseCard
+          <ResourceRow
             key={row.id}
+            leading={<Icon name="Zap" className="size-4" aria-hidden />}
             title={row.title}
-            byline={`by ${row.source}`}
-            description={row.summary}
-            openLabel={`Open ${row.title}`}
-            onOpen={NOOP}
-            headerAction={
+            description={
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <span className="shrink-0">by {row.source}</span>
+                <span aria-hidden>·</span>
+                <span className="truncate">{row.summary}</span>
+              </span>
+            }
+            state={
+              <StorySocialProof installs={row.installs} stars={row.stars} />
+            }
+            onOpen={() => onSelect(row.id)}
+            actionsVisibility="always"
+            actions={
               <StoryInstallButton
                 installed={installedSkillIds.has(row.id)}
+                skillName={row.title}
                 onInstall={() => onInstall(row.id)}
               />
             }
-            footerMeta={
-              <StorySocialProof installs={row.installs} stars={row.stars} />
-            }
           />
         ))}
+      </ResourceListPanel>
+      <div className="flex items-center justify-between px-1 text-xs text-subtle-foreground">
+        <span>
+          {rows.length === 0 ? 0 : 1}–{rows.length} of {rows.length}
+        </span>
+        <span>Page 1</span>
       </div>
     </div>
+  );
+}
+
+function RegistrySkillStoryDetail({
+  id,
+  installed,
+  onBack,
+  onInstall,
+}: {
+  id: string;
+  installed: boolean;
+  onBack: () => void;
+  onInstall: () => void;
+}) {
+  const row =
+    REGISTRY_FIRST_PAGE_ROWS.find((candidate) => candidate.id === id) ??
+    REGISTRY_FIRST_PAGE_ROWS[0];
+  return (
+    <ResourceDetailPage
+      back={
+        <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+          <Icon name="ChevronLeft" aria-hidden />
+          Back to skills
+        </Button>
+      }
+      leading={<Icon name="Zap" className="size-4" aria-hidden />}
+      title={row.title}
+      info={<StorySocialProof installs={row.installs} stars={row.stars} />}
+      metadata={<ResourceMeta items={["skills.sh", row.source]} />}
+      description={row.summary}
+      modeActions={
+        <StoryInstallButton
+          installed={installed}
+          skillName={row.title}
+          onInstall={onInstall}
+        />
+      }
+    >
+      <ResourceDetailSection label="Details">
+        <ResourcePropertyList>
+          <ResourceProperty label="Source">{row.source}</ResourceProperty>
+          <ResourceProperty label="Installs">{row.installs}</ResourceProperty>
+          <ResourceProperty label="GitHub stars">{row.stars}</ResourceProperty>
+          {installed ? (
+            <ResourceProperty label="Installed as">
+              bb user skill
+            </ResourceProperty>
+          ) : null}
+        </ResourcePropertyList>
+      </ResourceDetailSection>
+    </ResourceDetailPage>
   );
 }
 
@@ -1075,15 +1416,28 @@ function SkillsOverviewSurface({
   const [sort, setSort] = useState<"provider" | "alpha">("alpha");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [showAllBrowse, setShowAllBrowse] = useState(false);
+  const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(
+    null,
+  );
   const [installedSkillIds, setInstalledSkillIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [installedSkill, setInstalledSkill] =
     useState<ResourceListRowFixture | null>(null);
   const skillSections = installedSkill
-    ? SKILL_SECTIONS.map((section, index) =>
-        index === 0
-          ? { ...section, rows: [installedSkill, ...section.rows] }
+    ? SKILL_SECTIONS.map((section) =>
+        section.provider === "bb"
+          ? {
+              ...section,
+              rows: [
+                {
+                  ...installedSkill,
+                  provider: "bb" as const,
+                  manageable: true,
+                },
+                ...section.rows,
+              ],
+            }
           : section,
       )
     : SKILL_SECTIONS;
@@ -1103,21 +1457,32 @@ function SkillsOverviewSurface({
       next.add(id);
       return next;
     });
-    const row = REGISTRY_SOURCE_ROWS.find((candidate) => candidate.id === id);
+    const row = REGISTRY_FIRST_PAGE_ROWS.find(
+      (candidate) => candidate.id === id,
+    );
     if (!row) return;
     setInstalledSkill({
       id: `installed-${id}`,
       title: row.title,
       description: row.summary,
-      provider: "codex",
-      icon: "Zap",
     });
+  }
+  if (selectedRegistryId !== null) {
+    return (
+      <RegistrySkillStoryDetail
+        id={selectedRegistryId}
+        installed={installedSkillIds.has(selectedRegistryId)}
+        onBack={() => setSelectedRegistryId(null)}
+        onInstall={() => handleRegistryInstall(selectedRegistryId)}
+      />
+    );
   }
   if (showAllBrowse) {
     return (
       <RegistryBrowseAllSurface
         installedSkillIds={installedSkillIds}
         onInstall={handleRegistryInstall}
+        onSelect={setSelectedRegistryId}
       />
     );
   }
@@ -1130,38 +1495,48 @@ function SkillsOverviewSurface({
       <RegistryBrowseSource
         installedSkillIds={installedSkillIds}
         onInstall={handleRegistryInstall}
+        onSelect={setSelectedRegistryId}
         onSeeAll={() => setShowAllBrowse(true)}
       />
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search skills"
-        onSearchChange={setQuery}
-        controls={
-          <StoryListControls
-            providerFilters={providerFilters}
-            sort={sort}
-            direction={direction}
-            availableProviders={providerBuckets}
-            onProviderFiltersChange={setProviderFilters}
-            onSortChange={updateSort}
-          />
-        }
-        action={
-          <CreateWithTemplatesButton
-            kind="skill"
-            label="New bb skill"
-            onCreate={onCreate}
-          />
-        }
-      />
-      <ResourceRowsList
-        sections={skillSections}
-        query={query}
-        providerFilters={providerFilters}
-        sortMode={sort}
-        sortDirection={direction}
-        fallbackIcon="Zap"
-      />
+      <section aria-labelledby="story-installed-skills" className="space-y-2">
+        <ResourceSectionTitle id="story-installed-skills" className="px-3">
+          Installed skills
+        </ResourceSectionTitle>
+        <ResourceToolbar
+          searchValue={query}
+          searchPlaceholder="Search skills"
+          onSearchChange={setQuery}
+          controlsClassName="h-8 gap-0 overflow-hidden rounded-md border border-input bg-background divide-x divide-border [&>button]:size-[1.875rem] [&>button]:rounded-none"
+          controls={
+            <StoryListControls
+              providerFilters={providerFilters}
+              sort={sort}
+              direction={direction}
+              availableProviders={providerBuckets}
+              onProviderFiltersChange={setProviderFilters}
+              onSortChange={updateSort}
+              alphaLabel="Skill name"
+            />
+          }
+          action={
+            <CreateWithTemplatesButton
+              kind="skill"
+              label="New bb skill"
+              onCreate={onCreate}
+            />
+          }
+        />
+        <ResourceRowsList
+          sections={skillSections}
+          query={query}
+          providerFilters={providerFilters}
+          sortMode={sort}
+          sortDirection={direction}
+          fallbackIcon="Zap"
+          showOpenAction
+          showDisabledManageActions
+        />
+      </section>
     </div>
   );
 }
@@ -1856,6 +2231,124 @@ const SKILL_DETAIL_FIXTURES: readonly SkillDetailFixture[] = [
     ].join("\n"),
   },
   {
+    id: "release-playbook",
+    exampleLabel: "release-playbook · User skill",
+    title: "release-playbook",
+    provider: "bb",
+    status: "User skill",
+    statusTone: "success",
+    path: "~/.bb/skills/release-playbook/SKILL.md",
+    markdown: [
+      "---",
+      "name: release-playbook",
+      "description: Apply the team's reusable release process from final verification through rollout.",
+      "---",
+      "",
+      "# Release playbook",
+      "",
+      "Use this skill to prepare a release without skipping verification, communication, or cleanup.",
+      "",
+      "## Before release",
+      "",
+      "1. Confirm the release branch is current and CI is green.",
+      "2. Review user-facing changes and draft concise release notes.",
+      "3. Verify migrations, feature flags, and rollback steps.",
+      "",
+      "## Rollout",
+      "",
+      "- Ship the smallest safe increment.",
+      "- Watch release health and error telemetry.",
+      "- Record follow-up work rather than expanding the release scope.",
+    ].join("\n"),
+  },
+  {
+    id: "imagegen",
+    exampleLabel: "imagegen · Codex",
+    title: "imagegen",
+    provider: "codex",
+    status: "Read-only",
+    statusTone: "muted",
+    path: "~/.codex/skills/.system/imagegen/SKILL.md",
+    markdown: [
+      "---",
+      "name: imagegen",
+      "description: Generate or edit raster images when the task benefits from AI-created bitmap visuals.",
+      "---",
+      "",
+      "# Image generation",
+      "",
+      "Use image generation for raster assets such as illustrations, textures, mockups, and transparent-background cutouts.",
+      "",
+      "## Choose the right medium",
+      "",
+      "- Use image generation for new bitmap artwork or edits to an existing raster image.",
+      "- Keep established SVG, icon, and logo systems code-native.",
+      "- Prefer HTML and CSS for interface visuals that belong in the product implementation.",
+      "",
+      "## Editing",
+      "",
+      "Inspect the source image first, preserve the requested composition, and make only the requested visual changes.",
+    ].join("\n"),
+  },
+  {
+    id: "openai-docs",
+    exampleLabel: "openai-docs · Codex",
+    title: "openai-docs",
+    provider: "codex",
+    status: "Read-only",
+    statusTone: "muted",
+    path: "~/.codex/skills/.system/openai-docs/SKILL.md",
+    markdown: [
+      "---",
+      "name: openai-docs",
+      "description: Use current official OpenAI documentation for product and API guidance.",
+      "---",
+      "",
+      "# OpenAI documentation",
+      "",
+      "Use this skill when building with OpenAI products or APIs, choosing a model, or upgrading prompts and integrations.",
+      "",
+      "## Source policy",
+      "",
+      "1. Start with the official OpenAI documentation tools.",
+      "2. Prefer primary product and API references over third-party summaries.",
+      "3. Cite the exact documentation page that supports each time-sensitive claim.",
+      "",
+      "## Codex questions",
+      "",
+      "Check the Codex manual first for broad product guidance, then use official documentation for specific current behavior.",
+    ].join("\n"),
+  },
+  {
+    id: "moss-notes",
+    exampleLabel: "moss-notes · Claude Code",
+    title: "moss-notes",
+    provider: "claude-code",
+    status: "Read-only",
+    statusTone: "muted",
+    path: "~/.claude/skills/moss-notes/SKILL.md",
+    markdown: [
+      "---",
+      "name: moss-notes",
+      "description: Author and edit Moss notes using the app's Markdown conventions and node types.",
+      "---",
+      "",
+      "# Moss notes",
+      "",
+      "Use this skill when creating or updating notes in Moss, choosing a node type, or preserving Moss-specific syntax.",
+      "",
+      "## Writing notes",
+      "",
+      "- Lead with the answer and organize sections from most to least important.",
+      "- Keep paragraphs short and choose the representation that best fits the content.",
+      "- Preserve Moss links, comments, formulas, and frontmatter when editing existing notes.",
+      "",
+      "## File location",
+      "",
+      "Store notes under `~/Moss/Notes/` and use portable Markdown unless a Moss-only node is required.",
+    ].join("\n"),
+  },
+  {
     id: "documents-multifolder",
     exampleLabel: "documents · Multi-folder",
     title: "documents",
@@ -2368,6 +2861,7 @@ export function SkillsOverviewPage() {
     </PageStory>
   );
 }
+SkillsOverviewPage.storyName = "skills--overview";
 
 export function PluginsOverviewPage() {
   return (
@@ -2389,6 +2883,85 @@ export function AutomationsOverviewPage() {
   );
 }
 
+function InstalledSkillDetailStory({ id }: { id: string }) {
+  return (
+    <PageStory>
+      <SkillDetail selectedId={id} />
+    </PageStory>
+  );
+}
+
+function RegistrySkillDetailStory({ id }: { id: string }) {
+  return (
+    <PageStory>
+      <RegistrySkillStoryDetail
+        id={id}
+        installed={false}
+        onBack={NOOP}
+        onInstall={NOOP}
+      />
+    </PageStory>
+  );
+}
+
+export function BbCliSkillDetailPage() {
+  return <InstalledSkillDetailStory id="bb-cli" />;
+}
+BbCliSkillDetailPage.storyName = "skills--overview--installed--bb-cli";
+
+export function SkillCreatorSkillDetailPage() {
+  return <InstalledSkillDetailStory id="skill-creator" />;
+}
+SkillCreatorSkillDetailPage.storyName =
+  "skills--overview--installed--skill-creator";
+
+export function ReleasePlaybookSkillDetailPage() {
+  return <InstalledSkillDetailStory id="release-playbook" />;
+}
+ReleasePlaybookSkillDetailPage.storyName =
+  "skills--overview--installed--release-playbook";
+
+export function ImagegenSkillDetailPage() {
+  return <InstalledSkillDetailStory id="imagegen" />;
+}
+ImagegenSkillDetailPage.storyName = "skills--overview--installed--imagegen";
+
+export function OpenAiDocsSkillDetailPage() {
+  return <InstalledSkillDetailStory id="openai-docs" />;
+}
+OpenAiDocsSkillDetailPage.storyName =
+  "skills--overview--installed--openai-docs";
+
+export function MossNotesSkillDetailPage() {
+  return <InstalledSkillDetailStory id="moss-notes" />;
+}
+MossNotesSkillDetailPage.storyName =
+  "skills--overview--installed--moss-notes";
+
+export function FindSkillsRegistrySkillDetailPage() {
+  return <RegistrySkillDetailStory id="find-skills" />;
+}
+FindSkillsRegistrySkillDetailPage.storyName =
+  "skills--overview--browse--find-skills";
+
+export function FrontendDesignRegistrySkillDetailPage() {
+  return <RegistrySkillDetailStory id="frontend-design" />;
+}
+FrontendDesignRegistrySkillDetailPage.storyName =
+  "skills--overview--browse--frontend-design";
+
+export function VercelReactBestPracticesRegistrySkillDetailPage() {
+  return <RegistrySkillDetailStory id="vercel-react-best-practices" />;
+}
+VercelReactBestPracticesRegistrySkillDetailPage.storyName =
+  "skills--overview--browse--vercel-react-best-practices";
+
+export function AgentBrowserRegistrySkillDetailPage() {
+  return <RegistrySkillDetailStory id="agent-browser" />;
+}
+AgentBrowserRegistrySkillDetailPage.storyName =
+  "skills--overview--browse--agent-browser";
+
 export const SkillDetailPage: Story<{ example: string }> = ({ example }) => {
   return (
     <PageStory>
@@ -2397,6 +2970,7 @@ export const SkillDetailPage: Story<{ example: string }> = ({ example }) => {
   );
 };
 SkillDetailPage.args = { example: SKILL_DETAIL_FIXTURES[0].id };
+SkillDetailPage.storyName = "skills--overview--detail examples";
 SkillDetailPage.argTypes = {
   example: {
     options: SKILL_DETAIL_FIXTURES.map(({ id }) => id),

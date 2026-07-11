@@ -40,6 +40,11 @@ export interface StagedInjectedSkills {
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
+export interface CopyInjectedSkillSourceArgs {
+  destinationPath: string;
+  source: HostDaemonInjectedSkillSource;
+}
+
 interface CollectedSkillFile {
   bytes: Buffer;
   relativePath: string;
@@ -338,6 +343,20 @@ async function copyCollectedTree(args: StageTreeArgs): Promise<void> {
     await fs.mkdir(path.dirname(destinationPath), { recursive: true });
     await fs.writeFile(destinationPath, file.bytes);
   }
+}
+
+/**
+ * Copy one complete skill tree through the same bounded, symlink-rejecting
+ * collector used for provider runtime staging.
+ */
+export async function copyInjectedSkillSource(
+  args: CopyInjectedSkillSourceArgs,
+): Promise<void> {
+  const tree = await collectSkillTree({ source: args.source });
+  await copyCollectedTree({
+    skillDirectoryPath: args.destinationPath,
+    tree,
+  });
 }
 
 function createClaudePluginManifest(
