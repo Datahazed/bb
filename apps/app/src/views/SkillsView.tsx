@@ -370,13 +370,16 @@ function SkillRow({
 }) {
   const description = skillDescription(skill);
   const showDisabledManageActions = !skill.manageable;
+  const hasManageActions = Boolean(
+    onEdit || onDelete || showDisabledManageActions,
+  );
   const readOnlyReason =
     skill.scope === "bb-builtin"
       ? "Built-in skill"
       : skill.provider !== null
         ? `Managed by ${providerLabel(skill.provider)}`
         : "Read-only skill";
-  const actions = (
+  const actions = hasManageActions ? (
     <>
       {onEdit || showDisabledManageActions ? (
         <ResourceActionButton
@@ -397,16 +400,8 @@ function SkillRow({
           onClick={onDelete ?? NOOP}
         />
       ) : null}
-      <ResourceActionButton
-        label={`Open ${skill.name}`}
-        tooltipLabel="View details"
-        tooltipSide="bottom"
-        icon="ChevronRight"
-        className="transition-transform duration-150 ease-out group-hover:translate-x-0.5 focus-visible:translate-x-0.5"
-        onClick={onSelect}
-      />
     </>
-  );
+  ) : undefined;
   return (
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
@@ -414,6 +409,13 @@ function SkillRow({
       description={description}
       onOpen={onSelect}
       actions={actions}
+      trailingVisual={
+        <Icon
+          name="ChevronRight"
+          className="size-4 text-muted-foreground/65 transition-[color,transform] duration-150 ease-out group-hover:translate-x-1 group-hover:text-foreground group-focus-within:translate-x-1 group-focus-within:text-foreground"
+          aria-hidden
+        />
+      }
     />
   );
 }
@@ -579,11 +581,9 @@ function SkillsShAttributionLink() {
       href={SKILLS_SH_URL}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/50 hover:text-subtle-foreground/80 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/65 hover:text-subtle-foreground/90 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>
-        powered by <span className="font-mono">skills.sh</span>
-      </span>
+      <span className="font-mono">skills.sh</span>
     </a>
   );
 }
@@ -978,8 +978,8 @@ export function SkillsOverview({
   return (
     <div className="space-y-4">
       <ResourceTabDescription>
-        All skills from bb and your configured agents, in one place. Skills
-        created in bb are available across every agent you use in bb.
+        Manage skills from bb and your configured agents. bb skills work across
+        every agent you use in bb.
       </ResourceTabDescription>
       <RegistrySkillsSource
         skills={registrySkills}
@@ -1000,7 +1000,7 @@ export function SkillsOverview({
           searchValue={query}
           searchPlaceholder="Search skills"
           onSearchChange={onQueryChange}
-          controlsClassName="h-8 gap-0 overflow-hidden rounded-md border border-input bg-background divide-x divide-border [&>button]:size-[1.875rem] [&>button]:rounded-none"
+          controlsClassName="h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm"
           controls={
             <>
               <ResourceMultiSelectMenu

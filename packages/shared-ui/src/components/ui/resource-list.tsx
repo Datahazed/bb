@@ -1,5 +1,4 @@
 import type { ComponentProps, ReactNode } from "react";
-import { CHROME_SECTION_LABEL_CLASS } from "./chrome-style-tokens";
 import { Button, type ButtonProps } from "./button";
 import { EmptyStatePanel } from "./empty-state";
 import {
@@ -142,10 +141,7 @@ export function ResourceToolbar({
       </div>
       {controls ? (
         <div
-          className={cn(
-            "flex shrink-0 items-center gap-1",
-            controlsClassName,
-          )}
+          className={cn("flex shrink-0 items-center gap-1", controlsClassName)}
         >
           {controls}
         </div>
@@ -589,6 +585,7 @@ export function ResourceRow({
   selected = false,
   muted = false,
   actions,
+  trailingVisual,
   actionsVisibility = "hover",
   className,
   onOpen,
@@ -601,6 +598,7 @@ export function ResourceRow({
   selected?: boolean;
   muted?: boolean;
   actions?: ReactNode;
+  trailingVisual?: ReactNode;
   actionsVisibility?: "hover" | "always";
   className?: string;
   onOpen: () => void;
@@ -639,16 +637,25 @@ export function ResourceRow({
           </span>
         ) : null}
       </button>
-      {actions ? (
-        <span
-          data-row-action
-          className={cn(
-            "flex shrink-0 items-center gap-0.5 transition-opacity",
-            actionsVisibility === "hover" &&
-              "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-          )}
-        >
-          {actions}
+      {actions || trailingVisual ? (
+        <span className="flex shrink-0 items-center gap-0.5">
+          {actions ? (
+            <span
+              data-row-action
+              className={cn(
+                "flex shrink-0 items-center gap-0.5 transition-opacity",
+                actionsVisibility === "hover" &&
+                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              {actions}
+            </span>
+          ) : null}
+          {trailingVisual ? (
+            <span className="pointer-events-none flex size-6 shrink-0 items-center justify-center">
+              {trailingVisual}
+            </span>
+          ) : null}
         </span>
       ) : null}
     </div>
@@ -824,7 +831,7 @@ export function ResourceSectionTitle({
   return (
     <h2
       className={cn(
-        CHROME_SECTION_LABEL_CLASS,
+        "text-sm font-medium leading-5 text-muted-foreground",
         className,
       )}
       {...props}
@@ -848,8 +855,8 @@ export function ResourceSourceShelf({
   children: ReactNode;
 }) {
   return (
-    <section className="w-full max-w-full space-y-[var(--resource-source-shelf-section-gap)] rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)] text-popover-foreground">
-      <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)] text-xs text-muted-foreground">
+    <section className="w-full max-w-full space-y-[var(--resource-source-shelf-section-gap)] text-popover-foreground">
+      <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)] px-[var(--resource-source-shelf-inset)] text-xs text-muted-foreground">
         <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)]">
           {leading}
           <ResourceSectionTitle className="truncate">
@@ -869,17 +876,19 @@ export function ResourceSourceShelf({
           </div>
         ) : null}
       </div>
-      <div className="relative">
-        <div className="-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]">
-          <div className="flex w-full snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]">
-            {children}
+      <div className="rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]">
+        <div className="relative">
+          <div className="-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]">
+            <div className="flex w-full snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]">
+              {children}
+            </div>
           </div>
+          {scrollOverlay ? (
+            <div className="pointer-events-none absolute inset-x-0 top-[var(--resource-source-shelf-shadow-bleed)] bottom-[var(--resource-source-shelf-shadow-bleed)]">
+              {scrollOverlay}
+            </div>
+          ) : null}
         </div>
-        {scrollOverlay ? (
-          <div className="pointer-events-none absolute inset-x-0 top-[var(--resource-source-shelf-shadow-bleed)] bottom-[var(--resource-source-shelf-shadow-bleed)]">
-            {scrollOverlay}
-          </div>
-        ) : null}
       </div>
     </section>
   );

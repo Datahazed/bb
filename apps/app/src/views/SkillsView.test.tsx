@@ -84,10 +84,11 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-label="Agent"');
     expect(markup).toContain("Sort");
     expect(markup).toContain("Installed skills");
-    expect(markup).toContain('aria-label="Open bb-skill"');
-    expect(markup).toContain("group-hover:translate-x-0.5");
+    expect(markup).not.toContain('aria-label="Open bb-skill"');
+    expect(markup).toContain("group-hover:translate-x-1");
+    expect(markup).toContain("text-muted-foreground/65");
     expect(markup).toContain(
-      "h-8 gap-0 overflow-hidden rounded-md border border-input bg-background divide-x divide-border",
+      "h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5",
     );
     expect(markup.indexOf("Installed skills")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
@@ -132,13 +133,13 @@ describe("SkillsOverview", () => {
     );
 
     expect(markup).toContain("Useful skill");
-    expect(markup).toContain("text-subtle-foreground/50");
+    expect(markup).toContain("text-subtle-foreground/65");
     expect(markup).toContain("text-success");
     expect(markup).toContain("fill-attention/20 text-attention");
     expect(markup).toContain("items-center justify-end pt-2");
     expect(markup).toContain("min-h-14 line-clamp-2");
     expect(markup).toContain(
-      "rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)] text-popover-foreground",
+      "rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]",
     );
     expect(markup).toContain(
       "-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]",
@@ -147,12 +148,8 @@ describe("SkillsOverview", () => {
       "snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]",
     );
     expect(markup).toContain("right-0");
-    expect(markup).toContain(
-      "w-[var(--resource-source-shelf-fade-ramp)]",
-    );
-    expect(markup).toContain(
-      "Installed Useful skill as a bb skill",
-    );
+    expect(markup).toContain("w-[var(--resource-source-shelf-fade-ramp)]");
+    expect(markup).toContain("Installed Useful skill as a bb skill");
     expect(markup).toContain('aria-label="View details for Useful skill"');
     expect(markup).toContain('class="absolute inset-0 cursor-pointer');
     expect(markup).toContain(
@@ -162,9 +159,7 @@ describe("SkillsOverview", () => {
       "hover:bg-[var(--resource-source-shelf-card-hover)]",
     );
     expect(
-      markup.match(
-        /text-xs font-normal leading-5 text-subtle-foreground\/75/g,
-      ),
+      markup.match(/text-sm font-medium leading-5 text-muted-foreground/g),
     ).toHaveLength(2);
   });
 
@@ -256,11 +251,7 @@ describe("SkillsOverview", () => {
         .getByRole("button", { name: "Delete bb-cli" })
         .getAttribute("aria-disabled"),
     ).toBe("true");
-    const openButton = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Open bb-cli",
-    });
-    expect(openButton.disabled).toBe(false);
-    expect(openButton.className).toContain("group-hover:translate-x-0.5");
+    expect(screen.queryByRole("button", { name: "Open bb-cli" })).toBeNull();
     expect(editButton.closest("[data-row-action]")?.className).toContain(
       "group-hover:opacity-100",
     );
@@ -270,6 +261,10 @@ describe("SkillsOverview", () => {
 
     const row = screen.getByText("bb-cli").closest(".group");
     expect(row?.className).toContain("cursor-pointer");
+    const caret = row?.querySelector('[data-icon="ChevronRight"]');
+    expect(caret?.classList.contains("text-muted-foreground/65")).toBe(true);
+    expect(caret?.classList.contains("group-hover:translate-x-1")).toBe(true);
+    expect(caret?.closest("button")).toBeNull();
     fireEvent.click(row!);
     expect(onSelectSkill).toHaveBeenCalledOnce();
   });

@@ -887,10 +887,7 @@ function ResourceRowsList({
           muted={row.muted}
           onOpen={NOOP}
           actions={
-            row.manageable ||
-            row.builtIn ||
-            showDisabledManageActions ||
-            showOpenAction ? (
+            row.manageable || row.builtIn || showDisabledManageActions ? (
               <>
                 {row.manageable || row.builtIn || showDisabledManageActions ? (
                   <>
@@ -927,17 +924,16 @@ function ResourceRowsList({
                     />
                   </>
                 ) : null}
-                {showOpenAction ? (
-                  <ResourceActionButton
-                    label={`Open ${row.title}`}
-                    tooltipLabel="View details"
-                    tooltipSide="bottom"
-                    icon="ChevronRight"
-                    className="transition-transform duration-150 ease-out group-hover:translate-x-0.5 focus-visible:translate-x-0.5"
-                    onClick={NOOP}
-                  />
-                ) : null}
               </>
+            ) : undefined
+          }
+          trailingVisual={
+            showOpenAction ? (
+              <Icon
+                name="ChevronRight"
+                className="size-4 text-muted-foreground/65 transition-[color,transform] duration-150 ease-out group-hover:translate-x-1 group-hover:text-foreground group-focus-within:translate-x-1 group-focus-within:text-foreground"
+                aria-hidden
+              />
             ) : undefined
           }
         />
@@ -979,11 +975,9 @@ function SkillsShAttributionLink() {
       href={SKILLS_SH_URL}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/50 hover:text-subtle-foreground/80 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/65 hover:text-subtle-foreground/90 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span>
-        powered by <span className="font-mono">skills.sh</span>
-      </span>
+      <span className="font-mono">skills.sh</span>
     </a>
   );
 }
@@ -1489,8 +1483,8 @@ function SkillsOverviewSurface({
   return (
     <div className="space-y-4">
       <ResourceTabDescription>
-        All skills from bb and your configured agents, in one place. Skills
-        created in bb are available across every agent you use in bb.
+        Manage skills from bb and your configured agents. bb skills work across
+        every agent you use in bb.
       </ResourceTabDescription>
       <RegistryBrowseSource
         installedSkillIds={installedSkillIds}
@@ -1506,7 +1500,7 @@ function SkillsOverviewSurface({
           searchValue={query}
           searchPlaceholder="Search skills"
           onSearchChange={setQuery}
-          controlsClassName="h-8 gap-0 overflow-hidden rounded-md border border-input bg-background divide-x divide-border [&>button]:size-[1.875rem] [&>button]:rounded-none"
+          controlsClassName="h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm"
           controls={
             <StoryListControls
               providerFilters={providerFilters}
@@ -2935,8 +2929,7 @@ OpenAiDocsSkillDetailPage.storyName =
 export function MossNotesSkillDetailPage() {
   return <InstalledSkillDetailStory id="moss-notes" />;
 }
-MossNotesSkillDetailPage.storyName =
-  "skills--overview--installed--moss-notes";
+MossNotesSkillDetailPage.storyName = "skills--overview--installed--moss-notes";
 
 export function FindSkillsRegistrySkillDetailPage() {
   return <RegistrySkillDetailStory id="find-skills" />;
