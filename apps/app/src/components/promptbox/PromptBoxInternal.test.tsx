@@ -20,6 +20,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { LOOP_PROMPT_ACTION } from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -150,10 +154,7 @@ function PromptBoxFocusOnMountHarness() {
   }, []);
 
   return (
-    <PromptBoxInternal
-      {...createPromptBoxProps()}
-      promptBoxRef={promptBoxRef}
-    />
+    <PromptBoxInternal {...createPromptBoxProps()} promptBoxRef={promptBoxRef} />
   );
 }
 
@@ -209,6 +210,22 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
   );
 }
 
+function PromptBoxSizeHarness({ storageKey }: { storageKey: string }) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  return (
+    <PromptBoxInternal
+      {...createPromptBoxProps({
+        minimized: {
+          isMinimized,
+          onToggle: () => setIsMinimized((previous) => !previous),
+          placeholder: "Ask a follow-up",
+        },
+        zenMode: { storageKey },
+      })}
+    />
+  );
+}
+
 function renderPromptBox(
   initialValue: string,
   options: {
@@ -224,7 +241,9 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+      [],
+    );
     return (
       <PromptBoxInternal
         value={value}
@@ -371,6 +390,7 @@ function mockPointerCoarse(matches: boolean): () => void {
 
 afterEach(() => {
   cleanup();
+  resetPluginLogoStoreForTest();
   vi.clearAllMocks();
 });
 
@@ -446,6 +466,31 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("does not honor focus-end requests on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      const baseProps = createPromptBoxProps({
+        focusEndKey: 0,
+        promptBoxRef,
+      });
+      const view = render(<PromptBoxInternal {...baseProps} />);
+
+      await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+      const outsideTarget = document.createElement("button");
+      document.body.append(outsideTarget);
+      outsideTarget.focus();
+
+      view.rerender(<PromptBoxInternal {...baseProps} focusEndKey={1} />);
+      promptBoxRef.current?.focusEnd();
+
+      expect(document.activeElement).toBe(outsideTarget);
+      outsideTarget.remove();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("refocuses when the history reset key changes on fine pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
@@ -472,17 +517,13 @@ describe("PromptBoxInternal controlled value sync", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
       const view = render(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
-          historyResetKey={0}
-        />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={0} />,
       );
 
       await waitForPromptFocus();
 
       view.rerender(
-        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness
-          historyResetKey={1}
-        />,
+        <PromptBoxHistoryAutoFocusAfterLayoutStealHarness historyResetKey={1} />,
       );
 
       await waitForPromptFocus();
@@ -517,13 +558,18 @@ describe("PromptBoxInternal controlled value sync", () => {
 
   it("applies an added quote before focus-end insertion can edit the old document", () => {
     const onChange = vi.fn();
-    const view = render(<PromptBoxRaceHarness onChange={onChange} value="" />);
+    const view = render(
+      <PromptBoxRaceHarness onChange={onChange} value="" />,
+    );
 
     view.rerender(
       <PromptBoxRaceHarness onChange={onChange} value={"> selected text\n"} />,
     );
 
-    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
+    expect(onChange).toHaveBeenLastCalledWith(
+      "> selected text\n\nreply",
+      [],
+    );
   });
 
   it("places focus-end insertion below an added quote", async () => {
@@ -550,7 +596,292 @@ describe("PromptBoxInternal controlled value sync", () => {
       promptBoxRef.current?.insertTextAtCursor("reply");
     });
 
-    expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
+    expect(onChange).toHaveBeenLastCalledWith(
+      "> selected text\n\nreply",
+      [],
+    );
+  });
+});
+
+describe("PromptBoxInternal zen mode layout", () => {
+  it("animates the prompt box height when toggling zen mode", async () => {
+    const storageKey = "bb.test.promptbox.zen-height-animation";
+    window.localStorage.removeItem(storageKey);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          zenMode: { storageKey },
+        })}
+      />,
+    );
+
+    const form = document.querySelector("[data-promptbox]");
+    if (!(form instanceof HTMLFormElement)) {
+      throw new Error("Prompt box form was not rendered");
+    }
+
+    vi.spyOn(form, "getBoundingClientRect")
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 96))
+      .mockReturnValueOnce(new DOMRect(0, 0, 320, 512))
+      .mockReturnValue(new DOMRect(0, 0, 320, 512));
+
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+
+    await waitFor(() => {
+      expect(form.style.transition).toContain("height 240ms");
+      expect(form.style.height).toBe("512px");
+    });
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+
+    fireEvent.transitionEnd(form, { propertyName: "height" });
+    window.localStorage.removeItem(storageKey);
+  });
+
+  it("keeps long editor content constrained to the scroll area", async () => {
+    const storageKey = "bb.test.promptbox.zen-layout";
+    window.localStorage.removeItem(storageKey);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`)
+            .join("\n"),
+          zenMode: { storageKey },
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+
+    await waitFor(() => {
+      const scrollContainer = document.querySelector(
+        "[data-promptbox-editor-scroll]",
+      );
+      if (!(scrollContainer instanceof HTMLElement)) {
+        throw new Error("Prompt editor scroll container was not rendered");
+      }
+
+      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
+      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
+        true,
+      );
+    });
+
+    const footerRow =
+      screen.getByRole("button", { name: "Attach files" }).parentElement
+        ?.parentElement;
+    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
+
+    window.localStorage.removeItem(storageKey);
+  });
+});
+
+describe("PromptBoxInternal minimized layout", () => {
+  it("keeps only the one-line editor, expand control, and primary action", () => {
+    const onToggle = vi.fn();
+    const voice: PromptVoiceConfig = {
+      state: "idle",
+      isSupported: true,
+      stream: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      cancel: vi.fn(),
+    };
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value:
+            "A compact follow-up that is much wider than the available mobile space\nA hidden second line",
+          attachments: { onAttachFiles: vi.fn() },
+          footerStart: <button type="button">Model selector</button>,
+          minimized: {
+            isMinimized: true,
+            onToggle,
+            placeholder: "Ask a follow-up",
+          },
+          promptActions,
+          voice,
+        })}
+      />,
+    );
+
+    const form = document.querySelector("[data-promptbox]");
+    expect(form?.getAttribute("data-promptbox-minimized")).toBe("");
+    const expandButton = screen.getByRole("button", {
+      name: "Make prompt box larger",
+    });
+    const submitButton = screen.getByRole("button", {
+      name: "Submit (Enter)",
+    });
+    expect(expandButton).toBeTruthy();
+    expect(expandButton.classList.contains("size-8")).toBe(true);
+    expect(submitButton.classList.contains("size-8")).toBe(true);
+    expect(expandButton.classList.contains("p-0")).toBe(true);
+    expect(submitButton.classList.contains("p-0")).toBe(true);
+    expect(submitButton.classList.contains("ml-1")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Start voice input" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+    expect(getPromptEditorElement().getAttribute("data-placeholder")).toBe(
+      "Ask a follow-up",
+    );
+    const minimizedContent = document.querySelector(
+      "[data-promptbox-minimized-content]",
+    );
+    expect(minimizedContent).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("keeps all Markdown and mention text in the navigable preview", async () => {
+    const mentionToken =
+      "@apps/app/src/components/promptbox/PromptBoxInternal.tsx";
+    const value = [
+      `> Review ${mentionToken} with the rest of this long quoted request`,
+      "> Then verify the hidden continuation",
+      "A hidden paragraph after the quote",
+    ].join("\n");
+    const mentionStart = value.indexOf(mentionToken);
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value,
+          mentionRanges: [
+            {
+              start: mentionStart,
+              end: mentionStart + mentionToken.length,
+              resource: {
+                kind: "path",
+                source: "workspace",
+                entryKind: "file",
+                path: "apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+                label: "PromptBoxInternal.tsx",
+              },
+            },
+          ],
+          minimized: {
+            isMinimized: true,
+            onToggle: vi.fn(),
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    const minimizedContent = document.querySelector(
+      "[data-promptbox-minimized-content]",
+    );
+    const editor = getPromptEditorElement();
+    expect(minimizedContent?.contains(editor)).toBe(true);
+    expect(editor.firstElementChild?.tagName).toBe("BLOCKQUOTE");
+    await waitFor(() =>
+      expect(editor.querySelector(".prompt-mention-pill")).toBeTruthy(),
+    );
+    expect(editor.querySelector("br")).toBeTruthy();
+    expect(editor.children.length).toBeGreaterThan(1);
+    expect(editor.textContent).toContain(
+      "A hidden paragraph after the quote",
+    );
+  });
+
+  it("shows only the smaller control in the normal mobile layout", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          minimized: { isMinimized: false, onToggle: vi.fn() },
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Attach files" })).toBeTruthy();
+  });
+
+  it("uses one contextual size control for compact and normal on mobile", () => {
+    const storageKey = "bb.test.promptbox.size-system";
+    window.localStorage.removeItem(storageKey);
+    render(<PromptBoxSizeHarness storageKey={storageKey} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    );
+    expect(document.querySelector("[data-promptbox-minimized]")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make prompt box larger" }),
+    );
+    expect(document.querySelector("[data-promptbox-minimized]")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Make prompt box smaller" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Make prompt box larger" }),
+    ).toBeNull();
+    window.localStorage.removeItem(storageKey);
+  });
+
+  it("does not focus the editor when expanding on coarse pointers", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            minimized: { isMinimized: true, onToggle: vi.fn() },
+          })}
+        />,
+      );
+
+      const focus = vi.spyOn(getPromptEditorElement(), "focus");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Make prompt box larger" }),
+      );
+
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      requestAnimationFrame.mockRestore();
+      restoreMatchMedia();
+    }
   });
 });
 
@@ -593,6 +924,17 @@ describe("PromptBoxInternal mention triggers", () => {
   });
 
   it("inserts hash-triggered plugin mentions without duplicating the prefix", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "github",
+          {
+            logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
     const { changes, promptBoxRef } = renderPromptBox("#42", {
       mentionTriggers: ["@", "#"],
       mentionSuggestions: [githubIssueSuggestion],
@@ -619,6 +961,12 @@ describe("PromptBoxInternal mention triggers", () => {
         },
       },
     ]);
+    const logo = within(getPromptEditorElement()).getByTestId(
+      "plugin-logo-github",
+    );
+    expect(logo.getAttribute("src")).toBe(
+      "/api/v1/plugins/github/assets/logo?h=abc",
+    );
   });
 });
 
@@ -634,6 +982,20 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("places prompt actions before the right-side action cluster", () => {
+    renderPromptBox("");
+
+    const promptActionsButton = screen.getByRole("button", {
+      name: "Prompt actions",
+    });
+    const attachButton = screen.getByRole("button", { name: "Attach files" });
+
+    expect(
+      promptActionsButton.compareDocumentPosition(attachButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("inserts the skills trigger with no trailing space", async () => {
@@ -727,6 +1089,9 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Goal");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
+    await waitFor(() =>
+      expect(document.querySelector('[data-icon="Target"]')).not.toBeNull(),
+    );
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
@@ -835,8 +1200,7 @@ describe("PromptBoxInternal prompt actions", () => {
 
   it("pastes prompt action command tokens as goal, plan, and loop pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const text =
-      "/plan inspect first\n/goal finish the change\n/loop keep checking";
+    const text = "/plan inspect first\n/goal finish the change\n/loop keep checking";
 
     await focusPromptEnd(promptBoxRef);
     pastePlainText(text);

@@ -339,9 +339,27 @@ export function SideChatTabContent({
   const sendThreadMessage = useSendThreadMessage();
   const stopThread = useStopThread();
   const { isLocalDaemonHost } = useHostDaemon();
+  const [shouldLoadExecutionOptions, setShouldLoadExecutionOptions] =
+    useState(false);
+  useEffect(() => {
+    if (!isActive) {
+      setShouldLoadExecutionOptions(false);
+      return;
+    }
+    // The drawer itself is useful before model metadata is. Let its first
+    // paint win over host-backed model discovery, which can take seconds on a
+    // remote mobile session. Inactive retained side chats do not need this
+    // metadata at all until the user returns to them.
+    const timeoutId = window.setTimeout(
+      () => setShouldLoadExecutionOptions(true),
+      0,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [isActive]);
   const executionOptionsThreadId = childThreadId ?? sourceThread.id;
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     executionOptionsThreadId,
+    { enabled: shouldLoadExecutionOptions },
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
@@ -357,6 +375,7 @@ export function SideChatTabContent({
   // writes to the workspace.
   const defaultExecutionOptions = executionOptionsQuery.data;
   const threadCreationOptions = useThreadCreationOptions({
+    enabled: shouldLoadExecutionOptions,
     scope: "component-local",
     environmentId: sourceThread.environmentId ?? undefined,
     resetKey: sourceThread.id,
@@ -677,23 +696,21 @@ export function SideChatTabContent({
     ],
   );
 
-  // A side chat hands results back to the main thread per agent message (the
-  // "send to main thread" action under each reply) via the cross-thread
-  // `senderThreadId` transport. Keep the action visible and guard the handler
-  // against double-sends while the mutation is in flight.
+  // A side chat hands results back to the main thread per agent message via the
+  // cross-thread `senderThreadId` transport. Queue it on the main thread rather
+  // than interrupting the user's active work there.
   const sendMessageToMain = useCallback<ThreadTimelineSendToMainMessageHandler>(
     (target) => {
-      if (childThreadId === null || sendThreadMessage.isPending) {
+      if (childThreadId === null || createQueuedMessage.isPending) {
         return;
       }
-      sendThreadMessage.mutate({
+      createQueuedMessage.mutate({
         id: sourceThread.id,
         input: [{ type: "text", text: target.messageText, mentions: [] }],
-        mode: "auto",
         senderThreadId: childThreadId,
       });
     },
-    [childThreadId, sendThreadMessage, sourceThread.id],
+    [childThreadId, createQueuedMessage, sourceThread.id],
   );
   const handleSelectionAddToChat =
     useCallback<ThreadTimelineSelectionAddToChatHandler>(
@@ -745,6 +762,11 @@ export function SideChatTabContent({
     ? "Stopping side chat..."
     : isSideChatProvisioning
       ? "Provisioning side chat..."
+      : "Reply in the side chat…";
+  const minimizedComposerPlaceholder = isSideChatStopRequested
+    ? "Stopping side chat..."
+    : isSideChatProvisioning
+      ? "Setting up side chat..."
       : "Reply in the side chat…";
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
@@ -1101,6 +1123,7 @@ export function SideChatTabContent({
       onChangeMessage: handleChangeMessage,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSubmit,
+      minimizedPromptPlaceholder: minimizedComposerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode: sideChatSubmitMode,
@@ -1113,6 +1136,7 @@ export function SideChatTabContent({
       handleModifierSubmit,
       handleSubmit,
       isSideChatTurnSubmitting,
+      minimizedComposerPlaceholder,
       promptDraft.attachments,
       promptDraft.mentions,
       promptDraft.text,

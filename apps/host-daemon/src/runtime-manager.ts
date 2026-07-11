@@ -75,6 +75,7 @@ interface EnsureCompatibleEntryArgs {
 interface ReplaceEntryForSkillCatalogArgs {
   entry: RuntimeEntry;
   skillConfig: RuntimeSkillConfig;
+  targetThreadId?: string;
 }
 
 interface SkillCatalogConflictErrorArgs {
@@ -269,6 +270,10 @@ export class RuntimeManager {
     string,
     PendingEnvironmentProvision
   >();
+  private readonly inFlightThreadCommandsByEnvironmentId = new Map<
+    string,
+    Map<string, number>
+  >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
@@ -321,6 +326,53 @@ export class RuntimeManager {
 
   markTerminalInactive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.delete(terminalId);
+  }
+
+  /**
+   * Keeps an environment runtime alive while a thread command is preparing a
+   * start or submit. Runtime turn state becomes active only after the provider
+   * accepts the command, so it cannot by itself protect that short interval
+   * from a concurrent shell-environment refresh.
+   */
+  retainEnvironmentForThreadCommand(
+    environmentId: string,
+    threadId: string,
+  ): () => void {
+    const commandsByThreadId =
+      this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
+      new Map<string, number>();
+    commandsByThreadId.set(
+      threadId,
+      (commandsByThreadId.get(threadId) ?? 0) + 1,
+    );
+    this.inFlightThreadCommandsByEnvironmentId.set(
+      environmentId,
+      commandsByThreadId,
+    );
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+
+      const activeCommands = this.inFlightThreadCommandsByEnvironmentId.get(
+        environmentId,
+      );
+      if (!activeCommands) {
+        return;
+      }
+      const count = activeCommands.get(threadId) ?? 0;
+      if (count <= 1) {
+        activeCommands.delete(threadId);
+      } else {
+        activeCommands.set(threadId, count - 1);
+      }
+      if (activeCommands.size === 0) {
+        this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
+      }
+    };
   }
 
   listActiveThreads(): HostDaemonActiveThread[] {
@@ -409,6 +461,28 @@ export class RuntimeManager {
     );
   }
 
+  private hasInFlightThreadCommand(
+    entry: RuntimeEntry,
+    excludingThreadId?: string,
+  ): boolean {
+    const commandsByThreadId = this.inFlightThreadCommandsByEnvironmentId.get(
+      entry.environmentId,
+    );
+    if (!commandsByThreadId) {
+      return false;
+    }
+    return [...commandsByThreadId.keys()].some(
+      (threadId) => threadId !== excludingThreadId,
+    );
+  }
+
+  private entryHasActiveEnvironmentWork(entry: RuntimeEntry): boolean {
+    return (
+      this.entryHasActiveRuntimeWork(entry) ||
+      this.hasInFlightThreadCommand(entry)
+    );
+  }
+
   /**
    * Removes staged skill catalog directories no loaded entry references.
    * `pendingCatalogHashes` names catalogs that are about to become active but
@@ -448,7 +522,10 @@ export class RuntimeManager {
   private async replaceEntryForSkillCatalog(
     args: ReplaceEntryForSkillCatalogArgs,
   ): Promise<void> {
-    if (this.entryHasActiveRuntimeWork(args.entry)) {
+    if (
+      this.entryHasActiveRuntimeWork(args.entry) ||
+      this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
+    ) {
       throw new SkillCatalogConflictError({
         environmentId: args.entry.environmentId,
         activeCatalogHash: args.entry.skillCatalogHash,
@@ -485,7 +562,8 @@ export class RuntimeManager {
     // next launch on an idle environment.
     if (
       args.targetThreadId !== undefined &&
-      this.entryHasActiveRuntimeWork(args.entry)
+      (this.entryHasActiveRuntimeWork(args.entry) ||
+        this.hasInFlightThreadCommand(args.entry, args.targetThreadId))
     ) {
       if (
         args.entry.lastWarnedStaleSkillCatalogHash !==
@@ -509,6 +587,9 @@ export class RuntimeManager {
     await this.replaceEntryForSkillCatalog({
       entry: args.entry,
       skillConfig: args.skillConfig,
+      ...(args.targetThreadId !== undefined
+        ? { targetThreadId: args.targetThreadId }
+        : {}),
     });
     return null;
   }
@@ -546,7 +627,7 @@ export class RuntimeManager {
 
   private async evictIdleRuntimeEntries(): Promise<void> {
     const idleEntries = [...this.entries.values()].filter(
-      (entry) => !this.entryHasActiveRuntimeWork(entry),
+      (entry) => !this.entryHasActiveEnvironmentWork(entry),
     );
 
     for (const entry of idleEntries) {
@@ -796,7 +877,7 @@ export class RuntimeManager {
     }
 
     const idleEntries = [...this.entries.values()].filter(
-      (entry) => !this.entryHasActiveRuntimeWork(entry),
+      (entry) => !this.entryHasActiveEnvironmentWork(entry),
     );
 
     for (const entry of idleEntries) {

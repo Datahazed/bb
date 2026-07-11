@@ -161,6 +161,11 @@ export {
   setAppKeybindingOverrides,
   setAppSettings,
 } from "./app-settings.js";
+export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
+export type {
+  ReplaceThreadTabsResult,
+  StoredThreadTabs,
+} from "./thread-tabs.js";
 export { getExperiments, setExperiments } from "./experiments.js";
 export {
   deleteInstalledPlugin,

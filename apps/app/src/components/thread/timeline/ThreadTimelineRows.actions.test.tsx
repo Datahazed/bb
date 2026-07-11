@@ -214,6 +214,202 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows actions", () => {
+  it("uses inline mobile actions only for the last assistant message", () => {
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_agent_message",
+            role: "assistant",
+            text: "An earlier answer.",
+          }),
+          conversationRow({
+            id: "latest_agent_message",
+            role: "assistant",
+            text: "The latest answer.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onSideChatMessage={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_agent_message"]',
+    );
+    const latestMessage = container.querySelector(
+      '[data-timeline-row-id="latest_agent_message"]',
+    );
+
+    expect(
+      earlierMessage?.querySelector('[aria-label="Message actions"]'),
+    ).not.toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
+    ).toContain("max-md:pointer-coarse:opacity-100");
+    expect(
+      latestMessage?.querySelector('[aria-label="Reply in side chat"]')
+        ?.className,
+    ).toContain("max-md:pointer-coarse:size-7");
+  });
+
+  it("uses inline mobile actions only for the last user message", () => {
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_user_message",
+            role: "user",
+            text: "An earlier request.",
+          }),
+          conversationRow({
+            id: "latest_user_message",
+            role: "user",
+            text: "The latest request.",
+          }),
+        ]}
+        onSelectionAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_user_message"]',
+    );
+    const latestMessage = container.querySelector(
+      '[data-timeline-row-id="latest_user_message"]',
+    );
+
+    expect(
+      earlierMessage?.querySelector('[aria-label="Message actions"]'),
+    ).not.toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
+    ).toContain("max-md:pointer-coarse:size-7");
+    expect(
+      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
+    ).toContain("max-md:pointer-coarse:size-7");
+  });
+
+  it("keeps the last real user action footer inline when a remote-image-only row follows", () => {
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "actionable_user_message",
+            role: "user",
+            text: "A request with actions.",
+          }),
+          conversationRow({
+            id: "remote_image_only_message",
+            role: "user",
+            text: "",
+            attachments: {
+              webImages: 1,
+              localImages: 0,
+              localFiles: 0,
+              imageUrls: ["https://example.com/remote.png"],
+              localImagePaths: [],
+              localFilePaths: [],
+            },
+          }),
+        ]}
+        onSelectionAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const actionableMessage = container.querySelector(
+      '[data-timeline-row-id="actionable_user_message"]',
+    );
+    const remoteImageOnlyMessage = container.querySelector(
+      '[data-timeline-row-id="remote_image_only_message"]',
+    );
+    expect(
+      actionableMessage?.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
+    expect(
+      actionableMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      remoteImageOnlyMessage?.querySelector('[aria-label="Copy message"]'),
+    ).toBeNull();
+  });
+
+  it("keeps the last text footer inline when an attachment-only row has no add action", () => {
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "copyable_user_message",
+            role: "user",
+            text: "A request that can be copied.",
+          }),
+          conversationRow({
+            id: "local_attachment_only_message",
+            role: "user",
+            text: "",
+            attachments: {
+              webImages: 0,
+              localImages: 0,
+              localFiles: 1,
+              imageUrls: [],
+              localImagePaths: [],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const copyableMessage = container.querySelector(
+      '[data-timeline-row-id="copyable_user_message"]',
+    );
+    const attachmentOnlyMessage = container.querySelector(
+      '[data-timeline-row-id="local_attachment_only_message"]',
+    );
+    expect(
+      copyableMessage?.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
+    expect(
+      copyableMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      attachmentOnlyMessage?.querySelector('[aria-label="Message actions"]'),
+    ).toBeNull();
+  });
+
+  it("renders send-to-main on assistant rows when the timeline supplies a handler", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "Use this answer in the main chat.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSendToMainMessage={() => undefined}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Send to main thread"');
+  });
+
   it("hides assistant message actions inside completed turn summaries", () => {
     const markup = toMarkup(
       <ThreadTimelineRows
@@ -268,6 +464,8 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Working");
     expect(markup).toContain("Streaming assistant response.");
     expect(markup).toContain('aria-label="Copy message"');
+    expect(markup).not.toContain('aria-label="Message actions"');
+    expect(markup).toContain("max-md:pointer-coarse:opacity-100");
   });
 
   it("hides assistant message actions inside delegation rows", () => {
@@ -303,6 +501,125 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Nested subagent progress.");
     expect(markup).toContain("Nested final answer.");
     expect(markup.match(/aria-label="Copy message"/g)).toHaveLength(1);
+  });
+
+  it("passes regular user message text to add-to-chat", () => {
+    const onSelectionAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "  Quote this user prompt.  ",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith(
+      "Quote this user prompt.",
+    );
+  });
+
+  it("passes user message attachments to add-to-chat", () => {
+    const onSelectionAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "  Quote this user prompt.  ",
+            attachments: {
+              webImages: 1,
+              localImages: 1,
+              localFiles: 1,
+              imageUrls: ["https://example.com/remote.png"],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith(
+      "Quote this user prompt.",
+      [
+        {
+          type: "localImage",
+          path: "uploads/screenshot.png",
+          name: "screenshot.png",
+          sizeBytes: 0,
+        },
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+          sizeBytes: 0,
+        },
+      ],
+    );
+  });
+
+  it("shows add-to-chat for attachment-only user messages", () => {
+    const onSelectionAddToChat = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "",
+            attachments: {
+              webImages: 0,
+              localImages: 0,
+              localFiles: 1,
+              imageUrls: [],
+              localImagePaths: [],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionAddToChat={onSelectionAddToChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onSelectionAddToChat).toHaveBeenCalledWith("", [
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 0,
+      },
+    ]);
+  });
+
+  it("hides user message add-to-chat when no add handler is supplied", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "No add-to-chat handler here.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Copy message"');
+    expect(markup).not.toContain('aria-label="Add to chat"');
   });
 
   it("passes the selected assistant row branch point to side-chat replies", async () => {
@@ -349,8 +666,73 @@ describe("ThreadTimelineRows actions", () => {
     });
   });
 
-  it("does not show the floating selection menu on coarse pointers", async () => {
+  it("does not let the previously selected row clear a new row selection", async () => {
+    const onSelectionReplyInSideChat = vi.fn();
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const flushSelectionFrames = async () => {
+      await act(async () => {
+        while (frameCallbacks.length > 0) {
+          frameCallbacks.shift()?.(performance.now());
+        }
+      });
+    };
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_selection_row",
+            role: "assistant",
+            text: "Select this earlier answer.",
+            sourceSeqEnd: 20,
+          }),
+          conversationRow({
+            id: "later_selection_row",
+            role: "assistant",
+            text: "Select this later answer.",
+            sourceSeqEnd: 40,
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        onSelectionReplyInSideChat={onSelectionReplyInSideChat}
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const laterTextNode = screen.getByText(
+      "Select this later answer.",
+    ).firstChild;
+    expect(laterTextNode).not.toBeNull();
+    mockWindowSelection({ node: laterTextNode!, text: "later answer" });
+    fireEvent(document, new Event("selectionchange"));
+    await flushSelectionFrames();
+    await screen.findByRole("button", { name: "Reply in side chat" });
+
+    const earlierTextNode = screen.getByText(
+      "Select this earlier answer.",
+    ).firstChild;
+    expect(earlierTextNode).not.toBeNull();
+    mockWindowSelection({ node: earlierTextNode!, text: "earlier answer" });
+    fireEvent(document, new Event("selectionchange"));
+    await flushSelectionFrames();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Reply in side chat" }),
+    );
+
+    expect(onSelectionReplyInSideChat).toHaveBeenLastCalledWith({
+      messageText: "earlier answer",
+      sourceSeqEnd: 20,
+    });
+  });
+
+  it("shows the floating selection menu on coarse pointers", async () => {
     mockSelectionMenuMedia({ isPointerCoarse: true });
+    const onSelectionAddToChat = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -362,28 +744,33 @@ describe("ThreadTimelineRows actions", () => {
         timelineRows={[
           conversationRow({
             role: "assistant",
-            text: "Mobile selection should use native controls.",
+            text: "Mobile selection should expose chat actions.",
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={vi.fn()}
+        onSelectionAddToChat={onSelectionAddToChat}
         workspaceRootPath={undefined}
       />,
     );
     const textNode = screen.getByText(
-      "Mobile selection should use native controls.",
+      "Mobile selection should expose chat actions.",
     ).firstChild;
     expect(textNode).not.toBeNull();
     mockWindowSelection({
       node: textNode!,
-      text: "native controls",
+      text: "chat actions",
     });
 
     await act(async () => {
       fireEvent(document, new Event("selectionchange"));
     });
 
-    expect(screen.queryByRole("button", { name: "Add to chat" })).toBeNull();
+    const addToChat = await screen.findByRole("button", {
+      name: "Add to chat",
+    });
+    expect(addToChat.className).toContain("max-md:pointer-coarse:min-h-7");
+    fireEvent.click(addToChat);
+    expect(onSelectionAddToChat).toHaveBeenCalledWith("chat actions");
   });
 
   it("keeps the floating selection menu on compact fine-pointer viewports", async () => {
@@ -460,10 +847,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: scrollIntoView,
+      value: vi.fn(),
     });
 
     const { container } = renderWithRouter(
@@ -511,9 +897,10 @@ describe("ThreadTimelineRows actions", () => {
       return row;
     });
 
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-    expect(scrollIntoView.mock.instances).toContain(nestedRow);
-    expect(scrollIntoView.mock.instances).not.toContain(parentRow);
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
+    expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
   });
 
   it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
@@ -523,10 +910,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: scrollIntoView,
+      value: vi.fn(),
     });
 
     const { container } = renderWithRouter(
@@ -550,8 +936,9 @@ describe("ThreadTimelineRows actions", () => {
       return row;
     });
 
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-    expect(scrollIntoView.mock.instances).toContain(olderRow);
+    await waitFor(() =>
+      expect(olderRow.classList.contains("bb-search-flash")).toBe(true),
+    );
   });
 
   it("does not retry failed older-row auto-loading until rows advance", async () => {
@@ -584,10 +971,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
-      value: scrollIntoView,
+      value: vi.fn(),
     });
 
     const { container } = renderWithRouter(
@@ -617,7 +1003,8 @@ describe("ThreadTimelineRows actions", () => {
       return row;
     });
 
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-    expect(scrollIntoView.mock.instances).toContain(nestedRow);
+    await waitFor(() =>
+      expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
+    );
   });
 });

@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -26,6 +27,7 @@ import {
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
+import { MobilePromptBoxMinimizedProvider } from "@/components/promptbox/mobile-promptbox-minimized-context";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
   ExecutionControls,
@@ -33,6 +35,7 @@ import {
   type ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
@@ -97,6 +100,155 @@ const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
+const MOBILE_PROMPT_MINIMIZE_SCROLL_THRESHOLD_PX = 8;
+const MOBILE_PROMPT_USER_SCROLL_INTENT_WINDOW_MS = 350;
+
+interface MobilePromptBoxMinimizedState {
+  expand: () => void;
+  isAvailable: boolean;
+  isMinimized: boolean;
+  toggle: () => void;
+}
+
+function useMobilePromptBoxMinimized(
+  resetKey: string | number,
+): MobilePromptBoxMinimizedState {
+  const isCompactViewport = useIsCompactViewport();
+  const bottomAnchor = useBottomAnchoredScroll();
+  const getScrollElement = bottomAnchor?.getScrollElement;
+  const [isMinimized, setIsMinimized] = useState(false);
+  const previousScrollTopRef = useRef<number | null>(null);
+  const upwardScrollDistanceRef = useRef(0);
+  const automaticMinimizeArmedRef = useRef(true);
+
+  useEffect(() => {
+    if (isCompactViewport) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setIsMinimized(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCompactViewport]);
+
+  useEffect(() => {
+    previousScrollTopRef.current = null;
+    upwardScrollDistanceRef.current = 0;
+    automaticMinimizeArmedRef.current = true;
+    if (!isCompactViewport || !getScrollElement) return;
+    const scrollElement = getScrollElement();
+    if (!scrollElement) return;
+
+    previousScrollTopRef.current = scrollElement.scrollTop;
+    let upwardUserIntentExpiresAt = 0;
+    let previousTouchY: number | null = null;
+    const markUpwardUserIntent = () => {
+      upwardUserIntentExpiresAt =
+        Date.now() + MOBILE_PROMPT_USER_SCROLL_INTENT_WINDOW_MS;
+    };
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) {
+        markUpwardUserIntent();
+      }
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      previousTouchY = event.touches[0]?.clientY ?? null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextTouchY = event.touches[0]?.clientY ?? null;
+      if (
+        previousTouchY !== null &&
+        nextTouchY !== null &&
+        nextTouchY > previousTouchY
+      ) {
+        markUpwardUserIntent();
+      }
+      previousTouchY = nextTouchY;
+    };
+    const clearTouch = () => {
+      previousTouchY = null;
+    };
+    const handleScroll = () => {
+      const previousScrollTop = previousScrollTopRef.current;
+      const nextScrollTop = scrollElement.scrollTop;
+      previousScrollTopRef.current = nextScrollTop;
+      if (previousScrollTop === null) return;
+
+      const delta = nextScrollTop - previousScrollTop;
+      if (delta > 0) {
+        // Moving back toward the latest message re-arms the next automatic
+        // collapse. This also prevents a manual expansion from immediately
+        // being undone by the tail of the same upward gesture.
+        upwardScrollDistanceRef.current = 0;
+        automaticMinimizeArmedRef.current = true;
+        return;
+      }
+      if (
+        delta >= 0 ||
+        !automaticMinimizeArmedRef.current ||
+        Date.now() > upwardUserIntentExpiresAt
+      ) {
+        return;
+      }
+
+      upwardScrollDistanceRef.current += Math.abs(delta);
+      if (
+        upwardScrollDistanceRef.current <
+        MOBILE_PROMPT_MINIMIZE_SCROLL_THRESHOLD_PX
+      ) {
+        return;
+      }
+      upwardScrollDistanceRef.current = 0;
+      setIsMinimized(true);
+    };
+
+    scrollElement.addEventListener("wheel", handleWheel, { passive: true });
+    scrollElement.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    scrollElement.addEventListener("touchmove", handleTouchMove, {
+      passive: true,
+    });
+    scrollElement.addEventListener("touchend", clearTouch, { passive: true });
+    scrollElement.addEventListener("touchcancel", clearTouch, {
+      passive: true,
+    });
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      scrollElement.removeEventListener("wheel", handleWheel);
+      scrollElement.removeEventListener("touchstart", handleTouchStart);
+      scrollElement.removeEventListener("touchmove", handleTouchMove);
+      scrollElement.removeEventListener("touchend", clearTouch);
+      scrollElement.removeEventListener("touchcancel", clearTouch);
+      scrollElement.removeEventListener("scroll", handleScroll);
+    };
+  }, [getScrollElement, isCompactViewport, resetKey]);
+
+  const toggle = useCallback(() => {
+    setIsMinimized((previous) => {
+      if (previous) {
+        automaticMinimizeArmedRef.current = false;
+        upwardScrollDistanceRef.current = 0;
+      }
+      return !previous;
+    });
+  }, []);
+  const expand = useCallback(() => {
+    automaticMinimizeArmedRef.current = false;
+    upwardScrollDistanceRef.current = 0;
+    setIsMinimized(false);
+  }, []);
+
+  return {
+    expand,
+    isAvailable: isCompactViewport,
+    isMinimized: isCompactViewport && isMinimized,
+    toggle,
+  };
+}
 
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
@@ -132,6 +284,7 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  minimizedPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
   submitMode: FollowUpSubmitMode;
@@ -257,6 +410,41 @@ function FollowUpPromptBoxWithComposer({
     return promptBoxRef.current !== null;
   });
   const voice = usePromptVoice(promptBoxRef);
+  const mobileMinimized = useMobilePromptBoxMinimized(zenModeResetKey);
+  const {
+    expand: expandMobilePromptBox,
+    isAvailable: isMobilePromptBoxAvailable,
+    isMinimized: isMobilePromptBoxMinimized,
+    toggle: toggleMobilePromptBox,
+  } = mobileMinimized;
+  // Selection actions reuse `focusEndKey` as their completion signal. On
+  // mobile web that signal must not focus the editor (and wake the keyboard),
+  // but it should still expand a compact composer so the added quote is visible.
+  const lastMobileExpandKeyRef = useRef(focusEndKey);
+  useLayoutEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastMobileExpandKeyRef.current) return;
+    lastMobileExpandKeyRef.current = focusEndKey;
+    if (isMobilePromptBoxAvailable) {
+      expandMobilePromptBox();
+    }
+  }, [expandMobilePromptBox, focusEndKey, isMobilePromptBoxAvailable]);
+  const minimizedConfig = useMemo(
+    () =>
+      isMobilePromptBoxAvailable
+        ? {
+            isMinimized: isMobilePromptBoxMinimized,
+            onToggle: toggleMobilePromptBox,
+            placeholder: composer.minimizedPromptPlaceholder,
+          }
+        : undefined,
+    [
+      isMobilePromptBoxAvailable,
+      isMobilePromptBoxMinimized,
+      toggleMobilePromptBox,
+      composer.minimizedPromptPlaceholder,
+    ],
+  );
   const onModifierSubmit = composer.canModifierSubmit
     ? composer.onModifierSubmit
     : undefined;
@@ -356,15 +544,11 @@ function FollowUpPromptBoxWithComposer({
         );
 
   return (
-    <>
+    <MobilePromptBoxMinimizedProvider isMinimized={isMobilePromptBoxMinimized}>
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
-      <div
-        data-app-composer=""
-        data-promptbox-shell=""
-        className="space-y-2"
-      >
+      <div data-app-composer="" data-promptbox-shell="" className="space-y-2">
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
@@ -405,27 +589,32 @@ function FollowUpPromptBoxWithComposer({
           typeahead={typeahead}
           attachments={attachments}
           promptActions={promptActions}
+          minimized={minimizedConfig}
           zenMode={{
             layout: "thread",
             storageKey: null,
-            resetKey: zenModeResetKey,
+            resetKey: `${zenModeResetKey}:${
+              isMobilePromptBoxAvailable ? "mobile" : "desktop"
+            }`,
             resetOnSubmit: true,
           }}
           footerStart={footerStart}
         />
-        <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-            {environmentSummary}
+        {!isMobilePromptBoxMinimized ? (
+          <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+              {environmentSummary}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {permissionControl}
+              {contextWindowUsage ? (
+                <ThreadContextWindowIndicator usage={contextWindowUsage} />
+              ) : null}
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {permissionControl}
-            {contextWindowUsage ? (
-              <ThreadContextWindowIndicator usage={contextWindowUsage} />
-            ) : null}
-          </div>
-        </div>
+        ) : null}
       </div>
-    </>
+    </MobilePromptBoxMinimizedProvider>
   );
 }
 
