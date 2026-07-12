@@ -5,6 +5,7 @@ import {
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonSessionOpenResponseSchema,
+  hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
@@ -19,6 +20,7 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonToolCallRequest,
   type HostDaemonToolCallResponse,
+  type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
@@ -136,12 +138,15 @@ function toRetryControlError(error: ServerResponseError): Error {
 // The client only ever calls fetchFn(url, init); it never uses fetch.preconnect.
 // Typing the dependency as fetch's call signature (not `typeof fetch`) keeps it
 // precise and lets plain function / vi.fn mocks satisfy it.
-export type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+export type FetchFn = (
+  ...args: Parameters<typeof fetch>
+) => ReturnType<typeof fetch>;
 
 interface CreateServerClientOptions {
   serverUrl: string;
   hostKey: string;
   logger: HostDaemonLogger;
+  machineCredential?: string;
   getSessionId: () => string;
   /** Runs before each POST attempt so retryable ordering preconditions can be repaired. */
   beforeInteractiveRequestRegistrationAttempt?: () => Promise<void>;
@@ -149,6 +154,7 @@ interface CreateServerClientOptions {
 }
 
 interface OpenSessionArgs {
+  connectMachineId?: string;
   hostId: string;
   hostName: string;
   hostType: HostDaemonSessionOpenRequest["hostType"];
@@ -165,6 +171,7 @@ export interface ServerClient {
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
+  fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -179,7 +186,7 @@ export interface ServerClient {
 
 const INTERACTIVE_REQUEST_REGISTRATION_RETRIES = 5;
 
-function usesSecureInternalFetchTransport(serverUrl: string): boolean {
+export function usesSecureInternalFetchTransport(serverUrl: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(serverUrl);
@@ -291,6 +298,9 @@ export function createServerClient(
     return {
       authorization: `Bearer ${options.hostKey}`,
       "content-type": "application/json",
+      ...(options.machineCredential !== undefined
+        ? { "x-bb-connect-machine": options.machineCredential }
+        : {}),
     };
   }
 
@@ -333,6 +343,9 @@ export function createServerClient(
         instanceId: args.instanceId,
         hostName: args.hostName,
         hostType: args.hostType,
+        ...(args.connectMachineId !== undefined
+          ? { connectMachineId: args.connectMachineId }
+          : {}),
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
@@ -390,6 +403,21 @@ export function createServerClient(
       return {
         bytes,
       };
+    },
+
+    async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {
+      // Skill trees ride the same authenticated transport as the rest of the
+      // daemon protocol and are hash-verified after download. For a trusted-LAN
+      // setup, that declared network is the boundary even when it uses HTTP.
+      // Attachments and self-update intentionally retain stricter guards.
+      const response = await fetchFn(
+        buildInternalUrl(`/skills/tree/${encodeURIComponent(treeHash)}`),
+        { method: "GET", headers: headers() },
+      );
+      if (!response.ok) {
+        throw await createResponseError("fetch skill tree", response);
+      }
+      return hostDaemonSkillTreeSchema.parse(await response.json());
     },
 
     async postEvents(

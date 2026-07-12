@@ -8,6 +8,7 @@ import { createHostId } from "../ids.js";
 type HostWriteConnection = DbConnection | DbTransaction;
 
 export interface UpsertHostInput {
+  connectMachineId?: string | null;
   id?: string;
   name: string;
   type: HostType;
@@ -16,6 +17,7 @@ export interface UpsertHostInput {
 
 export interface UpdateHostInput {
   destroyedAt?: number | null;
+  lastRejectedProtocolVersion?: number | null;
   name?: string;
 }
 
@@ -66,11 +68,16 @@ export function upsertHost(
       .set({
         name: input.name,
         type: input.type,
+        connectMachineId:
+          input.connectMachineId !== undefined
+            ? input.connectMachineId
+            : existing.connectMachineId,
         destroyedAt:
           input.destroyedAt !== undefined
             ? input.destroyedAt
             : existing.destroyedAt,
         lastSeenAt: existing.lastSeenAt,
+        lastRejectedProtocolVersion: existing.lastRejectedProtocolVersion,
         updatedAt: now,
       })
       .where(eq(hosts.id, id))
@@ -85,8 +92,10 @@ export function upsertHost(
         id,
         name: input.name,
         type: input.type,
+        connectMachineId: input.connectMachineId ?? null,
         destroyedAt: input.destroyedAt ?? null,
         lastSeenAt: null,
+        lastRejectedProtocolVersion: null,
         createdAt: now,
         updatedAt: now,
       })
@@ -179,6 +188,9 @@ export function updateHost(
         ? { destroyedAt: input.destroyedAt }
         : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.lastRejectedProtocolVersion !== undefined
+        ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
+        : {}),
       updatedAt: now,
     })
     .where(eq(hosts.id, hostId))

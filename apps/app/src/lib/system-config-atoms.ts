@@ -16,6 +16,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     bbConnect: false,
     claudeCodeMockCliTraffic: false,
+    multiMachine: false,
     popoutChat: false,
     popoutChatHotkey: "Alt+Space",
     plugins: false,
@@ -25,6 +26,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   pluginThemes: [],
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
+  primaryHostId: null,
   primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,
   dataDir: "",

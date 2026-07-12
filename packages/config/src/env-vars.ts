@@ -44,9 +44,7 @@ export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   if (parsed !== undefined) {
     return parsed;
   }
-  throw new Error(
-    `${args.name} must be one of ${formatAppSurfaceValues()}`,
-  );
+  throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
 }
 
 export function parseOptionalPortEnvValue(
@@ -262,11 +260,33 @@ export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
+export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
+  string | undefined
+>({
+  description:
+    "Daemon-managed bb connect credential for traversing the public machine gate",
+  name: "BB_CONNECT_MACHINE_CREDENTIAL",
+  parse: parseOptionalTrimmedStringEnvValue,
+});
+
+export const BB_CONNECT_MACHINE_ID_ENV = defineEnvVar<string>({
+  description: "Cloud machine identifier paired with the bb connect credential",
+  name: "BB_CONNECT_MACHINE_ID",
+  parse: parseNonEmptyStringEnvValue,
+});
+
 export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
   description:
     "One-time enrollment token used to bootstrap a host daemon with the bb server",
   name: "BB_HOST_ENROLL_KEY",
   parse: parseOptionalTrimmedStringEnvValue,
+});
+
+export const BB_HOST_DAEMON_AUTO_UPDATE_ENV = defineEnvVar<boolean>({
+  description:
+    "Allow a remote host daemon to install the exact bb-app package served by its server on a newer protocol mismatch",
+  name: "BB_HOST_DAEMON_AUTO_UPDATE",
+  parse: parseBooleanEnvValue,
 });
 
 export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({

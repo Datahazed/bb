@@ -26,6 +26,15 @@ npx bb-app env unset OPENAI_API_KEY
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 
+The Add machine installer may also store a `machineCredential` and its
+`connectMachineId` beside `serverUrl` in `config.json`. The credential is a
+secret managed by bb connect: do not copy, edit, or commit it. Both fields are
+intentionally omitted from `bb-app config list`. At runtime they are passed to
+the standalone host daemon and its bundled `bb` CLI as
+`BB_CONNECT_MACHINE_CREDENTIAL` and `BB_CONNECT_MACHINE_ID`. These are
+installer-managed transport details, not user configuration knobs; re-add the
+machine instead of setting them by hand.
+
 Use `bb-app client ssh-target` to let a local helper open files from a remote
 bb server in local editors. The SSH target is the value that works after
 `ssh`, such as `devbox`, `user@devbox`, or a `Host` entry from `~/.ssh/config`:
@@ -107,23 +116,23 @@ before bb receives them.
 
 `Mod` means Command on macOS and Control on Windows/Linux.
 
-| Area      | Command                       | Default                       | Availability             |
-| --------- | ----------------------------- | ----------------------------- | ------------------------ |
-| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`       | Desktop / web            |
-| Threads   | Search threads                | `Mod+K`                       | All clients              |
-| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web       |
-| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`             | All clients              |
-| Window    | New window                    | `Mod+Shift+N`                 | Desktop                  |
-| Window    | Settings                      | `Mod+,`                       | All clients              |
-| Layout    | Toggle sidebar                | `Mod+\`                       | All clients              |
-| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`   | All clients              |
-| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`             | All clients              |
-| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop         |
-| Workspace | Open in preferred app         | `Mod+O`                       | All clients              |
-| Composer  | Focus composer                | `Mod+Shift+C`                 | All clients              |
-| Composer  | Toggle model picker           | `Mod+Shift+M`                 | All clients              |
-| Browser   | Focus location / reload       | `Mod+L` / `Mod+R`             | Desktop embedded browser |
-| Questions | Choose visible answer 1–9     | `1` … `9`                     | While a question is open |
+| Area      | Command                       | Default                           | Availability             |
+| --------- | ----------------------------- | --------------------------------- | ------------------------ |
+| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
+| Threads   | Search threads                | `Mod+K`                           | All clients              |
+| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
+| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
+| Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Settings                      | `Mod+,`                           | All clients              |
+| Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |
+| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
+| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
+| Workspace | Open in preferred app         | `Mod+O`                           | All clients              |
+| Composer  | Focus composer                | `Mod+Shift+C`                     | All clients              |
+| Composer  | Toggle model picker           | `Mod+Shift+M`                     | All clients              |
+| Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
+| Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut
@@ -319,6 +328,30 @@ The **bb connect** experiment (Settings → Experiments, off by default) gates
 remote access for reaching this bb server through getbb.app. It does not enable
 running threads on non-primary hosts.
 
+## Multi-machine Experiment
+
+The **Multi-machine** experiment (Settings → Experiments, off by default)
+enables remote execution hosts. When enabled, Settings → Machines can enroll,
+rename, and remove machines; project settings can add a path or clone source on
+each machine; and thread creation can target any enrolled machine with a usable
+source. The CLI equivalents are `bb machine list`, `bb project source add
+--machine <id-or-name> ...`, and `bb thread spawn --machine <id-or-name> ...`.
+
+The experiment is independent of browser access. Tailscale and bb connect let
+another browser reach the bb server; Multi-machine decides whether that server
+may dispatch work to non-primary host daemons. The Settings → Machines
+installer can use a paired bb connect account to route the daemon and its CLI
+back to the server. Machine credentials remain locally managed as described at
+the top of this document.
+
+Machine installation and daemon protocol repair use the owning server as the
+distribution source: `/install/version` reports the server package/protocol and
+`/install/bb-app.tgz` serves its exact installable package. The installer falls
+back to npm only when the package route returns 404. Installed services enable
+`--auto-update`; remove that flag from the launchd plist or systemd user unit
+and reload the service to opt out. Updates only move to a newer server protocol,
+are limited to one attempt per 15 minutes, and never downgrade a daemon.
+
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
@@ -330,18 +363,19 @@ the plugin is not loaded. Remote access is owned by the builtin
 the durable credential in the plugin's kv storage (in `bb.db`), and the
 plugin's background service holds the connect tunnel — dialing the gate,
 proxying relayed requests to the server's own loopback (which serves the SPA
-+ `/api` + `/ws`), and reconnecting with capped backoff. The tunnel therefore
-lives as long as the bb server runs (with the plugin enabled) and
-re-establishes on restart; there is no foreground client. Pair from a machine
-without an installed bb via `npx -p bb-app@latest bb connect …`.
-`bb connect status` shows the connect state and `bb connect off` disconnects
-and clears the pairing. After pairing, `bb connect expose <port>` shares a
-local HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent
-host for a self-hosted gate); access requires the owner's getbb.app session
-(not a public link). `bb connect unexpose <port>` stops sharing and
-`bb connect shares` lists active URLs. Disabling the plugin
-(`bb plugin disable connect`) cuts off all remote access; with the bb connect
-experiment still enabled, `bb plugin enable connect` restores it.
+
+- `/api` + `/ws`), and reconnecting with capped backoff. The tunnel therefore
+  lives as long as the bb server runs (with the plugin enabled) and
+  re-establishes on restart; there is no foreground client. Pair from a machine
+  without an installed bb via `npx -p bb-app@latest bb connect …`.
+  `bb connect status` shows the connect state and `bb connect off` disconnects
+  and clears the pairing. After pairing, `bb connect expose <port>` shares a
+  local HTTP port at `https://<handle>--<port>.getbb.app` (or the equivalent
+  host for a self-hosted gate); access requires the owner's getbb.app session
+  (not a public link). `bb connect unexpose <port>` stops sharing and
+  `bb connect shares` lists active URLs. Disabling the plugin
+  (`bb plugin disable connect`) cuts off all remote access; with the bb connect
+  experiment still enabled, `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared

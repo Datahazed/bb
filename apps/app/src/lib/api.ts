@@ -17,6 +17,7 @@ import type {
 } from "@bb/domain";
 import type {
   CommandListResponse,
+  CreateHostJoinCodeResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateThreadFolderRequest,
@@ -1355,6 +1356,28 @@ export async function browseHostDirectory(
   );
 }
 
+/**
+ * The daemon-local default clone destination for a project (discovery only —
+ * nothing is created on disk). Used to prefill the guided machine-setup
+ * dialog before a clone starts.
+ */
+export async function getHostCloneDefaultPath(
+  hostId: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await request<{ path: string }>(
+    apiClient.hosts[":id"]["clone-default-path"].$get(
+      {
+        param: { id: hostId },
+        query: { projectId },
+      },
+      requestOptions(signal),
+    ),
+  );
+  return response.path;
+}
+
 export async function checkHostPathsExist(
   hostId: string,
   paths: string[],
@@ -1857,4 +1880,73 @@ export async function updateKeyboardSettings(
 
 export async function listHosts(signal?: AbortSignal): Promise<Host[]> {
   return request<Host[]>(apiClient.hosts.$get({}, requestOptions(signal)));
+}
+
+/**
+ * Mints a short-lived join code (and its pre-created host row) for pairing a
+ * new machine to this server. Multi-machine experiment only.
+ */
+export async function createHostJoinCode(
+  signal?: AbortSignal,
+): Promise<CreateHostJoinCodeResponse> {
+  return request<CreateHostJoinCodeResponse>(
+    apiClient.hosts["join-codes"].$post({ json: {} }, requestOptions(signal)),
+  );
+}
+
+export interface ConnectMachineCode {
+  code: string;
+  expiresAt: number;
+  serverUrl: string;
+}
+
+/** Mint through the paired connect plugin; null means this bb is not paired. */
+export async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
+  const response = await fetch(
+    "/api/v1/plugins/connect/rpc/createMachineCode",
+    {
+      body: "{}",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+  );
+  const payload: unknown = await response.json().catch(() => null);
+  const record = toRecord(payload);
+  if (!response.ok || record?.ok !== true) {
+    const error = typeof record?.error === "string" ? record.error : "network";
+    if (
+      error === "not_paired" ||
+      response.status === 404 ||
+      response.status === 422 ||
+      response.status === 503
+    ) {
+      return null;
+    }
+    throw new Error(error);
+  }
+  const result = toRecord(record.result);
+  if (
+    typeof result?.code !== "string" ||
+    typeof result.expiresAt !== "number" ||
+    typeof result.serverUrl !== "string"
+  ) {
+    throw new Error("Invalid machine-code response");
+  }
+  return {
+    code: result.code,
+    expiresAt: result.expiresAt,
+    serverUrl: result.serverUrl,
+  };
+}
+
+export async function updateHost(id: string, name: string): Promise<Host> {
+  return request<Host>(
+    apiClient.hosts[":id"].$patch({ param: { id }, json: { name } }),
+  );
+}
+
+export async function deleteHost(id: string): Promise<void> {
+  await request<{ ok: true }>(
+    apiClient.hosts[":id"].$delete({ param: { id } }),
+  );
 }

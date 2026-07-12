@@ -1,4 +1,4 @@
-import { createHostId, getHost, upsertHost } from "@bb/db";
+import { getExperiments, getHost, upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
 import {
   hostDaemonEnrollKeyRequestSchema,
@@ -9,13 +9,15 @@ import {
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
-import { getTrustedRemoteAddress } from "../request-context.js";
+import {
+  getGateAuthKind,
+  getGateMachineId,
+  getTrustedRemoteAddress,
+  type GateAuthHeaderReader,
+} from "../request-context.js";
 import { assertMatchingExistingHostType } from "../services/hosts/host-type-guard.js";
+import { issuePersistentHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { requireBearerToken } from "./auth.js";
-
-function resolvePendingHostName(hostId: string): string {
-  return `pending-${hostId.slice(-8)}`;
-}
 
 function assertLoopbackRequest(remoteAddress: string | undefined): void {
   if (remoteAddress && isLoopbackAddress(remoteAddress)) {
@@ -24,8 +26,24 @@ function assertLoopbackRequest(remoteAddress: string | undefined): void {
   throw new ApiError(
     400,
     "unsupported_host",
-    "Only the local host daemon is supported",
+    "This enrollment route is available only from the server machine",
   );
+}
+
+export function resolveReportedConnectMachineId(
+  context: GateAuthHeaderReader,
+  reportedMachineId: string | undefined,
+): string | undefined {
+  if (getGateAuthKind(context) !== "machine") return reportedMachineId;
+  const gateMachineId = getGateMachineId(context);
+  if (gateMachineId === null || reportedMachineId !== gateMachineId) {
+    throw new ApiError(
+      403,
+      "connect_machine_id_mismatch",
+      "Connect machine identity does not match the authenticated credential",
+    );
+  }
+  return gateMachineId;
 }
 
 export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
@@ -38,30 +56,24 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
     "/hosts/enroll-key",
     hostDaemonEnrollKeyRequestSchema,
     async (context, payload) => {
+      if (getGateAuthKind(context) === "machine") {
+        throw new ApiError(
+          403,
+          "machine_host_management_forbidden",
+          "Machine credentials cannot mint host enrollment keys",
+        );
+      }
       assertLoopbackRequest(getTrustedRemoteAddress(context));
-      const hostId = payload.hostId ?? createHostId();
-      const existing = getHost(deps.db, hostId);
-      assertMatchingExistingHostType({
-        existingHost: existing,
-        requestedHostType: "persistent",
-      });
-
-      upsertHost(deps.db, deps.hub, {
-        id: hostId,
-        name: existing?.name ?? resolvePendingHostName(hostId),
-        type: "persistent",
-      });
-
-      const enrollKey = await deps.machineAuth.issueHostEnrollKey({
-        hostId,
-        hostType: "persistent",
+      const issued = await issuePersistentHostEnrollKey(deps, {
+        enrollSource: "loopback",
+        ...(payload.hostId ? { hostId: payload.hostId } : {}),
       });
 
       return context.json(
         {
-          enrollKey: enrollKey.key,
-          expiresAt: enrollKey.expiresAt,
-          hostId,
+          enrollKey: issued.enrollKey.key,
+          expiresAt: issued.enrollKey.expiresAt,
+          hostId: issued.hostId,
         },
         201,
       );
@@ -72,8 +84,13 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
     "/hosts/enroll",
     hostDaemonEnrollRequestSchema,
     async (context, payload) => {
+      const connectMachineId = resolveReportedConnectMachineId(
+        context,
+        payload.connectMachineId,
+      );
       const token = requireBearerToken(context.req.header("authorization"));
       const enrollment = await deps.machineAuth.enrollHost({
+        allowPublicEnrollment: getExperiments(deps.db).multiMachine,
         hostId: payload.hostId,
         hostType: payload.hostType,
         token,
@@ -88,6 +105,7 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       });
 
       upsertHost(deps.db, deps.hub, {
+        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
         id: enrollment.metadata.hostId,
         name: payload.hostName,
         type: enrollment.metadata.hostType,

@@ -351,6 +351,7 @@ export function makeProject(
     id: PROJECT_IDS.bb,
     kind: "standard",
     name: PROJECT_NAMES.bb,
+    gitRemoteUrl: null,
     sources: [],
     createdAt: 1,
     updatedAt: 2,
@@ -365,6 +366,7 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: 100,
+    lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 100,
   };

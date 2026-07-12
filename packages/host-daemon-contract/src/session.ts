@@ -78,6 +78,7 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   instanceId: z.string().min(1),
   hostName: z.string().min(1),
   hostType: hostTypeSchema,
+  connectMachineId: z.string().min(1).optional(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
   // Accept any version at the schema boundary so the server can return an
@@ -95,6 +96,7 @@ export const hostDaemonEnrollRequestSchema = z
     hostId: z.string().min(1),
     hostName: z.string().min(1),
     hostType: hostTypeSchema,
+    connectMachineId: z.string().min(1).optional(),
   })
   .strict();
 export type HostDaemonEnrollRequest = z.infer<
@@ -303,6 +305,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.browse_directory"),
     onlineRpcResponseSuccessSchemaFor("host.paths_exist"),
+    onlineRpcResponseSuccessSchemaFor("project.inspect"),
+    onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
     onlineRpcResponseSuccessSchemaFor("host.caffeinate"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
@@ -331,6 +335,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
     commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
     commandRpcResponseSuccessSchemaFor("environment.provision"),
+    commandRpcResponseSuccessSchemaFor("project.clone"),
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
     commandRpcResponseSuccessSchemaFor("environment.destroy"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
@@ -612,7 +617,26 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
+export const hostDaemonSkillTreeEntrySchema = z
+  .object({
+    path: z.string().min(1),
+    mode: z.number().int().min(0).max(0o777),
+    contentBase64: z.string(),
+  })
+  .strict();
+export const hostDaemonSkillTreeSchema = z
+  .object({
+    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    entries: z.array(hostDaemonSkillTreeEntrySchema),
+  })
+  .strict();
+export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
+
 export type HostDaemonInternalSchema = {
+  "/skills/tree/:hash": {
+    /** Used by the daemon to pull a missing server-owned injected skill tree. */
+    $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+  };
   "/hosts/enroll-key": {
     /** Used by the local launcher to request one-time bootstrap material for the primary host daemon. */
     $post: Endpoint<

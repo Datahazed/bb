@@ -43,6 +43,7 @@ interface ServerMessagePayloadSummary {
 export type ServerSessionInvalidationSource =
   | "callTool"
   | "fetchProjectAttachment"
+  | "fetchSkillTree"
   | "interruptInteractiveRequests"
   | "postEvents"
   | "registerInteractiveRequest";
@@ -106,6 +107,7 @@ export class ServerConnection {
   private stopped = false;
   private sessionCloseHandler: ServerConnectionOptions["onSessionClose"];
   private fatalConnectError: ServerResponseError | null = null;
+  private protocolMismatchObserved = false;
   private sessionInvalidationInProgress = false;
   private readonly pendingRecoverableMessages = new Map<
     string,
@@ -212,6 +214,7 @@ export class ServerConnection {
         instanceId: this.options.instanceId,
         hostName: this.options.hostName,
         hostType: this.options.hostType,
+        connectMachineId: this.options.connectMachineId,
         dataDir: this.options.dataDir,
         activeThreads: this.options.getActiveThreads?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
@@ -219,7 +222,22 @@ export class ServerConnection {
       this.session = session;
       return session;
     } catch (error) {
-      if (error instanceof ServerResponseError && !error.retryable) {
+      if (
+        error instanceof ServerResponseError &&
+        error.code === "protocol_version_mismatch"
+      ) {
+        this.protocolMismatchObserved = true;
+        const result =
+          await this.options.protocolSelfUpdater?.handleProtocolMismatch();
+        if (result === "updated") {
+          await this.options.onSelfUpdateInstalled?.();
+        }
+      }
+      if (
+        error instanceof ServerResponseError &&
+        !error.retryable &&
+        error.code !== "protocol_version_mismatch"
+      ) {
         this.fatalConnectError = error;
         this.logFatalConnectError(error);
       }
@@ -270,6 +288,11 @@ export class ServerConnection {
           authorization: buildHostDaemonWebSocketAuthorizationHeader(
             this.options.hostKey,
           ),
+          ...(this.options.machineCredential !== undefined
+            ? {
+                "x-bb-connect-machine": this.options.machineCredential,
+              }
+            : {}),
         },
         maxRetries: Number.POSITIVE_INFINITY,
         protocols: buildHostDaemonWebSocketProtocols(),
@@ -282,6 +305,9 @@ export class ServerConnection {
       let hasOpened = false;
 
       const startupTimer = this.setTimeoutFn(() => {
+        if (this.protocolMismatchObserved) {
+          return;
+        }
         fail(
           new Error(
             `Server connection timed out after ${this.startupTimeoutMs}ms`,
@@ -300,6 +326,7 @@ export class ServerConnection {
       };
 
       websocket.onopen = () => {
+        this.protocolMismatchObserved = false;
         const session = this.session;
         if (!session) {
           fail(new Error("WebSocket opened before session was available"));

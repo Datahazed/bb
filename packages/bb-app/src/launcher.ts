@@ -15,10 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import {
-  APP_SURFACE_ENV_NAME,
-  APP_SURFACE_WEB,
-} from "@bb/config/app-surface";
+import { APP_SURFACE_ENV_NAME, APP_SURFACE_WEB } from "@bb/config/app-surface";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
   bbAppManagedEnvFileSchema,
@@ -218,6 +215,7 @@ export interface InvalidCommand {
 }
 
 export interface LauncherCliOptions {
+  autoUpdate?: boolean;
   dataDir?: string;
   enrollKey?: string;
   help: boolean;
@@ -639,6 +637,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     allowPositionals: true,
     args,
     options: {
+      "auto-update": { type: "boolean" },
       "data-dir": { type: "string" },
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
@@ -656,6 +655,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
     help: readBooleanOption(parsed.values.help),
     json: readBooleanOption(parsed.values.json),
   };
+  if (readBooleanOption(parsed.values["auto-update"])) {
+    options.autoUpdate = true;
+  }
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
   const hostDaemonPort = readStringOption(parsed.values["host-daemon-port"]);
@@ -717,6 +719,9 @@ function createEnvFromOptions(
   if (args.options.dataDir !== undefined) {
     env.BB_DATA_DIR = args.options.dataDir;
   }
+  if (args.options.autoUpdate === true) {
+    env.BB_HOST_DAEMON_AUTO_UPDATE = "1";
+  }
   if (args.options.hostDaemonPort !== undefined) {
     env.BB_HOST_DAEMON_PORT = args.options.hostDaemonPort;
   }
@@ -755,6 +760,14 @@ function applyManagedConfigEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...args.env,
+    ...(args.config.machineCredential !== undefined
+      ? {
+          BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
+        }
+      : {}),
+    ...(args.config.connectMachineId !== undefined
+      ? { BB_CONNECT_MACHINE_ID: args.config.connectMachineId }
+      : {}),
     ...args.config.config,
     ...args.envFile.env,
   };
@@ -918,6 +931,12 @@ function mergeManagedConfig(
   if (patchConfig.serverUrl !== undefined) {
     nextConfig.serverUrl = patchConfig.serverUrl;
   }
+  if (patchConfig.machineCredential !== undefined) {
+    nextConfig.machineCredential = patchConfig.machineCredential;
+  }
+  if (patchConfig.connectMachineId !== undefined) {
+    nextConfig.connectMachineId = patchConfig.connectMachineId;
+  }
 
   if (patchConfig.config !== undefined) {
     nextConfig.config = {
@@ -942,6 +961,12 @@ function pruneManagedConfig(
   const nextConfig: ManagedConfigForWrite = {};
   if (config.serverUrl !== undefined) {
     nextConfig.serverUrl = config.serverUrl;
+  }
+  if (config.machineCredential !== undefined) {
+    nextConfig.machineCredential = config.machineCredential;
+  }
+  if (config.connectMachineId !== undefined) {
+    nextConfig.connectMachineId = config.connectMachineId;
   }
   if (config.config !== undefined && Object.keys(config.config).length > 0) {
     nextConfig.config = config.config;
@@ -2200,12 +2225,35 @@ function resolveHostDaemonCommand(
   );
 }
 
-async function createHostDaemonJoinEnv(
+export async function createHostDaemonJoinEnv(
   args: CreateHostDaemonJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   const requestedHostId =
     trimToUndefined(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.context.dataDir));
+  const suppliedJoinCode = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
+  const machineCredential = trimToUndefined(
+    args.env.BB_CONNECT_MACHINE_CREDENTIAL,
+  );
+  const connectMachineId = trimToUndefined(args.env.BB_CONNECT_MACHINE_ID);
+  if (suppliedJoinCode !== undefined) {
+    if (requestedHostId === null) {
+      throw new Error("--host-id is required when --join-code is supplied");
+    }
+    await writeManagedConfig({
+      config: {
+        serverUrl: args.serverUrl,
+        ...(machineCredential !== undefined ? { machineCredential } : {}),
+        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
+      },
+      dataDir: args.context.dataDir,
+    });
+    return {
+      ...args.env,
+      BB_HOST_ENROLL_KEY: suppliedJoinCode,
+      BB_HOST_ID: requestedHostId,
+    };
+  }
   const enrollKeyResponse = await requestHostEnrollKey({
     requestedHostId,
     serverUrl: args.serverUrl,
@@ -2221,7 +2269,11 @@ async function createHostDaemonJoinEnv(
   }
 
   await writeManagedConfig({
-    config: { serverUrl: args.serverUrl },
+    config: {
+      serverUrl: args.serverUrl,
+      ...(machineCredential !== undefined ? { machineCredential } : {}),
+      ...(connectMachineId !== undefined ? { connectMachineId } : {}),
+    },
     dataDir: args.context.dataDir,
   });
 
@@ -2238,8 +2290,7 @@ async function runBundledCliCommand(
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
   // trampolines match the running host daemon (dev workspace or this install).
   const bbCliOverride = trimToUndefined(args.env.BB_CLI);
-  const cliPath =
-    bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
+  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),
     env: createCliEnv({ context: args.context, env: args.env }),
@@ -2433,8 +2484,8 @@ export async function runBbHostDaemon(
     process.stdout.write(`bb-host-daemon
 
 Usage:
-  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-host-daemon join --server-url <url>
+  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
 `);
     return;
   }
@@ -2491,8 +2542,8 @@ Usage:
   bb-app config refresh
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
-  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>]
-  bb-app host-daemon join --server-url <url>
+  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
 
 CLI:
   npx --package bb-app bb <command>

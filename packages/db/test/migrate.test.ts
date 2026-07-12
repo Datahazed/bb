@@ -218,19 +218,25 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  db.$client
+    .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
+    .run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its plugins column (added by 0049) and bb_connect column
-  // (added under its old name by 0053 and renamed later) are, so the forward
-  // re-migrate can re-add them.
+  // rewound — but its plugins, bb_connect, and multi_machine columns are, so
+  // the forward re-migrate can re-add them.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
     .run();
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
     .run();
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
+    .run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
+  dropProjectGitRemoteUrlColumn(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -391,6 +397,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
     DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
@@ -412,6 +419,15 @@ function dropPost0023Tables(db: DbConnection): void {
   }
 
   dropThreadFolderSchema(db);
+}
+
+function dropProjectGitRemoteUrlColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(projects)")
+    .all();
+  if (columns.some((column) => column.name === "git_remote_url")) {
+    db.$client.prepare("ALTER TABLE projects DROP COLUMN git_remote_url").run();
+  }
 }
 
 /**

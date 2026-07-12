@@ -45,6 +45,8 @@ import type {
 import type {
   CloseTerminalRequest,
   CommandListResponse,
+  CreateHostJoinCodeRequest,
+  CreateHostJoinCodeResponse,
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -72,6 +74,8 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostCloneDefaultPathQuery,
+  HostCloneDefaultPathResponse,
   HostFileListRequest,
   HostFileListResponse,
   HostFileReadRequest,
@@ -160,6 +164,7 @@ import type {
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
   UpdateTerminalRequest,
+  UpdateHostRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
@@ -178,6 +183,7 @@ import {
   deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
+  createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
@@ -190,6 +196,7 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
   hostFileWriteRequestSchema,
@@ -233,6 +240,7 @@ import {
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateHostRequestSchema,
   updateThreadFolderRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
@@ -422,6 +430,14 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    createJoinCode: defineRoute({
+      path: "/hosts/join-codes",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateHostJoinCodeRequest>(
+        createHostJoinCodeRequestSchema,
+      ),
+      response: jsonResponse<CreateHostJoinCodeResponse>({ status: 201 }),
+    }),
     list: defineRoute({
       path: "/hosts",
       method: "get",
@@ -434,6 +450,18 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<Host>(),
     }),
+    update: defineRoute({
+      path: "/hosts/:id",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
+      response: jsonResponse<Host>(),
+    }),
+    delete: defineRoute({
+      path: "/hosts/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     directory: defineRoute({
       path: "/hosts/:id/directory",
       method: "get",
@@ -441,6 +469,14 @@ export const publicApiRoutes = {
         hostDirectoryQuerySchema,
       ),
       response: jsonResponse<HostDirectoryListing>(),
+    }),
+    cloneDefaultPath: defineRoute({
+      path: "/hosts/:id/clone-default-path",
+      method: "get",
+      request: queryRequest<PathId, HostCloneDefaultPathQuery>(
+        hostCloneDefaultPathQuerySchema,
+      ),
+      response: jsonResponse<HostCloneDefaultPathResponse>(),
     }),
     pathsExist: defineRoute({
       path: "/hosts/:id/paths/exist",

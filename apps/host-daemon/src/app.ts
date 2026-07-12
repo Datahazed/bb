@@ -49,6 +49,7 @@ import {
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
   type HostType,
   type ToolCallRequest,
@@ -114,6 +115,10 @@ export interface CreateHostDaemonAppOptions {
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
+  machineCredential?: string;
+  connectMachineId?: string;
+  autoUpdate?: boolean;
+  installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -130,6 +135,7 @@ export interface CreateHostDaemonAppOptions {
   pickFolder?: () => Promise<string | null>;
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
+  closeMachineAuthProxy?: () => Promise<void>;
 }
 
 export interface HostDaemonApp {
@@ -303,6 +309,7 @@ export async function createHostDaemonApp(
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     logger: options.logger,
+    machineCredential: options.machineCredential,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -473,6 +480,11 @@ export async function createHostDaemonApp(
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
+    fetchSkillTree: (treeHash) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTree(treeHash),
+      }),
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
@@ -725,6 +737,7 @@ export async function createHostDaemonApp(
     },
   });
 
+  let requestDaemonRestart = (): void => undefined;
   const connection = new ServerConnection({
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
@@ -734,7 +747,18 @@ export async function createHostDaemonApp(
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     logger: options.logger,
+    machineCredential: options.machineCredential,
+    connectMachineId: options.connectMachineId,
     serverClient,
+    protocolSelfUpdater: createProtocolSelfUpdater({
+      dataDir: options.dataDir,
+      enabled: options.autoUpdate ?? false,
+      fetchFn: options.fetchFn,
+      installTarball: options.installUpdateTarball,
+      logger: options.logger,
+      serverUrl: options.serverUrl,
+    }),
+    onSelfUpdateInstalled: () => requestDaemonRestart(),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
@@ -835,6 +859,7 @@ export async function createHostDaemonApp(
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
       caffeinateManager.shutdown();
+      await options.closeMachineAuthProxy?.();
       await localApi?.close();
       await watchManager.shutdown();
       // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so
@@ -855,6 +880,11 @@ export async function createHostDaemonApp(
       await connection.start();
     },
   });
+  requestDaemonRestart = () => {
+    void daemon.shutdown("self-update").catch((error) => {
+      options.logger.error({ err: error }, "Self-update shutdown failed");
+    });
+  };
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`),
   );

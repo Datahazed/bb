@@ -19,6 +19,7 @@ import {
 } from "@bb/tunnel-contract";
 import type { PluginLogger } from "@bb/plugin-sdk";
 import type { ConnectCredential, CredentialStore } from "./credential.js";
+import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
 import {
   ConnectListError,
   fetchAccountServers,
@@ -33,6 +34,7 @@ import {
   serverUrlForHandle,
 } from "./redeem.js";
 import { fetchDesktopSession, type DesktopSession } from "./desktop-session.js";
+import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
   shareLoopbackHost,
@@ -623,6 +625,19 @@ export class ConnectTunnel {
       throw new ConnectListError("not_paired", "this bb is not connected");
     }
     return fetchDesktopSession(this.credential);
+  }
+
+  async createMachineCode() {
+    if (this.credential === null) {
+      throw new MachineCodeError("not_paired");
+    }
+    return fetchMachineCode(this.credential);
+  }
+
+  async revokeMachine(machineId: string): Promise<void> {
+    const credential = this.getCredential();
+    if (credential === null) throw new Error("not_paired");
+    await revokeMachine(credential, machineId);
   }
 
   status(): ConnectStatus {

@@ -13,8 +13,10 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
+import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
 import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redeem'
+import { Route as ApiConnectMachineCodeRouteImport } from './routes/api.connect.machine-code'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
 
 const DashboardRoute = DashboardRouteImport.update({
@@ -37,6 +39,11 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: '/api/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
+  id: '/api/connect/revoke-machine',
+  path: '/api/connect/revoke-machine',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConnectRedeemMachineRoute = ApiConnectRedeemMachineRouteImport.update({
   id: '/api/connect/redeem-machine',
   path: '/api/connect/redeem-machine',
@@ -45,6 +52,11 @@ const ApiConnectRedeemMachineRoute = ApiConnectRedeemMachineRouteImport.update({
 const ApiConnectRedeemRoute = ApiConnectRedeemRouteImport.update({
   id: '/api/connect/redeem',
   path: '/api/connect/redeem',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConnectMachineCodeRoute = ApiConnectMachineCodeRouteImport.update({
+  id: '/api/connect/machine-code',
+  path: '/api/connect/machine-code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -59,8 +71,10 @@ export interface FileRoutesByFullPath {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -68,8 +82,10 @@ export interface FileRoutesByTo {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -78,8 +94,10 @@ export interface FileRoutesById {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
+  '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -89,8 +107,10 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/download/macos'
     | '/api/auth/$'
+    | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -98,8 +118,10 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/download/macos'
     | '/api/auth/$'
+    | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   id:
     | '__root__'
     | '/'
@@ -107,8 +129,10 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/download/macos'
     | '/api/auth/$'
+    | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
+    | '/api/connect/revoke-machine'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -117,8 +141,10 @@ export interface RootRouteChildren {
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   DownloadMacosRoute: typeof DownloadMacosRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute
+  ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -151,6 +177,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/connect/revoke-machine': {
+      id: '/api/connect/revoke-machine'
+      path: '/api/connect/revoke-machine'
+      fullPath: '/api/connect/revoke-machine'
+      preLoaderRoute: typeof ApiConnectRevokeMachineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/connect/redeem-machine': {
       id: '/api/connect/redeem-machine'
       path: '/api/connect/redeem-machine'
@@ -163,6 +196,13 @@ declare module '@tanstack/react-router' {
       path: '/api/connect/redeem'
       fullPath: '/api/connect/redeem'
       preLoaderRoute: typeof ApiConnectRedeemRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/connect/machine-code': {
+      id: '/api/connect/machine-code'
+      path: '/api/connect/machine-code'
+      fullPath: '/api/connect/machine-code'
+      preLoaderRoute: typeof ApiConnectMachineCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -181,8 +221,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSubscribeRoute: ApiSubscribeRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
+  ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

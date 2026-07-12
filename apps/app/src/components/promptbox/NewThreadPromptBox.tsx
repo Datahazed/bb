@@ -1,12 +1,13 @@
 import {
   memo,
+  useCallback,
   useImperativeHandle,
   useMemo,
   useRef,
   type ReactNode,
   type Ref,
 } from "react";
-import type { ProjectSource, PromptTextMention } from "@bb/domain";
+import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
 import {
   useAppCommandContext,
   useAppCommandHandler,
@@ -31,9 +32,12 @@ import {
 } from "@/components/pickers/BranchPicker";
 import {
   EnvironmentPickerUI,
+  type EnvironmentPickerMachines,
   type EnvironmentPickerUIProps,
 } from "@/components/pickers/EnvironmentPicker";
+import { MachinePickerUI } from "@/components/pickers/MachinePicker";
 import {
+  encodeHostValue,
   type ParsedEnvironmentValue,
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
@@ -47,7 +51,8 @@ import {
   WorktreePicker,
   type ReuseThreadOption,
 } from "@/components/pickers/WorktreePicker";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   permissionDisplayForPromptMode,
@@ -62,6 +67,10 @@ export interface NewThreadEnvironmentConfig {
   sources: readonly ProjectSource[];
   host: EnvironmentPickerUIProps["host"];
   isLocal: EnvironmentPickerUIProps["isLocal"];
+  machines?: EnvironmentPickerMachines | null;
+  /** Opens the guided machine-setup flow for a machine without a project
+   * source (multi-machine menu only). */
+  onRequestMachineSetup?: (host: Host) => void;
   /** When true, the picker's "Reuse existing worktree" entry is disabled.
    * Caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
@@ -302,7 +311,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
               branch={modeConfig.branch}
               worktree={modeConfig.worktree}
             />
-          ) : null}
+          ) : (
+            <ProjectlessMachineSlot environment={modeConfig.environment} />
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <PermissionModePicker
@@ -347,6 +358,8 @@ export function ThreadEnvSlot({
         sources={environment.sources}
         host={environment.host}
         isLocal={environment.isLocal}
+        machines={environment.machines}
+        onRequestMachineSetup={environment.onRequestMachineSetup}
         reuseDisabled={environment.reuseDisabled}
         worktreeDisabledReason={environment.worktreeDisabledReason}
         disabled={environment.disabled}
@@ -396,10 +409,59 @@ export function ThreadEnvSlot({
   );
 }
 
+interface ProjectlessMachineSlotProps {
+  environment: NewThreadEnvironmentConfig;
+}
+
+/**
+ * Environment-slot replacement for projectless composing (multiMachine
+ * experiment, >1 host): a machine chip that picks which machine's personal
+ * workspace the thread runs in. With the experiment off or a single host the
+ * slot stays empty, exactly as before.
+ */
+export function ProjectlessMachineSlot({
+  environment,
+}: ProjectlessMachineSlotProps) {
+  const machines = environment.machines ?? null;
+  const parsedEnvironment = useMemo(
+    () => parseEnvironmentValue(environment.value),
+    [environment.value],
+  );
+  const handleChange = environment.onChange;
+  const handleMachineChange = useCallback(
+    (hostId: string) => {
+      // Projectless threads always run in the machine's personal workspace,
+      // so a machine pick encodes as that host's local mode.
+      handleChange(encodeHostValue(hostId, "local"));
+    },
+    [handleChange],
+  );
+  if (!machines || machines.hosts.length <= 1) {
+    return null;
+  }
+  return (
+    <MachinePickerUI
+      hosts={machines.hosts}
+      localDaemonHostId={machines.localDaemonHostId}
+      primaryHostId={machines.primaryHostId}
+      selectedHostId={
+        parsedEnvironment?.type === "host" ? parsedEnvironment.hostId : null
+      }
+      onChange={handleMachineChange}
+      disabled={environment.disabled}
+      className="shrink-0"
+      muted
+    />
+  );
+}
+
 export interface NewThreadConnectedEnvironmentConfig {
   value: string;
   onChange: (value: string) => void;
   sources: readonly ProjectSource[];
+  /** Opens the guided machine-setup flow for a machine without a project
+   * source (multi-machine menu only). */
+  onRequestMachineSetup?: (host: Host) => void;
   /** When true, the "Reuse existing worktree" entry in the env picker is
    * disabled — caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
@@ -472,13 +534,37 @@ function ConnectedThreadModeBranch({
   threadConfig,
   ...rest
 }: ConnectedThreadModeBranchProps) {
-  const primaryHost = usePrimaryHost();
-  const { isLocalDaemonHost } = useHostDaemon();
-  const isLocalHost = primaryHost ? isLocalDaemonHost(primaryHost.id) : false;
+  const { data: hosts } = useHosts();
+  const systemConfigQuery = useSystemConfig();
+  const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
+  const primaryHost = useMemo(
+    () => selectPrimaryHost(hosts, primaryHostId),
+    [hosts, primaryHostId],
+  );
+  const multiMachineEnabled =
+    systemConfigQuery.data?.experiments.multiMachine === true;
+  const { isLocalDaemonHost, localDaemonHostId } = useHostDaemon();
 
   const parsedEnvironment = parseEnvironmentValue(
     threadConfig.environment.value,
   );
+  // With the multiMachine experiment on, the picker (and everything downstream
+  // of `host`, like the offline chip) follows the selected machine instead of
+  // being pinned to the primary host.
+  const selectedHost =
+    multiMachineEnabled && parsedEnvironment?.type === "host"
+      ? (hosts?.find((host) => host.id === parsedEnvironment.hostId) ??
+        primaryHost)
+      : primaryHost;
+  const isLocalHost = selectedHost ? isLocalDaemonHost(selectedHost.id) : false;
+  const machines = useMemo<EnvironmentPickerMachines | null>(
+    () =>
+      multiMachineEnabled && hosts
+        ? { hosts, localDaemonHostId, primaryHostId }
+        : null,
+    [multiMachineEnabled, hosts, localDaemonHostId, primaryHostId],
+  );
+
   const isHostMode = parsedEnvironment?.type === "host";
   // Create-new-branch is only meaningful for host:local (work locally /
   // on host) — the server checks out a fresh branch in the primary checkout
@@ -489,10 +575,11 @@ function ConnectedThreadModeBranch({
   const uiEnvironment = useMemo(
     () => ({
       ...threadConfig.environment,
-      host: primaryHost,
+      host: selectedHost,
       isLocal: isLocalHost,
+      machines,
     }),
-    [threadConfig.environment, primaryHost, isLocalHost],
+    [threadConfig.environment, selectedHost, isLocalHost, machines],
   );
   const uiBranch = useMemo<NewThreadBranchConfig>(() => {
     const branch = threadConfig.branch;

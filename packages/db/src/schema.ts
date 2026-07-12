@@ -92,8 +92,10 @@ export const hosts = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     type: text("type").$type<HostType>().notNull(),
+    connectMachineId: text("connect_machine_id"),
     destroyedAt: integer("destroyed_at"),
     lastSeenAt: integer("last_seen_at"),
+    lastRejectedProtocolVersion: integer("last_rejected_protocol_version"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -106,6 +108,7 @@ export const projects = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<ProjectKind>().notNull().default("standard"),
     name: text("name").notNull(),
+    gitRemoteUrl: text("git_remote_url"),
     sortKey: text("sort_key").notNull().default("V"),
     deletedAt: integer("deleted_at"),
     createdAt: integer("created_at").notNull(),
@@ -145,6 +148,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
     mode: "boolean",
   }).notNull(),
   bbConnect: integer("bb_connect", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  multiMachine: integer("multi_machine", { mode: "boolean" })
     .notNull()
     .default(false),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),

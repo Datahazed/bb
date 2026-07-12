@@ -11,6 +11,7 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
+  type Host,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
   type ProjectSource,
@@ -46,6 +47,11 @@ import {
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
+import {
+  ProjectMachineSetupDialog,
+  type ProjectMachineSetupCompletion,
+  type ProjectMachineSetupDialogTarget,
+} from "@/components/dialogs/ProjectMachineSetupDialog";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
@@ -88,13 +94,14 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   useHostProviderCliStatus,
+  useSystemConfig,
 } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
@@ -401,6 +408,10 @@ interface BuildMobileRecentThreadsArgs {
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
   isProjectless: boolean;
+  /** Ids of all hosts known to the server. A persisted selection may only
+   * keep a non-primary host (multiMachine experiment) when it's still here. */
+  knownHostIds: ReadonlySet<string>;
+  multiMachineEnabled: boolean;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
@@ -594,6 +605,9 @@ function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
 
 function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
+  /** Host id → machine name, provided only when worktree rows should carry a
+   * machine hint (multiMachine experiment with more than one host). */
+  hostNameById: ReadonlyMap<string, string> | null = null,
 ): ReuseThreadOption[] {
   // One option per worktree env. Threads within each env are sorted
   // most-recently-active first so the picker preview surfaces the threads
@@ -603,6 +617,7 @@ function buildReuseThreadOptions(
   const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
   const branchByEnvironmentId = new Map<string, string | null>();
   const nameByEnvironmentId = new Map<string, string | null>();
+  const hostIdByEnvironmentId = new Map<string, string | null>();
   for (const thread of threads) {
     if (!isWorktreeWithEnv(thread)) continue;
     if (thread.environmentId === null) continue;
@@ -615,6 +630,7 @@ function buildReuseThreadOptions(
         thread.environmentBranchName,
       );
       nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
+      hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
     }
     bucket.push(thread);
   }
@@ -623,10 +639,15 @@ function buildReuseThreadOptions(
     bucket.sort(
       (left, right) => right.latestAttentionAt - left.latestAttentionAt,
     );
+    const hostId = hostIdByEnvironmentId.get(environmentId) ?? null;
     options.push({
       environmentId,
       branchName: branchByEnvironmentId.get(environmentId) ?? null,
       name: nameByEnvironmentId.get(environmentId) ?? null,
+      hostName:
+        hostNameById !== null && hostId !== null
+          ? (hostNameById.get(hostId) ?? null)
+          : null,
       threads: bucket.map((thread) => ({
         id: thread.id,
         title: getThreadDisplayTitle(thread),
@@ -653,6 +674,8 @@ export function isProjectSourceWorktreeUnavailable(
 export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
   isProjectless,
+  knownHostIds,
+  multiMachineEnabled,
   primaryHostId,
   projectSources,
   reuseThreadOptions,
@@ -663,6 +686,29 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   }
 
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
+
+  // With the multiMachine experiment on, a host selection survives as long as
+  // that machine still exists and has this project. Otherwise it falls through
+  // to the primary-host rewrite below, exactly as before the experiment.
+  if (
+    multiMachineEnabled &&
+    parsedSelection?.type === "host" &&
+    knownHostIds.has(parsedSelection.hostId)
+  ) {
+    // Projectless threads run in the machine's personal workspace — no
+    // project source is required and there is no worktree mode to keep.
+    if (isProjectless) {
+      return encodeHostValue(parsedSelection.hostId, "local");
+    }
+    if (
+      findLocalPathProjectSourceForHost(
+        projectSources,
+        parsedSelection.hostId,
+      ) !== undefined
+    ) {
+      return environmentSelectionValue;
+    }
+  }
   const canUseHostWorkspace =
     isProjectless ||
     findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
@@ -702,6 +748,21 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   }
 
   return fallbackHostValue;
+}
+
+/**
+ * The machine the composed thread will run on: the effective selection's host
+ * when it names one, otherwise the primary. Provider-CLI status, update
+ * actions, and submit blocking all key off this host — the primary's CLI
+ * state must not gate work targeted at another machine.
+ */
+export function resolveComposeHostId(
+  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
+  primaryHostId: string | null,
+): string | null {
+  return parsedEnvironment?.type === "host"
+    ? parsedEnvironment.hostId
+    : primaryHostId;
 }
 
 export function buildMobileRecentThreads({
@@ -923,12 +984,26 @@ export function RootComposeView(props: RootComposeViewProps) {
       ),
     [hostsQuery.data],
   );
-  const primaryHost = useMemo(() => {
-    const hosts = hostsQuery.data;
-    if (!hosts || hosts.length === 0) return null;
-    return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
-  }, [hostsQuery.data]);
+  const systemConfigQuery = useSystemConfig();
+  const serverPrimaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
+  const primaryHost = useMemo(
+    () => selectPrimaryHost(hostsQuery.data, serverPrimaryHostId),
+    [hostsQuery.data, serverPrimaryHostId],
+  );
   const primaryHostId = primaryHost?.id ?? null;
+  const multiMachineEnabled =
+    systemConfigQuery.data?.experiments.multiMachine === true;
+  const knownHostIds = useMemo(
+    () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
+    [hostsQuery.data],
+  );
+  // Worktree rows only carry a machine hint once there's more than one
+  // machine to tell apart (multiMachine experiment).
+  const worktreeHostNameById = useMemo(() => {
+    const hosts = hostsQuery.data ?? [];
+    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    return new Map(hosts.map((host) => [host.id, host.name]));
+  }, [hostsQuery.data, multiMachineEnabled]);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   // Plugin useComposer() writes (from nav panels / homepage sections) target
@@ -1139,42 +1214,6 @@ export function RootComposeView(props: RootComposeViewProps) {
 
     promptDraft.setDraft(restoredDraft);
   });
-  const providerCliStatus = useHostProviderCliStatus({
-    hostId: primaryHostId,
-    enabled: primaryHostId !== null,
-  });
-  const refetchProviderCliStatus = providerCliStatus.refetch;
-  const {
-    installLogDialog: providerCliInstallLogDialog,
-    queuedProviders,
-    runningProvider,
-    startInstall,
-  } = useProviderCliInstallRunner({
-    hostId: primaryHostId,
-    onStatusUpdated: () => {
-      void refetchProviderCliStatus();
-    },
-  });
-  const codexCliStatus = providerCliStatus.data?.codex ?? null;
-  const isCodexCliVersionBlocked =
-    selectedProviderId === "codex" &&
-    codexCliStatus?.versionUnsupported === true;
-  const codexCliIssue = useMemo(() => {
-    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
-      return null;
-    }
-    const issue = buildProviderCliIssue({
-      provider: "codex",
-      status: codexCliStatus,
-    });
-    return issue && hasProviderCliAction(issue) ? issue : null;
-  }, [codexCliStatus, isCodexCliVersionBlocked]);
-  const handleUpdateCodexCli = useCallback(() => {
-    if (codexCliIssue === null) {
-      return;
-    }
-    startInstall(codexCliIssue);
-  }, [codexCliIssue, startInstall]);
   const seedHandoffPrompt = promptDraft.setDraft;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
@@ -1269,8 +1308,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     { enabled: Boolean(projectId) },
   );
   const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? []),
-    [threadsQuery.data],
+    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    [threadsQuery.data, worktreeHostNameById],
   );
   const mobileRecentThreads = useMemo(
     () =>
@@ -1287,6 +1326,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       resolveRootComposeEffectiveEnvironmentValue({
         environmentSelectionValue,
         isProjectless,
+        knownHostIds,
+        multiMachineEnabled,
         primaryHostId,
         projectSources,
         reuseThreadOptions,
@@ -1295,6 +1336,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     [
       environmentSelectionValue,
       isProjectless,
+      knownHostIds,
+      multiMachineEnabled,
       primaryHostId,
       projectSources,
       reuseThreadOptions,
@@ -1305,6 +1348,48 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
   );
+  // Provider-CLI eligibility follows the machine the thread will actually run
+  // on — the selected host when the (already primary-collapsed, multiMachine
+  // aware) effective selection names one, otherwise the primary. An outdated
+  // CLI on the primary must not block submission to a healthy remote machine,
+  // nor the other way around.
+  const composeHostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
+  const providerCliStatus = useHostProviderCliStatus({
+    hostId: composeHostId,
+    enabled: composeHostId !== null,
+  });
+  const refetchProviderCliStatus = providerCliStatus.refetch;
+  const {
+    installLogDialog: providerCliInstallLogDialog,
+    queuedProviders,
+    runningProvider,
+    startInstall,
+  } = useProviderCliInstallRunner({
+    hostId: composeHostId,
+    onStatusUpdated: () => {
+      void refetchProviderCliStatus();
+    },
+  });
+  const codexCliStatus = providerCliStatus.data?.codex ?? null;
+  const isCodexCliVersionBlocked =
+    selectedProviderId === "codex" &&
+    codexCliStatus?.versionUnsupported === true;
+  const codexCliIssue = useMemo(() => {
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+      return null;
+    }
+    const issue = buildProviderCliIssue({
+      provider: "codex",
+      status: codexCliStatus,
+    });
+    return issue && hasProviderCliAction(issue) ? issue : null;
+  }, [codexCliStatus, isCodexCliVersionBlocked]);
+  const handleUpdateCodexCli = useCallback(() => {
+    if (codexCliIssue === null) {
+      return;
+    }
+    startInstall(codexCliIssue);
+  }, [codexCliIssue, startInstall]);
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   useEffect(() => {
     setBranchSearchQuery("");
@@ -1903,10 +1988,10 @@ export function RootComposeView(props: RootComposeViewProps) {
       if (rootPanelEnvironmentId !== null) {
         return null;
       }
-      const selectedHostId =
-        parsedEnvironment?.type === "host"
-          ? parsedEnvironment.hostId
-          : primaryHostId;
+      const selectedHostId = resolveComposeHostId(
+        parsedEnvironment,
+        primaryHostId,
+      );
       if (selectedHostId === null) {
         return null;
       }
@@ -3159,6 +3244,35 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
     return () => window.cancelAnimationFrame(handle);
   }, [isPointerCoarse, startedComposing]);
+  const [machineSetupTarget, setMachineSetupTarget] =
+    useState<ProjectMachineSetupDialogTarget | null>(null);
+  const currentProjectName = currentProject?.name ?? null;
+  const currentProjectGitRemoteUrl = currentProject?.gitRemoteUrl ?? null;
+  const handleRequestMachineSetup = useCallback(
+    (setupHost: Host) => {
+      if (!projectId || currentProjectName === null) return;
+      setMachineSetupTarget({
+        projectId,
+        projectName: currentProjectName,
+        gitRemoteUrl: currentProjectGitRemoteUrl,
+        hostId: setupHost.id,
+        hostName: setupHost.name,
+      });
+    },
+    [currentProjectGitRemoteUrl, currentProjectName, projectId],
+  );
+  const handleMachineSetupComplete = useCallback(
+    ({ hostId: setUpHostId }: ProjectMachineSetupCompletion) => {
+      setMachineSetupTarget(null);
+      // Mirror a normal selection of that machine: prefer worktree mode; the
+      // non-git downgrade effect above falls back to local work if the new
+      // source's checkout doesn't support worktrees.
+      handleEnvironmentSelectionValueChange(
+        encodeHostValue(setUpHostId, "worktree"),
+      );
+    },
+    [handleEnvironmentSelectionValueChange],
+  );
   const environmentConfig = useMemo(
     () => ({
       value: effectiveEnvironmentValue,
@@ -3169,11 +3283,16 @@ export function RootComposeView(props: RootComposeViewProps) {
         ? PROJECT_SOURCE_WORKTREE_DISABLED_REASON
         : null,
       disabled: isForkDraft,
+      ...(isProjectless
+        ? {}
+        : { onRequestMachineSetup: handleRequestMachineSetup }),
     }),
     [
       effectiveEnvironmentValue,
       isForkDraft,
+      isProjectless,
       handleEnvironmentSelectionValueChange,
+      handleRequestMachineSetup,
       projectSourceWorktreeUnavailable,
       projectSources,
       reuseThreadOptions.length,
@@ -3350,6 +3469,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     );
   }
 
+  const machineSetupDialog = (
+    <ProjectMachineSetupDialog
+      target={machineSetupTarget}
+      onOpenChange={(open) => {
+        if (!open) setMachineSetupTarget(null);
+      }}
+      onComplete={handleMachineSetupComplete}
+    />
+  );
+
   const promptBox = (
     <NewThreadPromptBox
       id="root-compose-prompt"
@@ -3395,6 +3524,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <>
         <div className="w-full">{promptBox}</div>
         {providerCliInstallLogDialog}
+        {machineSetupDialog}
       </>
     );
   }
@@ -3402,6 +3532,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   return (
     <>
       {providerCliInstallLogDialog}
+      {machineSetupDialog}
       {rootPanelToggle}
       <RootComposeSecondaryContent
         contentClassName={

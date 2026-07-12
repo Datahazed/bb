@@ -2,6 +2,7 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
@@ -31,6 +32,7 @@ import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
+import { registerInternalSkillRoutes } from "./internal/skills.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
 import {
   setAuthenticatedDaemon,
@@ -58,6 +60,11 @@ import {
   onTerminalSocketMessage,
   onTerminalSocketOpen,
 } from "./ws/terminal-protocol.js";
+import {
+  createBbAppArtifactService,
+  type BbAppArtifactService,
+} from "./services/install/bb-app-artifact.js";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -94,6 +101,7 @@ function normalizeInternalAuthPath(path: string): string {
 }
 
 interface CreateAppOptions {
+  bbAppArtifactService?: BbAppArtifactService;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -111,6 +119,9 @@ const WEB_SOCKET_SHUTDOWN_CODE = 1001;
 const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
 const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
 const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
+const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
+  new URL("./assets/install-machine.sh", import.meta.url),
+);
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
 const PRECOMPRESSED_STATIC_FILES = [
@@ -285,6 +296,12 @@ export function createApp(
   });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
+  const bbAppArtifactService =
+    options?.bbAppArtifactService ??
+    createBbAppArtifactService({
+      dataDir: deps.config.dataDir,
+      serverEntryUrl: import.meta.url,
+    });
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
@@ -310,6 +327,36 @@ export function createApp(
   app.use("*", compress());
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
+  app.get("/install.sh", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
+    const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
+    return new Response(script, {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "text/x-shellscript; charset=utf-8",
+      },
+    });
+  });
+  app.get("/install/version", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
+    return context.json({
+      version: await bbAppArtifactService.getVersion(),
+      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+    });
+  });
+  // bb-app is public on npm. A paired tunnel can expose an unpublished build
+  // slightly before release; serving the exact server build is an accepted
+  // tradeoff so remote daemons cannot be stranded by protocol skew.
+  app.get("/install/bb-app.tgz", async (context) => {
+    if (!getExperiments(deps.db).multiMachine) return context.notFound();
+    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
+    return new Response(tarball, {
+      headers: {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/gzip",
+      },
+    });
+  });
   app.use("/api/v1/*", async (context, next) => {
     const startedAt = performance.now();
     await next();
@@ -381,7 +428,7 @@ export function createApp(
   registerProjectRoutes(publicApi, deps);
   registerThreadFolderRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
-  registerHostRoutes(publicApi, deps);
+  registerHostRoutes(publicApi, deps, pluginService);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
@@ -395,6 +442,7 @@ export function createApp(
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
   registerInternalSessionRoutes(internalApi, deps);
+  registerInternalSkillRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);

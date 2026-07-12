@@ -48,6 +48,7 @@ import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSetti
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ServersSettingsSection } from "@/components/settings/ServersSettingsSection";
 import {
   useUpdateGeneralSettings,
@@ -193,10 +194,12 @@ export interface ExperimentsSettingsSectionProps {
   desktopShellAvailable: boolean;
   onBbConnectEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onMultiMachineEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
+  multiMachineEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
 }
@@ -835,6 +838,7 @@ export function ProviderSettingsSection({
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
+const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
@@ -1021,10 +1025,12 @@ export function ExperimentsSettingsSection({
   disabled,
   onBbConnectEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
   pluginsEnabled,
+  multiMachineEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
 }: ExperimentsSettingsSectionProps) {
@@ -1056,6 +1062,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onBbConnectEnabledChange}
             aria-label={BB_CONNECT_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={MULTI_MACHINE_EXPERIMENT_LABEL}
+          description="Allow explicit execution on other connected machines. Default execution stays on this machine."
+        >
+          <Switch
+            checked={multiMachineEnabled}
+            disabled={disabled}
+            onCheckedChange={onMultiMachineEnabledChange}
+            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1241,6 +1259,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "machines") {
+    content = <MachinesSettingsSection />;
   } else if (activeSection === "servers") {
     content = <ServersSettingsSection />;
   } else if (activeSection === "experiments") {
@@ -1276,6 +1296,12 @@ export function SettingsView() {
             bbConnect: enabled,
           })
         }
+        onMultiMachineEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            multiMachine: enabled,
+          })
+        }
         onPluginsEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
@@ -1283,6 +1309,7 @@ export function SettingsView() {
           })
         }
         bbConnectEnabled={experiments.bbConnect}
+        multiMachineEnabled={experiments.multiMachine}
         pluginsEnabled={experiments.plugins}
         popoutChatEnabled={experiments.popoutChat}
         popoutChatHotkey={experiments.popoutChatHotkey}

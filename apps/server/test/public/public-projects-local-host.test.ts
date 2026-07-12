@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -15,6 +17,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 const projectResponseSchema = z.object({
   id: z.string(),
+  gitRemoteUrl: z.string().nullable(),
   sources: z.array(
     z.object({
       id: z.string(),
@@ -24,13 +27,77 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
-  it("supports local project source updates and rejects secondary host sources", async () => {
+  it("creates projects and local sources when inspection is unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-offline-primary",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const projectResponse = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Offline Project",
+          source: {
+            type: "local_path",
+            hostId: offlinePrimary.id,
+            path: "/tmp/offline-project",
+          },
+        }),
+      });
+      expect(projectResponse.status).toBe(201);
+      const project = projectResponseSchema.parse(
+        await readJson(projectResponse),
+      );
+      expect(project.gitRemoteUrl).toBeNull();
+
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
+      const offlineSecondary = seedHost(harness.deps, {
+        id: "host-offline-secondary",
+      });
+      const sourceResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/sources`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "local_path",
+            hostId: offlineSecondary.id,
+            path: "/tmp/offline-project-secondary",
+          }),
+        },
+      );
+      expect(sourceResponse.status).toBe(201);
+      await expect(readJson(sourceResponse)).resolves.toMatchObject({
+        hostId: offlineSecondary.id,
+        path: "/tmp/offline-project-secondary",
+      });
+      const refreshed = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+      );
+      await expect(readJson(refreshed)).resolves.toMatchObject({
+        gitRemoteUrl: null,
+      });
+    });
+  });
+
+  it("supports local project source updates and secondary host sources", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-source-1" });
       seedPrimaryHost(harness.deps, host.id);
-      const secondaryHost = seedHost(harness.deps, { id: "host-source-2" });
+      const { host: secondaryHost } = seedHostSession(harness.deps, {
+        id: "host-source-2",
+      });
+      setExperiments(harness.db, {
+        ...defaultExperiments,
+        multiMachine: true,
+      });
 
-      const projectResponse = await harness.app.request("/api/v1/projects", {
+      const projectResponsePromise = harness.app.request("/api/v1/projects", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -44,13 +111,22 @@ describe("public project local host routes", () => {
           },
         }),
       });
+      const createInspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "project.inspect",
+      );
+      await reportQueuedCommandSuccess(harness, createInspection, {
+        path: "/tmp/project-sources",
+        gitRemoteUrl: "ssh://git.example.test/project-sources.git",
+      });
+      const projectResponse = await projectResponsePromise;
       const project = projectResponseSchema.parse(
         await readJson(projectResponse),
       );
       const defaultSourceId = project.sources[0]?.id;
       expect(defaultSourceId).toBeTruthy();
 
-      const createSourceResponse = await harness.app.request(
+      const createSourceResponsePromise = harness.app.request(
         `/api/v1/projects/${project.id}/sources`,
         {
           method: "POST",
@@ -64,9 +140,28 @@ describe("public project local host routes", () => {
           }),
         },
       );
-      expect(createSourceResponse.status).toBe(400);
+      const addInspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "project.inspect" &&
+          command.path === "/tmp/project-sources-2",
+      );
+      await reportQueuedCommandSuccess(harness, addInspection, {
+        path: "/tmp/project-sources-2",
+        gitRemoteUrl: "ssh://git.example.test/ignored-different-origin.git",
+      });
+      const createSourceResponse = await createSourceResponsePromise;
+      expect(createSourceResponse.status).toBe(201);
       await expect(readJson(createSourceResponse)).resolves.toMatchObject({
-        code: "unsupported_host",
+        hostId: secondaryHost.id,
+        path: "/tmp/project-sources-2",
+        type: "local_path",
+      });
+      const anchoredProjectResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+      );
+      await expect(readJson(anchoredProjectResponse)).resolves.toMatchObject({
+        gitRemoteUrl: "ssh://git.example.test/project-sources.git",
       });
 
       const updateSourceResponse = await harness.app.request(
@@ -94,7 +189,7 @@ describe("public project local host routes", () => {
           method: "DELETE",
         },
       );
-      expect(deleteSourceResponse.status).toBe(409);
+      expect(deleteSourceResponse.status).toBe(200);
     });
   });
 

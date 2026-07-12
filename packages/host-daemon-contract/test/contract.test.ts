@@ -202,6 +202,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       "/home/me/missing": false,
     },
   },
+  "project.inspect": {
+    path: "/home/me/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
+  },
+  "project.clone_default_path": {
+    path: "/home/me/.bb/checkouts/project",
+  },
   "host.pick_folder": {
     path: "/home/me/project",
   },
@@ -452,6 +459,10 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "environment.provision.cancel": {
     aborted: true,
   },
+  "project.clone": {
+    path: "/home/me/.bb/checkouts/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
+  },
   "environment.destroy": {},
   "workspace.commit": {
     commitSha: "abcdef123456",
@@ -626,6 +637,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.targetPath":
+    "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
   "hostDaemonOnlineRpcCommandSchema.mode":
@@ -1833,33 +1846,40 @@ describe("host-daemon command schemas", () => {
     const base = {
       name: "workflow-help",
       description: "Use when building workflows.",
-      sourceRootPath: "/srv/builtin-skills/workflow-help",
-      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
+    };
+    const tree = {
+      ...base,
+      kind: "tree",
+      treeHash: "a".repeat(64),
+      entryPath: "SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "builtin",
       }),
-    ).toMatchObject({ sourceType: "builtin" });
+    ).toMatchObject({ kind: "tree", sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "data-dir",
       }),
-    ).toMatchObject({ sourceType: "data-dir" });
+    ).toMatchObject({ kind: "tree", sourceType: "data-dir" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
+        kind: "workspace-path",
         sourceType: "project",
+        sourceRootPath: "/workspace/.bb/skills/workflow-help",
+        skillFilePath: "/workspace/.bb/skills/workflow-help/SKILL.md",
       }),
-    ).toMatchObject({ sourceType: "project" });
+    ).toMatchObject({ kind: "workspace-path", sourceType: "project" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "bundled",
+        ...tree,
+        sourceType: "project",
       }),
     ).toThrow();
   });

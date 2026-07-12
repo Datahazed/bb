@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 49 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 51 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -86,27 +86,26 @@ const hostDaemonInjectedSkillSourceBaseSchema = z
   .object({
     name: z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN),
     description: z.string().min(1).max(1024),
-    sourceRootPath: z.string().min(1),
-    skillFilePath: z.string().min(1),
   })
   .strict();
 
 export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
-  "sourceType",
+  "kind",
   [
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("builtin"),
+        kind: z.literal("tree"),
+        treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+        entryPath: z.string().min(1),
+        sourceType: z.enum(["builtin", "data-dir"]),
       })
       .strict(),
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("data-dir"),
-      })
-      .strict(),
-    hostDaemonInjectedSkillSourceBaseSchema
-      .extend({
+        kind: z.literal("workspace-path"),
         sourceType: z.literal("project"),
+        sourceRootPath: z.string().min(1),
+        skillFilePath: z.string().min(1),
       })
       .strict(),
   ],
@@ -514,6 +513,29 @@ const hostBrowseDirectoryCommandSchema = z.object({
 const hostPathsExistCommandSchema = pathsExistRequestSchema
   .extend({
     type: z.literal("host.paths_exist"),
+  })
+  .strict();
+
+const projectInspectCommandSchema = z
+  .object({
+    type: z.literal("project.inspect"),
+    path: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneDefaultPathCommandSchema = z
+  .object({
+    type: z.literal("project.clone_default_path"),
+    projectSlug: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneCommandSchema = z
+  .object({
+    type: z.literal("project.clone"),
+    remoteUrl: z.string().min(1),
+    projectSlug: z.string().min(1),
+    targetPath: z.string().min(1).optional(),
   })
   .strict();
 
@@ -985,6 +1007,11 @@ const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
 const emptyCommandResultSchema = z.object({});
+const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
+const projectInspectResultSchema = projectPathResultSchema
+  .extend({ gitRemoteUrl: z.string().min(1).nullable() })
+  .strict();
+const projectCloneResultSchema = projectInspectResultSchema;
 const codexInferenceCompleteResultSchema = z.object({
   model: z.string().min(1),
   value: jsonObjectSchema,
@@ -1208,6 +1235,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: "when-initiated",
     envLane: "write",
   }),
+  "project.clone": defineHostDaemonCommandDescriptor({
+    type: "project.clone",
+    schema: projectCloneCommandSchema,
+    resultSchema: projectCloneResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "environment.provision.cancel": defineHostDaemonCommandDescriptor({
     type: "environment.provision.cancel",
     schema: environmentProvisionCancelCommandSchema,
@@ -1284,6 +1320,24 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.inspect": defineHostDaemonCommandDescriptor({
+    type: "project.inspect",
+    schema: projectInspectCommandSchema,
+    resultSchema: projectInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.clone_default_path": defineHostDaemonCommandDescriptor({
+    type: "project.clone_default_path",
+    schema: projectCloneDefaultPathCommandSchema,
+    resultSchema: projectPathResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

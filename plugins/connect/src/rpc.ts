@@ -5,6 +5,7 @@ import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 import type { ListAccountServersResult } from "./list-servers.js";
 import type { DesktopSession } from "./desktop-session.js";
+import { MachineCodeError, type MachineCode } from "./machine-code.js";
 
 // Panel-facing rpc surface. `server` is optional: the dashboard command
 // carries both --code and --server, but the panel's paste-a-code field only
@@ -20,6 +21,7 @@ const pairInputSchema = z.object({
 const portInputSchema = z.object({
   port: z.number().int().min(1).max(65535),
 });
+const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
 export type ConnectRpcHandlers = {
   pair(input: unknown): Promise<ConnectStatus>;
@@ -30,6 +32,8 @@ export type ConnectRpcHandlers = {
   listShares(): Array<{ port: number; url: string }>;
   listAccountServers(): Promise<ListAccountServersResult>;
   createDesktopSession(): Promise<DesktopSession>;
+  createMachineCode(): Promise<MachineCode>;
+  revokeMachine(input: unknown): Promise<{ ok: true }>;
 };
 
 export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
@@ -89,6 +93,21 @@ export function createRpcHandlers(tunnel: ConnectTunnel): ConnectRpcHandlers {
         }
         throw error;
       }
+    },
+    async createMachineCode() {
+      try {
+        return await tunnel.createMachineCode();
+      } catch (error) {
+        if (error instanceof MachineCodeError) {
+          throw new Error(error.code);
+        }
+        throw error;
+      }
+    },
+    async revokeMachine(input: unknown) {
+      const args = revokeMachineInputSchema.parse(input);
+      await tunnel.revokeMachine(args.machineId);
+      return { ok: true };
     },
   };
 }
