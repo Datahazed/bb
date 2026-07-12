@@ -14,7 +14,7 @@ export function PromptMentionIcon({
     return (
       <PluginIcon
         pluginId={resource.pluginId}
-        icon={null}
+        icon={resource.icon ?? null}
         className={className}
       />
     );
