@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" },
   "bb": { "server": "./server.ts", "app": "./app.tsx", "skills": ["skills"] }
 }
 ```
@@ -68,10 +68,32 @@ The manifest is `package.json`:
   named `icon` hint when a monochrome glyph should match the surrounding bb
   chrome. Reserve logo assets for intentionally branded artwork (and provide
   a dark variant when needed).
-- `engines.bb` — semver range checked against the bb version at load.
+- `engines.bb` — optional semver range checked against the bb app version.
+- `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
+  (currently `0.2.0`; the scaffold writes `"^0.2.0"`). Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
+  the running SDK; path installs surface it as `incompatible` at load.
+  Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
+  candidates that satisfy these ranges; newer incompatible releases are
+  reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
+  enforcing `engines.bb` and annotate that on check results.
+- **Manual updates:** `bb plugin outdated` checks tracking sources and
+  `bb plugin update` applies compatible candidates (reinstall of an already
+  installed managed plugin is refused). A failed activation **rolls back** to
+  the previous state snapshot and records the failure for the user. Keep
+  `engines.*` honest and ship load-safe factories so an update never strands
+  users.
+- `bb plugin build` stamps authoritative metadata into both
+  `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
+  `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
+  `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
+  artifacts whose `pluginId`/`pluginVersion` disagree with the package
+  manifest, or whose SDK major does not match the host.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
-  and CLI commands.
+  and CLI commands. Ids reserved by builtins (`automations`, `connect`,
+  `custom-instructions`, `inline-vis`, `memory`, `secrets`) cannot be
+  installed from a non-`builtin:` source — use `builtin:<name>` instead.
 
 The scaffold ships the full API as bundled type declarations in `types/`
 (`bb-plugin-sdk.d.ts`, plus `bb-plugin-sdk-app.d.ts` for `--app`); its
@@ -88,6 +110,42 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 `secrets/` (secret settings + HTTP token), `logs/plugin.log` (JSONL,
 rotated at 5MB). Settings edits never auto-reload — `bb plugin reload <id>`
 after configuring.
+
+## Publishing to a marketplace
+
+A marketplace is a directory (local path or git repo) whose root has
+`marketplace.json`. Catalog schema version is currently **1**:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "my-market",
+  "displayName": "My Market",
+  "plugins": [
+    {
+      "id": "notes",
+      "displayName": "Notes",
+      "description": "Local notes",
+      "source": { "npm": { "package": "bb-plugin-notes", "range": "^1.0.0" } },
+      "category": "productivity",
+      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" } }
+    }
+  ]
+}
+```
+
+- **source** — one of `npm` (`package`, optional `registry` / `range`), `git`
+  (`url`, `ref`, optional `subdir`), or `path` (relative path **only** for
+  local path marketplaces; remote/git catalogs cannot list path entries).
+- **category** (optional) — free-form string; `bb plugin search` matches it.
+- **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
+  ranges. These **can narrow but never widen** the plugin package manifest's
+  `engines.bb` / `engines.bbPluginSdk`: the catalog range must be a semver
+  subset of the manifest range, or install is refused.
+
+Users add your catalog with `bb plugin marketplace add <source>` (trust prompt
+for remotes; add installs nothing), then `bb plugin search` / `bb plugin install
+<entry>[@<marketplace>]`. See `bb guide plugins` for CLI details.
 
 ## The backend factory
 

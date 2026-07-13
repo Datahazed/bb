@@ -1,9 +1,10 @@
 import { watch } from "node:fs";
-import { readFile, realpath } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
+import { z } from "zod";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch } from "../client.js";
@@ -15,44 +16,217 @@ import {
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
+import { renderBorderlessTable } from "../table.js";
 
-interface PluginEntry {
-  id: string;
-  source: string;
-  rootDir: string;
-  version: string;
-  enabled: boolean;
-  status: string;
-  statusDetail: string | null;
-  handlerStats: {
-    count: number;
-    totalMs: number;
-    maxMs: number;
-    errorCount: number;
-  };
-  services: Array<{ name: string; state: string }>;
-  schedules: Array<{
-    name: string;
-    cron: string;
-    nextRunAt: number;
-    lastRunAt: number | null;
-    lastStatus: string | null;
-    lastError: string | null;
-  }>;
-  cliCommand: { name: string; summary: string } | null;
+const pluginUpdateStateSchema = z.object({
+  outcome: z
+    .enum([
+      "current",
+      "update-available",
+      "pinned",
+      "incompatible",
+      "unavailable",
+    ])
+    .optional(),
+  availableVersion: z.string().optional(),
+  blockedVersion: z.string().optional(),
+  blockedReasons: z.array(z.string()).optional(),
+  lastCheckAt: z.number().optional(),
+  lastFailure: z
+    .object({ version: z.string(), at: z.number(), detail: z.string() })
+    .optional(),
+});
+
+const pluginEntrySchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  rootDir: z.string(),
+  version: z.string(),
+  provenance: z.enum(["builtin", "direct", "marketplace"]),
+  marketplaceName: z.string().optional(),
+  sourceDisplay: z.string(),
+  updateState: pluginUpdateStateSchema,
+  enabled: z.boolean(),
+  description: z.string().nullable(),
+  displayName: z.string().nullable(),
+  icon: z.string().nullable(),
+  status: z.string(),
+  statusDetail: z.string().nullable(),
+  handlerStats: z.object({
+    count: z.number(),
+    totalMs: z.number(),
+    maxMs: z.number(),
+    errorCount: z.number(),
+  }),
+  services: z.array(z.object({ name: z.string(), state: z.string() })),
+  schedules: z.array(
+    z.object({
+      name: z.string(),
+      cron: z.string(),
+      nextRunAt: z.number(),
+      lastRunAt: z.number().nullable(),
+      lastStatus: z.string().nullable(),
+      lastError: z.string().nullable(),
+    }),
+  ),
+  cliCommand: z.object({ name: z.string(), summary: z.string() }).nullable(),
+  hasSettings: z.boolean(),
+  app: z.object({
+    hasApp: z.boolean(),
+    bundle: z
+      .object({
+        jsUrl: z.string(),
+        cssUrl: z.string().nullable(),
+        hash: z.string(),
+        sdkMajor: z.number(),
+        sdkVersion: z.string(),
+        compatible: z.boolean(),
+      })
+      .nullable(),
+  }),
+  logoUrl: z.string().nullable(),
+  logoDarkUrl: z.string().nullable(),
+});
+
+const pluginListSchema = z.object({
+  enabled: z.boolean(),
+  plugins: z.array(pluginEntrySchema),
+});
+
+const pluginMutationResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  plugin: pluginEntrySchema.optional(),
+  plugins: z.array(pluginEntrySchema).optional(),
+});
+const marketplaceViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  displayName: z.string(),
+  source: z.string(),
+  resolvedCommit: z.string().optional(),
+  pluginCount: z.number(),
+  lastRefreshAt: z.number().optional(),
+  lastAttemptAt: z.number().optional(),
+  lastError: z.string().optional(),
+});
+
+const marketplaceListSchema = z.object({
+  marketplaces: z.array(marketplaceViewSchema),
+});
+const marketplaceMutationSchema = z.object({
+  marketplace: marketplaceViewSchema,
+});
+const marketplaceErrorSchema = z.object({
+  error: z.string(),
+});
+const marketplaceRemoveSchema = z.object({
+  convertedPluginIds: z.array(z.string()),
+});
+const marketplaceSearchResultSchema = z.object({
+  marketplaceId: z.string(),
+  entryId: z.string(),
+  displayName: z.string(),
+  description: z.string(),
+  category: z.string().optional(),
+  source: z.string(),
+  installed: z.boolean(),
+  compatible: z.boolean(),
+  incompatibleReason: z.string().optional(),
+});
+const marketplaceSearchSchema = z.object({
+  results: z.array(marketplaceSearchResultSchema),
+});
+
+type MarketplaceView = z.infer<typeof marketplaceViewSchema>;
+type MarketplaceSearchResult = z.infer<typeof marketplaceSearchResultSchema>;
+type PluginEntry = z.infer<typeof pluginEntrySchema>;
+
+async function callApi(
+  baseUrl: string,
+  path: string,
+  method: "GET" | "POST" | "DELETE",
+  body?: unknown,
+): Promise<{ status: number; value: unknown }> {
+  const response = await cliFetch(`${baseUrl}/api/v1${path}`, {
+    method,
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+  });
+  const text = await response.text();
+  let value: unknown;
+  try {
+    value = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      `Unexpected response from /api/v1${path} (${response.status}): ${text.slice(0, 200)}`,
+    );
+  }
+  if (!response.ok && ![400, 404, 422].includes(response.status)) {
+    throw new Error(`/api/v1${path} failed: HTTP ${response.status}`);
+  }
+  return { status: response.status, value };
 }
 
-interface PluginListResponse {
-  enabled: boolean;
-  plugins: PluginEntry[];
+async function listMarketplaces(baseUrl: string): Promise<MarketplaceView[]> {
+  const response = await callApi(baseUrl, "/marketplaces", "GET");
+  return marketplaceListSchema.parse(response.value).marketplaces;
 }
 
-interface PluginMutationResult {
-  ok: boolean;
-  error?: string;
-  plugin?: PluginEntry;
-  plugins?: PluginEntry[];
+async function searchMarketplaces(
+  baseUrl: string,
+  query: string,
+): Promise<MarketplaceSearchResult[]> {
+  const response = await callApi(
+    baseUrl,
+    `/marketplaces/search?q=${encodeURIComponent(query)}`,
+    "GET",
+  );
+  return marketplaceSearchSchema.parse(response.value).results;
 }
+
+const pluginVersionSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+});
+
+const pluginUpdateResultSchema = z.object({
+  id: z.string(),
+  outcome: z.enum([
+    "current",
+    "update-available",
+    "pinned",
+    "incompatible",
+    "unavailable",
+  ]),
+  devMode: z.literal(true).optional(),
+  installed: pluginVersionSchema,
+  candidate: pluginVersionSchema.optional(),
+  blocked: z
+    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .optional(),
+  detail: z.string().optional(),
+});
+
+const pluginUpdatesSchema = z.object({
+  results: z.array(pluginUpdateResultSchema),
+});
+
+const pluginUpdateMutationSchema = z.object({
+  applied: z.boolean(),
+  from: pluginVersionSchema,
+  to: pluginVersionSchema.optional(),
+  outcome: z.string(),
+  detail: z.string().optional(),
+});
+
+const pluginUpdateErrorSchema = z.object({ error: z.string() });
+
+type PluginUpdateResult = z.infer<typeof pluginUpdateResultSchema>;
 
 export function canDevelopPlugin(
   pluginsExperimentEnabled: boolean,
@@ -61,28 +235,53 @@ export function canDevelopPlugin(
   return pluginsExperimentEnabled || entry.source.startsWith("builtin:");
 }
 
-interface PluginSettingDescriptor {
-  type: "string" | "boolean" | "select" | "project";
-  label: string;
-  description?: string;
-  secret?: true;
-  default?: string | boolean;
-  options?: string[];
-}
+const pluginSettingDescriptorSchema = z.object({
+  type: z.enum(["string", "boolean", "select", "project"]),
+  label: z.string(),
+  description: z.string().optional(),
+  secret: z.literal(true).optional(),
+  default: z.union([z.string(), z.boolean()]).optional(),
+  options: z.array(z.string()).optional(),
+});
+const pluginSettingsResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  schema: z.record(z.string(), pluginSettingDescriptorSchema).optional(),
+  values: z.record(z.string(), z.unknown()).optional(),
+});
+const pluginTokenResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  token: z.string().optional(),
+});
+const pluginLogsResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  lines: z.array(z.string()).optional(),
+});
+const pluginPackageSummarySchema = z.object({
+  name: z.string().optional(),
+  version: z.string().optional(),
+});
+const pluginManifestSchema = z.object({
+  bb: z
+    .object({
+      server: z.unknown().optional(),
+      app: z.unknown().optional(),
+    })
+    .optional(),
+});
+const secretSettingValueSchema = z.object({ set: z.boolean().optional() });
 
-interface PluginSettingsResult {
-  ok: boolean;
-  error?: string;
-  schema?: Record<string, PluginSettingDescriptor>;
-  values?: Record<string, unknown>;
-}
+type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
+type PluginSettingsResult = z.infer<typeof pluginSettingsResultSchema>;
 
-async function callPlugins<T>(
+async function callPlugins(
   baseUrl: string,
   path: string,
   method: "GET" | "POST" | "PUT" | "DELETE",
   body?: unknown,
-): Promise<T> {
+): Promise<unknown> {
   const response = await cliFetch(`${baseUrl}/api/v1/plugins${path}`, {
     method,
     ...(body === undefined
@@ -107,11 +306,242 @@ async function callPlugins<T>(
   if (!response.ok && ![400, 404, 422].includes(response.status)) {
     throw new Error(`/api/v1/plugins${path} failed: HTTP ${response.status}`);
   }
-  return parsed as T;
+  return parsed;
+}
+
+async function callPluginUpdates(
+  baseUrl: string,
+  path: string,
+  body: unknown,
+): Promise<z.infer<typeof pluginUpdatesSchema>> {
+  const value = await callPlugins(baseUrl, path, "POST", body);
+  return pluginUpdatesSchema.parse(value);
+}
+
+async function callPluginUpdate(
+  baseUrl: string,
+  id: string,
+): Promise<
+  | z.infer<typeof pluginUpdateMutationSchema>
+  | z.infer<typeof pluginUpdateErrorSchema>
+> {
+  const value = await callPlugins(
+    baseUrl,
+    `/${encodeURIComponent(id)}/update`,
+    "POST",
+    {},
+  );
+  const error = pluginUpdateErrorSchema.safeParse(value);
+  if (error.success) return error.data;
+  return pluginUpdateMutationSchema.parse(value);
+}
+
+const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
+  current: "current",
+  "update-available": "update available",
+  pinned: "pinned",
+  incompatible: "incompatible",
+  unavailable: "unavailable",
+};
+
+function blockedSummary(result: PluginUpdateResult): string {
+  if (!result.blocked) return "—";
+  return `${result.blocked.version}: ${result.blocked.reasons.join("; ")}`;
+}
+
+function updateDetail(result: PluginUpdateResult): string {
+  return result.detail ?? result.blocked?.reasons.join("; ") ?? "";
+}
+
+async function confirmPluginAction(
+  prompt: string,
+  refusal: string,
+  yes: boolean,
+): Promise<void> {
+  if (yes) return;
+  if (!process.stdin.isTTY) {
+    console.error(refusal);
+    process.exit(1);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (await rl.question(`${prompt} [y/N] `)).trim().toLowerCase();
+  rl.close();
+  if (answer !== "y" && answer !== "yes") {
+    console.log("Aborted.");
+    process.exit(1);
+  }
 }
 
 function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+}
+
+function formatRelativeDate(value: string | number | undefined): string {
+  if (value === undefined) return "never";
+  const elapsed = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(elapsed)) return String(value);
+  const future = elapsed < 0;
+  const absolute = Math.abs(elapsed);
+  const units = [
+    [86_400_000, "day"],
+    [3_600_000, "hour"],
+    [60_000, "minute"],
+  ] as const;
+  const selected = units.find(([milliseconds]) => absolute >= milliseconds);
+  const count = selected ? Math.max(1, Math.floor(absolute / selected[0])) : 0;
+  const unit = selected?.[1] ?? "minute";
+  const phrase = `${count} ${unit}${count === 1 ? "" : "s"}`;
+  return future ? `in ${phrase}` : `${phrase} ago`;
+}
+
+function formatAbsoluteDate(value: string | number | undefined): string {
+  if (value === undefined) return "unknown date";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
+}
+
+function printMarketplace(marketplace: MarketplaceView): void {
+  console.log(`${marketplace.displayName} (${marketplace.name})`);
+  console.log(`  source: ${marketplace.source}`);
+  console.log(`  plugins: ${marketplace.pluginCount}`);
+  console.log(
+    `  last refreshed: ${formatRelativeDate(marketplace.lastRefreshAt)}`,
+  );
+  if (marketplace.resolvedCommit) {
+    console.log(`  resolved commit: ${marketplace.resolvedCommit}`);
+  }
+  if (marketplace.lastError) {
+    console.log(`  state: refresh failed — ${marketplace.lastError}`);
+  }
+}
+
+function dualInterpretationError(source: string): string {
+  return (
+    `Could not resolve "${source}" as either a marketplace plugin or a path on disk. ` +
+    "Use path:<path>, npm:<package>, or git:<url>@<ref> to choose an interpretation explicitly."
+  );
+}
+
+function hasPathSyntax(source: string): boolean {
+  return (
+    source.includes("/") ||
+    source.includes("\\") ||
+    source.startsWith(".") ||
+    source.startsWith("~")
+  );
+}
+
+function isLocalMarketplaceSource(source: string): boolean {
+  return (
+    source.startsWith("path:") ||
+    source.startsWith(".") ||
+    source.startsWith("~") ||
+    source.startsWith("/") ||
+    source.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(source)
+  );
+}
+
+async function existsOnDisk(source: string): Promise<boolean> {
+  try {
+    await access(resolve(source));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type InstallIntent =
+  | { kind: "source"; source: string; summary: string }
+  | {
+      kind: "marketplace";
+      marketplace: MarketplaceView;
+      entry: MarketplaceSearchResult;
+    };
+
+async function resolveInstallIntent(
+  baseUrl: string,
+  input: string,
+): Promise<InstallIntent> {
+  if (
+    ["path:", "npm:", "git:", "builtin:"].some((prefix) =>
+      input.startsWith(prefix),
+    )
+  ) {
+    if (input.startsWith("path:")) {
+      const path = resolve(input.slice(5));
+      return {
+        kind: "source",
+        source: `path:${path}`,
+        summary: `Installing ${path}`,
+      };
+    }
+    return { kind: "source", source: input, summary: `Installing ${input}` };
+  }
+  if (hasPathSyntax(input)) {
+    const path = resolve(input);
+    return {
+      kind: "source",
+      source: `path:${path}`,
+      summary: `Installing ${path}`,
+    };
+  }
+
+  const at = input.indexOf("@");
+  if (at > 0 && at === input.lastIndexOf("@")) {
+    const entryId = input.slice(0, at);
+    const marketplaceName = input.slice(at + 1);
+    const marketplaces = await listMarketplaces(baseUrl);
+    const marketplace = marketplaces.find(
+      (candidate) => candidate.name === marketplaceName,
+    );
+    if (!marketplace) throw new Error(dualInterpretationError(input));
+    const results = await searchMarketplaces(baseUrl, entryId);
+    const entry = results.find(
+      (candidate) =>
+        candidate.marketplaceId === marketplace.id &&
+        candidate.entryId === entryId,
+    );
+    if (!entry) throw new Error(dualInterpretationError(input));
+    return { kind: "marketplace", marketplace, entry };
+  }
+
+  if (!input.includes("@")) {
+    const results = (await searchMarketplaces(baseUrl, input)).filter(
+      (candidate) => candidate.entryId === input,
+    );
+    if (results.length === 1) {
+      const marketplaces = await listMarketplaces(baseUrl);
+      const marketplace = marketplaces.find(
+        (candidate) => candidate.id === results[0]?.marketplaceId,
+      );
+      if (!marketplace)
+        throw new Error(`Marketplace for "${input}" is no longer available.`);
+      return { kind: "marketplace", marketplace, entry: results[0]! };
+    }
+    if (results.length > 1) {
+      const marketplaces = await listMarketplaces(baseUrl);
+      const names = new Map(
+        marketplaces.map((marketplace) => [marketplace.id, marketplace.name]),
+      );
+      const choices = results.map(
+        (result) =>
+          `  ${result.entryId}@${names.get(result.marketplaceId) ?? result.marketplaceId}`,
+      );
+      throw new Error(
+        `Marketplace plugin "${input}" is ambiguous. Choose one:\n${choices.join("\n")}`,
+      );
+    }
+    if (!(await existsOnDisk(input)))
+      throw new Error(dualInterpretationError(input));
+  }
+
+  const path = resolve(input);
+  return {
+    kind: "source",
+    source: `path:${path}`,
+    summary: `Installing ${path}`,
+  };
 }
 
 function printPlugin(plugin: PluginEntry): void {
@@ -148,6 +578,12 @@ function exitWithError(result: { error?: string }): never {
   process.exit(1);
 }
 
+function exitOnApiError(response: { status: number; value: unknown }): void {
+  if (response.status >= 400) {
+    exitWithError(marketplaceErrorSchema.parse(response.value));
+  }
+}
+
 function printSettings(result: PluginSettingsResult): void {
   const schema = result.schema ?? {};
   const values = result.values ?? {};
@@ -168,8 +604,8 @@ function printSettings(result: PluginSettingsResult): void {
     ].join(", ");
     let display: string;
     if (descriptor.secret) {
-      const value = values[key] as { set?: boolean } | undefined;
-      display = value?.set ? "[set]" : "[not set]";
+      const value = secretSettingValueSchema.safeParse(values[key]);
+      display = value.success && value.data.set ? "[set]" : "[not set]";
     } else {
       const value = values[key];
       display = value === undefined ? "(unset)" : JSON.stringify(value);
@@ -213,16 +649,182 @@ export function registerPluginCommands(
     // pass flags after <id> through to the plugin command untouched.
     .enablePositionalOptions();
 
+  const marketplace = plugin
+    .command("marketplace")
+    .description("Manage plugin marketplaces");
+
+  marketplace
+    .command("add <source>")
+    .description("Add and refresh a plugin marketplace")
+    .option("--name <name>", "Set the marketplace name")
+    .option("--yes", "Skip the trust confirmation for a remote marketplace")
+    .action(
+      action(async (source: string, opts: { name?: string; yes?: boolean }) => {
+        if (!isLocalMarketplaceSource(source)) {
+          console.log(
+            "Marketplace catalogs can introduce full-trust plugin code. Adding this marketplace installs NOTHING.",
+          );
+          await confirmPluginAction(
+            "Trust and add this marketplace?",
+            "Refusing to add a remote marketplace without confirmation — re-run with --yes.",
+            opts.yes === true,
+          );
+        }
+        const response = await callApi(getUrl(), "/marketplaces", "POST", {
+          source,
+          ...(opts.name === undefined ? {} : { name: opts.name }),
+        });
+        exitOnApiError(response);
+        printMarketplace(
+          marketplaceMutationSchema.parse(response.value).marketplace,
+        );
+      }),
+    );
+
+  marketplace
+    .command("list")
+    .description("List configured plugin marketplaces")
+    .option("--json", "Output the raw marketplace views as JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const response = await callApi(getUrl(), "/marketplaces", "GET");
+        const result = marketplaceListSchema.parse(response.value);
+        const { marketplaces } = result;
+        if (opts.json) {
+          outputJson(opts, result);
+          return;
+        }
+        if (marketplaces.length === 0) {
+          console.log("No plugin marketplaces configured.");
+          return;
+        }
+        const rows = marketplaces.map((entry) => [
+          entry.name,
+          entry.source,
+          String(entry.pluginCount),
+          formatRelativeDate(entry.lastRefreshAt),
+          entry.lastError
+            ? `refresh failed: using cached catalog from ${formatAbsoluteDate(entry.lastRefreshAt)}`
+            : "ok",
+        ]);
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Name", "Source", "Plugins", "Last refreshed", "State"],
+              colWidths: [22, 44, 10, 20, 62],
+              trimTrailingWhitespace: true,
+            },
+            rows,
+          ),
+        );
+      }),
+    );
+
+  marketplace
+    .command("update [name]")
+    .description("Refresh one plugin marketplace, or all marketplaces")
+    .action(
+      action(async (name: string | undefined) => {
+        const marketplaces = await listMarketplaces(getUrl());
+        const selected =
+          name === undefined
+            ? marketplaces
+            : marketplaces.filter((entry) => entry.name === name);
+        if (name !== undefined && selected.length === 0) {
+          console.error(`Unknown marketplace "${name}".`);
+          process.exit(1);
+        }
+        let failed = false;
+        for (const entry of selected) {
+          const response = await callApi(
+            getUrl(),
+            `/marketplaces/${encodeURIComponent(entry.id)}/refresh`,
+            "POST",
+          );
+          const error = marketplaceErrorSchema.safeParse(response.value);
+          if (response.status === 422 && error.success) {
+            failed = true;
+            console.error(`${entry.name}: ${error.data.error}`);
+            console.error("Last-known-good cached catalog is retained.");
+            continue;
+          }
+          printMarketplace(
+            marketplaceMutationSchema.parse(response.value).marketplace,
+          );
+        }
+        if (failed) process.exit(1);
+      }),
+    );
+
+  marketplace
+    .command("remove <name>")
+    .description("Remove a plugin marketplace")
+    .action(
+      action(async (name: string) => {
+        const marketplaces = await listMarketplaces(getUrl());
+        const entry = marketplaces.find((candidate) => candidate.name === name);
+        if (!entry) {
+          console.error(`Unknown marketplace "${name}".`);
+          process.exit(1);
+        }
+        const response = await callApi(
+          getUrl(),
+          `/marketplaces/${encodeURIComponent(entry.id)}`,
+          "DELETE",
+        );
+        const error = marketplaceErrorSchema.safeParse(response.value);
+        if (response.status === 422 && error.success) exitWithError(error.data);
+        const removed = marketplaceRemoveSchema.parse(response.value);
+        console.log(`Removed marketplace ${name}.`);
+        console.log(
+          `${removed.convertedPluginIds.length} plugins kept as direct installs.`,
+        );
+      }),
+    );
+
+  plugin
+    .command("search <query>")
+    .description("Search configured plugin marketplaces")
+    .action(
+      action(async (query: string) => {
+        const [results, marketplaces] = await Promise.all([
+          searchMarketplaces(getUrl(), query),
+          listMarketplaces(getUrl()),
+        ]);
+        const names = new Map(
+          marketplaces.map((entry) => [entry.id, entry.name]),
+        );
+        const rows = results.map((result) => [
+          result.displayName,
+          result.description,
+          names.get(result.marketplaceId) ?? result.marketplaceId,
+          result.installed
+            ? "✓ installed"
+            : result.compatible
+              ? "compatible"
+              : `requires newer bb${result.incompatibleReason ? `: ${result.incompatibleReason}` : ""}`,
+        ]);
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Name", "Description", "Marketplace", "Status"],
+              colWidths: [28, 54, 24, 48],
+              trimTrailingWhitespace: true,
+            },
+            rows,
+          ),
+        );
+      }),
+    );
+
   plugin
     .command("list")
     .description("List installed plugins and their status")
     .option("--json", "Output JSON")
     .action(
       action(async (opts: JsonOutputOptions) => {
-        const result = await callPlugins<PluginListResponse>(
-          getUrl(),
-          "",
-          "GET",
+        const result = pluginListSchema.parse(
+          await callPlugins(getUrl(), "", "GET"),
         );
         if (opts.json) {
           outputJson(opts, result);
@@ -246,36 +848,29 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a plugin from a local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version>",
+      "Install a plugin from a local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; builtin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
     .action(
       action(
         async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
-          let normalized: string;
-          let summary: string;
-          if (
-            source.startsWith("builtin:") ||
-            source.startsWith("git:") ||
-            source.startsWith("npm:")
-          ) {
-            normalized = source;
-            summary = `Installing ${source}`;
-          } else {
-            const path = resolve(
-              source.startsWith("path:") ? source.slice(5) : source,
-            );
-            normalized = `path:${path}`;
-            summary = `Installing ${path}`;
+          const intent = await resolveInstallIntent(getUrl(), source);
+          let summary =
+            intent.kind === "source"
+              ? intent.summary
+              : `Installing ${intent.entry.displayName} from marketplace ${intent.marketplace.name} (${intent.entry.source})`;
+          if (intent.kind === "source" && intent.source.startsWith("path:")) {
+            const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
             // error to report after confirmation.
             try {
-              const pkg = JSON.parse(
+              const raw: unknown = JSON.parse(
                 await readFile(join(path, "package.json"), "utf8"),
-              ) as { name?: unknown; version?: unknown };
-              if (typeof pkg.name === "string") {
-                summary = `Installing ${pkg.name}@${typeof pkg.version === "string" ? pkg.version : "?"} from ${path}`;
+              );
+              const pkg = pluginPackageSummarySchema.parse(raw);
+              if (pkg.name !== undefined) {
+                summary = `Installing ${pkg.name}@${pkg.version ?? "?"} from ${path}`;
               }
             } catch {
               // fall through to the bare path summary
@@ -306,12 +901,20 @@ export function registerPluginCommands(
               process.exit(1);
             }
           }
-          const result = await callPlugins<PluginMutationResult>(
+          const value = await callPlugins(
             getUrl(),
             "/install",
             "POST",
-            { source: normalized },
+            intent.kind === "source"
+              ? { source: intent.source }
+              : {
+                  marketplace: {
+                    marketplaceId: intent.marketplace.id,
+                    entryId: intent.entry.entryId,
+                  },
+                },
           );
+          const result = pluginMutationResultSchema.parse(value);
           if (opts.json) {
             outputJson(opts, result);
             if (!result.ok) process.exit(1);
@@ -320,6 +923,131 @@ export function registerPluginCommands(
           if (!result.ok || !result.plugin) exitWithError(result);
           console.log("Installed:");
           printPlugin(result.plugin);
+        },
+      ),
+    );
+
+  plugin
+    .command("outdated")
+    .description("Check installed plugins for compatible updates")
+    .option("--json", "Output the raw update results as JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const { results } = await callPluginUpdates(
+          getUrl(),
+          "/updates/check",
+          {},
+        );
+        if (opts.json) {
+          outputJson(opts, results);
+          return;
+        }
+        const rows = results.map((result) => [
+          result.id,
+          result.installed.display,
+          result.candidate?.display ?? "—",
+          blockedSummary(result),
+          `${UPDATE_STATUS_LABELS[result.outcome]}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`,
+        ]);
+        console.log(
+          renderBorderlessTable(
+            {
+              head: [
+                "Plugin",
+                "Installed",
+                "Latest compatible",
+                "Blocked newer",
+                "Status",
+              ],
+              colWidths: [22, 20, 22, 42, 54],
+              trimTrailingWhitespace: true,
+            },
+            rows,
+          ),
+        );
+      }),
+    );
+
+  plugin
+    .command("update [id]")
+    .description("Update one plugin, or all plugins with --all")
+    .option("--all", "Update every plugin with a compatible update")
+    .option("--yes", "Skip confirmation prompts")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: {
+            all?: boolean;
+            yes?: boolean;
+          },
+        ) => {
+          if ((id === undefined) === !opts.all) {
+            console.error("Specify exactly one plugin id or --all.");
+            process.exit(1);
+          }
+          const { results } = await callPluginUpdates(
+            getUrl(),
+            "/updates/check",
+            id === undefined ? {} : { id },
+          );
+          const sources = new Map<string, string>();
+          if (results.some((result) => result.outcome === "update-available")) {
+            const list = pluginListSchema.parse(
+              await callPlugins(getUrl(), "", "GET"),
+            );
+            for (const entry of list.plugins)
+              sources.set(entry.id, entry.sourceDisplay);
+          }
+
+          for (const result of results) {
+            const source = sources.get(result.id) ?? "unknown source";
+            const detail = updateDetail(result);
+            const shouldAttempt = result.outcome === "update-available";
+
+            if (!shouldAttempt) {
+              if (result.outcome === "pinned") {
+                console.log(
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range or git branch to receive updates.`,
+                );
+              } else if (result.outcome === "incompatible") {
+                console.log(
+                  `${result.id}: skipped — incompatible${detail ? `: ${detail}` : "."}`,
+                );
+              } else if (result.outcome === "unavailable") {
+                console.log(
+                  `${result.id}: skipped — unavailable${detail ? `: ${detail}` : "."}`,
+                );
+              } else {
+                console.log(
+                  `${result.id}: current (${result.installed.display}).`,
+                );
+              }
+              continue;
+            }
+
+            const target = result.candidate?.display ?? "latest compatible";
+            console.log(
+              `${result.id}: ${result.installed.display} → ${target} from ${source}. Plugins are full-trust code.`,
+            );
+            await confirmPluginAction(
+              "Update and activate?",
+              "Refusing to update without confirmation — re-run with --yes.",
+              opts.yes === true,
+            );
+
+            const mutation = await callPluginUpdate(getUrl(), result.id);
+            if ("error" in mutation) exitWithError(mutation);
+            if (mutation.applied) {
+              console.log(
+                `${result.id}: updated and activated ${mutation.from.display} → ${mutation.to?.display ?? target}.`,
+              );
+            } else {
+              console.log(
+                `${result.id}: ${mutation.outcome}${mutation.detail ? ` — ${mutation.detail}` : ""}`,
+              );
+            }
+          }
         },
       ),
     );
@@ -386,27 +1114,29 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json) and, when bb.app is declared, the frontend bundle (app.js, app.css, app.meta.json); no server required",
+      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json) and, when bb.app is declared, the frontend bundle (app.js, app.css, app.meta.json); each *.meta.json stamps SDK/identity metadata; no server required",
     )
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
+        const bbVersion = resolveBbCliVersion();
         // buildPluginServer errors legibly on a missing/invalid bb.server —
         // every plugin has one, so a headless plugin succeeds with just the
         // backend bundle (prebuilt distribution, design §6).
-        const server = await buildPluginServer(rootDir);
+        const server = await buildPluginServer(rootDir, bbVersion);
         const files = [server.jsPath, server.mapPath, server.metaPath];
         let hasApp = false;
         try {
-          const pkg = JSON.parse(
+          const raw: unknown = JSON.parse(
             await readFile(join(rootDir, "package.json"), "utf8"),
-          ) as { bb?: { app?: unknown } };
+          );
+          const pkg = pluginManifestSchema.parse(raw);
           hasApp = typeof pkg.bb?.app === "string";
         } catch {
           // Unreachable in practice: buildPluginServer already read it.
         }
         if (hasApp) {
-          const app = await buildPluginApp(rootDir);
+          const app = await buildPluginApp(rootDir, bbVersion);
           files.push(app.jsPath, app.cssPath, app.metaPath);
         }
         for (const file of files) {
@@ -423,11 +1153,12 @@ export function registerPluginCommands(
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        let manifest: { bb?: { server?: unknown; app?: unknown } };
+        let manifest: z.infer<typeof pluginManifestSchema>;
         try {
-          manifest = JSON.parse(
+          const raw: unknown = JSON.parse(
             await readFile(join(rootDir, "package.json"), "utf8"),
-          ) as { bb?: { server?: unknown; app?: unknown } };
+          );
+          manifest = pluginManifestSchema.parse(raw);
         } catch {
           console.error(
             `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
@@ -445,7 +1176,9 @@ export function registerPluginCommands(
         // against the server's installed rows (realpath tolerates symlinked
         // checkouts).
         const realDir = await realpath(rootDir).catch(() => rootDir);
-        const list = await callPlugins<PluginListResponse>(getUrl(), "", "GET");
+        const list = pluginListSchema.parse(
+          await callPlugins(getUrl(), "", "GET"),
+        );
         const entry = list.plugins.find(
           (candidate) =>
             candidate.rootDir === rootDir || candidate.rootDir === realDir,
@@ -466,13 +1199,15 @@ export function registerPluginCommands(
           pluginId: entry.id,
           hasApp,
           buildApp: async () => {
-            await buildPluginApp(rootDir);
+            await buildPluginApp(rootDir, resolveBbCliVersion());
           },
           reloadPlugin: async () => {
-            const result = await callPlugins<PluginMutationResult>(
-              getUrl(),
-              `/reload?id=${encodeURIComponent(entry.id)}`,
-              "POST",
+            const result = pluginMutationResultSchema.parse(
+              await callPlugins(
+                getUrl(),
+                `/reload?id=${encodeURIComponent(entry.id)}`,
+                "POST",
+              ),
             );
             if (!result.ok) throw new Error(result.error ?? "reload failed");
           },
@@ -511,10 +1246,8 @@ export function registerPluginCommands(
     .action(
       action(async (id: string | undefined, opts: JsonOutputOptions) => {
         const query = id ? `?id=${encodeURIComponent(id)}` : "";
-        const result = await callPlugins<PluginMutationResult>(
-          getUrl(),
-          `/reload${query}`,
-          "POST",
+        const result = pluginMutationResultSchema.parse(
+          await callPlugins(getUrl(), `/reload${query}`, "POST"),
         );
         if (opts.json) {
           outputJson(opts, result);
@@ -538,10 +1271,12 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const result = await callPlugins<PluginMutationResult>(
-            getUrl(),
-            `/${encodeURIComponent(id)}/${name}`,
-            "POST",
+          const result = pluginMutationResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/${name}`,
+              "POST",
+            ),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -571,10 +1306,8 @@ export function registerPluginCommands(
         ) => {
           const settingsPath = `/${encodeURIComponent(id)}/settings`;
           if (actionName === undefined) {
-            const result = await callPlugins<PluginSettingsResult>(
-              getUrl(),
-              settingsPath,
-              "GET",
+            const result = pluginSettingsResultSchema.parse(
+              await callPlugins(getUrl(), settingsPath, "GET"),
             );
             if (opts.json) {
               outputJson(opts, result);
@@ -604,12 +1337,14 @@ export function registerPluginCommands(
           }
           let parsedValue: string | boolean | null = null;
           if (actionName === "set") {
+            if (value === undefined) {
+              console.error("Usage: bb plugin config <id> set <key> <value>");
+              process.exit(1);
+            }
             // Fetch the schema first so booleans/selects are parsed and
             // validated client-side with a friendly message.
-            const current = await callPlugins<PluginSettingsResult>(
-              getUrl(),
-              settingsPath,
-              "GET",
+            const current = pluginSettingsResultSchema.parse(
+              await callPlugins(getUrl(), settingsPath, "GET"),
             );
             if (!current.ok || !current.schema) exitWithError(current);
             const descriptor = current.schema[key];
@@ -620,13 +1355,12 @@ export function registerPluginCommands(
               );
               process.exit(1);
             }
-            parsedValue = parseSettingValue(descriptor, key, value as string);
+            parsedValue = parseSettingValue(descriptor, key, value);
           }
-          const result = await callPlugins<PluginSettingsResult>(
-            getUrl(),
-            settingsPath,
-            "PUT",
-            { values: { [key]: parsedValue } },
+          const result = pluginSettingsResultSchema.parse(
+            await callPlugins(getUrl(), settingsPath, "PUT", {
+              values: { [key]: parsedValue },
+            }),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -649,15 +1383,13 @@ export function registerPluginCommands(
     .action(
       action(
         async (id: string, opts: JsonOutputOptions & { rotate?: boolean }) => {
-          const result = await callPlugins<{
-            ok: boolean;
-            error?: string;
-            token?: string;
-          }>(
-            getUrl(),
-            `/${encodeURIComponent(id)}/token`,
-            "POST",
-            opts.rotate ? { rotate: true } : {},
+          const result = pluginTokenResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/token`,
+              "POST",
+              opts.rotate ? { rotate: true } : {},
+            ),
           );
           if (opts.json) {
             outputJson(opts, result);
@@ -696,11 +1428,13 @@ export function registerPluginCommands(
         const tail =
           Number.isFinite(requested) && requested > 0 ? requested : 100;
         const fetchTail = async (count: number): Promise<string[]> => {
-          const result = await callPlugins<{
-            ok: boolean;
-            error?: string;
-            lines?: string[];
-          }>(getUrl(), `/${encodeURIComponent(id)}/logs?tail=${count}`, "GET");
+          const result = pluginLogsResultSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/logs?tail=${count}`,
+              "GET",
+            ),
+          );
           if (!result.ok || !result.lines) exitWithError(result);
           return result.lines;
         };
@@ -730,10 +1464,8 @@ export function registerPluginCommands(
     .option("--json", "Output JSON")
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
-        const result = await callPlugins<PluginMutationResult>(
-          getUrl(),
-          `/${encodeURIComponent(id)}`,
-          "DELETE",
+        const result = pluginMutationResultSchema.parse(
+          await callPlugins(getUrl(), `/${encodeURIComponent(id)}`, "DELETE"),
         );
         if (opts.json) {
           outputJson(opts, result);

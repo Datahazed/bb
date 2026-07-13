@@ -55,10 +55,39 @@ never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-  bb plugin install <src>        Install from a local path, builtin:<name>,
-                                 git:<url>@<ref>, or npm:<name>@<version>
+  bb plugin marketplace add <source> [--name <n>] [--yes]
+  bb plugin marketplace list [--json]
+  bb plugin marketplace update [name]
+  bb plugin marketplace remove <name>
+                                 Remove a catalog; installed plugins remain
+                                 installed with direct provenance
+  bb plugin search <query>       Search all configured marketplaces
+  bb plugin install <entry>[@<marketplace>]
+                                 Install a unique marketplace entry (qualify
+                                 with @marketplace when ambiguous), a local
+                                 path, builtin:<name>,
+                                 git:<url>@<ref>, or
+                                 npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
-                                 pass --yes to skip)
+                                 pass --yes to skip). Managed git:/npm:
+                                 installs refuse engines.bb / engines.bbPluginSdk
+                                 mismatches, manifest/artifact identity
+                                 mismatches, and ids reserved by builtins
+                                 Omitted npm specs, ranges, dist-tags, and git
+                                 branches track; exact npm versions, git tags,
+                                 and git commits are pinned
+  bb plugin outdated             Check installed plugins for compatible
+                                 updates (table; --json for raw results).
+                                 Columns: installed, latest compatible,
+                                 blocked newer (incompatible releases not
+                                 selected), status. Dev builds (bb 0.0.0)
+                                 annotate that engines.bb is not enforced
+  bb plugin update <id> | --all  Apply compatible updates for one plugin or
+                                 every tracking plugin with an update. Same
+                                 full-trust confirmation as
+                                 install (--yes skips; non-TTY refuses without
+                                 --yes). Use outdated to preview; pinned
+                                 installs stay put
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -77,12 +106,57 @@ added/updated/unchanged counts.
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); no server
-                                 required
+                                 (app.js, app.css, app.meta.json). Each
+                                 *.meta.json is stamped with SDK major/version,
+                                 artifactFormatVersion, pluginId, pluginVersion,
+                                 and builtWith (bb + plugin SDK versions); no
+                                 server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its frontend bundle
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
+
+Plugin marketplaces
+
+A marketplace is a catalog (`marketplace.json`) that lists plugins others can
+discover and install. Adding a marketplace registers and refreshes that catalog
+only — it installs nothing. Catalog sources: a local directory (`path:` or a
+filesystem path), `owner/repo[@ref]` (GitHub shorthand), or a git URL with an
+optional `@ref`. Server routes live under `/api/v1/marketplaces`.
+
+Trust model: every remote/git source requires an interactive trust confirmation
+before add (catalogs can introduce full-trust plugin code later). Pass `--yes`
+to skip; non-TTY refuses without `--yes`. Unmistakable local path forms
+(`path:`, `./…`, or absolute paths) skip the prompt; ambiguous bare sources
+are conservatively prompted. Trusting a marketplace does not install plugins —
+install still prompts separately as full-trust server code.
+
+Refresh vs plugin update: `bb plugin marketplace update [name]` re-fetches
+catalog metadata (one marketplace, or all when name is omitted). It does not
+upgrade installed plugins. Failed refresh keeps the last-known-good cached
+catalog and records the error (list shows "refresh failed" state).
+`bb plugin outdated` / `bb plugin update` move installed plugin artifacts for
+tracking sources.
+
+Updates are manual: `bb plugin outdated` checks tracking sources and
+`bb plugin update` applies compatible candidates. Reinstalling an
+already-installed managed plugin is refused — use `bb plugin update`. A failed
+activation restores the pre-update snapshot and leaves the latest failure
+visible as needing attention. Exact npm versions, git tags and commits, and path
+sources are pinned; npm ranges/omitted specs/dist-tags and git branches track
+compatible updates.
+
+Removing a marketplace always keeps its installed plugins and converts them to
+direct provenance while preserving each plugin's source intent.
+
+Search and install disambiguation: `bb plugin search <query>` matches id,
+display name, description, and category across configured marketplaces (status:
+installed / compatible / requires newer bb). Install a bare marketplace entry
+name only when it is unique across catalogs; qualify as
+`<entry>@<marketplace>` when ambiguous. To select an npm version, tag, or range,
+use a direct `npm:<package>@<version|tag|range>` install. Escape hatches that
+skip marketplace resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and
+path-like syntax).
 
 Frontend builds are automatic once installed: path and git installs compile
 dist/ at install time (a build failure fails the install), and the server
@@ -157,8 +231,10 @@ for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
 watches and reloads on every save. The manifest is package.json: `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
 (frontend entry), optional `bb.skills` (skills directories auto-imported
-into agent threads; default `skills/`), and `engines.bb` (supported bb
-range). The plugin id is the package name minus `bb-plugin-`.
+into agent threads; default `skills/`), `engines.bb` (supported bb range),
+and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
+writes `"^0.2.0"` for SDK 0.2.0). The plugin id is the package name minus
+`bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css }`, where `css` is a plugin-relative `.css`

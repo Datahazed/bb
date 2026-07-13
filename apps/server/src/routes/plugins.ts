@@ -13,10 +13,13 @@ import type {
 import { parsePluginSource } from "../services/plugins/install-sources.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import { z } from "zod";
+import type { MarketplaceService } from "../services/marketplaces/marketplace-service.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
 export interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
+  db: import("@bb/db").DbConnection;
 }
 
 interface WireAuthProblem {
@@ -185,6 +188,7 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  marketplaces?: MarketplaceService,
 ): void {
   const DISABLED = {
     ok: false as const,
@@ -202,7 +206,10 @@ export function registerPluginRoutes(
   };
 
   app.get("/plugins", (context) =>
-    context.json({ enabled: plugins.isEnabled(), plugins: plugins.list() }),
+    context.json({
+      enabled: plugins.isEnabled(),
+      plugins: plugins.list(),
+    }),
   );
 
   // Fast metadata for the bb CLI's help/proxy path and the app's
@@ -438,23 +445,112 @@ export function registerPluginRoutes(
     return context.json({ ok: true, lines });
   });
 
-  // Body: { source: "path:<dir>" | "git:<url>@<ref>" | "npm:<name>@<version>" }
-  // (bare paths are treated as path: sources).
-  app.post("/plugins/install", async (context) => {
-    const body = (await context.req.json().catch(() => null)) as {
-      source?: unknown;
-    } | null;
-    if (!body || typeof body.source !== "string" || body.source.length === 0) {
+  const updateCheckBodySchema = z
+    .object({ id: z.string().min(1).optional() })
+    .strict();
+  const applyUpdateBodySchema = z.object({}).strict();
+
+  app.post("/plugins/updates/check", async (context) => {
+    if (!plugins.isEnabled()) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = updateCheckBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "id"?: string }' }, 400);
+    }
+    try {
+      const results = await plugins.checkForUpdates(body.data.id);
+      return context.json({ results });
+    } catch (error) {
       return context.json(
-        { ok: false, error: "expected { source: string }" },
-        400,
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
       );
     }
-    if (!plugins.isEnabled() && !sourceBypassesGate(body.source)) {
+  });
+
+  app.get("/plugins/updates", (context) => {
+    if (!plugins.isEnabled()) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    try {
+      return context.json({ results: plugins.listUpdateResults() });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  app.post("/plugins/:id/update", async (context) => {
+    if (!gateAllowsPlugin(context.req.param("id"))) {
+      return context.json({ error: DISABLED.error }, 422);
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = applyUpdateBodySchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: "expected an empty JSON object" }, 400);
+    }
+    try {
+      const outcome = await plugins.applyUpdate(context.req.param("id"));
+      if (!outcome.ok) return context.json({ error: outcome.error }, 422);
+      return context.json(outcome.result);
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  const installBodySchema = z.union([
+    z.object({ source: z.string().min(1) }).strict(),
+    z
+      .object({
+        marketplace: z
+          .object({
+            marketplaceId: z.string().min(1),
+            entryId: z.string().min(1),
+          })
+          .strict(),
+        version: z.string().min(1).optional(),
+      })
+      .strict(),
+  ]);
+
+  app.post("/plugins/install", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const parsed = installBodySchema.safeParse(json);
+    if (!parsed.success) {
+      return context.json(
+        {
+          ok: false,
+          error: "exactly one of source or marketplace is required",
+        },
+        422,
+      );
+    }
+    if (
+      !plugins.isEnabled() &&
+      !("source" in parsed.data && sourceBypassesGate(parsed.data.source))
+    ) {
       return context.json(DISABLED, 422);
     }
     try {
-      const plugin = await plugins.install(body.source);
+      const plugin =
+        "source" in parsed.data
+          ? await plugins.install(parsed.data.source)
+          : marketplaces === undefined
+            ? (() => {
+                throw new Error("marketplace service is unavailable");
+              })()
+            : await marketplaces.install(
+                parsed.data.marketplace.marketplaceId,
+                parsed.data.marketplace.entryId,
+                parsed.data.version,
+              );
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(
@@ -465,6 +561,14 @@ export function registerPluginRoutes(
         422,
       );
     }
+  });
+
+  app.get("/plugins/:id/source", async (context) => {
+    const source = await plugins.getSource(context.req.param("id"));
+    if (source === undefined) {
+      return context.json({ error: "unknown plugin" }, 404);
+    }
+    return context.json(source);
   });
 
   app.post("/plugins/reload", async (context) => {

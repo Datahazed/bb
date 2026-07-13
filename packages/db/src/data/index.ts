@@ -173,11 +173,47 @@ export {
   getInstalledPlugin,
   getInstalledPluginRegistration,
   listInstalledPlugins,
+  listUnnormalizedPluginRegistrations,
   markInstalledPluginRemoved,
+  normalizeInstalledPluginRegistration,
+  setInstalledPluginActiveArtifact,
   setInstalledPluginEnabled,
+  setInstalledPluginUpdateState,
+  setInstalledPluginSourceClassification,
+  setInstalledPluginLastFailure,
   upsertInstalledPlugin,
   type InstalledPluginRow,
+  type LegacyInstalledPluginRegistration,
+  type LegacyPluginExactResolution,
+  type NormalizeLegacyInstalledPluginInput,
+  type PluginExactResolution,
+  type PluginProvenance,
+  type PluginSourceIntent,
+  type PluginUpdateState,
+  type UpsertInstalledPluginInput,
+  listInstalledPluginsFromMarketplace,
+  setInstalledPluginDirectProvenance,
 } from "./plugins.js";
+export {
+  createPluginArtifact,
+  deletePluginArtifact,
+  getPluginArtifactByResolution,
+  getPluginArtifact,
+  listPluginArtifacts,
+  listRecentPluginArtifacts,
+  setPluginArtifactValidation,
+  type CreatePluginArtifactInput,
+  type PluginArtifactRow,
+} from "./plugin-artifacts.js";
+export {
+  deleteMarketplace,
+  getMarketplace,
+  listMarketplaces,
+  updateMarketplaceRefreshFailure,
+  upsertMarketplace,
+  type MarketplaceRow,
+  type UpsertMarketplaceInput,
+} from "./marketplaces.js";
 export {
   deleteAllPluginSettings,
   deletePluginKvValue,
@@ -186,6 +222,10 @@ export {
   listPluginKvKeys,
   setPluginKvValue,
   setPluginSettingsValues,
+  listPluginKvRows,
+  listPluginSettingRows,
+  type PluginKvRow,
+  type PluginSettingRow,
 } from "./plugin-storage.js";
 export {
   claimPluginScheduledRun,
@@ -197,6 +237,19 @@ export {
   upsertPluginSchedule,
   type PluginScheduleRow,
 } from "./plugin-schedules.js";
+export {
+  createPluginStateSnapshot,
+  deletePluginStateSnapshot,
+  getPluginStateSnapshot,
+  listExpiredPluginStateSnapshots,
+  listGarbageCollectablePluginArtifacts,
+  listIncompletePluginRollbackSnapshots,
+  listPluginStateSnapshots,
+  replacePluginSnapshotState,
+  setPluginStateSnapshotStatus,
+  setPluginStateSnapshotRollbackPending,
+  type PluginStateSnapshotRow,
+} from "./plugin-state-snapshots.js";
 
 export {
   getStoredThemeId,

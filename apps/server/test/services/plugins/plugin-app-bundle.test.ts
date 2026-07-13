@@ -34,6 +34,31 @@ async function hasBinary(command: string): Promise<boolean> {
 
 const hasNpm = await hasBinary("npm");
 
+function npmPersistence(packageName: string, version: string) {
+  return {
+    provenance: { kind: "direct" } as const,
+    sourceIntent: {
+      kind: "npm" as const,
+      packageName,
+      registry: "https://registry.npmjs.org",
+      requestedSpec: version,
+      specKind: "exact" as const,
+    },
+    exactResolution: {
+      kind: "npm" as const,
+      version,
+      integrity: "test-integrity",
+    },
+    updateState: {
+      lastCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      statusDetail: null,
+    },
+    activeArtifactId: null,
+  };
+}
+
 const SERVER_SOURCE = `export default function plugin(bb: any) { bb.log.info("loaded"); }`;
 // Minimal real frontend entry: the automatic JSX transform exercises the
 // react/jsx-runtime shim, and the utility class exercises the Tailwind pass.
@@ -214,6 +239,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // Registered as an npm source (the managed-materialization step is not
     // under test); load must serve the published dist verbatim.
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-oldie", "0.1.0"),
       id: "oldie",
       source: "npm:bb-plugin-oldie@0.1.0",
       rootDir,
@@ -262,6 +288,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-devy", "0.1.0"),
       id: "devy",
       source: "npm:bb-plugin-devy@0.1.0",
       rootDir,
@@ -345,6 +372,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-meta", "0.1.0"),
       id: "meta",
       source: "npm:bb-plugin-meta@0.1.0",
       rootDir,
@@ -382,6 +410,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     await mkdir(join(rootDir, "dist"), { recursive: true });
     await writeFile(join(rootDir, "dist", "app.js"), "export default 1;\n");
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-malformed", "0.1.0"),
       id: "malformed",
       source: "npm:bb-plugin-malformed@0.1.0",
       rootDir,
@@ -426,6 +455,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       }),
     );
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-gated", "0.1.0"),
       id: "gated",
       source: "npm:bb-plugin-gated@0.1.0",
       rootDir,
@@ -451,6 +481,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-bare");
     await writeAppPluginFixture(rootDir, { name: "bb-plugin-bare" });
     upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-bare", "0.1.0"),
       id: "bare",
       source: "npm:bb-plugin-bare@0.1.0",
       rootDir,
@@ -483,7 +514,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
 
         // Package 2: ships a prebuilt dist stamped with the current SDK.
         const prebuiltDir = join(workDir, "prebuilt");
-        await writeAppPluginFixture(prebuiltDir, { name: "bb-plugin-prebuilt" });
+        await writeAppPluginFixture(prebuiltDir, {
+          name: "bb-plugin-prebuilt",
+        });
         await mkdir(join(prebuiltDir, "dist"), { recursive: true });
         await writeFile(
           join(prebuiltDir, "dist", "app.js"),
@@ -497,17 +530,49 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           }),
         );
 
+        // Package 3: backend metadata is compatible, but the frontend was
+        // built for a different SDK major. Install must reject the whole
+        // package rather than accepting only its backend half.
+        const partialDir = join(workDir, "partial");
+        await writeAppPluginFixture(partialDir, {
+          name: "bb-plugin-partial",
+        });
+        await mkdir(join(partialDir, "dist"), { recursive: true });
+        await writeFile(
+          join(partialDir, "dist", "server.meta.json"),
+          JSON.stringify({
+            sdkMajor: PLUGIN_SDK_MAJOR,
+            sdkVersion: PLUGIN_SDK_VERSION,
+          }),
+        );
+        await writeFile(
+          join(partialDir, "dist", "app.js"),
+          "export default {};\n",
+        );
+        const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
+        await writeFile(
+          join(partialDir, "dist", "app.meta.json"),
+          JSON.stringify({
+            sdkMajor: incompatibleMajor,
+            sdkVersion: `${incompatibleMajor}.0.0`,
+          }),
+        );
+
         const packDir = join(workDir, "pack");
         await mkdir(packDir, { recursive: true });
         const tarballs = new Map<string, Buffer>();
         for (const [name, dir] of [
           ["bb-plugin-nodist", noDistDir],
           ["bb-plugin-prebuilt", prebuiltDir],
+          ["bb-plugin-partial", partialDir],
         ] as const) {
           await run("npm", ["pack", "--pack-destination", packDir], {
             cwd: dir,
           });
-          tarballs.set(name, await readFile(join(packDir, `${name}-0.1.0.tgz`)));
+          tarballs.set(
+            name,
+            await readFile(join(packDir, `${name}-0.1.0.tgz`)),
+          );
         }
 
         // Minimal loopback npm registry (packument + tarball per package).
@@ -574,6 +639,21 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
             "bb-plugin-nodist@0.1.0",
           );
           await expect(stat(prefix)).rejects.toThrowError();
+
+          await expect(
+            harness.pluginService.install("npm:bb-plugin-partial@0.1.0"),
+          ).rejects.toThrowError(
+            /app artifact.*SDK major.*rebuild the app artifact/,
+          );
+          const partialPrefix = join(
+            harness.config.dataDir,
+            "plugins",
+            "npm",
+            "bb-plugin-partial@0.1.0",
+          );
+          await expect(stat(partialPrefix)).rejects.toThrowError();
+          await expect(stat(`${partialPrefix}.staging`)).rejects.toThrowError();
+          expect(harness.pluginService.list()).toHaveLength(0);
 
           const entry = await harness.pluginService.install(
             "npm:bb-plugin-prebuilt@0.1.0",
