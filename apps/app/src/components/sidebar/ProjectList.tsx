@@ -181,6 +181,10 @@ interface ProjectListProps {
 }
 
 interface ProjectListActionButtonsProps {
+  newThreadSplit?: {
+    onPointerDown?: PointerEventHandler<HTMLElement>;
+    openInSplit(): void;
+  };
   onNewChat?: () => void;
   onOpenSkills?: () => void;
   onOpenPlugins?: () => void;
@@ -1033,6 +1037,7 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 });
 
 export function ProjectListActionButtons({
+  newThreadSplit,
   onNewChat,
   onOpenSkills,
   onOpenPlugins,
@@ -1123,7 +1128,14 @@ export function ProjectListActionButtons({
             size="sm"
             variant="ghost"
             className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "flex-1")}
-            onClick={onNewChat}
+            onPointerDown={newThreadSplit?.onPointerDown}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                newThreadSplit?.openInSplit();
+                return;
+              }
+              onNewChat?.();
+            }}
             disabled={isNewChatDisabled}
             aria-label={
               newThreadShortcut

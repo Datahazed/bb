@@ -47,6 +47,8 @@ import {
   getSkillsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   haveSameSidebarThreadSearchNavigationItems,
@@ -68,6 +70,8 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+
+const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/ymichael/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -103,6 +107,12 @@ export function AppSidebar({
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const location = useLocation();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const newThreadSplit = usePaneContentSplitDrag({
+    content: NEW_THREAD_PANE_CONTENT,
+    enabled: threadSplitsEnabled,
+    label: "New thread",
+  });
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -365,11 +375,7 @@ export function AppSidebar({
       return;
     }
     hideThreadShortcuts();
-  }, [
-    hideThreadShortcuts,
-    isAppCommandModifierHeld,
-    showThreadShortcuts,
-  ]);
+  }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
@@ -410,6 +416,7 @@ export function AppSidebar({
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
           <ProjectListActionButtons
+            newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
             onOpenSkills={handleOpenSkills}
             onOpenPlugins={handleOpenPlugins}
@@ -426,7 +433,10 @@ export function AppSidebar({
             }}
           />
         </div>
-        <PluginNavSidebarItems onNavigate={closeOnMobile} />
+        <PluginNavSidebarItems
+          onNavigate={closeOnMobile}
+          splitEnabled={threadSplitsEnabled}
+        />
         <SidebarContent>
           <ProjectList
             onNewProject={

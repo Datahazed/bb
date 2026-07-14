@@ -224,6 +224,7 @@ function BrowseCard({
               marketplaceName,
               entryId: entry.entryId,
               displayName: entry.displayName,
+              icon: entry.icon,
             })
           }
         >
