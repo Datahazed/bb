@@ -6,6 +6,12 @@ import { sharedUiEnvSeam } from "../vite-shared-ui-seam.js";
 
 const repoRoot = path.resolve(__dirname, "../../..");
 const devInstance = resolveCurrentDevInstanceConfig(repoRoot);
+// Plugin RPCs accept only origins belonging to this checkout's app. Ladle is
+// the local review proxy for that same app, including when viewed through a
+// bb connect share, so present its upstream requests as the dev app origin.
+const trustedDevAppHeaders = {
+  origin: `http://localhost:${devInstance.ports.appPort}`,
+};
 
 // Ladle bundles Vite 6 (rollup) and provides its own React plugin via
 // @vitejs/plugin-react-swc. The app's main vite.config.ts uses
@@ -44,11 +50,13 @@ export default defineConfig({
       "/api": {
         target: devInstance.serverUrl,
         changeOrigin: true,
+        headers: trustedDevAppHeaders,
       },
       "/ws": {
         target: devInstance.serverUrl,
         changeOrigin: true,
         ws: true,
+        headers: trustedDevAppHeaders,
       },
     },
   },
