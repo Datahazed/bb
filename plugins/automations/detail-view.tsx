@@ -350,7 +350,7 @@ export function AutomationDetailView({
       }
     >
       <ResourceDefinitionSection label="Configuration">
-        <ResourcePropertyList>
+        <ResourcePropertyList surface="flat" className="divide-y divide-border">
           <ResourceProperty label="Schedule">
             {formatAutomationTrigger(automation.trigger)} ·{" "}
             {automationScheduleLabel(automation)}
@@ -383,7 +383,7 @@ export function AutomationDetailView({
               />
             </label>
           ) : null}
-          <ResourceDetailPanel className="p-3">
+          <ResourceDetailPanel surface="flat" className="px-3 py-2">
             {automation.execution.mode === "agent" ? (
               editing ? (
                 <Textarea
@@ -430,18 +430,27 @@ export function AutomationDetailView({
 
       <ResourceActivitySection label="Run history">
         {runsState.error !== null ? (
-          <ResourceDetailPanel className="px-3 py-6 text-center text-sm text-destructive">
+          <ResourceDetailPanel
+            surface="flat"
+            className="px-3 py-6 text-center text-sm text-destructive"
+          >
             Failed to load runs.
           </ResourceDetailPanel>
         ) : runsState.loading ? (
-          <ResourceDetailPanel className="px-3 py-6 text-center text-sm text-muted-foreground">
+          <ResourceDetailPanel
+            surface="flat"
+            className="px-3 py-6 text-center text-sm text-muted-foreground"
+          >
             Loading…
           </ResourceDetailPanel>
         ) : runsState.runs.length === 0 ? (
           <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
         ) : (
           <div className="space-y-2">
-            <ResourceDetailList>
+            <ResourceDetailList
+              surface="flat"
+              className="divide-y divide-border p-0"
+            >
               {runsState.runs.map((run) => (
                 <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
               ))}

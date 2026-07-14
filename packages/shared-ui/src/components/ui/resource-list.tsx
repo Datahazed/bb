@@ -848,17 +848,23 @@ export function ResourceListState({
   );
 }
 
+export type ResourceDetailSurface = "raised" | "flat";
+
 export function ResourceDetailPanel({
   children,
   className,
+  surface = "raised",
 }: {
   children: ReactNode;
   className?: string;
+  surface?: ResourceDetailSurface;
 }) {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md border border-border bg-surface-raised shadow-sm",
+        "overflow-hidden",
+        surface === "raised" &&
+          "rounded-md border border-border bg-surface-raised shadow-sm",
         className,
       )}
     >
@@ -870,12 +876,14 @@ export function ResourceDetailPanel({
 export function ResourceDetailList({
   children,
   className,
+  surface,
 }: {
   children: ReactNode;
   className?: string;
+  surface?: ResourceDetailSurface;
 }) {
   return (
-    <ResourceDetailPanel className={cn("p-1", className)}>
+    <ResourceDetailPanel surface={surface} className={cn("p-1", className)}>
       {children}
     </ResourceDetailPanel>
   );
@@ -906,8 +914,20 @@ export function ResourceDetailListItem({
   );
 }
 
-export function ResourcePropertyList({ children }: { children: ReactNode }) {
-  return <ResourceDetailPanel>{children}</ResourceDetailPanel>;
+export function ResourcePropertyList({
+  children,
+  className,
+  surface,
+}: {
+  children: ReactNode;
+  className?: string;
+  surface?: ResourceDetailSurface;
+}) {
+  return (
+    <ResourceDetailPanel surface={surface} className={className}>
+      {children}
+    </ResourceDetailPanel>
+  );
 }
 
 export interface ResourceDetailSectionProps {
