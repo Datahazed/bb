@@ -119,6 +119,11 @@ export type {
   PluginWireLookup,
 } from "./plugin-service-internal.js";
 
+export interface PluginSkillRootContribution {
+  pluginId: string;
+  rootPath: string;
+}
+
 export interface PluginService {
   /** Whether the `plugins` experiment is currently on. */
   isEnabled(): boolean;
@@ -266,7 +271,7 @@ export interface PluginService {
    * passed to resolveInjectedSkillSources per turn. Missing directories are
    * tolerated downstream; empty when the experiment is off.
    */
-  listSkillsRootPaths(): string[];
+  listSkillRootContributions(): PluginSkillRootContribution[];
   /**
    * Native tools of running plugins (bb.agents.registerTool), ordered by
    * plugin id then registration order, deduped defensively (first wins —
@@ -1393,10 +1398,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return fail(`bb ${registration.name} failed: ${outcome.error}`);
     },
 
-    listSkillsRootPaths() {
+    listSkillRootContributions() {
       return exposedLoadedEntries()
         .sort(([a], [b]) => a.localeCompare(b))
-        .flatMap(([, plugin]) => plugin.manifest.skillsRootPaths);
+        .flatMap(([pluginId, plugin]) =>
+          plugin.manifest.skillsRootPaths.map((rootPath) => ({
+            pluginId,
+            rootPath,
+          })),
+        );
     },
 
     listAgentTools() {

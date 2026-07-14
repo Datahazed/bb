@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useDebounceValue } from "usehooks-ts";
+import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
+  compareCommandSuggestionSections,
+  orderCommandSuggestionsBySection,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
-import { useProjectCommandsPages } from "./queries/project-queries";
-import { PATH_SUGGESTION_DEBOUNCE_MS } from "./usePathSuggestions";
-
-const COMMAND_SUGGESTION_PAGE_SIZE = 50;
+import { useProjectCommands } from "./queries/project-queries";
 
 export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
@@ -50,7 +48,7 @@ export interface CommandSuggestionPromptAction {
   };
 }
 
-function commandSuggestionMatchesQuery(
+export function commandSuggestionMatchesQuery(
   suggestion: ProviderCommandSuggestion,
   query: string,
 ): boolean {
@@ -66,6 +64,41 @@ function commandSuggestionMatchesQuery(
     .join(" ")
     .toLowerCase()
     .includes(query);
+}
+
+function commandSuggestionSearchNames(
+  suggestion: ProviderCommandSuggestion,
+): string[] {
+  const name = suggestion.name.toLowerCase();
+  if (suggestion.source !== "skill") {
+    return [name];
+  }
+  const separatorIndex = name.lastIndexOf(":");
+  return separatorIndex < 0 ? [name] : [name, name.slice(separatorIndex + 1)];
+}
+
+export function filterCommandSuggestions(
+  suggestions: readonly ProviderCommandSuggestion[],
+  query: string,
+): ProviderCommandSuggestion[] {
+  const normalizedQuery = query.toLowerCase();
+  return suggestions
+    .filter((suggestion) =>
+      commandSuggestionMatchesQuery(suggestion, normalizedQuery),
+    )
+    .sort((left, right) => {
+      const bySection = compareCommandSuggestionSections(left, right);
+      if (bySection !== 0) {
+        return bySection;
+      }
+      const leftPrefix = commandSuggestionSearchNames(left).some((name) =>
+        name.startsWith(normalizedQuery),
+      );
+      const rightPrefix = commandSuggestionSearchNames(right).some((name) =>
+        name.startsWith(normalizedQuery),
+      );
+      return leftPrefix === rightPrefix ? 0 : leftPrefix ? -1 : 1;
+    });
 }
 
 export function promptActionCommandSuggestions({
@@ -140,15 +173,7 @@ export function useCommandSuggestions(
     trigger !== null &&
     args.query !== null;
 
-  const [debouncedNonNullQuery] = useDebounceValue(
-    args.query,
-    PATH_SUGGESTION_DEBOUNCE_MS,
-  );
-  const debouncedQuery = args.query === null ? null : debouncedNonNullQuery;
   const trimmedQuery = args.query?.trim() ?? "";
-  const debouncedTrimmedQuery = debouncedQuery?.trim() ?? "";
-  const isDebouncing = isActive && trimmedQuery !== debouncedTrimmedQuery;
-  const loadMoreInFlightRef = useRef(false);
   const promptActionSuggestions = useMemo(
     () =>
       isActive
@@ -161,23 +186,11 @@ export function useCommandSuggestions(
     [args.promptActions, isActive, trigger, trimmedQuery],
   );
 
-  useEffect(() => {
-    loadMoreInFlightRef.current = false;
-  }, [
-    args.environmentId,
-    args.projectId,
-    args.providerId,
-    trigger,
-    debouncedTrimmedQuery,
-  ]);
-
-  const commandsQuery = useProjectCommandsPages(
+  const commandsQuery = useProjectCommands(
     {
       projectId: args.projectId,
       providerId: args.providerId,
       environmentId: args.environmentId,
-      query: debouncedTrimmedQuery,
-      limit: COMMAND_SUGGESTION_PAGE_SIZE,
     },
     { enabled: isActive },
   );
@@ -186,32 +199,22 @@ export function useCommandSuggestions(
     if (!isActive) {
       return [];
     }
-    const discoveredSuggestions = (commandsQuery.data?.pages ?? [])
-      .flatMap((page) => page.commands)
-      .map((command) => toProviderCommandSuggestion(command, args.providerId));
-    return mergeCommandSuggestions(
-      promptActionSuggestions,
-      discoveredSuggestions,
+    const discoveredSuggestions = filterCommandSuggestions(
+      (commandsQuery.data?.commands ?? []).map((command) =>
+        toProviderCommandSuggestion(command, args.providerId),
+      ),
+      trimmedQuery,
+    );
+    return orderCommandSuggestionsBySection(
+      mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
     );
   }, [
     args.providerId,
-    commandsQuery.data?.pages,
+    commandsQuery.data?.commands,
     isActive,
     promptActionSuggestions,
+    trimmedQuery,
   ]);
-
-  const hasMore = isActive && commandsQuery.hasNextPage === true;
-  const isLoadingMore = isActive && commandsQuery.isFetchingNextPage;
-  const fetchNextPage = commandsQuery.fetchNextPage;
-  const loadMore = useCallback(() => {
-    if (!hasMore || isLoadingMore || loadMoreInFlightRef.current) {
-      return;
-    }
-    loadMoreInFlightRef.current = true;
-    void fetchNextPage().finally(() => {
-      loadMoreInFlightRef.current = false;
-    });
-  }, [fetchNextPage, hasMore, isLoadingMore]);
 
   // Loading flips on only before any result is available. Once the first page
   // returns, fetching additional pages leaves suggestions populated — and a
@@ -221,7 +224,7 @@ export function useCommandSuggestions(
     isActive &&
     suggestions.length === 0 &&
     commandsQuery.data === undefined &&
-    (isDebouncing || commandsQuery.isPending || commandsQuery.isFetching);
+    (commandsQuery.isPending || commandsQuery.isFetching);
   const isError = isActive && commandsQuery.isError;
 
   return {
@@ -229,8 +232,8 @@ export function useCommandSuggestions(
     suggestions,
     isLoading,
     isError,
-    hasMore,
-    isLoadingMore,
-    loadMore,
+    hasMore: false,
+    isLoadingMore: false,
+    loadMore: () => {},
   };
 }
