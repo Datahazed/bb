@@ -10,6 +10,11 @@ import type {
 } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import {
+  RESOURCE_LIST_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
 import { appToast } from "@/components/ui/app-toast";
 import {
   SkillBrowseInstallControl,
@@ -30,7 +35,6 @@ import {
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
-import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   ConfirmDeleteDialog,
@@ -615,7 +619,7 @@ export function RegistrySkillsBrowsePage({
   );
 
   return (
-    <div className="space-y-4">
+    <div id="skills-browse-results" className="space-y-4">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
@@ -671,43 +675,14 @@ export function RegistrySkillsBrowsePage({
           ))}
         </ResourceBrowseGrid>
       )}
-      {pagination.total > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-          <span className="text-xs text-subtle-foreground">
-            {pagination.page * pagination.perPage + 1}–
-            {Math.min(
-              pagination.page * pagination.perPage + skills.length,
-              pagination.total,
-            )}{" "}
-            of {pagination.total}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pagination.page === 0}
-              onClick={() => onPageChange(pagination.page - 1)}
-            >
-              <Icon name="ChevronLeft" aria-hidden />
-              Previous
-            </Button>
-            <span className="min-w-20 text-center text-xs text-muted-foreground">
-              Page {pagination.page + 1}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!pagination.hasMore}
-              onClick={() => onPageChange(pagination.page + 1)}
-            >
-              Next
-              <Icon name="ChevronRight" aria-hidden />
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      <ResourcePagination
+        page={pagination.page}
+        pageSize={pagination.perPage}
+        total={pagination.total}
+        visibleCount={skills.length}
+        onPageChange={onPageChange}
+        scrollTargetId="skills-browse-results"
+      />
       <div className="flex justify-end px-1">
         <SkillsShAttributionLink />
       </div>
@@ -814,6 +789,15 @@ export function SkillsOverview({
       return applySortDirection(base, sortDirection);
     });
   }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
+  const installedPagination = useResourcePagination(visibleSkills, {
+    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    resetKey: [
+      normalizedQuery,
+      providerFilters.join(","),
+      sortMode,
+      sortDirection,
+    ].join("\u0000"),
+  });
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -848,7 +832,7 @@ export function SkillsOverview({
     />
   ) : (
     <ResourceListPanel>
-      {visibleSkills.map((skill) => (
+      {installedPagination.items.map((skill) => (
         <SkillRow
           key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
           skill={skill}
@@ -879,7 +863,7 @@ export function SkillsOverview({
       {activeMode === "browse" ? (
         browseContent
       ) : (
-        <div className="space-y-3">
+        <div id="skills-installed-results" className="space-y-3">
           <ResourceToolbar
             searchValue={query}
             searchPlaceholder="Search skills"
@@ -912,6 +896,16 @@ export function SkillsOverview({
             }
           />
           {installedBody}
+          {!hasError && !isLoading && visibleSkills.length > 0 ? (
+            <ResourcePagination
+              page={installedPagination.page}
+              pageSize={installedPagination.pageSize}
+              total={installedPagination.total}
+              visibleCount={installedPagination.visibleCount}
+              onPageChange={installedPagination.setPage}
+              scrollTargetId="skills-installed-results"
+            />
+          ) : null}
         </div>
       )}
     </ResourceCollectionPage>

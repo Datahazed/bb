@@ -3,6 +3,11 @@ import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import {
+  RESOURCE_GRID_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
@@ -53,9 +58,15 @@ export function BrowsePluginsTab({
     (entry) =>
       marketplaceFilter === null || entry.marketplaceId === marketplaceFilter,
   );
+  const pagination = useResourcePagination(entries, {
+    pageSize: RESOURCE_GRID_PAGE_SIZE,
+    resetKey: [query.trim().toLowerCase(), marketplaceFilter ?? "all"].join(
+      "\u0000",
+    ),
+  });
 
   const byCategory = new Map<string, MarketplaceSearchEntry[]>();
-  for (const entry of entries) {
+  for (const entry of pagination.items) {
     const category = entry.category ?? "Other";
     const bucket = byCategory.get(category);
     if (bucket === undefined) byCategory.set(category, [entry]);
@@ -63,7 +74,7 @@ export function BrowsePluginsTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div id="plugins-browse-results" className="space-y-4">
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="relative min-w-48 flex-1">
           <Icon
@@ -111,26 +122,36 @@ export function BrowsePluginsTab({
           }
         />
       ) : (
-        [...byCategory.entries()].map(([category, categoryEntries]) => (
-          <div key={category}>
-            <h3 className="mb-2 text-sm font-semibold text-foreground">
-              {category}
-            </h3>
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              {categoryEntries.map((entry) => (
-                <BrowseCard
-                  key={`${entry.marketplaceId}:${entry.entryId}`}
-                  entry={entry}
-                  marketplaceName={
-                    marketplaceNames.get(entry.marketplaceId) ??
-                    entry.marketplaceId
-                  }
-                  onInstall={onInstall}
-                />
-              ))}
+        <>
+          {[...byCategory.entries()].map(([category, categoryEntries]) => (
+            <div key={category}>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">
+                {category}
+              </h3>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {categoryEntries.map((entry) => (
+                  <BrowseCard
+                    key={`${entry.marketplaceId}:${entry.entryId}`}
+                    entry={entry}
+                    marketplaceName={
+                      marketplaceNames.get(entry.marketplaceId) ??
+                      entry.marketplaceId
+                    }
+                    onInstall={onInstall}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))
+          ))}
+          <ResourcePagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            visibleCount={pagination.visibleCount}
+            onPageChange={pagination.setPage}
+            scrollTargetId="plugins-browse-results"
+          />
+        </>
       )}
     </div>
   );

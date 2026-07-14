@@ -78,7 +78,10 @@ const GITHUB_MARKETPLACE_ENTRY = {
   compatible: true,
 };
 
-function installFetch(pluginsEnabled = true) {
+function installFetch(
+  pluginsEnabled = true,
+  plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN],
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -95,7 +98,7 @@ function installFetch(pluginsEnabled = true) {
       if (url.pathname === "/api/v1/plugins") {
         return responseJson({
           enabled: pluginsEnabled,
-          plugins: [AUTOMATIONS_PLUGIN],
+          plugins,
         });
       }
       if (url.pathname === "/api/v1/marketplaces") {
@@ -168,6 +171,47 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/tools/plugins/automations",
     );
+  });
+
+  it("paginates the installed plugin projection", async () => {
+    const plugins = Array.from({ length: 12 }, (_, index) => {
+      const ordinal = String(index + 1).padStart(2, "0");
+      return {
+        ...AUTOMATIONS_PLUGIN,
+        id: `plugin-${ordinal}`,
+        source: `builtin:plugin-${ordinal}`,
+        displayName: `Plugin ${ordinal}`,
+      };
+    });
+    installFetch(true, plugins);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Plugin 01")).toBeTruthy();
+    expect(screen.getByText("1–10 of 12")).toBeTruthy();
+    expect(screen.queryByText("Plugin 11")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByText("11–12 of 12")).toBeTruthy();
+    expect(screen.getByText("Plugin 11")).toBeTruthy();
+    expect(screen.queryByText("Plugin 01")).toBeNull();
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search installed plugins" }),
+      { target: { value: "Plugin 01" } },
+    );
+
+    expect(screen.getByText("Plugin 01")).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Results pagination" }),
+    ).toBeNull();
   });
 
   it("keeps installed plugins visible when marketplace management is off", async () => {

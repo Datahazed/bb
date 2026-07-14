@@ -3,6 +3,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
+  RESOURCE_LIST_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
+import {
   ResourceCollectionPage,
   ResourceListState,
   ResourceSortMenu,
@@ -132,6 +137,10 @@ export function PluginsOverview() {
         }),
     [installedSortDirection, normalizedInstalledQuery, plugins],
   );
+  const installedPagination = useResourcePagination(visiblePlugins, {
+    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    resetKey: [normalizedInstalledQuery, installedSortDirection].join("\u0000"),
+  });
 
   const changeMode = (mode: PluginsCollectionMode) => {
     if (!marketplaceManagementEnabled && INSTALLABLE_MODES.has(mode)) return;
@@ -209,7 +218,7 @@ export function PluginsOverview() {
     );
   } else {
     content = (
-      <div className="space-y-3">
+      <div id="plugins-installed-results" className="space-y-3">
         <ResourceToolbar
           searchValue={installedQuery}
           searchPlaceholder="Search installed plugins"
@@ -242,8 +251,20 @@ export function PluginsOverview() {
             message={`No plugins match "${installedQuery}"`}
           />
         ) : (
-          <InstalledPluginsTab plugins={visiblePlugins} />
+          <InstalledPluginsTab plugins={installedPagination.items} />
         )}
+        {!listQuery.isError &&
+        !(listQuery.isFetching && listQuery.data === undefined) &&
+        visiblePlugins.length > 0 ? (
+          <ResourcePagination
+            page={installedPagination.page}
+            pageSize={installedPagination.pageSize}
+            total={installedPagination.total}
+            visibleCount={installedPagination.visibleCount}
+            onPageChange={installedPagination.setPage}
+            scrollTargetId="plugins-installed-results"
+          />
+        ) : null}
         {!marketplaceManagementEnabled && systemConfig.data !== undefined ? (
           <p className="px-1 text-2xs text-subtle-foreground">
             Browsing and installation are off. Turn on Plugins in Settings →

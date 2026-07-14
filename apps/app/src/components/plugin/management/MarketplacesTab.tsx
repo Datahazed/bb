@@ -18,6 +18,11 @@ import {
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import {
+  RESOURCE_LIST_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
 import { appToast } from "@/components/ui/app-toast.js";
 import {
   invalidateMarketplaces,
@@ -54,9 +59,12 @@ export function MarketplacesTab({
   const marketplacesQuery = useMarketplaces({ enabled: true });
   const marketplaces = marketplacesQuery.data ?? [];
   const [removal, setRemoval] = useState<MarketplaceListItem | null>(null);
+  const pagination = useResourcePagination(marketplaces, {
+    pageSize: RESOURCE_LIST_PAGE_SIZE,
+  });
 
   return (
-    <div className="space-y-3">
+    <div id="plugin-marketplaces-results" className="space-y-3">
       {marketplaces.length === 0 ? (
         <EmptyState
           message={
@@ -68,7 +76,7 @@ export function MarketplacesTab({
       ) : (
         <div className="rounded-lg border border-border bg-card px-4 py-1">
           <div className="divide-y divide-border">
-            {marketplaces.map((marketplace) => (
+            {pagination.items.map((marketplace) => (
               <MarketplaceRow
                 key={marketplace.id}
                 marketplace={marketplace}
@@ -78,6 +86,14 @@ export function MarketplacesTab({
           </div>
         </div>
       )}
+      <ResourcePagination
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        total={pagination.total}
+        visibleCount={pagination.visibleCount}
+        onPageChange={pagination.setPage}
+        scrollTargetId="plugin-marketplaces-results"
+      />
       <p className="text-2xs text-subtle-foreground">
         Adding a marketplace installs nothing; refreshing a catalog never runs
         plugin code.

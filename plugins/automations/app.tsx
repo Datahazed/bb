@@ -42,6 +42,11 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Switch } from "@bb/shared-ui/switch";
+import {
+  RESOURCE_LIST_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ResourceBrowseGrid,
@@ -683,6 +688,15 @@ function OverviewView({
       return applyAutomationSortDirection(base, sortDirection);
     });
   }, [filteredEntries, sortDirection, sortMode]);
+  const installedPagination = useResourcePagination(visibleEntries, {
+    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    resetKey: [
+      normalizedQuery,
+      projectFilters.join(","),
+      sortMode,
+      sortDirection,
+    ].join("\u0000"),
+  });
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "project" && nextSort !== "alpha") return;
@@ -726,7 +740,7 @@ function OverviewView({
   } else {
     body = (
       <ResourceListPanel>
-        {visibleEntries.map((entry) => (
+        {installedPagination.items.map((entry) => (
           <OverviewRow
             key={entry.automation.id}
             entry={entry}
@@ -772,7 +786,7 @@ function OverviewView({
           ))}
         </ResourceBrowseGrid>
       ) : (
-        <div className="space-y-3">
+        <div id="automations-installed-results" className="space-y-3">
           <ResourceToolbar
             searchValue={query}
             searchPlaceholder="Search automations"
@@ -805,6 +819,16 @@ function OverviewView({
             }
           />
           {body}
+          {error === null && entries !== null && visibleEntries.length > 0 ? (
+            <ResourcePagination
+              page={installedPagination.page}
+              pageSize={installedPagination.pageSize}
+              total={installedPagination.total}
+              visibleCount={installedPagination.visibleCount}
+              onPageChange={installedPagination.setPage}
+              scrollTargetId="automations-installed-results"
+            />
+          ) : null}
         </div>
       )}
     </ResourceCollectionPage>

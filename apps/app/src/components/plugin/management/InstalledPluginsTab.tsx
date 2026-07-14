@@ -30,7 +30,7 @@ import {
 export function InstalledPluginsTab({
   plugins,
 }: {
-  plugins: PluginListItem[];
+  plugins: readonly PluginListItem[];
 }) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =

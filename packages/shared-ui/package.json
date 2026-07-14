@@ -194,6 +194,11 @@
       "types": "./src/components/ui/resource-list.tsx",
       "default": "./src/components/ui/resource-list.tsx"
     },
+    "./resource-pagination": {
+      "source": "./src/components/ui/resource-pagination.tsx",
+      "types": "./src/components/ui/resource-pagination.tsx",
+      "default": "./src/components/ui/resource-pagination.tsx"
+    },
     "./radio-group": {
       "source": "./src/components/ui/radio-group.tsx",
       "types": "./src/components/ui/radio-group.tsx",

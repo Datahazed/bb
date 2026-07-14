@@ -137,6 +137,41 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-label="View details for Useful skill"');
   });
 
+  it("paginates installed skills after sorting and filtering", () => {
+    const skills = Array.from({ length: 12 }, (_, index) => {
+      const ordinal = String(index + 1).padStart(2, "0");
+      return makeSkill({
+        name: `skill-${ordinal}`,
+        filePath: `/skills/skill-${ordinal}/SKILL.md`,
+      });
+    });
+    renderDom(
+      <SkillsOverview
+        skills={skills}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("1–10 of 12")).toBeTruthy();
+    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
+    expect(screen.getByText("skill-10")).toBeTruthy();
+    expect(screen.queryByText("skill-11")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByText("11–12 of 12")).toBeTruthy();
+    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
+    expect(screen.queryByText("skill-10")).toBeNull();
+    expect(screen.getByText("skill-11")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it("confirms before uninstalling an installed skill from a Browse card", () => {
     const registrySkill = makeRegistrySkill();
     const onUninstall = vi.fn();
