@@ -245,8 +245,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -764,21 +764,11 @@ declare const updateProjectSourceRequestSchema: z$1.ZodObject<{
     isDefault: z$1.ZodOptional<z$1.ZodLiteral<true>>;
 }, z$1.core.$strict>;
 type UpdateProjectSourceRequest = z$1.infer<typeof updateProjectSourceRequestSchema>;
-/**
- * Command typeahead query. Extends the shared project file-search query
- * (`query`/`limit`/`environmentId`, including the empty-string→null wire
- * convention) with the `provider` whose skill/command surface to discover.
- * `query` here is a case-insensitive substring filter on command name/description.
- * Namespaced skills also match on their local name after `:` (for example,
- * `review` matches `ottonomous:review`).
- */
+/** Query for the complete command catalog available to a project and provider. */
 declare const projectCommandsQuerySchema: z$1.ZodObject<{
-    query: z$1.ZodOptional<z$1.ZodString>;
-    limit: z$1.ZodOptional<z$1.ZodString>;
     environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
     provider: z$1.ZodString;
-    offset: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strip>;
+}, z$1.core.$strict>;
 type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
@@ -844,32 +834,32 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     target: z$1.ZodLiteral<"uncommitted">;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"branch_committed">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"all">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"commit">;
     sha: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
@@ -2988,6 +2978,27 @@ interface PluginServerApi {
      */
     readonly loopbackBaseUrl: string;
 }
+interface PluginSharedPortTunnelIdentity {
+    /** Gate routing label assigned to this machine. */
+    label: string;
+    /** Gate apex without a scheme, e.g. "getbb.app". */
+    baseDomain: string;
+}
+interface PluginHosts {
+    /**
+     * Ensure this enrolled host has a gate label and return its read-only public
+     * identity. The daemon chooses the trusted gate and desired label; plugins
+     * cannot influence either credential-bearing destination.
+     */
+    ensureSharedPortTunnel(hostId: string): Promise<PluginSharedPortTunnelIdentity>;
+    /**
+     * Replace this plugin's desired shared-loopback ports for one host. The
+     * server aggregates declarations, owns generations, and delivers the
+     * resulting set to that host's daemon. Tunnel identity is deliberately not
+     * accepted here: it is owned by the daemon's trusted enrollment.
+     */
+    declareSharedPorts(hostId: string, ports: readonly number[]): void;
+}
 interface PluginStatusApi {
     /**
      * Mark this plugin `needs-configuration` (with a message shown in
@@ -3032,6 +3043,8 @@ interface BbPluginApi {
     readonly status: PluginStatusApi;
     /** Read-only facts about the running server (loopback base URL). */
     readonly server: PluginServerApi;
+    /** Server-to-daemon host control-plane declarations. */
+    readonly hosts: PluginHosts;
     /**
      * The full BB SDK, bound to this server over loopback (design §4.1).
      * Bind-gated: reading this before the host binds the SDK throws. The real
@@ -3056,4 +3069,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN, PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN };
-export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginInteractions, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginInteractions, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
