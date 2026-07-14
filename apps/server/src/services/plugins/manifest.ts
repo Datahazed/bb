@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import semver from "semver";
 import { z } from "zod";
+import { derivePluginId } from "@bb/domain";
 
 /**
  * The `bb` field of a plugin's package.json. `server` is the backend entry
@@ -8,7 +10,8 @@ import { z } from "zod";
  * `bb plugin build`; unused until the frontend runtime phase). `skills`
  * relocates/filters the auto-imported `skills/` convention directory. `logo`
  * relocates the auto-detected `logo.(svg|png|webp)` root file; `logoDark`
- * does the same for the optional dark-theme variant (`logo-dark.*`).
+ * does the same for the optional dark-theme variant (`logo-dark.*`). `icon`
+ * is a host icon-name hint used when the plugin ships no logo.
  */
 const bbManifestFieldSchema = z.object({
   server: z.string().min(1),
@@ -18,16 +21,41 @@ const bbManifestFieldSchema = z.object({
    * "Remote access"); falls back to the derived plugin id when absent.
    */
   displayName: z.string().min(1).optional(),
+  icon: z.string().min(1).optional(),
   skills: z.array(z.string().min(1)).optional(),
   logo: z.string().min(1).optional(),
   logoDark: z.string().min(1).optional(),
+  themes: z
+    .array(
+      z.object({
+        id: z
+          .string()
+          .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)
+          .max(64),
+        name: z.string().min(1),
+        description: z.string().min(1).optional(),
+        css: z.string().min(1),
+      }),
+    )
+    .optional(),
 });
 
 const pluginPackageJsonSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
   description: z.string().optional(),
-  engines: z.object({ bb: z.string().min(1).optional() }).optional(),
+  engines: z
+    .object({
+      bb: z.string().min(1).optional(),
+      bbPluginSdk: z
+        .string()
+        .min(1)
+        .refine((range) => semver.validRange(range) !== null, {
+          message: "must be a valid semver range",
+        })
+        .optional(),
+    })
+    .optional(),
   bb: bbManifestFieldSchema,
 });
 
@@ -41,8 +69,12 @@ export interface PluginManifest {
   description: string | null;
   /** `bb.displayName` — human nav/header label; null when not declared. */
   displayName: string | null;
+  /** `bb.icon` — host icon-name hint; null when not declared. */
+  icon: string | null;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
+  /** semver range from engines.bbPluginSdk; absent manifests are legacy. */
+  bbPluginSdkRange: string | undefined;
   /** Absolute path of the backend entry file. */
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
@@ -59,6 +91,13 @@ export interface PluginManifest {
    * `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp` at the plugin root.
    */
   logoDarkPath: string | undefined;
+  /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
+  themes: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    cssPath: string;
+  }>;
   /**
    * Absolute skills-root directories auto-imported as the plugin skills
    * tier (design §4.4). Defaults to `<rootDir>/skills`; `bb.skills` entries
@@ -69,26 +108,7 @@ export interface PluginManifest {
   rootDir: string;
 }
 
-/**
- * `bb-plugin-linear` → `linear`; scoped names drop the scope. The id
- * namespaces routes, storage, settings, and CLI subcommands.
- */
-export function derivePluginId(packageName: string): string {
-  const base = packageName.includes("/")
-    ? (packageName.split("/").at(-1) ?? packageName)
-    : packageName;
-  const id = base
-    .replace(/^bb-plugin-/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/^-+|-+$/g, "");
-  if (id.length === 0) {
-    throw new Error(
-      `cannot derive a plugin id from package name "${packageName}"`,
-    );
-  }
-  return id;
-}
+export { derivePluginId } from "@bb/domain";
 
 /** Resolve a manifest-relative entry path, rejecting escapes out of rootDir. */
 function resolveEntry(rootDir: string, entry: string, label: string): string {
@@ -159,6 +179,33 @@ export async function readPluginManifest(
   };
   const logoPath = resolveLogoEntry(bb.logo, "bb.logo");
   const logoDarkPath = resolveLogoEntry(bb.logoDark, "bb.logoDark");
+  const themeIds = new Set<string>();
+  const themes = (bb.themes ?? []).map((theme) => {
+    if (themeIds.has(theme.id)) {
+      throw new Error(`manifest bb.themes contains duplicate id "${theme.id}"`);
+    }
+    themeIds.add(theme.id);
+    if (!theme.css.toLowerCase().endsWith(".css")) {
+      throw new Error(
+        `manifest bb.themes theme "${theme.id}" must point at a .css file`,
+      );
+    }
+    return {
+      id: theme.id,
+      name: theme.name,
+      description: theme.description ?? null,
+      cssPath: resolveEntry(rootDir, theme.css, `bb.themes.${theme.id}.css`),
+    };
+  });
+  for (const theme of themes) {
+    try {
+      await stat(theme.cssPath);
+    } catch {
+      throw new Error(
+        `manifest bb.themes theme "${theme.id}" points at a missing file`,
+      );
+    }
+  }
   return {
     id: derivePluginId(name),
     name,
@@ -168,11 +215,14 @@ export async function readPluginManifest(
         ? description
         : null,
     displayName: bb.displayName ?? null,
+    icon: bb.icon ?? null,
     bbEngineRange: engines?.bb,
+    bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     logoPath,
     logoDarkPath,
+    themes,
     skillsRootPaths,
     rootDir,
   };

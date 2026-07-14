@@ -15,6 +15,8 @@ import {
   reorderProject,
   updateProject,
   updateProjectSource,
+  setProjectGitRemoteUrlIfMissing,
+  isSqliteUniqueConstraintOnColumns,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -47,6 +49,7 @@ import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { runLiveHostCommand } from "../services/hosts/live-command.js";
 import {
   deleteProjectSkill,
   listProjectSkillFiles,
@@ -82,13 +85,16 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
+import { resolveSkillCatalogSources } from "../services/skills/skill-catalog.js";
 import {
-  assertPrimaryHostId,
+  assertUsableHostId,
   requirePrimaryHostId,
+  resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 type ProjectResponseRow = ProjectResponseProjectFields;
+const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 
 function toProjectResponseProjectFields(
   project: ProjectResponseRow,
@@ -97,6 +103,7 @@ function toProjectResponseProjectFields(
     id: project.id,
     kind: project.kind,
     name: project.name,
+    gitRemoteUrl: project.gitRemoteUrl,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
@@ -280,6 +287,39 @@ interface ResolvedHostPath {
   path: string;
 }
 
+interface ResolvedProjectSource {
+  path: string;
+  gitRemoteUrl: string | null;
+}
+
+function projectSourceHostConflict(): ApiError {
+  return new ApiError(
+    409,
+    "project_source_host_conflict",
+    "Project already has a source on this host",
+  );
+}
+
+async function inspectProjectGitRemoteBestEffort(
+  deps: AppDeps,
+  args: { hostId: string; path: string },
+): Promise<string | null> {
+  try {
+    const inspection = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "project.inspect", path: args.path },
+    });
+    return inspection.gitRemoteUrl;
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, hostId: args.hostId, path: args.path },
+      "Unable to inspect project source; continuing without a Git remote anchor",
+    );
+    return null;
+  }
+}
+
 interface ResolveEnvironmentPathArgs {
   environmentId: string;
   projectId: string;
@@ -305,7 +345,7 @@ function resolveEnvironmentPath(
   if (environment.projectId !== args.projectId) {
     throw new ApiError(404, "environment_not_found", "Environment not found");
   }
-  assertPrimaryHostId(deps, { hostId: environment.hostId });
+  assertUsableHostId(deps, { hostId: environment.hostId });
   return { hostId: environment.hostId, path: environment.path };
 }
 
@@ -326,7 +366,7 @@ function resolveProjectSourcePath(
   args: ResolveProjectSourcePathArgs,
 ): ResolvedHostPath {
   const hostId = args.hostId ?? requirePrimaryHostId(deps);
-  assertPrimaryHostId(deps, { hostId });
+  assertUsableHostId(deps, { hostId });
   const source = getProjectSourceByHost(deps.db, args.projectId, hostId);
   if (!source || source.type !== "local_path") {
     throw new ApiError(
@@ -362,12 +402,21 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const { source } = payload;
     if (source.type === "local_path") {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
-      assertPrimaryHostId(deps, { hostId: source.hostId });
+      assertUsableHostId(deps, { hostId: source.hostId });
     }
+    const gitRemoteUrl = await inspectProjectGitRemoteBestEffort(deps, source);
     const { project } = createProject(deps.db, deps.hub, {
       name: payload.name,
       source,
     });
+    if (gitRemoteUrl !== null) {
+      setProjectGitRemoteUrlIfMissing(
+        deps.db,
+        deps.hub,
+        project.id,
+        gitRemoteUrl,
+      );
+    }
     return context.json(buildProjectResponses(deps, project.id)[0], 201);
   });
 
@@ -449,15 +498,72 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.createSource, async (context, payload) => {
-    requirePublicStandardProject(deps.db, context.req.param("id"));
-    if (payload.type === "local_path") {
-      requireNonDestroyedHostWithStatus(deps, payload.hostId);
-      assertPrimaryHostId(deps, { hostId: payload.hostId });
+    const projectId = context.req.param("id");
+    const project = requirePublicStandardProject(deps.db, projectId);
+    requireNonDestroyedHostWithStatus(deps, payload.hostId);
+    assertUsableHostId(deps, { hostId: payload.hostId });
+    if (getProjectSourceByHost(deps.db, projectId, payload.hostId)) {
+      throw projectSourceHostConflict();
     }
-    const source = createProjectSource(deps.db, deps.hub, {
-      projectId: context.req.param("id"),
-      ...payload,
-    });
+    let resolved: ResolvedProjectSource;
+    if (payload.type === "clone") {
+      const remoteUrl = payload.remoteUrl ?? project.gitRemoteUrl;
+      if (!remoteUrl) {
+        throw new ApiError(
+          400,
+          "missing_git_remote",
+          "A remoteUrl is required because this project has no git remote anchor",
+        );
+      }
+      resolved = await runLiveHostCommand(deps, {
+        hostId: payload.hostId,
+        timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
+        command: {
+          type: "project.clone",
+          remoteUrl,
+          projectSlug: project.name,
+          ...(payload.targetPath !== undefined
+            ? { targetPath: payload.targetPath }
+            : {}),
+        },
+      });
+    } else {
+      resolved = {
+        path: payload.path,
+        gitRemoteUrl: await inspectProjectGitRemoteBestEffort(deps, payload),
+      };
+    }
+    let source;
+    try {
+      source = createProjectSource(deps.db, deps.hub, {
+        projectId,
+        type: "local_path",
+        hostId: payload.hostId,
+        path: resolved.path,
+      });
+    } catch (error) {
+      // A clone can be orphaned only if another request wins this race after
+      // the up-front check; the database constraint remains the backstop.
+      if (
+        error instanceof Error &&
+        isSqliteUniqueConstraintOnColumns(error, {
+          columnNames: ["project_id", "host_id"],
+          indexName: "project_sources_project_host_idx",
+          tableName: "project_sources",
+        })
+      ) {
+        throw projectSourceHostConflict();
+      }
+      throw error;
+    }
+    if (resolved.gitRemoteUrl !== null) {
+      setProjectGitRemoteUrlIfMissing(
+        deps.db,
+        deps.hub,
+        projectId,
+        resolved.gitRemoteUrl,
+      );
+    }
     return context.json(source, 201);
   });
 
@@ -468,7 +574,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       sourceId: context.req.param("sourceId"),
     });
     if (existing.type === "local_path") {
-      assertPrimaryHostId(deps, { hostId: existing.hostId });
+      assertUsableHostId(deps, { hostId: existing.hostId });
     }
     if (payload.type !== existing.type) {
       throw new ApiError(
@@ -623,6 +729,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       environmentId: query.environmentId,
       projectId,
     });
+    const primaryHostId = resolvePrimaryHostId(deps);
+    const isRemoteHost =
+      primaryHostId !== null && workspace.hostId !== primaryHostId;
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: workspace.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -634,6 +743,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         ...(deps.config.inheritedSkillsRootPaths.length > 0
           ? { additionalSkillsRootPaths: deps.config.inheritedSkillsRootPaths }
           : {}),
+        // These absolute roots live on the primary machine. Remote daemons
+        // receive the same content-addressed catalog used for runtime injection.
+        injectedSkillSources: isRemoteHost
+          ? resolveSkillCatalogSources(deps)
+          : [],
       },
     });
     return context.json(

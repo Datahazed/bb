@@ -19,9 +19,10 @@ import {
   createServerRowFn,
   disconnectFn,
   removeServerFn,
+  revokeMachineFn,
   getDashboard,
 } from "@/server/fns";
-import type { IssuedCode, ServerSummary } from "@/server/api";
+import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 
@@ -1040,6 +1041,15 @@ function AccountDashboard({ state }: { state: ServerState }) {
       onServerCreated={(id) => setPendingId(id)}
     />
   );
+  const manageServer =
+    state.servers.find((server: ServerSummary) => server.online) ??
+    state.servers[0] ??
+    null;
+
+  async function revoke(machine: MachineSummary) {
+    await revokeMachineFn({ data: machine.id });
+    await router.invalidate();
+  }
 
   return (
     <Shell top width="md" footer={<AccountFooter state={state} />}>
@@ -1065,6 +1075,47 @@ function AccountDashboard({ state }: { state: ServerState }) {
             autoPair={single}
           />
         ))}
+      </div>
+      <div className="mt-3 rounded-xl border border-border bg-card p-2 shadow-sm">
+        <div className="flex items-center px-3 pb-1.5 pt-1.5">
+          <h3 className="flex-1 text-[15px] font-semibold tracking-tight">
+            Machines
+          </h3>
+          {manageServer !== null ? (
+            <a
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
+              href={`${manageServer.serverUrl}/settings/machines`}
+            >
+              Manage machines in bb
+              <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-3" />
+            </a>
+          ) : null}
+        </div>
+        {state.machines.length === 0 ? (
+          <p className="px-3 pb-2 text-xs text-subtle-foreground">
+            Add machines from bb Settings → Machines.
+          </p>
+        ) : (
+          state.machines.map((machine: MachineSummary) => (
+            <div
+              key={machine.id}
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5"
+            >
+              <StatusDot
+                state={machine.lastSeenAt === null ? "new" : "online"}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {machine.name ?? `Machine ${machine.id.slice(0, 8)}`}
+              </span>
+              <button
+                className="text-xs text-destructive-text hover:underline"
+                onClick={() => void revoke(machine)}
+              >
+                Revoke
+              </button>
+            </div>
+          ))
+        )}
       </div>
       {dialog}
     </Shell>

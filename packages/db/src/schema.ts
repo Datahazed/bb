@@ -92,8 +92,10 @@ export const hosts = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     type: text("type").$type<HostType>().notNull(),
+    connectMachineId: text("connect_machine_id"),
     destroyedAt: integer("destroyed_at"),
     lastSeenAt: integer("last_seen_at"),
+    lastRejectedProtocolVersion: integer("last_rejected_protocol_version"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -106,6 +108,7 @@ export const projects = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<ProjectKind>().notNull().default("standard"),
     name: text("name").notNull(),
+    gitRemoteUrl: text("git_remote_url"),
     sortKey: text("sort_key").notNull().default("V"),
     deletedAt: integer("deleted_at"),
     createdAt: integer("created_at").notNull(),
@@ -147,6 +150,9 @@ export const systemExperiments = sqliteTable("system_experiments", {
   bbConnect: integer("bb_connect", { mode: "boolean" })
     .notNull()
     .default(false),
+  multiMachine: integer("multi_machine", { mode: "boolean" })
+    .notNull()
+    .default(false),
   popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
   popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
@@ -158,6 +164,30 @@ export const appSettings = sqliteTable("app_settings", {
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),
+  codexMemoryEnabled: integer("codex_memory_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  claudeCodeMemoryEnabled: integer("claude_code_memory_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
+  codexSubagentsDisabled: integer("codex_subagents_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  claudeCodeSubagentsDisabled: integer("claude_code_subagents_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  claudeCodeWorkflowsDisabled: integer("claude_code_workflows_disabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -166,8 +196,52 @@ export const appSettings = sqliteTable("app_settings", {
 // memory served via GET /api/v1/plugins.
 export const installedPlugins = sqliteTable("plugins", {
   id: text("id").primaryKey(),
-  /** Install source spec: "path:<abs>" | "git:<spec>" | "npm:<spec>" | "builtin:<name>". */
+  /** Legacy display/diagnostic spec. Normalized columns below are authoritative. */
   source: text("source").notNull(),
+  provenance: text("provenance", {
+    enum: ["builtin", "direct", "marketplace"],
+  })
+    .notNull()
+    .default("direct"),
+  marketplaceId: text("marketplace_id"),
+  marketplaceEntryId: text("marketplace_entry_id"),
+  sourceKind: text("source_kind", {
+    enum: ["path", "builtin", "npm", "git"],
+  })
+    .notNull()
+    .default("path"),
+  sourcePath: text("source_path"),
+  sourceBuiltinName: text("source_builtin_name"),
+  sourceNpmPackage: text("source_npm_package"),
+  sourceNpmRegistry: text("source_npm_registry"),
+  sourceNpmRequestedSpec: text("source_npm_requested_spec"),
+  sourceNpmSpecKind: text("source_npm_spec_kind", {
+    enum: ["default", "exact", "tag", "range"],
+  }),
+  sourceGitUrl: text("source_git_url"),
+  sourceGitSubdirectory: text("source_git_subdirectory"),
+  sourceGitRequestedRef: text("source_git_requested_ref"),
+  sourceGitRefKind: text("source_git_ref_kind", {
+    enum: ["branch", "tag", "commit"],
+  }),
+  npmResolvedVersion: text("npm_resolved_version"),
+  npmIntegrity: text("npm_integrity"),
+  gitResolvedCommit: text("git_resolved_commit"),
+  lastUpdateCheckAt: integer("last_update_check_at"),
+  availableCompatibleVersion: text("available_compatible_version"),
+  newestIncompatibleVersion: text("newest_incompatible_version"),
+  updateStatusDetail: text("update_status_detail"),
+  lastFailureVersion: text("last_failure_version"),
+  lastFailureAt: integer("last_failure_at"),
+  lastFailureDetail: text("last_failure_detail"),
+  // deletePluginArtifact clears this before deleting in the same transaction.
+  // NO ACTION is intentional: drizzle-kit cannot faithfully emit SET NULL
+  // when adding this circular FK to the pre-existing plugins table.
+  activeArtifactId: text("active_artifact_id").references(
+    (): AnySQLiteColumn => pluginArtifacts.id,
+  ),
+  /** 0 marks rows created before normalized persistence; startup upgrades to 1. */
+  normalizationVersion: integer("normalization_version").notNull().default(0),
   /** Absolute directory containing the plugin's package.json. */
   rootDir: text("root_dir").notNull(),
   /** package.json version recorded at install/update time. */
@@ -176,6 +250,89 @@ export const installedPlugins = sqliteTable("plugins", {
   /** Builtin remove tombstone; non-null rows are hidden and not auto-reconciled. */
   removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const pluginArtifacts = sqliteTable(
+  "plugin_artifacts",
+  {
+    id: text("id").primaryKey(),
+    // Deliberately not an FK: removing a registration retains immutable
+    // artifact history for later retention/GC policy.
+    pluginId: text("plugin_id").notNull(),
+    sourceKind: text("source_kind", { enum: ["npm", "git"] }).notNull(),
+    npmResolvedVersion: text("npm_resolved_version"),
+    gitResolvedCommit: text("git_resolved_commit"),
+    path: text("path").notNull(),
+    integrity: text("integrity"),
+    contentHash: text("content_hash"),
+    validationResult: text("validation_result", {
+      enum: ["pending", "valid"],
+    }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    validatedAt: integer("validated_at"),
+  },
+  (table) => [index("plugin_artifacts_plugin_idx").on(table.pluginId)],
+);
+
+export const pluginStateSnapshots = sqliteTable(
+  "plugin_state_snapshots",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id").notNull(),
+    fromArtifactId: text("from_artifact_id"),
+    toArtifactId: text("to_artifact_id").notNull(),
+    snapshotPath: text("snapshot_path").notNull(),
+    databasePath: text("database_path"),
+    statePath: text("state_path").notNull(),
+    secretsPath: text("secrets_path"),
+    // Null only for snapshots created by the initial Phase 3b implementation.
+    registrationPath: text("registration_path"),
+    status: text("status", {
+      enum: [
+        "pending",
+        "ready",
+        "rollback-pending",
+        "restoring",
+        "restored",
+        "failed",
+      ],
+    }).notNull(),
+    rollbackCandidateVersion: text("rollback_candidate_version"),
+    rollbackSourceFingerprint: text("rollback_source_fingerprint"),
+    rollbackBbVersion: text("rollback_bb_version"),
+    rollbackSdkVersion: text("rollback_sdk_version"),
+    rollbackDetail: text("rollback_detail"),
+    createdAt: integer("created_at").notNull(),
+    retainedUntil: integer("retained_until").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("plugin_state_snapshots_plugin_idx").on(table.pluginId),
+    index("plugin_state_snapshots_retention_idx").on(table.retainedUntil),
+  ],
+);
+
+export const marketplaces = sqliteTable("marketplaces", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  sourceKind: text("source_kind", {
+    enum: ["builtin", "path", "git"],
+  }).notNull(),
+  location: text("location").notNull(),
+  requestedGitRef: text("requested_git_ref"),
+  resolvedGitCommit: text("resolved_git_commit"),
+  cachePath: text("cache_path"),
+  // The validated last-known-good catalog. Keeping this beside refresh state
+  // makes searches network-free and lets a failed refresh retain old data.
+  catalogJson: text("catalog_json"),
+  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
+  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
+  lastError: text("last_error"),
+  /** Removal tombstone so default catalogs are not restored after restart. */
+  removedAt: integer("removed_at"),
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -403,6 +560,18 @@ export const threads = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
+
+// Server-owned tab descriptors for a thread's shared secondary-panel workspace.
+// Presentation state such as active tab, panel visibility, and width remains
+// client-local; this row stores only the ordered durable tab list.
+export const threadTabs = sqliteTable("thread_tabs", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  tabsJson: text("tabs_json").notNull(),
+  revision: integer("revision").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export const threadFolders = sqliteTable(
   "thread_folders",

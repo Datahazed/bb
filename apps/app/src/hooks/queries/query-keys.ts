@@ -13,6 +13,7 @@ import {
 export const HOSTS_QUERY_KEY = "hosts";
 export const HOST_QUERY_KEY = "host";
 export const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
+export const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 export const PROJECTS_QUERY_KEY = "projects";
 export const PROJECT_PATHS_QUERY_KEY = "projectPaths";
 export const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
@@ -25,6 +26,7 @@ export const THREADS_QUERY_KEY = "threads";
 export const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
+export const THREAD_TABS_QUERY_KEY = "threadTabs";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
 export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
@@ -97,6 +99,11 @@ export type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 export type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
 export type HostDirectoryQueryKey = readonly [
   typeof HOST_DIRECTORY_QUERY_KEY,
+  HostQueryId,
+  string | null,
+];
+export type HostCloneDefaultPathQueryKey = readonly [
+  typeof HOST_CLONE_DEFAULT_PATH_QUERY_KEY,
   HostQueryId,
   string | null,
 ];
@@ -173,6 +180,11 @@ export type DisabledThreadListQueryKey = readonly [
 ];
 export type ThreadQueryKeyPrefix = readonly [typeof THREAD_QUERY_KEY];
 export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
+export type ThreadTabsQueryKeyPrefix = readonly [typeof THREAD_TABS_QUERY_KEY];
+export type ThreadTabsQueryKey = readonly [
+  typeof THREAD_TABS_QUERY_KEY,
+  string,
+];
 export type ThreadDetailBootstrapQueryKeyPrefix = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
 ];
@@ -431,6 +443,7 @@ export type HostProviderCliStatusQueryKey = readonly [
 ];
 export type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
+  string | null,
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -473,6 +486,13 @@ export function hostDirectoryQueryKey(
   path: string | null,
 ): HostDirectoryQueryKey {
   return [HOST_DIRECTORY_QUERY_KEY, hostId, path];
+}
+
+export function hostCloneDefaultPathQueryKey(
+  hostId: HostQueryId,
+  projectId: string | null,
+): HostCloneDefaultPathQueryKey {
+  return [HOST_CLONE_DEFAULT_PATH_QUERY_KEY, hostId, projectId];
 }
 
 export function projectsQueryKey(): ProjectsQueryKey {
@@ -619,6 +639,14 @@ export function disabledThreadListQueryKey(
 
 export function threadQueryKey(threadId: string): ThreadQueryKey {
   return [THREAD_QUERY_KEY, threadId];
+}
+
+export function threadTabsQueryKey(threadId: string): ThreadTabsQueryKey {
+  return [THREAD_TABS_QUERY_KEY, threadId];
+}
+
+export function allThreadTabsQueryKeyPrefix(): ThreadTabsQueryKeyPrefix {
+  return [THREAD_TABS_QUERY_KEY];
 }
 
 export function threadDetailBootstrapQueryKey(
@@ -1026,8 +1054,10 @@ export function hostProviderCliStatusQueryKey(
   return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
 }
 
-export function systemUsageLimitsQueryKey(): SystemUsageLimitsQueryKey {
-  return [SYSTEM_USAGE_LIMITS_QUERY_KEY];
+export function systemUsageLimitsQueryKey(
+  hostId: string | null,
+): SystemUsageLimitsQueryKey {
+  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

@@ -10,6 +10,16 @@ import {
   promptInputToDraft,
 } from "./prompt-draft";
 
+const AUTOMATION_COMMAND_RESOURCE: PromptMentionResource = {
+  kind: "command",
+  trigger: "/",
+  name: "automation",
+  source: "command",
+  origin: "user",
+  label: "automation",
+  argumentHint: null,
+};
+
 describe("prompt draft helpers", () => {
   it("drops invalid legacy raw text drafts", () => {
     const parsed = parsePromptDraftStorage("Investigate flaky login redirect");
@@ -105,7 +115,74 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("leaves literal automation text unchanged", () => {
+  it("expands automation command pills before mapping draft text to prompt input", () => {
+    const input = promptDraftToInput({
+      text: "/automation keep checking CI",
+      mentions: [
+        {
+          start: 0,
+          end: "/automation".length,
+          resource: AUTOMATION_COMMAND_RESOURCE,
+        },
+      ],
+      attachments: [],
+    });
+
+    expect(input).toEqual([
+      {
+        type: "text",
+        text: "Create a new bb automation to keep checking CI",
+        mentions: [],
+      },
+    ]);
+  });
+
+  it("keeps mention ranges correct after expanding an automation command pill", () => {
+    const threadResource: PromptMentionResource = {
+      kind: "thread",
+      threadId: "thr_child",
+      label: "Child thread",
+    };
+    const text = "/automation inspect @thread";
+    const threadToken = "@thread";
+    const threadStart = text.indexOf(threadToken);
+    if (threadStart < 0) {
+      throw new Error("Expected thread token in test text");
+    }
+
+    const input = promptDraftToInput({
+      text,
+      mentions: [
+        {
+          start: 0,
+          end: "/automation".length,
+          resource: AUTOMATION_COMMAND_RESOURCE,
+        },
+        {
+          start: threadStart,
+          end: threadStart + threadToken.length,
+          resource: threadResource,
+        },
+      ],
+      attachments: [],
+    });
+
+    expect(input).toEqual([
+      {
+        type: "text",
+        text: "Create a new bb automation to inspect @thread",
+        mentions: [
+          {
+            start: "Create a new bb automation to inspect ".length,
+            end: "Create a new bb automation to inspect @thread".length,
+            resource: threadResource,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("leaves literal automation text unchanged when it is not a command pill", () => {
     const input = promptDraftToInput({
       text: "/automation keep checking CI",
       mentions: [],

@@ -1,13 +1,25 @@
+import { readFile } from "node:fs/promises";
+import { extname, resolve } from "node:path";
+import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
+  getAppKeybindingOverrides,
   getExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
+  hasActiveThreadAttention,
   setAppSettings,
+  setAppKeybindingOverrides,
   setExperiments,
   setStoredAppearance,
 } from "@bb/db";
-import { customThemeNameSchema, isBuiltInThemeId } from "@bb/domain";
+import {
+  applyAppKeybindingOverrides,
+  customThemeNameSchema,
+  isBuiltInThemeId,
+  type AppKeybindingOverrides,
+  type AppTheme,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -34,7 +46,14 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
+
+const CUSTOM_ACP_LOGO_CONTENT_TYPES = {
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+} as const;
 
 export function registerSystemRoutes(
   app: Hono,
@@ -48,30 +67,65 @@ export function registerSystemRoutes(
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
 
-  function resolvePrimaryHostPlatform() {
-    const hostId = resolvePrimaryHostId(deps);
-    return hostId === null ? null : deps.hub.getDaemonPlatformForHost(hostId);
+  get(routes.attention, (context) =>
+    context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
+  );
+
+  function readAppKeybindingOverrides(): AppKeybindingOverrides {
+    try {
+      return getAppKeybindingOverrides(deps.db);
+    } catch (error) {
+      deps.logger.error(
+        { err: error },
+        "Stored keyboard shortcut overrides are invalid; using defaults",
+      );
+      return [];
+    }
   }
 
-  function buildSystemConfigResponse() {
+  async function resolveSelectedTheme(
+    themeId: string,
+    faviconColor: AppTheme["faviconColor"],
+  ): Promise<AppTheme> {
+    const pluginCss = await pluginService.readThemeCss(themeId);
+    if (pluginCss !== null)
+      return { themeId, customCss: pluginCss, faviconColor };
+    return resolveAppTheme(themeRoot, themeId, faviconColor);
+  }
+
+  async function buildSystemConfigResponse() {
+    const keybindingOverrides = readAppKeybindingOverrides();
+    const primaryHostId = resolvePrimaryHostId(deps);
     return {
       generalSettings: getAppSettings(deps.db),
+      keybindings: applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        keybindingOverrides,
+      ),
+      defaultKeybindings: DEFAULT_APP_KEYBINDINGS,
+      keybindingOverrides,
       experiments: getExperiments(deps.db),
-      appearance: resolveAppTheme(
-        themeRoot,
+      appearance: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),
       ),
       customThemes: listCustomThemeNames(themeRoot),
+      pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
-      primaryHostPlatform: resolvePrimaryHostPlatform(),
+      primaryHostId,
+      primaryHostPlatform:
+        primaryHostId === null
+          ? null
+          : deps.hub.getDaemonPlatformForHost(primaryHostId),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
       dataDir: deps.config.dataDir,
     };
   }
 
-  get(routes.config, (context) => context.json(buildSystemConfigResponse()));
+  get(routes.config, async (context) =>
+    context.json(await buildSystemConfigResponse()),
+  );
 
   put(routes.generalSettings, (context, payload) => {
     setAppSettings(deps.db, payload);
@@ -80,6 +134,12 @@ export function registerSystemRoutes(
       reason: "settings-updated",
     });
     return context.json(getAppSettings(deps.db));
+  });
+
+  put(routes.keyboardSettings, (context, payload) => {
+    setAppKeybindingOverrides(deps.db, payload);
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(getAppKeybindingOverrides(deps.db));
   });
 
   put(routes.experiments, (context, payload) => {
@@ -91,7 +151,8 @@ export function registerSystemRoutes(
     const next = getExperiments(deps.db);
     if (
       previous.plugins !== next.plugins ||
-      previous.bbConnect !== next.bbConnect
+      previous.bbConnect !== next.bbConnect ||
+      previous.multiMachine !== next.multiMachine
     ) {
       // Live toggle: plugin-affecting experiments load/unload matching rows.
       void pluginService.onExperimentsChanged().catch((error) => {
@@ -101,9 +162,10 @@ export function registerSystemRoutes(
     return context.json(next);
   });
 
-  put(routes.appearance, (context, payload) => {
+  put(routes.appearance, async (context, payload) => {
     const { themeId } = payload;
-    if (!isBuiltInThemeId(themeId)) {
+    const pluginCss = await pluginService.readThemeCss(themeId);
+    if (!isBuiltInThemeId(themeId) && pluginCss === null) {
       if (!customThemeNameSchema.safeParse(themeId).success) {
         throw new ApiError(
           400,
@@ -125,15 +187,19 @@ export function registerSystemRoutes(
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(resolveAppTheme(themeRoot, themeId, faviconColor));
+    return context.json(
+      pluginCss === null
+        ? resolveAppTheme(themeRoot, themeId, faviconColor)
+        : { themeId, customCss: pluginCss, faviconColor },
+    );
   });
 
-  get(routes.themes, (context) =>
+  get(routes.themes, async (context) =>
     context.json({
       dir: themeRoot,
       custom: listCustomThemeNames(themeRoot),
-      active: resolveAppTheme(
-        themeRoot,
+      plugins: pluginService.listThemes(),
+      active: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),
       ),
@@ -154,8 +220,52 @@ export function registerSystemRoutes(
     context.json(await listSystemProviderInfos(deps)),
   );
 
-  get(routes.usageLimits, async (context) =>
-    context.json(await getProviderUsageLimits(deps)),
+  get(routes.providerLogo, async (context) => {
+    const providerId = context.req.param("id");
+    const agent = deps.config.customAcpAgents.find(
+      (candidate) =>
+        formatCustomAcpAgentProviderId(candidate.id) === providerId,
+    );
+    if (agent?.logo === undefined) {
+      throw new ApiError(
+        404,
+        "provider_logo_not_found",
+        `Provider '${providerId}' has no configured logo.`,
+      );
+    }
+
+    const extension = extname(agent.logo).toLowerCase();
+    const contentType =
+      CUSTOM_ACP_LOGO_CONTENT_TYPES[
+        extension as keyof typeof CUSTOM_ACP_LOGO_CONTENT_TYPES
+      ];
+    if (contentType === undefined) {
+      throw new ApiError(
+        415,
+        "unsupported_provider_logo",
+        `Provider '${providerId}' has an unsupported logo format.`,
+      );
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(resolve(deps.config.dataDir, agent.logo));
+    } catch {
+      throw new ApiError(
+        404,
+        "provider_logo_not_found",
+        `Provider '${providerId}' logo file was not found.`,
+      );
+    }
+    return context.body(new Uint8Array(bytes), 200, {
+      "cache-control": "no-store",
+      "content-type": contentType,
+      "x-content-type-options": "nosniff",
+    });
+  });
+
+  get(routes.usageLimits, async (context, query) =>
+    context.json(await getProviderUsageLimits(deps, query)),
   );
 
   get(routes.executionOptions, async (context, query) =>

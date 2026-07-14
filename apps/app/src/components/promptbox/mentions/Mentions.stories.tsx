@@ -195,6 +195,7 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
     providerLabel: "Linear issues",
     title: "Fix login bug",
     subtitle: "In progress",
+    icon: null,
     replacement: "Fix login bug",
   },
   {
@@ -205,6 +206,7 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
     providerLabel: "Linear issues",
     title: "Ship mention providers end-to-end",
     subtitle: "Todo",
+    icon: null,
     replacement: "Ship mention providers end-to-end",
   },
   {
@@ -215,6 +217,7 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
     providerLabel: "Linear docs",
     title: "Onboarding guide",
     subtitle: null,
+    icon: null,
     replacement: "Onboarding guide",
   },
   // A DIFFERENT plugin whose provider label collides with linear's "Linear
@@ -228,6 +231,7 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
     providerLabel: "Linear issues",
     title: "Mirrored triage sweep",
     subtitle: "Mirror",
+    icon: null,
     replacement: "Mirrored triage sweep",
   },
 ];

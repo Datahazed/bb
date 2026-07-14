@@ -9,7 +9,10 @@ import {
   automationEditBodyValue,
 } from "bb-plugin-automations/detail-view";
 import { ResourceListPanel } from "@bb/shared-ui/resource-list";
-import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import { SkillDetailDialogView } from "@/views/SkillsView";
 import { PluginDetail, PluginListRow } from "@/views/ToolsView";
 
@@ -53,6 +56,7 @@ const PLUGINS: readonly PluginListItem[] = [
     statusDetail: null,
     description: null,
     displayName: null,
+    icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
@@ -64,6 +68,10 @@ const PLUGINS: readonly PluginListItem[] = [
       summary: "Inspect and manage automations (scheduled agent/script runs)",
     },
     app: { hasApp: true },
+    provenance: "builtin",
+    marketplaceName: null,
+    sourceDisplay: "builtin · automations",
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
   },
   {
     id: "connect",
@@ -77,6 +85,7 @@ const PLUGINS: readonly PluginListItem[] = [
     description:
       "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
     displayName: "Remote access",
+    icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
@@ -89,6 +98,10 @@ const PLUGINS: readonly PluginListItem[] = [
         "Expose this bb at https://<handle>.getbb.app (pair with --code/--server from the dashboard)",
     },
     app: { hasApp: true },
+    provenance: "builtin",
+    marketplaceName: null,
+    sourceDisplay: "builtin · connect",
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
   },
 ] satisfies readonly PluginListItem[];
 

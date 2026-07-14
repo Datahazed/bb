@@ -8,7 +8,7 @@ export default {
 const USAGE: Partial<Record<IconName, string>> = {
   AlertCircle: "Dialog warning state",
   AlertTriangle: "“Project folder not found” indicator on sidebar project rows",
-  AlignLeft: "Mobile/coarse-pointer sidebar toggle",
+  AlignLeft: "Left-aligned menu",
   AppWindow: "Right-panel app fallback and HTML/mockup file visual",
   Archive: "“Archived threads” header link, archived-thread banner",
   ArchiveRestore: "Unarchive button on archived threads",
@@ -73,13 +73,14 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Triple-dot actions menu trigger (project list, projects, threads, project sources, hosts)",
   NewTab: "Right-panel New tab tab",
   PanelBottom: "Available built-in app icon",
-  PanelLeft: "Sidebar toggle (desktop / fine pointer)",
+  PanelLeft: "Sidebar toggle on every viewport",
   PanelRight:
     "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
   Pin: "Pin thread action",
   PinOff: "Unpin thread action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
+  Repeat: "Automation prompt action",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
 import type { MessageProseSelection } from "./SelectableMessageProse";
 
@@ -35,7 +42,43 @@ function mockCompactViewport() {
   }));
 }
 
+function mockPointerCoarse() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 describe("TimelineSelectionMenu", () => {
+  it("renders only the actions with handlers", () => {
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Reply in side chat" }),
+    ).toBeNull();
+  });
+
+  it("does not mount when no action handlers are supplied", () => {
+    render(
+      <TimelineSelectionMenu selection={makeSelection()} onDismiss={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("renders from a pointer release point without a physical anchor node", () => {
     const { container } = render(
       <TimelineSelectionMenu
@@ -47,6 +90,21 @@ describe("TimelineSelectionMenu", () => {
 
     expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
     expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it("uses the selected anchor side when positioning from a pointer release", () => {
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection({
+          anchorPoint: { x: 42, y: 84 },
+          anchorSide: "bottom",
+        })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('[data-side="bottom"]')).toBeTruthy();
   });
 
   it("stays anchored instead of rendering as a compact viewport drawer", () => {
@@ -61,5 +119,96 @@ describe("TimelineSelectionMenu", () => {
 
     expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
     expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
+  });
+
+  it("uses a compact menu that prefers above coarse-pointer selections", () => {
+    mockPointerCoarse();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    expect(button.className).toContain("max-md:pointer-coarse:min-h-7");
+    expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
+  });
+
+  it("activates a touch action on pointer-up without waiting for click", () => {
+    const onAddToChat = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onAddToChat={onAddToChat}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Add to chat" });
+    fireEvent.pointerDown(button, { pointerType: "touch" });
+    fireEvent.pointerUp(button, { pointerType: "touch" });
+    fireEvent.click(button);
+
+    expect(onAddToChat).toHaveBeenCalledTimes(1);
+    expect(onAddToChat).toHaveBeenCalledWith("selected text");
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the composer before a touch add-to-chat action returns", () => {
+    function ComposerFocusHandoff() {
+      const [selection, setSelection] = useState<MessageProseSelection | null>(
+        makeSelection(),
+      );
+      const [focusRequest, setFocusRequest] = useState(0);
+      const inputRef = useRef<HTMLInputElement>(null);
+      useLayoutEffect(() => {
+        if (focusRequest > 0) {
+          inputRef.current?.focus();
+        }
+      }, [focusRequest]);
+
+      return (
+        <>
+          <input ref={inputRef} aria-label="Chat composer" />
+          <TimelineSelectionMenu
+            selection={selection}
+            onAddToChat={() => setFocusRequest((request) => request + 1)}
+            onDismiss={() => setSelection(null)}
+          />
+        </>
+      );
+    }
+
+    render(<ComposerFocusHandoff />);
+    const action = screen.getByRole("button", { name: "Add to chat" });
+    fireEvent.pointerDown(action, { pointerType: "touch" });
+    fireEvent.pointerUp(action, { pointerType: "touch" });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Chat composer" }),
+    );
+  });
+
+  it("passes the selection branch point to side-chat replies", () => {
+    const onReplyInSideChat = vi.fn();
+    render(
+      <TimelineSelectionMenu
+        selection={makeSelection()}
+        onDismiss={vi.fn()}
+        onReplyInSideChat={onReplyInSideChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
+
+    expect(onReplyInSideChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "selected text",
+        sourceSeqEnd: 12,
+      }),
+    );
   });
 });

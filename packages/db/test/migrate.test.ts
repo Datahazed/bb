@@ -207,29 +207,40 @@ function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
-  // tables (added by 0039/0041), app_theme (added by 0042), and the thread
-  // folder schema (thread folder columns + thread_folders table).
+  // tables (added by 0039/0041), app_theme (added by 0042), the thread folder
+  // schema (thread folder columns + thread_folders table), thread tabs, and
+  // normalized plugin persistence tables.
+  db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_state_snapshots").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
+  db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  db.$client
+    .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
+    .run();
   dropThreadFolderSchema(db);
   // system_experiments predates thread search, so the table itself isn't
-  // rewound — but its plugins column (added by 0049) and bb_connect column
-  // (added under its old name by 0053 and renamed later) are, so the forward
-  // re-migrate can re-add them.
+  // rewound — but its plugins, bb_connect, and multi_machine columns are, so
+  // the forward re-migrate can re-add them.
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
     .run();
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
     .run();
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN multi_machine")
+    .run();
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
+  dropProjectGitRemoteUrlColumn(db);
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -272,6 +283,8 @@ const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
 const threadFoldersMigrationWhen = 1782252763916;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
+const pendingInteractionsMigrationWhen = 1783626227375;
+const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -388,6 +401,8 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropProjectGitRemoteUrlColumn(db);
+  db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
     DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
     DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
@@ -408,6 +423,15 @@ function dropPost0023Tables(db: DbConnection): void {
   }
 
   dropThreadFolderSchema(db);
+}
+
+function dropProjectGitRemoteUrlColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(projects)")
+    .all();
+  if (columns.some((column) => column.name === "git_remote_url")) {
+    db.$client.prepare("ALTER TABLE projects DROP COLUMN git_remote_url").run();
+  }
 }
 
 /**
@@ -1174,6 +1198,72 @@ describe("migrate", () => {
           )
           .get(branchLocalThreadSearchMigrationWhen),
       ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays pending-interactions migration after branch-local tab history", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        DROP TABLE pending_interactions;
+        CREATE TABLE pending_interactions (
+          id text PRIMARY KEY NOT NULL,
+          thread_id text NOT NULL,
+          turn_id text NOT NULL,
+          provider_id text NOT NULL,
+          provider_thread_id text NOT NULL,
+          provider_request_id text NOT NULL,
+          status text NOT NULL,
+          payload text NOT NULL,
+          resolution text,
+          status_reason text,
+          created_at integer NOT NULL,
+          resolved_at integer,
+          updated_at integer NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX pending_interactions_provider_request_idx
+          ON pending_interactions (provider_id, provider_thread_id, provider_request_id);
+        CREATE INDEX pending_interactions_thread_created_idx
+          ON pending_interactions (thread_id, created_at);
+        CREATE INDEX pending_interactions_thread_status_created_idx
+          ON pending_interactions (thread_id, status, created_at);
+        CREATE INDEX pending_interactions_status_created_idx
+          ON pending_interactions (status, created_at);
+      `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(pendingInteractionsMigrationWhen);
+      db.$client
+        .prepare<InsertMigrationParameters>(
+          `
+            INSERT INTO __drizzle_migrations (hash, created_at)
+            VALUES (?, ?)
+          `,
+        )
+        .run("branch-local-thread-tabs", branchLocalThreadTabsMigrationWhen);
+
+      migrate(db);
+
+      const columns = db.$client
+        .prepare<[], TableNameRow>(
+          "SELECT name FROM pragma_table_info('pending_interactions') ORDER BY cid",
+        )
+        .all()
+        .map((row) => row.name);
+      expect(columns).toContain("origin_kind");
+      expect(columns).toContain("plugin_id");
+      expect(columns).toContain("renderer_id");
+      expect(columns).toContain("expires_at");
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
+        pendingInteractionsMigrationWhen,
+      );
     } finally {
       closeConnection(db);
     }

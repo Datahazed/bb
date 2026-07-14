@@ -18,6 +18,32 @@ can remain available even when the experiment is off; `connect` additionally
 requires the "bb connect" experiment. Plugin state lives under
 `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
 
+The builtin Custom instructions plugin adds a multiline editor under Settings
+→ Custom instructions. Saved text is persisted on this bb host and included in
+agent task instructions; blank text contributes nothing.
+
+The Memory plugin is an opt-in install from the default BB Official marketplace:
+`bb plugin install memory@bb-official`. Once installed, it injects a compact global and
+current-project memory index into agent context and progressively discloses
+full records through CLI-only commands. Because its store works across
+providers, we recommend disabling provider-native memory under Settings →
+Providers to avoid duplicate or conflicting stores. Settings → Memory lists
+every global and project memory and supports version-checked edits and soft
+deletion.
+
+  bb memory catalog [--scope project|global|all] [--json]
+  bb memory search <query> [--scope project|global|all] [--json]
+  bb memory get <id> [--scope project|global|all] [--json]
+  bb memory add --scope project|global --name <name> --summary <text>
+                --details <text> --reason <text> [--kind <kind>]
+                [--tag <tag>]... [--importance <0-100>] [--pinned] [--json]
+  bb memory update <id> --expected-version <n> [fields...] [--json]
+  bb memory forget <id> --expected-version <n> --reason <text> [--json]
+  bb memory history <id> [--scope project|global|all] [--json]
+
+Project writes use the invoking CLI's current project. Global writes require
+the explicit `--scope global` flag.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
@@ -29,10 +55,39 @@ never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-  bb plugin install <src>        Install from a local path, builtin:<name>,
-                                 git:<url>@<ref>, or npm:<name>@<version>
+  bb plugin marketplace add <source> [--name <n>] [--yes]
+  bb plugin marketplace list [--json]
+  bb plugin marketplace update [name]
+  bb plugin marketplace remove <name>
+                                 Remove a catalog; installed plugins remain
+                                 installed with direct provenance
+  bb plugin search <query>       Search all configured marketplaces
+  bb plugin install <entry>[@<marketplace>]
+                                 Install a unique marketplace entry (qualify
+                                 with @marketplace when ambiguous), a local
+                                 path, builtin:<name>,
+                                 git:<url>@<ref>, or
+                                 npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
-                                 pass --yes to skip)
+                                 pass --yes to skip). Managed git:/npm:
+                                 installs refuse engines.bb / engines.bbPluginSdk
+                                 mismatches, manifest/artifact identity
+                                 mismatches, and ids reserved by builtins
+                                 Omitted npm specs, ranges, dist-tags, and git
+                                 branches track; exact npm versions, git tags,
+                                 and git commits are pinned
+  bb plugin outdated             Check installed plugins for compatible
+                                 updates (table; --json for raw results).
+                                 Columns: installed, latest compatible,
+                                 blocked newer (incompatible releases not
+                                 selected), status. Dev builds (bb 0.0.0)
+                                 annotate that engines.bb is not enforced
+  bb plugin update <id> | --all  Apply compatible updates for one plugin or
+                                 every tracking plugin with an update. Same
+                                 full-trust confirmation as
+                                 install (--yes skips; non-TTY refuses without
+                                 --yes). Use outdated to preview; pinned
+                                 installs stay put
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -51,23 +106,78 @@ added/updated/unchanged counts.
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); no server
-                                 required
+                                 (app.js, app.css, app.meta.json). Each
+                                 *.meta.json is stamped with SDK major/version,
+                                 artifactFormatVersion, pluginId, pluginVersion,
+                                 and builtWith (bb + plugin SDK versions); no
+                                 server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its frontend bundle
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
 
-Frontend builds are automatic once installed: path and git installs compile
-dist/ at install time (a build failure fails the install), and the server
-rebuilds them at load after a bb upgrade. npm packages must publish a
-prebuilt dist/ (app.js + app.meta.json) or the install is refused.
+Plugin marketplaces
 
-The backend half is prebuilt too: when a builtin/git/npm install ships a
-dist/server.js built for the running SDK major, the server loads it instead
-of the TypeScript source — consumers never need npm or node_modules. Path
-installs always load server.ts from source, so `bb plugin dev`/reload see
-edits immediately.
+A marketplace is a catalog (`marketplace.json`) that lists plugins others can
+discover and install. Adding a marketplace registers and refreshes that catalog
+only — it installs nothing. Catalog sources: a local directory (`path:` or a
+filesystem path), `owner/repo[@ref]` (GitHub shorthand), or a git URL with an
+optional `@ref`. Server routes live under `/api/v1/marketplaces`.
+
+BB starts with the removable `BB Official` marketplace configured. It includes
+GitHub, Docs, and Memory, which remain opt-in installs (`bb plugin install
+github@bb-official`, `bb plugin install simple-notes@bb-official`, or
+`bb plugin install memory@bb-official`). Removing the catalog is remembered
+across restarts.
+
+Trust model: every remote/git source requires an interactive trust confirmation
+before add (catalogs can introduce full-trust plugin code later). Pass `--yes`
+to skip; non-TTY refuses without `--yes`. Unmistakable local path forms
+(`path:`, `./…`, or absolute paths) skip the prompt; ambiguous bare sources
+are conservatively prompted. Trusting a marketplace does not install plugins —
+install still prompts separately as full-trust server code.
+
+Refresh vs plugin update: `bb plugin marketplace update [name]` re-fetches
+catalog metadata (one marketplace, or all when name is omitted). It does not
+upgrade installed plugins. Failed refresh keeps the last-known-good cached
+catalog and records the error (list shows "refresh failed" state).
+`bb plugin outdated` / `bb plugin update` move installed plugin artifacts for
+tracking sources.
+
+Updates are manual: `bb plugin outdated` checks tracking sources and
+`bb plugin update` applies compatible candidates. Reinstalling an
+already-installed managed plugin is refused — use `bb plugin update`. A failed
+activation restores the pre-update snapshot and leaves the latest failure
+visible as needing attention. Exact npm versions, git tags and commits, and path
+sources are pinned; npm ranges/omitted specs/dist-tags, GitHub Release semver
+ranges, and git branches track compatible updates. GitHub Release entries use
+published `.tgz` assets and BB verifies GitHub's current SHA-256 digest before
+install. Release assets may be mutable, so replacing an asset under an existing
+tag changes what a future install receives.
+
+Removing a marketplace always keeps its installed plugins and converts them to
+direct provenance while preserving each plugin's source intent.
+
+Search and install disambiguation: `bb plugin search <query>` matches id,
+display name, description, and category across configured marketplaces (status:
+installed / compatible / requires newer bb). Install a bare marketplace entry
+name only when it is unique across catalogs; qualify as
+`<entry>@<marketplace>` when ambiguous. To select an npm version, tag, or range,
+use a direct `npm:<package>@<version|tag|range>` install. Escape hatches that
+skip marketplace resolution: `path:`, `npm:`, `git:`, `builtin:` prefixes (and
+path-like syntax).
+
+Frontend builds are automatic once installed: path installs and git installs
+without a prebuilt app compile dist/ at install time (a build failure fails the
+install), provided their imported dependencies are already available. Git and
+npm plugins may also ship a metadata-validated prebuilt app; npm and GitHub
+Release packages must do so or the install is refused. The server rebuilds
+source-built apps after a bb upgrade.
+
+The backend half is prebuilt too: when a builtin/git/npm or GitHub Release
+install ships a dist/server.js built for the running SDK major, the server
+loads it instead of the TypeScript source. Path installs always load server.ts
+from source, so `bb plugin dev`/reload see edits immediately.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,
@@ -95,7 +205,9 @@ file link for a one-off choice), and messageDirective (replace a leaf
 component; unknown, disabled, incomplete, code-fenced, or crashing
 directives fall back to the original source; components receive a nullable
 openWorkspaceFile(path) callback for opening a worktree-relative file in the
-host workspace viewer). Hooks:
+host workspace viewer and a nullable
+openThreadPanel({ actionId, title?, params? }) callback for opening one of the
+same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
 useBbNavigate, and useComposer (quote selections / insert mention pills
 into the chat composer draft). Components are vendored shadcn source the plugin owns (the
@@ -106,8 +218,8 @@ running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
 renderer) are runtime-shimmed (never bundled), everything else
-bundles from the plugin's node_modules (`npm install` for authors;
-consumers install prebuilt dist). A crashing slot collapses to a
+bundles from the plugin's node_modules (`npm install` for authors; BB installs
+release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
 (same data as `bb plugin config`) also appear on each plugin's detail page.
@@ -128,8 +240,16 @@ for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
 watches and reloads on every save. The manifest is package.json: `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
 (frontend entry), optional `bb.skills` (skills directories auto-imported
-into agent threads; default `skills/`), and `engines.bb` (supported bb
-range). The plugin id is the package name minus `bb-plugin-`.
+into agent threads; default `skills/`), `engines.bb` (supported bb range),
+and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
+writes `"^0.2.0"` for SDK 0.2.0). The plugin id is the package name minus
+`bb-plugin-`.
+
+Plugins can contribute palettes with `bb.themes`: an array of
+`{ id, name, description?, css }`, where `css` is a plugin-relative `.css`
+file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
+list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
+removing the owning plugin makes bb fall back to the default palette.
 
 Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
 shows it wherever the plugin's contributions appear — the sidebar entry,
@@ -137,8 +257,11 @@ panel title bar, composer command and mention menus, thread action
 buttons, and the Plugins surface. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
-the app is in dark mode. Without a logo bb falls back to the contribution's
-named icon. Reload the plugin to pick up logo changes.
+the app is in dark mode. Without a logo, manifest-level `bb.icon` is the
+canonical app icon on every plugin surface; contribution icon hints are the
+fallback when it is omitted. Unknown icon names use the generic fallback.
+Reload the plugin to pick up logo or icon
+changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
@@ -185,7 +308,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
-The `examples/plugins/` directory of a bb checkout also has
-reference plugins: github (full-stack: gh-CLI-backed issue/PR browser on
-vendored shadcn components), slack-bot (webhook bot), agent-enrichment
-(agent surfaces), and small-ux-pack (host-rendered UI).
+The `marketplace/plugins/` directory contains the BB Official GitHub, Docs, and
+Memory plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
+(webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
+(host-rendered UI).

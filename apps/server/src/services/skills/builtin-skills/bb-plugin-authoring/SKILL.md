@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" },
   "bb": { "server": "./server.ts", "app": "./app.tsx", "skills": ["skills"] }
 }
 ```
@@ -41,10 +41,16 @@ The manifest is `package.json`:
   prefer when its SDK major matches, so consumers never need npm or
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
-  and git installs build it automatically at install time.
+  installs and git installs without a prebuilt app build it automatically at
+  install time when their imported dependencies are already available. Git
+  plugins may instead ship a metadata-validated prebuilt app.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
+- `bb.themes` (optional) — contributes palettes to Settings → Appearance and
+  `bb theme list`. Each entry is
+  `{ id, name, description?, css: "./themes/name.css" }`; bb namespaces its
+  selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins contribute.
 - Logo (optional, convention over configuration) — a `logo.svg`, `logo.png`,
   or `logo.webp` at the plugin root (that precedence) is auto-detected and
   shown wherever bb renders your plugin's contributions: the sidebar entry,
@@ -54,18 +60,42 @@ The manifest is `package.json`:
   dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
   at the root (same precedence), or `bb.logoDark` (same rules) — is
   preferred whenever the app is in dark mode, falling back to the light
-  logo. Without a logo, contributions fall back to their named `icon` hint
-  or a generic bolt. Picked up on `bb plugin reload`. Inline icons must use
-  `currentColor` for their stroke/fill and take their color from semantic
+  logo. Without a logo, manifest-level `bb.icon` is the plugin's canonical app
+  icon across every host-rendered plugin surface; a contribution's own `icon`
+  hint is the fallback when the manifest omits one. Unknown hints use a generic
+  icon. Picked up on `bb plugin reload`. Inline icons
+  must use `currentColor` for their stroke/fill and take their color from semantic
   text-token classes; never hardcode gray or palette values. An SVG loaded
   through `<img>` cannot inherit `currentColor`, so omit the logo and use a
   named `icon` hint when a monochrome glyph should match the surrounding bb
   chrome. Reserve logo assets for intentionally branded artwork (and provide
   a dark variant when needed).
-- `engines.bb` — semver range checked against the bb version at load.
+- `engines.bb` — optional semver range checked against the bb app version.
+- `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
+  (currently `0.2.0`; the scaffold writes `"^0.2.0"`). Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
+  the running SDK; path installs surface it as `incompatible` at load.
+  Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
+  candidates that satisfy these ranges; newer incompatible releases are
+  reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
+  enforcing `engines.bb` and annotate that on check results.
+- **Manual updates:** `bb plugin outdated` checks tracking sources and
+  `bb plugin update` applies compatible candidates (reinstall of an already
+  installed managed plugin is refused). A failed activation **rolls back** to
+  the previous state snapshot and records the failure for the user. Keep
+  `engines.*` honest and ship load-safe factories so an update never strands
+  users.
+- `bb plugin build` stamps authoritative metadata into both
+  `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
+  `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
+  `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
+  artifacts whose `pluginId`/`pluginVersion` disagree with the package
+  manifest, or whose SDK major does not match the host.
 - The plugin id is the package name minus the `bb-plugin-` prefix
   (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
-  and CLI commands.
+  and CLI commands. Ids reserved by builtins (`automations`, `connect`,
+  `custom-instructions`, `inline-vis`, `secrets`) cannot be
+  installed from a non-`builtin:` source — use `builtin:<name>` instead.
 
 The scaffold ships the full API as bundled type declarations in `types/`
 (`bb-plugin-sdk.d.ts`, plus `bb-plugin-sdk-app.d.ts` for `--app`); its
@@ -82,6 +112,57 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 `secrets/` (secret settings + HTTP token), `logs/plugin.log` (JSONL,
 rotated at 5MB). Settings edits never auto-reload — `bb plugin reload <id>`
 after configuring.
+
+## Publishing to a marketplace
+
+A marketplace is a directory (local path or git repo) whose root has
+`marketplace.json`. Catalog schema version is currently **1**:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "my-market",
+  "displayName": "My Market",
+  "plugins": [
+    {
+      "id": "notes",
+      "displayName": "Notes",
+      "description": "Local notes",
+      "source": {
+        "githubRelease": {
+          "repository": "acme/plugins",
+          "package": "bb-plugin-notes",
+          "range": "^1.0.0",
+          "tagTemplate": "plugin-notes-v{version}",
+          "assetTemplate": "bb-plugin-notes-{version}.tgz"
+        }
+      },
+      "category": "productivity",
+      "installation": { "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" } }
+    }
+  ]
+}
+```
+
+- **source** — one of `npm` (`package`, optional `registry` / `range`),
+  `githubRelease` (`repository`, `package`, semver `range`, plus
+  `tagTemplate` and `assetTemplate` containing `{version}` exactly once),
+  `git` (`url`, `ref`, optional `subdir`), or `path` (relative path **only**
+  for local path marketplaces; remote/git catalogs cannot list path entries).
+  GitHub Release assets are npm-compatible `.tgz` archives produced after
+  `bb plugin build`; BB selects published, non-draft releases with
+  GitHub-provided SHA-256 digests and verifies the archive before installation.
+  Releases may be mutable, so replacing an asset under an existing tag changes
+  what a future install receives.
+- **category** (optional) — free-form string; `bb plugin search` matches it.
+- **installation.engines** (optional) — catalog-level `bb` / `bbPluginSdk`
+  ranges. These **can narrow but never widen** the plugin package manifest's
+  `engines.bb` / `engines.bbPluginSdk`: the catalog range must be a semver
+  subset of the manifest range, or install is refused.
+
+Users add your catalog with `bb plugin marketplace add <source>` (trust prompt
+for remotes; add installs nothing), then `bb plugin search` / `bb plugin install
+<entry>[@<marketplace>]`. See `bb guide plugins` for CLI details.
 
 ## The backend factory
 
@@ -114,14 +195,21 @@ on the plugin detail page and editable via `bb plugin config <id> set <key>
 
 ```ts
 const settings = bb.settings.define({
-  apiKey: { type: "string", label: "API key", secret: true },      // 0600 file, never in db or frontend
+  apiKey: { type: "string", label: "API key", secret: true }, // 0600 file, never in db or frontend
   teamKey: { type: "string", label: "Team", default: "" },
-  mode: { type: "select", label: "Mode", options: ["fast", "slow"], default: "fast" },
+  mode: {
+    type: "select",
+    label: "Mode",
+    options: ["fast", "slow"],
+    default: "fast",
+  },
   verbose: { type: "boolean", label: "Verbose", default: false },
-  project: { type: "project", label: "Project" },                  // project picker, stores a proj_* id
+  project: { type: "project", label: "Project" }, // project picker, stores a proj_* id
 });
-const { apiKey, teamKey } = await settings.get();  // load-safe; re-read inside handlers for freshness
-settings.onChange((next, prev) => { /* fires after a settings save */ });
+const { apiKey, teamKey } = await settings.get(); // load-safe; re-read inside handlers for freshness
+settings.onChange((next, prev) => {
+  /* fires after a settings save */
+});
 ```
 
 Typing rule: a descriptor **with** `default` yields a non-optional value
@@ -169,8 +257,8 @@ portability.
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
-  environment: { type: "project-default" },   // server resolves the project's default environment
-  prompt: "Work on this issue…",              // prompt XOR input — exactly one
+  environment: { type: "project-default" }, // server resolves the project's default environment
+  prompt: "Work on this issue…", // prompt XOR input — exactly one
   title: "ENG-42: fix the flaky test",
 });
 ```
@@ -192,10 +280,10 @@ const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
 
 const saved = await bb.sdk.files.write({
   path: "/home/me/notes/todo.md",
-  rootPath: "/home/me/notes",     // optional: confine writes beneath this root
+  rootPath: "/home/me/notes", // optional: confine writes beneath this root
   content: "# Todo\n",
-  expectedSha256: file.sha256,    // CAS guard; omit for unconditional, null for create-only
-  mode: 0o600,                    // optional POSIX mode for a newly created file; existing mode is preserved
+  expectedSha256: file.sha256, // CAS guard; omit for unconditional, null for create-only
+  mode: 0o600, // optional POSIX mode for a newly created file; existing mode is preserved
 });
 if (saved.outcome === "conflict") {
   // File changed since the read (saved.currentSha256, null = deleted) —
@@ -207,6 +295,20 @@ if (saved.outcome === "conflict") {
 `bb.sdk.files.list({ path, query?, limit? })` is a recursive fuzzy file
 listing under a directory. Writes cap at 25 MB and return
 `{ outcome: "written", sha256, sizeBytes }`.
+
+For filesystem-backed products that need a tree or mutations,
+`bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
+returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`
+apply the same optional `hostId` routing and `rootPath` confinement as
+read/write. Mutations are not automatically retried; `move` refuses to replace
+an existing destination, and `remove` requires `recursive: true` for non-empty
+directories.
+
+`bb.sdk.files.createPreview({ hostId?, rootPath, ttlMs? })` returns a temporary
+path-shaped `baseUrl`. Append individually encoded relative path segments to
+serve browser assets from that confined host root. This is the preferred
+transport for plugin images and sandboxed HTML with sibling-relative assets;
+preview URLs expire and never reveal the host id or absolute root.
 
 ### bb.on — thread lifecycle events
 
@@ -252,8 +354,10 @@ handlers):
 ```ts
 bb.rpc.register({
   listIssues(input: unknown) {
-    const filter = typeof (input as { filter?: unknown })?.filter === "string"
-      ? (input as { filter: string }).filter : undefined;
+    const filter =
+      typeof (input as { filter?: unknown })?.filter === "string"
+        ? (input as { filter: string }).filter
+        : undefined;
     return { issues: listCachedIssues(filter) };
   },
 });
@@ -272,10 +376,15 @@ let the frontend refetch via rpc.
 ```ts
 bb.background.service("worker", {
   async start(signal) {
-    while (!signal.aborted) { await doWork(); await sleep(60_000, signal); }
+    while (!signal.aborted) {
+      await doWork();
+      await sleep(60_000, signal);
+    }
   },
 });
-bb.background.schedule("sync", "*/5 * * * *", async () => { await syncNow(); });
+bb.background.schedule("sync", "*/5 * * * *", async () => {
+  await syncNow();
+});
 ```
 
 - A **service** starts after the factory completes and must resolve when
@@ -291,13 +400,16 @@ bb.background.schedule("sync", "*/5 * * * *", async () => { await syncNow(); });
   in the schedule's `last_status`/`last_error` shown by `bb plugin list`.
 - `NeedsConfigurationError` is matched **by name**, so no runtime import is
   needed: `throw Object.assign(new Error(msg), { name:
-  "NeedsConfigurationError" })`. Pair it with `bb.status.needsConfiguration`
+"NeedsConfigurationError" })`. Pair it with `bb.status.needsConfiguration`
   in the factory so an unconfigured plugin reports itself instead of
   crash-looping:
 
 ```ts
 const initial = await settings.get();
-if (!initial.apiKey) bb.status.needsConfiguration("Set apiKey with `bb plugin config <id>`, then reload.");
+if (!initial.apiKey)
+  bb.status.needsConfiguration(
+    "Set apiKey with `bb plugin config <id>`, then reload.",
+  );
 ```
 
 ### bb.cli — an agent-facing `bb` subcommand
@@ -308,15 +420,20 @@ proxies it to the server, where `run` executes.
 
 ```ts
 bb.cli.register({
-  name: "weather",                       // lowercase [a-z0-9-]+; core names (thread, plugin, …) are reserved
+  name: "weather", // lowercase [a-z0-9-]+; core names (thread, plugin, …) are reserved
   summary: "Weather lookups",
-  commands: [                            // help/skill metadata only; parsing argv is yours
-    { name: "today", summary: "Today's weather", usage: "bb weather today <city>" },
+  commands: [
+    // help/skill metadata only; parsing argv is yours
+    {
+      name: "today",
+      summary: "Today's weather",
+      usage: "bb weather today <city>",
+    },
   ],
   async run(argv, ctx) {
     // argv EXCLUDES the command name: `bb weather today sf` → argv = ["today", "sf"]
     // ctx: { cwd?, threadId?, projectId? } — whatever the invoking CLI knew
-    return { exitCode: 0, stdout: "sunny" };   // { exitCode, stdout?, stderr? }
+    return { exitCode: 0, stdout: "sunny" }; // { exitCode, stdout?, stderr? }
   },
 });
 ```
@@ -347,14 +464,14 @@ For a short, per-resolution instruction block (e.g. "the user is viewing
 bb remotely — share tunnel URLs"), use `contributeInstructions`:
 
 ```ts
-import { z } from "zod";   // runtime import — declare zod as a plugin dependency
+import { z } from "zod"; // runtime import — declare zod as a plugin dependency
 bb.agents.registerTool({
-  name: "docs_search",                    // [a-zA-Z0-9_-]+, unique ACROSS plugins
+  name: "docs_search", // [a-zA-Z0-9_-]+, unique ACROSS plugins
   description: "Search the bundled docs.",
-  instructions: "Prefer docs_search over guessing conventions.",  // optional, appended to thread instructions
+  instructions: "Prefer docs_search over guessing conventions.", // optional, appended to thread instructions
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
-    return excerpts.join("\n");           // or { content: [{ type: "text", text }], isError? }
+    return excerpts.join("\n"); // or { content: [{ type: "text", text }], isError? }
   },
 });
 
@@ -384,21 +501,26 @@ only when the text must reflect live plugin state at resolution time.
 
 ```ts
 bb.ui.registerThreadAction({
-  id: "summarize", title: "Summarize thread", icon: "ListChecks",
-  confirm: "Ask the agent for a summary?",             // optional confirm dialog
+  id: "summarize",
+  title: "Summarize thread",
+  icon: "ListChecks",
+  confirm: "Ask the agent for a summary?", // optional confirm dialog
   async run({ threadId, projectId }) {
-    return { toast: { kind: "success", message: "Requested." } };  // throw → automatic error toast
+    return { toast: { kind: "success", message: "Requested." } }; // throw → automatic error toast
   },
 });
 
 bb.ui.registerMentionProvider({
-  id: "issue", label: "Issues",
-  triggers: ["@", "#"],                                // optional; defaults to ["@"]. Valid: @ # $ ! ~
-  search({ trigger, query, projectId, threadId }) {    // 2s time box, failure = empty list
+  id: "issue",
+  label: "Issues",
+  triggers: ["@", "#"], // optional; defaults to ["@"]. Valid: @ # $ ! ~
+  search({ trigger, query, projectId, threadId }) {
+    // 2s time box, failure = empty list
     return [{ id: "42", title: "ENG-42 Fix flake", subtitle: "Todo" }];
   },
-  resolve(itemId) {                                    // once per unique item AT SEND TIME
-    return { context: "# ENG-42…" };                   // attached as agent-only context; throwing BLOCKS the send
+  resolve(itemId) {
+    // once per unique item AT SEND TIME
+    return { context: "# ENG-42…" }; // attached as agent-only context; throwing BLOCKS the send
   },
 });
 ```
@@ -432,19 +554,54 @@ React and the SDK are **never bundled** — `bb plugin build` shims them to
 the host's shared runtime, so the bundle only works inside bb.
 
 ```tsx
-import { definePluginApp, useRpc, useRealtime, useSettings, useBbContext, useBbNavigate } from "@bb/plugin-sdk/app";
-import { toast } from "sonner";                      // shimmed to the host toaster
-import { Button } from "@/components/ui/button";    // vendored source YOU own
+import {
+  definePluginApp,
+  useRpc,
+  useRealtime,
+  useSettings,
+  useBbContext,
+  useBbNavigate,
+} from "@bb/plugin-sdk/app";
+import { toast } from "sonner"; // shimmed to the host toaster
+import { Button } from "@/components/ui/button"; // vendored source YOU own
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
-  app.slots.homepageSection({ id: "issues", title: "Open issues", component: IssuesSection });
-  app.slots.settingsSection({ id: "settings", title: "Connection", component: SettingsSection });
-  app.slots.navPanel({ id: "board", title: "Board", icon: "Columns", path: "board", component: Board });
-  app.slots.threadPanelAction({ id: "issue", title: "Open issue", component: IssuePanel, run: async ({ threadId, openPanel }) => openPanel({ title: `Issue for ${threadId}` }) });
+  app.slots.homepageSection({
+    id: "issues",
+    title: "Open issues",
+    component: IssuesSection,
+  });
+  app.slots.settingsSection({
+    id: "settings",
+    title: "Connection",
+    component: SettingsSection,
+  });
+  app.slots.navPanel({
+    id: "board",
+    title: "Board",
+    icon: "Columns",
+    path: "board",
+    component: Board,
+  });
+  app.slots.threadPanelAction({
+    id: "issue",
+    title: "Open issue",
+    component: IssuePanel,
+    run: async ({ threadId, openPanel }) =>
+      openPanel({ title: `Issue for ${threadId}` }),
+  });
   app.slots.composerAccessory({ id: "hint", component: Hint });
-  app.slots.pendingInteraction({ id: "credentials", component: CredentialForm });
-  app.slots.sidebarFooterAction({ id: "remote", title: "Remote access", icon: "Smartphone", run: ({ openSettings }) => openSettings() });
+  app.slots.pendingInteraction({
+    id: "credentials",
+    component: CredentialForm,
+  });
+  app.slots.sidebarFooterAction({
+    id: "remote",
+    title: "Remote access",
+    icon: "Smartphone",
+    run: ({ openSettings }) => openSettings(),
+  });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
 });
 ```
@@ -524,14 +681,14 @@ Slot props contracts (versioned, additive-only):
   this includes links clicked in rendered markdown, the file picker, and
   `bb thread open`. `source` is
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
-  projectId }` (nullable fields) and `path` follows the source (workspace:
+projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
   Applies only to live file content — git-ref snapshots and deleted files
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
 - `messageDirective` → `{ attributes, source, message,
-  openWorkspaceFile }` — register a leaf
+openWorkspaceFile, openThreadPanel }` — register a leaf
   assistant-message directive. Registration:
   `{ id, component }` where `id` is lowercase kebab-case beginning with a
   letter (e.g. `inline-vis` matches `::inline-vis{file="demo.html"}`).
@@ -543,7 +700,13 @@ Slot props contracts (versioned, additive-only):
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
   open that file in the host's workspace viewer. It is `null` when the message
   surface has no workspace viewer, and it returns whether the host accepted
-  the path. **Host behavior / fallbacks:** only assistant and
+  the path. `openThreadPanel` is either
+  `({ actionId, title?, params? }) => boolean` or `null`; it opens one of the
+  same plugin's registered `threadPanelAction` components in the enclosing
+  thread side panel. `params` must be JSON-serializable, and the return value
+  reports whether the host accepted the action. Use a normal plugin navigation
+  action as the fallback when the callback is `null` or returns `false`.
+  **Host behavior / fallbacks:** only assistant and
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
   fenced code blocks stay literal. Incomplete streaming directives stay
@@ -589,9 +752,9 @@ only `definePluginApp` + the hooks):
   drawer, hooks) into `components/ui/` etc., and writes a `components.json`
   whose `@bb` registry is pinned to the release tag matching the running
   BB. Import via the `@/*` alias: `import { Button } from
-  "@/components/ui/button"` (tsconfig maps it; `bb plugin build` reads it).
+"@/components/ui/button"` (tsconfig maps it; `bb plugin build` reads it).
 - Add more with stock shadcn tooling: `npx shadcn add @bb/select
-  @bb/table` — the BB registry carries the full stock set (~44 items:
+@bb/table` — the BB registry carries the full stock set (~44 items:
   accordion, alert-dialog, calendar, chart, command, form, sheet, table,
   …), generated from the BB app's own component source, so vendored code is
   version-matched to your BB by construction. Edit the copies freely; they
@@ -613,7 +776,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
   when your patch source (e.g. the GitHub REST API) omits it — see
-  `examples/plugins/github/app.tsx`.
+  `marketplace/plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
@@ -625,7 +788,7 @@ only `definePluginApp` + the hooks):
   tokens, never hardcoded grays.
 - The old bb extras (`EmptyState`, `Markdown`, `PageBody`, `Spinner`) are
   gone — write your own (each is a few lines; see
-  `examples/plugins/github/components/` for reference implementations).
+  `marketplace/plugins/github/components/` for reference implementations).
 
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
@@ -666,7 +829,10 @@ standalone plugins outside a checkout cannot import it yet.
 Backend (`server.ts`) — `createFakePluginHost()`:
 
 ```ts
-import { createFakePluginHost, makeThreadResponse } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import plugin from "./server";
 
 const { bb, harness } = createFakePluginHost({
@@ -676,18 +842,18 @@ const { bb, harness } = createFakePluginHost({
 });
 await plugin(bb);
 
-await harness.callRpc("list", { q: "x" });          // JSON round-trip like the wire
+await harness.callRpc("list", { q: "x" }); // JSON round-trip like the wire
 await harness.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
-await harness.runCli(["search", "x"]);              // { exitCode, stdout, stderr }
-const svc = harness.runService("watcher");          // start now; svc.controller.abort(); await svc.done
-await harness.runSchedule("sync");                  // no timers, no cron sweep
-await harness.setSettings({ apiToken: "next" });    // validates + fires onChange like a host save
+await harness.runCli(["search", "x"]); // { exitCode, stdout, stderr }
+const svc = harness.runService("watcher"); // start now; svc.controller.abort(); await svc.done
+await harness.runSchedule("sync"); // no timers, no cron sweep
+await harness.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
 await harness.emitThreadEvent("thread.idle", {
-  thread: makeThreadResponse({ id: "th_1" }),       // complete ThreadResponse fixture
+  thread: makeThreadResponse({ id: "th_1" }), // complete ThreadResponse fixture
   lastAssistantText: "done",
 });
 await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
-await harness.dispose();                            // abort services, hooks LIFO, close sqlite; stale bb throws
+await harness.dispose(); // abort services, hooks LIFO, close sqlite; stale bb throws
 ```
 
 Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
@@ -708,25 +874,29 @@ import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 // imports, call installTestPluginRuntime() in a vitest setup file instead.)
 const app = await loadPluginApp(() => import("./app"));
 
-const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
-  rpc: {
-    listNotes: () => ({ root: "/notes", notes: [], error: null }),
-  },                                             // method → handler, calls logged
-  settings: { greeting: "hi" },                 // useSettings() values
-  context: { projectId: "p1", threadId: null }, // useBbContext()
-});
-await slot.findByText("…");                     // Testing Library queries
-slot.rpcCalls; slot.navigateCalls; slot.composer.quotes; // recorded hook activity
+const slot = renderSlot(
+  app.navPanels[0]!,
+  { subPath: "" },
+  {
+    rpc: {
+      listNotes: () => ({ root: "/notes", notes: [], error: null }),
+    }, // method → handler, calls logged
+    settings: { greeting: "hi" }, // useSettings() values
+    context: { projectId: "p1", threadId: null }, // useBbContext()
+  },
+);
+await slot.findByText("…"); // Testing Library queries
+slot.rpcCalls;
+slot.navigateCalls;
+slot.composer.quotes; // recorded hook activity
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path, chrome,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
-`thread.idle` reply), `examples/plugins/simple-notes/app.test.tsx` (nav
-panel list over rpc + create/open navigation assertions), and
-`examples/plugins/markdown-editor/app.test.tsx` (nav tree, realtime refresh,
-and markdown creation assertions).
+`thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav
+panel list over rpc + create/open navigation assertions).
 
 ### Live loop against a running bb
 
@@ -737,30 +907,29 @@ and markdown creation assertions).
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.
 - Exercise wire surfaces directly: `curl -X POST -H "content-type:
-  application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
+application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
   `bb <command> …` for the CLI, `bb plugin run <id> …` as the explicit form.
 - Keep pure logic in plain functions/modules so it is unit-testable without
   a bb server; the factory file should mostly wire registrations.
 
-Reference examples in `examples/plugins/` (a bb checkout):
+BB Official marketplace plugins in `marketplace/plugins/` (a bb checkout):
 
 - `github` — vendored-component showcase: a gh-CLI-backed issue/PR browser
   in a single navPanel (with `headerContent`), subPath-based sub-navigation,
   vendored Tabs/Select/DropdownMenu/Badge/Skeleton + sonner toast
   throughout, background sync service, rpc + realtime, project setting, a
   `bb github` CLI command, and agent-spawn buttons.
-- `simple-notes` — Apple Notes-style local markdown notebook: one configurable
-  `directory` (default `~/Notes`), `bb.sdk.files` read/CAS-write for note
-  contents, Tiptap markdown WYSIWYG bundled per-plugin, navPanel with
-  `chrome: "none"` + subPath deep links, autosave, conflict reload/overwrite,
-  delete, search, and backend title-based filename renames.
-- `markdown-editor` — full-surface markdown editor: mounted directories via
-  a setting, `bb.sdk.files` read/CAS-write, Milkdown Crepe WYSIWYG bundled
-  per-plugin (its theme CSS served from a `bb.http` route), navPanel with
-  `chrome: "none"` + subPath deep links, threadPanelAction, a markdown
-  `fileOpener`, `useComposer()` quote/mention buttons, an fs watcher
-  publishing realtime tree refreshes, and a mention provider resolving note
-  content at send.
+- `docs` (stable plugin id `simple-notes`) — multi-host Docs vaults over
+  `bb.sdk.files`, with a Tiptap
+  markdown WYSIWYG, nested navigation, images and sandboxed HTML, CLI/HTTP
+  operations, autosave with CAS conflicts, native local-vault watching with
+  remote polling fallback, a markdown `fileOpener`, message directives, and
+  side-panel-only `useComposer()` quote/mention actions.
+- `memory` — provider-independent durable agent memory with global/project
+  scopes, progressive disclosure, CLI commands, and a Settings editor.
+
+Remaining reference examples in `examples/plugins/`:
+
 - `slack-bot` — headless webhook bot: `auth: "none"` route with signature
   verification, kv thread mapping, `thread.idle` handler, spawn/send,
   needsConfiguration.

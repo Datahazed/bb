@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
@@ -81,7 +82,12 @@ function ThreadRowTestHarness({
   thread: ThreadListEntry;
 }) {
   const shortcutKeys = shortcutKey
-    ? new Map([[thread.id, shortcutKey]])
+    ? new Map([
+        [
+          thread.id,
+          { ariaKeyshortcuts: `Meta+${shortcutKey}`, label: `⌘${shortcutKey}` },
+        ],
+      ])
     : EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS;
 
   return (
@@ -136,6 +142,38 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("keeps the parent-thread disclosure caret visible on mobile", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Parent thread" }),
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: {
+          pending: false,
+          working: false,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: false,
+          goal: false,
+          unread: false,
+          unreadError: false,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Collapse Parent thread threads" })
+        .getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+  });
+
   it("shows its Command shortcut in place of the trailing status", () => {
     renderThreadRow({
       shortcutKey: "3",
@@ -180,7 +218,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Background command running")).toBeNull();
   });
 
-  it("shows workflow activity for an idle thread with an active workflow", () => {
+  it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
     renderThreadRow({
       thread: createThread({
         title: "Workflow thread",
@@ -194,7 +232,10 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
+    const workflowIcon = screen.getByLabelText("Workflow running");
+    const workflowIconClasses = Array.from(workflowIcon.classList);
+    expect(workflowIconClasses).toContain("animate-shine-icon");
+    expect(workflowIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
@@ -222,7 +263,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
-  it("shows active background agent work", () => {
+  it("shows an animated delegated-agent glyph for active background agent work", () => {
     renderThreadRow({
       thread: createThread({
         title: "Background agent thread",
@@ -236,7 +277,11 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Background agent running")).not.toBeNull();
+    const agentIcon = screen.getByLabelText("Background agent running");
+    const agentIconClasses = Array.from(agentIcon.classList);
+    expect(agentIcon.getAttribute("data-icon")).toBe("UserRoundPlus");
+    expect(agentIconClasses).toContain("animate-shine-icon");
+    expect(agentIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Background command running")).toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
@@ -279,7 +324,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Background command running")).toBeNull();
   });
 
-  it("shows active background command work", () => {
+  it("shows an animated terminal glyph for an active background command", () => {
     renderThreadRow({
       thread: createThread({
         title: "Background command thread",
@@ -293,12 +338,16 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Background command running")).not.toBeNull();
+    const terminalIcon = screen.getByLabelText("Background command running");
+    const terminalIconClasses = Array.from(terminalIcon.classList);
+    expect(terminalIcon.getAttribute("data-icon")).toBe("Terminal");
+    expect(terminalIconClasses).toContain("animate-shine-icon");
+    expect(terminalIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows plan-mode activity when the plan banner is active", () => {
+  it("shows an animated plan-mode glyph when the plan banner is active", () => {
     renderThreadRow({
       thread: createThread({
         title: "Plan mode thread",
@@ -312,13 +361,17 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    const planIcon = screen.getByLabelText("Plan mode active");
+    const planIconClasses = Array.from(planIcon.classList);
+    expect(planIcon.getAttribute("data-icon")).toBe("ListTodo");
+    expect(planIconClasses).toContain("animate-shine-icon");
+    expect(planIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Background command running")).toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows goal activity when the goal banner is active", () => {
+  it("shows an animated goal glyph when the goal banner is active", () => {
     renderThreadRow({
       thread: createThread({
         title: "Goal thread",
@@ -332,7 +385,11 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Goal active")).not.toBeNull();
+    const goalIcon = screen.getByLabelText("Goal active");
+    const goalIconClasses = Array.from(goalIcon.classList);
+    expect(goalIcon.getAttribute("data-icon")).toBe("Target");
+    expect(goalIconClasses).toContain("animate-shine-icon");
+    expect(goalIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
@@ -342,22 +399,26 @@ describe("ThreadRow", () => {
     {
       flag: "backgroundAgent" as const,
       label: "Background agent running",
+      icon: "UserRoundPlus",
     },
     {
       flag: "backgroundCommand" as const,
       label: "Background command running",
+      icon: "Terminal",
     },
     {
       flag: "planMode" as const,
       label: "Plan mode active",
+      icon: "ListTodo",
     },
     {
       flag: "goal" as const,
       label: "Goal active",
+      icon: "Target",
     },
   ])(
     "shows the $label glyph for collapsed parent rows with hidden child activity",
-    ({ flag, label }) => {
+    ({ flag, icon, label }) => {
       renderThreadRow({
         thread: createThread({
           title: "Parent thread",
@@ -387,13 +448,13 @@ describe("ThreadRow", () => {
         },
       });
 
-      expect(screen.getByLabelText(label)).not.toBeNull();
+      expect(screen.getByLabelText(label).getAttribute("data-icon")).toBe(icon);
       expect(screen.queryByLabelText("Thread working")).toBeNull();
     },
   );
 
   it("renders an already-unread successful thread as a settled dot on initial load", () => {
-    renderThreadRow({
+    const { container } = renderThreadRow({
       thread: createThread({
         status: "idle",
         lastReadAt: 1_000,
@@ -402,6 +463,7 @@ describe("ThreadRow", () => {
     });
 
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
   });
 
   it("switches directly from working to the settled done dot after finishing", () => {
@@ -414,7 +476,7 @@ describe("ThreadRow", () => {
         hostReconnectGraceExpiresAt: null,
       },
     });
-    const { rerenderThreadRow } = renderThreadRow({ thread });
+    const { container, rerenderThreadRow } = renderThreadRow({ thread });
 
     expect(screen.getByLabelText("Agent working")).not.toBeNull();
 
@@ -428,6 +490,7 @@ describe("ThreadRow", () => {
       },
     });
 
+    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
   });
 });

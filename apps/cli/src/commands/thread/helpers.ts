@@ -1,7 +1,7 @@
 import {
   permissionModeSchema,
   type PermissionMode,
-  type ThreadStatus,
+  type PromptInput,
   serviceTierSchema,
   type ServiceTier,
 } from "@bb/domain";
@@ -10,7 +10,6 @@ import {
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,
   type ThreadWaitTarget,
 } from "@bb/sdk";
-import { assertNever } from "@bb/core-ui";
 import { joinValues } from "../helpers.js";
 
 export const THREAD_WAIT_EXIT_CODE_TIMEOUT = 2;
@@ -26,21 +25,24 @@ const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: full, workspace-write, or readonly";
 
-export function statusText(status: ThreadStatus): string {
-  switch (status) {
-    case "starting":
-      return "starting";
-    case "error":
-      return "error";
-    case "idle":
-      return "idle";
-    case "active":
-      return "active";
-    case "stopping":
-      return "stopping";
-    default:
-      return assertNever(status);
-  }
+export function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+export function buildPromptInputs(args: {
+  message: string;
+  files?: readonly string[];
+  images?: readonly string[];
+}): PromptInput[] {
+  return [
+    { type: "text", text: args.message, mentions: [] },
+    ...(args.files ?? []).map(
+      (path): PromptInput => ({ type: "localFile", path }),
+    ),
+    ...(args.images ?? []).map(
+      (path): PromptInput => ({ type: "localImage", path }),
+    ),
+  ];
 }
 
 export function parseThreadWaitTimeoutSeconds(

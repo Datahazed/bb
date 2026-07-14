@@ -8,6 +8,7 @@ import {
   isValidElectronAccelerator,
   type AppTheme,
   type FaviconColorPreference,
+  type PluginThemeMeta,
 } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -42,6 +43,8 @@ import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSet
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
+import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -141,6 +144,7 @@ export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
+  pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
   onCreatePalette: () => void;
@@ -165,9 +169,16 @@ export interface GeneralSettingsSectionProps {
   richTextEditing: boolean;
 }
 
-function appPaletteLabel(appearance: AppTheme): string {
+function appPaletteLabel(
+  appearance: AppTheme,
+  pluginThemes: readonly PluginThemeMeta[],
+): string {
   const meta = builtInThemes.find((entry) => entry.id === appearance.themeId);
-  return meta?.name ?? appearance.themeId;
+  return (
+    meta?.name ??
+    pluginThemes.find((entry) => entry.id === appearance.themeId)?.name ??
+    appearance.themeId
+  );
 }
 
 export interface ExperimentsSettingsSectionProps {
@@ -178,10 +189,12 @@ export interface ExperimentsSettingsSectionProps {
   desktopShellAvailable: boolean;
   onBbConnectEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onMultiMachineEnabledChange: (enabled: boolean) => void;
   onPopoutChatEnabledChange: (enabled: boolean) => void;
   onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
+  multiMachineEnabled: boolean;
   popoutChatEnabled: boolean;
   popoutChatHotkey: string;
 }
@@ -545,6 +558,7 @@ export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
   customThemes,
+  pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
   onFaviconColorChange,
@@ -609,7 +623,7 @@ export function AppearanceSettingsSection({
                 disabled={appearanceDisabled}
               >
                 <span className="min-w-0 truncate">
-                  {appPaletteLabel(appearance)}
+                  {appPaletteLabel(appearance, pluginThemes)}
                 </span>
                 <Icon
                   name="ChevronDown"
@@ -648,6 +662,23 @@ export function AppearanceSettingsSection({
                     className={cn(
                       "ml-auto",
                       appearance.themeId !== name && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+              {pluginThemes.map((theme) => (
+                <DropdownMenuItem
+                  key={theme.id}
+                  onSelect={() => onAppearanceThemeChange(theme.id)}
+                >
+                  {theme.name}
+                  <span className="text-muted-foreground">({theme.pluginId})</span>
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      appearance.themeId !== theme.id && "opacity-0",
                       COARSE_POINTER_ICON_SIZE_CLASS,
                     )}
                   />
@@ -726,8 +757,83 @@ export function GeneralSettingsSection({
   );
 }
 
+interface ProviderSettingsSectionProps {
+  memoryEnabled: boolean;
+  subagentsDisabled: boolean;
+  workflowsDisabled: boolean;
+  disabled: boolean;
+  onMemoryEnabledChange: (enabled: boolean) => void;
+  onSubagentsDisabledChange: (disabled: boolean) => void;
+  onWorkflowsDisabledChange: (disabled: boolean) => void;
+  providerId: "codex" | "claude-code";
+}
+
+export function ProviderSettingsSection({
+  memoryEnabled,
+  subagentsDisabled,
+  workflowsDisabled,
+  disabled,
+  onMemoryEnabledChange,
+  onSubagentsDisabledChange,
+  onWorkflowsDisabledChange,
+  providerId,
+}: ProviderSettingsSectionProps) {
+  const isCodex = providerId === "codex";
+  const label = isCodex ? "Codex memory" : "Claude Code memory";
+  return (
+    <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
+      <div className="space-y-4">
+        <SettingsWithControl
+          label={label}
+          description={
+            isCodex
+              ? "Allow Codex to recall existing memories and generate new memories from bb threads."
+              : "Allow Claude Code to read and write its native auto-memory for bb threads."
+          }
+        >
+          <Switch
+            aria-label={label}
+            checked={memoryEnabled}
+            disabled={disabled}
+            onCheckedChange={onMemoryEnabledChange}
+          />
+        </SettingsWithControl>
+        <SettingsWithControl
+          label="Disable provider subagents"
+          description={
+            isCodex
+              ? "Prevent Codex from starting native subagents so agents use bb for delegation."
+              : "Hide Claude Code's native Task tool so agents use bb for delegation."
+          }
+        >
+          <Switch
+            aria-label="Disable provider subagents"
+            checked={subagentsDisabled}
+            disabled={disabled}
+            onCheckedChange={onSubagentsDisabledChange}
+          />
+        </SettingsWithControl>
+        {!isCodex ? (
+          <SettingsWithControl
+            label="Disable Workflow tool"
+            description="Hide Claude Code's native Workflow tool for bb threads."
+          >
+            <Switch
+              aria-label="Disable Workflow tool"
+              checked={workflowsDisabled}
+              disabled={disabled}
+              onCheckedChange={onWorkflowsDisabledChange}
+            />
+          </SettingsWithControl>
+        ) : null}
+      </div>
+    </SettingsSection>
+  );
+}
+
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
+const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
 const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
 const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
@@ -914,10 +1020,12 @@ export function ExperimentsSettingsSection({
   disabled,
   onBbConnectEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onPopoutChatEnabledChange,
   onPopoutChatHotkeyChange,
   pluginsEnabled,
+  multiMachineEnabled,
   popoutChatEnabled,
   popoutChatHotkey,
 }: ExperimentsSettingsSectionProps) {
@@ -949,6 +1057,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onBbConnectEnabledChange}
             aria-label={BB_CONNECT_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={MULTI_MACHINE_EXPERIMENT_LABEL}
+          description="Allow explicit execution on other connected machines. Default execution stays on this machine."
+        >
+          <Switch
+            checked={multiMachineEnabled}
+            disabled={disabled}
+            onCheckedChange={onMultiMachineEnabledChange}
+            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1031,13 +1151,58 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activeSection, hasUnknownSection } = useSettingsNavState();
+  const { activeProviderId, activeSection, hasUnknownSection } =
+    useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
   let content: ReactNode = null;
-  if (activeSection === "appearance") {
+  if (activeProviderId !== null) {
+    const isCodex = activeProviderId === "codex";
+    content = (
+      <ProviderSettingsSection
+        providerId={activeProviderId}
+        memoryEnabled={
+          isCodex
+            ? generalSettings.codexMemoryEnabled
+            : generalSettings.claudeCodeMemoryEnabled
+        }
+        subagentsDisabled={
+          isCodex
+            ? generalSettings.codexSubagentsDisabled
+            : generalSettings.claudeCodeSubagentsDisabled
+        }
+        workflowsDisabled={generalSettings.claudeCodeWorkflowsDisabled}
+        disabled={
+          systemConfigQuery.data === undefined ||
+          updateGeneralSettingsMutation.isPending
+        }
+        onMemoryEnabledChange={(enabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            ...(isCodex
+              ? { codexMemoryEnabled: enabled }
+              : { claudeCodeMemoryEnabled: enabled }),
+          })
+        }
+        onSubagentsDisabledChange={(disabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            ...(isCodex
+              ? { codexSubagentsDisabled: disabled }
+              : { claudeCodeSubagentsDisabled: disabled }),
+          })
+        }
+        onWorkflowsDisabledChange={(disabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            claudeCodeWorkflowsDisabled: disabled,
+          })
+        }
+      />
+    );
+  } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection
         appearance={appearance}
@@ -1046,6 +1211,7 @@ export function SettingsView() {
           updateAppearanceMutation.isPending
         }
         customThemes={systemConfigQuery.data?.customThemes ?? []}
+        pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
@@ -1070,6 +1236,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "usage") {
     content = <UsageLimitsSettingsSection />;
+  } else if (activeSection === "keyboard") {
+    content = <KeyboardSettingsSection />;
   } else if (activeSection === "files") {
     content = (
       <>
@@ -1084,6 +1252,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "machines") {
+    content = <MachinesSettingsSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
@@ -1117,6 +1287,12 @@ export function SettingsView() {
             bbConnect: enabled,
           })
         }
+        onMultiMachineEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            multiMachine: enabled,
+          })
+        }
         onPluginsEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
@@ -1124,6 +1300,7 @@ export function SettingsView() {
           })
         }
         bbConnectEnabled={experiments.bbConnect}
+        multiMachineEnabled={experiments.multiMachine}
         pluginsEnabled={experiments.plugins}
         popoutChatEnabled={experiments.popoutChat}
         popoutChatHotkey={experiments.popoutChatHotkey}

@@ -8,8 +8,8 @@ const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
-const SORT_DIRECTION_STORAGE_KEY = "bb.sidebar.sortDirection";
 const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
+const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
 
 export type SidebarSectionId = "pinned" | "projects" | "threads";
 export type CollapsibleSidebarSectionId =
@@ -19,14 +19,13 @@ export type CollapsibleSidebarSectionId =
   | "threads";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
-// value for the cross-project Folders view that replaced the old None view.
-export type SidebarOrganizationMode = "project" | "chronological";
-// Controls thread ordering in both grouped and ungrouped sidebar views.
-// "updated" reuses the status-aware activity heuristic; "created" sorts by
-// the literal createdAt field; "alpha" sorts by display title. "none" is a
-// legacy/internal value that the runtime normalizes back to "updated".
+// value for the cross-project Folders view that replaced the old None view;
+// "machine" groups threads by the host their environment runs on.
+export type SidebarOrganizationMode = "project" | "chronological" | "machine";
+// Controls thread ordering in both grouped and ungrouped sidebar views. Time
+// sorts show newest first and alphabetical sorts A→Z. "none" is a legacy value
+// that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
-export type SidebarSortDirection = "asc" | "desc";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
@@ -87,17 +86,19 @@ export const sidebarChronologicalSortAtom =
     { getOnInit: true },
   );
 
-export const sidebarSortDirectionAtom = atomWithStorage<SidebarSortDirection>(
-  SORT_DIRECTION_STORAGE_KEY,
-  "desc",
-  createJsonLocalStorage<SidebarSortDirection>(),
-  { getOnInit: true },
-);
-
 // Collapsed folder keys (see buildFolderKey in folderKeys.ts). A plain string[],
 // matching collapsedThreadIds / collapsedProjectIds.
 export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
   COLLAPSED_FOLDERS_STORAGE_KEY,
+  [],
+  createJsonLocalStorage<string[]>(),
+  { getOnInit: true },
+);
+
+// Collapsed machine-mode group keys (host ids plus the no-machine sentinel;
+// see machineThreadGroups.ts).
+export const sidebarCollapsedMachinesAtom = atomWithStorage<string[]>(
+  COLLAPSED_MACHINES_STORAGE_KEY,
   [],
   createJsonLocalStorage<string[]>(),
   { getOnInit: true },

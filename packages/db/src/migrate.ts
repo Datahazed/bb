@@ -166,6 +166,7 @@ const reorderedCleanupMigrationTags = [
 const branchLocalThreadSearchMigrationCreatedAts = [
   1781403656070, 1781403656071,
 ] as const;
+const branchLocalThreadTabsMigrationCreatedAts = [1783633750817] as const;
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
@@ -1249,6 +1250,50 @@ function repairBranchLocalQueuedGroupingBeforeThreadFolders(
   markMigrationApplied(db, threadFoldersMigration);
 }
 
+const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
+
+function stageExistingConnectMachineIdColumn(
+  db: DbConnection,
+  migrationsFolder: string,
+): boolean {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "hosts") ||
+    !columnExists(db, "hosts", "connect_machine_id")
+  ) {
+    return false;
+  }
+
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0065_empty_leper_queen",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return false;
+  }
+
+  db.$client.exec(
+    `ALTER TABLE hosts RENAME COLUMN connect_machine_id TO ${STAGED_CONNECT_MACHINE_ID_COLUMN}`,
+  );
+  return true;
+}
+
+function restoreStagedConnectMachineIdColumn(db: DbConnection): void {
+  if (!columnExists(db, "hosts", STAGED_CONNECT_MACHINE_ID_COLUMN)) {
+    return;
+  }
+  if (!columnExists(db, "hosts", "connect_machine_id")) {
+    db.$client.exec(
+      `ALTER TABLE hosts RENAME COLUMN ${STAGED_CONNECT_MACHINE_ID_COLUMN} TO connect_machine_id`,
+    );
+    return;
+  }
+  db.$client.exec(
+    `UPDATE hosts SET connect_machine_id = ${STAGED_CONNECT_MACHINE_ID_COLUMN};
+     ALTER TABLE hosts DROP COLUMN ${STAGED_CONNECT_MACHINE_ID_COLUMN};`,
+  );
+}
+
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
   if (!tableExists(db, "__drizzle_migrations")) {
     return;
@@ -1288,6 +1333,39 @@ function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
       `,
     )
     .run(...branchLocalThreadSearchMigrationCreatedAts);
+}
+
+// A branch-local tab migration briefly occupied the 0059 journal slot before
+// the published pending-interactions migration landed. Those databases have a
+// newer migration row, so Drizzle would otherwise skip the published 0059
+// migration and leave pending_interactions on its old shape.
+function repairBranchLocalThreadTabsBeforePendingInteractionsMigration(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "pending_interactions")
+  ) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const pendingInteractionsMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0059_stale_power_pack",
+  );
+  if (
+    appliedCreatedAts.has(pendingInteractionsMigration.createdAt) ||
+    !branchLocalThreadTabsMigrationCreatedAts.some((createdAt) =>
+      appliedCreatedAts.has(createdAt),
+    )
+  ) {
+    return;
+  }
+
+  applyMigrationStatements(db, pendingInteractionsMigration);
 }
 
 function warnAboutFutureAppliedMigrations(
@@ -1406,9 +1484,21 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     }
     repairBranchLocalThreadSearchMigrations(db);
+    repairBranchLocalThreadTabsBeforePendingInteractionsMigration(
+      db,
+      migrationsFolder,
+    );
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
     repairBranchLocalQueuedGroupingBeforeThreadFolders(db, migrationsFolder);
-    drizzleMigrate(db, { migrationsFolder });
+    const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
+      db,
+      migrationsFolder,
+    );
+    try {
+      drizzleMigrate(db, { migrationsFolder });
+    } finally {
+      if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+    }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
   } finally {

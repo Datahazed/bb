@@ -16,6 +16,26 @@ Use these before spawning threads if you are unsure which provider or model to u
 When provider and model are omitted from bb thread spawn, the project's remembered
 defaults apply.
 
+Provider-native memory can be controlled on the separate Settings → Providers
+→ Codex and Settings → Providers → Claude Code pages. Codex memory controls
+both recall (`memories.use_memories`) and future generation
+(`memories.generate_memories`). Claude Code memory controls native auto-memory
+reads and writes (`autoMemoryEnabled`). Both preferences default on and apply
+when a provider thread is started, resumed, or forked; they do not interrupt
+an active turn. These settings are separate from bb's optional Memory
+marketplace plugin.
+
+Provider-native subagents can also be disabled on those provider pages. For
+Codex, bb turns off the native multi-agent feature and caps V2 sessions at the
+root thread so remote session policy cannot start a child. For Claude Code, bb
+removes the native Task tool. The preferences default off and apply
+when a provider thread is started, resumed, or forked; they do not modify the
+provider's global configuration.
+
+Claude Code's native Workflow tool can be disabled separately on its provider
+page. This preference also defaults off and applies to newly started, resumed,
+or forked provider sessions.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
@@ -27,4 +47,5 @@ and run bb-app config refresh; there is no set/unset CLI surface for this list.
 Custom config wins if it uses the same provider id as a known ACP agent; for
 example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning.
+nativeReasoning for ACP session/set_config_option reasoning. Optional logo
+accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.

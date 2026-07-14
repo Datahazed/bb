@@ -44,6 +44,7 @@ export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
 export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
+export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -200,6 +201,14 @@ export function getSettingsRoutePath(section?: string): string {
     : `/settings/${encodeURIComponent(section)}`;
 }
 
+export function getSettingsPluginRoutePath(pluginId: string): string {
+  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
+}
+
+export function getSettingsProviderRoutePath(providerId: string): string {
+  return `/settings/providers/${encodeURIComponent(providerId)}`;
+}
+
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
@@ -272,6 +281,7 @@ const baseRoutePatterns: readonly string[] = [
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROVIDER_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

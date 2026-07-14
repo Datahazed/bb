@@ -18,6 +18,14 @@ const targetRoot = path.resolve(
   "dist",
   BUILTIN_PLUGINS_DIRECTORY_NAME,
 );
+const bbAppPackageJsonPath = path.resolve(
+  serverRoot,
+  "..",
+  "..",
+  "packages",
+  "bb-app",
+  "package.json",
+);
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
 const LOGO_FILES = LOGO_CONVENTION_EXTENSIONS.flatMap((extension) => [
@@ -43,6 +51,23 @@ async function exists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function readAuthoritativeBbVersion(): Promise<string> {
+  try {
+    const json: unknown = JSON.parse(
+      await readFile(bbAppPackageJsonPath, "utf8"),
+    );
+    const parsed = z.object({ version: z.string().min(1) }).safeParse(json);
+    if (parsed.success) return parsed.data.version;
+  } catch (error) {
+    throw new Error(
+      `cannot read authoritative bb version from ${bbAppPackageJsonPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  throw new Error(
+    `cannot read authoritative bb version from ${bbAppPackageJsonPath}`,
+  );
 }
 
 async function copyIfExists(from: string, to: string): Promise<void> {
@@ -78,14 +103,22 @@ async function writeRuntimePackageJson(args: {
 }
 
 async function copyBuiltinPlugin(args: {
+  bbVersion: string;
   build: boolean;
-  name: (typeof BUILTIN_PLUGIN_NAMES)[number];
+  name: string;
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
   if (args.build) {
-    await buildPluginServer(args.sourceRoot);
-    await buildPluginApp(args.sourceRoot);
+    await buildPluginServer(args.sourceRoot, args.bbVersion);
+    const raw = await readFile(
+      path.join(args.sourceRoot, "package.json"),
+      "utf8",
+    );
+    const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
+    if (packageJson.bb.app !== undefined) {
+      await buildPluginApp(args.sourceRoot, args.bbVersion);
+    }
   }
 
   const targetDir = path.join(args.targetRoot, args.name);
@@ -109,13 +142,12 @@ async function copyBuiltinPlugin(args: {
   }
 }
 
-export async function copyBuiltinPlugins(
-  args: {
-    build?: boolean;
-    sourceModuleDir?: string;
-    targetRoot?: string;
-  } = {},
-): Promise<void> {
+export async function copyBuiltinPlugins(args: {
+  bbVersion: string;
+  build?: boolean;
+  sourceModuleDir?: string;
+  targetRoot?: string;
+}): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
   const build = args.build ?? true;
@@ -128,6 +160,7 @@ export async function copyBuiltinPlugins(
 
   for (const name of BUILTIN_PLUGIN_NAMES) {
     await copyBuiltinPlugin({
+      bbVersion: args.bbVersion,
       build,
       name,
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
@@ -143,7 +176,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const targetFlagIndex = process.argv.indexOf("--target");
   const targetArg =
     targetFlagIndex !== -1 ? process.argv[targetFlagIndex + 1] : undefined;
-  await copyBuiltinPlugins(
-    targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {},
-  );
+  await copyBuiltinPlugins({
+    bbVersion: await readAuthoritativeBbVersion(),
+    ...(targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {}),
+  });
 }

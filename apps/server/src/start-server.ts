@@ -10,6 +10,7 @@ import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
+import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
@@ -73,6 +74,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
   const terminalSessions = new TerminalSessionLifecycle({
+    config: runtimeConfig,
     db,
     hub,
     logger,
@@ -100,6 +102,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
   await machineAuth.ensureReady();
+  const skillTreeRegistry = new SkillTreeRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config: runtimeConfig,
     db,
@@ -107,6 +110,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     lifecycleDedupers,
     logger,
     machineAuth,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
   });
@@ -116,8 +120,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
-
-  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
+  const {
+    app,
+    closeWebSockets,
+    injectWebSocket,
+    marketplaceService,
+    pluginService,
+  } = createApp(
     {
       appVersion,
       bbAppManagedConfig,
@@ -128,6 +137,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       logger,
       machineAuth,
       pendingInteractions,
+      skillTreeRegistry,
       telemetry,
       terminalSessions,
       watchInterests,
@@ -144,7 +154,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     machineAuth,
     pendingInteractions,
+    skillTreeRegistry,
     pluginSchedules: pluginService,
+    pluginService,
+    marketplaceService,
     telemetry,
     terminalSessions,
   };

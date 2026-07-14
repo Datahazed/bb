@@ -23,11 +23,16 @@ vi.mock("@/lib/api", async (importOriginal) => {
 function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
+    keybindings: [],
+    defaultKeybindings: [],
+    keybindingOverrides: [],
     experiments: { ...defaultExperiments, plugins: pluginsEnabled },
     appearance: defaultAppTheme,
     customThemes: [],
+    pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",

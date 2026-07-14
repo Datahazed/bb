@@ -16,6 +16,8 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -53,6 +55,7 @@ export function ThreadDetailHeader({
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
@@ -121,17 +124,25 @@ export function ThreadDetailHeader({
         </Button>
       ) : null}
       {showRightPanelToggle ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`${HEADER_ICON_BUTTON_CLASS} relative`}
-          aria-label={rightPanelLabel}
-          aria-pressed={isSecondaryPanelOpen}
-          onClick={onToggleSecondaryPanel}
-        >
-          <Icon name={rightPanelIconName} />
-        </Button>
+        <span className="inline-flex items-center gap-1.5">
+          <AppCommandShortcutHint shortcut={panelShortcut} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={HEADER_ICON_BUTTON_CLASS}
+            aria-label={
+              panelShortcut
+                ? `${rightPanelLabel} (${panelShortcut.label})`
+                : rightPanelLabel
+            }
+            aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
+            aria-pressed={isSecondaryPanelOpen}
+            onClick={onToggleSecondaryPanel}
+          >
+            <Icon name={rightPanelIconName} />
+          </Button>
+        </span>
       ) : null}
     </>
   );

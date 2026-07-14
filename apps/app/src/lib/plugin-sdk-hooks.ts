@@ -347,6 +347,7 @@ export function useComposer(): PluginComposerApi {
             resource: {
               kind: "plugin",
               pluginId,
+              icon: null,
               itemId: `${provider}:${mention.id}`,
               label,
             },

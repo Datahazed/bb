@@ -1,8 +1,12 @@
 import { matchPath, useLocation } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { SETTINGS_SECTION_ROUTE_PATH } from "@/lib/route-paths";
+import {
+  SETTINGS_PROVIDER_ROUTE_PATH,
+  SETTINGS_SECTION_ROUTE_PATH,
+} from "@/lib/route-paths";
 
 /**
  * The settings buckets: shared between the settings sidebar (which replaces
@@ -12,8 +16,10 @@ import { SETTINGS_SECTION_ROUTE_PATH } from "@/lib/route-paths";
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
+  { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
+  { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },
 ] as const satisfies readonly {
@@ -26,16 +32,30 @@ export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
+export const SETTINGS_PROVIDER_ENTRIES = [
+  { id: "codex", label: "Codex" },
+  { id: "claude-code", label: "Claude Code" },
+] as const;
+export type SettingsProviderId =
+  (typeof SETTINGS_PROVIDER_ENTRIES)[number]["id"];
+
+function isSettingsProviderId(value: string): value is SettingsProviderId {
+  return SETTINGS_PROVIDER_ENTRIES.some((provider) => provider.id === value);
+}
+
 export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 
 export interface SettingsNavState {
-  /** Selected settings bucket. */
-  activeSection: SettingsSectionId;
+  /** Provider id from /settings/providers/:providerId, else null. */
+  activeProviderId: SettingsProviderId | null;
+  /** Selected bucket; null while a provider page is active. */
+  activeSection: SettingsSectionId | null;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
-  /** Buckets visible on this host (files hides when irrelevant). */
+  providerEntries: typeof SETTINGS_PROVIDER_ENTRIES;
+  /** Buckets visible on this host. */
   sections: readonly SettingsNavSection[];
 }
 
@@ -48,28 +68,48 @@ export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
   const { fileOpeners } = usePluginSlots();
+  const systemConfig = useSystemConfig();
+  const providerMatch = matchPath(
+    SETTINGS_PROVIDER_ROUTE_PATH,
+    location.pathname,
+  );
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
-  const sectionParam = sectionMatch?.params.section;
+  const providerParam = providerMatch?.params.providerId;
+  const activeProviderId =
+    providerParam !== undefined && isSettingsProviderId(providerParam)
+      ? providerParam
+      : null;
+  const sectionParam =
+    providerMatch === null ? sectionMatch?.params.section : undefined;
   const hasUnknownSection =
-    sectionParam !== undefined && !isSettingsSectionId(sectionParam);
-  const activeSection: SettingsSectionId =
-    sectionParam !== undefined && isSettingsSectionId(sectionParam)
-      ? sectionParam
-      : "general";
+    (sectionParam !== undefined && !isSettingsSectionId(sectionParam)) ||
+    (providerParam !== undefined && !isSettingsProviderId(providerParam));
+  const activeSection: SettingsSectionId | null =
+    providerMatch !== null
+      ? null
+      : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+         ? sectionParam
+         : "general";
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
+    if (section.id === "machines") {
+      // Multi-machine experiment surface (Settings → Machines).
+      return systemConfig.data?.experiments.multiMachine === true;
+    }
     return true;
   });
 
   return {
+    activeProviderId,
     activeSection,
     hasUnknownSection,
+    providerEntries: SETTINGS_PROVIDER_ENTRIES,
     sections,
   };
 }

@@ -64,6 +64,9 @@ async function runHostDaemonEntrypoint(): Promise<void> {
     bridgeBundleDir:
       hostDaemonEntrypointConfig.BB_BRIDGE_DIR ??
       resolveEntrypointBridgeBundleDir(),
+    machineCredential: hostDaemonEntrypointConfig.BB_CONNECT_MACHINE_CREDENTIAL,
+    connectMachineId: hostDaemonEntrypointConfig.BB_CONNECT_MACHINE_ID,
+    autoUpdate: hostDaemonEntrypointConfig.BB_HOST_DAEMON_AUTO_UPDATE,
     enrollKey: hostDaemonEntrypointConfig.BB_HOST_ENROLL_KEY,
     hostId: hostDaemonEntrypointConfig.BB_HOST_ID,
     hostName: hostDaemonEntrypointConfig.BB_HOST_NAME,

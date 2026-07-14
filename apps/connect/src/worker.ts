@@ -3,10 +3,17 @@ import { RESERVED_HANDLES, parseVisitorHost, schema } from "@bb/connect-db";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
+  markMachineSeen,
   resolveLabel,
-  verifyMachineCredential,
+  verifyMachineCredentialDetails,
   verifySessionCookie,
 } from "./session.js";
+import {
+  DESKTOP_SESSION_COOKIE,
+  handleCreateDesktopSession,
+  handleListAccountServers,
+  verifyDesktopSessionCookie,
+} from "./servers.js";
 import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 
@@ -16,14 +23,25 @@ const SESSION_COOKIE = "__Secure-better-auth.session_token";
 
 /** Internal header: gate → TunnelDO, share target (port string). Never trust visitors. */
 export const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
+export const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
+export const GATE_AUTH_HEADER = "x-bb-gate-auth";
+export const GATE_MACHINE_ID_HEADER = "x-bb-gate-machine-id";
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function text(body: string, status: number): Response {
-  return new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+  return new Response(body, {
+    status,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
 }
 
 // Matches the bb dashboard's visual language (Inter, --canvas/--ink tokens,
@@ -74,7 +92,11 @@ const GATE_STYLE = `
 `;
 
 /** Render a gate page: brand row + centered card, one status, optional refresh. */
-function gatePage(cardBody: string, status: number, metaRefreshSeconds?: number): Response {
+function gatePage(
+  cardBody: string,
+  status: number,
+  metaRefreshSeconds?: number,
+): Response {
   const refresh =
     metaRefreshSeconds !== undefined
       ? `<meta http-equiv="refresh" content="${metaRefreshSeconds}">`
@@ -160,13 +182,36 @@ export function offlinePage(lastSeenAt: Date | null): Response {
  * Build the request forwarded to the TunnelDO. Always strips a visitor-supplied
  * target header; sets it only when the host label is a share (`handle--port`).
  */
-export function requestForTunnelDo(request: Request, target: string | null): Request {
+export function requestForTunnelDo(
+  request: Request,
+  target: string | null,
+  authKind?: "machine" | "session",
+): Request {
   const headers = new Headers(request.headers);
   headers.delete(TUNNEL_TARGET_HEADER);
+  headers.delete(MACHINE_CREDENTIAL_HEADER);
+  headers.delete(GATE_AUTH_HEADER);
+  headers.delete(GATE_MACHINE_ID_HEADER);
   if (target !== null) {
     headers.set(TUNNEL_TARGET_HEADER, target);
   }
+  if (authKind !== undefined) {
+    headers.set(GATE_AUTH_HEADER, authKind);
+  }
   return new Request(request, { headers });
+}
+
+function isHostManagementMutation(request: Request, pathname: string): boolean {
+  if (request.method === "POST" && pathname === "/internal/hosts/enroll-key") {
+    return true;
+  }
+  if (request.method === "POST" && pathname === "/api/v1/hosts/join-codes") {
+    return true;
+  }
+  return (
+    (request.method === "PATCH" || request.method === "DELETE") &&
+    /^\/api\/v1\/hosts\/[^/]+$/u.test(pathname)
+  );
 }
 
 /** Cache namespace for the full visitor host label (bare handle or share). */
@@ -175,8 +220,22 @@ export function cacheNamespace(handle: string, target: string | null): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
+    // Account-scoped APIs are handled on the gate before host/label routing so
+    // they never proxy through a tunnel to a local bb origin. Auth is
+    // machine/server credential or owner session — see servers.ts.
+    if (url.pathname === "/api/connect/servers") {
+      return handleListAccountServers(request, env);
+    }
+    if (url.pathname === "/api/connect/desktop-session") {
+      return handleCreateDesktopSession(request, env);
+    }
+
     const host = request.headers.get("host") ?? url.host;
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
     if (!parsed) return text("bb connect: unknown host\n", 404);
@@ -188,7 +247,10 @@ export default {
     // receive them if a more specific binding is missing — send them home
     // rather than answering with a confusing "no server" page.
     if (RESERVED_HANDLES.has(label)) {
-      return Response.redirect(`https://${env.BASE_DOMAIN}${url.pathname}${url.search}`, 301);
+      return Response.redirect(
+        `https://${env.BASE_DOMAIN}${url.pathname}${url.search}`,
+        301,
+      );
     }
 
     // Bind the schema so the db satisfies the shared ConnectDb type (also what
@@ -223,34 +285,89 @@ export default {
     }
 
     // Reserve the /__ namespace: never proxy internal paths from outside.
-    if (url.pathname.startsWith("/__")) return text("bb connect: not found\n", 404);
+    if (url.pathname.startsWith("/__"))
+      return text("bb connect: not found\n", 404);
 
-    // Daemon → server traffic. Share hosts are visitor-only — no machine path.
-    const MACHINE_HEADER = "x-bb-connect-machine";
-    if (url.pathname.startsWith("/internal")) {
+    // The bootstrap script and its server-matched package must be reachable
+    // before the new machine has a browser session or credential.
+    const isPublicInstallPath =
+      url.pathname === "/install.sh" ||
+      url.pathname === "/install/version" ||
+      url.pathname === "/install/bb-app.tgz";
+    if (request.method === "GET" && isPublicInstallPath) {
       if (target !== null) return text("bb connect: not found\n", 404);
-      const machineCred = request.headers.get(MACHINE_HEADER) ?? "";
-      const machineUserId = await verifyMachineCredential(machineCred, db);
-      if (machineUserId == null || machineUserId !== resolved.userId) {
+      const headers = new Headers(request.headers);
+      headers.delete(MACHINE_CREDENTIAL_HEADER);
+      headers.delete(TUNNEL_TARGET_HEADER);
+      headers.delete(GATE_AUTH_HEADER);
+      headers.delete(GATE_MACHINE_ID_HEADER);
+      return stub.fetch(new Request(request, { headers }));
+    }
+
+    // Daemon + machine CLI traffic. Share hosts are visitor-only. The bb
+    // server still verifies the daemon host key underneath this gate check.
+    const isMachinePath =
+      url.pathname.startsWith("/internal") ||
+      url.pathname === "/api/v1" ||
+      url.pathname.startsWith("/api/v1/");
+    if (target !== null && url.pathname.startsWith("/internal")) {
+      return text("bb connect: not found\n", 404);
+    }
+    const presentedMachineCredential = request.headers.get(
+      MACHINE_CREDENTIAL_HEADER,
+    );
+    if (isMachinePath && presentedMachineCredential !== null) {
+      if (target !== null) return text("bb connect: not found\n", 404);
+      const verified = await verifyMachineCredentialDetails(
+        presentedMachineCredential,
+        db,
+      );
+      if (verified == null || verified.userId !== resolved.userId) {
         return text("bb connect: machine not authorized\n", 403);
       }
+      if (isHostManagementMutation(request, url.pathname)) {
+        return text("bb connect: machine cannot manage hosts\n", 403);
+      }
+      ctx.waitUntil(markMachineSeen(verified.machineId, db));
       const headers = new Headers(request.headers);
-      headers.delete(MACHINE_HEADER);
+      headers.delete(MACHINE_CREDENTIAL_HEADER);
       headers.delete(TUNNEL_TARGET_HEADER);
+      headers.delete(GATE_AUTH_HEADER);
+      headers.delete(GATE_MACHINE_ID_HEADER);
+      headers.set(GATE_AUTH_HEADER, "machine");
+      headers.set(GATE_MACHINE_ID_HEADER, verified.machineId);
       return stub.fetch(new Request(request, { headers }));
+    }
+    if (url.pathname.startsWith("/internal")) {
+      return text("bb connect: machine not authorized\n", 403);
     }
 
     // Visitor request — require a session owned by this server's account.
     // Identical auth for bare-label and share hosts. Because this check passed,
     // only the owner ever reaches the DO below (and thus its offline 503).
-    const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
+    const cookieHeader = request.headers.get("cookie");
+    const cookie = parseCookie(cookieHeader, SESSION_COOKIE);
+    const desktopCookie = parseCookie(cookieHeader, DESKTOP_SESSION_COOKIE);
     const appUrl = `https://${env.BASE_DOMAIN}`;
-    if (!cookie) return signInPage(label, appUrl, url.toString());
-    const userId = await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db);
-    if (!userId) return signInPage(label, appUrl, url.toString());
-    if (userId !== resolved.userId) return text("bb connect: not your server\n", 403);
+    if (!cookie && !desktopCookie)
+      return signInPage(label, appUrl, url.toString());
+    const sessionUserId = cookie
+      ? await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db)
+      : null;
+    const desktopUserId = desktopCookie
+      ? await verifyDesktopSessionCookie(desktopCookie, env.BETTER_AUTH_SECRET)
+      : null;
+    if (!sessionUserId && !desktopUserId) {
+      return signInPage(label, appUrl, url.toString());
+    }
+    if (
+      sessionUserId !== resolved.userId &&
+      desktopUserId !== resolved.userId
+    ) {
+      return text("bb connect: not your server\n", 403);
+    }
 
-    const doRequest = requestForTunnelDo(request, target);
+    const doRequest = requestForTunnelDo(request, target, "session");
 
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
@@ -259,8 +376,11 @@ export default {
     // Everything else: serve from the edge cache when the origin allows it,
     // otherwise proxy through the tunnel. Namespace by full host label so a
     // share response never collides with bare-label app assets.
-    const response = await serveWithCache(request, cacheNamespace(label, target), ctx, () =>
-      stub.fetch(doRequest),
+    const response = await serveWithCache(
+      request,
+      cacheNamespace(label, target),
+      ctx,
+      () => stub.fetch(doRequest),
     );
     // Tunnel down + a browser navigation → the styled offline page, using the
     // last_seen_at already resolved for this server. API/asset/fetch requests

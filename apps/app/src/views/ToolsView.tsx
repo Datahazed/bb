@@ -659,7 +659,10 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   // Installed and builtin plugins remain real resources even when the
   // experiment that allows new user plugin installation is disabled.
   const listQuery = usePluginList({ enabled: true });
-  const plugins = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const plugins = useMemo(
+    () => listQuery.data?.plugins ?? [],
+    [listQuery.data],
+  );
   const {
     canOpenPreferredDirectoryTarget,
     openPathInPreferredDirectoryTarget,

@@ -41,6 +41,11 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
+import {
+  mkdirHostPath,
+  moveHostPath,
+  removeHostPath,
+} from "./command-handlers/path-mutations.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
 import {
@@ -61,6 +66,11 @@ import {
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
 import { squashMerge } from "./command-handlers/workspace.js";
+import {
+  cloneProject,
+  inspectProjectPath,
+  resolveProjectCloneDefaultPath,
+} from "./command-handlers/project.js";
 import {
   requireResolvedWorkspaceForCommand,
   resolveWorkspaceForCommand,
@@ -160,7 +170,9 @@ async function installProviderCliOnHost(
   options: CommandDispatchOptions,
 ): Promise<HostDaemonOnlineRpcResult<"provider_cli.install">> {
   try {
-    const env = providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv());
+    const env = providerCliEnvFromShellEnv(
+      options.runtimeManager.getShellEnv(),
+    );
     return {
       events: await readProviderCliInstallEvents(
         streamProviderCliInstall({
@@ -188,11 +200,27 @@ async function installProviderCliOnHost(
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    return startThread(command, options);
+    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+      command.threadId,
+    );
+    try {
+      return await startThread(command, options);
+    } finally {
+      release();
+    }
   },
   "turn.submit": async (command, options) => {
-    const entry = await ensureThreadRuntime(command, options);
-    return submitTurn(command, entry, options);
+    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+      command.threadId,
+    );
+    try {
+      const entry = await ensureThreadRuntime(command, options);
+      return await submitTurn(command, entry, options);
+    } finally {
+      release();
+    }
   },
   "thread.stop": async (command, options) => {
     const entry = await requireExistingEnvironment(
@@ -258,6 +286,15 @@ const commandHandlers: CommandHandlerMap = {
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
   "environment.provision": provisionEnvironment,
+  "project.clone": (command, options) =>
+    cloneProject({
+      dataDir: options.dataDir,
+      projectSlug: command.projectSlug,
+      remoteUrl: command.remoteUrl,
+      ...(command.targetPath !== undefined
+        ? { targetPath: command.targetPath }
+        : {}),
+    }),
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
@@ -332,8 +369,15 @@ const commandHandlers: CommandHandlerMap = {
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.mkdir": mkdirHostPath,
+  "host.move_path": moveHostPath,
+  "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  "project.inspect": async (command) => inspectProjectPath(command.path),
+  "project.clone_default_path": async (command, options) => ({
+    path: resolveProjectCloneDefaultPath(options.dataDir, command.projectSlug),
+  }),
   "host.pick_folder": pickHostFolder,
   "host.caffeinate": async (command, options) =>
     getCaffeinateManager(options).setEnabled(command.enabled),

@@ -1,0 +1,98 @@
+import { describe, expect, it, vi } from "vitest";
+import type { BaseWindow, MenuItemConstructorOptions } from "electron";
+
+vi.mock("electron", () => ({
+  app: { name: "bb" },
+  Menu: {},
+}));
+
+import {
+  buildApplicationMenuTemplate,
+  SET_SERVER_URL_MENU_LABEL,
+  type InstallApplicationMenuArgs,
+} from "../src/menu.js";
+
+function menuArgs(
+  reloadWindow: InstallApplicationMenuArgs["reloadWindow"],
+  overrides: Partial<InstallApplicationMenuArgs> = {},
+): InstallApplicationMenuArgs {
+  return {
+    accelerators: {
+      closeWindowOrSideTab: undefined,
+      createNewWindow: undefined,
+      openNewTab: undefined,
+      openNewThread: undefined,
+      openSettings: undefined,
+    },
+    closeWindowOrSideTab: () => {},
+    createNewWindow: () => {},
+    openNewTab: () => {},
+    openNewThread: () => {},
+    openServerDaemonLogs: () => {},
+    openSettings: () => {},
+    reloadWindow,
+    selectServer: () => {},
+    serverDaemonLogsMenuEnabled: false,
+    servers: [{ checked: true, id: "builtin", name: "This Mac" }],
+    setServerUrl: () => {},
+    ...overrides,
+  };
+}
+
+function findServerSubmenu(
+  template: MenuItemConstructorOptions[],
+): MenuItemConstructorOptions[] {
+  const windowMenu = template.find((item) => item.label === "Window");
+  const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
+  const serverMenu = windowSubmenu.find((item) => item.label === "Server");
+  return serverMenu?.submenu as MenuItemConstructorOptions[];
+}
+
+describe("application menu", () => {
+  it("shows reload shortcuts without globally stealing browser commands", () => {
+    const reloadWindow = vi.fn();
+    const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
+    const viewMenu = template.find((item) => item.label === "View");
+    const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const reload = submenu.find((item) => item.label === "Reload");
+    const forceReload = submenu.find((item) => item.label === "Force Reload");
+    const focusedWindow = {} as BaseWindow;
+
+    expect(reload?.accelerator).toBe("CommandOrControl+R");
+    expect(reload?.registerAccelerator).toBe(false);
+    expect(forceReload?.accelerator).toBe("CommandOrControl+Shift+R");
+    expect(forceReload?.registerAccelerator).toBe(false);
+    reload?.click?.({} as never, focusedWindow, {} as never);
+    forceReload?.click?.({} as never, focusedWindow, {} as never);
+    expect(reloadWindow).toHaveBeenNthCalledWith(1, focusedWindow, false);
+    expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
+  });
+
+  it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {
+    const selectServer = vi.fn();
+    const setServerUrl = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        selectServer,
+        servers: [
+          { checked: false, id: "builtin", name: "This Mac" },
+          { checked: true, id: "custom", name: "example.com" },
+        ],
+        setServerUrl,
+      }),
+    );
+    const serverSubmenu = findServerSubmenu(template);
+
+    expect(serverSubmenu).toHaveLength(4);
+    expect(serverSubmenu[0]?.type).toBe("radio");
+    expect(serverSubmenu[0]?.checked).toBe(false);
+    expect(serverSubmenu[1]?.type).toBe("radio");
+    expect(serverSubmenu[1]?.checked).toBe(true);
+    expect(serverSubmenu[2]?.type).toBe("separator");
+    expect(serverSubmenu[3]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
+    serverSubmenu[1]?.click?.({} as never, undefined, {} as never);
+    expect(selectServer).toHaveBeenCalledWith("custom");
+    serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
+    expect(setServerUrl).toHaveBeenCalledTimes(1);
+  });
+});

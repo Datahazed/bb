@@ -421,6 +421,62 @@
       "when": 1783626227375,
       "tag": "0059_stale_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1783663695773,
+      "tag": "0060_panoramic_xavin",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1783721756867,
+      "tag": "0061_dizzy_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1783729089579,
+      "tag": "0062_jittery_jocasta",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1783741514031,
+      "tag": "0063_broken_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1783808433737,
+      "tag": "0064_nebulous_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "6",
+      "when": 1783809378708,
+      "tag": "0065_empty_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "6",
+      "when": 1783917774403,
+      "tag": "0066_smooth_shinko_yamashiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1783979475769,
+      "tag": "0067_early_warbird",
+      "breakpoints": true
     }
   ]
 }

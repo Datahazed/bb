@@ -5,13 +5,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
-export type PromptBoxActionKind = "skills" | "plan" | "goal";
+export type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -23,16 +24,22 @@ export interface PromptBoxAction {
 
 interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
+  isAttaching?: boolean;
+  onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
 }
 
-// Skill creation always targets a cross-agent bb skill.
-export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
+export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
+  kind: "automation",
+  command: { trigger: "/", name: "automation", trailingText: " " },
+  text: "/automation ",
+};
 
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
   "skills",
   "plan",
   "goal",
+  "automation",
 ];
 
 const PROMPT_ACTION_PRESENTATION = {
@@ -48,10 +55,23 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Goal",
     icon: "Target",
   },
+  automation: {
+    label: "Automation",
+    icon: "Repeat",
+  },
 } as const satisfies Record<
   PromptBoxActionKind,
   { label: string; icon: IconName }
 >;
+
+export function withAutomationPromptAction(
+  actions: readonly PromptBoxAction[],
+): PromptBoxAction[] {
+  if (actions.some((action) => action.kind === "automation")) {
+    return [...actions];
+  }
+  return [...actions, AUTOMATION_PROMPT_ACTION];
+}
 
 function orderedPromptActions(
   actions: readonly PromptBoxAction[],
@@ -64,15 +84,17 @@ function orderedPromptActions(
 
 export function PromptBoxActionsMenu({
   actions = [],
+  isAttaching = false,
+  onAttach,
   onAction,
 }: PromptBoxActionsMenuProps) {
-  const selectedActionRef = useRef(false);
+  const selectedItemRef = useRef(false);
   const visibleActions = orderedPromptActions(actions).filter(
     (action) => action.text.length > 0,
   );
   const clearSelectedActionAfterClose = useCallback(() => {
     const clear = () => {
-      selectedActionRef.current = false;
+      selectedItemRef.current = false;
     };
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(clear);
@@ -81,7 +103,7 @@ export function PromptBoxActionsMenu({
     setTimeout(clear, 0);
   }, []);
 
-  if (visibleActions.length === 0) {
+  if (visibleActions.length === 0 && !onAttach) {
     return null;
   }
 
@@ -107,7 +129,10 @@ export function PromptBoxActionsMenu({
             "-ml-1.5",
           )}
         >
-          <Icon name="Plus" className="size-4" />
+          <Icon
+            name={isAttaching ? "Spinner" : "Plus"}
+            className={cn("size-4", isAttaching && "animate-spin")}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -118,11 +143,33 @@ export function PromptBoxActionsMenu({
         className="w-36"
         mobileTitle="Prompt actions"
         onCloseAutoFocus={(event) => {
-          if (selectedActionRef.current) {
+          if (selectedItemRef.current) {
             event.preventDefault();
           }
         }}
       >
+        {onAttach ? (
+          <>
+            <DropdownMenuItem
+              disabled={isAttaching}
+              onSelect={() => {
+                selectedItemRef.current = true;
+                onAttach();
+              }}
+            >
+              <Icon
+                name={isAttaching ? "Spinner" : "Paperclip"}
+                className={cn(
+                  "size-4 text-muted-foreground",
+                  isAttaching && "animate-spin",
+                )}
+                aria-hidden
+              />
+              Attach files
+            </DropdownMenuItem>
+            {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
+          </>
+        ) : null}
         {visibleActions.map((action) => {
           const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
           return (
@@ -130,7 +177,7 @@ export function PromptBoxActionsMenu({
               key={action.kind}
               disabled={action.disabled}
               onSelect={() => {
-                selectedActionRef.current = true;
+                selectedItemRef.current = true;
                 onAction(action);
               }}
             >

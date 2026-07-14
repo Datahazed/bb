@@ -62,7 +62,7 @@ project picker on the homepage card or an issue→project mapping setting.
 A worker agent wrote `bb-plugin-github` end to end on a PACKAGED bb-app
 (`:41100`, fresh data dir — not the dev server), the user iterated on it,
 and a second agent migrated it to the stock-shadcn UI kit. Now checked in
-as `examples/plugins/github`. What that flow proved:
+as `marketplace/plugins/github`. What that flow proved:
 
 - [x] **Packaged-app author loop**: `bb plugin new github --app` (scaffold
       with bundled `types/*.d.ts`) → edit → `bb plugin install .` → edit →
@@ -657,7 +657,7 @@ server.
 The Linear hero example (`examples/plugins/linear`) and its dedicated tests
 (heroes-linear.test.ts, linear-example-bundle.test.ts) were deleted: the
 github hero — authored from scratch on a packaged instance and checked in
-as `examples/plugins/github` — took over the full-stack showcase role
+as `marketplace/plugins/github` — took over the full-stack showcase role
 without needing a third-party API key to exercise. Surfaces the linear
 example uniquely demonstrated live (mention provider + composer-menu logos,
 homepageSection, threadPanelTab with the sync visible() pattern, schedule →
@@ -683,7 +683,7 @@ confirms them with eyes on a real browser:
 1. `pnpm bb:dev plugin new hello --app` + install; run the P3.3 slot checks
    (homepage card, all four slots, ErrorBoundary chip) and the P3.4 dev
    loop (edit → in-place update, no duplicates, disable removes UI live).
-2. Install the github hero (`examples/plugins/github`; needs an authed
+2. Install the github plugin (`marketplace/plugins/github`; needs an authed
    `gh` CLI) and click through its panel: issues/PRs tabs, detail view,
    Send agent.
 3. Kill-switch with eyes: make hello's section component throw → chip only,
@@ -909,37 +909,23 @@ authoring-docs pins (`threadPanelAction: ["threadId", "params"]`).
       fixed tab fails schema parse → that thread's panel state resets
       cleanly (fresh default panel, no error).
 
-## Files API + composer bridge + sub-routing + fileOpener + Markdown Editor hero (2026-07-04)
+## Files API + composer bridge + sub-routing + fileOpener (2026-07-04)
 
 Four platform surfaces (PR: bb.sdk.files / useComposer / navPanel subPath /
-fileOpener) plus the Markdown Editor hero plugin. Automated: daemon
+fileOpener). Automated: daemon
 `file-write.test.ts` (CAS matrix, symlink containment), server
 `host-file-routes.test.ts` (defaults, ENOENT remap), app
 `plugin-slot-mounts.test.tsx` (useComposer quote/mention/focus bus, subPath
 splat, opener content + degrade), `useThreadFileTabs.test.ts` (opener
 diversion, ref-snapshot skip, missing-opener fallback, in-place switch),
-collector validation, authoring docs pins, cli
-`markdown-editor-example-bundle.test.ts`.
+collector validation, and authoring docs pins.
 
-- [ ] **CAS save race live**: open a note in Markdown Editor, edit the file
-      on disk (or via an agent), save in the editor → conflict banner with
-      Reload/Overwrite; Reload shows the disk content.
-- [ ] **Open with live**: Settings → File openers shows a `.md` row once the
-      Markdown Editor plugin is installed; picking "Markdown Editor" makes markdown links
-      open in the editor. Right-clicking a markdown link offers one-off
-      "Open with built-in preview" / "Open with Markdown Editor" that override
-      the default for that open only.
-- [ ] **Opener fallback live**: set the .md default to Markdown Editor,
-      disable the plugin → opening a markdown file lands on the built-in
-      preview (no dead tab); the persisted opener tab shows the placeholder.
-- [ ] **subPath deep link**:
-      /plugins/markdown-editor/markdown-editor/0/<note>.md loads with that
-      markdown file selected; browser back walks file-to-file history.
-- [ ] **Composer bridge live**: "Add to chat" from the Markdown Editor nav panel seeds
-      the home composer draft (blockquote + focus); in a thread panel tab it
-      lands in that thread's draft; "@-mention" inserts a pill that resolves
-      the note at send (visible in the agent's context).
-- [ ] **Crepe theming**: Markdown Editor follows light/dark and a custom
-      palette (Nord) — no stranded white editor chrome.
-- [ ] **Watcher refresh**: agent writes a new .md into a mounted directory →
-      the tree updates without a manual refresh.
+- [ ] **Docs native watcher**: install Docs and edit a file in a local vault
+      outside bb → the tree/editor refreshes immediately; repeat with a remote
+      vault and verify the polling fallback refreshes within 10 seconds.
+- [ ] **Docs default opener**: choose Docs as the default for `.md`, `.mdx`,
+      and `.markdown`, then open workspace and absolute host files → each opens
+      in an editable Docs tab with CAS conflict handling.
+- [ ] **Docs composer scope**: open a Docs directive in a thread side panel →
+      Add to chat and Mention in chat target that thread; confirm those actions
+      are absent from the full Docs nav editor and generic file-opener tabs.

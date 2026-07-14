@@ -390,8 +390,7 @@ function trimQueuedMessagePreviewTextRange({
   text: string;
 }): QueuedMessagePreviewText | null {
   const rawText = text.slice(rangeStart, rangeEnd);
-  const leadingWhitespaceLength =
-    rawText.length - rawText.trimStart().length;
+  const leadingWhitespaceLength = rawText.length - rawText.trimStart().length;
   const trimmedRelativeEnd = rawText.trimEnd().length;
   if (trimmedRelativeEnd <= leadingWhitespaceLength) {
     return null;

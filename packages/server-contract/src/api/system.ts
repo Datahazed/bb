@@ -1,10 +1,13 @@
 import { z } from "zod";
 import {
   appSettingsSchema,
+  appKeybindingOverridesSchema,
+  appKeybindingsSchema,
   appThemeSchema,
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
+  pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
 import { hostPlatformSchema } from "@bb/host-daemon-contract";
@@ -59,6 +62,14 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
+/** Omission preserves the existing behavior of reading the primary machine. */
+export const systemUsageLimitsQuerySchema = z.object({
+  hostId: z.string().min(1).optional(),
+});
+export type SystemUsageLimitsQuery = z.infer<
+  typeof systemUsageLimitsQuerySchema
+>;
+
 export interface SystemVoiceTranscriptionForm {
   [key: string]: string | Blob;
 }
@@ -78,6 +89,12 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 export const systemConfigResponseSchema = z.object({
   /** App-wide Settings → General preferences, persisted server-side. */
   generalSettings: appSettingsSchema,
+  /** Server-resolved keyboard bindings shared by every connected app window. */
+  keybindings: appKeybindingsSchema,
+  /** Server defaults, before the user's per-command overrides are applied. */
+  defaultKeybindings: appKeybindingsSchema,
+  /** Sparse per-command customizations; null shortcuts explicitly disable commands. */
+  keybindingOverrides: appKeybindingOverridesSchema,
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
   experiments: experimentsSchema,
   /** Active app-wide palette (built-in id or custom theme), resolved server-side. */
@@ -87,14 +104,30 @@ export const systemConfigResponseSchema = z.object({
    * so the Settings picker can offer them alongside the built-ins.
    */
   customThemes: z.array(z.string()),
+  /** Palettes contributed by currently loaded plugins. */
+  pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  /**
+   * The server-resolved primary host (the machine running the server, or the
+   * single known host). Null only on a fresh server where no host has ever
+   * enrolled — clients must not guess a primary from the host list when a
+   * value is present.
+   */
+  primaryHostId: z.string().nullable(),
   primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
   /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */
   dataDir: z.string(),
 });
 export type SystemConfigResponse = z.infer<typeof systemConfigResponseSchema>;
+
+export const systemAttentionResponseSchema = z.object({
+  hasAttention: z.boolean(),
+});
+export type SystemAttentionResponse = z.infer<
+  typeof systemAttentionResponseSchema
+>;
 
 /**
  * Theme catalog: the on-disk custom-theme directory plus the discovered custom
@@ -105,6 +138,8 @@ export const themeCatalogResponseSchema = z.object({
   dir: z.string(),
   /** Discovered custom theme names (each has a `theme.css`). */
   custom: z.array(z.string()),
+  /** Palettes contributed by currently loaded plugins. */
+  plugins: z.array(pluginThemeMetaSchema),
   /** The active palette, resolved server-side. */
   active: appThemeSchema,
 });

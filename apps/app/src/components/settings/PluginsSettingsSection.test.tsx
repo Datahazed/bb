@@ -11,6 +11,7 @@ import {
   PluginSettingsDetail,
   PluginSettingsForm,
 } from "./PluginsSettingsSection";
+import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
 
 interface RecordedRequest {
   url: string;
@@ -138,6 +139,7 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     statusDetail: null,
     description: null,
     displayName: null,
+    icon: null,
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
@@ -146,6 +148,10 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     schedules: [],
     cliCommand: null,
     app: { hasApp: false },
+    provenance: "direct" as const,
+    marketplaceName: null,
+    sourceDisplay: "path · /plugins/linear",
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
 }
 

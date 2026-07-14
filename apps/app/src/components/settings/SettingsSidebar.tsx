@@ -23,9 +23,11 @@ import {
 import {
   SETTINGS_ROUTE_PATH,
   getRootComposeRoutePath,
+  getSettingsProviderRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { useSettingsNavState } from "./settings-nav";
+import { getProviderIconInfo } from "@/lib/provider-icon";
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -100,7 +102,12 @@ export function SettingsSidebar({
   const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const { activeSection, sections } = useSettingsNavState();
+  const {
+    activeProviderId,
+    activeSection,
+    providerEntries,
+    sections,
+  } = useSettingsNavState();
 
   const sectionIcon = (name: IconName) => (
     <Icon name={name} className={COARSE_POINTER_ICON_SIZE_CLASS} />
@@ -160,6 +167,29 @@ export function SettingsSidebar({
                 {sectionIcon(section.icon)}
               </SettingsSidebarRow>
             ))}
+          </div>
+          <div className="mt-4">
+            <SettingsSidebarSectionLabel>Providers</SettingsSidebarSectionLabel>
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {providerEntries.map((provider) => {
+              const ProviderIcon = getProviderIconInfo(provider.id)?.icon;
+              return (
+                <SettingsSidebarRow
+                  key={provider.id}
+                  active={activeProviderId === provider.id}
+                  label={provider.label}
+                  onNavigate={closeOnMobile}
+                  to={getSettingsProviderRoutePath(provider.id)}
+                >
+                  {ProviderIcon ? (
+                    <ProviderIcon className={COARSE_POINTER_ICON_SIZE_CLASS} />
+                  ) : (
+                    sectionIcon("Code")
+                  )}
+                </SettingsSidebarRow>
+              );
+            })}
           </div>
         </div>
       </SidebarContent>

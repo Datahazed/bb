@@ -188,6 +188,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "host.mkdir": { ok: true },
+  "host.move_path": { ok: true },
+  "host.remove_path": { ok: true },
   "host.browse_directory": {
     directory: "/home/me/project",
     parent: "/home/me",
@@ -201,6 +204,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       "/home/me/project": true,
       "/home/me/missing": false,
     },
+  },
+  "project.inspect": {
+    path: "/home/me/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
+  },
+  "project.clone_default_path": {
+    path: "/home/me/.bb/checkouts/project",
   },
   "host.pick_folder": {
     path: "/home/me/project",
@@ -471,6 +481,10 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "environment.provision.cancel": {
     aborted: true,
   },
+  "project.clone": {
+    path: "/home/me/.bb/checkouts/project",
+    gitRemoteUrl: "git@example.com:me/project.git",
+  },
   "environment.destroy": {},
   "workspace.commit": {
     commitSha: "abcdef123456",
@@ -645,6 +659,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.targetPath":
+    "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
   "hostDaemonOnlineRpcCommandSchema.mode":
@@ -705,6 +721,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.options.claudeCodePermissionMode":
     "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
+  "hostDaemonCommandSchema.options.memoryEnabled":
+    "legacy runtime commands may omit provider memory policy; current servers always send the persisted provider preference.",
+  "hostDaemonCommandSchema.options.providerSubagentsEnabled":
+    "legacy runtime commands may omit provider subagent policy; current servers always send the persisted provider preference.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
@@ -1226,12 +1246,14 @@ describe("host-daemon command schemas", () => {
         providerId: "claude-code",
         cwd: "/tmp/workspace",
         builtinSkillsRootPath: "/tmp/builtin-skills",
+        injectedSkillSources: [],
       }),
     ).toMatchObject({
       type: "host.list_commands",
       providerId: "claude-code",
       cwd: "/tmp/workspace",
       builtinSkillsRootPath: "/tmp/builtin-skills",
+      injectedSkillSources: [],
     });
 
     expect(
@@ -1848,33 +1870,40 @@ describe("host-daemon command schemas", () => {
     const base = {
       name: "workflow-help",
       description: "Use when building workflows.",
-      sourceRootPath: "/srv/builtin-skills/workflow-help",
-      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
+    };
+    const tree = {
+      ...base,
+      kind: "tree",
+      treeHash: "a".repeat(64),
+      entryPath: "SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "builtin",
       }),
-    ).toMatchObject({ sourceType: "builtin" });
+    ).toMatchObject({ kind: "tree", sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
+        ...tree,
         sourceType: "data-dir",
       }),
-    ).toMatchObject({ sourceType: "data-dir" });
+    ).toMatchObject({ kind: "tree", sourceType: "data-dir" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
+        kind: "workspace-path",
         sourceType: "project",
+        sourceRootPath: "/workspace/.bb/skills/workflow-help",
+        skillFilePath: "/workspace/.bb/skills/workflow-help/SKILL.md",
       }),
-    ).toMatchObject({ sourceType: "project" });
+    ).toMatchObject({ kind: "workspace-path", sourceType: "project" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "bundled",
+        ...tree,
+        sourceType: "project",
       }),
     ).toThrow();
   });
@@ -2589,21 +2618,23 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonEventBatchRequestSchema.parse({
         sessionId: "session_123",
-        events: [
+        eventGroups: [
           {
             threadId: "thr_123",
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
+            events: [
+              {
+                type: "system/error",
+                threadId: "thr_123",
+                scope: threadScope(),
+                message: "boom",
+              },
+            ],
           },
         ],
       }),
     ).toMatchObject({
       sessionId: "session_123",
-      events: [
+      eventGroups: [
         {
           threadId: "thr_123",
         },
@@ -2666,16 +2697,18 @@ describe("host-daemon session schemas", () => {
     expect(() =>
       hostDaemonEventBatchRequestSchema.parse({
         sessionId: "session_123",
-        events: [
+        eventGroups: [
           {
             threadId: "thr_123",
-            sequence: 1,
-            event: {
-              type: "system/error",
-              threadId: "thr_123",
-              scope: threadScope(),
-              message: "boom",
-            },
+            events: [
+              {
+                type: "system/error",
+                threadId: "thr_123",
+                scope: threadScope(),
+                message: "boom",
+                sequence: 1,
+              },
+            ],
           },
         ],
       }),

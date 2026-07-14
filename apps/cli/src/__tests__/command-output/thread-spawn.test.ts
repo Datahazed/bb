@@ -57,6 +57,42 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn forwards repeatable file and image attachments", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-attachments",
+      projectId: "proj-1",
+      providerId: "codex",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "review these",
+        "--file",
+        "/tmp/report.pdf",
+        "--image",
+        "/tmp/screenshot.png",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        input: [
+          { type: "text", text: "review these", mentions: [] },
+          { type: "localFile", path: "/tmp/report.pdf" },
+          { type: "localImage", path: "/tmp/screenshot.png" },
+        ],
+      }),
+    });
+  });
+
   it("bb thread spawn requires an explicit --project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
     const post = vi.fn();
@@ -718,5 +754,186 @@ describe("bb thread spawn command output", () => {
         },
       },
     });
+  });
+
+  it("bb thread spawn targets an unambiguous machine name", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-machine",
+      projectId: "proj-1",
+      providerId: "codex",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.$post": post,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--machine",
+        "builder",
+        "--prompt",
+        "hello",
+      ],
+      register,
+    );
+
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        environment: {
+          type: "host",
+          hostId: "host-remote",
+          workspace: { type: "unmanaged", path: null },
+        },
+      }),
+    });
+  });
+
+  it("bb thread spawn combines --host with an unmanaged path", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-machine-path",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.$post": post,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--host",
+        "host-remote",
+        "--environment",
+        "/srv/alpha",
+        "--prompt",
+        "hello",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        environment: {
+          type: "host",
+          hostId: "host-remote",
+          workspace: { type: "unmanaged", path: "/srv/alpha" },
+        },
+      }),
+    });
+  });
+
+  it("bb thread spawn creates a managed worktree on the selected machine", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-machine-worktree",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.$post": post,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--machine",
+        "builder",
+        "--new-environment",
+        "worktree",
+        "--base-branch",
+        "main",
+        "--prompt",
+        "hello",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        environment: {
+          type: "host",
+          hostId: "host-remote",
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "named", name: "main" },
+          },
+        },
+      }),
+    });
+  });
+
+  it("bb thread spawn rejects selecting a machine for a reused environment", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--machine",
+          "builder",
+          "--environment",
+          "env-existing",
+          "--prompt",
+          "hello",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
+    );
+    expect(post).not.toHaveBeenCalled();
   });
 });

@@ -195,21 +195,14 @@ export async function installHostRegistrySkill(
       command.skillId,
     );
     const skillFilePath = path.join(extractedSkillPath, SKILL_FILE_NAME);
-    const description = await readSkillDescription(
-      skillFilePath,
-      command.skillId,
-    );
+    await readSkillDescription(skillFilePath, command.skillId);
 
     try {
       await copyInjectedSkillSource({
         destinationPath: temporarySkillPath,
-        source: {
-          sourceType: "data-dir",
-          name: command.skillId,
-          description,
-          sourceRootPath: extractedSkillPath,
-          skillFilePath,
-        },
+        name: command.skillId,
+        sourceRootPath: extractedSkillPath,
+        skillFilePath,
       });
     } catch (error) {
       throw new ExpectedCommandDispatchError(

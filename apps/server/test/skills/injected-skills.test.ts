@@ -1,9 +1,24 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
-import { resolveInjectedSkillSources } from "../../src/services/skills/injected-skills.js";
+import {
+  hashSkillTreeEntries,
+  readSkillTreeManifest,
+  resolveInjectedSkillSources as resolveInjectedSkillSourcesWithRegistry,
+  SkillTreeRegistry,
+  type ResolveInjectedSkillSourcesArgs,
+} from "../../src/services/skills/injected-skills.js";
 import type { ServerLogger } from "../../src/types.js";
 
 interface CapturedLog {
@@ -21,6 +36,16 @@ interface WriteSkillArgs {
   description?: string;
   name: string;
   rootPath: string;
+}
+
+function resolveInjectedSkillSources(
+  logger: ServerLogger,
+  args: Omit<ResolveInjectedSkillSourcesArgs, "skillTreeRegistry">,
+) {
+  return resolveInjectedSkillSourcesWithRegistry(logger, {
+    ...args,
+    skillTreeRegistry: new SkillTreeRegistry(),
+  });
 }
 
 const tempDirs: string[] = [];
@@ -87,7 +112,81 @@ async function writeSkill(args: WriteSkillArgs): Promise<string> {
   return skillRootPath;
 }
 
+function expectedTreeSource(args: {
+  description: string;
+  name: string;
+  rootPath: string;
+  sourceType: "builtin" | "data-dir";
+}) {
+  return {
+    kind: "tree" as const,
+    sourceType: args.sourceType,
+    name: args.name,
+    description: args.description,
+    treeHash: readSkillTreeManifest(args.rootPath).treeHash,
+    entryPath: "SKILL.md",
+  };
+}
+
 describe("injected skill source discovery", () => {
+  it("hashes trees deterministically and includes content, paths, and modes", async () => {
+    const temp = await makeTempDir();
+    const firstRoot = await writeSkill({
+      rootPath: path.join(temp, "first"),
+      name: "hash-test",
+    });
+    const secondRoot = await writeSkill({
+      rootPath: path.join(temp, "second"),
+      name: "hash-test",
+    });
+    await mkdir(path.join(firstRoot, "references"));
+    await mkdir(path.join(secondRoot, "references"));
+    const firstReference = path.join(firstRoot, "references", "notes.md");
+    const secondReference = path.join(secondRoot, "references", "notes.md");
+    await writeFile(firstReference, "same bytes\n");
+    await writeFile(secondReference, "same bytes\n");
+
+    const baseline = readSkillTreeManifest(firstRoot).treeHash;
+    expect(readSkillTreeManifest(secondRoot).treeHash).toBe(baseline);
+
+    await writeFile(secondReference, "changed bytes\n");
+    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    await writeFile(secondReference, "same bytes\n");
+
+    const renamedReference = path.join(secondRoot, "references", "renamed.md");
+    await rename(secondReference, renamedReference);
+    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    await rename(renamedReference, secondReference);
+
+    await chmod(secondReference, 0o755);
+    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+  });
+
+  it("hashes Unicode paths in locale-independent code-point order", () => {
+    const entries = ["ä", "z", "A", "a"].map((entryPath) => ({
+      path: entryPath,
+      mode: 0o644,
+      bytes: Buffer.from(entryPath),
+    }));
+
+    const expected = createHash("sha256");
+    expected.update("bb-skill-tree-v1");
+    for (const entry of [...entries].sort((left, right) =>
+      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+    )) {
+      expected.update("\0file\0");
+      expected.update(entry.path);
+      expected.update("\0");
+      expected.update(entry.mode.toString(8));
+      expected.update("\0");
+      expected.update(String(entry.bytes.length));
+      expected.update("\0");
+      expected.update(entry.bytes);
+    }
+
+    expect(hashSkillTreeEntries(entries)).toBe(expected.digest("hex"));
+  });
+
   it("aggregates valid data-dir skills", async () => {
     const dataDir = await makeTempDir();
     const dataDirSkillRoot = await writeSkill({
@@ -102,13 +201,12 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "release-notes",
         description: "Use release-notes when tests need it.",
-        sourceRootPath: dataDirSkillRoot,
-        skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
-      },
+        rootPath: dataDirSkillRoot,
+      }),
     ]);
   });
 
@@ -193,20 +291,18 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "builtin",
         name: "bb-cli",
         description: "Use bb-cli when tests need it.",
-        sourceRootPath: builtinSkillRoot,
-        skillFilePath: path.join(builtinSkillRoot, "SKILL.md"),
-      },
-      {
+        rootPath: builtinSkillRoot,
+      }),
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "release-notes",
         description: "Use release-notes when tests need it.",
-        sourceRootPath: dataDirSkillRoot,
-        skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
-      },
+        rootPath: dataDirSkillRoot,
+      }),
     ]);
     expect(warnings).toEqual([]);
   });
@@ -234,20 +330,18 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "review-loop",
         description: "Data-dir review skill.",
-        sourceRootPath: dataDirSkillRoot,
-        skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
-      },
-      {
+        rootPath: dataDirSkillRoot,
+      }),
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Inherited stories skill.",
-        sourceRootPath: inheritedSkillRoot,
-        skillFilePath: path.join(inheritedSkillRoot, "SKILL.md"),
-      },
+        rootPath: inheritedSkillRoot,
+      }),
     ]);
     expect(warnings).toEqual([]);
   });
@@ -273,13 +367,12 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "bb-cli",
         description: "User override copy.",
-        sourceRootPath: overrideSkillRoot,
-        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
-      },
+        rootPath: overrideSkillRoot,
+      }),
     ]);
     expect(warnings).toEqual([]);
     expect(infos).toEqual([
@@ -312,13 +405,12 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Local stories skill.",
-        sourceRootPath: overrideSkillRoot,
-        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
-      },
+        rootPath: overrideSkillRoot,
+      }),
     ]);
     expect(warnings).toEqual([]);
     expect(infos).toEqual([
@@ -353,13 +445,12 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      {
+      expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Parent stories skill.",
-        sourceRootPath: parentSkillRoot,
-        skillFilePath: path.join(parentSkillRoot, "SKILL.md"),
-      },
+        rootPath: parentSkillRoot,
+      }),
     ]);
     expect(warnings).toEqual([]);
     expect(infos).toEqual([
@@ -399,6 +490,7 @@ describe("injected skill source discovery", () => {
 
     expect(sources).toEqual([
       {
+        kind: "workspace-path",
         sourceType: "project",
         name: "bb-cli",
         description: "Project copy.",

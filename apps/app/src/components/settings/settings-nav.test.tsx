@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -30,14 +30,26 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
 }));
 
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+function systemConfig(
+  pluginsEnabled: boolean,
+  multiMachineEnabled = false,
+): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    keybindings: [],
+    defaultKeybindings: [],
+    keybindingOverrides: [],
+    experiments: {
+      ...defaultExperiments,
+      plugins: pluginsEnabled,
+      multiMachine: multiMachineEnabled,
+    },
     appearance: defaultAppTheme,
     customThemes: [],
+    pluginThemes: [],
     featureFlags: { placeholder: false },
     hostDaemonPort: null,
+    primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",
@@ -67,6 +79,48 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
+  it("resolves Codex and Claude Code as separate provider pages", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/providers/claude-code"),
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeProviderId).toBe("claude-code");
+    });
+    expect(result.current.activeSection).toBeNull();
+    expect(
+      result.current.providerEntries.map((provider) => provider.id),
+    ).toEqual(["codex", "claude-code"]);
+  });
+
+  it("shows the Machines section only while the multiMachine experiment is on", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false, true));
+
+    const enabled = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/machines"),
+    });
+    await waitFor(() => {
+      expect(
+        enabled.result.current.sections.map((section) => section.id),
+      ).toContain("machines");
+    });
+
+    vi.mocked(api.getSystemConfig).mockResolvedValue(
+      systemConfig(false, false),
+    );
+    const disabled = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/general"),
+    });
+    await waitFor(() => {
+      expect(disabled.result.current.activeSection).toBe("general");
+    });
+    expect(
+      disabled.result.current.sections.map((section) => section.id),
+    ).not.toContain("machines");
+  });
+
   it("keeps plugins and plugin-contributed settings out of Settings", async () => {
     vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
     setPluginSlotRegistrations("connect", {
@@ -82,6 +136,7 @@ describe("useSettingsNavState", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
+          enabled: false,
           plugins: [
             {
               id: "connect",
@@ -90,9 +145,13 @@ describe("useSettingsNavState", () => {
               status: "running",
               statusDetail: null,
               description: null,
+              icon: "EditFile",
               logoUrl: null,
               logoDarkUrl: null,
               hasSettings: false,
+              provenance: "builtin",
+              sourceDisplay: "builtin",
+              updateState: {},
             },
           ],
         }),

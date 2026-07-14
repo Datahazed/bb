@@ -30,7 +30,7 @@ describe("prompt mention command triggers", () => {
     ).toBe(true);
   });
 
-  it("accepts plugin mention resources and requires all fields", () => {
+  it("accepts old plugin mentions without icons and requires identity fields", () => {
     const resource = {
       kind: "plugin",
       pluginId: "linear",

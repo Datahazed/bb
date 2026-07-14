@@ -31,6 +31,7 @@ import {
 } from "../src/index.js";
 import {
   completeFullStackSupervision,
+  createHostDaemonJoinEnv,
   readBbAppPackageVersion,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -576,22 +577,70 @@ describe("bb-app launcher", () => {
         "~/bb-data",
         "--server-url",
         "https://bb.example.test",
+        "--join-code",
+        "bbde_supplied",
+        "--host-id",
+        "host_remote",
         "--host-daemon-port",
         "48887",
         "--host-type",
         "persistent",
+        "--auto-update",
       ]),
     ).toEqual({
       options: {
+        autoUpdate: true,
         dataDir: "~/bb-data",
         help: false,
         hostDaemonPort: "48887",
+        hostId: "host_remote",
         hostType: "persistent",
+        joinCode: "bbde_supplied",
         json: false,
         serverUrl: "https://bb.example.test",
       },
       positionals: ["host-daemon", "join"],
     });
+  });
+
+  it("uses a supplied join code without requesting a loopback enroll key", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-remote-join-"));
+    const context = { ...createTestStartContext(), dataDir };
+
+    const env = await createHostDaemonJoinEnv({
+      context,
+      env: {
+        BB_HOST_ENROLL_KEY: "bbde_supplied",
+        BB_HOST_ID: "host_remote",
+        BB_CONNECT_MACHINE_CREDENTIAL: "bbcm_machine",
+        BB_CONNECT_MACHINE_ID: "machine-1",
+      },
+      serverUrl: "https://bb.example.test",
+    });
+
+    expect(env).toMatchObject({
+      BB_HOST_ENROLL_KEY: "bbde_supplied",
+      BB_HOST_ID: "host_remote",
+    });
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toMatchObject({
+      machineCredential: "bbcm_machine",
+      connectMachineId: "machine-1",
+      serverUrl: "https://bb.example.test",
+    });
+  });
+
+  it("requires the join-code host ID on a fresh machine", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-remote-join-"));
+
+    await expect(
+      createHostDaemonJoinEnv({
+        context: { ...createTestStartContext(), dataDir },
+        env: { BB_HOST_ENROLL_KEY: "bbde_supplied" },
+        serverUrl: "https://bb.example.test",
+      }),
+    ).rejects.toThrow("--host-id is required when --join-code is supplied");
   });
 
   it("parses the json launcher flag", () => {

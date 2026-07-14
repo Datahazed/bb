@@ -3,6 +3,7 @@ import {
   listRetiredLoadedEnvironmentIdsOnHost,
   openSession,
   upsertHost,
+  updateHost,
 } from "@bb/db";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -23,6 +24,7 @@ import {
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 import { readAttachment } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
+import { resolveReportedConnectMachineId } from "./hosts.js";
 
 export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
   const { get, post } = typedRoutes<HostDaemonInternalSchema>(app, {
@@ -40,13 +42,17 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
       });
 
       if (payload.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
+        updateHost(deps.db, deps.hub, daemon.hostId, {
+          lastRejectedProtocolVersion: payload.protocolVersion,
+        });
+        deps.hub.notifyHost(daemon.hostId, ["host-disconnected"]);
         deps.logger.error(
           {
             hostId: daemon.hostId,
             daemonProtocolVersion: payload.protocolVersion,
             serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           },
-          "Rejecting daemon session: protocol version mismatch. The server is likely running stale code — restart it (e.g. `pnpm dev:restart`).",
+          "Rejecting daemon session: protocol version mismatch. An older auto-update-enabled daemon will install this server's bb-app; a newer daemon requires the server to be updated.",
         );
         throw new ApiError(
           400,
@@ -62,10 +68,18 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
       const previousSession = getLatestSessionForHost(deps.db, {
         hostId: daemon.hostId,
       });
+      const connectMachineId = resolveReportedConnectMachineId(
+        context,
+        payload.connectMachineId,
+      );
       upsertHost(deps.db, deps.hub, {
+        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
         id: daemon.hostId,
         name: payload.hostName,
         type: daemon.hostType,
+      });
+      updateHost(deps.db, deps.hub, daemon.hostId, {
+        lastRejectedProtocolVersion: null,
       });
       const session = openSession(deps.db, deps.hub, {
         hostId: daemon.hostId,
@@ -101,9 +115,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           sessionId: session.id,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
-          watchSet: deps.watchInterests.reconcileWatchSetForHost(
-            daemon.hostId,
-          ),
+          watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
           retiredEnvironmentIds,
         },
         201,

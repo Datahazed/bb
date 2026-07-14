@@ -1,24 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { fetchPluginList } from "./plugin-settings-queries";
+import { fetchPluginList, removePlugin } from "./plugin-settings-queries";
 
-describe("fetchPluginList", () => {
-  it("preserves the plugin root directory used by overview Edit actions", async () => {
-    const plugins = await fetchPluginList(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
+function fetchReturning(body: unknown, status = 200) {
+  return async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  });
+}
+
+const ROW = {
+  id: "linear",
+  version: "1.6.2",
+  enabled: true,
+  status: "running",
+  statusDetail: null,
+  provenance: "direct",
+  sourceDisplay: "npm · @bb-plugins/linear · pinned",
+  updateState: {
+    availableVersion: "1.7.0",
+    lastCheckAt: 1752300000000,
+    lastFailure: { version: "1.7.0", at: 1752300000000, detail: "boom" },
+  },
+};
+
+describe("fetchPluginList envelope", () => {
+  it("parses the { enabled, plugins } envelope and normalizes updateState", async () => {
+    const result = await fetchPluginList(
+      fetchReturning({ enabled: true, plugins: [ROW] }),
+    );
+    expect(result.plugins).toHaveLength(1);
+    const plugin = result.plugins[0];
+    expect(plugin?.provenance).toBe("direct");
+    expect(plugin?.updateState.availableVersion).toBe("1.7.0");
+    expect(plugin?.updateState.lastFailure).toEqual({
+      version: "1.7.0",
+      at: 1752300000000,
+      detail: "boom",
+    });
+    // Absent quiet fields normalize to the explicit quiet value.
+    expect(plugin?.updateState.blockedVersion).toBeNull();
+    expect(plugin?.updateState.blockedReasons).toEqual([]);
+  });
+
+  it("preserves authoritative source and activity metadata for detail pages", async () => {
+    const result = await fetchPluginList(
+      fetchReturning({
+        enabled: true,
         plugins: [
           {
-            id: "linear",
+            ...ROW,
             source: "path:/plugins/linear",
             rootDir: "/plugins/linear",
-            version: "0.1.0",
-            enabled: true,
-            status: "running",
-            statusDetail: null,
-            description: "Linear integration.",
-            logoUrl: null,
-            logoDarkUrl: null,
             handlerStats: {
               count: 4,
               totalMs: 12,
@@ -41,64 +74,103 @@ describe("fetchPluginList", () => {
           },
         ],
       }),
-    }));
+    );
 
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0]?.source).toBe("path:/plugins/linear");
-    expect(plugins[0]?.isBuiltin).toBe(false);
-    expect(plugins[0]?.rootDir).toBe("/plugins/linear");
-    expect(plugins[0]?.handlerStats.errorCount).toBe(1);
-    expect(plugins[0]?.services).toEqual([{ name: "sync", state: "backoff" }]);
-    expect(plugins[0]?.schedules[0]?.lastError).toBe("rate limited");
-    expect(plugins[0]?.cliCommand?.name).toBe("linear");
-    expect(plugins[0]?.app.hasApp).toBe(true);
+    const plugin = result.plugins[0];
+    expect(plugin?.source).toBe("path:/plugins/linear");
+    expect(plugin?.rootDir).toBe("/plugins/linear");
+    expect(plugin?.handlerStats.errorCount).toBe(1);
+    expect(plugin?.services).toEqual([{ name: "sync", state: "backoff" }]);
+    expect(plugin?.schedules[0]?.lastError).toBe("rate limited");
+    expect(plugin?.cliCommand?.name).toBe("linear");
+    expect(plugin?.app.hasApp).toBe(true);
   });
 
-  it("identifies built-in plugins from their authoritative source", async () => {
-    const plugins = await fetchPluginList(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        plugins: [
-          {
-            id: "connect",
-            source: "builtin:connect",
-            rootDir: "/app/builtin-plugins/connect",
-            version: "0.2.0",
-            enabled: true,
-            status: "running",
-            statusDetail: null,
-          },
-        ],
-      }),
-    }));
+  it("uses explicit quiet values when optional detail metadata is absent", async () => {
+    const result = await fetchPluginList(
+      fetchReturning({ enabled: true, plugins: [ROW] }),
+    );
 
-    expect(plugins[0]?.isBuiltin).toBe(true);
+    const plugin = result.plugins[0];
+    expect(plugin?.source).toBeNull();
+    expect(plugin?.rootDir).toBeNull();
+    expect(plugin?.isBuiltin).toBe(false);
+    expect(plugin?.handlerStats).toEqual({
+      count: 0,
+      totalMs: 0,
+      maxMs: 0,
+      errorCount: 0,
+    });
+    expect(plugin?.services).toEqual([]);
+    expect(plugin?.schedules).toEqual([]);
+    expect(plugin?.app.hasApp).toBe(false);
   });
 
-  it("keeps older plugin-list responses usable without a root directory", async () => {
-    const plugins = await fetchPluginList(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        plugins: [
-          {
-            id: "legacy",
-            version: "0.1.0",
-            enabled: false,
-            status: "disabled",
-            statusDetail: null,
-          },
-        ],
-      }),
-    }));
+  it("rejects an envelope missing enabled or plugins instead of half-parsing it", async () => {
+    expect(await fetchPluginList(fetchReturning({ plugins: [ROW] }))).toEqual({
+      plugins: [],
+    });
+    expect(await fetchPluginList(fetchReturning({ enabled: true }))).toEqual({
+      plugins: [],
+    });
+  });
 
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0]?.source).toBeNull();
-    expect(plugins[0]?.isBuiltin).toBe(false);
-    expect(plugins[0]?.rootDir).toBeNull();
-    expect(plugins[0]?.services).toEqual([]);
-    expect(plugins[0]?.schedules).toEqual([]);
-    expect(plugins[0]?.app.hasApp).toBe(false);
+  it("drops rows missing the server-mandated fields instead of defaulting them", async () => {
+    const { updateState, ...noUpdateState } = ROW;
+    const { provenance, ...noProvenance } = ROW;
+    const { sourceDisplay, ...noSourceDisplay } = ROW;
+    const result = await fetchPluginList(
+      fetchReturning({
+        enabled: true,
+        plugins: [noUpdateState, noProvenance, noSourceDisplay, ROW],
+      }),
+    );
+    expect(result.plugins.map((plugin) => plugin.id)).toEqual(["linear"]);
+  });
+
+  it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
+    // A rollback whose record lost `at` or `detail` is contract drift; the
+    // quiet state would suppress the Needs-attention pill and banner.
+    const partialFailure = {
+      ...ROW,
+      updateState: { lastFailure: { version: "1.7.0" } },
+    };
+    const result = await fetchPluginList(
+      fetchReturning({ enabled: true, plugins: [partialFailure] }),
+    );
+    expect(result.plugins).toEqual([]);
+  });
+
+  it("returns the quiet empty state on a malformed envelope or error", async () => {
+    expect(await fetchPluginList(fetchReturning(null))).toEqual({
+      plugins: [],
+    });
+    expect(await fetchPluginList(fetchReturning({}, 404))).toEqual({
+      plugins: [],
+    });
+  });
+});
+
+describe("removePlugin", () => {
+  it("DELETEs the plugin by encoded id and resolves on ok", async () => {
+    const calls: Array<{ url: string; init?: { method?: string } }> = [];
+    const fetchImpl = (async (url: string, init?: { method?: string }) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }) as unknown as typeof fetch;
+    await removePlugin(fetchImpl, "demo/widget");
+    expect(calls[0]?.url).toBe("/api/v1/plugins/demo%2Fwidget");
+    expect(calls[0]?.init).toEqual({ method: "DELETE" });
+  });
+
+  it("throws the server's error message on failure", async () => {
+    const fetchImpl = (async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: "unknown plugin" }),
+    })) as unknown as typeof fetch;
+    await expect(removePlugin(fetchImpl, "gone")).rejects.toThrow(
+      "unknown plugin",
+    );
   });
 });

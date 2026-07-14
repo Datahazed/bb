@@ -9,6 +9,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -17,7 +18,11 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { formatRelativeTime } from "@/lib/relative-time";
+import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -41,6 +46,20 @@ interface SelectedEnvironment {
   modeLabel: string;
   compactModeLabel: string;
   icon: IconName;
+}
+
+/** Multi-machine picker input (multiMachine experiment). Callers pass this
+ * only while the experiment is on; the menu switches to machine-grouped
+ * sections once more than one host exists. */
+export interface EnvironmentPickerMachines {
+  /** All hosts known to the server, in server order. */
+  hosts: readonly Host[];
+  /** Host id of the daemon running on this browser's machine, if reachable —
+   * its section gets the "this machine" badge and "Work locally" label. */
+  localDaemonHostId: string | null;
+  /** Server-resolved primary host id from `/system/config`; null while it
+   * loads or before any host has enrolled. */
+  primaryHostId: string | null;
 }
 
 export interface EnvironmentPickerUIProps {
@@ -69,6 +88,13 @@ export interface EnvironmentPickerUIProps {
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction. Defaults to Radix's true; pass false in stories. */
   modal?: boolean;
+  /** Multi-machine host list; null/omitted (or a single host) keeps the
+   * single-host menu unchanged. */
+  machines?: EnvironmentPickerMachines | null;
+  /** Opens the guided "set up <project> on <machine>" flow for a connected
+   * machine without a project source (machine menu only). Omitted, those
+   * machines keep a disabled "Not set up for this project" row. */
+  onRequestMachineSetup?: (host: Host) => void;
 }
 
 export function EnvironmentPickerUI({
@@ -84,8 +110,11 @@ export function EnvironmentPickerUI({
   className,
   defaultOpen,
   modal,
+  machines,
+  onRequestMachineSetup,
 }: EnvironmentPickerUIProps) {
   const hostId = host?.id ?? null;
+  const isMachineMenu = (machines?.hosts.length ?? 0) > 1;
   const hostConnected = host?.status === "connected";
   const hasSource = useMemo(
     () =>
@@ -116,6 +145,22 @@ export function EnvironmentPickerUI({
 
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
 
+  // Mockup A: the composer chip names the machine whenever the selection
+  // isn't on the primary host ("Mac Studio · New worktree").
+  const selectedMachineName = useMemo(() => {
+    if (!isMachineMenu || !machines || parsed?.type !== "host") return null;
+    if (
+      parsed.hostId ===
+      selectPrimaryHost(machines.hosts, machines.primaryHostId)?.id
+    ) {
+      return null;
+    }
+    return (
+      machines.hosts.find((machineHost) => machineHost.id === parsed.hostId)
+        ?.name ?? null
+    );
+  }, [isMachineMenu, machines, parsed]);
+
   const selected = useMemo((): SelectedEnvironment => {
     // A down host overrides whatever mode is persisted: surfacing "Host
     // offline" is clearer than a stale "Work remotely" or a blank "Environment"
@@ -123,7 +168,9 @@ export function EnvironmentPickerUI({
     // resumes once the host reconnects.
     if (hostUnavailableReason !== null) {
       return {
-        modeLabel: hostUnavailableReason,
+        modeLabel: selectedMachineName
+          ? `${selectedMachineName} · ${hostUnavailableReason}`
+          : hostUnavailableReason,
         compactModeLabel: host ? "Offline" : "No host",
         icon: "AlertTriangle" as const,
       };
@@ -148,8 +195,14 @@ export function EnvironmentPickerUI({
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );
-    return { modeLabel, compactModeLabel, icon };
-  }, [parsed, localLabel, isLocal, hostUnavailableReason, host]);
+    return {
+      modeLabel: selectedMachineName
+        ? `${selectedMachineName} · ${modeLabel}`
+        : modeLabel,
+      compactModeLabel,
+      icon,
+    };
+  }, [parsed, localLabel, isLocal, hostUnavailableReason, host, selectedMachineName]);
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
@@ -202,18 +255,32 @@ export function EnvironmentPickerUI({
         className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
         mobileTitle="Environment"
       >
-        <EnvironmentOptionsSection
-          hostId={hostId}
-          hostName={isLocal ? null : (host?.name ?? null)}
-          hostUnavailableReason={hostUnavailableReason}
-          localLabel={localLabel}
-          workspaceDisabledReason={workspaceDisabledReason}
-          worktreeDisabledReason={newWorktreeDisabledReason}
-          reuseDisabledReason={reuseDisabledReason}
-          selectedType={parsed?.type}
-          value={value}
-          onChange={onChange}
-        />
+        {isMachineMenu && machines ? (
+          <MachineGroupedEnvironmentOptions
+            machines={machines}
+            sources={sources}
+            selectedHostId={parsed?.type === "host" ? parsed.hostId : hostId}
+            worktreeDisabledReason={worktreeDisabledReason ?? null}
+            reuseDisabledReason={reuseDisabledReason}
+            selectedType={parsed?.type}
+            value={value}
+            onChange={onChange}
+            onRequestMachineSetup={onRequestMachineSetup}
+          />
+        ) : (
+          <EnvironmentOptionsSection
+            hostId={hostId}
+            hostName={isLocal ? null : (host?.name ?? null)}
+            hostUnavailableReason={hostUnavailableReason}
+            localLabel={localLabel}
+            workspaceDisabledReason={workspaceDisabledReason}
+            worktreeDisabledReason={newWorktreeDisabledReason}
+            reuseDisabledReason={reuseDisabledReason}
+            selectedType={parsed?.type}
+            value={value}
+            onChange={onChange}
+          />
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -310,12 +377,179 @@ function EnvironmentOptionsSection({
   );
 }
 
+// Machine-grouped menu (multiMachine experiment, >1 host)
+// ---------------------------------------------------------------------------
+
+const MACHINE_BADGE_CLASS_NAME =
+  "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
+
+interface MachineGroupedEnvironmentOptionsProps {
+  machines: EnvironmentPickerMachines;
+  sources: readonly ProjectSource[];
+  /** Host id the current selection (and its branches query) points at. The
+   * worktree disabled reason only applies to that host — other machines'
+   * checkouts haven't been probed. */
+  selectedHostId: string | null;
+  worktreeDisabledReason: string | null;
+  reuseDisabledReason: string | null;
+  selectedType:
+    | NonNullable<ReturnType<typeof parseEnvironmentValue>>["type"]
+    | undefined;
+  value: string;
+  onChange: (value: string) => void;
+  onRequestMachineSetup: ((host: Host) => void) | undefined;
+}
+
+function MachineGroupedEnvironmentOptions({
+  machines,
+  sources,
+  selectedHostId,
+  worktreeDisabledReason,
+  reuseDisabledReason,
+  selectedType,
+  value,
+  onChange,
+  onRequestMachineSetup,
+}: MachineGroupedEnvironmentOptionsProps) {
+  const now = Date.now();
+  // This machine leads; the rest keep server order (stable sort).
+  const orderedHosts = [...machines.hosts].sort(
+    (left, right) =>
+      Number(left.id !== machines.localDaemonHostId) -
+      Number(right.id !== machines.localDaemonHostId),
+  );
+  return (
+    <>
+      {orderedHosts.map((machineHost) => (
+        <MachineSection
+          key={machineHost.id}
+          host={machineHost}
+          isThisMachine={machineHost.id === machines.localDaemonHostId}
+          source={
+            findLocalPathProjectSourceForHost(sources, machineHost.id) ?? null
+          }
+          worktreeDisabledReason={
+            machineHost.id === selectedHostId ? worktreeDisabledReason : null
+          }
+          now={now}
+          value={value}
+          onChange={onChange}
+          onRequestMachineSetup={onRequestMachineSetup}
+        />
+      ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <EnvironmentMenuItem
+          label="Existing worktree"
+          description={reuseDisabledReason ?? undefined}
+          icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+          selected={selectedType === "reuse"}
+          disabled={reuseDisabledReason !== null}
+          onSelect={() => onChange(REUSE_VALUE_WITHOUT_ENVIRONMENT)}
+        />
+      </DropdownMenuGroup>
+    </>
+  );
+}
+
+interface MachineSectionProps {
+  host: Host;
+  isThisMachine: boolean;
+  /** This project's source on this machine, or null when not set up here. */
+  source: ProjectSource | null;
+  /** Why "New worktree" is unavailable on this machine, or null when usable. */
+  worktreeDisabledReason: string | null;
+  now: number;
+  value: string;
+  onChange: (value: string) => void;
+  onRequestMachineSetup: ((host: Host) => void) | undefined;
+}
+
+function MachineSection({
+  host,
+  isThisMachine,
+  source,
+  worktreeDisabledReason,
+  now,
+  value,
+  onChange,
+  onRequestMachineSetup,
+}: MachineSectionProps) {
+  const connected = host.status === "connected";
+  const localValue = encodeHostValue(host.id, "local");
+  const worktreeValue = encodeHostValue(host.id, "worktree");
+  return (
+    <DropdownMenuGroup>
+      <DropdownMenuLabel className="text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <MachineStatusDot connected={connected} />
+          <span className="min-w-0 truncate">{host.name}</span>
+          {isThisMachine ? (
+            <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
+          ) : null}
+          {formatHostUpdateStatus(host) !== null ? (
+            <span className="ml-auto shrink-0 pl-2 text-2xs text-warning-foreground">
+              {formatHostUpdateStatus(host)}
+            </span>
+          ) : !connected && host.lastSeenAt !== null ? (
+            <span className="ml-auto shrink-0 pl-2 text-2xs">
+              last seen{" "}
+              {formatRelativeTime({ timestamp: host.lastSeenAt, now })}
+            </span>
+          ) : null}
+        </span>
+      </DropdownMenuLabel>
+      {source ? (
+        <>
+          <EnvironmentMenuItem
+            label={isThisMachine ? "Work locally" : "Work in checkout"}
+            hint={source.path}
+            icon={getEnvironmentWorkspaceLabelIconName("other")}
+            selected={value === localValue}
+            disabled={!connected}
+            onSelect={() => onChange(localValue)}
+          />
+          <EnvironmentMenuItem
+            label="New worktree"
+            description={
+              connected ? (worktreeDisabledReason ?? undefined) : undefined
+            }
+            icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+            selected={value === worktreeValue}
+            disabled={!connected || worktreeDisabledReason !== null}
+            onSelect={() => onChange(worktreeValue)}
+          />
+        </>
+      ) : onRequestMachineSetup && connected ? (
+        // Guided per-machine setup (Mockup B): clone from the project remote
+        // or point at an existing folder on this host. Needs the daemon
+        // online, so offline machines keep the disabled row below.
+        <EnvironmentMenuItem
+          label={`Set up on ${host.name}…`}
+          icon="Plus"
+          selected={false}
+          onSelect={() => onRequestMachineSetup(host)}
+        />
+      ) : (
+        <DropdownMenuItem
+          disabled
+          className="whitespace-normal break-words text-xs text-muted-foreground"
+        >
+          Not set up for this project
+        </DropdownMenuItem>
+      )}
+    </DropdownMenuGroup>
+  );
+}
+
 // Shared menu item
 // ---------------------------------------------------------------------------
 
 interface EnvironmentMenuItemProps {
   label: string;
   description?: string;
+  /** Right-aligned muted detail (e.g. a checkout path in the machine menu). */
+  hint?: string;
   icon: IconName;
   selected: boolean;
   onSelect: () => void;
@@ -325,6 +559,7 @@ interface EnvironmentMenuItemProps {
 function EnvironmentMenuItem({
   label,
   description,
+  hint,
   icon,
   selected,
   onSelect,
@@ -346,7 +581,9 @@ function EnvironmentMenuItem({
         <Icon
           name={icon}
           className={cn(
-            "mt-0.5",
+            // Center the 14px icon on the label's 16px first line; on coarse
+            // pointers icon and line are both 20px, so no offset.
+            "mt-px max-md:pointer-coarse:mt-0",
             "text-muted-foreground",
             COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
           )}
@@ -362,6 +599,11 @@ function EnvironmentMenuItem({
           ) : null}
         </span>
       </span>
+      {hint ? (
+        <span className="max-w-32 truncate text-xs text-muted-foreground">
+          {hint}
+        </span>
+      ) : null}
       <Icon
         name="Check"
         className={cn(

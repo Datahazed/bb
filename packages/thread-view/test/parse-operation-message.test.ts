@@ -6,7 +6,7 @@ import type {
   SystemThreadProvisioningStatus,
   ThreadEventRow,
 } from "@bb/domain";
-import { decodeThreadEventRow } from "../src/index.js";
+import { decodeThreadEventRow } from "../src/event-decode.js";
 import {
   finalizeOperationMessage,
   interruptOperationMessage,

@@ -17,6 +17,8 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -85,6 +87,8 @@ export interface FilePreviewProps {
   headerMode?: FilePreviewHeaderMode;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
   markdownLinkRouting?: MarkdownLinkRouting;
   statusLabel?: WorkspaceFilePreviewStatusLabel | null;
 }
@@ -110,6 +114,8 @@ interface FilePreviewHeaderProps {
   copyPath: string | null;
   rawContents: string | null;
   onOpenInEditor?: (path: string) => void;
+  onRefresh?: () => void;
+  isRefreshing: boolean;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
   toggleKind: FilePreviewToggleKind | null;
   showLineOverflowToggle: boolean;
@@ -428,6 +434,8 @@ export function FilePreview({
   headerMode = "file",
   onSelectionAddToChat,
   onOpenInEditor,
+  onRefresh,
+  isRefreshing = false,
   markdownLinkRouting,
   statusLabel = null,
 }: FilePreviewProps) {
@@ -501,6 +509,8 @@ export function FilePreview({
           copyPath={copyPath}
           rawContents={rawContents}
           onOpenInEditor={onOpenInEditor}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
           statusLabel={statusLabel}
           toggleKind={toggleKind}
           showLineOverflowToggle={showLineOverflowToggle}
@@ -606,6 +616,8 @@ function FilePreviewHeader({
   copyPath,
   rawContents,
   onOpenInEditor,
+  onRefresh,
+  isRefreshing,
   statusLabel,
   toggleKind,
   showLineOverflowToggle,
@@ -614,6 +626,7 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
+  const openShortcut = useAppCommandShortcut("workspace.openPreferred");
   const showHeaderControls = showLineOverflowToggle || toggleKind !== null;
   const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
@@ -640,6 +653,35 @@ function FilePreviewHeader({
             </span>
           )}
           <TooltipProvider delayDuration={300}>
+            {onRefresh ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                    )}
+                    onClick={onRefresh}
+                    disabled={isRefreshing}
+                    aria-label={
+                      isRefreshing ? "Refreshing file" : "Refresh file"
+                    }
+                  >
+                    <Icon
+                      name={isRefreshing ? "Spinner" : "RotateCcw"}
+                      className={cn(isRefreshing && "animate-spin")}
+                      aria-hidden
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isRefreshing ? "Refreshing file" : "Refresh file"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             {rawContents === null ? null : (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -655,12 +697,27 @@ function FilePreviewHeader({
               </Tooltip>
             )}
             {onOpenInEditor ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Open in editor</TooltipContent>
-              </Tooltip>
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <OpenInEditorButton
+                      onClick={() => onOpenInEditor(path)}
+                      label={
+                        openShortcut
+                          ? `Open in editor (${openShortcut.label})`
+                          : "Open in editor"
+                      }
+                      aria-keyshortcuts={openShortcut?.ariaKeyshortcuts}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {openShortcut
+                      ? `Open in editor (${openShortcut.label})`
+                      : "Open in editor"}
+                  </TooltipContent>
+                </Tooltip>
+                <AppCommandShortcutHint shortcut={openShortcut} />
+              </>
             ) : null}
           </TooltipProvider>
         </div>

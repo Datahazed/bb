@@ -137,10 +137,7 @@ export type PromptMentionCommandTrigger = z.infer<
   typeof promptMentionCommandTriggerSchema
 >;
 
-export const promptMentionCommandSourceValues = [
-  "skill",
-  "command",
-] as const;
+export const promptMentionCommandSourceValues = ["skill", "command"] as const;
 export const promptMentionCommandSourceSchema = z.enum(
   promptMentionCommandSourceValues,
 );
@@ -191,6 +188,11 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("plugin"),
     pluginId: z.string(),
+    /**
+     * Named shared-UI icon hint supplied by the plugin mention item. Omitted
+     * by mentions persisted before icon hints were stored.
+     */
+    icon: z.string().nullable().optional(),
     /**
      * Opaque item reference minted by the server's mention search
      * (`<providerId>:<provider item id>`); resolved back through the same
@@ -443,6 +445,12 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
    * policy), never defaulted downstream.
    */
   workflowsEnabled: z.boolean(),
+  // Optional for legacy command compatibility; the server fills the current
+  // provider preference before dispatching new runtime work.
+  memoryEnabled: z.boolean().optional(),
+  // Optional for legacy command compatibility; the server fills the current
+  // provider preference before dispatching new runtime work.
+  providerSubagentsEnabled: z.boolean().optional(),
 });
 
 export const runtimeThreadExecutionOptionsSchema =

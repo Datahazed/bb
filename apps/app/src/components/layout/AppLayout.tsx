@@ -8,7 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Link, matchPath, useLocation } from "react-router-dom";
+import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -17,6 +17,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
@@ -46,6 +47,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
@@ -75,6 +77,12 @@ import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -154,6 +162,10 @@ function SidebarStateBridge({
     },
     [setOpen],
   );
+  useAppCommandHandler("sidebar.toggle", () => {
+    handleOpenChange(!open);
+    return true;
+  });
   return (
     <SidebarProvider
       ref={providerRef}
@@ -198,6 +210,13 @@ function SidebarTriggerOverlay({
   reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
+  const shortcut = useAppCommandShortcut("sidebar.toggle");
+  const triggerProps = {
+    "aria-label": shortcut
+      ? `Toggle sidebar (${shortcut.label})`
+      : "Toggle sidebar",
+    "aria-keyshortcuts": shortcut?.ariaKeyshortcuts,
+  };
   if (usesDesktopChrome) {
     return (
       <div
@@ -215,7 +234,17 @@ function SidebarTriggerOverlay({
         {/* The overlay's CHROME_ROW_CLASS box-centers the trigger on the shared
             traffic-light axis, matching the sidebar arrows and page-title
             header in desktop chrome. */}
-        <SidebarTrigger className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS} />
+        <SidebarTrigger
+          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
+          {...triggerProps}
+        />
+        <AppCommandShortcutHint
+          shortcut={shortcut}
+          className={cn(
+            "absolute left-full ml-1",
+            MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+          )}
+        />
       </div>
     );
   }
@@ -228,7 +257,11 @@ function SidebarTriggerOverlay({
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}
     >
-      <SidebarTrigger />
+      <SidebarTrigger {...triggerProps} />
+      <AppCommandShortcutHint
+        shortcut={shortcut}
+        className="absolute left-full ml-1"
+      />
     </div>
   );
 }
@@ -417,7 +450,26 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
+  const isCompactViewport = useIsCompactViewport();
+  const contentShellRef = useRef<HTMLDivElement>(null);
+  useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
+  const navigate = useNavigate();
+  useAppCommandHandler("thread.new", () => {
+    void navigate(getRootComposeRoutePath(), {
+      state: { focusPrompt: true },
+    });
+    return true;
+  });
+  useAppCommandHandler("settings.open", () => {
+    void navigate(SETTINGS_ROUTE_PATH);
+    return true;
+  });
+  // Native server rail "+" tile.
+  useAppCommandHandler("settings.openServers", () => {
+    void navigate(`${SETTINGS_ROUTE_PATH}/servers`);
+    return true;
+  });
   const {
     projectId,
     threadId,
@@ -803,6 +855,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
           <SidebarInset>
             <div
+              ref={contentShellRef}
               data-testid="app-layout-content-shell"
               className="relative flex h-[100dvh] min-w-0 w-full flex-col"
             >

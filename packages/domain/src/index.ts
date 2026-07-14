@@ -5,6 +5,7 @@
 export * from "./active-thinking.js";
 export * from "./acp-cli.js";
 export * from "./app-settings.js";
+export * from "./app-keybindings.js";
 export * from "./app-theme.js";
 export * from "./background-task.js";
 export * from "./change-kinds.js";
@@ -22,6 +23,7 @@ export * from "./json-value.js";
 export * from "./lifecycle-diagram.js";
 export * from "./number-utils.js";
 export * from "./pending-interactions.js";
+export * from "./plugin-id.js";
 export * from "./plugin-sdk-version.js";
 export * from "./project-path.js";
 export * from "./project.js";

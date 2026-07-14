@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import { ResourceTemplateBrowseCard } from "@bb/shared-ui/resource-list";
 import { PluginListRow } from "./ToolsView";
 
@@ -17,6 +20,7 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     statusDetail: null,
     description: "Linear integration.",
     displayName: "Linear",
+    icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
@@ -25,6 +29,10 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     schedules: [],
     cliCommand: null,
     app: { hasApp: false },
+    provenance: "direct",
+    marketplaceName: null,
+    sourceDisplay: "path · /plugins/linear",
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
     ...overrides,
   };
 }

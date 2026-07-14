@@ -10,6 +10,7 @@ import type {
   TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
@@ -25,6 +26,7 @@ import {
   readRootComposeFolderTargetFromLocationState,
   readInitialPromptFromLocationState,
   restorePromptDraftAfterOptionChange,
+  resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
@@ -113,6 +115,7 @@ function makeProject(args: MakeProjectArgs): ProjectWithThreadsResponse {
     id: args.id,
     kind: args.kind,
     name: args.name,
+    gitRemoteUrl: null,
     sources: [],
     threads: [...args.threads],
     defaultExecutionOptions: null,
@@ -592,10 +595,30 @@ describe("isProjectSourceWorktreeUnavailable", () => {
   });
 });
 
+describe("resolveComposeHostId", () => {
+  it("keys provider-CLI eligibility to the selected remote host, not the primary", () => {
+    expect(
+      resolveComposeHostId(
+        parseEnvironmentValue("host:host_remote:worktree"),
+        "host_primary",
+      ),
+    ).toBe("host_remote");
+  });
+
+  it("falls back to the primary host when no host is selected", () => {
+    expect(
+      resolveComposeHostId(parseEnvironmentValue("reuse:env_1"), "host_primary"),
+    ).toBe("host_primary");
+    expect(resolveComposeHostId(parseEnvironmentValue(""), null)).toBeNull();
+  });
+});
+
 describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("keeps host mode but rewrites the host id to the active project source host", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -609,6 +632,8 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("does not invent a host workspace for a standard project without a source", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:local",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -622,6 +647,8 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("keeps a reuse environment only when it belongs to the selected project", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_current",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -633,6 +660,8 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
 
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_stale",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -646,6 +675,8 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("holds specific reuse values as incomplete while project worktrees load", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "reuse:env_pending",
         isProjectless: false,
         primaryHostId: "host_1",
@@ -659,10 +690,108 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   it("uses the primary host for projectless threads without requiring project sources", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: false,
         environmentSelectionValue: "host:stale_host:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
         projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:local");
+  });
+
+  it("keeps a non-primary host selection with multiMachine on when that host has a source", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [
+          makeProjectSource("host_1"),
+          makeProjectSource("host_2"),
+        ],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_2:worktree");
+  });
+
+  it("rewrites a non-primary host selection to the primary host with multiMachine off", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        multiMachineEnabled: false,
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [
+          makeProjectSource("host_1"),
+          makeProjectSource("host_2"),
+        ],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:worktree");
+  });
+
+  it("falls back to the primary host with multiMachine on when the selected host is gone", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_gone:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:worktree");
+  });
+
+  it("keeps a projectless machine selection with multiMachine on, normalized to local mode", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_2:local");
+  });
+
+  it("falls back to the primary host for a stale projectless machine selection", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_gone:local",
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:local");
+  });
+
+  it("falls back to the primary host with multiMachine on when the selected host lacks a source", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        multiMachineEnabled: true,
+        environmentSelectionValue: "host:host_2:local",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),

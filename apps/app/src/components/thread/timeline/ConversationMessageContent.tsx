@@ -55,10 +55,12 @@ import {
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
@@ -66,6 +68,8 @@ interface ConversationMessageContentBaseProps {
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
+  /** Mobile presentation for the regular user message's action footer. */
+  mobileActionDisplay?: "inline" | "overflow";
   /**
    * `childOrigin` of the thread this row belongs to. Selects the fork leading
    * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
@@ -144,6 +148,8 @@ export interface ConversationMessageContentAssistantProps
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   /** Shows the hover-revealed copy/fork/side-chat action footer. */
   showActions: boolean;
+  /** Mobile presentation for this message's action footer. */
+  mobileActionDisplay: "inline" | "overflow";
   turnRequest: null;
   workspaceRootPath?: string;
 }
@@ -165,6 +171,7 @@ interface UserConversationMessageProps {
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: (text: string) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -190,8 +197,10 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   showActions: boolean;
+  mobileActionDisplay: "inline" | "overflow";
   text: string;
   workspaceRootPath?: string;
 }
@@ -343,6 +352,7 @@ function UserConversationMessage({
   childOrigin,
   initiator,
   mentions,
+  mobileActionDisplay,
   onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
@@ -463,6 +473,7 @@ function UserConversationMessage({
             <MessageActionBar
               messageText={messageText}
               alignment="end"
+              mobileActionDisplay={mobileActionDisplay}
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
             />
@@ -483,19 +494,31 @@ function AssistantConversationMessage({
   onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
+  onOpenPluginPanel,
   projectId,
   showActions,
+  mobileActionDisplay,
   text,
   threadId,
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-    if (!onOpenLink && !onOpenLocalFileLink) {
-      return undefined;
+  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
+    const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
+      absolutePaths: {
+        kind: "trusted-host",
+      },
+      resolveSrc: ({ path }) => buildThreadHostFileContentUrl(threadId, path),
+    };
+    const routing: MarkdownLinkRouting = {
+      localImage,
+    };
+    if (workspaceRootPath !== undefined) {
+      localImage.relativePaths = {
+        baseDir: workspaceRootPath,
+        rootPath: workspaceRootPath,
+      };
     }
-
-    const routing: MarkdownLinkRouting = {};
     if (onOpenLink) {
       routing.onOpenLink = onOpenLink;
     }
@@ -514,7 +537,7 @@ function AssistantConversationMessage({
       }
     }
     return routing;
-  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
 
   // Registry is subscribed once at the timeline root and provided via context;
   // only assistant (and nested delegation) bodies activate plugin directives.
@@ -560,6 +583,7 @@ function AssistantConversationMessage({
         projectId: projectId ?? null,
       },
       openWorkspaceFile: openDirectiveWorkspaceFile,
+      openThreadPanel: onOpenPluginPanel ?? null,
     };
   }, [
     messageDirectiveRegistry,
@@ -568,6 +592,7 @@ function AssistantConversationMessage({
     turnId,
     projectId,
     openDirectiveWorkspaceFile,
+    onOpenPluginPanel,
   ]);
 
   return (
@@ -598,11 +623,17 @@ function AssistantConversationMessage({
           fork on. `disabled` greys both fork and side chat together when the
           thread is at the spawn-depth cap (both spawn a child thread, one guard).
         */
-        <div className="relative h-5">
-          <div className="absolute left-0 top-1">
+        <div className="relative h-5 max-md:pointer-coarse:h-7">
+          <div
+            className={cn(
+              "absolute left-0 top-1",
+              "max-md:pointer-coarse:top-0",
+            )}
+          >
             <MessageActionBar
               messageText={text}
               alignment="start"
+              mobileActionDisplay={mobileActionDisplay}
               onFork={onFork}
               onSideChat={onSideChat}
               onSendToMain={onSendToMain}
@@ -621,6 +652,7 @@ export function ConversationMessageContent(
   const {
     attachments,
     onOpenLocalFileLink,
+    onOpenPluginPanel,
     projectId,
     resolveUserAttachmentImageSrc,
     text,
@@ -647,6 +679,7 @@ export function ConversationMessageContent(
         childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
+        mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -676,8 +709,10 @@ export function ConversationMessageContent(
       onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
+      onOpenPluginPanel={onOpenPluginPanel}
       projectId={projectId}
       showActions={props.showActions}
+      mobileActionDisplay={props.mobileActionDisplay}
       sourceSeqEnd={props.sourceSeqEnd}
       sourceSeqStart={props.sourceSeqStart}
       text={text}

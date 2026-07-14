@@ -9,6 +9,7 @@ import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
+import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -33,6 +34,7 @@ export interface TestAppHarness {
   deps: ServerAppDeps;
   hub: NotificationHub;
   pluginService: ReturnType<typeof createApp>["pluginService"];
+  marketplaceService: ReturnType<typeof createApp>["marketplaceService"];
   cleanup(): Promise<void>;
 }
 
@@ -140,6 +142,7 @@ export async function createTestAppHarness(
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
+    config,
     db,
     hub,
     logger: testLogger,
@@ -151,6 +154,7 @@ export async function createTestAppHarness(
     logger: testLogger,
   });
   const telemetry = createNoopTelemetryService();
+  const skillTreeRegistry = new SkillTreeRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -158,6 +162,7 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
   });
@@ -178,11 +183,12 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    skillTreeRegistry,
     telemetry,
     terminalSessions,
     watchInterests,
   };
-  const { app, pluginService } = createApp(deps);
+  const { app, marketplaceService, pluginService } = createApp(deps);
 
   return {
     app,
@@ -191,6 +197,7 @@ export async function createTestAppHarness(
     deps,
     hub,
     pluginService,
+    marketplaceService,
     async cleanup(): Promise<void> {
       await rm(dataDir, { recursive: true, force: true });
     },

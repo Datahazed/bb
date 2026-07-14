@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -13,6 +14,10 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
 import {
   PromptBoxInternal,
   type AttachmentsConfig,
@@ -29,6 +34,8 @@ import {
   type ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
@@ -93,7 +100,10 @@ const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
-
+const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
+  '[aria-haspopup][aria-expanded="true"]';
+const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
+const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
  * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
@@ -128,6 +138,7 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
   submitMode: FollowUpSubmitMode;
@@ -247,7 +258,137 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  useAppCommandContext("promptAvailable", true);
+  useAppCommandHandler("composer.focus", () => {
+    promptBoxRef.current?.focusEnd();
+    return promptBoxRef.current !== null;
+  });
   const voice = usePromptVoice(promptBoxRef);
+  const isCompactViewport = useIsCompactViewport();
+  const isPointerCoarse = usePointerCoarse();
+  const composerInteractionRef = useRef<HTMLDivElement>(null);
+  const interactionExpandedRef = useRef(false);
+  const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
+  const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
+  const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
+  const compactConfig = useMemo(
+    () =>
+      isCompactViewport
+        ? {
+            isCompact: isMobilePromptBoxCompact,
+            placeholder: composer.compactPromptPlaceholder,
+          }
+        : undefined,
+    [
+      composer.compactPromptPlaceholder,
+      isCompactViewport,
+      isMobilePromptBoxCompact,
+    ],
+  );
+  const setInteractionExpanded = useCallback(
+    (nextExpanded: boolean) => {
+      if (interactionExpandedRef.current === nextExpanded) return;
+      interactionExpandedRef.current = nextExpanded;
+      if (isCompactViewport) {
+        promptBoxRef.current?.captureHeightForLayoutChange();
+      }
+      setIsInteractionExpanded(nextExpanded);
+    },
+    [isCompactViewport],
+  );
+  const cancelPendingFocusExpansion = useCallback(() => {
+    pendingFocusExpansionCleanupRef.current?.();
+    pendingFocusExpansionCleanupRef.current = null;
+  }, []);
+  const handleComposerFocus = useCallback(() => {
+    if (interactionExpandedRef.current) return;
+    if (!isCompactViewport || !isPointerCoarse || !window.visualViewport) {
+      setInteractionExpanded(true);
+      return;
+    }
+    if (pendingFocusExpansionCleanupRef.current) return;
+
+    const visualViewport = window.visualViewport;
+    const initialViewportHeight = visualViewport.height;
+    let animationFrame: number | null = null;
+    let fallbackTimeout: number | null = null;
+    let hasFinished = false;
+    const removeSignals = () => {
+      visualViewport.removeEventListener("resize", handleViewportResize);
+      if (fallbackTimeout !== null) {
+        window.clearTimeout(fallbackTimeout);
+        fallbackTimeout = null;
+      }
+    };
+    const cleanup = () => {
+      removeSignals();
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+    };
+    const finishExpansion = () => {
+      if (hasFinished) return;
+      hasFinished = true;
+      removeSignals();
+      // AppLayout updates its visual-viewport height in the same animation
+      // frame. Expanding here keeps the composer and keyboard on one paint.
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        pendingFocusExpansionCleanupRef.current = null;
+        setInteractionExpanded(true);
+      });
+    };
+    const handleViewportResize = () => {
+      if (
+        initialViewportHeight - visualViewport.height <
+        MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+      ) {
+        return;
+      }
+      finishExpansion();
+    };
+
+    visualViewport.addEventListener("resize", handleViewportResize);
+    fallbackTimeout = window.setTimeout(
+      finishExpansion,
+      MOBILE_FOCUS_EXPANSION_FALLBACK_MS,
+    );
+    pendingFocusExpansionCleanupRef.current = cleanup;
+  }, [isCompactViewport, isPointerCoarse, setInteractionExpanded]);
+  useEffect(
+    () => () => cancelPendingFocusExpansion(),
+    [cancelPendingFocusExpansion],
+  );
+  useEffect(() => {
+    const handleDocumentInteraction = (event: Event) => {
+      const composerElement = composerInteractionRef.current;
+      const target = event.target;
+      if (!composerElement || !(target instanceof Node)) return;
+      if (composerElement.contains(target)) return;
+      // Responsive popovers and dropdowns portal their content outside the
+      // composer. Their shared trigger contract exposes open state through
+      // aria-haspopup + aria-expanded, so interaction with an owned overlay
+      // must not collapse the composer behind it.
+      if (
+        composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+      ) {
+        return;
+      }
+      cancelPendingFocusExpansion();
+      setInteractionExpanded(false);
+    };
+    document.addEventListener("pointerdown", handleDocumentInteraction, true);
+    document.addEventListener("focusin", handleDocumentInteraction, true);
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleDocumentInteraction,
+        true,
+      );
+      document.removeEventListener("focusin", handleDocumentInteraction, true);
+    };
+  }, [cancelPendingFocusExpansion, setInteractionExpanded]);
   const onModifierSubmit = composer.canModifierSubmit
     ? composer.onModifierSubmit
     : undefined;
@@ -351,65 +492,72 @@ function FollowUpPromptBoxWithComposer({
       <ThreadTimelineScrollToBottomButton
         active={composer.threadRuntimeDisplayStatus === "active"}
       />
-      <div data-promptbox-shell="" className="space-y-2">
+      <div data-app-composer="" data-promptbox-shell="" className="space-y-2">
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        <PromptBoxWithScrollAnchor
-          id={id}
-          promptBoxRef={promptBoxRef}
-          voice={voice}
-          minHeight={elasticTextareaMinHeight}
-          value={composer.message}
-          mentionRanges={composer.mentionRanges}
-          onChange={composer.onChangeMessage}
-          onSubmit={composer.onSubmit}
-          scrollToBottomOnSubmit={submitMode.kind !== "queue"}
-          history={composer.history}
-          focusEndKey={focusEndKey}
-          placeholder={composer.promptPlaceholder}
-          mentionMenuPlacement="top"
-          submission={{
-            onStop: onStopRuntime,
-            isSubmitting: composer.isFollowUpSubmitting || isStopping,
-            disabled: !canSubmit || composer.isFollowUpSubmitting,
-            onModifierSubmit,
-            title: canQueueFollowUp
-              ? "Queue follow-up (Enter)"
-              : isStopping
-                ? "Stopping run..."
-                : isLoadingExecutionOptions
-                  ? "Loading models..."
-                  : isLoadingPendingInteractions
-                    ? "Checking pending interactions..."
-                    : isProvisioning
-                      ? "Provisioning..."
-                      : isUnavailable
-                        ? "Unavailable"
-                        : "Submit (Enter)",
-            isRunning: canStopRuntime,
-          }}
-          typeahead={typeahead}
-          attachments={attachments}
-          promptActions={promptActions}
-          zenMode={{
-            layout: "thread",
-            storageKey: null,
-            resetKey: zenModeResetKey,
-            resetOnSubmit: true,
-          }}
-          footerStart={footerStart}
-        />
-        <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-            {environmentSummary}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {permissionControl}
-            {contextWindowUsage ? (
-              <ThreadContextWindowIndicator usage={contextWindowUsage} />
-            ) : null}
-          </div>
+        <div ref={composerInteractionRef} onFocusCapture={handleComposerFocus}>
+          <PromptBoxWithScrollAnchor
+            id={id}
+            promptBoxRef={promptBoxRef}
+            voice={voice}
+            minHeight={elasticTextareaMinHeight}
+            value={composer.message}
+            mentionRanges={composer.mentionRanges}
+            onChange={composer.onChangeMessage}
+            onSubmit={composer.onSubmit}
+            scrollToBottomOnSubmit={submitMode.kind !== "queue"}
+            history={composer.history}
+            focusEndKey={focusEndKey}
+            placeholder={composer.promptPlaceholder}
+            mentionMenuPlacement="top"
+            submission={{
+              onStop: onStopRuntime,
+              isSubmitting: composer.isFollowUpSubmitting || isStopping,
+              disabled: !canSubmit || composer.isFollowUpSubmitting,
+              onModifierSubmit,
+              title: canQueueFollowUp
+                ? "Queue follow-up (Enter)"
+                : isStopping
+                  ? "Stopping run..."
+                  : isLoadingExecutionOptions
+                    ? "Loading models..."
+                    : isLoadingPendingInteractions
+                      ? "Checking pending interactions..."
+                      : isProvisioning
+                        ? "Provisioning..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
+              isRunning: canStopRuntime,
+            }}
+            typeahead={typeahead}
+            attachments={attachments}
+            promptActions={promptActions}
+            compact={compactConfig}
+            zenMode={{
+              layout: "thread",
+              storageKey: null,
+              resetKey: `${zenModeResetKey}:${
+                isCompactViewport ? "mobile" : "desktop"
+              }`,
+              resetOnSubmit: true,
+            }}
+            footerStart={footerStart}
+          />
+          {!isMobilePromptBoxCompact ? (
+            <div className="mt-1 flex min-h-6 items-center justify-between gap-2 pl-[15px] pr-3.5">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                {environmentSummary}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {permissionControl}
+                {contextWindowUsage ? (
+                  <ThreadContextWindowIndicator usage={contextWindowUsage} />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </>

@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 50 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 53 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -86,27 +86,26 @@ const hostDaemonInjectedSkillSourceBaseSchema = z
   .object({
     name: z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN),
     description: z.string().min(1).max(1024),
-    sourceRootPath: z.string().min(1),
-    skillFilePath: z.string().min(1),
   })
   .strict();
 
 export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
-  "sourceType",
+  "kind",
   [
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("builtin"),
+        kind: z.literal("tree"),
+        treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+        entryPath: z.string().min(1),
+        sourceType: z.enum(["builtin", "data-dir"]),
       })
       .strict(),
     hostDaemonInjectedSkillSourceBaseSchema
       .extend({
-        sourceType: z.literal("data-dir"),
-      })
-      .strict(),
-    hostDaemonInjectedSkillSourceBaseSchema
-      .extend({
+        kind: z.literal("workspace-path"),
         sourceType: z.literal("project"),
+        sourceRootPath: z.string().min(1),
+        skillFilePath: z.string().min(1),
       })
       .strict(),
   ],
@@ -500,6 +499,33 @@ const hostListPathsCommandSchema = z
     message: "At least one path kind must be included",
   });
 
+const hostMkdirCommandSchema = z
+  .object({
+    type: z.literal("host.mkdir"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+    recursive: z.boolean(),
+  })
+  .strict();
+
+const hostMovePathCommandSchema = z
+  .object({
+    type: z.literal("host.move_path"),
+    sourcePath: z.string().min(1),
+    destinationPath: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+  })
+  .strict();
+
+const hostRemovePathCommandSchema = z
+  .object({
+    type: z.literal("host.remove_path"),
+    path: z.string().min(1),
+    rootPath: z.string().min(1).optional(),
+    recursive: z.boolean(),
+  })
+  .strict();
+
 // Single-level directory listing for the interactive path browser. Unlike
 // `host.list_paths` (a recursive fuzzy-search walk over relative paths), this
 // reads exactly one directory and returns absolute child paths so the UI can
@@ -514,6 +540,29 @@ const hostBrowseDirectoryCommandSchema = z.object({
 const hostPathsExistCommandSchema = pathsExistRequestSchema
   .extend({
     type: z.literal("host.paths_exist"),
+  })
+  .strict();
+
+const projectInspectCommandSchema = z
+  .object({
+    type: z.literal("project.inspect"),
+    path: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneDefaultPathCommandSchema = z
+  .object({
+    type: z.literal("project.clone_default_path"),
+    projectSlug: z.string().min(1),
+  })
+  .strict();
+
+const projectCloneCommandSchema = z
+  .object({
+    type: z.literal("project.clone"),
+    remoteUrl: z.string().min(1),
+    projectSlug: z.string().min(1),
+    targetPath: z.string().min(1).optional(),
   })
   .strict();
 
@@ -572,8 +621,10 @@ export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
  * List the provider's discoverable skills / legacy slash commands. The daemon
  * resolves the user-home roots itself and scans the project roots under `cwd`
  * when provided; `cwd: null` (unprovisioned thread) skips the project roots and
- * returns only user-origin entries. Returns the full raw set — the server owns
- * de-dup/sort/limit, so there is no `truncated` field here.
+ * returns only user-origin entries. Synchronized skills are supplied as the
+ * same content-addressed sources used by thread runtime injection. Returns the
+ * full raw set — the server owns de-dup/sort/limit, so there is no `truncated`
+ * field here.
  */
 const hostListCommandsCommandSchema = z.object({
   type: z.literal("host.list_commands"),
@@ -581,6 +632,7 @@ const hostListCommandsCommandSchema = z.object({
   cwd: z.string().min(1).nullable(),
   builtinSkillsRootPath: z.string().min(1),
   additionalSkillsRootPaths: z.array(z.string().min(1)).optional(),
+  injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
 });
 
 /**
@@ -1082,6 +1134,8 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+const hostPathMutationResultSchema = z.object({ ok: z.literal(true) }).strict();
+
 const hostCaffeinateResultSchema = z
   .object({
     enabled: z.boolean(),
@@ -1140,6 +1194,11 @@ const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
 const emptyCommandResultSchema = z.object({});
+const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
+const projectInspectResultSchema = projectPathResultSchema
+  .extend({ gitRemoteUrl: z.string().min(1).nullable() })
+  .strict();
+const projectCloneResultSchema = projectInspectResultSchema;
 const codexInferenceCompleteResultSchema = z.object({
   model: z.string().min(1),
   value: jsonObjectSchema,
@@ -1363,6 +1422,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: "when-initiated",
     envLane: "write",
   }),
+  "project.clone": defineHostDaemonCommandDescriptor({
+    type: "project.clone",
+    schema: projectCloneCommandSchema,
+    resultSchema: projectCloneResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "environment.provision.cancel": defineHostDaemonCommandDescriptor({
     type: "environment.provision.cancel",
     schema: environmentProvisionCancelCommandSchema,
@@ -1426,6 +1494,33 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "host.mkdir": defineHostDaemonCommandDescriptor({
+    type: "host.mkdir",
+    schema: hostMkdirCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.move_path": defineHostDaemonCommandDescriptor({
+    type: "host.move_path",
+    schema: hostMovePathCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.remove_path": defineHostDaemonCommandDescriptor({
+    type: "host.remove_path",
+    schema: hostRemovePathCommandSchema,
+    resultSchema: hostPathMutationResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "host.browse_directory": defineHostDaemonCommandDescriptor({
     type: "host.browse_directory",
     schema: hostBrowseDirectoryCommandSchema,
@@ -1439,6 +1534,24 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.inspect": defineHostDaemonCommandDescriptor({
+    type: "project.inspect",
+    schema: projectInspectCommandSchema,
+    resultSchema: projectInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "project.clone_default_path": defineHostDaemonCommandDescriptor({
+    type: "project.clone_default_path",
+    schema: projectCloneDefaultPathCommandSchema,
+    resultSchema: projectPathResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

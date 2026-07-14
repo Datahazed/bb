@@ -4,6 +4,7 @@ import type {
   AppTheme,
   AppThemeSelection,
   AppSettings,
+  AppKeybindingOverrides,
   Environment,
   Experiments,
   Host,
@@ -16,6 +17,7 @@ import type {
 } from "@bb/domain";
 import {
   appSettingsSchema,
+  appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
 } from "@bb/domain";
@@ -36,6 +38,7 @@ import type {
   EmptyInput,
   PathId,
   PathProjectId,
+  PathPreviewAndFilePath,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathTerminal,
@@ -43,6 +46,8 @@ import type {
 import type {
   CloseTerminalRequest,
   CommandListResponse,
+  CreateHostJoinCodeRequest,
+  CreateHostJoinCodeResponse,
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -70,12 +75,24 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostCloneDefaultPathQuery,
+  HostCloneDefaultPathResponse,
   HostFileListRequest,
   HostFileListResponse,
   HostFileReadRequest,
   HostFileReadResponse,
   HostFileWriteRequest,
   HostFileWriteResponse,
+  HostMkdirRequest,
+  HostMkdirResponse,
+  HostMovePathRequest,
+  HostMovePathResponse,
+  HostPathListRequest,
+  HostPathListResponse,
+  HostRemovePathRequest,
+  HostRemovePathResponse,
+  CreateFilePreviewRequest,
+  CreateFilePreviewResponse,
   HostPickFolderRequest,
   HostPickFolderResponse,
   HostPathsExistRequest,
@@ -115,11 +132,13 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SidebarBootstrapResponse,
+  SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -165,6 +184,7 @@ import type {
   UpdateEnvironmentRequest,
   UpdateThreadFolderRequest,
   UpdateTerminalRequest,
+  UpdateHostRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
@@ -172,12 +192,19 @@ import type {
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
 } from "./api-types.js";
+import type {
+  ThreadTabsResponse,
+  UpdateThreadTabsRequest,
+} from "./api/thread-tabs.js";
+import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
 import {
   closeTerminalRequestSchema,
+  createFilePreviewRequestSchema,
   createThreadFolderRequestSchema,
   deleteThreadFolderRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
+  createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
@@ -190,9 +217,14 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
   hostFileWriteRequestSchema,
+  hostMkdirRequestSchema,
+  hostMovePathRequestSchema,
+  hostPathListRequestSchema,
+  hostRemovePathRequestSchema,
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
@@ -219,6 +251,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
@@ -238,6 +271,7 @@ import {
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
+  updateHostRequestSchema,
   updateThreadFolderRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
@@ -464,9 +498,66 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<HostFileListResponse>(),
     }),
+    listPaths: defineRoute({
+      path: "/files/paths",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostPathListRequest>(
+        hostPathListRequestSchema,
+      ),
+      response: jsonResponse<HostPathListResponse>(),
+    }),
+    mkdir: defineRoute({
+      path: "/files/mkdir",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostMkdirRequest>(
+        hostMkdirRequestSchema,
+      ),
+      response: jsonResponse<HostMkdirResponse>(),
+    }),
+    move: defineRoute({
+      path: "/files/move",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostMovePathRequest>(
+        hostMovePathRequestSchema,
+      ),
+      response: jsonResponse<HostMovePathResponse>(),
+    }),
+    remove: defineRoute({
+      path: "/files/remove",
+      method: "post",
+      request: jsonRequest<EmptyInput, HostRemovePathRequest>(
+        hostRemovePathRequestSchema,
+      ),
+      response: jsonResponse<HostRemovePathResponse>(),
+    }),
+    createPreview: defineRoute({
+      path: "/files/previews",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateFilePreviewRequest>(
+        createFilePreviewRequestSchema,
+      ),
+      response: jsonResponse<CreateFilePreviewResponse>(),
+    }),
+  },
+
+  filePreviews: {
+    content: defineRoute({
+      path: "/file-previews/:id/:filePath{.+}",
+      method: "get",
+      request: noRequest<PathPreviewAndFilePath>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
   },
 
   hosts: {
+    createJoinCode: defineRoute({
+      path: "/hosts/join-codes",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateHostJoinCodeRequest>(
+        createHostJoinCodeRequestSchema,
+      ),
+      response: jsonResponse<CreateHostJoinCodeResponse>({ status: 201 }),
+    }),
     list: defineRoute({
       path: "/hosts",
       method: "get",
@@ -479,6 +570,18 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<Host>(),
     }),
+    update: defineRoute({
+      path: "/hosts/:id",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
+      response: jsonResponse<Host>(),
+    }),
+    delete: defineRoute({
+      path: "/hosts/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     directory: defineRoute({
       path: "/hosts/:id/directory",
       method: "get",
@@ -486,6 +589,14 @@ export const publicApiRoutes = {
         hostDirectoryQuerySchema,
       ),
       response: jsonResponse<HostDirectoryListing>(),
+    }),
+    cloneDefaultPath: defineRoute({
+      path: "/hosts/:id/clone-default-path",
+      method: "get",
+      request: queryRequest<PathId, HostCloneDefaultPathQuery>(
+        hostCloneDefaultPathQuerySchema,
+      ),
+      response: jsonResponse<HostCloneDefaultPathResponse>(),
     }),
     pathsExist: defineRoute({
       path: "/hosts/:id/paths/exist",
@@ -870,6 +981,23 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, ThreadOpenRequest>(threadOpenRequestSchema),
       response: jsonResponse<ThreadOpenResponse>(),
     }),
+    tabs: defineRoute({
+      path: "/threads/:id/tabs",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadTabsResponse>(),
+    }),
+    updateTabs: defineRoute({
+      path: "/threads/:id/tabs",
+      method: "put",
+      request: jsonRequest<PathId, UpdateThreadTabsRequest>(
+        updateThreadTabsRequestSchema,
+      ),
+      response: [
+        jsonResponse<ThreadTabsResponse>(),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
     pin: defineRoute({
       path: "/threads/:id/pin",
       method: "post",
@@ -1061,6 +1189,12 @@ export const publicApiRoutes = {
   },
 
   system: {
+    attention: defineRoute({
+      path: "/system/attention",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemAttentionResponse>(),
+    }),
     config: defineRoute({
       path: "/system/config",
       method: "get",
@@ -1072,6 +1206,14 @@ export const publicApiRoutes = {
       method: "put",
       request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
       response: jsonResponse<AppSettings>(),
+    }),
+    keyboardSettings: defineRoute({
+      path: "/settings/keyboard",
+      method: "put",
+      request: jsonRequest<EmptyInput, AppKeybindingOverrides>(
+        appKeybindingOverridesSchema,
+      ),
+      response: jsonResponse<AppKeybindingOverrides>(),
     }),
     experiments: defineRoute({
       path: "/settings/experiments",
@@ -1113,10 +1255,18 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
+    providerLogo: defineRoute({
+      path: "/system/providers/:id/logo",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
     usageLimits: defineRoute({
       path: "/system/usage-limits",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemUsageLimitsQuery>(
+        systemUsageLimitsQuerySchema,
+      ),
       response: jsonResponse<ProviderUsageResponse>(),
     }),
     voiceTranscription: defineRoute({

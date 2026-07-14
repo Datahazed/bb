@@ -144,6 +144,7 @@ describe("route path helpers", () => {
       ],
       ["/settings", "/settings"],
       ["/settings/:section", "/settings/general"],
+      ["/settings/providers/:providerId", "/settings/providers/codex"],
       ["/settings/plugins", "/settings/plugins"],
       ["/settings/plugins/:pluginId", "/settings/plugins/github"],
       ["/tools", "/tools"],

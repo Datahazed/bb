@@ -78,6 +78,7 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   instanceId: z.string().min(1),
   hostName: z.string().min(1),
   hostType: hostTypeSchema,
+  connectMachineId: z.string().min(1).optional(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
   // Accept any version at the schema boundary so the server can return an
@@ -95,6 +96,7 @@ export const hostDaemonEnrollRequestSchema = z
     hostId: z.string().min(1),
     hostName: z.string().min(1),
     hostType: hostTypeSchema,
+    connectMachineId: z.string().min(1).optional(),
   })
   .strict();
 export type HostDaemonEnrollRequest = z.infer<
@@ -168,13 +170,68 @@ export type HostDaemonEventEnvelope = z.infer<
   typeof hostDaemonEventEnvelopeSchema
 >;
 
-export const hostDaemonEventBatchRequestSchema = z.object({
-  sessionId: z.string().min(1),
-  events: z.array(hostDaemonEventEnvelopeSchema),
-});
+const hostDaemonWireEventSchema = z
+  .unknown()
+  .superRefine((value, context) => {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      Object.hasOwn(value, "sequence")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Daemon events must not provide a server-owned sequence",
+        path: ["sequence"],
+      });
+    }
+  })
+  .pipe(threadEventSchema);
+
+export const hostDaemonEventGroupSchema = z
+  .object({
+    threadId: z.string().min(1),
+    events: z.array(hostDaemonWireEventSchema).min(1),
+  })
+  .strict();
+export type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
+
+export const hostDaemonEventBatchRequestSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    eventGroups: z.array(hostDaemonEventGroupSchema),
+  })
+  .strict();
 export type HostDaemonEventBatchRequest = z.infer<
   typeof hostDaemonEventBatchRequestSchema
 >;
+
+/**
+ * Compact consecutive events for the same thread without changing global
+ * event ordering. Keeping separate groups when a thread recurs later preserves
+ * response event indexes exactly.
+ */
+export function groupHostDaemonEvents(
+  envelopes: readonly HostDaemonEventEnvelope[],
+): HostDaemonEventGroup[] {
+  const groups: HostDaemonEventGroup[] = [];
+  for (const envelope of envelopes) {
+    const last = groups.at(-1);
+    if (last?.threadId === envelope.threadId) {
+      last.events.push(envelope.event);
+    } else {
+      groups.push({ threadId: envelope.threadId, events: [envelope.event] });
+    }
+  }
+  return groups;
+}
+
+export function ungroupHostDaemonEvents(
+  groups: readonly HostDaemonEventGroup[],
+): HostDaemonEventEnvelope[] {
+  return groups.flatMap((group) =>
+    group.events.map((event) => ({ threadId: group.threadId, event })),
+  );
+}
 
 export const hostDaemonEventRejectionReasonSchema = z.enum([
   "thread_not_owned_by_host",
@@ -301,8 +358,13 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   [
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
+    onlineRpcResponseSuccessSchemaFor("host.mkdir"),
+    onlineRpcResponseSuccessSchemaFor("host.move_path"),
+    onlineRpcResponseSuccessSchemaFor("host.remove_path"),
     onlineRpcResponseSuccessSchemaFor("host.browse_directory"),
     onlineRpcResponseSuccessSchemaFor("host.paths_exist"),
+    onlineRpcResponseSuccessSchemaFor("project.inspect"),
+    onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
     onlineRpcResponseSuccessSchemaFor("host.caffeinate"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
@@ -335,6 +397,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
     commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
     commandRpcResponseSuccessSchemaFor("environment.provision"),
+    commandRpcResponseSuccessSchemaFor("project.clone"),
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
     commandRpcResponseSuccessSchemaFor("environment.destroy"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
@@ -616,7 +679,26 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
+export const hostDaemonSkillTreeEntrySchema = z
+  .object({
+    path: z.string().min(1),
+    mode: z.number().int().min(0).max(0o777),
+    contentBase64: z.string(),
+  })
+  .strict();
+export const hostDaemonSkillTreeSchema = z
+  .object({
+    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    entries: z.array(hostDaemonSkillTreeEntrySchema),
+  })
+  .strict();
+export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
+
 export type HostDaemonInternalSchema = {
+  "/skills/tree/:hash": {
+    /** Used by the daemon to pull a missing server-owned injected skill tree. */
+    $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+  };
   "/hosts/enroll-key": {
     /** Used by the local launcher to request one-time bootstrap material for the primary host daemon. */
     $post: Endpoint<

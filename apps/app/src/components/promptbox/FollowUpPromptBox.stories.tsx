@@ -19,7 +19,10 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
-import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import {
+  getFollowUpPromptPlaceholder,
+  getCompactFollowUpPromptPlaceholder,
+} from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -27,6 +30,7 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
@@ -127,6 +131,7 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
+  AUTOMATION_PROMPT_ACTION,
 ];
 
 // Fully read-only footer example: renders the SAME model/reasoning and
@@ -215,10 +220,12 @@ function makeEnvironmentSummary({
 
 const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "local",
+  identity: null,
 };
 
 const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "remote",
+  identity: null,
 };
 
 const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -354,9 +361,11 @@ function buildStoryMentions(
 }
 
 const stackedCardsWithPillsMessage = [
-  "Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
-  "with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
-].join(" ");
+  "> Review @apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+  "> with @thread:thr_prompt_pills, then run /github:gh-fix-ci.",
+  "",
+  "This paragraph should stay outside the collapsed one-line preview.",
+].join("\n");
 
 const stackedCardsWithPillsMentions = buildStoryMentions(
   stackedCardsWithPillsMessage,
@@ -630,6 +639,9 @@ function Row({
   const resolvedPlaceholder =
     promptPlaceholder ??
     getFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
+  const resolvedCompactPlaceholder =
+    promptPlaceholder ??
+    getCompactFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
   return (
     <PromptStage>
       <FollowUpPromptBox
@@ -654,6 +666,7 @@ function Row({
                 onChangeMessage: handleChangeMessage,
                 onModifierSubmit: noop,
                 onSubmit: noop,
+                compactPromptPlaceholder: resolvedCompactPlaceholder,
                 promptPlaceholder: resolvedPlaceholder,
                 canModifierSubmit: submitMode.kind === "queue",
                 submitMode,
@@ -867,8 +880,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="stacked cards with pills"
-        hint="banner + queued messages above a composer seeded with mention pills"
+        label="stacked cards with Markdown + pills"
+        hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>

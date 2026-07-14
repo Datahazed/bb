@@ -119,6 +119,62 @@ describe("createServerClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
+  it("fetches and parses a skill tree over authenticated LAN HTTP", async () => {
+    const treeHash = "a".repeat(64);
+    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe(`/internal/skills/tree/${treeHash}`);
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer host-key",
+      );
+      expect(new Headers(init?.headers).get("x-bb-connect-machine")).toBeNull();
+      return new Response(
+        JSON.stringify({
+          treeHash,
+          entries: [
+            { path: "SKILL.md", mode: 0o644, contentBase64: "dHJlZQ==" },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "http://192.168.1.10:3000",
+    });
+
+    await expect(client.fetchSkillTree(treeHash)).resolves.toEqual({
+      treeHash,
+      entries: [{ path: "SKILL.md", mode: 0o644, contentBase64: "dHJlZQ==" }],
+    });
+  });
+
+  it("adds the connect machine credential to internal HTTP requests", async () => {
+    const treeHash = "b".repeat(64);
+    const fetchFn = vi.fn<FetchFn>(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer host-key");
+      expect(headers.get("x-bb-connect-machine")).toBe("bbcm_machine");
+      return new Response(JSON.stringify({ treeHash, entries: [] }), {
+        status: 200,
+      });
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      machineCredential: "bbcm_machine",
+      serverUrl: "https://bb.example.test",
+    });
+
+    await client.fetchSkillTree(treeHash);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects project attachment responses with unexpected byte length", async () => {
     const fetchFn = vi.fn<FetchFn>(
       async () =>
@@ -175,8 +231,24 @@ describe("createServerClient", () => {
   });
 
   it("returns accepted event mappings when posting events", async () => {
-    const fetchFn = vi.fn<FetchFn>(async (input) => {
+    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
       expect(String(input)).toContain("/internal/session/events");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        sessionId: "session-1",
+        eventGroups: [
+          {
+            threadId: "thr_123",
+            events: [
+              {
+                type: "turn/started",
+                threadId: "thr_123",
+                providerThreadId: "provider-thread",
+                scope: { kind: "turn", turnId: "turn-1" },
+              },
+            ],
+          },
+        ],
+      });
       return new Response(
         JSON.stringify({
           acceptedEvents: [

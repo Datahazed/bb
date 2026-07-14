@@ -77,6 +77,7 @@ import {
   systemProvidersQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
+  threadTabsQueryKey,
   threadSearchQueryKeyPrefix,
   terminalsQueryKey,
   threadsQueryKey,
@@ -89,6 +90,11 @@ import {
   allPluginListQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
 } from "../queries/plugin-settings-queries";
+import {
+  allMarketplaceSearchQueryKeyPrefix,
+  allPluginSourceQueryKeyPrefix,
+  marketplacesQueryKey,
+} from "../queries/plugin-marketplace-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
 import {
@@ -291,6 +297,12 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [
       dirtyRootOrderThreadListQueries, // Root thread order affects root lists and global mention candidates.
+    ],
+  },
+  "tabs-changed": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadTabsQueries,
     ],
   },
   "terminals-changed": {
@@ -597,6 +609,12 @@ function dirtyThreadDefaultExecutionOptionsQueries({
   return threadId ? [threadDefaultExecutionOptionsQueryKey(threadId)] : [];
 }
 
+function dirtyThreadTabsQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return threadId ? [threadTabsQueryKey(threadId)] : [];
+}
+
 function dirtyThreadSearchQueries(): QueryKey[] {
   return [threadSearchQueryKeyPrefix()];
 }
@@ -865,6 +883,11 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginListQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),
+    // Update/install/marketplace operations change source detail, catalogs,
+    // and search results (installed/compatible flags) alongside the list.
+    allPluginSourceQueryKeyPrefix(),
+    marketplacesQueryKey(),
+    allMarketplaceSearchQueryKeyPrefix(),
   ];
 }
 

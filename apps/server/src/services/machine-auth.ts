@@ -26,6 +26,7 @@ const machineCredentialMetadataSchema = z
   .object({
     hostId: z.string().min(1),
     hostType: hostTypeSchema,
+    enrollSource: z.enum(["loopback", "public-multi-machine"]).optional(),
   })
   .strict();
 
@@ -36,9 +37,15 @@ export type MachineCredentialMetadata = z.infer<
 export interface IssueHostEnrollKeyArgs {
   hostId: string;
   hostType: HostType;
+  enrollSource: "loopback" | "public-multi-machine";
 }
 
 export interface RevokeHostEnrollKeysArgs {
+  hostId: string;
+  hostType: HostType;
+}
+
+export interface RevokeHostAuthKeysArgs {
   hostId: string;
   hostType: HostType;
 }
@@ -64,6 +71,7 @@ export interface IssueHostEnrollKeyResult {
 }
 
 export interface EnrollHostArgs {
+  allowPublicEnrollment: boolean;
   hostId: string;
   hostType: HostType;
   token: string;
@@ -100,6 +108,7 @@ export interface MachineAuthService {
   ): Promise<IssueHostEnrollKeyResult>;
   pruneExpiredKeys(): Promise<void>;
   revokeHostEnrollKeys(args: RevokeHostEnrollKeysArgs): Promise<void>;
+  revokeHostAuthKeys(args: RevokeHostAuthKeysArgs): Promise<void>;
   rotateDaemonHostKey(args: RotateDaemonHostKeyArgs): Promise<string>;
   verifyDaemonHostKey(token: string): Promise<VerifyMachineKeyResult | null>;
 }
@@ -148,7 +157,7 @@ export async function createMachineAuthService(
           defaultPrefix: "bbde_",
           enableMetadata: true,
           keyExpiration: {
-            defaultExpiresIn: ENROLL_KEY_TTL_SECONDS * 1000,
+            defaultExpiresIn: ENROLL_KEY_TTL_SECONDS,
           },
           references: "user",
           requireName: false,
@@ -303,6 +312,27 @@ export async function createMachineAuthService(
       .run();
   }
 
+  async function disableActiveDaemonHostKeysForHost(
+    metadata: MachineCredentialMetadata,
+  ): Promise<void> {
+    await ensureReady();
+    await args.db
+      .update(authApiKeys)
+      .set({
+        enabled: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(authApiKeys.configId, DAEMON_HOST_CONFIG_ID),
+          eq(authApiKeys.enabled, true),
+          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${metadata.hostId}`,
+          sql`json_extract(${authApiKeys.metadata}, '$.hostType') = ${metadata.hostType}`,
+        ),
+      )
+      .run();
+  }
+
   async function pruneExpiredKeys(): Promise<void> {
     await ensureReady();
     await args.db
@@ -328,6 +358,7 @@ export async function createMachineAuthService(
       await ensureReady();
     },
     async enrollHost({
+      allowPublicEnrollment,
       hostId,
       hostType,
       token,
@@ -345,17 +376,28 @@ export async function createMachineAuthService(
       ) {
         return null;
       }
+      if (
+        verified.metadata.enrollSource === "public-multi-machine" &&
+        !allowPublicEnrollment
+      ) {
+        return null;
+      }
+
+      const hostMetadata: MachineCredentialMetadata = {
+        hostId: verified.metadata.hostId,
+        hostType: verified.metadata.hostType,
+      };
 
       // Create the replacement key before revoking prior daemon-host keys so
       // reenrollment does not strand the host if key creation fails mid-flow.
-      const hostKey = await createDaemonHostKey(verified.metadata);
+      const hostKey = await createDaemonHostKey(hostMetadata);
       await disableOtherActiveDaemonHostKeysForHost(
-        verified.metadata,
+        hostMetadata,
         hostKey.keyId,
       );
       return {
         hostKey: hostKey.key,
-        metadata: verified.metadata,
+        metadata: hostMetadata,
       };
     },
     async issueDaemonHostKey({
@@ -369,11 +411,13 @@ export async function createMachineAuthService(
       return created.key;
     },
     async issueHostEnrollKey({
+      enrollSource,
       hostId,
       hostType,
     }: IssueHostEnrollKeyArgs): Promise<IssueHostEnrollKeyResult> {
       await ensureReady();
       const metadata = {
+        enrollSource,
         hostId,
         hostType,
       };
@@ -409,6 +453,14 @@ export async function createMachineAuthService(
         hostId,
         hostType,
       });
+    },
+    async revokeHostAuthKeys({
+      hostId,
+      hostType,
+    }: RevokeHostAuthKeysArgs): Promise<void> {
+      const metadata = { hostId, hostType };
+      await disableActiveEnrollKeysForHost(metadata);
+      await disableActiveDaemonHostKeysForHost(metadata);
     },
     async rotateDaemonHostKey({
       keyId,

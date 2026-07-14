@@ -21,6 +21,7 @@ export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
 
 export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const CUSTOM_ACP_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+const CUSTOM_ACP_AGENT_LOGO_PATTERN = /\.(?:svg|png|webp)$/iu;
 
 export interface BbAppManagedConfigWarningLogger {
   warn(fields: Record<string, unknown>, message: string): void;
@@ -81,6 +82,14 @@ export const customAcpAgentSchema = z
     id: z.string().regex(CUSTOM_ACP_AGENT_ID_PATTERN),
     displayName: z.string().min(1),
     command: z.string().min(1),
+    logo: z
+      .string()
+      .min(1)
+      .regex(
+        CUSTOM_ACP_AGENT_LOGO_PATTERN,
+        "Custom ACP agent logo must be an .svg, .png, or .webp file.",
+      )
+      .optional(),
     args: z.array(z.string()).default([]),
     env: z.record(bbAppManagedEnvNameSchema, z.string()).default({}),
     cwd: z.string().min(1).optional(),
@@ -125,6 +134,8 @@ export const bbAppManagedConfigSchema = z
     config: bbAppManagedConfigValuesSchema.optional(),
     customAcpAgents: customAcpAgentsSchema.optional(),
     customModels: z.array(customProviderModelSchema).optional(),
+    machineCredential: z.string().min(1).optional(),
+    connectMachineId: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
   })
   .strict();
@@ -134,6 +145,8 @@ const bbAppManagedConfigBoundarySchema = z
     config: bbAppManagedConfigValuesSchema.optional(),
     customAcpAgents: z.array(z.unknown()).optional(),
     customModels: z.array(customProviderModelSchema).optional(),
+    machineCredential: z.string().min(1).optional(),
+    connectMachineId: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
   })
   .strict();
@@ -202,10 +215,7 @@ export function parseBbAppManagedConfig(
   options: ParseBbAppManagedConfigOptions = {},
 ): BbAppManagedConfig {
   const parsed = bbAppManagedConfigBoundarySchema.parse(rawConfig);
-  const customAcpAgents = parseCustomAcpAgents(
-    parsed.customAcpAgents,
-    options,
-  );
+  const customAcpAgents = parseCustomAcpAgents(parsed.customAcpAgents, options);
   const config: BbAppManagedConfig = {};
   if (parsed.config !== undefined) {
     config.config = parsed.config;
@@ -218,6 +228,12 @@ export function parseBbAppManagedConfig(
   }
   if (parsed.serverUrl !== undefined) {
     config.serverUrl = parsed.serverUrl;
+  }
+  if (parsed.machineCredential !== undefined) {
+    config.machineCredential = parsed.machineCredential;
+  }
+  if (parsed.connectMachineId !== undefined) {
+    config.connectMachineId = parsed.connectMachineId;
   }
   return config;
 }

@@ -2,7 +2,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
+import {
+  getFollowUpPromptPlaceholder,
+  getCompactFollowUpPromptPlaceholder,
+} from "@/components/promptbox/follow-up-placeholder";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -80,6 +83,7 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { queuedInputToDraft } from "./threadQueuedMessages";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import {
@@ -399,7 +403,9 @@ export function ThreadDetailPromptArea({
   );
   const providerPromptActionProps = useMemo(
     () => ({
-      promptActions: providerPromptActions.promptActions,
+      promptActions: withAutomationPromptAction(
+        providerPromptActions.promptActions,
+      ),
     }),
     [providerPromptActions.promptActions],
   );
@@ -454,6 +460,9 @@ export function ThreadDetailPromptArea({
   const promptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getFollowUpPromptPlaceholder(runtimeDisplayStatus);
+  const compactPromptPlaceholder = isStopRequested
+    ? "Stopping thread..."
+    : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
   const currentPromptDraft = useMemo(
     () => ({
       text: promptDraft.text,
@@ -595,7 +604,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
       if (!queuedMessagesByIdRef.current.has(messageId)) {
@@ -893,6 +901,7 @@ export function ThreadDetailPromptArea({
       onChangeMessage: promptDraft.setTextAndMentions,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSend,
+      compactPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       submitMode,
@@ -909,6 +918,7 @@ export function ThreadDetailPromptArea({
       promptDraft.mentions,
       promptDraft.text,
       promptHistoryDrafts,
+      compactPromptPlaceholder,
       promptPlaceholder,
       runtimeDisplayStatus,
       submitMode,
