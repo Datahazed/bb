@@ -52,6 +52,7 @@ import {
   ResourceBrowseGrid,
   ResourceCollectionPage,
   ResourceCreateButton,
+  ResourceDetailBackButton,
   ResourceListPanel,
   ResourceListState,
   ResourceLocationMeta,
@@ -252,6 +253,7 @@ function useAutomation(route: DetailRoute): {
   automation: AutomationResponse | null;
   error: string | null;
   missing: boolean;
+  refetch: () => void;
 } {
   const rpc = useRpc();
   const { projectId, automationId } = route;
@@ -262,6 +264,7 @@ function useAutomation(route: DetailRoute): {
   }>({ automation: null, error: null, missing: false });
 
   const refetch = useCallback(() => {
+    setState((current) => ({ ...current, error: null, missing: false }));
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
         const automation = result as AutomationResponse | null;
@@ -284,7 +287,7 @@ function useAutomation(route: DetailRoute): {
     const signal = asSignal(payload);
     if (signal !== null && signal.projectId === projectId) refetch();
   });
-  return state;
+  return { ...state, refetch };
 }
 
 interface RunsState {
@@ -845,7 +848,7 @@ function DetailView({
   onBack: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { automation, error, missing } = useAutomation(route);
+  const { automation, error, missing, refetch } = useAutomation(route);
   const overviewState = useOverview();
   const runsState = useRuns(route);
   const mutations = useMutations();
@@ -962,10 +965,20 @@ function DetailView({
 
   if (error !== null || missing) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <p className="text-sm text-destructive">
-          {missing ? "Automation not found." : "Failed to load automation."}
-        </p>
+      <div className="mx-auto w-full max-w-3xl space-y-3">
+        <ResourceDetailBackButton
+          label="Back to automations"
+          onClick={onBack}
+        />
+        <ResourceListState
+          state="error"
+          message={
+            missing
+              ? "Automation not found."
+              : `Couldn't load automation: ${error}`
+          }
+          onRetry={refetch}
+        />
       </div>
     );
   }
