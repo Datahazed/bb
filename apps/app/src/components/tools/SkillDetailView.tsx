@@ -377,7 +377,7 @@ export function SkillDetailView({
               </Button>
             </ResourceDetailPanel>
           ) : (
-            <ResourceDetailPanel className="max-h-[60dvh] overflow-auto">
+            <ResourceDetailPanel className="max-h-[60dvh] overflow-auto bg-transparent">
               <FilePreview
                 path={selectedPath}
                 headerMode="none"
