@@ -53,6 +53,11 @@ export function PluginDetailView({
 }) {
   const hasLifecycleControl =
     enabled !== undefined && onEnabledChange !== undefined;
+  const hasDescription =
+    description !== undefined &&
+    description !== null &&
+    description !== false &&
+    description !== "";
   return (
     <ResourceDetailPage
       back={back}
@@ -60,7 +65,6 @@ export function PluginDetailView({
       title={title}
       titleMeta={titleMeta}
       metadata={<ResourceMeta items={metadata} />}
-      description={description}
       lifecycleControl={
         hasLifecycleControl ? (
           <Switch
@@ -80,10 +84,18 @@ export function PluginDetailView({
         ) : undefined
       }
     >
-      {properties.length > 0 ||
+      {hasDescription ||
+      properties.length > 0 ||
       definitionSections.length > 0 ||
       activitySections.length > 0 ? (
         <ResourceDetailStack>
+          {hasDescription ? (
+            <ResourceDefinitionSection label="About" layout="inline">
+              <p className="text-sm leading-relaxed text-foreground">
+                {description}
+              </p>
+            </ResourceDefinitionSection>
+          ) : null}
           {properties.length > 0 ? (
             <ResourceDefinitionSection label="Configuration" layout="inline">
               <ResourcePropertyList
