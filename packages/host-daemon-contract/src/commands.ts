@@ -643,15 +643,21 @@ const hostInstallRegistrySkillCommandSchema = z
   })
   .strict();
 
-/** Only bb-owned skill scopes are deletable; provider skills are read-only. */
-export const deletableSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+/** User-owned local skill scopes that can be deleted after path confinement. */
+export const deletableSkillScopeSchema = z.enum([
+  "bb-user",
+  "bb-project",
+  "claude-user",
+  "claude-project",
+  "codex",
+]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
 /**
- * Delete a bb skill directory. The daemon owns the host-local mutation: it
- * builds `<root>/<name>` from `scope` (never a client-supplied path),
- * realpath-confines the target inside the allowed bb root after symlink
- * resolution, and refuses anything outside. `bb-project` requires a `cwd`.
+ * Delete a local user-owned skill directory. bb roots are derived from scope;
+ * provider roots are resolved from authoritative discovery by the server and
+ * supplied explicitly. The daemon realpath-confines the target to the named
+ * direct child of that root and refuses symlink escapes.
  */
 const hostDeleteSkillCommandSchema = z
   .object({
@@ -659,6 +665,7 @@ const hostDeleteSkillCommandSchema = z
     scope: deletableSkillScopeSchema,
     name: z.string().min(1),
     cwd: z.string().min(1).nullable(),
+    rootPath: z.string().min(1).nullable(),
   })
   .strict()
   .superRefine((command, context) => {
@@ -667,6 +674,22 @@ const hostDeleteSkillCommandSchema = z
         code: "custom",
         path: ["cwd"],
         message: "cwd is required to delete a bb-project skill",
+      });
+    }
+    const isBbScope =
+      command.scope === "bb-user" || command.scope === "bb-project";
+    if (isBbScope && command.rootPath !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["rootPath"],
+        message: "rootPath must be null for a bb skill",
+      });
+    }
+    if (!isBbScope && command.rootPath === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["rootPath"],
+        message: "rootPath is required for a provider skill",
       });
     }
   });

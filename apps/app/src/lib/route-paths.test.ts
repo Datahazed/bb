@@ -3,9 +3,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
-  getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
-  getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getPopoutRoutePath,
@@ -87,12 +85,10 @@ describe("route path helpers", () => {
       }),
     ).toBe("/tools/skills/registry/moss-skills%2Fmoss-notes");
     expect(getPluginsRoutePath()).toBe("/tools/plugins");
-    expect(getPluginBrowseRoutePath()).toBe("/tools/plugins/browse");
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
       "/tools/plugins/github",
     );
     expect(getAutomationsRoutePath()).toBe("/tools/automations");
-    expect(getAutomationBrowseRoutePath()).toBe("/tools/automations/browse");
     expect(
       getAutomationDetailRoutePath({
         projectId: "proj_standard",
@@ -148,6 +144,7 @@ describe("route path helpers", () => {
       ],
       ["/settings", "/settings"],
       ["/settings/:section", "/settings/general"],
+      ["/settings/plugins", "/settings/plugins"],
       ["/settings/plugins/:pluginId", "/settings/plugins/github"],
       ["/tools", "/tools"],
       ["/tools/skills", "/tools/skills"],

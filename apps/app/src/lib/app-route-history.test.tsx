@@ -28,10 +28,8 @@ const TOOL_ROUTE_SEQUENCE = [
   "/tools/skills/installed/bb-user/bb/review-loop",
   "/tools/skills/registry/moss-skills%2Fmoss-notes",
   "/tools/plugins",
-  "/tools/plugins/browse",
   "/tools/plugins/github",
   "/tools/automations",
-  "/tools/automations/browse",
   "/tools/automations/proj_standard/auto_standard",
   "/tools/automations/proj_standard/auto_standard/edit",
 ] as const;
@@ -189,10 +187,8 @@ describe("useRouteStateHistoryNavigation", () => {
       "Back",
       "/tools/automations/proj_standard/auto_standard",
     );
-    await clickAndExpectPath("Back", "/tools/automations/browse");
     await clickAndExpectPath("Back", "/tools/automations");
     await clickAndExpectPath("Back", "/tools/plugins/github");
-    await clickAndExpectPath("Back", "/tools/plugins/browse");
     await clickAndExpectPath("Back", "/tools/plugins");
     await clickAndExpectPath(
       "Back",
@@ -220,10 +216,8 @@ describe("useRouteStateHistoryNavigation", () => {
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
     );
     await clickAndExpectPath("Forward", "/tools/plugins");
-    await clickAndExpectPath("Forward", "/tools/plugins/browse");
     await clickAndExpectPath("Forward", "/tools/plugins/github");
     await clickAndExpectPath("Forward", "/tools/automations");
-    await clickAndExpectPath("Forward", "/tools/automations/browse");
     await clickAndExpectPath(
       "Forward",
       "/tools/automations/proj_standard/auto_standard",

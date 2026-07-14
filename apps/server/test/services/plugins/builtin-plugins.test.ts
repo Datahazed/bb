@@ -226,19 +226,23 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("keeps a builtin tombstoned after remove and restart", async () => {
+  it("refuses to remove a built-in plugin", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });
     await service.start();
 
-    await expect(service.remove("builtin-fixture")).resolves.toBe(true);
-    expect(service.list()).toEqual([]);
+    await expect(service.remove("builtin-fixture")).resolves.toBe(false);
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", source: "builtin:fixture" },
+    ]);
     await service.stop();
 
     service = createService({ db, dataDir: join(workDir, "data") });
     await service.start();
 
-    expect(service.list()).toEqual([]);
-    expect(loadCount()).toBe(1);
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", source: "builtin:fixture" },
+    ]);
+    expect(loadCount()).toBe(2);
   });
 
   it("refreshes the builtin row when the bundled package version changes", async () => {

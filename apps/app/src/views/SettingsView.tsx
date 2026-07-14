@@ -1,9 +1,4 @@
-import {
-  useMemo,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
@@ -42,10 +37,6 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
-import {
-  PluginSettingsDetailSection,
-  PluginsSettingsSection,
-} from "@/components/settings/PluginsSettingsSection";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -406,10 +397,7 @@ function LocalOpenTargetPreferenceControl({
                 key={target.id}
                 onSelect={() => onTargetChange(target.id)}
               >
-                <WorkspaceOpenTargetIcon
-                  target={target}
-                  className="size-5"
-                />
+                <WorkspaceOpenTargetIcon target={target} className="size-5" />
                 <span className="min-w-0 truncate">{target.label}</span>
                 <Icon
                   name="Check"
@@ -464,8 +452,7 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL =
-  "Markdown formatting in prompt box";
+const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
@@ -1044,16 +1031,13 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeSection, hasUnknownSection } =
-    useSettingsNavState();
+  const { activeSection, hasUnknownSection } = useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
   let content: ReactNode = null;
-  if (activePluginId !== null) {
-    content = <PluginSettingsDetailSection pluginId={activePluginId} />;
-  } else if (activeSection === "appearance") {
+  if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection
         appearance={appearance}
@@ -1145,8 +1129,6 @@ export function SettingsView() {
         popoutChatHotkey={experiments.popoutChatHotkey}
       />
     );
-  } else if (activeSection === "plugins") {
-    content = <PluginsSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else {

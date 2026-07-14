@@ -138,27 +138,40 @@ function isSafeSkillName(name: string): boolean {
 }
 
 /**
- * The bb root that owns a deletable scope. `bb-user` is the data-dir skills
- * root; `bb-project` is `<cwd>/.bb/skills`. These are the only roots the daemon
- * will ever delete from.
+ * Resolve the root that owns a deletable skill. bb roots are derived locally;
+ * provider roots are supplied by the server after authoritative discovery.
  */
-function resolveBbSkillRoot(
-  args: { scope: "bb-user" | "bb-project"; cwd: string | null },
+function resolveDeletableSkillRoot(
+  args: {
+    scope: CommandOf<"host.delete_skill">["scope"];
+    cwd: string | null;
+    rootPath: string | null;
+  },
   dataDir: string,
 ): string {
   if (args.scope === "bb-user") {
     return resolveDataDirSkillsRootPath(dataDir);
   }
-  if (args.cwd === null) {
+  if (args.scope === "bb-project") {
+    const cwd = args.cwd;
+    if (cwd === null) {
+      throw new CommandDispatchError(
+        "invalid_path",
+        "cwd is required for a bb-project skill",
+      );
+    }
+    if (!path.isAbsolute(cwd)) {
+      throw new CommandDispatchError("invalid_path", "cwd must be absolute");
+    }
+    return path.join(cwd, ".bb", "skills");
+  }
+  if (args.rootPath === null || !path.isAbsolute(args.rootPath)) {
     throw new CommandDispatchError(
       "invalid_path",
-      "cwd is required for a bb-project skill",
+      "rootPath must be absolute for a provider skill",
     );
   }
-  if (!path.isAbsolute(args.cwd)) {
-    throw new CommandDispatchError("invalid_path", "cwd must be absolute");
-  }
-  return path.join(args.cwd, ".bb", "skills");
+  return args.rootPath;
 }
 
 async function realpathOrNull(targetPath: string): Promise<string | null> {
@@ -170,12 +183,9 @@ async function realpathOrNull(targetPath: string): Promise<string | null> {
 }
 
 /**
- * Delete a bb skill directory. Defense-in-depth confinement: the target path is
- * built server-side from `(scope, name)` (never a client path), `name` must be a
- * single safe path segment, and after realpath resolution the target must be
- * exactly the direct child `<root>/<name>` of its allowed bb root. That exact
- * match both confines the delete inside the root and refuses any symlink leaf
- * that would redirect it elsewhere. Only then is `<root>/<name>/` removed.
+ * Delete a user-owned skill directory. Defense-in-depth confinement requires a
+ * safe single-segment name and an exact realpath match to the named direct
+ * child `<root>/<name>`, refusing symlink leaves before recursive removal.
  */
 export async function deleteHostSkill(
   command: CommandOf<"host.delete_skill">,
@@ -187,8 +197,12 @@ export async function deleteHostSkill(
       "Skill name must be a single path segment",
     );
   }
-  const root = resolveBbSkillRoot(
-    { scope: command.scope, cwd: command.cwd },
+  const root = resolveDeletableSkillRoot(
+    {
+      scope: command.scope,
+      cwd: command.cwd,
+      rootPath: command.rootPath,
+    },
     options.dataDir,
   );
   const skillDirPath = path.join(root, command.name);
@@ -206,7 +220,7 @@ export async function deleteHostSkill(
   if (realTarget !== path.join(realRoot, command.name)) {
     throw new CommandDispatchError(
       "skill_outside_root",
-      "Refusing to delete a skill that resolves outside its bb root",
+      "Refusing to delete a skill that resolves outside its skill root",
     );
   }
 
@@ -247,8 +261,8 @@ export async function writeHostSkill(
       "Skill name must be a single path segment",
     );
   }
-  const root = resolveBbSkillRoot(
-    { scope: command.scope, cwd: command.cwd },
+  const root = resolveDeletableSkillRoot(
+    { scope: command.scope, cwd: command.cwd, rootPath: null },
     options.dataDir,
   );
   const realRoot = await realpathOrNull(root);

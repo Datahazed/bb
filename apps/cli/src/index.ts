@@ -93,7 +93,10 @@ registerGuideCommand(program);
  */
 async function tryPluginCommandProxy(): Promise<void> {
   const knownCommandNames = new Set(
-    program.commands.flatMap((command) => [command.name(), ...command.aliases()]),
+    program.commands.flatMap((command) => [
+      command.name(),
+      ...command.aliases(),
+    ]),
   );
   knownCommandNames.add("help");
   const candidate = pluginProxyCandidate(process.argv[2], knownCommandNames);
@@ -103,7 +106,9 @@ async function tryPluginCommandProxy(): Promise<void> {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
     // a dead server must not degrade into commander's "unknown command".
-    console.error("bb isn't running — open the bb app, then re-run this command.");
+    console.error(
+      "bb isn't running — open the bb app, then re-run this command.",
+    );
     process.exit(1);
   }
   if (result.outcome === "invalid") return;
@@ -129,7 +134,7 @@ async function tryPluginCommandProxy(): Promise<void> {
       } else {
         console.error(
           `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
-            `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
+            `run \`bb plugin enable ${disabled.id}\` or enable it in Plugins.`,
         );
       }
       process.exit(1);

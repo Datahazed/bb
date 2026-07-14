@@ -174,6 +174,7 @@ describe("deleteHostSkill", () => {
         scope: "bb-user",
         name: "doomed",
         cwd: null,
+        rootPath: null,
       },
       { dataDir: fixture.dataDir },
     );
@@ -193,6 +194,27 @@ describe("deleteHostSkill", () => {
         scope: "bb-project",
         name: "proj-doomed",
         cwd: fixture.cwd,
+        rootPath: null,
+      },
+      { dataDir: fixture.dataDir },
+    );
+
+    expect(await stat(skillDir).catch(() => null)).toBeNull();
+  });
+
+  it("deletes a user-owned provider skill inside its discovered root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const providerRoot = path.join(fixture.homeDir, ".claude", "skills");
+    const skillDir = path.join(providerRoot, "notes");
+    await writeSkill(path.join(skillDir, "SKILL.md"), "notes");
+
+    await deleteHostSkill(
+      {
+        type: "host.delete_skill",
+        scope: "claude-user",
+        name: "notes",
+        cwd: null,
+        rootPath: providerRoot,
       },
       { dataDir: fixture.dataDir },
     );
@@ -209,6 +231,7 @@ describe("deleteHostSkill", () => {
           scope: "bb-user",
           name: "../evil",
           cwd: null,
+          rootPath: null,
         },
         { dataDir: fixture.dataDir },
       ),
@@ -232,6 +255,7 @@ describe("deleteHostSkill", () => {
           scope: "bb-user",
           name: "link",
           cwd: null,
+          rootPath: null,
         },
         { dataDir: fixture.dataDir },
       ),
@@ -259,6 +283,7 @@ describe("deleteHostSkill", () => {
           scope: "bb-user",
           name: "alias",
           cwd: null,
+          rootPath: null,
         },
         { dataDir: fixture.dataDir },
       ),
@@ -279,6 +304,7 @@ describe("deleteHostSkill", () => {
           scope: "bb-user",
           name: "ghost",
           cwd: null,
+          rootPath: null,
         },
         { dataDir: fixture.dataDir },
       ),
@@ -298,6 +324,7 @@ describe("deleteHostSkill", () => {
           scope: "bb-user",
           name: "plain",
           cwd: null,
+          rootPath: null,
         },
         { dataDir: fixture.dataDir },
       ),

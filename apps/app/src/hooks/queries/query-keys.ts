@@ -63,6 +63,7 @@ export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
+export const SKILL_FILES_QUERY_KEY = "skillFiles";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -1070,6 +1071,23 @@ export function skillContentQueryKey(
   projectId: string,
   scope: string,
   name: string,
+  path: string,
+) {
+  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name, path] as const;
+}
+
+export function skillContentQueryKeyPrefix(
+  projectId: string,
+  scope: string,
+  name: string,
 ) {
   return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name] as const;
+}
+
+export function skillFilesQueryKey(
+  projectId: string,
+  scope: string,
+  name: string,
+) {
+  return [SKILL_FILES_QUERY_KEY, projectId, scope, name] as const;
 }

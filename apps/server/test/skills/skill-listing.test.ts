@@ -13,6 +13,7 @@ describe("mapSkillScope", () => {
     scope: string;
     listedProvider: SkillProvider | null;
     manageable: boolean;
+    filePath?: string;
   }> = [
     {
       provider: "claude-code",
@@ -47,28 +48,28 @@ describe("mapSkillScope", () => {
       rootKind: "provider-project",
       scope: "claude-project",
       listedProvider: "claude-code",
-      manageable: false,
+      manageable: true,
     },
     {
       provider: "claude-code",
       rootKind: "provider-user",
       scope: "claude-user",
       listedProvider: "claude-code",
-      manageable: false,
+      manageable: true,
     },
     {
       provider: "codex",
       rootKind: "provider-project",
       scope: "codex",
       listedProvider: "codex",
-      manageable: false,
+      manageable: true,
     },
     {
       provider: "codex",
       rootKind: "provider-user",
       scope: "codex",
       listedProvider: "codex",
-      manageable: false,
+      manageable: true,
     },
     {
       provider: "claude-code",
@@ -88,13 +89,29 @@ describe("mapSkillScope", () => {
 
   for (const testCase of cases) {
     it(`maps (${testCase.provider}, ${testCase.rootKind}) → ${testCase.scope}`, () => {
-      expect(mapSkillScope(testCase.provider, testCase.rootKind)).toEqual({
+      expect(
+        mapSkillScope(
+          testCase.provider,
+          testCase.rootKind,
+          testCase.filePath ?? "/home/user/skills/review/SKILL.md",
+        ),
+      ).toEqual({
         scope: testCase.scope,
         provider: testCase.listedProvider,
         manageable: testCase.manageable,
       });
     });
   }
+
+  it("keeps bundled Codex system skills protected", () => {
+    expect(
+      mapSkillScope(
+        "codex",
+        "provider-user",
+        "/home/user/.codex/skills/.system/imagegen/SKILL.md",
+      ),
+    ).toEqual({ scope: "codex", provider: "codex", manageable: false });
+  });
 });
 
 describe("assembleSkillList", () => {

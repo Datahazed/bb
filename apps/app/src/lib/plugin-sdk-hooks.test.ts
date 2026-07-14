@@ -18,7 +18,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 describe("getAutomationPluginPanelRoutePath", () => {
   it.each([
     ["", "/tools/automations"],
-    ["browse", "/tools/automations/browse"],
+    ["browse", "/tools/automations"],
     [
       "project one/automation one",
       "/tools/automations/project%20one/automation%20one",

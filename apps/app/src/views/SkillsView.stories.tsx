@@ -17,7 +17,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     provider: "claude-code",
     scope: "claude-user",
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
-    manageable: false,
+    manageable: true,
     ...overrides,
   };
 }
@@ -29,17 +29,20 @@ const defaultBbSkills: SkillSummary[] = [
     name: "bb-cli",
     provider: null,
     scope: "bb-builtin",
+    manageable: false,
     description: "Inspect and orchestrate bb from the CLI.",
   }),
   makeSkill({
     name: "skill-creator",
     provider: null,
     scope: "bb-builtin",
+    manageable: false,
     description: "Author new bb skills.",
   }),
 ];
 
-// Provider skills a developer might also have installed (read-only, per provider).
+// Local provider skills a developer might also have installed. User-authored
+// files are editable and deletable; bundled/system skills remain protected.
 const providerSkills: SkillSummary[] = [
   makeSkill({
     name: "branch",
@@ -51,10 +54,19 @@ const providerSkills: SkillSummary[] = [
     provider: "codex",
     scope: "codex",
     description: "Fan-out web research with citations.",
+    filePath: "/home/u/.codex/skills/deep-research/SKILL.md",
+  }),
+  makeSkill({
+    name: "imagegen",
+    provider: "codex",
+    scope: "codex",
+    manageable: false,
+    description: "Generate or edit raster images.",
+    filePath: "/home/u/.codex/skills/.system/imagegen/SKILL.md",
   }),
 ];
 
-// User-created (manageable) bb skills.
+// User-created bb skills, which are both editable and deletable.
 const bbSkills: SkillSummary[] = [
   makeSkill({
     name: "repro-and-fix",
@@ -111,13 +123,20 @@ if (!resolution.additionalSkillsRootPaths) throw new Error("unresolved");
 > Summary first — what's wrong and where — then the detail.
 `;
 
-// Mirror SkillsView's rule: only manageable bb user/project skills expose inline
-// Edit + Delete; everything else is read-only.
-function storyCanManage(skill: SkillSummary | null): boolean {
+function storyCanEdit(skill: SkillSummary | null): boolean {
   return (
-    skill?.manageable === true &&
-    (skill.scope === "bb-user" || skill.scope === "bb-project")
+    skill !== null &&
+    (skill.scope === "bb-user" ||
+      skill.scope === "bb-project" ||
+      skill.scope === "claude-user" ||
+      skill.scope === "claude-project" ||
+      (skill.scope === "codex" &&
+        !/(^|[\\/])\.system([\\/]|$)/u.test(skill.filePath)))
   );
+}
+
+function storyCanDelete(skill: SkillSummary | null): boolean {
+  return skill?.manageable ?? false;
 }
 
 // Clicking a row opens the actual detail view (SkillDetailDialogView) seeded
@@ -135,19 +154,26 @@ function Story(props: Partial<SkillsOverviewProps>) {
         hasError={props.hasError ?? false}
         onCreateSkill={NOOP}
         onSelectSkill={setSelected}
+        onEditSkill={setSelected}
+        onDeleteSkill={setSelected}
         onRetry={NOOP}
       />
       <SkillDetailDialogView
         skill={selected}
+        files={["SKILL.md"]}
+        selectedPath="SKILL.md"
+        onSelectPath={NOOP}
         content={SAMPLE_SKILL_MD}
         isLoadingContent={false}
         isRefreshingContent={false}
         isContentError={false}
-        canManage={storyCanManage(selected)}
+        canEdit={storyCanEdit(selected)}
+        canDelete={storyCanDelete(selected)}
         canOpenInEditor={false}
         isSaving={false}
         isDeleting={false}
         onSave={() => Promise.resolve(true)}
+        onRetry={NOOP}
         onDelete={() => setSelected(null)}
         onOpenInEditor={NOOP}
       />
@@ -157,7 +183,7 @@ function Story(props: Partial<SkillsOverviewProps>) {
 
 // Has user-created bb skills — no teaching, full provider-grouped list. Type in
 // the search to exercise filtering and the no-match state; click any row to open
-// the detail view (manageable skills show Edit/Delete, the rest are read-only).
+// the detail view. User-owned local skills enable both Edit and Delete.
 export function Overview() {
   return <Story />;
 }

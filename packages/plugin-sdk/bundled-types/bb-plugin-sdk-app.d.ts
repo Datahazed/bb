@@ -232,8 +232,8 @@ interface PluginPendingInteractionRegistration {
 /** Context handed to a `sidebarFooterAction`'s `run`. */
 interface PluginSidebarFooterActionContext {
     /**
-     * Navigate to this plugin's Settings detail page
-     * (`/settings/plugins/<pluginId>`), where declarative settings and
+     * Navigate to this plugin's Plugins detail page
+     * (`/tools/plugins/<pluginId>`), where declarative settings and
      * `settingsSection` slots render.
      */
     openSettings(): void;

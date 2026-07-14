@@ -19,7 +19,6 @@ import {
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
-  getAutomationBrowseRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
@@ -177,7 +176,7 @@ export function getAutomationPluginPanelRoutePath(subPath: string): string {
   const parts = subPath.split("/").filter((part) => part.length > 0);
   if (parts.length === 0) return getAutomationsRoutePath();
   if (parts.length === 1 && parts[0] === "browse") {
-    return getAutomationBrowseRoutePath();
+    return getAutomationsRoutePath();
   }
   if (parts.length !== 2 && !(parts.length === 3 && parts[2] === "edit")) {
     return getAutomationsRoutePath();

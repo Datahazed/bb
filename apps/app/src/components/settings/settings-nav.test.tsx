@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
-  it("shows slot-backed plugin settings entries while the plugins experiment is off", async () => {
+  it("keeps plugins and plugin-contributed settings out of Settings", async () => {
     vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
     setPluginSlotRegistrations("connect", {
       homepageSections: [],
@@ -105,14 +105,9 @@ describe("useSettingsNavState", () => {
       wrapper: wrapperFor("/settings/plugins/connect"),
     });
 
-    await waitFor(() => {
-      expect(result.current.pluginEntries.map((plugin) => plugin.id)).toEqual([
-        "connect",
-      ]);
-    });
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

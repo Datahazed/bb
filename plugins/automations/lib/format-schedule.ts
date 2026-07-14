@@ -2,7 +2,7 @@
 // kernel's apps/app/src/lib/format-schedule.ts so the plugin bundle is
 // self-contained (plugin code must not import from apps/app).
 import { toString as cronstrueToString } from "cronstrue";
-import type { AutomationTrigger } from "@/src/rpc-types";
+import type { AutomationTrigger } from "../src/rpc-types";
 
 const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",

@@ -8,7 +8,9 @@ import * as api from "@/lib/api";
 import {
   projectSkillsQueryKey,
   skillContentQueryKey,
+  skillFilesQueryKey,
   SKILL_CONTENT_QUERY_KEY,
+  SKILL_FILES_QUERY_KEY,
 } from "@/hooks/queries/query-keys";
 import {
   invalidateProjectSkillsMutationQueries,
@@ -38,13 +40,36 @@ export function useProjectSkills(projectId: string) {
 export function useSkillContent(
   projectId: string,
   skill: SkillSummary | null,
+  path: string,
 ) {
   return useQuery({
     queryKey: skill
-      ? skillContentQueryKey(projectId, skill.scope, skill.name)
-      : [SKILL_CONTENT_QUERY_KEY, projectId, "none"],
+      ? skillContentQueryKey(projectId, skill.scope, skill.name, path)
+      : [SKILL_CONTENT_QUERY_KEY, projectId, "none", path],
     queryFn: ({ signal }) =>
       api.getSkillContent({
+        projectId,
+        scope: skill!.scope,
+        name: skill!.name,
+        path,
+        environmentId: null,
+        signal,
+      }),
+    enabled: skill !== null && projectId.length > 0,
+    // Re-read SKILL.md from disk every time the detail view opens or regains
+    // focus — the user may have just edited the file in their own editor.
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+
+export function useSkillFiles(projectId: string, skill: SkillSummary | null) {
+  return useQuery({
+    queryKey: skill
+      ? skillFilesQueryKey(projectId, skill.scope, skill.name)
+      : [SKILL_FILES_QUERY_KEY, projectId, "none"],
+    queryFn: ({ signal }) =>
+      api.getSkillFiles({
         projectId,
         scope: skill!.scope,
         name: skill!.name,
@@ -52,8 +77,6 @@ export function useSkillContent(
         signal,
       }),
     enabled: skill !== null && projectId.length > 0,
-    // Re-read SKILL.md from disk every time the detail view opens or regains
-    // focus — the user may have just edited the file in their own editor.
     staleTime: 0,
     refetchOnMount: "always",
   });

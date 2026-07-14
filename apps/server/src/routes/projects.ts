@@ -49,6 +49,7 @@ import { toThreadListEntryResponses } from "../services/threads/thread-runtime-d
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   deleteProjectSkill,
+  listProjectSkillFiles,
   listProjectSkills,
   readProjectSkill,
   writeProjectSkill,
@@ -693,9 +694,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const content = await readProjectSkill(deps, {
       scope: query.scope,
       name: query.name,
+      path: query.path,
       workspace,
     });
     return context.json({ content });
+  });
+
+  get(routes.skillFiles, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: query.environmentId,
+      projectId,
+    });
+    return context.json(
+      await listProjectSkillFiles(deps, {
+        scope: query.scope,
+        name: query.name,
+        workspace,
+      }),
+    );
   });
 
   patch(routes.updateSkill, async (context, payload) => {

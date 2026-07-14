@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import {
+  ResourceActivitySection,
+  ResourceDefinitionSection,
   ResourceDetailPage,
-  ResourceDetailSection,
   ResourceMeta,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
-  ResourceStatus,
   type ResourceOverflowMenuItem,
-  type ResourceStatusTone,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 
@@ -22,47 +21,43 @@ export interface PluginDetailSection {
   content: ReactNode;
 }
 
-export interface PluginDetailHealth {
-  label: ReactNode;
-  tone: ResourceStatusTone;
-}
-
 export function PluginDetailView({
+  back,
   leading,
   title,
-  health,
+  titleMeta,
   metadata,
   description,
   enabled,
   lifecycleDisabled = false,
   onEnabledChange,
   overflowItems,
-  properties,
-  sections = [],
+  properties = [],
+  definitionSections = [],
+  activitySections = [],
 }: {
+  back?: ReactNode;
   leading: ReactNode;
   title: string;
-  health?: PluginDetailHealth;
+  titleMeta?: ReactNode;
   metadata: readonly ReactNode[];
   description?: ReactNode;
   enabled?: boolean;
   lifecycleDisabled?: boolean;
   onEnabledChange?: (enabled: boolean) => void;
   overflowItems?: readonly ResourceOverflowMenuItem[];
-  properties: readonly PluginDetailProperty[];
-  sections?: readonly PluginDetailSection[];
+  properties?: readonly PluginDetailProperty[];
+  definitionSections?: readonly PluginDetailSection[];
+  activitySections?: readonly PluginDetailSection[];
 }) {
   const hasLifecycleControl =
     enabled !== undefined && onEnabledChange !== undefined;
   return (
     <ResourceDetailPage
+      back={back}
       leading={leading}
       title={title}
-      info={
-        health ? (
-          <ResourceStatus tone={health.tone}>{health.label}</ResourceStatus>
-        ) : undefined
-      }
+      titleMeta={titleMeta}
       metadata={<ResourceMeta items={metadata} />}
       description={description}
       lifecycleControl={
@@ -86,7 +81,7 @@ export function PluginDetailView({
       }
     >
       {properties.length > 0 ? (
-        <ResourceDetailSection label="Configuration">
+        <ResourceDefinitionSection label="Configuration">
           <ResourcePropertyList>
             {properties.map((property, index) => (
               <ResourceProperty key={index} label={property.label}>
@@ -94,12 +89,17 @@ export function PluginDetailView({
               </ResourceProperty>
             ))}
           </ResourcePropertyList>
-        </ResourceDetailSection>
+        </ResourceDefinitionSection>
       ) : null}
-      {sections.map((section, index) => (
-        <ResourceDetailSection key={index} label={section.label}>
+      {definitionSections.map((section, index) => (
+        <ResourceDefinitionSection key={index} label={section.label}>
           {section.content}
-        </ResourceDetailSection>
+        </ResourceDefinitionSection>
+      ))}
+      {activitySections.map((section, index) => (
+        <ResourceActivitySection key={index} label={section.label}>
+          {section.content}
+        </ResourceActivitySection>
       ))}
     </ResourceDetailPage>
   );

@@ -90,6 +90,7 @@ import type {
   SkillListResponse,
   DeleteSkillRequest,
   SkillContentResponse,
+  SkillFilesResponse,
   UpdateSkillRequest,
   SkillScope,
 } from "@bb/server-contract";
@@ -777,6 +778,7 @@ interface GetSkillContentArgs {
   projectId: string;
   scope: SkillScope;
   name: string;
+  path: string;
   environmentId: string | null;
   signal?: AbortSignal;
 }
@@ -785,11 +787,30 @@ export async function getSkillContent({
   projectId,
   scope,
   name,
+  path,
   environmentId,
   signal,
 }: GetSkillContentArgs): Promise<SkillContentResponse> {
   return request<SkillContentResponse>(
     apiClient.projects[":id"].skills.content.$get(
+      {
+        param: { id: projectId },
+        query: { scope, name, path, environmentId: environmentId ?? "" },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function getSkillFiles({
+  projectId,
+  scope,
+  name,
+  environmentId,
+  signal,
+}: Omit<GetSkillContentArgs, "path">): Promise<SkillFilesResponse> {
+  return request<SkillFilesResponse>(
+    apiClient.projects[":id"].skills.files.$get(
       {
         param: { id: projectId },
         query: { scope, name, environmentId: environmentId ?? "" },

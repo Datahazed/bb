@@ -15,10 +15,9 @@ export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
   "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
-// Settings buckets (general, files, …) and per-plugin settings pages. The
-// static "plugins" segment wins over :section, so /settings/plugins is the
-// plugin management bucket and /settings/plugins/:id a plugin's own page.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
+// Legacy Settings URLs redirect into the canonical Plugins resource surface.
+export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
@@ -140,10 +139,6 @@ export function getPluginsRoutePath(): string {
   return TOOLS_PLUGINS_ROUTE_PATH;
 }
 
-export function getPluginBrowseRoutePath(): string {
-  return TOOLS_PLUGIN_BROWSE_ROUTE_PATH;
-}
-
 export interface PluginDetailRoutePathArgs {
   pluginId: string;
 }
@@ -175,10 +170,6 @@ export function getAutomationEditRoutePath({
   return `${getAutomationDetailRoutePath({ projectId, automationId })}/edit`;
 }
 
-export function getAutomationBrowseRoutePath(): string {
-  return TOOLS_AUTOMATION_BROWSE_ROUTE_PATH;
-}
-
 export function getPopoutRoutePath(): string {
   return POPOUT_ROUTE_PATH;
 }
@@ -207,10 +198,6 @@ export function getSettingsRoutePath(section?: string): string {
   return section === undefined
     ? SETTINGS_ROUTE_PATH
     : `/settings/${encodeURIComponent(section)}`;
-}
-
-export function getSettingsPluginRoutePath(pluginId: string): string {
-  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
 }
 
 export function getProjectSettingsRoutePath(projectId: string): string {
@@ -283,6 +270,7 @@ const baseRoutePatterns: readonly string[] = [
   POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,

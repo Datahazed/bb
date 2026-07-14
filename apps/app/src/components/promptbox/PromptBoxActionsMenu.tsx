@@ -26,7 +26,7 @@ interface PromptBoxActionsMenuProps {
   onAction: (action: PromptBoxAction) => void;
 }
 
-// Skill creation always targets a bb skill (the only manageable scope).
+// Skill creation always targets a cross-agent bb skill.
 export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
 
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [

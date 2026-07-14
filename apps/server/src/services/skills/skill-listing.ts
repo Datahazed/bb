@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
+import path from "node:path";
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
 import type {
+  EditableSkillScope,
   SkillProvider,
   SkillScope,
   SkillSummary,
@@ -34,6 +36,22 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "plugin",
 ];
 
+function hostPathDirname(filePath: string): string {
+  return /^[a-zA-Z]:[\\/]/u.test(filePath)
+    ? path.win32.dirname(filePath)
+    : path.posix.dirname(filePath);
+}
+
+function hostPathBasename(filePath: string): string {
+  return /^[a-zA-Z]:[\\/]/u.test(filePath)
+    ? path.win32.basename(filePath)
+    : path.posix.basename(filePath);
+}
+
+function isBundledProviderSkill(filePath: string): boolean {
+  return /(^|[\\/])\.system([\\/]|$)/u.test(filePath);
+}
+
 interface MappedScope {
   scope: SkillScope;
   /** `null` for provider-agnostic bb scopes. */
@@ -44,12 +62,13 @@ interface MappedScope {
 /**
  * Product policy: map the daemon's raw `(provider, rootKind)` to a user-facing
  * scope. bb scopes are provider-agnostic (`provider: null`); `claude-*` split by
- * project/user; Codex collapses to one read-only scope; only bb-user/bb-project
- * are manageable.
+ * project/user; Codex collapses to one scope. User-owned provider roots are
+ * manageable; bundled provider and plugin roots remain protected.
  */
 export function mapSkillScope(
   provider: SkillProvider,
   rootKind: SkillRootKind,
+  filePath: string,
 ): MappedScope {
   switch (rootKind) {
     case "bb-project":
@@ -60,12 +79,17 @@ export function mapSkillScope(
       return { scope: "bb-builtin", provider: null, manageable: false };
     case "provider-project":
       return provider === "claude-code"
-        ? { scope: "claude-project", provider, manageable: false }
-        : { scope: "codex", provider, manageable: false };
+        ? { scope: "claude-project", provider, manageable: true }
+        : { scope: "codex", provider, manageable: true };
     case "provider-user":
+      if (isBundledProviderSkill(filePath)) {
+        return provider === "claude-code"
+          ? { scope: "claude-user", provider, manageable: false }
+          : { scope: "codex", provider, manageable: false };
+      }
       return provider === "claude-code"
-        ? { scope: "claude-user", provider, manageable: false }
-        : { scope: "codex", provider, manageable: false };
+        ? { scope: "claude-user", provider, manageable: true }
+        : { scope: "codex", provider, manageable: true };
     case "plugin":
       return { scope: "plugin", provider, manageable: false };
   }
@@ -107,7 +131,7 @@ export function assembleSkillList(
       if (byPath.has(skill.filePath)) {
         continue;
       }
-      const mapped = mapSkillScope(provider, skill.rootKind);
+      const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
       byPath.set(skill.filePath, {
         name: skill.name,
         description: skill.description,
@@ -146,51 +170,116 @@ export async function listProjectSkills(
   return assembleSkillList(perProvider);
 }
 
-/**
- * Read any skill's SKILL.md. The path is the server-resolved `filePath` from the
- * authoritative listing — a client never supplies a path — read via the daemon's
- * `host.read_file` primitive.
- */
-export async function readProjectSkill(
+async function resolveProjectSkill(
   deps: AppDeps,
   args: {
     scope: SkillScope;
     name: string;
     workspace: CommandWorkspace;
   },
-): Promise<string> {
+): Promise<SkillSummary> {
   const skills = await listProjectSkills(deps, { workspace: args.workspace });
-  // scope + name identify the skill (scope determines the provider).
   const match = skills.find(
     (skill) => skill.scope === args.scope && skill.name === args.name,
   );
   if (!match) {
     throw new ApiError(404, "not_found", "Skill not found");
   }
+  return match;
+}
+
+export async function listProjectSkillFiles(
+  deps: AppDeps,
+  args: {
+    scope: SkillScope;
+    name: string;
+    workspace: CommandWorkspace;
+  },
+): Promise<{ files: string[]; truncated: boolean }> {
+  const skill = await resolveProjectSkill(deps, args);
+  const rootPath = hostPathDirname(skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "host.read_file", path: match.filePath },
+    command: { type: "host.list_files", path: rootPath, limit: 200 },
+  });
+  const files = result.files
+    .map((file) => file.path)
+    .sort((left, right) => {
+      if (left === "SKILL.md") return -1;
+      if (right === "SKILL.md") return 1;
+      return left.localeCompare(right);
+    });
+  return { files, truncated: result.truncated };
+}
+
+/**
+ * Read a selected file inside an authoritative skill root. The client supplies
+ * only a relative path; the daemon confines it to the server-resolved skill
+ * directory and rejects traversal or denied dotfiles.
+ */
+export async function readProjectSkill(
+  deps: AppDeps,
+  args: {
+    scope: SkillScope;
+    name: string;
+    path: string;
+    workspace: CommandWorkspace;
+  },
+): Promise<string> {
+  const skill = await resolveProjectSkill(deps, args);
+  const rootPath = hostPathDirname(skill.filePath);
+  const result = await callHostRetryableOnlineRpc(deps, {
+    hostId: args.workspace.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "host.read_file_relative",
+      rootPath,
+      path: args.path,
+      dotfiles: "deny",
+    },
   });
   return result.contentEncoding === "utf8"
     ? result.content
     : Buffer.from(result.content, "base64").toString("utf8");
 }
 
-/**
- * Overwrite a bb skill's SKILL.md via the daemon's confined write primitive. The
- * path is resolved host-side from `(scope, name, cwd)` — never a client path.
- * Non-retryable so a transient failure never re-issues the write.
- */
+/** Overwrite an editable local SKILL.md through a confined host write. */
 export async function writeProjectSkill(
   deps: AppDeps,
   args: {
-    scope: "bb-user" | "bb-project";
+    scope: EditableSkillScope;
     name: string;
     content: string;
     workspace: CommandWorkspace;
   },
 ): Promise<string> {
+  if (args.scope !== "bb-user" && args.scope !== "bb-project") {
+    const skill = await resolveProjectSkill(deps, args);
+    if (isBundledProviderSkill(skill.filePath) || skill.scope === "plugin") {
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Bundled skills cannot be edited in bb",
+      );
+    }
+    const result = await callHostOnlineRpc(deps, {
+      hostId: args.workspace.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.write_file",
+        path: skill.filePath,
+        rootPath: hostPathDirname(skill.filePath),
+        content: args.content,
+        contentEncoding: "utf8",
+        createParents: false,
+      },
+    });
+    if (result.outcome !== "written") {
+      throw new ApiError(409, "conflict", "Skill changed before it was saved");
+    }
+    return skill.filePath;
+  }
   const result = await callHostOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
@@ -206,26 +295,43 @@ export async function writeProjectSkill(
 }
 
 /**
- * Delete a bb skill via the daemon's confined write primitive. The path is
- * resolved host-side from `(scope, name, cwd)` — never a client `filePath`. Uses
- * the non-retryable RPC so a transient failure never re-issues the delete.
+ * Delete a user-owned local skill via the daemon's confined primitive. bb roots
+ * are resolved host-side from scope; provider roots come from the authoritative
+ * server-side listing and are re-confined by the daemon. Uses the non-retryable
+ * RPC so a transient failure never re-issues the delete.
  */
 export async function deleteProjectSkill(
   deps: AppDeps,
   args: {
-    scope: "bb-user" | "bb-project";
+    scope: EditableSkillScope;
     name: string;
     workspace: CommandWorkspace;
   },
 ): Promise<string> {
+  let daemonName = args.name;
+  let rootPath: string | null = null;
+  if (args.scope !== "bb-user" && args.scope !== "bb-project") {
+    const skill = await resolveProjectSkill(deps, args);
+    if (isBundledProviderSkill(skill.filePath) || skill.scope === "plugin") {
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Bundled skills cannot be deleted in bb",
+      );
+    }
+    const skillDirPath = hostPathDirname(skill.filePath);
+    daemonName = hostPathBasename(skillDirPath);
+    rootPath = hostPathDirname(skillDirPath);
+  }
   const result = await callHostOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.delete_skill",
       scope: args.scope,
-      name: args.name,
+      name: daemonName,
       cwd: args.workspace.cwd,
+      rootPath,
     },
   });
   return result.deletedPath;

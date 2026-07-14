@@ -2,16 +2,13 @@ import { useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar.js";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
 } from "@/lib/plugin-slots";
-import { getSettingsPluginRoutePath } from "@/lib/route-paths";
+import { getPluginDetailRoutePath } from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
@@ -24,9 +21,7 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
  * one runs the plugin's `run` with `{ openSettings }` — throws/rejections
  * are logged and never break the sidebar.
  */
-export function PluginSidebarFooterActions(props: {
-  onNavigate?: () => void;
-}) {
+export function PluginSidebarFooterActions(props: { onNavigate?: () => void }) {
   const { sidebarFooterActions } = usePluginSlots();
   if (sidebarFooterActions.length === 0) return null;
   return (
@@ -83,7 +78,7 @@ function runSidebarFooterAction({
   navigate: ReturnType<typeof useNavigate>;
 }): void {
   const openSettings = () => {
-    void navigate(getSettingsPluginRoutePath(action.pluginId));
+    void navigate(getPluginDetailRoutePath({ pluginId: action.pluginId }));
   };
   const warn = (error: unknown) => {
     console.warn(

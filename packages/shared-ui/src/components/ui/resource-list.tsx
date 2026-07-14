@@ -33,24 +33,28 @@ function targetsResourceAction(target: EventTarget): boolean {
 export function ResourceState({
   tone,
   showLabel = true,
+  showIndicator = true,
   children,
 }: {
   tone: ResourceStatusTone;
   showLabel?: boolean;
+  showIndicator?: boolean;
   children: ReactNode;
 }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <span
-        aria-hidden
-        className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          tone === "success" && "bg-success",
-          tone === "warning" && "bg-warning",
-          tone === "error" && "bg-destructive",
-          tone === "muted" && "bg-muted-foreground/50",
-        )}
-      />
+      {showIndicator ? (
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            tone === "success" && "bg-success",
+            tone === "warning" && "bg-warning",
+            tone === "error" && "bg-destructive",
+            tone === "muted" && "bg-muted-foreground/50",
+          )}
+        />
+      ) : null}
       {showLabel ? <span className="truncate">{children}</span> : null}
     </span>
   );
@@ -103,7 +107,7 @@ export function ResourceCardStat({
   return (
     <span
       aria-label={accessibleLabel}
-      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-surface-recessed-soft-solid px-1.5 py-1 text-muted-foreground"
+      className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground"
     >
       <Icon
         name={icon}
@@ -486,6 +490,7 @@ export type ResourceOverflowMenuItem =
       icon?: IconName;
       tone?: "default" | "destructive";
       disabled?: boolean;
+      disabledReason?: string;
       onSelect: () => void;
     }
   | { kind: "separator" };
@@ -515,30 +520,59 @@ export function ResourceOverflowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-max min-w-32 max-w-64"
+        className="w-max min-w-32 max-w-72"
         mobileTitle={label}
       >
-        {items.map((item, index) =>
-          item.kind === "separator" ? (
-            <DropdownMenuSeparator key={`separator-${index}`} />
-          ) : (
+        {items.map((item, index) => {
+          if (item.kind === "separator") {
+            return <DropdownMenuSeparator key={`separator-${index}`} />;
+          }
+          const menuItem = (
             <DropdownMenuItem
               key={item.label}
               variant={item.tone === "destructive" ? "destructive" : "default"}
-              disabled={item.disabled}
-              onSelect={item.onSelect}
+              disabled={item.disabled && item.disabledReason === undefined}
+              aria-disabled={item.disabled || undefined}
+              className={cn(
+                item.disabled && "text-muted-foreground",
+                item.disabledReason !== undefined &&
+                  "cursor-not-allowed focus:bg-transparent",
+              )}
+              onSelect={(event) => {
+                if (item.disabled) {
+                  event.preventDefault();
+                  return;
+                }
+                item.onSelect();
+              }}
             >
               {item.icon ? (
                 <Icon
                   name={item.icon}
-                  className="size-4 shrink-0"
+                  className={cn(
+                    "size-4 shrink-0",
+                    item.disabled && "opacity-50",
+                  )}
                   aria-hidden
                 />
               ) : null}
-              {item.label}
+              <span className="min-w-0 truncate">{item.label}</span>
             </DropdownMenuItem>
-          ),
-        )}
+          );
+          if (!item.disabled || item.disabledReason === undefined) {
+            return menuItem;
+          }
+          return (
+            <TooltipProvider key={item.label} delayDuration={250}>
+              <Tooltip>
+                <TooltipTrigger asChild>{menuItem}</TooltipTrigger>
+                <TooltipContent side="left">
+                  {item.disabledReason}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -561,7 +595,7 @@ export function ResourceActionButton({
   icon: IconName;
   tone?: "muted" | "destructive";
   disabled?: boolean;
-  disabledReason?: string;
+  disabledReason?: ReactNode;
   className?: string;
   onClick: () => void;
 }) {
@@ -609,11 +643,14 @@ export function ResourceActionButton({
 export function ResourceRow({
   leading,
   title,
+  titleMeta,
   description,
   status,
   state,
   selected = false,
   muted = false,
+  persistentActions,
+  trailingMeta,
   actions,
   trailingVisual,
   actionsVisibility = "hover",
@@ -622,11 +659,17 @@ export function ResourceRow({
 }: {
   leading?: ReactNode;
   title: ReactNode;
+  /** Secondary identity metadata shown beside the title, such as an author. */
+  titleMeta?: ReactNode;
   description?: ReactNode;
   status?: ReactNode;
   state?: ReactNode;
   selected?: boolean;
   muted?: boolean;
+  /** Controls that communicate persistent state, such as enable switches. */
+  persistentActions?: ReactNode;
+  /** Supporting metadata aligned with the trailing controls. */
+  trailingMeta?: ReactNode;
   actions?: ReactNode;
   trailingVisual?: ReactNode;
   actionsVisibility?: "hover" | "always";
@@ -666,6 +709,11 @@ export function ResourceRow({
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {title}
           </span>
+          {titleMeta ? (
+            <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+              {titleMeta}
+            </span>
+          ) : null}
           {rowState}
         </span>
         {description ? (
@@ -674,8 +722,11 @@ export function ResourceRow({
           </span>
         ) : null}
       </button>
-      {actions || trailingVisual ? (
-        <span className="flex shrink-0 items-center gap-0.5">
+      {trailingMeta || persistentActions || actions || trailingVisual ? (
+        <span className="flex shrink-0 items-center gap-1">
+          {trailingMeta ? (
+            <span className="flex shrink-0 items-center">{trailingMeta}</span>
+          ) : null}
           {actions ? (
             <span
               data-row-action
@@ -686,6 +737,14 @@ export function ResourceRow({
               )}
             >
               {actions}
+            </span>
+          ) : null}
+          {persistentActions ? (
+            <span
+              data-row-action
+              className="flex shrink-0 items-center gap-0.5"
+            >
+              {persistentActions}
             </span>
           ) : null}
           {trailingVisual ? (
@@ -784,23 +843,79 @@ export function ResourceListState({
   );
 }
 
-export function ResourcePropertyList({ children }: { children: ReactNode }) {
+export function ResourceDetailPanel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-popover shadow-sm">
+    <div
+      className={cn(
+        "overflow-hidden rounded-md border border-border bg-surface-raised shadow-sm",
+        className,
+      )}
+    >
       {children}
     </div>
   );
+}
+
+export function ResourceDetailList({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <ResourceDetailPanel className={cn("p-1", className)}>
+      {children}
+    </ResourceDetailPanel>
+  );
+}
+
+export function ResourceDetailListItem({
+  leading,
+  children,
+  trailing,
+  className,
+}: {
+  leading?: ReactNode;
+  children: ReactNode;
+  trailing?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-3 rounded-sm px-2 py-1.5 text-sm",
+        className,
+      )}
+    >
+      {leading ? <span className="shrink-0">{leading}</span> : null}
+      <div className="min-w-0 flex-1">{children}</div>
+      {trailing ? <span className="shrink-0">{trailing}</span> : null}
+    </div>
+  );
+}
+
+export function ResourcePropertyList({ children }: { children: ReactNode }) {
+  return <ResourceDetailPanel>{children}</ResourceDetailPanel>;
+}
+
+export interface ResourceDetailSectionProps {
+  label: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
 }
 
 export function ResourceDetailSection({
   label,
   actions,
   children,
-}: {
-  label: ReactNode;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
+}: ResourceDetailSectionProps) {
   return (
     <section className="space-y-2">
       <div className="flex min-h-6 items-center justify-between gap-3">
@@ -813,6 +928,45 @@ export function ResourceDetailSection({
       </div>
       {children}
     </section>
+  );
+}
+
+/** The editable or inspectable content that defines a resource. */
+export function ResourceDefinitionSection(props: ResourceDetailSectionProps) {
+  return <ResourceDetailSection {...props} />;
+}
+
+/** Current state and historical events produced by a resource. */
+export function ResourceActivitySection(props: ResourceDetailSectionProps) {
+  return <ResourceDetailSection {...props} />;
+}
+
+/** Passive lifecycle text for states that are observed, not changed here. */
+export function ResourceLifecycleStatus({
+  label,
+  tooltip,
+  accessibleLabel,
+}: {
+  label: ReactNode;
+  tooltip?: ReactNode;
+  accessibleLabel?: string;
+}) {
+  const status = (
+    <span
+      aria-label={accessibleLabel}
+      className="inline-flex min-h-7 shrink-0 items-center text-xs font-medium text-muted-foreground"
+    >
+      {label}
+    </span>
+  );
+  if (tooltip === undefined) return status;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{status}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1146,6 +1300,7 @@ type ResourceBrowseCardProps = {
   leading?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
+  descriptionLines?: 2 | 3;
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
@@ -1158,6 +1313,7 @@ export function ResourceBrowseCard({
   leading,
   title,
   description,
+  descriptionLines = 2,
   byline,
   headerAction,
   footerMeta,
@@ -1213,7 +1369,7 @@ export function ResourceBrowseCard({
               onOpen();
             }}
             className={cn(
-              "pointer-events-auto row-start-1 flex shrink-0 flex-nowrap items-start justify-end gap-[var(--resource-source-shelf-card-action-gap)] whitespace-nowrap text-[11px] leading-none",
+              "pointer-events-auto row-start-1 flex shrink-0 flex-nowrap items-center justify-end gap-[var(--resource-source-shelf-card-action-gap)] whitespace-nowrap text-[11px] leading-none",
               hasLeading ? "col-start-3" : "col-start-2",
             )}
           >
@@ -1223,7 +1379,10 @@ export function ResourceBrowseCard({
         {description ? (
           <span
             className={cn(
-              "min-h-14 line-clamp-2 rounded-md bg-surface-recessed/50 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
+              "rounded-md bg-surface-recessed/50 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
+              descriptionLines === 3
+                ? "min-h-20 line-clamp-3"
+                : "min-h-14 line-clamp-2",
               hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
             )}
           >
@@ -1256,13 +1415,14 @@ export function ResourceTemplateBrowseCard({
       title={title}
       byline="Starter template"
       description={description}
+      descriptionLines={3}
       openLabel={`${actionLabel}: ${title}`}
       headerAction={
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 bg-transparent px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          className="h-7 bg-surface-recessed-soft-solid px-2 text-xs text-muted-foreground hover:bg-state-active hover:text-foreground focus-visible:bg-state-active focus-visible:text-foreground"
           onClick={onUse}
         >
           <Icon name="MessageCirclePlus" className="size-3.5" aria-hidden />
@@ -1277,24 +1437,23 @@ export function ResourceTemplateBrowseCard({
 export function ResourceDetailPage({
   back,
   title,
+  titleMeta,
   leading,
-  info,
   lifecycleControl,
   overflowMenu,
   metadata,
   description,
-  modeActions,
   children,
 }: {
   back?: ReactNode;
   title: ReactNode;
+  /** Passive provenance or ownership shown inline with the resource name. */
+  titleMeta?: ReactNode;
   leading: ReactNode;
-  info?: ReactNode;
   lifecycleControl?: ReactNode;
   overflowMenu?: ReactNode;
   metadata?: ReactNode;
   description?: ReactNode;
-  modeActions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -1302,13 +1461,18 @@ export function ResourceDetailPage({
       {back}
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span className="flex size-4 shrink-0 items-center justify-center">
               {leading}
             </span>
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
+            <h1 className="min-w-0 truncate text-base font-semibold">
               {title}
             </h1>
+            {titleMeta ? (
+              <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+                {titleMeta}
+              </span>
+            ) : null}
           </div>
           {metadata ? (
             <div className="text-xs text-muted-foreground">{metadata}</div>
@@ -1317,18 +1481,35 @@ export function ResourceDetailPage({
             <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {info || lifecycleControl || overflowMenu ? (
+        {lifecycleControl || overflowMenu ? (
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            {info}
             {lifecycleControl}
             {overflowMenu}
           </div>
         ) : null}
       </div>
-      {modeActions ? (
-        <div className="flex flex-wrap items-center gap-2">{modeActions}</div>
-      ) : null}
       {children}
     </div>
+  );
+}
+
+export function ResourceDetailBackButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="-ml-[1.125rem] gap-1 [&_svg]:size-3.5"
+      onClick={onClick}
+    >
+      <Icon name="ChevronLeft" aria-hidden />
+      {label}
+    </Button>
   );
 }

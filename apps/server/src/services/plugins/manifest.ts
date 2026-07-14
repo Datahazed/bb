@@ -37,7 +37,7 @@ export interface PluginManifest {
   /** Full npm package name. */
   name: string;
   version: string;
-  /** package.json description, shown in the Settings → Plugins row. */
+  /** package.json description, shown in the Plugins row. */
   description: string | null;
   /** `bb.displayName` — human nav/header label; null when not declared. */
   displayName: string | null;
@@ -83,7 +83,9 @@ export function derivePluginId(packageName: string): string {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/^-+|-+$/g, "");
   if (id.length === 0) {
-    throw new Error(`cannot derive a plugin id from package name "${packageName}"`);
+    throw new Error(
+      `cannot derive a plugin id from package name "${packageName}"`,
+    );
   }
   return id;
 }
@@ -95,7 +97,9 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
   }
   const resolved = resolve(rootDir, entry);
   if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
-    throw new Error(`manifest ${label} escapes the plugin directory: "${entry}"`);
+    throw new Error(
+      `manifest ${label} escapes the plugin directory: "${entry}"`,
+    );
   }
   return resolved;
 }
@@ -105,7 +109,9 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
  * with a human-readable message on any problem — callers map that message
  * onto the plugin's error status.
  */
-export async function readPluginManifest(rootDir: string): Promise<PluginManifest> {
+export async function readPluginManifest(
+  rootDir: string,
+): Promise<PluginManifest> {
   const packageJsonPath = join(rootDir, "package.json");
   let raw: string;
   try {
@@ -132,7 +138,9 @@ export async function readPluginManifest(rootDir: string): Promise<PluginManifes
   try {
     await stat(serverEntry);
   } catch {
-    throw new Error(`manifest bb.server points at a missing file: ${bb.server}`);
+    throw new Error(
+      `manifest bb.server points at a missing file: ${bb.server}`,
+    );
   }
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),

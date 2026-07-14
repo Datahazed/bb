@@ -4,7 +4,11 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Sidebar, SidebarContent, useCloseMobileSidebar } from "@/components/ui/sidebar.js";
+import {
+  Sidebar,
+  SidebarContent,
+  useCloseMobileSidebar,
+} from "@/components/ui/sidebar.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "@/components/sidebar/sidebarRowClasses";
@@ -19,10 +23,9 @@ import {
 import {
   SETTINGS_ROUTE_PATH,
   getRootComposeRoutePath,
-  getSettingsPluginRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
-import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
+import { useSettingsNavState } from "./settings-nav";
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -85,8 +88,7 @@ function SettingsSidebarSectionLabel({ children }: { children: ReactNode }) {
 
 /**
  * Replaces the app sidebar while a /settings route is active: "Back to app"
- * on top, then the settings buckets, then a "Plugins" group with one entry
- * per enabled plugin that declares settings. Shares the app sidebar's shell
+ * on top, then the settings buckets. Shares the app sidebar's shell
  * (top chrome reserve, resize handle) and its row/label class tokens so the
  * two sidebar modes line up exactly.
  */
@@ -98,8 +100,7 @@ export function SettingsSidebar({
   const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const { activePluginId, activeSection, pluginEntries, sections } =
-    useSettingsNavState();
+  const { activeSection, sections } = useSettingsNavState();
 
   const sectionIcon = (name: IconName) => (
     <Icon name={name} className={COARSE_POINTER_ICON_SIZE_CLASS} />
@@ -160,28 +161,6 @@ export function SettingsSidebar({
               </SettingsSidebarRow>
             ))}
           </div>
-          {pluginEntries.length > 0 ? (
-            <>
-              <div className="mt-4">
-                <SettingsSidebarSectionLabel>
-                  Plugins
-                </SettingsSidebarSectionLabel>
-              </div>
-              <div className="mt-1 space-y-0.5">
-                {pluginEntries.map((plugin) => (
-                  <SettingsSidebarRow
-                    key={plugin.id}
-                    active={activePluginId === plugin.id}
-                    label={plugin.displayName ?? plugin.id}
-                    onNavigate={closeOnMobile}
-                    to={getSettingsPluginRoutePath(plugin.id)}
-                  >
-                    <PluginNavIcon plugin={plugin} />
-                  </SettingsSidebarRow>
-                ))}
-              </div>
-            </>
-          ) : null}
         </div>
       </SidebarContent>
       <div

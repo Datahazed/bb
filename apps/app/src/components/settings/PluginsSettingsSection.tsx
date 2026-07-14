@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -10,60 +9,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { Pill, type PillVariant } from "@bb/shared-ui/pill";
-import {
-  SettingsSection,
-  SettingsWithControl,
-} from "@/components/ui/settings-section.js";
+import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { Switch } from "@bb/shared-ui/switch";
+import { ResourceDetailPanel } from "@bb/shared-ui/resource-list";
+import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
-  applyPluginSettingsView,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  setPluginEnabled,
   updatePluginSettings,
-  usePluginList,
   usePluginSettingsView,
   type PluginListItem,
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
 /**
- * The Settings "Plugins" surfaces (plugin design §5.2 settingsSection):
- *
- * - PluginsSettingsSection: the management bucket — installed plugins with
- *   enable/disable switches. Install/remove stays on the bb CLI.
- * - PluginSettingsDetailSection: one plugin's settings page, rendering its
- *   declarative settings schema as a host-rendered form — no plugin code
- *   runs on this surface. Secrets are write-only: the server reports only
- *   `{ set }`, and an empty secret input means "leave unchanged".
- *
- * Both render a hint instead of content while the `plugins` experiment is
- * off (the settings nav only links here while it is on).
+ * Plugin configuration rendered inside the canonical Plugins detail surface.
+ * Declarative settings remain host-rendered, while `settingsSection` slots
+ * can provide richer plugin-owned controls. Secrets are write-only: the
+ * server reports only `{ set }`, and an empty secret input leaves it unchanged.
  */
 
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
-
-const PLUGINS_EXPERIMENT_OFF_MESSAGE =
-  "Plugins are off. Turn on the Plugins experiment in Settings → Experiments.";
-
-function statusPillVariant(status: string): PillVariant {
-  if (status === "running") return "secondary";
-  if (status === "error" || status === "incompatible") return "destructive";
-  return "outline";
-}
 
 interface SettingOptionPickerProps {
   ariaLabel: string;
@@ -218,7 +189,7 @@ function PluginSettingField({
   );
 }
 
-/** Exported for tests (rendered on a plugin's settings page). */
+/** Host-rendered declarative settings form for a plugin detail page. */
 export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const queryClient = useQueryClient();
   const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
@@ -316,130 +287,6 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
-function PluginLogo({
-  plugin,
-  className,
-}: {
-  plugin: PluginListItem;
-  className: string;
-}) {
-  const theme = usePreferredTheme();
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : plugin.logoUrl;
-  if (logoUrl === null) return null;
-  return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden="true"
-      data-testid={`plugin-settings-logo-${plugin.id}`}
-      className={className}
-    />
-  );
-}
-
-/** Exported for tests (enable/disable round-trip). */
-export function PluginToggleRow({ plugin }: { plugin: PluginListItem }) {
-  const queryClient = useQueryClient();
-  const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === plugin.id,
-  );
-  const toggle = useMutation({
-    mutationFn: (enabled: boolean) =>
-      setPluginEnabled(fetch, plugin.id, enabled),
-    onError: (error, enabled) => {
-      appToast.error(
-        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
-        {
-          description: error instanceof Error ? error.message : String(error),
-        },
-      );
-    },
-    onSettled: () => invalidatePluginList({ queryClient }),
-  });
-  // Reflect the in-flight target immediately; the invalidated list settles it.
-  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
-
-  return (
-    <div
-      className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
-      data-testid={`plugin-row-${plugin.id}`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <PluginLogo
-            plugin={plugin}
-            className="size-4 shrink-0 rounded-sm object-contain"
-          />
-          <span className="text-sm font-medium text-foreground">
-            {plugin.id}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            v{plugin.version}
-          </span>
-          <Pill variant={statusPillVariant(plugin.status)} size="sm">
-            {plugin.status}
-          </Pill>
-        </div>
-        {plugin.description !== null && plugin.description.length > 0 ? (
-          <p className="mt-1 text-xs leading-snug text-muted-foreground">
-            {plugin.description}
-          </p>
-        ) : null}
-        {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-          <p className="mt-1 text-xs leading-snug text-subtle-foreground/75">
-            {plugin.statusDetail}
-          </p>
-        ) : null}
-        {plugin.enabled && (plugin.hasSettings || hasSettingsSections) ? (
-          <Link
-            to={getSettingsPluginRoutePath(plugin.id)}
-            className="mt-1.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Plugin settings
-            <Icon name="ChevronRight" className="size-3.5" />
-          </Link>
-        ) : null}
-      </div>
-      <Switch
-        checked={enabled}
-        disabled={toggle.isPending}
-        onCheckedChange={(next) => toggle.mutate(next)}
-        aria-label={`Enable ${plugin.id}`}
-      />
-    </div>
-  );
-}
-
-/** The "Plugins" bucket: install state and enable/disable per plugin. */
-export function PluginsSettingsSection() {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const listQuery = usePluginList({ enabled: pluginsEnabled });
-  const plugins = listQuery.data ?? [];
-  return (
-    <SettingsSection
-      title="Plugins"
-      description="Enable or disable installed BB plugins. Install or remove plugins with the bb CLI (bb plugin install / remove)."
-    >
-      {systemConfig.data === undefined ? null : !pluginsEnabled ? (
-        <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />
-      ) : plugins.length === 0 ? (
-        <EmptyState message='No plugins installed. Install one with "bb plugin install <source>".' />
-      ) : (
-        <div className="divide-y divide-border">
-          {plugins.map((plugin) => (
-            <PluginToggleRow key={plugin.id} plugin={plugin} />
-          ))}
-        </div>
-      )}
-    </SettingsSection>
-  );
-}
-
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
@@ -448,113 +295,26 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  const showDeclarativeSettingsCard =
-    plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const displayName = plugin.displayName ?? plugin.id;
-  const isRunning = plugin.status === "running";
-  // A running plugin whose only surface is a settingsSection lets that
-  // section own the chrome (its own SettingsSection title + description), so
-  // the diagnostic header (version + status pill + manifest description)
-  // doesn't stack a second heading above it. The diagnostic header stays for
-  // every other case — it's what explains why a section is missing.
-  const sectionOwnsHeader =
-    isRunning && hasSettingsSections && !plugin.hasSettings;
+  if (!plugin.hasSettings && !hasSettingsSections) return null;
+
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
-      {sectionOwnsHeader ? null : (
-        <div className="space-y-3">
-          <div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <PluginLogo
-                plugin={plugin}
-                className="size-4 shrink-0 rounded-sm object-contain"
-              />
-              <h2 className="text-sm font-semibold text-foreground">
-                {displayName}
-              </h2>
-              {/* The version + status pills read as diagnostics; a running,
-                  configurable plugin doesn't need them on its settings page. */}
-              {!isRunning ? (
-                <>
-                  <span className="text-xs text-muted-foreground">
-                    v{plugin.version}
-                  </span>
-                  <Pill variant={statusPillVariant(plugin.status)} size="sm">
-                    {plugin.status}
-                  </Pill>
-                  {!plugin.enabled ? (
-                    <Pill variant="outline" size="sm">
-                      disabled
-                    </Pill>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-            {!isRunning &&
-            plugin.description !== null &&
-            plugin.description.length > 0 ? (
-              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                {plugin.description}
-              </p>
-            ) : null}
-            {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                {plugin.statusDetail}
-              </p>
-            ) : null}
-          </div>
-          {showDeclarativeSettingsCard ? (
-            <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-              {settingsAvailable ? (
-                plugin.hasSettings ? (
-                  <PluginSettingsForm pluginId={plugin.id} />
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    This plugin declares no settings.
-                  </p>
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {plugin.enabled
-                    ? `Settings are unavailable while the plugin is ${plugin.status}.`
-                    : "Enable this plugin to edit its settings."}
-                </p>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
+      {plugin.hasSettings || !settingsAvailable ? (
+        <ResourceDetailPanel className="px-3 py-3">
+          {settingsAvailable ? (
+            <PluginSettingsForm pluginId={plugin.id} />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {plugin.enabled
+                ? `Settings are unavailable while the plugin is ${plugin.status}.`
+                : "Enable this plugin to edit its settings."}
+            </p>
+          )}
+        </ResourceDetailPanel>
+      ) : null}
       {settingsAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
       ) : null}
     </div>
   );
-}
-
-/** One plugin's settings page, looked up from the installed-plugin list. */
-export function PluginSettingsDetailSection({
-  pluginId,
-}: {
-  pluginId: string;
-}) {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === pluginId,
-  );
-  const listQuery = usePluginList({
-    enabled: pluginsEnabled || hasSettingsSections,
-  });
-  if (systemConfig.data === undefined) return null;
-  if (!pluginsEnabled && !hasSettingsSections) {
-    return <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />;
-  }
-  const plugin = listQuery.data?.find((entry) => entry.id === pluginId);
-  if (plugin === undefined) {
-    return listQuery.data === undefined ? null : (
-      <EmptyState message={`Plugin "${pluginId}" is not installed.`} />
-    );
-  }
-  return <PluginSettingsDetail plugin={plugin} />;
 }

@@ -31,7 +31,6 @@ import {
   listDuePluginSchedules,
   listInstalledPlugins,
   listPluginSchedules,
-  markInstalledPluginRemoved,
   prunePluginSchedules,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
@@ -2138,6 +2137,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async remove(id) {
       const row = getInstalledPlugin(deps.db, id);
+      if (row && isBuiltinSource(row.source)) return false;
       await withLifecycleLock(id, () => disposeOne(id));
       statuses.delete(id);
       handlerStats.delete(id);
@@ -2145,11 +2145,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       appBundles.delete(id);
       logos.delete(id);
       manifestSnapshots.delete(id);
-      const removed = row
-        ? isBuiltinSource(row.source)
-          ? markInstalledPluginRemoved(deps.db, id)
-          : deleteInstalledPlugin(deps.db, id)
-        : false;
+      const removed = row ? deleteInstalledPlugin(deps.db, id) : false;
       if (removed && row) {
         // Configuration goes with the registration (a future same-id plugin
         // must not inherit secrets); kv rows and data.db are plugin data and
@@ -2164,9 +2160,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // Managed installs (git:/npm:) own their files under
         // <dataDir>/plugins; path: sources are the user's directory and are
         // never deleted.
-        const managedDir = isBuiltinSource(row.source)
-          ? undefined
-          : managedInstallDir(deps.dataDir, row.source);
+        const managedDir = managedInstallDir(deps.dataDir, row.source);
         if (managedDir !== undefined) {
           await rm(managedDir, { recursive: true, force: true });
         }

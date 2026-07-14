@@ -3,40 +3,37 @@ import type { ComponentProps } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { SkillProvider, SkillSummary } from "@bb/server-contract";
+import type {
+  EditableSkillScope,
+  SkillProvider,
+  SkillSummary,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { appToast } from "@/components/ui/app-toast";
-import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
+import {
+  SkillBrowseInstallControl,
+  SkillDetailView,
+  SkillInstallControl,
+} from "@/components/tools/SkillDetailView";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
   ResourceCardStat,
-  ResourceDetailPage,
-  ResourceDetailSection,
+  ResourceDetailBackButton,
   ResourceListPanel,
   ResourceListState,
-  ResourceMeta,
   ResourceMultiSelectMenu,
   ResourceBrowseSection,
   ResourceOverviewPage,
   ResourceOverflowMenu,
-  ResourceProperty,
-  ResourcePropertyList,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
-  ResourceStatus,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   ConfirmDeleteDialog,
@@ -60,6 +57,7 @@ import {
   useDeleteSkill,
   useProjectSkills,
   useSkillContent,
+  useSkillFiles,
   useUpdateSkill,
 } from "@/hooks/queries/skills-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
@@ -105,6 +103,19 @@ export interface RegistryPagination {
 export interface RegistrySkillsPage {
   skills: RegistrySkill[];
   pagination: RegistryPagination;
+}
+
+export interface RegistrySkillFile {
+  path: string;
+  contents: string;
+}
+
+export interface RegistrySkillDetail {
+  id: string;
+  source: string;
+  skillId: string;
+  hash: string | null;
+  files: RegistrySkillFile[] | null;
 }
 
 export type RegistryProvider = "claude-code" | "codex";
@@ -230,6 +241,51 @@ export async function fetchRegistrySkills(args: {
   };
 }
 
+export async function fetchRegistrySkillDetail(args: {
+  source: string;
+  skillId: string;
+}): Promise<RegistrySkillDetail> {
+  const params = new URLSearchParams({
+    source: args.source,
+    skillId: args.skillId,
+  });
+  const response = await fetch(
+    `/api/v1/skills-registry/detail?${params.toString()}`,
+  );
+  if (!response.ok) throw new Error("Failed to load skill files");
+  const body: unknown = await response.json();
+  if (
+    !isRecord(body) ||
+    typeof body.id !== "string" ||
+    typeof body.source !== "string" ||
+    typeof body.skillId !== "string" ||
+    (body.hash !== null && typeof body.hash !== "string") ||
+    (body.files !== null && !Array.isArray(body.files))
+  ) {
+    throw new Error("Invalid skill detail response");
+  }
+  const files: RegistrySkillFile[] | null =
+    body.files === null
+      ? null
+      : body.files.map((file) => {
+          if (
+            !isRecord(file) ||
+            typeof file.path !== "string" ||
+            typeof file.contents !== "string"
+          ) {
+            throw new Error("Invalid skill detail file");
+          }
+          return { path: file.path, contents: file.contents };
+        });
+  return {
+    id: body.id,
+    source: body.source,
+    skillId: body.skillId,
+    hash: body.hash,
+    files,
+  };
+}
+
 export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   const response = await fetch("/api/v1/skills-registry/install", {
     method: "POST",
@@ -243,13 +299,14 @@ export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   const body = (await response.json().catch(() => null)) as {
     ok?: unknown;
     message?: unknown;
+    filePath?: unknown;
   } | null;
-  if (!response.ok || body?.ok !== true) {
+  if (!response.ok || body?.ok !== true || typeof body.filePath !== "string") {
     throw new Error(
       typeof body?.message === "string" ? body.message : "Skill install failed",
     );
   }
-  return body;
+  return { ok: true as const, filePath: body.filePath };
 }
 
 export function normalizeSkillName(value: string): string {
@@ -354,6 +411,45 @@ function skillDescription(skill: SkillSummary): string {
   return skill.description ?? SCOPE_LABELS[skill.scope];
 }
 
+function isSkillEditable(
+  skill: SkillSummary,
+): skill is SkillSummary & { scope: EditableSkillScope } {
+  if (skill.scope === "bb-user" || skill.scope === "bb-project") return true;
+  if (skill.scope === "claude-user" || skill.scope === "claude-project") {
+    return true;
+  }
+  return (
+    skill.scope === "codex" &&
+    !/(^|[\\/])\.system([\\/]|$)/u.test(skill.filePath)
+  );
+}
+
+function providerPluginNameForSkill(skill: SkillSummary): string {
+  const separatorIndex = skill.name.indexOf(":");
+  return separatorIndex > 0 ? skill.name.slice(0, separatorIndex) : skill.name;
+}
+
+function providerPluginDisplayName(skill: SkillSummary): string {
+  const name = providerPluginNameForSkill(skill).replace(/[-_]+/gu, " ");
+  return name.length === 0 ? name : name[0].toUpperCase() + name.slice(1);
+}
+
+function bundledWithPluginReason(skill: SkillSummary): string {
+  return `Bundled with ${providerPluginNameForSkill(skill)}`;
+}
+
+function skillEditDisabledReason(skill: SkillSummary): string {
+  if (skill.scope === "bb-builtin") return "Built-in skill";
+  if (skill.scope === "plugin") return bundledWithPluginReason(skill);
+  return `Bundled with ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`;
+}
+
+function skillDeleteDisabledReason(skill: SkillSummary): string {
+  if (skill.scope === "bb-builtin") return "Built-in skill";
+  if (skill.scope === "plugin") return bundledWithPluginReason(skill);
+  return `Bundled with ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`;
+}
+
 function SkillRow({
   skill,
   onSelect,
@@ -370,12 +466,8 @@ function SkillRow({
   const hasManageActions = Boolean(
     onEdit || onDelete || showDisabledManageActions,
   );
-  const readOnlyReason =
-    skill.scope === "bb-builtin"
-      ? "Built-in skill"
-      : skill.provider !== null
-        ? `Managed by ${providerLabel(skill.provider)}`
-        : "Read-only skill";
+  const editDisabledReason = skillEditDisabledReason(skill);
+  const deleteDisabledReason = skillDeleteDisabledReason(skill);
   const actions = hasManageActions ? (
     <>
       {onEdit || showDisabledManageActions ? (
@@ -383,7 +475,7 @@ function SkillRow({
           label={`Edit ${skill.name}`}
           icon="Edit"
           disabled={!onEdit}
-          disabledReason={!onEdit ? readOnlyReason : undefined}
+          disabledReason={!onEdit ? editDisabledReason : undefined}
           onClick={onEdit ?? NOOP}
         />
       ) : null}
@@ -393,7 +485,7 @@ function SkillRow({
           icon="Trash2"
           tone="destructive"
           disabled={!onDelete}
-          disabledReason={!onDelete ? readOnlyReason : undefined}
+          disabledReason={!onDelete ? deleteDisabledReason : undefined}
           onClick={onDelete ?? NOOP}
         />
       ) : null}
@@ -446,36 +538,13 @@ function RegistryInstallButton({
   pending: boolean;
   onInstall: (skill: RegistrySkill) => void;
 }) {
-  if (installed) {
-    return (
-      <span
-        aria-label={`Installed ${skill.name} as a bb skill`}
-        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-recessed-soft-solid px-2 text-xs text-muted-foreground"
-      >
-        <Icon name="Download" className="size-3.5 text-success" aria-hidden />
-        Installed
-      </span>
-    );
-  }
-  const label = pending ? "Installing" : "Install";
-
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="h-7 shrink-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
-      disabled={pending}
-      aria-label={`${label} ${skill.name} as a bb skill`}
-      onClick={() => onInstall(skill)}
-    >
-      <Icon
-        name="Download"
-        className="size-3.5 text-muted-foreground"
-        aria-hidden
-      />
-      {label}
-    </Button>
+    <SkillInstallControl
+      skillName={skill.name}
+      installed={installed}
+      pending={pending}
+      onInstall={() => onInstall(skill)}
+    />
   );
 }
 
@@ -483,12 +552,14 @@ function RegistrySkillSourceItem({
   skill,
   installed,
   onInstall,
+  onUninstall,
   onSelect,
   pending,
 }: {
   skill: RegistrySkill;
   installed: boolean;
   onInstall: (skill: RegistrySkill) => void;
+  onUninstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   pending: boolean;
 }) {
@@ -500,11 +571,12 @@ function RegistrySkillSourceItem({
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
-        <RegistryInstallButton
-          skill={skill}
+        <SkillBrowseInstallControl
+          skillName={skill.name}
           installed={installed}
           pending={pending}
-          onInstall={onInstall}
+          onInstall={() => onInstall(skill)}
+          onUninstall={() => onUninstall(skill)}
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
@@ -529,18 +601,9 @@ function RegistrySkillRow({
     <ResourceRow
       leading={<RegistrySkillLeading skill={skill} />}
       title={skill.name}
-      description={
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0">
-            by {formatRegistrySource(skill.source)}
-          </span>
-          <span aria-hidden>·</span>
-          <span className="truncate">
-            {skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
-          </span>
-        </span>
-      }
-      state={<RegistrySkillSocialProof skill={skill} />}
+      titleMeta={`by ${formatRegistrySource(skill.source)}`}
+      description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
+      trailingMeta={<RegistrySkillSocialProof skill={skill} />}
       onOpen={() => onSelect(skill)}
       actionsVisibility="always"
       actions={
@@ -574,6 +637,7 @@ function SkillsShAttributionLink() {
       rel="noreferrer"
       className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/65 hover:text-subtle-foreground/90 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
+      <span>powered by</span>
       <span className="font-mono">skills.sh</span>
     </a>
   );
@@ -583,20 +647,24 @@ function useRegistrySkillsBrowse({
   skills,
   isLoading,
   hasError,
-  pendingSkillId,
+  pendingInstallSkillId,
+  pendingUninstallSkillId,
   onBrowseAll,
   onRetry,
   onInstall,
+  onUninstall,
   onSelect,
   isInstalled,
 }: {
   skills: readonly RegistrySkill[];
   isLoading: boolean;
   hasError: boolean;
-  pendingSkillId: string | null;
+  pendingInstallSkillId: string | null;
+  pendingUninstallSkillId: string | null;
   onBrowseAll?: () => void;
   onRetry?: () => void;
   onInstall: (skill: RegistrySkill) => void;
+  onUninstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   isInstalled: (skill: RegistrySkill) => boolean;
 }): ComponentProps<typeof ResourceBrowseSection> {
@@ -640,7 +708,7 @@ function useRegistrySkillsBrowse({
             title={<Skeleton className={cn("h-3.5", nameWidth)} />}
             byline={<Skeleton className="h-3 w-40" />}
             description={<Skeleton className="h-14 w-full" />}
-            headerAction={<Skeleton className="h-7 w-16" />}
+            headerAction={<Skeleton className="h-7 w-44" />}
           />
         ),
       })),
@@ -666,8 +734,12 @@ function useRegistrySkillsBrowse({
         <RegistrySkillSourceItem
           skill={skill}
           installed={isInstalled(skill)}
-          pending={pendingSkillId === skill.id}
+          pending={
+            pendingInstallSkillId === skill.id ||
+            pendingUninstallSkillId === skill.id
+          }
           onInstall={onInstall}
+          onUninstall={onUninstall}
           onSelect={onSelect}
         />
       ),
@@ -682,6 +754,7 @@ export function RegistrySkillsBrowsePage({
   hasError,
   query,
   pendingSkillId,
+  onBack,
   onRetry,
   onQueryChange,
   onPageChange,
@@ -695,6 +768,7 @@ export function RegistrySkillsBrowsePage({
   hasError: boolean;
   query: string;
   pendingSkillId: string | null;
+  onBack: () => void;
   onRetry?: () => void;
   onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
@@ -739,9 +813,10 @@ export function RegistrySkillsBrowsePage({
 
   return (
     <div className="space-y-4">
+      <ResourceDetailBackButton label="Back to skills" onClick={onBack} />
       <ResourceToolbar
         searchValue={query}
-        searchPlaceholder="Search skills.sh"
+        searchPlaceholder="Search skills"
         onSearchChange={onQueryChange}
         controls={
           <ResourceSortMenu
@@ -756,9 +831,6 @@ export function RegistrySkillsBrowsePage({
           />
         }
       />
-      <div className="flex justify-end px-1">
-        <SkillsShAttributionLink />
-      </div>
       {hasError ? (
         <EmptyStatePanel role="alert" className="py-6">
           <div className="flex flex-col items-center gap-2">
@@ -846,6 +918,7 @@ export interface SkillsOverviewProps {
   registryIsLoading?: boolean;
   registryHasError?: boolean;
   pendingRegistrySkillId?: string | null;
+  pendingRegistryUninstallSkillId?: string | null;
   onBrowseRegistry?: () => void;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
@@ -855,6 +928,7 @@ export interface SkillsOverviewProps {
   onSelectRegistrySkill?: (skill: RegistrySkill) => void;
   onQueryChange?: (query: string) => void;
   onInstallRegistrySkill?: (skill: RegistrySkill) => void;
+  onUninstallRegistrySkill?: (skill: RegistrySkill) => void;
   isRegistrySkillInstalled?: (skill: RegistrySkill) => boolean;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
@@ -874,6 +948,7 @@ export function SkillsOverview({
   registryIsLoading = false,
   registryHasError = false,
   pendingRegistrySkillId = null,
+  pendingRegistryUninstallSkillId = null,
   onBrowseRegistry,
   onCreateSkill,
   onSelectSkill,
@@ -882,6 +957,7 @@ export function SkillsOverview({
   onSelectRegistrySkill = () => {},
   onQueryChange = () => {},
   onInstallRegistrySkill = () => {},
+  onUninstallRegistrySkill = () => {},
   isRegistrySkillInstalled = () => false,
   onRetry,
   onRetryRegistry,
@@ -967,10 +1043,12 @@ export function SkillsOverview({
     skills: registrySkills,
     isLoading: registryIsLoading,
     hasError: registryHasError,
-    pendingSkillId: pendingRegistrySkillId,
+    pendingInstallSkillId: pendingRegistrySkillId,
+    pendingUninstallSkillId: pendingRegistryUninstallSkillId,
     onBrowseAll: onBrowseRegistry,
     onRetry: onRetryRegistry,
     onInstall: onInstallRegistrySkill,
+    onUninstall: onUninstallRegistrySkill,
     onSelect: onSelectRegistrySkill,
     isInstalled: isRegistrySkillInstalled,
   });
@@ -1001,7 +1079,7 @@ export function SkillsOverview({
           skill={skill}
           onSelect={() => onSelectSkill(skill)}
           onEdit={
-            skill.manageable && onEditSkill
+            isSkillEditable(skill) && onEditSkill
               ? () => onEditSkill(skill)
               : undefined
           }
@@ -1017,7 +1095,7 @@ export function SkillsOverview({
 
   return (
     <ResourceOverviewPage
-      description="Manage skills from bb and your configured agents. bb skills work across every agent you use in bb."
+      description="Create and manage agent skills. bb skills work across every agent you use in bb."
       browse={browse}
       installed={{
         headingId: "installed-skills-heading",
@@ -1066,69 +1144,132 @@ export function SkillsOverview({
 
 function RegistrySkillDetailView({
   skill,
+  detail,
+  isLoadingDetail,
+  isDetailError,
   installed,
+  installedSkill,
+  installedPath,
   pending,
+  uninstallPending,
+  onRetry,
   onInstall,
+  onUninstall,
+  onEditInstalledSkill,
 }: {
   skill: RegistrySkill;
+  detail: RegistrySkillDetail | null;
+  isLoadingDetail: boolean;
+  isDetailError: boolean;
   installed: boolean;
+  installedSkill: SkillSummary | null;
+  installedPath: string | null;
   pending: boolean;
+  uninstallPending: boolean;
+  onRetry: () => void;
   onInstall: (skill: RegistrySkill) => void;
+  onUninstall: (skill: RegistrySkill) => void;
+  onEditInstalledSkill: (skill: SkillSummary) => void;
 }) {
+  const [selectedPath, setSelectedPath] = useState("SKILL.md");
+  useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
+  const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
+    useLocalOpenTargets({ enabled: installed && installedPath !== null });
+  const files = detail?.files ?? [];
+  const selectedFile =
+    files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
+  const path = installed
+    ? (installedPath ?? `~/.bb/skills/${skill.skillId}/SKILL.md`)
+    : `skills.sh/${skill.source}/${skill.skillId}`;
   return (
-    <ResourceDetailPage
-      leading={<RegistrySkillLeading skill={skill} />}
+    <SkillDetailView
+      leading={installed ? <BbLogo /> : <RegistrySkillLeading skill={skill} />}
       title={skill.name}
-      info={<RegistrySkillSocialProof skill={skill} />}
-      metadata={
-        <ResourceMeta
-          items={["skills.sh", formatRegistrySource(skill.source), skill.topic]}
-        />
+      path={path}
+      pathHref={installed ? undefined : skill.url}
+      headerControl={{
+        kind: "install",
+        skillName: skill.name,
+        installed,
+        pending: pending || uninstallPending,
+        onInstall: () => onInstall(skill),
+        onUninstall: () => onUninstall(skill),
+      }}
+      overflowMenu={
+        installed ? (
+          <ResourceOverflowMenu
+            label={`${skill.name} actions`}
+            items={[
+              {
+                label: "Edit SKILL.md",
+                icon: "Edit",
+                disabled: installedSkill === null,
+                disabledReason:
+                  installedSkill === null
+                    ? "Finishing installation"
+                    : undefined,
+                onSelect: () => {
+                  if (installedSkill) onEditInstalledSkill(installedSkill);
+                },
+              },
+              {
+                label: "Open in editor",
+                icon: "ExternalLink",
+                disabled: installedPath === null || !canOpenPreferredFileTarget,
+                disabledReason:
+                  installedPath === null
+                    ? "Finishing installation"
+                    : !canOpenPreferredFileTarget
+                      ? "No editor configured"
+                      : undefined,
+                onSelect: () => {
+                  if (installedPath === null) return;
+                  void openPathInPreferredFileTarget({
+                    path: installedPath,
+                    lineNumber: null,
+                  });
+                },
+              },
+            ]}
+          />
+        ) : undefined
       }
-      description={skill.summary}
-      modeActions={
-        <RegistryInstallButton
-          skill={skill}
-          installed={installed}
-          pending={pending}
-          onInstall={onInstall}
-        />
+      files={files.map((file) => file.path)}
+      selectedPath={selectedFile?.path ?? selectedPath}
+      onSelectFile={setSelectedPath}
+      contentState={
+        isDetailError || (!isLoadingDetail && detail === null)
+          ? {
+              kind: "error",
+              message: "The source SKILL.md preview is unavailable.",
+              onRetry,
+            }
+          : isLoadingDetail
+            ? { kind: "loading" }
+            : selectedFile
+              ? { kind: "ready", content: selectedFile.contents }
+              : {
+                  kind: "error",
+                  message: "The source does not include SKILL.md content.",
+                  onRetry,
+                }
       }
-    >
-      <ResourceDetailSection label="Details">
-        <ResourcePropertyList>
-          <ResourceProperty label="Installs">
-            {formatInstallCount(skill.installs)}
-          </ResourceProperty>
-          {skill.stars !== null ? (
-            <ResourceProperty label="GitHub stars">
-              {formatInstallCount(skill.stars)}
-            </ResourceProperty>
-          ) : null}
-          <ResourceProperty label="Works with">
-            {skill.worksWith.join(", ")}
-          </ResourceProperty>
-          {installed ? (
-            <ResourceProperty label="Installed as">
-              bb user skill
-            </ResourceProperty>
-          ) : null}
-        </ResourcePropertyList>
-      </ResourceDetailSection>
-    </ResourceDetailPage>
+    />
   );
 }
 
 export interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
-  /** Already-fetched SKILL.md source. */
+  files: readonly string[];
+  selectedPath: string;
+  onSelectPath: (path: string) => void;
   content: string;
   isLoadingContent: boolean;
   /** A background refetch is checking for out-of-band SKILL.md changes. */
   isRefreshingContent: boolean;
   isContentError: boolean;
-  /** Expose inline Edit + Delete (manageable bb user/project skills only). */
-  canManage: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   canOpenInEditor: boolean;
   initiallyEditing?: boolean;
   isSaving: boolean;
@@ -1140,45 +1281,9 @@ export interface SkillDetailDialogViewProps {
    * leaves edit mode; `false` keeps the draft for retry.
    */
   onSave: (content: string) => Promise<boolean>;
+  onRetry: () => void;
   onDelete: () => void;
   onOpenInEditor: () => void;
-}
-
-function SkillPathCopyButton({ path }: { path: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      appToast.error("Failed to copy path.");
-    }
-  }, [path]);
-
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Copy skill path: ${path}`}
-            onClick={handleCopy}
-            className="group -ml-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="truncate font-mono">{path}</span>
-            <Icon
-              name={copied ? "Check" : "Copy"}
-              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              aria-hidden
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
 }
 
 /**
@@ -1190,17 +1295,22 @@ function SkillPathCopyButton({ path }: { path: string }) {
  */
 export function SkillDetailDialogView({
   skill,
+  files,
+  selectedPath,
+  onSelectPath,
   content,
   isLoadingContent,
   isRefreshingContent,
   isContentError,
-  canManage,
+  canEdit,
+  canDelete,
   canOpenInEditor,
   initiallyEditing = false,
   isSaving,
   isDeleting,
   onInitialEditStarted = () => {},
   onSave,
+  onRetry,
   onDelete,
   onOpenInEditor,
 }: SkillDetailDialogViewProps) {
@@ -1218,7 +1328,7 @@ export function SkillDetailDialogView({
   useEffect(() => {
     if (
       !initiallyEditing ||
-      !canManage ||
+      !canEdit ||
       skill === null ||
       isLoadingContent ||
       isRefreshingContent ||
@@ -1234,7 +1344,7 @@ export function SkillDetailDialogView({
     setEditing(true);
     onInitialEditStarted();
   }, [
-    canManage,
+    canEdit,
     content,
     initiallyEditing,
     isContentError,
@@ -1260,6 +1370,7 @@ export function SkillDetailDialogView({
 
   function startEditing() {
     setConfirmingDelete(false);
+    onSelectPath("SKILL.md");
     setDraft(content);
     setEditing(true);
   }
@@ -1282,27 +1393,22 @@ export function SkillDetailDialogView({
   ) : undefined;
 
   if (skill === null) return null;
-  const detailStatusLabel =
-    skill.scope === "bb-builtin"
-      ? "Built-in"
-      : canManage
-        ? "Editable"
-        : "Read-only";
+  const bundledPluginName =
+    skill.scope === "plugin" ? providerPluginNameForSkill(skill) : null;
+  const editDisabledReason = skillEditDisabledReason(skill);
+  const deleteDisabledReason = skillDeleteDisabledReason(skill);
   const headerActions =
-    !editing && !confirmingDelete && (canManage || canOpenInEditor) ? (
+    !editing && !confirmingDelete ? (
       <ResourceOverflowMenu
         label={`${skill.name} actions`}
         items={[
-          ...(canManage
-            ? [
-                {
-                  label: "Edit",
-                  icon: "Edit" as const,
-                  disabled: isLoadingContent || isRefreshingContent,
-                  onSelect: startEditing,
-                },
-              ]
-            : []),
+          {
+            label: "Edit SKILL.md",
+            icon: "Edit" as const,
+            disabled: !canEdit || isLoadingContent || isRefreshingContent,
+            disabledReason: !canEdit ? editDisabledReason : undefined,
+            onSelect: startEditing,
+          },
           ...(canOpenInEditor
             ? [
                 {
@@ -1312,25 +1418,19 @@ export function SkillDetailDialogView({
                 },
               ]
             : []),
-          ...(canManage
-            ? [
-                { kind: "separator" as const },
-                {
-                  label: "Delete",
-                  icon: "Trash2" as const,
-                  tone: "destructive" as const,
-                  onSelect: () => setConfirmingDelete(true),
-                },
-              ]
-            : []),
+          { kind: "separator" as const },
+          {
+            label: "Delete",
+            icon: "Trash2" as const,
+            tone: "destructive" as const,
+            disabled: !canDelete,
+            disabledReason: !canDelete ? deleteDisabledReason : undefined,
+            onSelect: () => setConfirmingDelete(true),
+          },
         ]}
       />
     ) : null;
-  const contentBody = isContentError ? (
-    <p className="text-sm text-destructive">Failed to load the skill.</p>
-  ) : isLoadingContent ? (
-    <p className="text-sm text-muted-foreground">Loading...</p>
-  ) : editing ? (
+  const editor = editing ? (
     <textarea
       ref={textareaRef}
       value={draft}
@@ -1338,62 +1438,78 @@ export function SkillDetailDialogView({
       aria-label="SKILL.md"
       className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     />
-  ) : (
-    <div className="max-h-[60dvh] overflow-auto rounded-md border border-border">
-      <FilePreview
-        path="SKILL.md"
-        headerMode="none"
-        state={{
-          kind: "ready",
-          file: { name: "SKILL.md", contents: content },
-          lineRange: null,
-          textPreviewKind: "markdown",
-        }}
-      />
-    </div>
-  );
+  ) : undefined;
 
   return (
-    <ResourceDetailPage
+    <SkillDetailView
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
-      info={
-        <ResourceStatus tone={canManage ? "success" : "muted"}>
-          {detailStatusLabel}
-        </ResourceStatus>
+      path={skill.filePath}
+      headerControl={
+        skill.provider !== null && bundledPluginName === null
+          ? {
+              kind: "status",
+              label: "Imported",
+              tooltip: `Discovered from ${providerLabel(skill.provider)}`,
+              accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
+            }
+          : undefined
+      }
+      bundledPlugin={
+        bundledPluginName
+          ? {
+              pluginName: providerPluginDisplayName(skill),
+              providerLabel: providerLabel(skill.provider),
+            }
+          : undefined
+      }
+      files={files.length > 0 ? files : ["SKILL.md"]}
+      selectedPath={selectedPath}
+      onSelectFile={onSelectPath}
+      contentState={
+        isContentError
+          ? {
+              kind: "error",
+              message: `Failed to load ${selectedPath}.`,
+              onRetry,
+            }
+          : isLoadingContent
+            ? { kind: "loading" }
+            : { kind: "ready", content }
       }
       overflowMenu={headerActions}
-      metadata={<SkillPathCopyButton path={skill.filePath} />}
-    >
-      <ResourceDetailSection label="SKILL.md" actions={sectionActions}>
-        {contentBody}
-        {editing ? (
-          <span className="sr-only">Skill edit mode is active.</span>
-        ) : null}
-      </ResourceDetailSection>
-      <ConfirmDeleteDialog
-        open={confirmingDelete}
-        onOpenChange={(open) => {
-          if (!isDeleting) setConfirmingDelete(open);
-        }}
-      >
-        <ConfirmDeleteDialogContent
-          title="Delete skill?"
-          description={`Delete "${skill.name}" from its bb scope? This cannot be undone.`}
-          confirmLabel="Delete skill"
-          pending={isDeleting}
-          onConfirm={onDelete}
-          onCancel={() => setConfirmingDelete(false)}
-        />
-      </ConfirmDeleteDialog>
-    </ResourceDetailPage>
+      contentActions={sectionActions}
+      editor={editor}
+      footer={
+        <>
+          {editing ? (
+            <span className="sr-only">Skill edit mode is active.</span>
+          ) : null}
+          <ConfirmDeleteDialog
+            open={confirmingDelete}
+            onOpenChange={(open) => {
+              if (!isDeleting) setConfirmingDelete(open);
+            }}
+          >
+            <ConfirmDeleteDialogContent
+              title="Delete skill?"
+              description={`Delete "${skill.name}" from its current location? This cannot be undone.`}
+              confirmLabel="Delete skill"
+              pending={isDeleting}
+              onConfirm={onDelete}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          </ConfirmDeleteDialog>
+        </>
+      }
+    />
   );
 }
 
 /**
- * View a skill's SKILL.md; bb skills (manageable) can be edited inline or
- * deleted. Connected — owns the content/update/delete queries and renders
- * {@link SkillDetailDialogView}.
+ * View a skill's SKILL.md. Writable user-owned local skills can be edited and
+ * deleted inline. Connected — owns the
+ * content/update/delete queries and renders {@link SkillDetailDialogView}.
  */
 function SkillDetailPage({
   projectId,
@@ -1408,7 +1524,12 @@ function SkillDetailPage({
   initiallyEditing?: boolean;
   onInitialEditStarted?: () => void;
 }) {
-  const contentQuery = useSkillContent(projectId, skill);
+  const [selectedPath, setSelectedPath] = useState("SKILL.md");
+  useEffect(() => {
+    setSelectedPath("SKILL.md");
+  }, [skill?.scope, skill?.name, skill?.provider]);
+  const filesQuery = useSkillFiles(projectId, skill);
+  const contentQuery = useSkillContent(projectId, skill, selectedPath);
   const updateSkill = useUpdateSkill(projectId);
   const deleteSkill = useDeleteSkill(projectId);
   // Skills live on the local host (personal project), so the SKILL.md is a real
@@ -1416,29 +1537,37 @@ function SkillDetailPage({
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
     useLocalOpenTargets({ enabled: skill !== null });
 
-  const deletableScope =
-    skill && (skill.scope === "bb-user" || skill.scope === "bb-project")
-      ? skill.scope
-      : null;
+  const deletableScope: EditableSkillScope | null =
+    skill && skill.manageable && isSkillEditable(skill) ? skill.scope : null;
+  const editableScope: EditableSkillScope | null =
+    skill && isSkillEditable(skill) ? skill.scope : null;
 
   return (
     <SkillDetailDialogView
       skill={skill}
+      files={filesQuery.data?.files ?? ["SKILL.md"]}
+      selectedPath={selectedPath}
+      onSelectPath={setSelectedPath}
       content={contentQuery.data?.content ?? ""}
       isLoadingContent={contentQuery.isLoading}
       isRefreshingContent={contentQuery.isFetching}
       isContentError={contentQuery.isError}
-      canManage={skill?.manageable === true && deletableScope !== null}
+      canEdit={editableScope !== null}
+      canDelete={deletableScope !== null}
       canOpenInEditor={skill !== null && canOpenPreferredFileTarget}
       initiallyEditing={initiallyEditing}
       isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
       onInitialEditStarted={onInitialEditStarted}
+      onRetry={() => {
+        void filesQuery.refetch();
+        void contentQuery.refetch();
+      }}
       onSave={async (content) => {
-        if (!skill || deletableScope === null) return false;
+        if (!skill || editableScope === null) return false;
         try {
           await updateSkill.mutateAsync({
-            scope: deletableScope,
+            scope: editableScope,
             name: skill.name,
             environmentId: null,
             content,
@@ -1485,8 +1614,8 @@ export function SkillsLibrary() {
   const [registryPage, setRegistryPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [confirmedRegistryInstalls, setConfirmedRegistryInstalls] = useState<
-    Set<string>
-  >(() => new Set());
+    Map<string, string | null>
+  >(() => new Map());
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const deleteSkill = useDeleteSkill(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? EMPTY_SKILLS;
@@ -1511,10 +1640,10 @@ export function SkillsLibrary() {
   });
   const registryInstall = useMutation({
     mutationFn: installRegistrySkill,
-    onSuccess: (_result, variables) => {
+    onSuccess: (result, variables) => {
       setConfirmedRegistryInstalls((current) => {
-        const next = new Set(current);
-        next.add(variables.skill.id);
+        const next = new Map(current);
+        next.set(variables.skill.id, result.filePath);
         return next;
       });
       appToast.success("Skill installed");
@@ -1554,29 +1683,75 @@ export function SkillsLibrary() {
       ) ?? null
     );
   }, [registryQuery.data, routeRegistrySkillId]);
-  const isRegistrySkillInstalled = useCallback(
-    (skill: RegistrySkill): boolean => {
+  const registryDetailQuery = useQuery({
+    queryKey: ["skills-registry-detail", selectedRegistrySkill?.id ?? "none"],
+    queryFn: () =>
+      fetchRegistrySkillDetail({
+        source: selectedRegistrySkill!.source,
+        skillId: selectedRegistrySkill!.skillId,
+      }),
+    enabled: selectedRegistrySkill !== null,
+    staleTime: 5 * 60_000,
+  });
+  const findInstalledRegistrySkill = useCallback(
+    (skill: RegistrySkill): SkillSummary | null => {
       const names = new Set([
         normalizeSkillName(skill.skillId),
         normalizeSkillName(skill.name),
       ]);
       return (
-        confirmedRegistryInstalls.has(skill.id) ||
-        skills.some(
+        skills.find(
           (installedSkill) =>
             installedSkill.scope === "bb-user" &&
             installedSkill.provider === null &&
             names.has(normalizeSkillName(installedSkill.name)),
-        )
+        ) ?? null
       );
     },
-    [confirmedRegistryInstalls, skills],
+    [skills],
+  );
+  const isRegistrySkillInstalled = useCallback(
+    (skill: RegistrySkill): boolean => {
+      if (confirmedRegistryInstalls.has(skill.id)) {
+        return confirmedRegistryInstalls.get(skill.id) !== null;
+      }
+      return findInstalledRegistrySkill(skill) !== null;
+    },
+    [confirmedRegistryInstalls, findInstalledRegistrySkill],
   );
   const installRegistry = useCallback(
     (skill: RegistrySkill) => {
       registryInstall.mutate({ skill });
     },
     [registryInstall],
+  );
+  const uninstallRegistry = useCallback(
+    (skill: RegistrySkill) => {
+      deleteSkill.mutate(
+        {
+          scope: "bb-user",
+          name: skill.skillId,
+          environmentId: null,
+        },
+        {
+          onSuccess: () => {
+            setConfirmedRegistryInstalls((current) => {
+              const next = new Map(current);
+              next.set(skill.id, null);
+              return next;
+            });
+            appToast.success("Skill uninstalled", {
+              action: {
+                label: "Reinstall",
+                onClick: () => registryInstall.mutate({ skill }),
+              },
+            });
+            void skillsQuery.refetch();
+          },
+        },
+      );
+    },
+    [deleteSkill, registryInstall, skillsQuery],
   );
   const openSkill = useCallback(
     (skill: SkillSummary, options?: { editing?: boolean }) => {
@@ -1608,7 +1783,8 @@ export function SkillsLibrary() {
   const confirmDeleteSkill = useCallback(() => {
     if (
       deleteTarget === null ||
-      (deleteTarget.scope !== "bb-user" && deleteTarget.scope !== "bb-project")
+      !deleteTarget.manageable ||
+      !isSkillEditable(deleteTarget)
     ) {
       return;
     }
@@ -1645,6 +1821,12 @@ export function SkillsLibrary() {
     registryInstall.isPending && registryInstall.variables
       ? registryInstall.variables.skill.id
       : null;
+  const pendingRegistryUninstallSkillId =
+    deleteSkill.isPending && deleteSkill.variables?.scope === "bb-user"
+      ? ((registryQuery.data?.skills ?? []).find(
+          (skill) => skill.skillId === deleteSkill.variables?.name,
+        )?.id ?? null)
+      : null;
   const initiallyEditingSelectedSkill =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -1666,9 +1848,28 @@ export function SkillsLibrary() {
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
+          detail={registryDetailQuery.data ?? null}
+          isLoadingDetail={registryDetailQuery.isLoading}
+          isDetailError={registryDetailQuery.isError}
           installed={isRegistrySkillInstalled(selectedRegistrySkill)}
+          installedSkill={findInstalledRegistrySkill(selectedRegistrySkill)}
+          installedPath={
+            confirmedRegistryInstalls.has(selectedRegistrySkill.id)
+              ? (confirmedRegistryInstalls.get(selectedRegistrySkill.id) ??
+                null)
+              : (findInstalledRegistrySkill(selectedRegistrySkill)?.filePath ??
+                null)
+          }
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
+          uninstallPending={
+            deleteSkill.isPending &&
+            deleteSkill.variables?.scope === "bb-user" &&
+            deleteSkill.variables.name === selectedRegistrySkill.skillId
+          }
+          onRetry={() => void registryDetailQuery.refetch()}
           onInstall={installRegistry}
+          onUninstall={uninstallRegistry}
+          onEditInstalledSkill={(skill) => openSkill(skill, { editing: true })}
         />
       ) : isRegistryBrowseRoute ? (
         <RegistrySkillsBrowsePage
@@ -1685,6 +1886,7 @@ export function SkillsLibrary() {
           hasError={registryQuery.isError}
           query={query}
           pendingSkillId={pendingRegistrySkillId}
+          onBack={() => navigate(getSkillsRoutePath())}
           onRetry={() => void registryQuery.refetch()}
           onQueryChange={handleRegistryQueryChange}
           onPageChange={setRegistryPage}
@@ -1704,6 +1906,7 @@ export function SkillsLibrary() {
           }
           registryHasError={registryQuery.isError}
           pendingRegistrySkillId={pendingRegistrySkillId}
+          pendingRegistryUninstallSkillId={pendingRegistryUninstallSkillId}
           onBrowseRegistry={() => {
             setRegistryPage(0);
             navigate(getRegistrySkillsRoutePath());
@@ -1715,6 +1918,7 @@ export function SkillsLibrary() {
           onSelectRegistrySkill={openRegistrySkill}
           onQueryChange={handleRegistryQueryChange}
           onInstallRegistrySkill={installRegistry}
+          onUninstallRegistrySkill={uninstallRegistry}
           isRegistrySkillInstalled={isRegistrySkillInstalled}
           onRetry={() => void skillsQuery.refetch()}
           onRetryRegistry={() => void registryQuery.refetch()}
@@ -1729,7 +1933,7 @@ export function SkillsLibrary() {
         {deleteTarget ? (
           <ConfirmDeleteDialogContent
             title="Delete skill?"
-            description={`Delete "${deleteTarget.name}" from its bb scope? This cannot be undone.`}
+            description={`Delete "${deleteTarget.name}" from its current location? This cannot be undone.`}
             confirmLabel="Delete skill"
             pending={deleteSkill.isPending}
             onConfirm={confirmDeleteSkill}

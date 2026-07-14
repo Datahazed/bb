@@ -1,13 +1,6 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -16,9 +9,7 @@ import {
 } from "@/lib/plugin-slots";
 import {
   PluginSettingsDetail,
-  PluginSettingsDetailSection,
   PluginSettingsForm,
-  PluginToggleRow,
 } from "./PluginsSettingsSection";
 
 interface RecordedRequest {
@@ -32,27 +23,6 @@ function jsonOk(body: unknown): Response {
     status: 200,
     json: () => Promise.resolve(body),
   } as Response;
-}
-
-function responseJson(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
-    appearance: defaultAppTheme,
-    customThemes: [],
-    featureFlags: { placeholder: false },
-    hostDaemonPort: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
 }
 
 const SETTINGS_VIEW = {
@@ -160,6 +130,7 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
   return {
     id: "linear",
     source: "path:/plugins/linear",
+    isBuiltin: false,
     rootDir: "/plugins/linear",
     version: "0.1.0",
     enabled: true,
@@ -170,6 +141,11 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    app: { hasApp: false },
   };
 }
 
@@ -195,7 +171,7 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders a slot-only settings page while the plugins experiment is off", async () => {
+  it("renders a slot-only plugin configuration on the detail surface", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -211,73 +187,21 @@ describe("PluginSettingsDetail settings gating", () => {
       fileOpeners: [],
       messageDirectives: [],
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const rawUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
-        const path = new URL(rawUrl, "http://localhost").pathname;
-        if (path === "/api/v1/system/config") {
-          return responseJson(systemConfig(false));
-        }
-        if (path === "/api/v1/plugins") {
-          return responseJson({
-            plugins: [
-              {
-                id: "connect",
-                version: "0.1.0",
-                enabled: true,
-                status: "running",
-                statusDetail: null,
-                description: null,
-                logoUrl: null,
-                logoDarkUrl: null,
-                hasSettings: false,
-              },
-            ],
-          });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsDetailSection pluginId="connect" />, { wrapper });
+    render(
+      <PluginSettingsDetail
+        plugin={{
+          ...rowPlugin("running"),
+          id: "connect",
+          isBuiltin: true,
+          hasSettings: false,
+        }}
+      />,
+      { wrapper },
+    );
 
     expect(await screen.findByText("Remote access")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
-  });
-});
-
-describe("PluginToggleRow", () => {
-  it("POSTs disable when toggling an enabled plugin off", async () => {
-    const requests: RecordedRequest[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        requests.push({ url, init });
-        return jsonOk({ ok: true });
-      }),
-    );
-
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <MemoryRouter>
-        <PluginToggleRow plugin={rowPlugin("running")} />
-      </MemoryRouter>,
-      { wrapper },
-    );
-
-    fireEvent.click(screen.getByRole("switch", { name: "Enable linear" }));
-
-    await vi.waitFor(() => {
-      const post = requests.find((request) => request.init?.method === "POST");
-      expect(post?.url).toBe("/api/v1/plugins/linear/disable");
-    });
   });
 });

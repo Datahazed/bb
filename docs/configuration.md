@@ -282,7 +282,7 @@ running threads on non-primary hosts.
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
 server for browser access at `<handle>.getbb.app` (claim a handle and copy the
 command at https://getbb.app). Enable the "bb connect" experiment first;
-while it is off, `bb connect` and Settings → Connect are unavailable because
+while it is off, `bb connect` and Plugins → connect are unavailable because
 the plugin is not loaded. Remote access is owned by the builtin
 **connect plugin** (`plugins/connect/`): pairing redeems the code and stores
 the durable credential in the plugin's kv storage (in `bb.db`), and the
@@ -302,7 +302,7 @@ host for a self-hosted gate); access requires the owner's getbb.app session
 experiment still enabled, `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and Settings → Connect drives the plugin's rpc (including shared
+the plugin, and Plugins → connect drives the plugin's rpc (including shared
 ports).
 
 ## Plugins

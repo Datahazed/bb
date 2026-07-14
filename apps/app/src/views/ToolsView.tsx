@@ -1,4 +1,10 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   matchPath,
   useLocation,
@@ -7,8 +13,6 @@ import {
 } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import {
   CREATE_PLUGIN_PROMPT,
   CreateWithTemplatesButton,
@@ -21,28 +25,28 @@ import {
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import {
   ResourceActionButton,
+  ResourceDetailBackButton,
+  ResourceDetailList,
+  ResourceDetailListItem,
   ResourceListPanel,
   ResourceListState,
-  ResourceMultiSelectMenu,
   ResourceOverviewPage,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceTemplateBrowseCard,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { Switch } from "@bb/shared-ui/switch";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import {
-  PluginDetailView,
-  type PluginDetailHealth,
-} from "@/components/tools/PluginDetailView";
+import { PluginSettingsDetail } from "@/components/settings/PluginsSettingsSection";
+import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { useProjectSkills } from "@/hooks/queries/skills-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
@@ -54,15 +58,13 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  getAutomationBrowseRoutePath,
   getAutomationsRoutePath,
-  getPluginBrowseRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ProviderLogo, SkillsLibrary } from "./SkillsView";
+import { SkillsLibrary } from "./SkillsView";
 
 const WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
@@ -100,13 +102,29 @@ function pluginStatusTone(
   return "muted";
 }
 
-function pluginDetailHealth(
-  plugin: PluginListItem,
-): PluginDetailHealth | undefined {
-  if (!plugin.enabled || plugin.status === "running") return undefined;
-  const tone = pluginStatusTone(plugin);
-  if (tone === "success" || tone === "muted") return undefined;
-  return { label: plugin.status, tone };
+function pluginSourceLabel(plugin: PluginListItem): string | null {
+  if (plugin.isBuiltin) return "Built-in";
+  if (plugin.source === null) return null;
+  if (plugin.source.startsWith("path:")) return "Local plugin";
+  if (plugin.source.startsWith("git:")) return "Git plugin";
+  if (plugin.source.startsWith("npm:")) return "npm plugin";
+  return plugin.source;
+}
+
+function pluginIsLocalSource(plugin: PluginListItem): boolean {
+  return plugin.source?.startsWith("path:") === true;
+}
+
+function pluginCanBeRemoved(plugin: PluginListItem): boolean {
+  return (
+    plugin.source?.startsWith("path:") === true ||
+    plugin.source?.startsWith("git:") === true ||
+    plugin.source?.startsWith("npm:") === true
+  );
+}
+
+function pluginRemovalLabel(plugin: PluginListItem): string {
+  return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
 function ToolsBodyFallback() {
@@ -168,12 +186,14 @@ export function PluginListRow({
   plugin,
   pending,
   editDisabled,
+  onToggle,
   onEdit,
   onDelete,
 }: {
   plugin: PluginListItem;
   pending: boolean;
   editDisabled: boolean;
+  onToggle: (plugin: PluginListItem) => void;
   onEdit: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
 }) {
@@ -186,72 +206,49 @@ export function PluginListRow({
   return (
     <ResourceRow
       leading={<PluginListLogo plugin={plugin} />}
-      title={
-        <>
-          {plugin.id}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            v{plugin.version}
-          </span>
-        </>
-      }
+      title={plugin.displayName ?? plugin.id}
+      titleMeta={`v${plugin.version}`}
       description={description}
       onOpen={() => void navigate(detailPath)}
       trailingVisual={<ResourceRowDetailChevron />}
+      persistentActions={
+        <Switch
+          size="sm"
+          checked={plugin.enabled}
+          disabled={pending}
+          aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
+          onCheckedChange={() => onToggle(plugin)}
+        />
+      }
       actions={
-        <>
-          <ResourceActionButton
-            label={`Edit ${plugin.id}`}
-            icon="Edit"
-            disabled={pending || editDisabled}
-            onClick={() => onEdit(plugin)}
-          />
-          <ResourceActionButton
-            label={`Delete ${plugin.id}`}
-            icon="Trash2"
-            tone="destructive"
-            disabled={pending}
-            onClick={() => onDelete(plugin)}
-          />
-        </>
+        plugin.isBuiltin ? undefined : (
+          <>
+            {pluginIsLocalSource(plugin) ? (
+              <ResourceActionButton
+                label={`Edit ${plugin.id}`}
+                icon="Edit"
+                disabled={pending || editDisabled}
+                onClick={() => onEdit(plugin)}
+              />
+            ) : null}
+            {pluginCanBeRemoved(plugin) ? (
+              <ResourceActionButton
+                label={`${pluginRemovalLabel(plugin)} ${plugin.id}`}
+                icon="Trash2"
+                tone="destructive"
+                disabled={pending}
+                onClick={() => onDelete(plugin)}
+              />
+            ) : null}
+          </>
+        )
       }
     />
   );
 }
 
-interface ProviderInstalledPlugin {
-  name: string;
-  providers: SkillProvider[];
-  skillCount: number;
-  skillNames: string[];
-  description: string | null;
-}
-
-const PROVIDER_LABELS: Record<SkillProvider, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-};
-
-type ToolProviderFilter = "bb" | SkillProvider;
-type ToolSortMode = "provider" | "alpha";
+type ToolSortMode = "alpha";
 type ToolSortDirection = "asc" | "desc";
-
-const TOOL_PROVIDER_FILTERS: readonly ToolProviderFilter[] = [
-  "bb",
-  "claude-code",
-  "codex",
-];
-
-function toolProviderLabel(provider: ToolProviderFilter): string {
-  if (provider === "bb") return "bb";
-  return PROVIDER_LABELS[provider];
-}
-
-function compareProviderFilters(
-  left: ToolProviderFilter,
-  right: ToolProviderFilter,
-): number {
-  return toolProviderLabel(left).localeCompare(toolProviderLabel(right));
-}
 
 function applyToolSortDirection(
   result: number,
@@ -271,175 +268,193 @@ function BbMark({ className = "size-4" }: { className?: string }) {
   );
 }
 
-function ProviderPluginLogoStack({
-  providers,
-}: {
-  providers: readonly SkillProvider[];
-}) {
-  return (
-    <span className="flex -space-x-1">
-      {providers.slice(0, 2).map((provider) => (
-        <ProviderLogo
-          key={provider}
-          providerId={provider}
-          className="size-4 rounded-sm bg-background"
-        />
-      ))}
-    </span>
-  );
-}
-
-function providerPluginNameFromSkill(skillName: string): string | null {
-  const separatorIndex = skillName.indexOf(":");
-  if (separatorIndex <= 0) return null;
-  return skillName.slice(0, separatorIndex);
-}
-
-const PROVIDER_PLUGIN_ROUTE_PREFIX = "provider:";
-
-function getProviderPluginRouteId(pluginName: string): string {
-  return `${PROVIDER_PLUGIN_ROUTE_PREFIX}${pluginName}`;
-}
-
-function getProviderPluginNameFromRouteId(pluginId: string): string | null {
-  return pluginId.startsWith(PROVIDER_PLUGIN_ROUTE_PREFIX)
-    ? pluginId.slice(PROVIDER_PLUGIN_ROUTE_PREFIX.length)
-    : null;
-}
-
-function providerPluginsFromSkills(
-  skills: readonly SkillSummary[],
-): ProviderInstalledPlugin[] {
-  const byKey = new Map<
-    string,
-    {
-      name: string;
-      providers: Set<SkillProvider>;
-      skills: Set<string>;
-      skillNames: Set<string>;
-      description: string | null;
-    }
-  >();
-  for (const skill of skills) {
-    if (skill.scope !== "plugin" || skill.provider === null) continue;
-    const name = providerPluginNameFromSkill(skill.name);
-    if (name === null) continue;
-    const existing = byKey.get(name);
-    if (existing) {
-      existing.providers.add(skill.provider);
-      existing.skills.add(`${skill.provider}:${skill.name}`);
-      existing.skillNames.add(skill.name);
-      if (existing.description === null && skill.description) {
-        existing.description = skill.description;
-      }
-      continue;
-    }
-    byKey.set(name, {
-      name,
-      providers: new Set([skill.provider]),
-      skills: new Set([`${skill.provider}:${skill.name}`]),
-      skillNames: new Set([skill.name]),
-      description: skill.description,
-    });
-  }
-  return [...byKey.values()]
-    .map((plugin) => ({
-      name: plugin.name,
-      providers: [...plugin.providers].sort(),
-      skillCount: plugin.skills.size,
-      skillNames: [...plugin.skillNames].sort(),
-      description: plugin.description,
-    }))
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function ProviderInstalledPluginRow({
-  plugin,
-}: {
-  plugin: ProviderInstalledPlugin;
-}) {
-  const navigate = useNavigate();
-  const detailPath = getPluginDetailRoutePath({
-    pluginId: getProviderPluginRouteId(plugin.name),
-  });
-  const description =
-    plugin.description ??
-    `${plugin.providers
-      .map((provider) => PROVIDER_LABELS[provider])
-      .join(", ")} · ${plugin.skillCount} ${
-      plugin.skillCount === 1 ? "skill" : "skills"
-    }`;
-  return (
-    <ResourceRow
-      leading={<ProviderPluginLogoStack providers={plugin.providers} />}
-      title={plugin.name}
-      description={description}
-      onOpen={() => void navigate(detailPath)}
-      trailingVisual={<ResourceRowDetailChevron />}
-    />
-  );
-}
-
 function PluginsLoadingRows() {
   return <ResourceListState state="loading" message="Loading plugins" />;
 }
 
-type PluginToolRow =
-  | {
-      kind: "bb";
-      id: string;
-      name: string;
-      provider: "bb";
-      description: string;
-      plugin: PluginListItem;
-    }
-  | {
-      kind: "provider";
-      id: string;
-      name: string;
-      provider: SkillProvider;
-      providers: readonly SkillProvider[];
-      description: string;
-      plugin: ProviderInstalledPlugin;
+function pluginActivityIcon(
+  state: "running" | "backoff" | "stopped" | "ok" | "error" | null,
+): { name: IconName; className: string; label: string } {
+  if (state === "running" || state === "ok") {
+    return { name: "CircleCheck", className: "text-success", label: state };
+  }
+  if (state === "backoff") {
+    return {
+      name: "AlertTriangle",
+      className: "text-warning",
+      label: "retrying",
     };
+  }
+  if (state === "error") {
+    return { name: "CircleX", className: "text-destructive", label: state };
+  }
+  if (state === null) {
+    return {
+      name: "Clock",
+      className: "text-muted-foreground",
+      label: "no runs yet",
+    };
+  }
+  return {
+    name: "Pause",
+    className: "text-muted-foreground",
+    label: "stopped",
+  };
+}
 
-function buildPluginRows({
-  plugins,
-  providerPlugins,
+function PluginActivityState({
+  state,
+  resourceLabel,
 }: {
-  plugins: readonly PluginListItem[];
-  providerPlugins: readonly ProviderInstalledPlugin[];
-}): PluginToolRow[] {
+  state: "running" | "backoff" | "stopped" | "ok" | "error" | null;
+  resourceLabel: string;
+}) {
+  const icon = pluginActivityIcon(state);
+  return (
+    <Icon
+      name={icon.name}
+      className={cn("size-4", icon.className)}
+      aria-label={`${resourceLabel}: ${icon.label}`}
+    />
+  );
+}
+
+function pluginIncludes(plugin: PluginListItem): ReactNode[] {
   return [
-    ...plugins.map(
-      (plugin): PluginToolRow => ({
-        kind: "bb",
-        id: `bb:${plugin.id}`,
-        name: plugin.id,
-        provider: "bb",
-        description: plugin.description ?? plugin.statusDetail ?? "",
-        plugin,
-      }),
-    ),
-    ...providerPlugins.map((plugin): PluginToolRow => {
-      const provider = plugin.providers[0] ?? "codex";
-      return {
-        kind: "provider",
-        id: `provider:${plugin.name}`,
-        name: plugin.name,
-        provider,
-        providers: plugin.providers,
-        description:
-          plugin.description ??
-          `${plugin.providers
-            .map((providerId) => PROVIDER_LABELS[providerId])
-            .join(", ")} · ${plugin.skillCount} ${
-            plugin.skillCount === 1 ? "skill" : "skills"
-          }`,
-        plugin,
-      };
-    }),
+    ...(plugin.app.hasApp
+      ? [
+          <ResourceDetailListItem
+            key="app"
+            leading={<Icon name="AppWindow" className="size-4" aria-hidden />}
+          >
+            App surfaces
+          </ResourceDetailListItem>,
+        ]
+      : []),
+    ...(plugin.cliCommand
+      ? [
+          <ResourceDetailListItem
+            key="cli"
+            leading={<Icon name="Terminal" className="size-4" aria-hidden />}
+          >
+            <span className="block font-mono">bb {plugin.cliCommand.name}</span>
+            <span className="block text-xs text-muted-foreground">
+              {plugin.cliCommand.summary}
+            </span>
+          </ResourceDetailListItem>,
+        ]
+      : []),
+    ...plugin.services.map((service) => (
+      <ResourceDetailListItem
+        key={`service:${service.name}`}
+        leading={<Icon name="Workflow" className="size-4" aria-hidden />}
+      >
+        {service.name}
+      </ResourceDetailListItem>
+    )),
+    ...plugin.schedules.map((schedule) => (
+      <ResourceDetailListItem
+        key={`schedule:${schedule.name}`}
+        leading={<Icon name="TimeSchedule" className="size-4" aria-hidden />}
+      >
+        <span className="block">{schedule.name}</span>
+        <span className="block font-mono text-xs text-muted-foreground">
+          {schedule.cron}
+        </span>
+      </ResourceDetailListItem>
+    )),
   ];
+}
+
+function PluginActivity({ plugin }: { plugin: PluginListItem }) {
+  const showOverallState = plugin.enabled && plugin.status !== "running";
+  const hasHandlerErrors = plugin.handlerStats.errorCount > 0;
+  if (
+    !showOverallState &&
+    !hasHandlerErrors &&
+    plugin.services.length === 0 &&
+    plugin.schedules.length === 0
+  ) {
+    return null;
+  }
+  return (
+    <ResourceDetailList>
+      {showOverallState ? (
+        <ResourceDetailListItem
+          leading={
+            <Icon
+              name={
+                pluginStatusTone(plugin) === "error"
+                  ? "CircleX"
+                  : "AlertTriangle"
+              }
+              className={cn(
+                "size-4",
+                pluginStatusTone(plugin) === "error"
+                  ? "text-destructive"
+                  : "text-warning",
+              )}
+              aria-hidden
+            />
+          }
+        >
+          <span className="block capitalize">
+            {plugin.status.replaceAll("-", " ")}
+          </span>
+          {plugin.statusDetail ? (
+            <span className="block text-xs text-muted-foreground">
+              {plugin.statusDetail}
+            </span>
+          ) : null}
+        </ResourceDetailListItem>
+      ) : null}
+      {plugin.services.map((service) => (
+        <ResourceDetailListItem
+          key={service.name}
+          trailing={
+            <PluginActivityState
+              state={service.state}
+              resourceLabel={service.name}
+            />
+          }
+        >
+          {service.name}
+        </ResourceDetailListItem>
+      ))}
+      {plugin.schedules.map((schedule) => (
+        <ResourceDetailListItem
+          key={schedule.name}
+          trailing={
+            <PluginActivityState
+              state={schedule.lastStatus}
+              resourceLabel={schedule.name}
+            />
+          }
+        >
+          <span className="block">{schedule.name}</span>
+          {schedule.lastError ? (
+            <span className="block text-xs text-destructive">
+              {schedule.lastError}
+            </span>
+          ) : null}
+        </ResourceDetailListItem>
+      ))}
+      {hasHandlerErrors ? (
+        <ResourceDetailListItem
+          leading={
+            <Icon
+              name="AlertCircle"
+              className="size-4 text-destructive"
+              aria-hidden
+            />
+          }
+        >
+          {plugin.handlerStats.errorCount} handler{" "}
+          {plugin.handlerStats.errorCount === 1 ? "error" : "errors"}
+        </ResourceDetailListItem>
+      ) : null}
+    </ResourceDetailList>
+  );
 }
 
 function AutomationsToolView() {
@@ -456,18 +471,16 @@ function AutomationsToolView() {
         candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
     ) ?? null;
   const subPath =
-    location.pathname === getAutomationBrowseRoutePath()
-      ? "browse"
-      : projectId && automationId
-        ? `${projectId}/${automationId}${
-            matchPath(
-              { path: TOOLS_AUTOMATION_EDIT_ROUTE_PATH, end: true },
-              location.pathname,
-            ) !== null
-              ? "/edit"
-              : ""
-          }`
-        : "";
+    projectId && automationId
+      ? `${projectId}/${automationId}${
+          matchPath(
+            { path: TOOLS_AUTOMATION_EDIT_ROUTE_PATH, end: true },
+            location.pathname,
+          ) !== null
+            ? "/edit"
+            : ""
+        }`
+      : "";
 
   if (panel === null) {
     return (
@@ -513,7 +526,7 @@ function AutomationsToolView() {
   );
 }
 
-function PluginDetail({
+export function PluginDetail({
   isLoading,
   plugin,
   pending,
@@ -522,6 +535,7 @@ function PluginDetail({
   onReload,
   onEdit,
   onDelete,
+  onBack,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -531,7 +545,9 @@ function PluginDetail({
   onReload: (plugin: PluginListItem) => void;
   onEdit: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
+  onBack: () => void;
 }) {
+  const { settingsSections } = usePluginSlots();
   if (isLoading) {
     return <PluginsLoadingRows />;
   }
@@ -542,147 +558,101 @@ function PluginDetail({
     );
   }
 
+  const hasSettings =
+    plugin.hasSettings ||
+    settingsSections.some((section) => section.pluginId === plugin.id);
+  const sourceLabel = pluginSourceLabel(plugin);
+  const includes = pluginIncludes(plugin);
+  const hasActivity =
+    (plugin.enabled && plugin.status !== "running") ||
+    plugin.handlerStats.errorCount > 0 ||
+    plugin.services.length > 0 ||
+    plugin.schedules.length > 0;
+  const canEditSource = pluginIsLocalSource(plugin);
+  const canRemove = pluginCanBeRemoved(plugin);
+
   return (
     <PluginDetailView
+      back={
+        <ResourceDetailBackButton label="Back to plugins" onClick={onBack} />
+      }
       leading={<PluginListLogo plugin={plugin} />}
-      title={plugin.id}
-      health={pluginDetailHealth(plugin)}
+      title={plugin.displayName ?? plugin.id}
+      titleMeta={sourceLabel}
       metadata={[
-        ...(plugin.source !== null ? [plugin.source] : []),
+        <span key="locator" className="font-mono">
+          {plugin.rootDir ?? plugin.source ?? plugin.id}
+        </span>,
         `v${plugin.version}`,
       ]}
-      description={plugin.description ?? plugin.statusDetail}
+      description={plugin.description}
       enabled={plugin.enabled}
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
-      overflowItems={[
-        {
-          label: "Edit",
-          icon: "Edit",
-          disabled: pending || editDisabled,
-          onSelect: () => onEdit(plugin),
-        },
-        {
-          label: "Reload",
-          icon: "ArrowReloadHorizontal",
-          disabled: pending,
-          onSelect: () => onReload(plugin),
-        },
-        { kind: "separator" },
-        {
-          label: "Delete",
-          icon: "Trash2",
-          tone: "destructive",
-          disabled: pending,
-          onSelect: () => onDelete(plugin),
-        },
+      overflowItems={
+        plugin.isBuiltin
+          ? undefined
+          : [
+              ...(canEditSource
+                ? [
+                    {
+                      label: "Edit",
+                      icon: "Edit" as const,
+                      disabled: pending || editDisabled,
+                      onSelect: () => onEdit(plugin),
+                    },
+                  ]
+                : []),
+              {
+                label: "Reload",
+                icon: "ArrowReloadHorizontal" as const,
+                disabled: pending,
+                onSelect: () => onReload(plugin),
+              },
+              ...(canRemove
+                ? [
+                    { kind: "separator" as const },
+                    {
+                      label: pluginRemovalLabel(plugin),
+                      icon: "Trash2" as const,
+                      tone: "destructive" as const,
+                      disabled: pending,
+                      onSelect: () => onDelete(plugin),
+                    },
+                  ]
+                : []),
+            ]
+      }
+      definitionSections={[
+        ...(hasSettings
+          ? [
+              {
+                label: "Settings",
+                content: <PluginSettingsDetail plugin={plugin} />,
+              },
+            ]
+          : []),
+        ...(includes.length > 0
+          ? [
+              {
+                label: "Includes",
+                content: <ResourceDetailList>{includes}</ResourceDetailList>,
+              },
+            ]
+          : []),
       ]}
-      properties={
-        plugin.statusDetail
-          ? [{ label: "Status detail", value: plugin.statusDetail }]
+      activitySections={
+        hasActivity
+          ? [{ label: "Activity", content: <PluginActivity plugin={plugin} /> }]
           : []
       }
     />
   );
 }
 
-function ProviderPluginDetail({
-  plugin,
-}: {
-  plugin: ProviderInstalledPlugin | null;
-}) {
-  if (plugin === null) {
-    return (
-      <EmptyStatePanel className="py-6">Plugin not found.</EmptyStatePanel>
-    );
-  }
-
-  return (
-    <PluginDetailView
-      leading={<ProviderPluginLogoStack providers={plugin.providers} />}
-      title={plugin.name}
-      metadata={[
-        plugin.providers
-          .map((provider) => PROVIDER_LABELS[provider])
-          .join(", "),
-        `${plugin.skillCount} ${plugin.skillCount === 1 ? "skill" : "skills"}`,
-      ]}
-      description={plugin.description}
-      properties={[]}
-      sections={[
-        {
-          label: "Skills",
-          content: (
-            <div className="space-y-1">
-              {plugin.skillNames.map((skillName) => (
-                <div key={skillName} className="rounded-md px-3 py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{skillName}</span>
-                </div>
-              ))}
-            </div>
-          ),
-        },
-      ]}
-    />
-  );
-}
-
-function PluginBrowsePage({
-  onCreate,
-}: {
-  onCreate: (prompt?: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const { examples } = getCreateExamples("plugin");
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleExamples = examples.filter((example) =>
-    [example.label, example.description]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery),
-  );
-
-  return (
-    <>
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search plugin templates"
-        onSearchChange={setQuery}
-        action={
-          <CreateWithTemplatesButton
-            kind="plugin"
-            label="New plugin"
-            onCreate={onCreate}
-          />
-        }
-      />
-      {visibleExamples.length === 0 ? (
-        <EmptyStatePanel className="py-6">
-          No plugin templates match "{query}".
-        </EmptyStatePanel>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {visibleExamples.map((example) => (
-            <ResourceTemplateBrowseCard
-              key={example.label}
-              title={example.label}
-              description={example.description}
-              onUse={() => onCreate(example.prompt)}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const [query, setQuery] = useState("");
-  const [providerFilters, setProviderFilters] = useState<ToolProviderFilter[]>(
-    [],
-  );
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
   const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
@@ -690,96 +660,40 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   // experiment that allows new user plugin installation is disabled.
   const listQuery = usePluginList({ enabled: true });
   const plugins = useMemo(() => listQuery.data ?? [], [listQuery.data]);
-  const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
   const {
     canOpenPreferredDirectoryTarget,
     openPathInPreferredDirectoryTarget,
   } = useLocalOpenTargets({
-    enabled: plugins.some((plugin) => plugin.rootDir !== null),
+    enabled: plugins.some(
+      (plugin) => pluginIsLocalSource(plugin) && plugin.rootDir !== null,
+    ),
   });
-  const providerPlugins = useMemo(
-    () => providerPluginsFromSkills(skillsQuery.data?.skills ?? []),
-    [skillsQuery.data],
-  );
   const normalizedQuery = query.trim().toLowerCase();
-  const pluginRows = useMemo(
-    () => buildPluginRows({ plugins, providerPlugins }),
-    [plugins, providerPlugins],
-  );
-  const providerCounts = useMemo(() => {
-    const counts = new Map<ToolProviderFilter, number>();
-    for (const row of pluginRows) {
-      if (row.kind === "provider") {
-        for (const provider of row.providers) {
-          counts.set(provider, (counts.get(provider) ?? 0) + 1);
-        }
-      } else {
-        counts.set("bb", (counts.get("bb") ?? 0) + 1);
-      }
-    }
-    return counts;
-  }, [pluginRows]);
-  const providerBucketCount = providerCounts.size;
-  const providerOptions = useMemo(() => {
-    return TOOL_PROVIDER_FILTERS.map((provider) => ({
-      id: provider,
-      label: toolProviderLabel(provider),
-      disabled: !providerCounts.has(provider),
-    }));
-  }, [providerCounts]);
-  useEffect(() => {
-    setProviderFilters((current) =>
-      current.filter((provider) => providerCounts.has(provider)),
-    );
-  }, [providerCounts]);
-  useEffect(() => {
-    if (sortMode === "provider" && providerBucketCount <= 1) {
-      setSortMode("alpha");
-      setSortDirection("asc");
-    }
-  }, [providerBucketCount, sortMode]);
-  const visiblePluginRows = useMemo(() => {
-    return pluginRows
-      .filter((row) => {
-        if (providerFilters.length > 0) {
-          if (row.kind === "provider") {
-            if (
-              !providerFilters.some((provider) =>
-                row.providers.includes(provider as SkillProvider),
-              )
-            ) {
-              return false;
-            }
-          } else if (!providerFilters.includes("bb")) {
-            return false;
-          }
-        }
+  const visiblePlugins = useMemo(() => {
+    return plugins
+      .filter((plugin) => {
         if (normalizedQuery.length === 0) return true;
         return [
-          row.name,
-          row.description,
-          toolProviderLabel(row.provider),
-          row.kind === "bb"
-            ? row.plugin.version
-            : row.plugin.skillNames.join(" "),
+          plugin.id,
+          plugin.displayName ?? "",
+          plugin.description ?? "",
+          plugin.version,
+          plugin.source ?? "",
         ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery);
       })
       .sort((left, right) => {
-        const base =
-          sortMode === "provider"
-            ? compareProviderFilters(left.provider, right.provider) ||
-              left.name.localeCompare(right.name)
-            : left.name.localeCompare(right.name);
+        const base = (left.displayName ?? left.id).localeCompare(
+          right.displayName ?? right.id,
+        );
         return applyToolSortDirection(base, sortDirection);
       });
-  }, [normalizedQuery, pluginRows, providerFilters, sortDirection, sortMode]);
+  }, [normalizedQuery, plugins, sortDirection]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
-      if (nextSort !== "provider" && nextSort !== "alpha") return;
-      if (nextSort === "provider" && providerBucketCount <= 1) return;
+      if (nextSort !== "alpha") return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         return;
@@ -787,7 +701,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       setSortMode(nextSort);
       setSortDirection("asc");
     },
-    [providerBucketCount, sortMode],
+    [sortMode],
   );
   const pluginToggle = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
@@ -828,7 +742,11 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       if (!response.ok) throw new Error("Failed to delete plugin");
     },
     onSuccess: (_data, deletedPlugin) => {
-      appToast.success("Plugin deleted");
+      appToast.success(
+        pluginIsLocalSource(deletedPlugin)
+          ? "Plugin removed from bb"
+          : "Plugin uninstalled",
+      );
       setDeleteTarget(null);
       if (pluginId === deletedPlugin.id) {
         navigate(getPluginsRoutePath());
@@ -844,16 +762,6 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     pluginId !== undefined
       ? (plugins.find((plugin) => plugin.id === pluginId) ?? null)
       : null;
-  const selectedProviderPluginName =
-    pluginId !== undefined ? getProviderPluginNameFromRouteId(pluginId) : null;
-  const selectedProviderPlugin =
-    selectedProviderPluginName !== null
-      ? (providerPlugins.find(
-          (plugin) => plugin.name === selectedProviderPluginName,
-        ) ?? null)
-      : null;
-  const isProviderPluginsLoading =
-    skillsQuery.isFetching && skillsQuery.data === undefined;
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
@@ -862,7 +770,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         : pluginDelete.isPending && pluginDelete.variables
           ? pluginDelete.variables.id
           : null;
-  const hasPluginRows = pluginRows.length > 0;
+  const hasPlugins = plugins.length > 0;
   const handleCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
       state: {
@@ -873,6 +781,9 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       },
     });
   };
+  const backToPlugins = useCallback(() => {
+    navigate(getPluginsRoutePath());
+  }, [navigate]);
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
       if (plugin.rootDir === null || !canOpenPreferredDirectoryTarget) return;
@@ -883,54 +794,41 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     },
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
-  const isBrowsePage = location.pathname === getPluginBrowseRoutePath();
-
   const overviewBody = listQuery.isError ? (
     <ResourceListState
       state="error"
       message="Couldn't load plugins."
       onRetry={() => void listQuery.refetch()}
     />
-  ) : isLoading || (!hasPluginRows && isProviderPluginsLoading) ? (
+  ) : isLoading ? (
     <PluginsLoadingRows />
-  ) : !hasPluginRows ? (
+  ) : !hasPlugins ? (
     <ResourceListState state="empty" message="No plugins installed." />
-  ) : visiblePluginRows.length === 0 ? (
-    <ResourceListState
-      state="empty"
-      message={
-        normalizedQuery === ""
-          ? "No plugins match these agents."
-          : `No plugins match "${query}"`
-      }
-    />
+  ) : visiblePlugins.length === 0 ? (
+    <ResourceListState state="empty" message={`No plugins match "${query}"`} />
   ) : (
     <ResourceListPanel>
-      {visiblePluginRows.map((row) =>
-        row.kind === "provider" ? (
-          <ProviderInstalledPluginRow key={row.id} plugin={row.plugin} />
-        ) : (
-          <PluginListRow
-            key={row.id}
-            plugin={row.plugin}
-            pending={pendingPluginId === row.plugin.id}
-            editDisabled={
-              row.plugin.rootDir === null || !canOpenPreferredDirectoryTarget
-            }
-            onEdit={handleEditPlugin}
-            onDelete={setDeleteTarget}
-          />
-        ),
-      )}
+      {visiblePlugins.map((plugin) => (
+        <PluginListRow
+          key={plugin.id}
+          plugin={plugin}
+          pending={pendingPluginId === plugin.id}
+          editDisabled={
+            plugin.rootDir === null || !canOpenPreferredDirectoryTarget
+          }
+          onToggle={(target) => pluginToggle.mutate(target)}
+          onEdit={handleEditPlugin}
+          onDelete={setDeleteTarget}
+        />
+      ))}
     </ResourceListPanel>
   );
   const browseExamples = getCreateExamples("plugin").examples;
   const overview = (
     <ResourceOverviewPage
-      description="Manage bb plugins and provider capabilities. Plugins add surfaces, commands, background services, and reusable capabilities."
+      description="Manage plugins installed in bb. Plugins can add app surfaces, commands, background services, schedules, and skills."
       browse={{
         icon: "ElectricPlugs",
-        onBrowseAll: () => navigate(getPluginBrowseRoutePath()),
         items: browseExamples.map((example) => ({
           id: example.label,
           content: (
@@ -949,30 +847,12 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         searchPlaceholder: "Search plugins",
         onSearchChange: setQuery,
         controls: (
-          <>
-            <ResourceMultiSelectMenu
-              label="Agent"
-              icon="Layers"
-              selectedValues={providerFilters}
-              options={providerOptions}
-              onChange={(values) =>
-                setProviderFilters(values as ToolProviderFilter[])
-              }
-            />
-            <ResourceSortMenu
-              value={sortMode}
-              direction={sortDirection}
-              options={[
-                {
-                  id: "provider",
-                  label: "Agent",
-                  disabled: providerBucketCount <= 1,
-                },
-                { id: "alpha", label: "Plugin name" },
-              ]}
-              onChange={handleSortChange}
-            />
-          </>
+          <ResourceSortMenu
+            value={sortMode}
+            direction={sortDirection}
+            options={[{ id: "alpha", label: "Plugin name" }]}
+            onChange={handleSortChange}
+          />
         ),
         action: (
           <CreateWithTemplatesButton
@@ -989,22 +869,8 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        {isBrowsePage ? (
-          <PluginBrowsePage onCreate={handleCreatePlugin} />
-        ) : pluginId !== undefined ? (
-          selectedProviderPluginName !== null ? (
-            skillsQuery.isError ? (
-              <ResourceListState
-                state="error"
-                message="Couldn't load plugin."
-                onRetry={() => void skillsQuery.refetch()}
-              />
-            ) : isProviderPluginsLoading ? (
-              <PluginsLoadingRows />
-            ) : (
-              <ProviderPluginDetail plugin={selectedProviderPlugin} />
-            )
-          ) : listQuery.isError ? (
+        {pluginId !== undefined ? (
+          listQuery.isError ? (
             <ResourceListState
               state="error"
               message="Couldn't load plugin."
@@ -1025,6 +891,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
               onReload={(target) => pluginReload.mutate(target)}
               onEdit={handleEditPlugin}
               onDelete={setDeleteTarget}
+              onBack={backToPlugins}
             />
           )
         ) : (
@@ -1038,9 +905,17 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         >
           {deleteTarget ? (
             <ConfirmDeleteDialogContent
-              title="Delete plugin?"
-              description={`Delete "${deleteTarget.id}" and its settings? This cannot be undone.`}
-              confirmLabel="Delete plugin"
+              title={
+                pluginIsLocalSource(deleteTarget)
+                  ? "Remove plugin from bb?"
+                  : "Uninstall plugin?"
+              }
+              description={
+                pluginIsLocalSource(deleteTarget)
+                  ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
+                  : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
+              }
+              confirmLabel={pluginRemovalLabel(deleteTarget)}
               pending={pluginDelete.isPending}
               onConfirm={() => pluginDelete.mutate(deleteTarget)}
               onCancel={() => setDeleteTarget(null)}

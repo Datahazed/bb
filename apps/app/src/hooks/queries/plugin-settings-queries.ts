@@ -1,8 +1,8 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 
 /**
- * Host-rendered plugin management data for the Settings "Plugins" section
- * (plugin design §5.2 settingsSection): the installed-plugin list plus each
+ * Host-rendered plugin management data for the Plugins resource surface:
+ * the installed-plugin list plus each
  * running plugin's declarative settings view, backed by GET /api/v1/plugins
  * and GET/PUT /api/v1/plugins/:id/settings. Like the contributions queries,
  * these routes are server-policy glue outside the typed contract, so they
@@ -19,6 +19,8 @@ export interface PluginListItem {
   id: string;
   /** Installed source spec; null only when talking to an older server. */
   source: string | null;
+  /** Built-ins can be enabled or disabled, but never edited or deleted. */
+  isBuiltin: boolean;
   /** Host path containing the plugin; null only when unavailable. */
   rootDir: string | null;
   version: string;
@@ -35,6 +37,92 @@ export interface PluginListItem {
   logoDarkUrl: string | null;
   /** True when the loaded plugin declared settings; drives its nav entry. */
   hasSettings: boolean;
+  handlerStats: {
+    count: number;
+    totalMs: number;
+    maxMs: number;
+    errorCount: number;
+  };
+  services: Array<{
+    name: string;
+    state: "running" | "backoff" | "stopped";
+  }>;
+  schedules: Array<{
+    name: string;
+    cron: string;
+    nextRunAt: number;
+    lastRunAt: number | null;
+    lastStatus: "running" | "ok" | "error" | null;
+    lastError: string | null;
+  }>;
+  cliCommand: { name: string; summary: string } | null;
+  app: { hasApp: boolean };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseHandlerStats(value: unknown): PluginListItem["handlerStats"] {
+  if (!isRecord(value)) {
+    return { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 };
+  }
+  return {
+    count: typeof value.count === "number" ? value.count : 0,
+    totalMs: typeof value.totalMs === "number" ? value.totalMs : 0,
+    maxMs: typeof value.maxMs === "number" ? value.maxMs : 0,
+    errorCount: typeof value.errorCount === "number" ? value.errorCount : 0,
+  };
+}
+
+function parseServices(value: unknown): PluginListItem["services"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((service) => {
+    if (
+      !isRecord(service) ||
+      typeof service.name !== "string" ||
+      (service.state !== "running" &&
+        service.state !== "backoff" &&
+        service.state !== "stopped")
+    ) {
+      return [];
+    }
+    return [{ name: service.name, state: service.state }];
+  });
+}
+
+function parseSchedules(value: unknown): PluginListItem["schedules"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((schedule) => {
+    if (
+      !isRecord(schedule) ||
+      typeof schedule.name !== "string" ||
+      typeof schedule.cron !== "string" ||
+      typeof schedule.nextRunAt !== "number" ||
+      !(
+        schedule.lastRunAt === null || typeof schedule.lastRunAt === "number"
+      ) ||
+      !(
+        schedule.lastStatus === null ||
+        schedule.lastStatus === "running" ||
+        schedule.lastStatus === "ok" ||
+        schedule.lastStatus === "error"
+      ) ||
+      !(schedule.lastError === null || typeof schedule.lastError === "string")
+    ) {
+      return [];
+    }
+    return [
+      {
+        name: schedule.name,
+        cron: schedule.cron,
+        nextRunAt: schedule.nextRunAt,
+        lastRunAt: schedule.lastRunAt,
+        lastStatus: schedule.lastStatus,
+        lastError: schedule.lastError,
+      },
+    ];
+  });
 }
 
 function parsePluginListItem(value: unknown): PluginListItem | null {
@@ -52,6 +140,8 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
   return {
     id: item.id,
     source: typeof item.source === "string" ? item.source : null,
+    isBuiltin:
+      typeof item.source === "string" && item.source.startsWith("builtin:"),
     rootDir: typeof item.rootDir === "string" ? item.rootDir : null,
     version: item.version,
     enabled: item.enabled,
@@ -65,6 +155,18 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     logoDarkUrl: typeof item.logoDarkUrl === "string" ? item.logoDarkUrl : null,
     // Absent on older servers → assume no declared settings.
     hasSettings: item.hasSettings === true,
+    handlerStats: parseHandlerStats(item.handlerStats),
+    services: parseServices(item.services),
+    schedules: parseSchedules(item.schedules),
+    cliCommand:
+      isRecord(item.cliCommand) &&
+      typeof item.cliCommand.name === "string" &&
+      typeof item.cliCommand.summary === "string"
+        ? { name: item.cliCommand.name, summary: item.cliCommand.summary }
+        : null,
+    app: {
+      hasApp: isRecord(item.app) && item.app.hasApp === true,
+    },
   };
 }
 

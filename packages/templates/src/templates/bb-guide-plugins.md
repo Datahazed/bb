@@ -79,10 +79,9 @@ refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
-settingsSection (per-plugin settings page below the host-rendered settings
-form; no props in V1, optional host-rendered title; builtin slot entries work
-with the Plugins experiment off while the Settings → Plugins management
-bucket stays experiment-gated),
+settingsSection (per-plugin detail page below the host-rendered settings form;
+no props in V1, optional host-rendered title; builtin slot entries work with
+the Plugins experiment off),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links),
 threadPanelAction
@@ -111,7 +110,7 @@ bundles from the plugin's node_modules (`npm install` for authors;
 consumers install prebuilt dist). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Settings → Plugins.
+(same data as `bb plugin config`) also appear on each plugin's detail page.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
@@ -135,7 +134,7 @@ range). The plugin id is the package name minus `bb-plugin-`.
 Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
 shows it wherever the plugin's contributions appear — the sidebar entry,
 panel title bar, composer command and mention menus, thread action
-buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
+buttons, and the Plugins surface. Optional `bb.logo` in the manifest
 relocates the file (svg/png/webp only). An optional dark-theme variant —
 logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
 the app is in dark mode. Without a logo bb falls back to the contribution's

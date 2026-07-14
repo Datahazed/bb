@@ -92,10 +92,10 @@ Remote access (bb connect):
   the owner's getbb.app account can open the URL; it is not a public internet
   link. Agents that start a local server for the user should run expose and
   share that URL (especially when the user is remote); unexpose when the
-  server stops. `bb connect shares` lists active URLs; Settings → Connect
+  server stops. `bb connect shares` lists active URLs; Plugins → connect
   shows and manages them in the UI.
 
-  Remote access is owned by the builtin "connect" plugin (Settings → Connect
+  Remote access is owned by the builtin "connect" plugin (Plugins → connect
   shows the URL, QR code, and shared ports). Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; with the
   bb connect experiment still enabled, re-enable with `bb plugin enable

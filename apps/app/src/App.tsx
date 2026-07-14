@@ -31,6 +31,7 @@ import {
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
@@ -45,6 +46,8 @@ import {
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   getAutomationDetailRoutePath,
+  getPluginDetailRoutePath,
+  getPluginsRoutePath,
 } from "./lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -129,6 +132,20 @@ function LegacyAutomationDetailRedirect() {
   );
 }
 
+function LegacyPluginSettingsRedirect() {
+  const { pluginId } = useParams<{ pluginId?: string }>();
+  return (
+    <Navigate
+      to={
+        pluginId
+          ? getPluginDetailRoutePath({ pluginId })
+          : getPluginsRoutePath()
+      }
+      replace
+    />
+  );
+}
+
 function AppRoutes() {
   return (
     <AppLayout>
@@ -140,7 +157,14 @@ function AppRoutes() {
             path={SETTINGS_SECTION_ROUTE_PATH}
             element={<SettingsView />}
           />
-          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
+          <Route
+            path={SETTINGS_PLUGINS_ROUTE_PATH}
+            element={<Navigate to={getPluginsRoutePath()} replace />}
+          />
+          <Route
+            path={SETTINGS_PLUGIN_ROUTE_PATH}
+            element={<LegacyPluginSettingsRedirect />}
+          />
           <Route
             path={TOOLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
@@ -158,7 +182,7 @@ function AppRoutes() {
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<ToolsView />}
+            element={<Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />}
           />
           <Route
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
@@ -167,7 +191,7 @@ function AppRoutes() {
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
-            element={<ToolsView />}
+            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
           />
           <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route

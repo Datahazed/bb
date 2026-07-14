@@ -64,10 +64,8 @@ import {
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
@@ -241,9 +239,7 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/tools": { title: "Skills" },
   "/tools/skills": { title: "Skills" },
   "/tools/plugins": { title: "Plugins" },
-  "/tools/plugins/browse": { title: "Plugins" },
   "/tools/automations": { title: "Automations" },
-  "/tools/automations/browse": { title: "Automations" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
 };
@@ -251,8 +247,7 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
 function resolveRouteTitle(
   pathname: string,
 ): { title: string; subtitle?: string } | undefined {
-  // The global settings page owns a subtree (/settings/:section,
-  // /settings/plugins/:id); every sub-route keeps the "Settings" title.
+  // The global settings page owns its /settings/:section subtree.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
@@ -524,9 +519,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
     location.pathname,
   );
-  const isToolsPluginBrowse = Boolean(
-    matchPath(TOOLS_PLUGIN_BROWSE_ROUTE_PATH, location.pathname),
-  );
   const toolsAutomationDetailMatch = matchPath(
     TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
     location.pathname,
@@ -534,9 +526,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const toolsAutomationEditMatch = matchPath(
     TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
     location.pathname,
-  );
-  const isToolsAutomationBrowse = Boolean(
-    matchPath(TOOLS_AUTOMATION_BROWSE_ROUTE_PATH, location.pathname),
   );
   const toolsBreadcrumbs = (() => {
     const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
@@ -560,17 +549,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         },
       ];
     }
-    if (isToolsPluginBrowse) {
-      return [pluginsCrumb, { label: "Browse" }];
-    }
     if (toolsPluginDetailMatch) {
       return [
         pluginsCrumb,
         { label: toolsPluginDetailMatch.params.pluginId ?? "Plugin" },
       ];
-    }
-    if (isToolsAutomationBrowse) {
-      return [automationsCrumb, { label: "Browse" }];
     }
     if (toolsAutomationEditMatch ?? toolsAutomationDetailMatch) {
       const automationMatch =
@@ -665,14 +648,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (toolsRegistrySkillDetailMatch) {
       return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills`;
     }
-    if (isToolsPluginBrowse) {
-      return "Browse plugins";
-    }
     if (toolsPluginDetailMatch) {
       return `${toolsPluginDetailMatch.params.pluginId ?? "Plugin"} · Plugins`;
-    }
-    if (isToolsAutomationBrowse) {
-      return "Browse automations";
     }
     const automationDetailMatch =
       toolsAutomationEditMatch ?? toolsAutomationDetailMatch;

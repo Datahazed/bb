@@ -49,7 +49,7 @@ The manifest is `package.json`:
   or `logo.webp` at the plugin root (that precedence) is auto-detected and
   shown wherever bb renders your plugin's contributions: the sidebar entry,
   the panel title bar, composer command/mention menus, thread action
-  buttons, and Settings → Plugins. `bb.logo: "./assets/mark.svg"` relocates
+  buttons, and the Plugins surface. `bb.logo: "./assets/mark.svg"` relocates
   it (svg/png/webp only; anything else fails the manifest). An optional
   dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
   at the root (same precedence), or `bb.logoDark` (same rules) — is
@@ -109,7 +109,7 @@ is the plugin's own id.
 ### bb.settings
 
 `bb.settings.define(descriptors)` declares plain-data descriptors (rendered
-in Settings → Plugins and editable via `bb plugin config <id> set <key>
+on the plugin detail page and editable via `bb plugin config <id> set <key>
 <value>`). Four descriptor types:
 
 ```ts
@@ -454,15 +454,14 @@ Slot props contracts (versioned, additive-only):
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
 - `settingsSection` → `{}` (deliberately no props in V1). Rendered on
-  `/settings/plugins/<pluginId>` below the host-rendered declarative settings
+  `/tools/plugins/<pluginId>` below the host-rendered declarative settings
   form for running, needs-configuration, and degraded plugins. Registration:
   `{ id, title?, component }`; `title` is an optional host-rendered section
   heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
-  `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
-  settings sidebar when they declare settings descriptors OR register
-  settings sections. Slot-derived sidebar entries work for builtin plugin
-  frontends even when the user-installed Plugins experiment is off; the
-  Settings → Plugins management bucket remains experiment-gated.
+  `useBbNavigate`, `useBbContext`) for data. Plugin detail pages remain the
+  canonical home for both declarative settings and slot-provided controls,
+  including builtin plugin frontends when the user-installed Plugins
+  experiment is off.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep
@@ -512,7 +511,7 @@ Slot props contracts (versioned, additive-only):
   the chrome so icons stay consistent. Registration:
   `{ id, title, icon, run }`. Activating it calls
   `run({ openSettings })` — use `openSettings()` to open this plugin's
-  Settings detail page (`/settings/plugins/<pluginId>`), or do anything else
+  Plugins detail page (`/tools/plugins/<pluginId>`), or do anything else
   (rpc, toast). Errors from `run` (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).

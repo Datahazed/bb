@@ -1,18 +1,8 @@
 import { matchPath, useLocation } from "react-router-dom";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import {
-  usePluginList,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { usePreferredTheme } from "@/hooks/useTheme";
-import { usePluginLogoUrl } from "@/lib/plugin-logos";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  SETTINGS_PLUGIN_ROUTE_PATH,
-  SETTINGS_SECTION_ROUTE_PATH,
-} from "@/lib/route-paths";
+import { SETTINGS_SECTION_ROUTE_PATH } from "@/lib/route-paths";
 
 /**
  * The settings buckets: shared between the settings sidebar (which replaces
@@ -25,7 +15,6 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Zap", id: "experiments", label: "Experiments" },
-  { icon: "ElectricPlugs", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
 ] as const satisfies readonly {
   icon: IconName;
@@ -42,15 +31,11 @@ export function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export interface SettingsNavState {
-  /** Plugin id from /settings/plugins/:pluginId, else null. */
-  activePluginId: string | null;
-  /** Selected bucket; null while a plugin page is active. */
-  activeSection: SettingsSectionId | null;
+  /** Selected settings bucket. */
+  activeSection: SettingsSectionId;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
-  /** Enabled plugins that declared settings or settingsSection slots. */
-  pluginEntries: PluginListItem[];
-  /** Buckets visible on this host (files/plugins hide when irrelevant). */
+  /** Buckets visible on this host (files hides when irrelevant). */
   sections: readonly SettingsNavSection[];
 }
 
@@ -62,73 +47,29 @@ export interface SettingsNavState {
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
-  const { fileOpeners, settingsSections } = usePluginSlots();
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const settingsSectionPluginIds = new Set(
-    settingsSections.map((section) => section.pluginId),
-  );
-  const pluginListQuery = usePluginList({
-    enabled: pluginsEnabled || settingsSectionPluginIds.size > 0,
-  });
-
-  const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
+  const { fileOpeners } = usePluginSlots();
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
-  const activePluginId = pluginMatch?.params.pluginId ?? null;
-  const sectionParam =
-    activePluginId === null ? sectionMatch?.params.section : undefined;
+  const sectionParam = sectionMatch?.params.section;
   const hasUnknownSection =
     sectionParam !== undefined && !isSettingsSectionId(sectionParam);
-  const activeSection: SettingsSectionId | null =
-    activePluginId !== null
-      ? null
-      : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-        ? sectionParam
-        : "general";
+  const activeSection: SettingsSectionId =
+    sectionParam !== undefined && isSettingsSectionId(sectionParam)
+      ? sectionParam
+      : "general";
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
-    if (section.id === "plugins") {
-      return pluginsEnabled;
-    }
     return true;
   });
-  const pluginEntries = (pluginListQuery.data ?? []).filter(
-    (plugin) =>
-      plugin.enabled &&
-      (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
-  );
 
   return {
-    activePluginId,
     activeSection,
     hasUnknownSection,
-    pluginEntries,
     sections,
   };
-}
-
-export function PluginNavIcon({ plugin }: { plugin: PluginListItem }) {
-  const theme = usePreferredTheme();
-  const storedLogoUrl = usePluginLogoUrl(plugin.id);
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : (plugin.logoUrl ?? storedLogoUrl);
-  if (logoUrl === null) {
-    return <Icon name="Layers" className="size-4 shrink-0" />;
-  }
-  return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden="true"
-      className="size-4 shrink-0 rounded-sm object-contain"
-    />
-  );
 }

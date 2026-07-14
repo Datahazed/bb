@@ -1,7 +1,7 @@
 import type { QueryClientArg } from "../cache-effect-types";
 import {
   projectSkillsQueryKey,
-  skillContentQueryKey,
+  skillContentQueryKeyPrefix,
 } from "../queries/query-keys";
 import { invalidateQueryKeys } from "./cache-effect-utils";
 
@@ -25,7 +25,7 @@ export function invalidateSkillContentMutationQueries({
   invalidateQueryKeys({
     queryClient,
     queryKeys: [
-      skillContentQueryKey(projectId, scope, name),
+      skillContentQueryKeyPrefix(projectId, scope, name),
       projectSkillsQueryKey(projectId),
     ],
   });

@@ -317,8 +317,8 @@ export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 /**
  * Product scope of a discovered skill, derived server-side from the daemon's raw
  * `(provider, rootKind)`. bb scopes are provider-agnostic; `claude-*` split by
- * project/user; Codex collapses to one read-only scope (its discovery has no
- * user/project split); `plugin` covers provider plugin skills.
+ * project/user; Codex collapses to one scope because its discovery has no
+ * user/project split; `plugin` covers bundled provider plugin skills.
  */
 export const skillScopeSchema = z.enum([
   "bb-builtin",
@@ -345,9 +345,9 @@ export const skillSummarySchema = z.object({
    */
   provider: skillProviderSchema.nullable(),
   scope: skillScopeSchema,
-  /** Absolute path to the SKILL.md (backs the read-only View). */
+  /** Absolute path to the SKILL.md. */
   filePath: z.string(),
-  /** `true` only for `bb-user` / `bb-project`; every other scope is read-only. */
+  /** `true` when the skill is user-owned and its full lifecycle is manageable. */
   manageable: z.boolean(),
 });
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
@@ -371,8 +371,18 @@ export const projectSkillsQuerySchema = z.object({
 });
 export type ProjectSkillsQuery = z.infer<typeof projectSkillsQuerySchema>;
 
-/** Only bb scopes are deletable; the server re-validates before the daemon. */
-export const deletableSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+/** Local skill scopes whose SKILL.md can be edited safely in bb. */
+export const editableSkillScopeSchema = z.enum([
+  "bb-user",
+  "bb-project",
+  "claude-user",
+  "claude-project",
+  "codex",
+]);
+export type EditableSkillScope = z.infer<typeof editableSkillScopeSchema>;
+
+/** User-owned local scopes that can be deleted after server-side resolution. */
+export const deletableSkillScopeSchema = editableSkillScopeSchema;
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
 export const deleteSkillRequestSchema = z
@@ -380,19 +390,17 @@ export const deleteSkillRequestSchema = z
     scope: deletableSkillScopeSchema,
     name: z.string().min(1),
     /**
-     * Workspace to resolve `<cwd>/.bb/skills` for a `bb-project` delete; `null`
-     * uses the project's default source. The server resolves the absolute path —
-     * a client `filePath` is never accepted.
+     * Workspace used to discover project-local skills; `null` uses the
+     * project's default source. The server resolves the authoritative skill
+     * path — a client `filePath` is never accepted.
      */
     environmentId: z.string().min(1).nullable(),
   })
   .strict();
 export type DeleteSkillRequest = z.infer<typeof deleteSkillRequestSchema>;
 
-/** View any skill's SKILL.md. Identity (scope + name; scope determines the
- * provider) is resolved server-side to the authoritative `filePath`; a client
- * path is never accepted. */
-export const projectSkillContentQuerySchema = z.object({
+/** Resolve a skill identity server-side before listing or reading its files. */
+export const projectSkillFilesQuerySchema = z.object({
   scope: skillScopeSchema,
   name: z.string().min(1),
   environmentId: z.preprocess(
@@ -400,6 +408,14 @@ export const projectSkillContentQuerySchema = z.object({
     z.string().min(1).nullable(),
   ),
 });
+export type ProjectSkillFilesQuery = z.infer<
+  typeof projectSkillFilesQuerySchema
+>;
+
+export const projectSkillContentQuerySchema =
+  projectSkillFilesQuerySchema.extend({
+    path: z.string().min(1).max(4_096),
+  });
 export type ProjectSkillContentQuery = z.infer<
   typeof projectSkillContentQuerySchema
 >;
@@ -407,10 +423,16 @@ export type ProjectSkillContentQuery = z.infer<
 export const skillContentResponseSchema = z.object({ content: z.string() });
 export type SkillContentResponse = z.infer<typeof skillContentResponseSchema>;
 
-/** Edit a bb skill's SKILL.md (only bb scopes are writable). */
+export const skillFilesResponseSchema = z.object({
+  files: z.array(z.string().min(1)),
+  truncated: z.boolean(),
+});
+export type SkillFilesResponse = z.infer<typeof skillFilesResponseSchema>;
+
+/** Edit a writable local skill's SKILL.md. */
 export const updateSkillRequestSchema = z
   .object({
-    scope: deletableSkillScopeSchema,
+    scope: editableSkillScopeSchema,
     name: z.string().min(1),
     environmentId: z.string().min(1).nullable(),
     content: z.string().min(1).max(1_000_000),
