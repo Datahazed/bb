@@ -300,7 +300,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
       {plugin.hasSettings || !settingsAvailable ? (
-        <ResourceDetailPanel className="px-3 py-3">
+        <ResourceDetailPanel surface="recessed" className="px-3 py-3">
           {settingsAvailable ? (
             <PluginSettingsForm pluginId={plugin.id} />
           ) : (

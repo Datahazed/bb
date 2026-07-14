@@ -10,6 +10,7 @@ import {
 } from "@bb/shared-ui/resource-pagination";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { EmptyState } from "@bb/shared-ui/empty-state";
+import { ResourceInstalledControl } from "@bb/shared-ui/resource-list";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   useMarketplaceSearch,
@@ -17,11 +18,7 @@ import {
   type MarketplaceSearchEntry,
 } from "@/hooks/queries/plugin-marketplace-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import {
-  PlaceholderBadge,
-  SUCCESS_TEXT_STYLE,
-  UPDATE_TINT_STYLE,
-} from "./plugin-ui";
+import { PlaceholderBadge } from "./plugin-ui";
 
 /**
  * The Browse tab (sketch v1 C): search across added catalogs with
@@ -226,11 +223,10 @@ function BrowseCard({
         ) : null}
       </div>
       {entry.installed ? (
-        <span
-          className="mt-0.5 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-2xs font-medium"
-          style={UPDATE_TINT_STYLE}
-        >
-          <span style={SUCCESS_TEXT_STYLE}>Installed ✓</span>
+        <span className="mt-0.5">
+          <ResourceInstalledControl
+            accessibleLabel={`${entry.displayName} is installed`}
+          />
         </span>
       ) : (
         <Button

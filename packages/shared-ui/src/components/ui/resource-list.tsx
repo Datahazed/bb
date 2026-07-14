@@ -848,7 +848,7 @@ export function ResourceListState({
   );
 }
 
-export type ResourceDetailSurface = "raised" | "flat";
+export type ResourceDetailSurface = "raised" | "recessed" | "flat";
 
 export function ResourceDetailPanel({
   children,
@@ -865,6 +865,8 @@ export function ResourceDetailPanel({
         "overflow-hidden",
         surface === "raised" &&
           "rounded-md border border-border bg-surface-raised shadow-sm",
+        surface === "recessed" &&
+          "rounded-md border border-border bg-surface-recessed/70",
         className,
       )}
     >
@@ -934,16 +936,29 @@ export interface ResourceDetailSectionProps {
   label: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
+  layout?: "stacked" | "inline";
 }
 
 export function ResourceDetailSection({
   label,
   actions,
   children,
+  layout = "stacked",
 }: ResourceDetailSectionProps) {
   return (
-    <section className="space-y-2">
-      <div className="flex min-h-6 items-center justify-between gap-3">
+    <section
+      className={cn(
+        layout === "stacked" && "space-y-2",
+        layout === "inline" &&
+          "grid gap-x-6 gap-y-3 px-4 py-4 sm:grid-cols-[8.5rem_minmax(0,1fr)]",
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-h-6 items-center justify-between gap-3",
+          layout === "inline" && "sm:items-start",
+        )}
+      >
         <h2 className="text-xs font-medium uppercase text-muted-foreground">
           {label}
         </h2>
@@ -951,8 +966,37 @@ export function ResourceDetailSection({
           <div className="flex shrink-0 items-center gap-0.5">{actions}</div>
         ) : null}
       </div>
-      {children}
+      {layout === "inline" ? (
+        <div className="min-w-0">{children}</div>
+      ) : (
+        children
+      )}
     </section>
+  );
+}
+
+/**
+ * One adaptive boundary for a resource's semantic detail sections.
+ *
+ * A simple resource can render a single compact row. Complex resources add
+ * rows to the same surface instead of accumulating disconnected cards.
+ */
+export function ResourceDetailStack({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "divide-y divide-border overflow-hidden rounded-lg border border-border bg-card",
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -992,6 +1036,72 @@ export function ResourceLifecycleStatus({
         <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Canonical installed state for browse and detail surfaces.
+ *
+ * With an action it stays green at rest, then reveals the destructive
+ * uninstall affordance only while the control itself is hovered or focused.
+ */
+export function ResourceInstalledControl({
+  accessibleLabel,
+  label = "Installed",
+  actionLabel = "Uninstall",
+  pendingLabel = "Uninstalling",
+  pending = false,
+  onAction,
+}: {
+  accessibleLabel: string;
+  label?: string;
+  actionLabel?: string;
+  pendingLabel?: string;
+  pending?: boolean;
+  onAction?: () => void;
+}) {
+  const installedContent = (
+    <span className="inline-flex items-center gap-1">
+      <Icon name="Check" className="size-3.5" aria-hidden />
+      {label}
+    </span>
+  );
+
+  if (onAction === undefined) {
+    return (
+      <span
+        aria-label={accessibleLabel}
+        className="inline-flex h-7 shrink-0 items-center rounded-md border border-success/30 bg-success/10 px-2 text-xs font-medium text-success"
+      >
+        {installedContent}
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="group/install h-7 shrink-0 border-success/30 bg-success/10 px-2 text-xs text-success hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/30 focus-visible:bg-destructive/10 focus-visible:text-destructive"
+      disabled={pending}
+      aria-label={accessibleLabel}
+      onClick={onAction}
+    >
+      {pending ? (
+        pendingLabel
+      ) : (
+        <span className="grid">
+          <span className="col-start-1 row-start-1 transition-opacity group-hover/install:opacity-0 group-focus-visible/install:opacity-0">
+            {installedContent}
+          </span>
+          <span className="col-start-1 row-start-1 inline-flex items-center gap-1 opacity-0 transition-opacity group-hover/install:opacity-100 group-focus-visible/install:opacity-100">
+            <Icon name="Trash2" className="size-3.5" aria-hidden />
+            {actionLabel}
+          </span>
+        </span>
+      )}
+    </Button>
   );
 }
 
@@ -1137,7 +1247,7 @@ export function ResourceCollectionPage<Mode extends string>({
                 aria-controls={`${id}-${mode.id}-panel`}
                 tabIndex={active ? 0 : -1}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
+                  "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
                   active
                     ? "bg-accent text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -1564,6 +1674,7 @@ export function ResourceDetailPage({
   leading,
   lifecycleControl,
   overflowMenu,
+  actions,
   metadata,
   description,
   children,
@@ -1575,6 +1686,8 @@ export function ResourceDetailPage({
   leading: ReactNode;
   lifecycleControl?: ReactNode;
   overflowMenu?: ReactNode;
+  /** Focused page actions, such as Cancel and Save in an edit route. */
+  actions?: ReactNode;
   metadata?: ReactNode;
   description?: ReactNode;
   children: ReactNode;
@@ -1604,10 +1717,14 @@ export function ResourceDetailPage({
             <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {lifecycleControl || overflowMenu ? (
+        {actions || lifecycleControl || overflowMenu ? (
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            {lifecycleControl}
-            {overflowMenu}
+            {actions ?? (
+              <>
+                {lifecycleControl}
+                {overflowMenu}
+              </>
+            )}
           </div>
         ) : null}
       </div>

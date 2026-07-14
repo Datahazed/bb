@@ -34,7 +34,7 @@ function PluginSettingsSectionList({
           key={`${section.pluginId}/${section.id}/${section.generation}`}
           label={section.title ?? "Plugin settings"}
         >
-          <ResourceDetailPanel className="px-3 py-3">
+          <ResourceDetailPanel surface="recessed" className="px-3 py-3">
             {section.description !== undefined ? (
               <p className="mb-3 text-xs leading-snug text-subtle-foreground/75">
                 {section.description}

@@ -18,7 +18,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       checked,
       className,
       disabled,
-      size = "default",
+      size = "sm",
       onCheckedChange,
       onClick,
       ...props

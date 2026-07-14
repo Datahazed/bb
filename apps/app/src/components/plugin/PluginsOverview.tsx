@@ -14,7 +14,10 @@ import {
   ResourceToolbar,
   type ResourceCollectionMode,
 } from "@bb/shared-ui/resource-list";
-import { CREATE_PLUGIN_PROMPT } from "@/components/create-via-prompt-examples";
+import {
+  CREATE_PLUGIN_PROMPT,
+  CreateWithTemplatesButton,
+} from "@/components/create-via-prompt-examples";
 import {
   AddPluginDialog,
   type AddPluginInitial,
@@ -154,11 +157,11 @@ export function PluginsOverview() {
       { replace: false },
     );
   };
-  const startCreatePlugin = () =>
+  const startCreatePlugin = (prompt?: string) =>
     navigate(getRootComposeRoutePath(), {
       state: {
         focusPrompt: true,
-        initialPrompt: CREATE_PLUGIN_PROMPT,
+        initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,
         replaceInitialPrompt: true,
         createDraftKind: "plugin",
       },
@@ -166,16 +169,11 @@ export function PluginsOverview() {
 
   const actions = (
     <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2.5 text-xs text-muted-foreground"
-        onClick={startCreatePlugin}
-      >
-        <Icon name="Code" className="size-3.5" />
-        Create a plugin
-      </Button>
+      <CreateWithTemplatesButton
+        kind="plugin"
+        label="New plugin"
+        onCreate={startCreatePlugin}
+      />
       {marketplaceManagementEnabled ? (
         activeMode === "marketplaces" ? (
           <Button

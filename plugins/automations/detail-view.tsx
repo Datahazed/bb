@@ -9,13 +9,13 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import {
-  ResourceActionButton,
   ResourceActivitySection,
   ResourceDefinitionSection,
   ResourceDetailBackButton,
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourceDetailStack,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -280,22 +280,92 @@ export function AutomationDetailView({
     draftBody.trim().length > 0 &&
     !saving &&
     !actionPending;
-  const definitionActions = editing ? (
-    <>
-      <ResourceActionButton
-        label="Cancel editing"
-        icon="X"
-        disabled={saving}
-        onClick={onCancelEdit}
-      />
-      <ResourceActionButton
-        label="Save automation"
-        icon="Check"
-        disabled={!canSave}
-        onClick={onSave}
-      />
-    </>
-  ) : undefined;
+
+  if (editing) {
+    return (
+      <ResourceDetailPage
+        back={
+          <ResourceDetailBackButton
+            label="Back to automation"
+            onClick={onCancelEdit}
+          />
+        }
+        leading={
+          <Icon
+            name="Edit"
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+        }
+        title={`Edit ${automation.name}`}
+        titleMeta={projectLabel}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={onCancelEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canSave}
+              aria-busy={saving}
+              onClick={onSave}
+            >
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <ResourceDetailStack>
+          <ResourceDefinitionSection label="Automation" layout="inline">
+            <div className="space-y-4">
+              <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
+                <span>Name</span>
+                <Input
+                  value={draftName}
+                  onChange={(event) => onDraftNameChange(event.target.value)}
+                  aria-label="Automation name"
+                  className="h-8"
+                />
+              </label>
+              <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
+                <span>{editableBodyLabel}</span>
+                {automation.execution.mode === "agent" ? (
+                  <Textarea
+                    value={draftBody}
+                    onChange={(event) => onDraftBodyChange(event.target.value)}
+                    aria-label="Automation prompt"
+                    className="min-h-48 resize-y text-sm leading-relaxed"
+                  />
+                ) : automation.execution.scriptFile !== undefined &&
+                  automation.execution.script === undefined ? (
+                  <Input
+                    value={draftBody}
+                    onChange={(event) => onDraftBodyChange(event.target.value)}
+                    aria-label="Automation script file"
+                    className="h-8 font-mono text-xs"
+                  />
+                ) : (
+                  <Textarea
+                    value={draftBody}
+                    onChange={(event) => onDraftBodyChange(event.target.value)}
+                    aria-label="Automation script"
+                    className="min-h-48 resize-y font-mono text-xs leading-relaxed"
+                  />
+                )}
+              </label>
+            </div>
+          </ResourceDefinitionSection>
+        </ResourceDetailStack>
+      </ResourceDetailPage>
+    );
+  }
 
   return (
     <ResourceDetailPage
@@ -312,11 +382,10 @@ export function AutomationDetailView({
           aria-hidden
         />
       }
-      title={editing ? draftName || automation.name : automation.name}
+      title={automation.name}
       titleMeta={projectLabel}
       lifecycleControl={
         <Switch
-          size="sm"
           checked={automation.enabled}
           disabled={actionPending || saving || completedOneShot}
           aria-label={
@@ -333,7 +402,6 @@ export function AutomationDetailView({
             {
               label: "Edit",
               icon: "Edit",
-              disabled: editing,
               onSelect: onEdit,
             },
             { kind: "separator" },
@@ -349,128 +417,90 @@ export function AutomationDetailView({
         />
       }
     >
-      <ResourceDefinitionSection label="Configuration">
-        <ResourcePropertyList surface="flat" className="divide-y divide-border">
-          <ResourceProperty label="Schedule">
-            {formatAutomationTrigger(automation.trigger)} ·{" "}
-            {automationScheduleLabel(automation)}
-          </ResourceProperty>
-          <ResourceProperty label="Environment">
-            {automationEnvironmentLabel(automation.execution)}
-          </ResourceProperty>
-          <ResourceProperty label="Execution">
-            {describeExecution(automation.execution)}
-          </ResourceProperty>
-          <ResourceProperty label="Created by">
-            <span className="capitalize">{automation.origin}</span>
-          </ResourceProperty>
-        </ResourcePropertyList>
-      </ResourceDefinitionSection>
+      <ResourceDetailStack>
+        <ResourceDefinitionSection label="Configuration" layout="inline">
+          <ResourcePropertyList
+            surface="flat"
+            className="divide-y divide-border"
+          >
+            <ResourceProperty label="Schedule">
+              {formatAutomationTrigger(automation.trigger)} ·{" "}
+              {automationScheduleLabel(automation)}
+            </ResourceProperty>
+            <ResourceProperty label="Environment">
+              {automationEnvironmentLabel(automation.execution)}
+            </ResourceProperty>
+            <ResourceProperty label="Execution">
+              {describeExecution(automation.execution)}
+            </ResourceProperty>
+            <ResourceProperty label="Created by">
+              <span className="capitalize">{automation.origin}</span>
+            </ResourceProperty>
+          </ResourcePropertyList>
+        </ResourceDefinitionSection>
 
-      <ResourceDefinitionSection
-        label={editableBodyLabel}
-        actions={definitionActions}
-      >
-        <div className="space-y-2">
-          {editing ? (
-            <label className="block space-y-1 text-xs font-medium text-muted-foreground">
-              <span>Name</span>
-              <Input
-                value={draftName}
-                onChange={(event) => onDraftNameChange(event.target.value)}
-                aria-label="Automation name"
-                className="h-8"
-              />
-            </label>
-          ) : null}
-          <ResourceDetailPanel surface="flat" className="px-3 py-2">
+        <ResourceDefinitionSection label={editableBodyLabel} layout="inline">
+          <ResourceDetailPanel surface="recessed" className="px-3 py-2">
             {automation.execution.mode === "agent" ? (
-              editing ? (
-                <Textarea
-                  value={draftBody}
-                  onChange={(event) => onDraftBodyChange(event.target.value)}
-                  aria-label="Automation prompt"
-                  className="min-h-40 resize-y text-sm leading-relaxed"
-                />
-              ) : (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {automation.execution.prompt}
-                </p>
-              )
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                {automation.execution.prompt}
+              </p>
             ) : automation.execution.script ? (
-              editing ? (
-                <Textarea
-                  value={draftBody}
-                  onChange={(event) => onDraftBodyChange(event.target.value)}
-                  aria-label="Automation script"
-                  className="min-h-40 resize-y font-mono text-xs leading-relaxed"
-                />
-              ) : (
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                  {automation.execution.script}
-                </pre>
-              )
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                {automation.execution.script}
+              </pre>
             ) : automation.execution.scriptFile ? (
-              editing ? (
-                <Input
-                  value={draftBody}
-                  onChange={(event) => onDraftBodyChange(event.target.value)}
-                  aria-label="Automation script file"
-                  className="h-8 font-mono text-xs"
-                />
-              ) : (
-                <span className="font-mono text-xs">
-                  {automation.execution.scriptFile}
-                </span>
-              )
+              <span className="font-mono text-xs">
+                {automation.execution.scriptFile}
+              </span>
             ) : null}
           </ResourceDetailPanel>
-        </div>
-      </ResourceDefinitionSection>
+        </ResourceDefinitionSection>
 
-      <ResourceActivitySection label="Run history">
-        {runsState.error !== null ? (
-          <ResourceDetailPanel
-            surface="flat"
-            className="px-3 py-6 text-center text-sm text-destructive"
-          >
-            Failed to load runs.
-          </ResourceDetailPanel>
-        ) : runsState.loading ? (
-          <ResourceDetailPanel
-            surface="flat"
-            className="px-3 py-6 text-center text-sm text-muted-foreground"
-          >
-            Loading…
-          </ResourceDetailPanel>
-        ) : runsState.runs.length === 0 ? (
-          <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
-        ) : (
-          <div className="space-y-2">
-            <ResourceDetailList
-              surface="flat"
-              className="divide-y divide-border p-0"
+        <ResourceActivitySection label="Run history" layout="inline">
+          {runsState.error !== null ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-6 text-center text-sm text-destructive"
             >
-              {runsState.runs.map((run) => (
-                <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
-              ))}
-            </ResourceDetailList>
-            {runsState.nextCursor !== null ? (
-              <div className="flex justify-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={runsState.loadingMore}
-                  onClick={runsState.loadMore}
-                >
-                  {runsState.loadingMore ? "Loading…" : "Load more"}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </ResourceActivitySection>
+              Failed to load runs.
+            </ResourceDetailPanel>
+          ) : runsState.loading ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-6 text-center text-sm text-muted-foreground"
+            >
+              Loading…
+            </ResourceDetailPanel>
+          ) : runsState.runs.length === 0 ? (
+            <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
+          ) : (
+            <div className="space-y-2">
+              <ResourceDetailList
+                surface="flat"
+                className="divide-y divide-border p-0"
+              >
+                {runsState.runs.map((run) => (
+                  <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
+                ))}
+              </ResourceDetailList>
+              {runsState.nextCursor !== null ? (
+                <div className="flex justify-center pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={runsState.loadingMore}
+                    onClick={runsState.loadMore}
+                  >
+                    {runsState.loadingMore ? "Loading…" : "Load more"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </ResourceActivitySection>
+      </ResourceDetailStack>
       {footer}
     </ResourceDetailPage>
   );

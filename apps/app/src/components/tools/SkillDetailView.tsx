@@ -6,6 +6,7 @@ import {
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourceInstalledControl,
   ResourceLifecycleStatus,
 } from "@bb/shared-ui/resource-list";
 import {
@@ -73,12 +74,9 @@ export function SkillInstallControl({
 }) {
   if (installed) {
     return (
-      <span
-        aria-label={`Installed ${skillName} as a bb skill`}
-        className="inline-flex h-7 shrink-0 items-center rounded-md border border-border bg-transparent px-2 text-xs font-medium text-muted-foreground"
-      >
-        Installed
-      </span>
+      <ResourceInstalledControl
+        accessibleLabel={`Installed ${skillName} as a bb skill`}
+      />
     );
   }
 
@@ -126,28 +124,11 @@ export function SkillBrowseInstallControl({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="group h-7 shrink-0 px-2 text-xs text-muted-foreground hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/30 focus-visible:bg-destructive/10 focus-visible:text-destructive"
-        disabled={pending}
-        aria-label={`Uninstall ${skillName} from bb`}
-        onClick={() => setConfirmingUninstall(true)}
-      >
-        {pending ? (
-          "Uninstalling"
-        ) : (
-          <span className="grid">
-            <span className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">
-              Installed
-            </span>
-            <span className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-              Uninstall
-            </span>
-          </span>
-        )}
-      </Button>
+      <ResourceInstalledControl
+        accessibleLabel={`Uninstall ${skillName} from bb`}
+        pending={pending}
+        onAction={() => setConfirmingUninstall(true)}
+      />
       <ConfirmDeleteDialog
         open={confirmingUninstall}
         onOpenChange={(open) => {

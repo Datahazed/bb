@@ -677,7 +677,10 @@ describe("SkillDetailView registry states", () => {
     const uninstallButton = screen.getByRole("button", {
       name: "Uninstall find-skills from bb",
     });
-    expect(uninstallButton.className).toContain("border-input");
+    expect(uninstallButton.className).toContain("group/install");
+    expect(uninstallButton.className).toContain("border-success/30");
+    expect(uninstallButton.querySelector('[data-icon="Check"]')).not.toBeNull();
+    expect(uninstallButton.innerHTML).toContain("group-hover/install:opacity");
     fireEvent.click(uninstallButton);
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(onUninstall).not.toHaveBeenCalled();

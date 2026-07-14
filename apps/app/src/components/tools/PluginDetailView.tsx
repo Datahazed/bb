@@ -3,6 +3,7 @@ import {
   ResourceActivitySection,
   ResourceDefinitionSection,
   ResourceDetailPage,
+  ResourceDetailStack,
   ResourceMeta,
   ResourceOverflowMenu,
   ResourceProperty,
@@ -63,7 +64,6 @@ export function PluginDetailView({
       lifecycleControl={
         hasLifecycleControl ? (
           <Switch
-            size="sm"
             checked={enabled}
             disabled={lifecycleDisabled}
             aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
@@ -80,27 +80,44 @@ export function PluginDetailView({
         ) : undefined
       }
     >
-      {properties.length > 0 ? (
-        <ResourceDefinitionSection label="Configuration">
-          <ResourcePropertyList>
-            {properties.map((property, index) => (
-              <ResourceProperty key={index} label={property.label}>
-                {property.value}
-              </ResourceProperty>
-            ))}
-          </ResourcePropertyList>
-        </ResourceDefinitionSection>
+      {properties.length > 0 ||
+      definitionSections.length > 0 ||
+      activitySections.length > 0 ? (
+        <ResourceDetailStack>
+          {properties.length > 0 ? (
+            <ResourceDefinitionSection label="Configuration" layout="inline">
+              <ResourcePropertyList
+                surface="flat"
+                className="divide-y divide-border"
+              >
+                {properties.map((property, index) => (
+                  <ResourceProperty key={index} label={property.label}>
+                    {property.value}
+                  </ResourceProperty>
+                ))}
+              </ResourcePropertyList>
+            </ResourceDefinitionSection>
+          ) : null}
+          {definitionSections.map((section, index) => (
+            <ResourceDefinitionSection
+              key={index}
+              label={section.label}
+              layout="inline"
+            >
+              {section.content}
+            </ResourceDefinitionSection>
+          ))}
+          {activitySections.map((section, index) => (
+            <ResourceActivitySection
+              key={index}
+              label={section.label}
+              layout="inline"
+            >
+              {section.content}
+            </ResourceActivitySection>
+          ))}
+        </ResourceDetailStack>
       ) : null}
-      {definitionSections.map((section, index) => (
-        <ResourceDefinitionSection key={index} label={section.label}>
-          {section.content}
-        </ResourceDefinitionSection>
-      ))}
-      {activitySections.map((section, index) => (
-        <ResourceActivitySection key={index} label={section.label}>
-          {section.content}
-        </ResourceActivitySection>
-      ))}
     </ResourceDetailPage>
   );
 }

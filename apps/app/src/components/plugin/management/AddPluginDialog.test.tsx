@@ -136,7 +136,7 @@ describe("AddPluginDialog", () => {
   it("invalidates marketplace-search queries after a successful install", async () => {
     stubFetch();
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    // A cached Browse search must refetch so the card flips to Installed ✓.
+    // A cached Browse search must refetch so the card flips to Installed.
     queryClient.setQueryData(marketplaceSearchQueryKey(""), []);
     render(<AddPluginDialog open onOpenChange={() => {}} />, { wrapper });
 

@@ -134,10 +134,15 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(
-      screen.getByRole("tab", { name: "Installed, 1 plugin" }),
-    ).toBeTruthy();
+    const installedTab = screen.getByRole("tab", {
+      name: "Installed, 1 plugin",
+    });
+    expect(installedTab.className).toContain("cursor-pointer");
     expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "New plugin from a template" }),
+    ).toBeTruthy();
     const marketplacesTab = await screen.findByRole("tab", {
       name: "Marketplaces, 1 marketplace",
     });

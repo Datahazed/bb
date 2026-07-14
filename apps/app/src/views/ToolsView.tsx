@@ -333,7 +333,7 @@ function PluginActivity({ plugin }: { plugin: PluginListItem }) {
     return null;
   }
   return (
-    <ResourceDetailList>
+    <ResourceDetailList surface="flat" className="p-0">
       {showOverallState ? (
         <ResourceDetailListItem
           leading={
@@ -602,7 +602,11 @@ export function PluginDetail({
           ? [
               {
                 label: "Includes",
-                content: <ResourceDetailList>{includes}</ResourceDetailList>,
+                content: (
+                  <ResourceDetailList surface="flat" className="p-0">
+                    {includes}
+                  </ResourceDetailList>
+                ),
               },
             ]
           : []),
