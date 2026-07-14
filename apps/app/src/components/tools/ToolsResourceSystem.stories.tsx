@@ -179,13 +179,35 @@ async function resolveRegistrySkillDetailPath(): Promise<string> {
   return getRegistrySkillDetailRoutePath({ registrySkillId: skill.id });
 }
 
-async function resolvePluginDetailPath(): Promise<string> {
+async function resolvePluginDetailPath(pluginId: string): Promise<string> {
   const response = await fetchPluginList(fetch);
-  const plugin = response.plugins[0];
+  const plugin = response.plugins.find(
+    (candidate) => candidate.id === pluginId,
+  );
   if (plugin === undefined) {
-    throw new Error("The live server has no installed plugin to open.");
+    throw new Error(`The live server does not have ${pluginId} installed.`);
   }
   return getPluginDetailRoutePath({ pluginId: plugin.id });
+}
+
+function resolveAutomationsPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("automations");
+}
+
+function resolveConnectPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("connect");
+}
+
+function resolveCustomInstructionsPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("custom-instructions");
+}
+
+function resolveInlineVisPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("inline-vis");
+}
+
+function resolveSecretsPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("secrets");
 }
 
 async function resolveAutomationRoute(): Promise<{
@@ -258,8 +280,24 @@ export function PluginsMarketplaces() {
   );
 }
 
-export function PluginDetail() {
-  return <LiveToolsPage target={resolvePluginDetailPath} />;
+export function PluginDetailAutomations() {
+  return <LiveToolsPage target={resolveAutomationsPluginDetailPath} />;
+}
+
+export function PluginDetailRemoteAccess() {
+  return <LiveToolsPage target={resolveConnectPluginDetailPath} />;
+}
+
+export function PluginDetailCustomInstructions() {
+  return <LiveToolsPage target={resolveCustomInstructionsPluginDetailPath} />;
+}
+
+export function PluginDetailInlineVisualizations() {
+  return <LiveToolsPage target={resolveInlineVisPluginDetailPath} />;
+}
+
+export function PluginDetailSecrets() {
+  return <LiveToolsPage target={resolveSecretsPluginDetailPath} />;
 }
 
 export function AutomationsOverview() {
