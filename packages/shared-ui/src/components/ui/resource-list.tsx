@@ -682,11 +682,11 @@ export function ResourceRow({
   return (
     <div
       className={cn(
-        "group grid min-w-0 cursor-pointer items-center gap-3 rounded-md bg-transparent px-3 py-2 text-left transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+        "group grid min-w-0 cursor-pointer items-center gap-3 bg-transparent py-3 text-left focus-visible:outline-none",
         hasLeading
-          ? "grid-cols-[1rem_minmax(0,1fr)_auto]"
+          ? "grid-cols-[1.5rem_minmax(0,1fr)_auto]"
           : "grid-cols-[minmax(0,1fr)_auto]",
-        selected && "bg-state-active",
+        selected && "bg-state-active/50",
         muted && "opacity-60",
         className,
       )}
@@ -696,7 +696,7 @@ export function ResourceRow({
       }}
     >
       {hasLeading ? (
-        <span className="flex size-4 shrink-0 items-center justify-center">
+        <span className="flex size-6 shrink-0 items-center justify-center">
           {leading}
         </span>
       ) : null}
@@ -717,7 +717,7 @@ export function ResourceRow({
           {rowState}
         </span>
         {description ? (
-          <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
+          <span className="mt-0.5 block truncate text-xs leading-snug text-muted-foreground">
             {description}
           </span>
         ) : null}
@@ -748,7 +748,7 @@ export function ResourceRow({
             </span>
           ) : null}
           {trailingVisual ? (
-            <span className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 hover:bg-state-hover">
+            <span className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md">
               {trailingVisual}
             </span>
           ) : null}
@@ -762,7 +762,7 @@ export function ResourceRowDetailChevron() {
   return (
     <Icon
       name="ChevronRight"
-      className="size-4 text-muted-foreground/65 transition-colors duration-150 ease-out group-hover:text-foreground group-focus-within:text-foreground"
+      className="size-3.5 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
       aria-hidden
     />
   );
@@ -770,7 +770,7 @@ export function ResourceRowDetailChevron() {
 
 export function ResourceListPanel({
   children,
-  maxHeightClassName = "max-h-[min(44rem,calc(100dvh-21rem))]",
+  maxHeightClassName,
   className,
 }: {
   children: ReactNode;
@@ -780,12 +780,17 @@ export function ResourceListPanel({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-sm",
+        "overflow-hidden rounded-lg border border-border bg-card px-4 py-1",
         className,
       )}
     >
-      <div className={cn("overflow-y-auto pr-1", maxHeightClassName)}>
-        <div className="cursor-default space-y-0.5">{children}</div>
+      <div
+        className={cn(
+          maxHeightClassName && "overflow-y-auto",
+          maxHeightClassName,
+        )}
+      >
+        <div className="cursor-default divide-y divide-border">{children}</div>
       </div>
     </div>
   );
@@ -812,9 +817,9 @@ export function ResourceListState({
           {Array.from({ length: loadingRows }, (_, index) => (
             <div
               key={index}
-              className="grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-3 px-3 py-2"
+              className="grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-3 py-3"
             >
-              <Skeleton className="size-4 rounded-sm" />
+              <Skeleton className="size-6 rounded-sm" />
               <div className="space-y-1.5">
                 <Skeleton className="h-3.5 w-36" />
                 <Skeleton className="h-3 w-56 max-w-full" />
@@ -1060,6 +1065,110 @@ export function ResourceOverview({
   );
 }
 
+export interface ResourceCollectionMode<Mode extends string> {
+  id: Mode;
+  label: ReactNode;
+  count?: number;
+  accessibleLabel?: string;
+}
+
+/**
+ * A resource collection with multiple projections of the same domain.
+ *
+ * Modes are views, not new resources: the active view owns the body and its
+ * contextual actions while collection identity and description stay stable.
+ */
+export function ResourceCollectionPage<Mode extends string>({
+  id,
+  description,
+  modes,
+  activeMode,
+  onModeChange,
+  actions,
+  children,
+  className,
+}: {
+  id: string;
+  description: ReactNode;
+  modes: readonly ResourceCollectionMode<Mode>[];
+  activeMode: Mode;
+  onModeChange: (mode: Mode) => void;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const activeTabId = `${id}-${activeMode}-tab`;
+  const activePanelId = `${id}-${activeMode}-panel`;
+  return (
+    <ResourceOverview description={description} className={className}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1" role="tablist">
+          {modes.map((mode) => {
+            const active = mode.id === activeMode;
+            const modeIndex = modes.indexOf(mode);
+            return (
+              <button
+                key={mode.id}
+                id={`${id}-${mode.id}-tab`}
+                type="button"
+                role="tab"
+                aria-label={mode.accessibleLabel}
+                aria-selected={active}
+                aria-controls={`${id}-${mode.id}-panel`}
+                tabIndex={active ? 0 : -1}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
+                  active
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => onModeChange(mode.id)}
+                onKeyDown={(event) => {
+                  let nextIndex: number | null = null;
+                  if (event.key === "ArrowRight") {
+                    nextIndex = (modeIndex + 1) % modes.length;
+                  } else if (event.key === "ArrowLeft") {
+                    nextIndex = (modeIndex - 1 + modes.length) % modes.length;
+                  } else if (event.key === "Home") {
+                    nextIndex = 0;
+                  } else if (event.key === "End") {
+                    nextIndex = modes.length - 1;
+                  }
+                  if (nextIndex === null) return;
+                  event.preventDefault();
+                  const nextMode = modes[nextIndex];
+                  if (nextMode === undefined) return;
+                  onModeChange(nextMode.id);
+                  document.getElementById(`${id}-${nextMode.id}-tab`)?.focus();
+                }}
+              >
+                {mode.label}
+                {mode.count !== undefined ? (
+                  <span className="text-2xs text-subtle-foreground">
+                    {mode.count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
+        ) : null}
+      </div>
+      <div
+        id={activePanelId}
+        role="tabpanel"
+        aria-labelledby={activeTabId}
+        tabIndex={0}
+        className="focus-visible:outline-none"
+      >
+        {children}
+      </div>
+    </ResourceOverview>
+  );
+}
+
 export function ResourceOverviewSection({
   id,
   label,
@@ -1081,6 +1190,21 @@ export function ResourceOverviewSection({
       {toolbar}
       {children}
     </section>
+  );
+}
+
+/** Responsive browse projection shared by resource collection pages. */
+export function ResourceBrowseGrid({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-2.5 sm:grid-cols-2", className)}>
+      {children}
+    </div>
   );
 }
 
@@ -1325,9 +1449,9 @@ export function ResourceBrowseCard({
   return (
     <div
       className={cn(
-        "group relative flex h-full min-h-32 w-full flex-col rounded-md border border-border bg-background p-[var(--resource-source-shelf-inset)] text-left shadow-xs",
+        "group relative flex h-full w-full items-start gap-3 rounded-lg border border-border bg-card p-3.5 text-left",
         onOpen &&
-          "transition-[border-color,box-shadow] duration-150 hover:border-[color:var(--resource-source-shelf-card-hover-border)] hover:shadow-[var(--resource-source-shelf-card-hover-shadow)]",
+          "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
       )}
     >
       {onOpen ? (
@@ -1338,61 +1462,40 @@ export function ResourceBrowseCard({
           className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
       ) : null}
-      <div
-        className={cn(
-          "pointer-events-none relative grid min-w-0 gap-x-2 gap-y-2",
-          hasLeading
-            ? "grid-cols-[2.25rem_minmax(0,1fr)_auto]"
-            : "grid-cols-[minmax(0,1fr)_auto]",
-        )}
-      >
-        {hasLeading ? (
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-recessed">
-            {leading}
-          </span>
-        ) : null}
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          {byline ? (
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-              {byline}
-            </span>
-          ) : null}
+      {hasLeading ? (
+        <span className="pointer-events-none relative flex size-6 shrink-0 items-center justify-center">
+          {leading}
         </span>
-        {headerAction ? (
-          <span
-            onClick={(event) => {
-              if (!onOpen) return;
-              if (targetsResourceAction(event.target)) return;
-              onOpen();
-            }}
-            className={cn(
-              "pointer-events-auto row-start-1 flex shrink-0 flex-nowrap items-center justify-end gap-[var(--resource-source-shelf-card-action-gap)] whitespace-nowrap text-[11px] leading-none",
-              hasLeading ? "col-start-3" : "col-start-2",
-            )}
-          >
-            {headerAction}
-          </span>
-        ) : null}
+      ) : null}
+      <span className="pointer-events-none relative min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">
+          {title}
+        </span>
         {description ? (
           <span
             className={cn(
-              "rounded-md bg-surface-recessed/50 px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground",
-              descriptionLines === 3
-                ? "min-h-20 line-clamp-3"
-                : "min-h-14 line-clamp-2",
-              hasLeading ? "col-span-2 col-start-2" : "col-span-2 col-start-1",
+              "mt-0.5 block text-xs leading-snug text-muted-foreground",
+              descriptionLines === 3 ? "line-clamp-3" : "line-clamp-2",
             )}
           >
             {description}
           </span>
         ) : null}
-      </div>
-      {footerMeta ? (
-        <span className="pointer-events-none relative mt-auto flex items-center justify-end pt-2">
-          {footerMeta}
+        {byline ? (
+          <span className="mt-1.5 block truncate text-2xs text-subtle-foreground">
+            {byline}
+          </span>
+        ) : null}
+        {footerMeta ? (
+          <span className="mt-2 flex items-center">{footerMeta}</span>
+        ) : null}
+      </span>
+      {headerAction ? (
+        <span
+          data-row-action
+          className="relative mt-0.5 flex shrink-0 items-center whitespace-nowrap"
+        >
+          {headerAction}
         </span>
       ) : null}
     </div>

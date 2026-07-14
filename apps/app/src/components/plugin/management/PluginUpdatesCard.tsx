@@ -12,7 +12,11 @@ import {
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { pluginUpdateAvailableVersion } from "./plugin-update-signals";
-import { KeyValueGrid, SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
+import {
+  KeyValueGrid,
+  SUCCESS_BANNER_STYLE,
+  formatAbsoluteDate,
+} from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
@@ -91,8 +95,15 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) {
+export function PluginUpdatesSourceCard({
+  plugin,
+  showHeading = true,
+}: {
+  plugin: PluginListItem;
+  showHeading?: boolean;
+}) {
   const queryClient = useQueryClient();
+  const [renderedAt] = useState(() => Date.now());
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const sourceQuery = usePluginSource(plugin.id, { enabled: detailsOpen });
@@ -116,13 +127,18 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-foreground">
-        Updates &amp; source
-      </h3>
+      {showHeading ? (
+        <h3 className="text-sm font-semibold text-foreground">
+          Updates &amp; source
+        </h3>
+      ) : null}
       <div className="rounded-lg border border-border bg-card px-4 py-3.5">
         <div className="divide-y divide-border">
           <div className="pb-3">
-            <SettingsWithControl label="Source" description={plugin.sourceDisplay}>
+            <SettingsWithControl
+              label="Source"
+              description={plugin.sourceDisplay}
+            >
               <Button
                 type="button"
                 variant="ghost"
@@ -175,9 +191,7 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
                                   ? `sdk ${source.engines.bbPluginSdk}`
                                   : null,
                               ]
-                                .filter(
-                                  (part): part is string => part !== null,
-                                )
+                                .filter((part): part is string => part !== null)
                                 .join(" · "),
                             },
                           ]
@@ -215,7 +229,7 @@ export function PluginUpdatesSourceCard({ plugin }: { plugin: PluginListItem }) 
                 state.lastCheckAt !== null
                   ? formatRelativeTime({
                       timestamp: state.lastCheckAt,
-                      now: Date.now(),
+                      now: renderedAt,
                     })
                   : "Never checked"
               }

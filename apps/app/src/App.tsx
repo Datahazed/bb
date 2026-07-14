@@ -193,7 +193,9 @@ function AppRoutes() {
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
-            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
+            element={
+              <Navigate to={`${AUTOMATIONS_ROUTE_PATH}?view=browse`} replace />
+            }
           />
           <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
           <Route

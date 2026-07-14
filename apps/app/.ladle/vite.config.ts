@@ -1,7 +1,11 @@
 import path from "path";
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
+import { resolveCurrentDevInstanceConfig } from "@bb/config/runtime";
 import { sharedUiEnvSeam } from "../vite-shared-ui-seam.js";
+
+const repoRoot = path.resolve(__dirname, "../../..");
+const devInstance = resolveCurrentDevInstanceConfig(repoRoot);
 
 // Ladle bundles Vite 6 (rollup) and provides its own React plugin via
 // @vitejs/plugin-react-swc. The app's main vite.config.ts uses
@@ -29,6 +33,22 @@ export default defineConfig({
     esbuildOptions: {
       define: {
         "process.env.NODE_ENV": '"development"',
+      },
+    },
+  },
+  // Live page stories exercise the same queries, plugin bundles, and
+  // mutations as the app. Proxy them to this checkout's isolated dev server
+  // instead of reconstructing server state with Ladle-only fixtures.
+  server: {
+    proxy: {
+      "/api": {
+        target: devInstance.serverUrl,
+        changeOrigin: true,
+      },
+      "/ws": {
+        target: devInstance.serverUrl,
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

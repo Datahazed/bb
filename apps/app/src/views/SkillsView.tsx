@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentProps } from "react";
+import type { ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -10,23 +10,20 @@ import type {
 } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { appToast } from "@/components/ui/app-toast";
 import {
   SkillBrowseInstallControl,
   SkillDetailView,
-  SkillInstallControl,
 } from "@/components/tools/SkillDetailView";
 import {
   ResourceActionButton,
   ResourceBrowseCard,
+  ResourceBrowseGrid,
   ResourceCardStat,
-  ResourceDetailBackButton,
+  ResourceCollectionPage,
   ResourceListPanel,
   ResourceListState,
   ResourceMultiSelectMenu,
-  ResourceBrowseSection,
-  ResourceOverviewPage,
   ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
@@ -120,7 +117,6 @@ export interface RegistrySkillDetail {
 
 export type RegistryProvider = "claude-code" | "codex";
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
-const NOOP = () => {};
 const REGISTRY_PAGE_SIZE = 24;
 const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
   page: 0,
@@ -402,9 +398,9 @@ function BbLogo({ className = "size-4" }: { className?: string }) {
 
 function SkillLeading({ skill }: { skill: SkillSummary }) {
   if (skill.provider !== null) {
-    return <ProviderLogo providerId={skill.provider} className="size-4" />;
+    return <ProviderLogo providerId={skill.provider} className="size-6" />;
   }
-  return <BbLogo />;
+  return <BbLogo className="size-6" />;
 }
 
 function skillDescription(skill: SkillSummary): string {
@@ -453,51 +449,17 @@ function skillDeleteDisabledReason(skill: SkillSummary): string {
 function SkillRow({
   skill,
   onSelect,
-  onEdit,
-  onDelete,
 }: {
   skill: SkillSummary;
   onSelect: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
 }) {
   const description = skillDescription(skill);
-  const showDisabledManageActions = !skill.manageable;
-  const hasManageActions = Boolean(
-    onEdit || onDelete || showDisabledManageActions,
-  );
-  const editDisabledReason = skillEditDisabledReason(skill);
-  const deleteDisabledReason = skillDeleteDisabledReason(skill);
-  const actions = hasManageActions ? (
-    <>
-      {onEdit || showDisabledManageActions ? (
-        <ResourceActionButton
-          label={`Edit ${skill.name}`}
-          icon="Edit"
-          disabled={!onEdit}
-          disabledReason={!onEdit ? editDisabledReason : undefined}
-          onClick={onEdit ?? NOOP}
-        />
-      ) : null}
-      {onDelete || showDisabledManageActions ? (
-        <ResourceActionButton
-          label={`Delete ${skill.name}`}
-          icon="Trash2"
-          tone="destructive"
-          disabled={!onDelete}
-          disabledReason={!onDelete ? deleteDisabledReason : undefined}
-          onClick={onDelete ?? NOOP}
-        />
-      ) : null}
-    </>
-  ) : undefined;
   return (
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       description={description}
       onOpen={onSelect}
-      actions={actions}
       trailingVisual={<ResourceRowDetailChevron />}
     />
   );
@@ -524,27 +486,6 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
         </ResourceCardStat>
       ) : null}
     </span>
-  );
-}
-
-function RegistryInstallButton({
-  skill,
-  installed,
-  pending,
-  onInstall,
-}: {
-  skill: RegistrySkill;
-  installed: boolean;
-  pending: boolean;
-  onInstall: (skill: RegistrySkill) => void;
-}) {
-  return (
-    <SkillInstallControl
-      skillName={skill.name}
-      installed={installed}
-      pending={pending}
-      onInstall={() => onInstall(skill)}
-    />
   );
 }
 
@@ -584,48 +525,14 @@ function RegistrySkillSourceItem({
   );
 }
 
-function RegistrySkillRow({
-  skill,
-  installed,
-  pending,
-  onInstall,
-  onSelect,
-}: {
-  skill: RegistrySkill;
-  installed: boolean;
-  pending: boolean;
-  onInstall: (skill: RegistrySkill) => void;
-  onSelect: (skill: RegistrySkill) => void;
-}) {
-  return (
-    <ResourceRow
-      leading={<RegistrySkillLeading skill={skill} />}
-      title={skill.name}
-      titleMeta={`by ${formatRegistrySource(skill.source)}`}
-      description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
-      trailingMeta={<RegistrySkillSocialProof skill={skill} />}
-      onOpen={() => onSelect(skill)}
-      actionsVisibility="always"
-      actions={
-        <RegistryInstallButton
-          skill={skill}
-          installed={installed}
-          pending={pending}
-          onInstall={onInstall}
-        />
-      }
-    />
-  );
-}
-
 function RegistrySkillLeading({ skill }: { skill: RegistrySkill }) {
   const provider = REGISTRY_PROVIDERS.find((candidate) =>
     skill.worksWith.includes(candidate.id),
   )?.id;
   return provider ? (
-    <ProviderLogo providerId={provider} className="size-4" />
+    <ProviderLogo providerId={provider} className="size-6" />
   ) : (
-    <BbLogo />
+    <BbLogo className="size-6" />
   );
 }
 
@@ -643,110 +550,6 @@ function SkillsShAttributionLink() {
   );
 }
 
-function useRegistrySkillsBrowse({
-  skills,
-  isLoading,
-  hasError,
-  pendingInstallSkillId,
-  pendingUninstallSkillId,
-  onBrowseAll,
-  onRetry,
-  onInstall,
-  onUninstall,
-  onSelect,
-  isInstalled,
-}: {
-  skills: readonly RegistrySkill[];
-  isLoading: boolean;
-  hasError: boolean;
-  pendingInstallSkillId: string | null;
-  pendingUninstallSkillId: string | null;
-  onBrowseAll?: () => void;
-  onRetry?: () => void;
-  onInstall: (skill: RegistrySkill) => void;
-  onUninstall: (skill: RegistrySkill) => void;
-  onSelect: (skill: RegistrySkill) => void;
-  isInstalled: (skill: RegistrySkill) => boolean;
-}): ComponentProps<typeof ResourceBrowseSection> {
-  const visibleSkills = useMemo(
-    () =>
-      [...skills].sort(
-        (left, right) =>
-          right.installs - left.installs || left.name.localeCompare(right.name),
-      ),
-    [skills],
-  );
-  if (hasError) {
-    return {
-      icon: "Zap",
-      attribution: <SkillsShAttributionLink />,
-      onBrowseAll,
-      state: (
-        <EmptyStatePanel role="alert" className="py-6">
-          <div className="flex flex-col items-center gap-2">
-            <span>Couldn't load skills.sh.</span>
-            {onRetry ? (
-              <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </div>
-        </EmptyStatePanel>
-      ),
-    };
-  }
-
-  if (isLoading) {
-    return {
-      icon: "Zap",
-      attribution: <SkillsShAttributionLink />,
-      onBrowseAll,
-      items: ["w-36", "w-48", "w-28"].map((nameWidth) => ({
-        id: nameWidth,
-        content: (
-          <ResourceBrowseCard
-            title={<Skeleton className={cn("h-3.5", nameWidth)} />}
-            byline={<Skeleton className="h-3 w-40" />}
-            description={<Skeleton className="h-14 w-full" />}
-            headerAction={<Skeleton className="h-7 w-44" />}
-          />
-        ),
-      })),
-    };
-  }
-
-  if (visibleSkills.length === 0) {
-    return {
-      icon: "Zap",
-      attribution: <SkillsShAttributionLink />,
-      onBrowseAll,
-      items: [],
-    };
-  }
-
-  return {
-    icon: "Zap",
-    attribution: <SkillsShAttributionLink />,
-    onBrowseAll,
-    items: visibleSkills.map((skill) => ({
-      id: skill.id,
-      content: (
-        <RegistrySkillSourceItem
-          skill={skill}
-          installed={isInstalled(skill)}
-          pending={
-            pendingInstallSkillId === skill.id ||
-            pendingUninstallSkillId === skill.id
-          }
-          onInstall={onInstall}
-          onUninstall={onUninstall}
-          onSelect={onSelect}
-        />
-      ),
-    })),
-  };
-}
-
 export function RegistrySkillsBrowsePage({
   skills,
   pagination,
@@ -754,11 +557,11 @@ export function RegistrySkillsBrowsePage({
   hasError,
   query,
   pendingSkillId,
-  onBack,
   onRetry,
   onQueryChange,
   onPageChange,
   onInstall,
+  onUninstall,
   onSelect,
   isInstalled,
 }: {
@@ -768,11 +571,11 @@ export function RegistrySkillsBrowsePage({
   hasError: boolean;
   query: string;
   pendingSkillId: string | null;
-  onBack: () => void;
   onRetry?: () => void;
   onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
   onInstall: (skill: RegistrySkill) => void;
+  onUninstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   isInstalled: (skill: RegistrySkill) => boolean;
 }) {
@@ -813,7 +616,6 @@ export function RegistrySkillsBrowsePage({
 
   return (
     <div className="space-y-4">
-      <ResourceDetailBackButton label="Back to skills" onClick={onBack} />
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
@@ -855,18 +657,19 @@ export function RegistrySkillsBrowsePage({
             : `No skills.sh resources match "${query}"`}
         </EmptyStatePanel>
       ) : (
-        <ResourceListPanel maxHeightClassName="max-h-none">
+        <ResourceBrowseGrid>
           {sortedSkills.map((skill) => (
-            <RegistrySkillRow
+            <RegistrySkillSourceItem
               key={skill.id}
               skill={skill}
               installed={isInstalled(skill)}
               pending={pendingSkillId === skill.id}
               onInstall={onInstall}
+              onUninstall={onUninstall}
               onSelect={onSelect}
             />
           ))}
-        </ResourceListPanel>
+        </ResourceBrowseGrid>
       )}
       {pagination.total > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -905,6 +708,9 @@ export function RegistrySkillsBrowsePage({
           </div>
         </div>
       ) : null}
+      <div className="flex justify-end px-1">
+        <SkillsShAttributionLink />
+      </div>
     </div>
   );
 }
@@ -914,26 +720,18 @@ export interface SkillsOverviewProps {
   isLoading: boolean;
   hasError: boolean;
   query?: string;
-  registrySkills?: readonly RegistrySkill[];
-  registryIsLoading?: boolean;
-  registryHasError?: boolean;
-  pendingRegistrySkillId?: string | null;
-  pendingRegistryUninstallSkillId?: string | null;
-  onBrowseRegistry?: () => void;
+  activeMode?: SkillsCollectionMode;
+  browseContent?: ReactNode;
+  onModeChange?: (mode: SkillsCollectionMode) => void;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
-  onEditSkill?: (skill: SkillSummary) => void;
-  onDeleteSkill?: (skill: SkillSummary) => void;
-  onSelectRegistrySkill?: (skill: RegistrySkill) => void;
   onQueryChange?: (query: string) => void;
-  onInstallRegistrySkill?: (skill: RegistrySkill) => void;
-  onUninstallRegistrySkill?: (skill: RegistrySkill) => void;
-  isRegistrySkillInstalled?: (skill: RegistrySkill) => boolean;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
-  onRetryRegistry?: () => void;
 }
+
+type SkillsCollectionMode = "installed" | "browse";
 
 /**
  * Presentational Skills list: provider-grouped, searchable, typeahead-style
@@ -944,23 +742,13 @@ export function SkillsOverview({
   isLoading,
   hasError,
   query = "",
-  registrySkills = [],
-  registryIsLoading = false,
-  registryHasError = false,
-  pendingRegistrySkillId = null,
-  pendingRegistryUninstallSkillId = null,
-  onBrowseRegistry,
+  activeMode = "installed",
+  browseContent,
+  onModeChange = () => {},
   onCreateSkill,
   onSelectSkill,
-  onEditSkill,
-  onDeleteSkill,
-  onSelectRegistrySkill = () => {},
   onQueryChange = () => {},
-  onInstallRegistrySkill = () => {},
-  onUninstallRegistrySkill = () => {},
-  isRegistrySkillInstalled = () => false,
   onRetry,
-  onRetryRegistry,
 }: SkillsOverviewProps) {
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
@@ -1039,19 +827,6 @@ export function SkillsOverview({
     },
     [providerBucketCount, sortMode],
   );
-  const browse = useRegistrySkillsBrowse({
-    skills: registrySkills,
-    isLoading: registryIsLoading,
-    hasError: registryHasError,
-    pendingInstallSkillId: pendingRegistrySkillId,
-    pendingUninstallSkillId: pendingRegistryUninstallSkillId,
-    onBrowseAll: onBrowseRegistry,
-    onRetry: onRetryRegistry,
-    onInstall: onInstallRegistrySkill,
-    onUninstall: onUninstallRegistrySkill,
-    onSelect: onSelectRegistrySkill,
-    isInstalled: isRegistrySkillInstalled,
-  });
   const installedBody = hasError ? (
     <ResourceListState
       state="error"
@@ -1078,67 +853,68 @@ export function SkillsOverview({
           key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
           skill={skill}
           onSelect={() => onSelectSkill(skill)}
-          onEdit={
-            isSkillEditable(skill) && onEditSkill
-              ? () => onEditSkill(skill)
-              : undefined
-          }
-          onDelete={
-            skill.manageable && onDeleteSkill
-              ? () => onDeleteSkill(skill)
-              : undefined
-          }
         />
       ))}
     </ResourceListPanel>
   );
 
   return (
-    <ResourceOverviewPage
+    <ResourceCollectionPage
+      id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
-      browse={browse}
-      installed={{
-        headingId: "installed-skills-heading",
-        label: "Installed skills",
-        searchValue: query,
-        searchPlaceholder: "Search skills",
-        onSearchChange: onQueryChange,
-        controls: (
-          <>
-            <ResourceMultiSelectMenu
-              label="Agent"
-              icon="Layers"
-              selectedValues={providerFilters}
-              options={providerOptions}
-              onChange={(values) =>
-                setProviderFilters(values as ResourceProviderFilter[])
-              }
-            />
-            <ResourceSortMenu
-              value={sortMode}
-              direction={sortDirection}
-              options={[
-                {
-                  id: "provider",
-                  label: "Agent",
-                  disabled: providerBucketCount <= 1,
-                },
-                { id: "alpha", label: "Skill name" },
-              ]}
-              onChange={handleSortChange}
-            />
-          </>
-        ),
-        action: (
-          <CreateWithTemplatesButton
-            kind="skill"
-            label="New bb skill"
-            onCreate={onCreateSkill}
+      modes={[
+        { id: "installed", label: "Installed", count: skills.length },
+        { id: "browse", label: "Browse" },
+      ]}
+      activeMode={activeMode}
+      onModeChange={onModeChange}
+      actions={
+        <CreateWithTemplatesButton
+          kind="skill"
+          label="New bb skill"
+          onCreate={onCreateSkill}
+        />
+      }
+    >
+      {activeMode === "browse" ? (
+        browseContent
+      ) : (
+        <div className="space-y-3">
+          <ResourceToolbar
+            searchValue={query}
+            searchPlaceholder="Search skills"
+            onSearchChange={onQueryChange}
+            controls={
+              <>
+                <ResourceMultiSelectMenu
+                  label="Agent"
+                  icon="Layers"
+                  selectedValues={providerFilters}
+                  options={providerOptions}
+                  onChange={(values) =>
+                    setProviderFilters(values as ResourceProviderFilter[])
+                  }
+                />
+                <ResourceSortMenu
+                  value={sortMode}
+                  direction={sortDirection}
+                  options={[
+                    {
+                      id: "provider",
+                      label: "Agent",
+                      disabled: providerBucketCount <= 1,
+                    },
+                    { id: "alpha", label: "Skill name" },
+                  ]}
+                  onChange={handleSortChange}
+                />
+              </>
+            }
           />
-        ),
-        body: installedBody,
-      }}
-    />
+          {installedBody}
+        </div>
+      )}
+    </ResourceCollectionPage>
   );
 }
 
@@ -1610,9 +1386,9 @@ export function SkillsLibrary() {
     skillName?: string;
     registrySkillId?: string;
   }>();
-  const [query, setQuery] = useState("");
+  const [installedQuery, setInstalledQuery] = useState("");
+  const [registrySearch, setRegistrySearch] = useState("");
   const [registryPage, setRegistryPage] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
   const [confirmedRegistryInstalls, setConfirmedRegistryInstalls] = useState<
     Map<string, string | null>
   >(() => new Map());
@@ -1623,16 +1399,17 @@ export function SkillsLibrary() {
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
   const isRegistryBrowseRoute =
-    location.pathname === getRegistrySkillsRoutePath();
+    location.pathname === getRegistrySkillsRoutePath() ||
+    new URLSearchParams(location.search).get("view") === "browse";
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined
       ? registryPage
       : 0;
   const registryQuery = useQuery({
-    queryKey: ["skills-registry", query.trim(), registryRequestPage],
+    queryKey: ["skills-registry", registrySearch.trim(), registryRequestPage],
     queryFn: () =>
       fetchRegistrySkills({
-        query,
+        query: registrySearch,
         page: registryRequestPage,
         perPage: REGISTRY_PAGE_SIZE,
       }),
@@ -1774,34 +1551,23 @@ export function SkillsLibrary() {
     [isRegistryBrowseRoute, navigate],
   );
   const handleRegistryQueryChange = useCallback((nextQuery: string) => {
-    setQuery(nextQuery);
+    setRegistrySearch(nextQuery);
     setRegistryPage(0);
   }, []);
+  const changeCollectionMode = useCallback(
+    (mode: SkillsCollectionMode) => {
+      if (mode === "browse") {
+        setRegistryPage(0);
+        navigate(`${getSkillsRoutePath()}?view=browse`);
+        return;
+      }
+      navigate(getSkillsRoutePath());
+    },
+    [navigate],
+  );
   const closeSkillDetail = useCallback(() => {
     navigate(getSkillsRoutePath());
   }, [navigate]);
-  const confirmDeleteSkill = useCallback(() => {
-    if (
-      deleteTarget === null ||
-      !deleteTarget.manageable ||
-      !isSkillEditable(deleteTarget)
-    ) {
-      return;
-    }
-    deleteSkill.mutate(
-      {
-        scope: deleteTarget.scope,
-        name: deleteTarget.name,
-        environmentId: null,
-      },
-      {
-        onSuccess: () => {
-          appToast.success("Skill deleted");
-          setDeleteTarget(null);
-        },
-      },
-    );
-  }, [deleteSkill, deleteTarget]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -1871,76 +1637,46 @@ export function SkillsLibrary() {
           onUninstall={uninstallRegistry}
           onEditInstalledSkill={(skill) => openSkill(skill, { editing: true })}
         />
-      ) : isRegistryBrowseRoute ? (
-        <RegistrySkillsBrowsePage
-          skills={registryQuery.data?.skills ?? []}
-          pagination={
-            registryQuery.data?.pagination ?? {
-              ...EMPTY_REGISTRY_PAGINATION,
-              page: registryRequestPage,
-            }
-          }
-          isLoading={
-            registryQuery.isFetching && registryQuery.data === undefined
-          }
-          hasError={registryQuery.isError}
-          query={query}
-          pendingSkillId={pendingRegistrySkillId}
-          onBack={() => navigate(getSkillsRoutePath())}
-          onRetry={() => void registryQuery.refetch()}
-          onQueryChange={handleRegistryQueryChange}
-          onPageChange={setRegistryPage}
-          onInstall={installRegistry}
-          onSelect={openRegistrySkill}
-          isInstalled={isRegistrySkillInstalled}
-        />
       ) : (
         <SkillsOverview
           skills={skills}
           isLoading={isLoading}
           hasError={hasError}
-          query={query}
-          registrySkills={registryQuery.data?.skills ?? []}
-          registryIsLoading={
-            registryQuery.isFetching && registryQuery.data === undefined
+          query={installedQuery}
+          activeMode={isRegistryBrowseRoute ? "browse" : "installed"}
+          onModeChange={changeCollectionMode}
+          browseContent={
+            <RegistrySkillsBrowsePage
+              skills={registryQuery.data?.skills ?? []}
+              pagination={
+                registryQuery.data?.pagination ?? {
+                  ...EMPTY_REGISTRY_PAGINATION,
+                  page: registryRequestPage,
+                }
+              }
+              isLoading={
+                registryQuery.isFetching && registryQuery.data === undefined
+              }
+              hasError={registryQuery.isError}
+              query={registrySearch}
+              pendingSkillId={
+                pendingRegistrySkillId ?? pendingRegistryUninstallSkillId
+              }
+              onRetry={() => void registryQuery.refetch()}
+              onQueryChange={handleRegistryQueryChange}
+              onPageChange={setRegistryPage}
+              onInstall={installRegistry}
+              onUninstall={uninstallRegistry}
+              onSelect={openRegistrySkill}
+              isInstalled={isRegistrySkillInstalled}
+            />
           }
-          registryHasError={registryQuery.isError}
-          pendingRegistrySkillId={pendingRegistrySkillId}
-          pendingRegistryUninstallSkillId={pendingRegistryUninstallSkillId}
-          onBrowseRegistry={() => {
-            setRegistryPage(0);
-            navigate(getRegistrySkillsRoutePath());
-          }}
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}
-          onEditSkill={(skill) => openSkill(skill, { editing: true })}
-          onDeleteSkill={setDeleteTarget}
-          onSelectRegistrySkill={openRegistrySkill}
-          onQueryChange={handleRegistryQueryChange}
-          onInstallRegistrySkill={installRegistry}
-          onUninstallRegistrySkill={uninstallRegistry}
-          isRegistrySkillInstalled={isRegistrySkillInstalled}
+          onQueryChange={setInstalledQuery}
           onRetry={() => void skillsQuery.refetch()}
-          onRetryRegistry={() => void registryQuery.refetch()}
         />
       )}
-      <ConfirmDeleteDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !deleteSkill.isPending) setDeleteTarget(null);
-        }}
-      >
-        {deleteTarget ? (
-          <ConfirmDeleteDialogContent
-            title="Delete skill?"
-            description={`Delete "${deleteTarget.name}" from its current location? This cannot be undone.`}
-            confirmLabel="Delete skill"
-            pending={deleteSkill.isPending}
-            onConfirm={confirmDeleteSkill}
-            onCancel={() => setDeleteTarget(null)}
-          />
-        ) : null}
-      </ConfirmDeleteDialog>
     </>
   );
 }

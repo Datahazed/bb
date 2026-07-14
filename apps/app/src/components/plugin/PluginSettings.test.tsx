@@ -7,10 +7,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import {
-  PluginSettingsDetail,
-  PluginSettingsForm,
-} from "./PluginsSettingsSection";
+import { PluginSettingsDetail, PluginSettingsForm } from "./PluginSettings";
 import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
 
 interface RecordedRequest {

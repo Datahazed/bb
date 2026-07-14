@@ -79,7 +79,9 @@ function UpdatePluginDialogContent({
       if (result.applied) {
         appToast.success(`${displayName} updated`, {
           description:
-            result.to !== null ? `Now running ${result.to.display}.` : undefined,
+            result.to !== null
+              ? `Now running ${result.to.display}.`
+              : undefined,
         });
       } else {
         appToast.message(`${displayName} is already up to date`);
@@ -109,8 +111,8 @@ function UpdatePluginDialogContent({
           <div className="flex items-start gap-2 text-sm text-destructive-text">
             <Icon name="AlertCircle" className="mt-0.5 size-4 shrink-0" />
             <span>
-              {state.availableVersion ?? "The new version"} failed to start.
-              bb restored {plugin.version} and its data automatically.
+              {state.availableVersion ?? "The new version"} failed to start. bb
+              restored {plugin.version} and its data automatically.
             </span>
           </div>
           {rolledBack.detail !== null ? (
@@ -124,7 +126,11 @@ function UpdatePluginDialogContent({
           </p>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Close
           </Button>
         </DialogFooter>
@@ -227,7 +233,11 @@ function UpdatePluginDialogContent({
           </p>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Close
           </Button>
           <Button type="button" disabled>
@@ -245,7 +255,11 @@ function UpdatePluginDialogContent({
         <DialogDescription>{fromLine}</DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+        >
           Close
         </Button>
       </DialogFooter>

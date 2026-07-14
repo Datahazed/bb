@@ -103,6 +103,7 @@ function MarketplaceRow({
   onRemove: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [renderedAt] = useState(() => Date.now());
   const refresh = useMutation({
     mutationFn: () => refreshMarketplace(fetch, marketplace.id),
     onSettled: () => {
@@ -123,7 +124,7 @@ function MarketplaceRow({
         `using cached catalog from ${formatAbsoluteDate(marketplace.lastRefreshAt)}`
       : "no cached catalog yet"
     : marketplace.lastRefreshAt !== null
-      ? `refreshed ${formatRelativeTime({ timestamp: marketplace.lastRefreshAt, now: Date.now() })}`
+      ? `refreshed ${formatRelativeTime({ timestamp: marketplace.lastRefreshAt, now: renderedAt })}`
       : "never refreshed";
 
   return (
@@ -343,9 +344,9 @@ export function RemoveMarketplaceDialog({
         <DialogHeader>
           <DialogTitle>Remove {marketplace.displayName}?</DialogTitle>
           <DialogDescription>
-            Removing a marketplace uninstalls nothing: plugins installed from
-            it stay and become &ldquo;direct&rdquo; installs, keeping their
-            current source.
+            Removing a marketplace uninstalls nothing: plugins installed from it
+            stay and become &ldquo;direct&rdquo; installs, keeping their current
+            source.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

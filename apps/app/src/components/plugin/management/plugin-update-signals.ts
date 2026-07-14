@@ -12,7 +12,9 @@ export type PluginRowSignal =
   | { kind: "update"; version: string }
   | { kind: "attention" };
 
-export function pluginRowSignal(plugin: PluginListItem): PluginRowSignal | null {
+export function pluginRowSignal(
+  plugin: PluginListItem,
+): PluginRowSignal | null {
   const state = plugin.updateState;
   // Rollbacks and broken loads both need the user; either wins the row's
   // single pill slot.

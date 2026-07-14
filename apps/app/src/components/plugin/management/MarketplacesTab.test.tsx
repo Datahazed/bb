@@ -83,9 +83,7 @@ describe("MarketplacesTab removal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove marketplace" }));
 
     await vi.waitFor(() => {
-      const del = requests.find(
-        (request) => request.init?.method === "DELETE",
-      );
+      const del = requests.find((request) => request.init?.method === "DELETE");
       expect(del).toBeDefined();
       expect(del?.init?.body).toBeUndefined();
       expect(successToast).toHaveBeenCalledWith(

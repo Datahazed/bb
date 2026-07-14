@@ -44,7 +44,10 @@ export function BrowsePluginsTab({
 
   const marketplaces = marketplacesQuery.data ?? [];
   const marketplaceNames = new Map(
-    marketplaces.map((marketplace) => [marketplace.id, marketplace.displayName]),
+    marketplaces.map((marketplace) => [
+      marketplace.id,
+      marketplace.displayName,
+    ]),
   );
   const entries = (searchQuery.data ?? []).filter(
     (entry) =>

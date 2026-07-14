@@ -65,8 +65,6 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
       hasError={props.hasError ?? false}
       onCreateSkill={props.onCreateSkill ?? (() => {})}
       onSelectSkill={props.onSelectSkill ?? (() => {})}
-      onEditSkill={props.onEditSkill}
-      onDeleteSkill={props.onDeleteSkill}
       onRetry={props.onRetry}
     />,
   );
@@ -84,14 +82,13 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Review the current diff.");
     expect(markup).toContain('aria-label="Agent"');
     expect(markup).toContain("Sort");
-    expect(markup).toContain("Installed skills");
+    expect(markup).toContain('role="tab"');
+    expect(markup).toContain("Installed");
+    expect(markup).toContain("Browse");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
     expect(markup).not.toContain("group-hover:translate-x-1");
-    expect(markup).toContain("text-muted-foreground/65");
-    expect(markup).toContain(
-      "h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5",
-    );
-    expect(markup.indexOf("Installed skills")).toBeLessThan(
+    expect(markup).toContain("group-hover:opacity-100");
+    expect(markup.indexOf("Installed")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
     expect(markup.indexOf("bb-skill")).toBeLessThan(
@@ -100,90 +97,63 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain('aria-expanded="true"');
   });
 
-  it("keeps installed registry skills in a clickable Browse card", () => {
+  it("renders browse content as the active full-page collection mode", () => {
     const registrySkill = makeRegistrySkill({ installs: 123_456, stars: 654 });
     const markup = renderToStaticMarkup(
       <SkillsOverview
         skills={[]}
         isLoading={false}
         hasError={false}
-        registrySkills={[
-          registrySkill,
-          makeRegistrySkill({
-            id: "owner/repo/second-skill",
-            skillId: "second-skill",
-            name: "Second skill",
-          }),
-          makeRegistrySkill({
-            id: "owner/repo/third-skill",
-            skillId: "third-skill",
-            name: "Third skill",
-          }),
-          makeRegistrySkill({
-            id: "owner/repo/fourth-skill",
-            skillId: "fourth-skill",
-            name: "Fourth skill",
-          }),
-        ]}
+        activeMode="browse"
+        browseContent={
+          <RegistrySkillsBrowsePage
+            skills={[registrySkill]}
+            pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
+            isLoading={false}
+            hasError={false}
+            query=""
+            pendingSkillId={null}
+            onQueryChange={() => {}}
+            onPageChange={() => {}}
+            onInstall={() => {}}
+            onUninstall={() => {}}
+            onSelect={() => {}}
+            isInstalled={() => true}
+          />
+        }
         onCreateSkill={() => {}}
         onSelectSkill={() => {}}
-        onSelectRegistrySkill={() => {}}
-        onInstallRegistrySkill={() => {}}
-        onUninstallRegistrySkill={() => {}}
-        isRegistrySkillInstalled={(skill) => skill.id === registrySkill.id}
       />,
     );
 
     expect(markup).toContain("Useful skill");
     expect(markup).toContain('href="https://www.skills.sh/"');
     expect(markup).toContain("powered by");
-    expect(markup).toContain("text-success");
-    expect(markup).toContain("fill-attention/20 text-attention");
     expect(markup).toContain('aria-label="123.5K installs"');
     expect(markup).toContain('aria-label="654 stars"');
-    expect(markup).toContain(
-      "items-center justify-end gap-[var(--resource-source-shelf-card-action-gap)]",
-    );
-    expect(markup).toContain("items-center justify-end pt-2");
-    expect(markup).toContain("min-h-14 line-clamp-2");
-    expect(markup).toContain(
-      "rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]",
-    );
-    expect(markup).toContain(
-      "-ml-[var(--resource-source-shelf-shadow-left-bleed)] -my-[var(--resource-source-shelf-shadow-bleed)] overflow-x-auto pl-[var(--resource-source-shelf-shadow-left-bleed)] py-[var(--resource-source-shelf-shadow-bleed)]",
-    );
-    expect(markup).toContain(
-      "snap-x snap-mandatory gap-[var(--resource-source-shelf-item-gap)]",
-    );
-    expect(markup).toContain("right-0");
-    expect(markup).toContain("w-[var(--resource-source-shelf-fade-ramp)]");
+    expect(markup).toContain("grid gap-2.5 sm:grid-cols-2");
+    expect(markup).not.toContain("overflow-x-auto");
     expect(markup).toContain("Uninstall Useful skill from bb");
     expect(markup).toContain('aria-label="View details for Useful skill"');
-    expect(markup).toContain('class="absolute inset-0 cursor-pointer');
-    expect(markup).toContain(
-      "hover:border-[color:var(--resource-source-shelf-card-hover-border)] hover:shadow-[var(--resource-source-shelf-card-hover-shadow)]",
-    );
-    expect(markup).not.toContain(
-      "hover:bg-[var(--resource-source-shelf-card-hover)]",
-    );
-    expect(
-      markup.match(/text-sm font-medium leading-5 text-muted-foreground/g),
-    ).toHaveLength(2);
   });
 
   it("confirms before uninstalling an installed skill from a Browse card", () => {
     const registrySkill = makeRegistrySkill();
     const onUninstall = vi.fn();
     renderDom(
-      <SkillsOverview
-        skills={[]}
+      <RegistrySkillsBrowsePage
+        skills={[registrySkill]}
+        pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
         isLoading={false}
         hasError={false}
-        registrySkills={[registrySkill]}
-        onCreateSkill={() => {}}
-        onSelectSkill={() => {}}
-        onUninstallRegistrySkill={onUninstall}
-        isRegistrySkillInstalled={() => true}
+        query=""
+        pendingSkillId={null}
+        onQueryChange={() => {}}
+        onPageChange={() => {}}
+        onInstall={() => {}}
+        onUninstall={onUninstall}
+        onSelect={() => {}}
+        isInstalled={() => true}
       />,
     );
 
@@ -240,7 +210,7 @@ describe("SkillsOverview", () => {
     expect(render({ skills: [] })).toContain("New bb skill");
   });
 
-  it("allows full lifecycle management for local provider skills", () => {
+  it("keeps edit and delete actions in detail rather than overview rows", () => {
     const markup = render({
       skills: [
         makeSkill({
@@ -251,100 +221,11 @@ describe("SkillsOverview", () => {
         }),
         makeSkill({ name: "provider-skill" }),
       ],
-      onEditSkill: () => {},
-      onDeleteSkill: () => {},
     });
-    expect(markup).toContain('aria-label="Edit bb-skill"');
-    expect(markup).toContain('aria-label="Delete bb-skill"');
-    expect(markup).toContain('aria-label="Edit provider-skill"');
-    expect(markup).toContain('aria-label="Delete provider-skill"');
-    expect(markup).not.toMatch(
-      /aria-label="Edit provider-skill"[^>]*aria-disabled="true"/,
-    );
-    expect(markup).not.toMatch(
-      /aria-label="Delete provider-skill"[^>]*aria-disabled="true"/,
-    );
-  });
-
-  it("shows disabled manage actions for built-in bb skills", () => {
-    const onSelectSkill = vi.fn();
-    renderDom(
-      <SkillsOverview
-        skills={[
-          makeSkill({
-            name: "bb-cli",
-            provider: null,
-            scope: "bb-builtin",
-            manageable: false,
-          }),
-        ]}
-        isLoading={false}
-        hasError={false}
-        onCreateSkill={() => {}}
-        onSelectSkill={onSelectSkill}
-      />,
-    );
-
-    const editButton = screen.getByRole("button", { name: "Edit bb-cli" });
-    expect(editButton.getAttribute("aria-disabled")).toBe("true");
-    expect(
-      screen
-        .getByRole("button", { name: "Delete bb-cli" })
-        .getAttribute("aria-disabled"),
-    ).toBe("true");
-    expect(screen.queryByRole("button", { name: "Open bb-cli" })).toBeNull();
-    expect(editButton.closest("[data-row-action]")?.className).toContain(
-      "group-hover:opacity-100",
-    );
-
-    fireEvent.click(editButton);
-    expect(onSelectSkill).not.toHaveBeenCalled();
-
-    const row = screen.getByText("bb-cli").closest(".group");
-    expect(row?.className).toContain("cursor-pointer");
-    const caret = row?.querySelector('[data-icon="ChevronRight"]');
-    expect(caret?.classList.contains("text-muted-foreground/65")).toBe(true);
-    expect(caret?.classList.contains("group-hover:translate-x-1")).toBe(false);
-    expect(caret?.classList.contains("transition-colors")).toBe(true);
-    expect(caret?.closest("button")).toBeNull();
-    const caretTarget = caret?.parentElement;
-    expect(caretTarget?.classList.contains("hover:bg-state-hover")).toBe(true);
-    fireEvent.click(caretTarget!);
-    expect(onSelectSkill).toHaveBeenCalledOnce();
-    fireEvent.click(row!);
-    expect(onSelectSkill).toHaveBeenCalledTimes(2);
-  });
-
-  it("explains bundled provider restrictions without claiming a bb-only delete policy", async () => {
-    renderDom(
-      <SkillsOverview
-        skills={[
-          makeSkill({
-            name: "imagegen",
-            provider: "codex",
-            scope: "codex",
-            filePath: "/home/u/.codex/skills/.system/imagegen/SKILL.md",
-            manageable: false,
-          }),
-        ]}
-        isLoading={false}
-        hasError={false}
-        onCreateSkill={() => {}}
-        onSelectSkill={() => {}}
-        onEditSkill={() => {}}
-        onDeleteSkill={() => {}}
-      />,
-    );
-    fireEvent.pointerMove(
-      screen.getByRole("button", { name: "Edit imagegen" }),
-    );
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bundled with Codex",
-    );
-    expect(
-      screen.queryByText("Only bb skills can be deleted in bb"),
-    ).toBeNull();
-    expect(screen.queryByText("This skill is read-only in bb")).toBeNull();
+    expect(markup).not.toContain('aria-label="Edit bb-skill"');
+    expect(markup).not.toContain('aria-label="Delete bb-skill"');
+    expect(markup).not.toContain('aria-label="Edit provider-skill"');
+    expect(markup).not.toContain('aria-label="Delete provider-skill"');
   });
 
   it("keeps create out of the list (templates live in the menu, not a panel)", () => {
@@ -390,7 +271,6 @@ describe("RegistrySkillsBrowsePage", () => {
       stars: 10,
     });
     const onSelect = vi.fn();
-    const onBack = vi.fn();
     renderDom(
       <RegistrySkillsBrowsePage
         skills={[alpha, zulu]}
@@ -399,28 +279,25 @@ describe("RegistrySkillsBrowsePage", () => {
         hasError={false}
         query=""
         pendingSkillId={null}
-        onBack={onBack}
         onQueryChange={() => {}}
         onPageChange={onPageChange}
         onInstall={() => {}}
+        onUninstall={() => {}}
         onSelect={onSelect}
         isInstalled={(skill) => skill.id === alpha.id}
       />,
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to skills" }));
-    expect(onBack).toHaveBeenCalledOnce();
-    const alphaRowButton = screen.getByText("Alpha").closest("button");
-    expect(alphaRowButton).toBeTruthy();
-    fireEvent.click(alphaRowButton!);
+    fireEvent.click(
+      screen.getByRole("button", { name: "View details for Alpha" }),
+    );
     expect(onSelect).toHaveBeenCalledWith(alpha);
     expect(screen.getByText("1–2 of 48")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /skills\.sh/ })).toBeNull();
-    expect(screen.queryByText("powered by")).toBeNull();
+    expect(screen.getByRole("link", { name: /skills\.sh/ })).toBeTruthy();
+    expect(screen.getByText("powered by")).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
+    expect(screen.getByLabelText("Uninstall Alpha from bb")).toBeTruthy();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
     expect(await screen.findByRole("menuitem", { name: "Stars" })).toBeTruthy();

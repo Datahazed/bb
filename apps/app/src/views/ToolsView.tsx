@@ -13,35 +13,30 @@ import {
 } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
-import {
-  CREATE_PLUGIN_PROMPT,
-  CreateWithTemplatesButton,
-  getCreateExamples,
-} from "@/components/create-via-prompt-examples";
 import { appToast } from "@/components/ui/app-toast";
+import { OverflowFade } from "@/components/ui/overflow-fade";
+import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import {
-  ResourceActionButton,
   ResourceDetailBackButton,
   ResourceDetailList,
   ResourceDetailListItem,
-  ResourceListPanel,
   ResourceListState,
-  ResourceOverviewPage,
-  ResourceRow,
-  ResourceRowDetailChevron,
-  ResourceSortMenu,
-  ResourceTemplateBrowseCard,
 } from "@bb/shared-ui/resource-list";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Switch } from "@bb/shared-ui/switch";
+import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { PluginSettingsDetail } from "@/components/settings/PluginsSettingsSection";
+import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
+import {
+  PluginUpdateBanner,
+  PluginUpdatesSourceCard,
+  pluginHasUpdateSurfaces,
+} from "@/components/plugin/management/PluginUpdatesCard";
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import {
   usePluginList,
@@ -59,9 +54,7 @@ import {
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   getAutomationsRoutePath,
-  getPluginDetailRoutePath,
   getPluginsRoutePath,
-  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
@@ -104,11 +97,12 @@ function pluginStatusTone(
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   if (plugin.isBuiltin) return "Built-in";
+  if (plugin.marketplaceName !== null) {
+    return `From ${plugin.marketplaceName}`;
+  }
   if (plugin.source === null) return null;
   if (plugin.source.startsWith("path:")) return "Local plugin";
-  if (plugin.source.startsWith("git:")) return "Git plugin";
-  if (plugin.source.startsWith("npm:")) return "npm plugin";
-  return plugin.source;
+  return "Direct install";
 }
 
 function pluginIsLocalSource(plugin: PluginListItem): boolean {
@@ -116,11 +110,7 @@ function pluginIsLocalSource(plugin: PluginListItem): boolean {
 }
 
 function pluginCanBeRemoved(plugin: PluginListItem): boolean {
-  return (
-    plugin.source?.startsWith("path:") === true ||
-    plugin.source?.startsWith("git:") === true ||
-    plugin.source?.startsWith("npm:") === true
-  );
+  return plugin.provenance !== "builtin";
 }
 
 function pluginRemovalLabel(plugin: PluginListItem): string {
@@ -141,6 +131,48 @@ function ToolsBodyFallback() {
   );
 }
 
+function ToolsScrollPage({
+  children,
+  maxWidthClassName = "max-w-5xl",
+}: {
+  children: ReactNode;
+  maxWidthClassName?: string;
+}) {
+  const {
+    scrollRef,
+    topSentinelRef,
+    bottomSentinelRef,
+    aboveOverflow,
+    belowOverflow,
+  } = useScrollOverflowState<HTMLDivElement>({ measureOverflow: true });
+  return (
+    <div className="relative h-full overflow-hidden">
+      <div ref={scrollRef} className="h-full overflow-y-auto">
+        <div ref={topSentinelRef} aria-hidden className="h-0" />
+        <div
+          className={cn(
+            "mx-auto w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
+            maxWidthClassName,
+          )}
+        >
+          {children}
+        </div>
+        <div ref={bottomSentinelRef} aria-hidden className="h-0" />
+      </div>
+      {aboveOverflow ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0">
+          <OverflowFade placement="below" tone="background" />
+        </div>
+      ) : null}
+      {belowOverflow ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-0">
+          <OverflowFade placement="above" tone="background" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ToolsSectionBody({
   activeSection,
   pluginId,
@@ -150,11 +182,9 @@ function ToolsSectionBody({
 }) {
   if (activeSection === "skills") {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
-          <SkillsLibrary />
-        </div>
-      </div>
+      <ToolsScrollPage>
+        <SkillsLibrary />
+      </ToolsScrollPage>
     );
   }
   if (activeSection === "plugins") {
@@ -180,81 +210,6 @@ function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
     );
   }
   return <BbMark />;
-}
-
-export function PluginListRow({
-  plugin,
-  pending,
-  editDisabled,
-  onToggle,
-  onEdit,
-  onDelete,
-}: {
-  plugin: PluginListItem;
-  pending: boolean;
-  editDisabled: boolean;
-  onToggle: (plugin: PluginListItem) => void;
-  onEdit: (plugin: PluginListItem) => void;
-  onDelete: (plugin: PluginListItem) => void;
-}) {
-  const navigate = useNavigate();
-  const detailPath = getPluginDetailRoutePath({ pluginId: plugin.id });
-  const description =
-    plugin.description !== null && plugin.description.length > 0
-      ? plugin.description
-      : plugin.statusDetail;
-  return (
-    <ResourceRow
-      leading={<PluginListLogo plugin={plugin} />}
-      title={plugin.displayName ?? plugin.id}
-      titleMeta={`v${plugin.version}`}
-      description={description}
-      onOpen={() => void navigate(detailPath)}
-      trailingVisual={<ResourceRowDetailChevron />}
-      persistentActions={
-        <Switch
-          size="sm"
-          checked={plugin.enabled}
-          disabled={pending}
-          aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.id}`}
-          onCheckedChange={() => onToggle(plugin)}
-        />
-      }
-      actions={
-        plugin.isBuiltin ? undefined : (
-          <>
-            {pluginIsLocalSource(plugin) ? (
-              <ResourceActionButton
-                label={`Edit ${plugin.id}`}
-                icon="Edit"
-                disabled={pending || editDisabled}
-                onClick={() => onEdit(plugin)}
-              />
-            ) : null}
-            {pluginCanBeRemoved(plugin) ? (
-              <ResourceActionButton
-                label={`${pluginRemovalLabel(plugin)} ${plugin.id}`}
-                icon="Trash2"
-                tone="destructive"
-                disabled={pending}
-                onClick={() => onDelete(plugin)}
-              />
-            ) : null}
-          </>
-        )
-      }
-    />
-  );
-}
-
-type ToolSortMode = "alpha";
-type ToolSortDirection = "asc" | "desc";
-
-function applyToolSortDirection(
-  result: number,
-  direction: ToolSortDirection,
-): number {
-  return direction === "asc" ? result : -result;
 }
 
 function BbMark({ className = "size-4" }: { className?: string }) {
@@ -480,18 +435,18 @@ function AutomationsToolView() {
             ? "/edit"
             : ""
         }`
-      : "";
+      : new URLSearchParams(location.search).get("view") === "browse"
+        ? "browse"
+        : "";
 
   if (panel === null) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
-          <EmptyStatePanel className="rounded-lg p-6 text-sm">
-            Automations are still loading, or the automations plugin is not
-            available.
-          </EmptyStatePanel>
-        </div>
-      </div>
+      <ToolsScrollPage maxWidthClassName="max-w-3xl">
+        <EmptyStatePanel className="rounded-lg p-6 text-sm">
+          Automations are still loading, or the automations plugin is not
+          available.
+        </EmptyStatePanel>
+      </ToolsScrollPage>
     );
   }
 
@@ -517,13 +472,7 @@ function AutomationsToolView() {
       </WorkerPoolContextProvider>
     );
 
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        {mount}
-      </div>
-    </div>
-  );
+  return <ToolsScrollPage>{mount}</ToolsScrollPage>;
 }
 
 export function PluginDetail({
@@ -561,6 +510,7 @@ export function PluginDetail({
   const hasSettings =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
+  const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
   const includes = pluginIncludes(plugin);
   const hasActivity =
@@ -624,6 +574,22 @@ export function PluginDetail({
             ]
       }
       definitionSections={[
+        ...(hasUpdateManagement
+          ? [
+              {
+                label: "Source & updates",
+                content: (
+                  <div className="space-y-3">
+                    <PluginUpdateBanner plugin={plugin} />
+                    <PluginUpdatesSourceCard
+                      plugin={plugin}
+                      showHeading={false}
+                    />
+                  </div>
+                ),
+              },
+            ]
+          : []),
         ...(hasSettings
           ? [
               {
@@ -651,13 +617,18 @@ export function PluginDetail({
 }
 
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
+  return pluginId === undefined ? (
+    <ToolsScrollPage>
+      <PluginsOverview />
+    </ToolsScrollPage>
+  ) : (
+    <PluginDetailToolView pluginId={pluginId} />
+  );
+}
+
+function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
-  const [sortMode, setSortMode] = useState<ToolSortMode>("alpha");
-  const [sortDirection, setSortDirection] = useState<ToolSortDirection>("asc");
-  // Installed and builtin plugins remain real resources even when the
-  // experiment that allows new user plugin installation is disabled.
   const listQuery = usePluginList({ enabled: true });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
@@ -671,41 +642,6 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
       (plugin) => pluginIsLocalSource(plugin) && plugin.rootDir !== null,
     ),
   });
-  const normalizedQuery = query.trim().toLowerCase();
-  const visiblePlugins = useMemo(() => {
-    return plugins
-      .filter((plugin) => {
-        if (normalizedQuery.length === 0) return true;
-        return [
-          plugin.id,
-          plugin.displayName ?? "",
-          plugin.description ?? "",
-          plugin.version,
-          plugin.source ?? "",
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedQuery);
-      })
-      .sort((left, right) => {
-        const base = (left.displayName ?? left.id).localeCompare(
-          right.displayName ?? right.id,
-        );
-        return applyToolSortDirection(base, sortDirection);
-      });
-  }, [normalizedQuery, plugins, sortDirection]);
-  const handleSortChange = useCallback(
-    (nextSort: string) => {
-      if (nextSort !== "alpha") return;
-      if (nextSort === sortMode) {
-        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-        return;
-      }
-      setSortMode(nextSort);
-      setSortDirection("asc");
-    },
-    [sortMode],
-  );
   const pluginToggle = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
       const action = plugin.enabled ? "disable" : "enable";
@@ -751,9 +687,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
           : "Plugin uninstalled",
       );
       setDeleteTarget(null);
-      if (pluginId === deletedPlugin.id) {
-        navigate(getPluginsRoutePath());
-      }
+      navigate(getPluginsRoutePath());
       return listQuery.refetch();
     },
     onError: (error) => {
@@ -762,9 +696,7 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
-    pluginId !== undefined
-      ? (plugins.find((plugin) => plugin.id === pluginId) ?? null)
-      : null;
+    plugins.find((plugin) => plugin.id === pluginId) ?? null;
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
@@ -773,17 +705,6 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
         : pluginDelete.isPending && pluginDelete.variables
           ? pluginDelete.variables.id
           : null;
-  const hasPlugins = plugins.length > 0;
-  const handleCreatePlugin = (prompt?: string) => {
-    navigate(getRootComposeRoutePath(), {
-      state: {
-        focusPrompt: true,
-        initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,
-        replaceInitialPrompt: true,
-        createDraftKind: "plugin",
-      },
-    });
-  };
   const backToPlugins = useCallback(() => {
     navigate(getPluginsRoutePath());
   }, [navigate]);
@@ -797,136 +718,58 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
     },
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
-  const overviewBody = listQuery.isError ? (
-    <ResourceListState
-      state="error"
-      message="Couldn't load plugins."
-      onRetry={() => void listQuery.refetch()}
-    />
-  ) : isLoading ? (
-    <PluginsLoadingRows />
-  ) : !hasPlugins ? (
-    <ResourceListState state="empty" message="No plugins installed." />
-  ) : visiblePlugins.length === 0 ? (
-    <ResourceListState state="empty" message={`No plugins match "${query}"`} />
-  ) : (
-    <ResourceListPanel>
-      {visiblePlugins.map((plugin) => (
-        <PluginListRow
-          key={plugin.id}
-          plugin={plugin}
-          pending={pendingPluginId === plugin.id}
-          editDisabled={
-            plugin.rootDir === null || !canOpenPreferredDirectoryTarget
-          }
-          onToggle={(target) => pluginToggle.mutate(target)}
-          onEdit={handleEditPlugin}
-          onDelete={setDeleteTarget}
-        />
-      ))}
-    </ResourceListPanel>
-  );
-  const browseExamples = getCreateExamples("plugin").examples;
-  const overview = (
-    <ResourceOverviewPage
-      description="Manage plugins installed in bb. Plugins can add app surfaces, commands, background services, schedules, and skills."
-      browse={{
-        icon: "ElectricPlugs",
-        items: browseExamples.map((example) => ({
-          id: example.label,
-          content: (
-            <ResourceTemplateBrowseCard
-              title={example.label}
-              description={example.description}
-              onUse={() => handleCreatePlugin(example.prompt)}
-            />
-          ),
-        })),
-      }}
-      installed={{
-        headingId: "installed-plugins-heading",
-        label: "Installed plugins",
-        searchValue: query,
-        searchPlaceholder: "Search plugins",
-        onSearchChange: setQuery,
-        controls: (
-          <ResourceSortMenu
-            value={sortMode}
-            direction={sortDirection}
-            options={[{ id: "alpha", label: "Plugin name" }]}
-            onChange={handleSortChange}
-          />
-        ),
-        action: (
-          <CreateWithTemplatesButton
-            kind="plugin"
-            label="New plugin"
-            onCreate={handleCreatePlugin}
-          />
-        ),
-        body: overviewBody,
-      }}
-    />
-  );
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        {pluginId !== undefined ? (
-          listQuery.isError ? (
-            <ResourceListState
-              state="error"
-              message="Couldn't load plugin."
-              onRetry={() => void listQuery.refetch()}
-            />
-          ) : (
-            <PluginDetail
-              isLoading={isLoading}
-              plugin={selectedPlugin}
-              pending={
-                selectedPlugin !== null && pendingPluginId === selectedPlugin.id
-              }
-              editDisabled={
-                selectedPlugin?.rootDir == null ||
-                !canOpenPreferredDirectoryTarget
-              }
-              onToggle={(target) => pluginToggle.mutate(target)}
-              onReload={(target) => pluginReload.mutate(target)}
-              onEdit={handleEditPlugin}
-              onDelete={setDeleteTarget}
-              onBack={backToPlugins}
-            />
-          )
-        ) : (
-          overview
-        )}
-        <ConfirmDeleteDialog
-          open={deleteTarget !== null}
-          onOpenChange={(open) => {
-            if (!open && !pluginDelete.isPending) setDeleteTarget(null);
-          }}
-        >
-          {deleteTarget ? (
-            <ConfirmDeleteDialogContent
-              title={
-                pluginIsLocalSource(deleteTarget)
-                  ? "Remove plugin from bb?"
-                  : "Uninstall plugin?"
-              }
-              description={
-                pluginIsLocalSource(deleteTarget)
-                  ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
-                  : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-              }
-              confirmLabel={pluginRemovalLabel(deleteTarget)}
-              pending={pluginDelete.isPending}
-              onConfirm={() => pluginDelete.mutate(deleteTarget)}
-              onCancel={() => setDeleteTarget(null)}
-            />
-          ) : null}
-        </ConfirmDeleteDialog>
-      </div>
-    </div>
+    <ToolsScrollPage>
+      {listQuery.isError ? (
+        <ResourceListState
+          state="error"
+          message="Couldn't load plugin."
+          onRetry={() => void listQuery.refetch()}
+        />
+      ) : (
+        <PluginDetail
+          isLoading={isLoading}
+          plugin={selectedPlugin}
+          pending={
+            selectedPlugin !== null && pendingPluginId === selectedPlugin.id
+          }
+          editDisabled={
+            selectedPlugin?.rootDir == null || !canOpenPreferredDirectoryTarget
+          }
+          onToggle={(target) => pluginToggle.mutate(target)}
+          onReload={(target) => pluginReload.mutate(target)}
+          onEdit={handleEditPlugin}
+          onDelete={setDeleteTarget}
+          onBack={backToPlugins}
+        />
+      )}
+      <ConfirmDeleteDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !pluginDelete.isPending) setDeleteTarget(null);
+        }}
+      >
+        {deleteTarget ? (
+          <ConfirmDeleteDialogContent
+            title={
+              pluginIsLocalSource(deleteTarget)
+                ? "Remove plugin from bb?"
+                : "Uninstall plugin?"
+            }
+            description={
+              pluginIsLocalSource(deleteTarget)
+                ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
+                : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
+            }
+            confirmLabel={pluginRemovalLabel(deleteTarget)}
+            pending={pluginDelete.isPending}
+            onConfirm={() => pluginDelete.mutate(deleteTarget)}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
+    </ToolsScrollPage>
   );
 }
 

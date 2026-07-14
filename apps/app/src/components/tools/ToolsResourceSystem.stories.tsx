@@ -1,258 +1,246 @@
-import { useState } from "react";
-import type { SkillSummary } from "@bb/server-contract";
-import type {
-  AutomationResponse,
-  AutomationRunResponse,
-} from "bb-plugin-automations/rpc-types";
+import { useEffect, useState } from "react";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { ResourceListState } from "@bb/shared-ui/resource-list";
+import { automationsOverviewResponseSchema } from "bb-plugin-automations/rpc-types";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { usePluginFrontendBoot } from "@/hooks/usePluginFrontendBoot";
+import { fetchPluginList } from "@/hooks/queries/plugin-settings-queries";
+import * as api from "@/lib/api";
 import {
-  AutomationDetailView,
-  automationEditBodyValue,
-} from "bb-plugin-automations/detail-view";
-import { ResourceListPanel } from "@bb/shared-ui/resource-list";
-import {
-  EMPTY_PLUGIN_UPDATE_STATE,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
-import { SkillDetailDialogView } from "@/views/SkillsView";
-import { PluginDetail, PluginListRow } from "@/views/ToolsView";
+  AUTOMATIONS_ROUTE_PATH,
+  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_SKILLS_ROUTE_PATH,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getPluginDetailRoutePath,
+  getPluginsRoutePath,
+  getRegistrySkillDetailRoutePath,
+  getSkillDetailRoutePath,
+  getSkillsRoutePath,
+} from "@/lib/route-paths";
+import { fetchRegistrySkills } from "@/views/SkillsView";
+import { ToolsView } from "@/views/ToolsView";
 
 export default {
-  title: "Tools/Resource Detail System",
+  title: "Tools/Pages live data",
 };
 
-const NOOP = () => {};
-const RESOLVED = () => Promise.resolve(true);
+type LivePath = string | (() => Promise<string>);
 
-const DOCUMENTS_SKILL: SkillSummary = {
-  name: "documents:documents",
-  description: "Create, edit, and inspect document files.",
-  provider: "codex",
-  scope: "plugin",
-  filePath:
-    "/Users/brsbl/.codex/plugins/cache/openai-primary-runtime/documents/skills/documents/SKILL.md",
-  manageable: false,
-};
+function storyPath(location: ReturnType<typeof useLocation>): string {
+  return `${location.pathname}${location.search}`;
+}
 
-const DOCUMENTS_SKILL_CONTENT = `# Documents
+/**
+ * Route-level Ladle harness for the production ToolsView. It intentionally
+ * owns no resource fixtures: lists, detail identifiers, file contents,
+ * marketplace results, settings, and automation history all come from this
+ * checkout's running dev server through Ladle's Vite proxy.
+ */
+function LiveToolsPage({ target }: { target: LivePath }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [resolvedLivePath, setResolvedLivePath] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const resolvedPath = typeof target === "string" ? target : resolvedLivePath;
 
-Create, edit, redline, and inspect document files using the document workflow.
+  // Automations are a built-in plugin app surface, so stories boot the same
+  // frontend bundle loader that production uses before mounting ToolsView.
+  usePluginFrontendBoot();
 
-## Workflow
+  useEffect(() => {
+    if (typeof target === "string") return;
+    let cancelled = false;
+    void target().then(
+      (path) => {
+        if (!cancelled) setResolvedLivePath(path);
+      },
+      (reason: unknown) => {
+        if (cancelled) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [target]);
 
-1. Read the source document.
-2. Make the requested changes.
-3. Render the result and verify every page.
-`;
+  useEffect(() => {
+    if (resolvedPath !== null && storyPath(location) !== resolvedPath) {
+      navigate(resolvedPath, { replace: true });
+    }
+  }, [location, navigate, resolvedPath]);
 
-const PLUGINS: readonly PluginListItem[] = [
-  {
-    id: "automations",
-    source: "builtin:automations",
-    isBuiltin: true,
-    rootDir: "/plugins/automations",
-    version: "0.1.0",
-    enabled: true,
-    status: "running",
-    statusDetail: null,
-    description: null,
-    displayName: null,
-    icon: null,
-    logoUrl: null,
-    logoDarkUrl: null,
-    hasSettings: false,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [{ name: "automation-sweep", state: "running" }],
-    schedules: [],
-    cliCommand: {
-      name: "automation",
-      summary: "Inspect and manage automations (scheduled agent/script runs)",
+  if (error !== null) {
+    return (
+      <div className="mx-auto w-full max-w-3xl p-5">
+        <ResourceListState state="error" message={error} />
+      </div>
+    );
+  }
+  if (resolvedPath === null || storyPath(location) !== resolvedPath) {
+    return (
+      <div className="mx-auto w-full max-w-3xl p-5">
+        <ResourceListState state="loading" message="Opening live page" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen min-w-0 flex-col p-4 md:p-5">
+      <Routes>
+        <Route path={TOOLS_SKILLS_ROUTE_PATH} element={<ToolsView />} />
+        <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+        <Route
+          path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
+          element={<ToolsView />}
+        />
+        <Route
+          path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
+          element={<ToolsView />}
+        />
+        <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+        <Route path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+        <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+        <Route
+          path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
+          element={<ToolsView />}
+        />
+        <Route
+          path={TOOLS_AUTOMATION_DETAIL_ROUTE_PATH}
+          element={<ToolsView />}
+        />
+      </Routes>
+    </div>
+  );
+}
+
+async function resolveInstalledSkillDetailPath(): Promise<string> {
+  const response = await api.listProjectSkills({
+    projectId: PERSONAL_PROJECT_ID,
+    environmentId: null,
+  });
+  const skill = response.skills[0];
+  if (skill === undefined) {
+    throw new Error("The live server has no installed skill to open.");
+  }
+  return getSkillDetailRoutePath({
+    scope: skill.scope,
+    providerId: skill.provider,
+    skillName: skill.name,
+  });
+}
+
+async function resolveRegistrySkillDetailPath(): Promise<string> {
+  const response = await fetchRegistrySkills({ query: "", page: 0 });
+  const skill = response.skills[0];
+  if (skill === undefined) {
+    throw new Error("The live registry has no skill to open.");
+  }
+  return getRegistrySkillDetailRoutePath({ registrySkillId: skill.id });
+}
+
+async function resolvePluginDetailPath(): Promise<string> {
+  const response = await fetchPluginList(fetch);
+  const plugin = response.plugins[0];
+  if (plugin === undefined) {
+    throw new Error("The live server has no installed plugin to open.");
+  }
+  return getPluginDetailRoutePath({ pluginId: plugin.id });
+}
+
+async function resolveAutomationRoute(): Promise<{
+  projectId: string;
+  automationId: string;
+}> {
+  const response = await fetch(
+    "/api/v1/plugins/automations/rpc/automations_overview",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
     },
-    app: { hasApp: true },
-    provenance: "builtin",
-    marketplaceName: null,
-    sourceDisplay: "builtin · automations",
-    updateState: EMPTY_PLUGIN_UPDATE_STATE,
-  },
-  {
-    id: "connect",
-    source: "builtin:connect",
-    isBuiltin: true,
-    rootDir: "/plugins/connect",
-    version: "0.1.0",
-    enabled: true,
-    status: "running",
-    statusDetail: null,
-    description:
-      "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
-    displayName: "Remote access",
-    icon: null,
-    logoUrl: null,
-    logoDarkUrl: null,
-    hasSettings: false,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [{ name: "tunnel", state: "running" }],
-    schedules: [],
-    cliCommand: {
-      name: "connect",
-      summary:
-        "Expose this bb at https://<handle>.getbb.app (pair with --code/--server from the dashboard)",
-    },
-    app: { hasApp: true },
-    provenance: "builtin",
-    marketplaceName: null,
-    sourceDisplay: "builtin · connect",
-    updateState: EMPTY_PLUGIN_UPDATE_STATE,
-  },
-] satisfies readonly PluginListItem[];
+  );
+  if (!response.ok) {
+    throw new Error("The live automation overview could not be loaded.");
+  }
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null || !("result" in body)) {
+    throw new Error("The live automation overview response is invalid.");
+  }
+  const result = automationsOverviewResponseSchema.safeParse(body.result);
+  const automation = result.success
+    ? result.data.automations[0]?.automation
+    : undefined;
+  if (automation === undefined) {
+    throw new Error("The live server has no automation to open.");
+  }
+  return {
+    projectId: automation.projectId,
+    automationId: automation.id,
+  };
+}
 
-const AUTOMATION: AutomationResponse = {
-  id: "aut_release_readiness",
-  projectId: "proj_personal",
-  name: "Release readiness",
-  enabled: true,
-  trigger: {
-    triggerType: "schedule",
-    cron: "0 * * * *",
-    timezone: "America/Los_Angeles",
-  },
-  execution: {
-    mode: "agent",
-    prompt:
-      "Check the release branch, summarize blocking checks, and alert only when the status changes.",
-    providerId: "codex",
-    model: "gpt-5",
-    permissionMode: "workspace-write",
-    environment: { type: "project-default" },
-  },
-  origin: "human",
-  createdByThreadId: null,
-  nextRunAt: Date.UTC(2026, 6, 13, 20),
-  lastRunAt: Date.UTC(2026, 6, 13, 19),
-  runCount: 12,
-  lastRunStatus: "succeeded",
-  lastRunThreadId: "thr_release_readiness",
-  lastError: null,
-  createdAt: Date.UTC(2026, 6, 1),
-  updatedAt: Date.UTC(2026, 6, 13, 19),
-};
+async function resolveAutomationDetailPath(): Promise<string> {
+  return getAutomationDetailRoutePath(await resolveAutomationRoute());
+}
 
-const AUTOMATION_RUNS: readonly AutomationRunResponse[] = [
-  {
-    id: "run_release_readiness_12",
-    automationId: AUTOMATION.id,
-    runMode: "agent",
-    threadId: "thr_release_readiness",
-    status: "succeeded",
-    trigger: "schedule",
-    skipReason: null,
-    error: null,
-    output: null,
-    exitCode: null,
-    scheduledFor: Date.UTC(2026, 6, 13, 19),
-    startedAt: Date.UTC(2026, 6, 13, 19),
-    finishedAt: Date.UTC(2026, 6, 13, 19, 2),
-  },
-];
+async function resolveAutomationEditPath(): Promise<string> {
+  return getAutomationEditRoutePath(await resolveAutomationRoute());
+}
+
+export function SkillsInstalled() {
+  return <LiveToolsPage target={getSkillsRoutePath()} />;
+}
+
+export function SkillsRegistry() {
+  return <LiveToolsPage target={`${getSkillsRoutePath()}?view=browse`} />;
+}
 
 export function SkillDetail() {
+  return <LiveToolsPage target={resolveInstalledSkillDetailPath} />;
+}
+
+export function RegistrySkillDetail() {
+  return <LiveToolsPage target={resolveRegistrySkillDetailPath} />;
+}
+
+export function PluginsInstalled() {
+  return <LiveToolsPage target={getPluginsRoutePath()} />;
+}
+
+export function PluginsBrowse() {
+  return <LiveToolsPage target={`${getPluginsRoutePath()}?view=browse`} />;
+}
+
+export function PluginsMarketplaces() {
   return (
-    <main className="p-4 md:p-5">
-      <SkillDetailDialogView
-        skill={DOCUMENTS_SKILL}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={NOOP}
-        content={DOCUMENTS_SKILL_CONTENT}
-        isLoadingContent={false}
-        isRefreshingContent={false}
-        isContentError={false}
-        canEdit={false}
-        canDelete={false}
-        canOpenInEditor={false}
-        isSaving={false}
-        isDeleting={false}
-        onSave={RESOLVED}
-        onRetry={NOOP}
-        onDelete={NOOP}
-        onOpenInEditor={NOOP}
-      />
-    </main>
+    <LiveToolsPage target={`${getPluginsRoutePath()}?view=marketplaces`} />
   );
 }
 
-export function PluginInventory() {
-  return (
-    <main className="mx-auto max-w-5xl p-4 md:p-5">
-      <ResourceListPanel>
-        {PLUGINS.map((plugin) => (
-          <PluginListRow
-            key={plugin.id}
-            plugin={plugin}
-            pending={false}
-            editDisabled
-            onToggle={NOOP}
-            onEdit={NOOP}
-            onDelete={NOOP}
-          />
-        ))}
-      </ResourceListPanel>
-    </main>
-  );
+export function PluginDetail() {
+  return <LiveToolsPage target={resolvePluginDetailPath} />;
 }
 
-export function PluginDetailPage() {
-  return (
-    <main className="p-4 md:p-5">
-      <PluginDetail
-        isLoading={false}
-        plugin={PLUGINS[1]}
-        pending={false}
-        editDisabled
-        onToggle={NOOP}
-        onReload={NOOP}
-        onEdit={NOOP}
-        onDelete={NOOP}
-        onBack={NOOP}
-      />
-    </main>
-  );
+export function AutomationsOverview() {
+  return <LiveToolsPage target={AUTOMATIONS_ROUTE_PATH} />;
 }
 
-export function AutomationDetailPage() {
-  const [enabled, setEnabled] = useState(AUTOMATION.enabled);
-  const [draftName, setDraftName] = useState(AUTOMATION.name);
-  const [draftBody, setDraftBody] = useState(
-    automationEditBodyValue(AUTOMATION.execution),
-  );
-  return (
-    <main className="p-4 md:p-5">
-      <AutomationDetailView
-        automation={{ ...AUTOMATION, enabled }}
-        projectLabel="Personal"
-        runsState={{
-          runs: AUTOMATION_RUNS,
-          nextCursor: null,
-          loading: false,
-          loadingMore: false,
-          error: null,
-          loadMore: NOOP,
-        }}
-        editing={false}
-        draftName={draftName}
-        draftBody={draftBody}
-        actionPending={false}
-        saving={false}
-        onBack={NOOP}
-        onToggle={setEnabled}
-        onEdit={NOOP}
-        onCancelEdit={NOOP}
-        onSave={NOOP}
-        onRunNow={NOOP}
-        onDelete={NOOP}
-        onDraftNameChange={setDraftName}
-        onDraftBodyChange={setDraftBody}
-        onOpenThread={NOOP}
-      />
-    </main>
-  );
+export function AutomationsBrowse() {
+  return <LiveToolsPage target={`${AUTOMATIONS_ROUTE_PATH}?view=browse`} />;
+}
+
+export function AutomationDetail() {
+  return <LiveToolsPage target={resolveAutomationDetailPath} />;
+}
+
+export function AutomationEdit() {
+  return <LiveToolsPage target={resolveAutomationEditPath} />;
 }

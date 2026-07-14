@@ -41,20 +41,22 @@ import {
 } from "@bb/shared-ui/dialog";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
+import { Switch } from "@bb/shared-ui/switch";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
-  ResourceActionButton,
+  ResourceBrowseGrid,
+  ResourceCollectionPage,
   ResourceCreateButton,
   ResourceListPanel,
   ResourceListState,
   ResourceLocationMeta,
   ResourceMeta,
   ResourceMultiSelectMenu,
-  ResourceOverviewPage,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceTemplateBrowseCard,
+  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -100,6 +102,7 @@ type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 type AutomationProjectFilter = `project:${string}`;
 type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
+type AutomationCollectionMode = "installed" | "browse";
 
 // ---------------------------------------------------------------------------
 // rpc boundary — the backend validates every response with zod, so the wire
@@ -421,7 +424,7 @@ function AutomationRowLeading({
     return (
       <Icon
         name="CircleX"
-        className="size-4 shrink-0 text-destructive"
+        className="size-6 shrink-0 text-destructive"
         aria-label="Failed"
       />
     );
@@ -431,7 +434,7 @@ function AutomationRowLeading({
       <Icon
         name="Loading"
         className={cn(
-          "animate-spin text-muted-foreground/50",
+          "size-6 animate-spin text-muted-foreground/50",
           COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
         )}
         aria-label="Running"
@@ -441,7 +444,7 @@ function AutomationRowLeading({
   return (
     <Icon
       name={automationIconName(automation)}
-      className="size-4 shrink-0 text-muted-foreground"
+      className="size-6 shrink-0 text-muted-foreground"
       aria-hidden
     />
   );
@@ -533,17 +536,14 @@ function DeleteAutomationDialog({
 function OverviewRow({
   entry,
   onNavigate,
-  onEdit,
-  onAction,
-  onDelete,
+  onEnabledChange,
 }: {
   entry: OverviewEntry;
   onNavigate: (route: DetailRoute) => void;
-  onEdit: (route: DetailRoute) => void;
-  onAction: (method: "pause" | "resume" | "run", route: DetailRoute) => void;
-  onDelete: (entry: OverviewEntry) => void;
+  onEnabledChange: (enabled: boolean, route: DetailRoute) => Promise<void>;
 }) {
   const { automation } = entry;
+  const [togglePending, setTogglePending] = useState(false);
   const route = routeOf(automation);
   const completedOneShot = isCompletedOneShotAutomation({
     enabled: automation.enabled,
@@ -564,43 +564,37 @@ function OverviewRow({
       }
       muted={completedOneShot}
       onOpen={() => onNavigate(route)}
-      trailingVisual={<ResourceRowDetailChevron />}
-      actions={
-        <>
-          <ResourceActionButton
-            label="Run now"
-            icon="Play"
-            disabled={completedOneShot}
-            onClick={() => onAction("run", route)}
-          />
-          <ResourceActionButton
-            label="Edit"
-            icon="Edit"
-            onClick={() => onEdit(route)}
-          />
-          <ResourceActionButton
-            label="Delete"
-            icon="Trash2"
-            tone="destructive"
-            onClick={() => onDelete(entry)}
-          />
-        </>
+      persistentActions={
+        <Switch
+          checked={automation.enabled && !completedOneShot}
+          disabled={completedOneShot || togglePending}
+          onCheckedChange={(enabled) => {
+            setTogglePending(true);
+            void onEnabledChange(enabled, route).finally(() =>
+              setTogglePending(false),
+            );
+          }}
+          aria-label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
+        />
       }
+      trailingVisual={<ResourceRowDetailChevron />}
     />
   );
 }
 
 function OverviewView({
   onOpenDetail,
+  activeMode,
+  onModeChange,
 }: {
   onOpenDetail: (route: DetailRoute, options?: { editing?: boolean }) => void;
+  activeMode: AutomationCollectionMode;
+  onModeChange: (mode: AutomationCollectionMode) => void;
 }) {
   const navigate = useBbNavigate();
   const { entries, error, refetch } = useOverview();
   const mutations = useMutations();
   const [query, setQuery] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [projectFilters, setProjectFilters] = useState<
     AutomationProjectFilter[]
   >([]);
@@ -608,36 +602,17 @@ function OverviewView({
   const [sortDirection, setSortDirection] =
     useState<AutomationSortDirection>("asc");
 
-  const runAction = useCallback(
-    (method: "pause" | "resume" | "run", route: DetailRoute) => {
-      const label =
-        method === "run" ? "run" : method === "pause" ? "pause" : "resume";
-      mutations[method](route).then(
-        () => {
-          if (method === "run") toast.success("Run started");
-        },
-        (rpcError: unknown) =>
-          toast.error(`Failed to ${label} automation: ${errorText(rpcError)}`),
-      );
+  const changeEnabled = useCallback(
+    async (enabled: boolean, route: DetailRoute) => {
+      const method = enabled ? "resume" : "pause";
+      try {
+        await mutations[method](route);
+      } catch (rpcError: unknown) {
+        toast.error(`Failed to ${method} automation: ${errorText(rpcError)}`);
+      }
     },
     [mutations],
   );
-
-  const confirmDelete = useCallback(() => {
-    if (deleteTarget === null) return;
-    setDeleting(true);
-    mutations
-      .delete(routeOf(deleteTarget.automation))
-      .then(
-        () => {
-          toast.success("Automation deleted");
-          setDeleteTarget(null);
-        },
-        (rpcError: unknown) =>
-          toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
-      )
-      .finally(() => setDeleting(false));
-  }, [deleteTarget, mutations]);
 
   const createViaChat = useCallback(
     (prompt?: string) => {
@@ -756,9 +731,7 @@ function OverviewView({
             key={entry.automation.id}
             entry={entry}
             onNavigate={onOpenDetail}
-            onEdit={(route) => onOpenDetail(route, { editing: true })}
-            onAction={runAction}
-            onDelete={setDeleteTarget}
+            onEnabledChange={changeEnabled}
           />
         ))}
       </ResourceListPanel>
@@ -766,76 +739,75 @@ function OverviewView({
   }
 
   return (
-    <>
-      <ResourceOverviewPage
-        className="mx-auto w-full max-w-5xl"
-        description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
-        browse={{
-          icon: "TimeSchedule",
-          items: AUTOMATION_CREATE_TEMPLATES.map((template) => ({
-            id: template.label,
-            content: (
-              <ResourceTemplateBrowseCard
-                title={template.label}
-                description={template.description}
-                onUse={() => createViaChat(template.prompt)}
-              />
-            ),
-          })),
-        }}
-        installed={{
-          headingId: "installed-automations-heading",
-          label: "Installed automations",
-          searchValue: query,
-          searchPlaceholder: "Search automations",
-          onSearchChange: setQuery,
-          controls: (
-            <>
-              <ResourceMultiSelectMenu
-                label="Projects"
-                icon="Layers"
-                selectedValues={projectFilters}
-                options={projectOptions}
-                onChange={(values) =>
-                  setProjectFilters(values as AutomationProjectFilter[])
-                }
-              />
-              <ResourceSortMenu
-                value={sortMode}
-                direction={sortDirection}
-                options={[
-                  {
-                    id: "project",
-                    label: "Project",
-                    disabled: projectBucketCount <= 1,
-                  },
-                  { id: "alpha", label: "Automation name" },
-                ]}
-                onChange={handleSortChange}
-              />
-            </>
-          ),
-          action: (
-            <ResourceCreateButton
-              label="New automation"
-              templates={AUTOMATION_CREATE_TEMPLATES}
-              onCreate={createViaChat}
+    <ResourceCollectionPage
+      id="automations-collection"
+      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+      modes={[
+        {
+          id: "installed",
+          label: "Installed",
+          count: entries?.length ?? undefined,
+        },
+        { id: "browse", label: "Browse" },
+      ]}
+      activeMode={activeMode}
+      onModeChange={onModeChange}
+      actions={
+        <ResourceCreateButton
+          label="New automation"
+          templates={AUTOMATION_CREATE_TEMPLATES}
+          onCreate={createViaChat}
+        />
+      }
+    >
+      {activeMode === "browse" ? (
+        <ResourceBrowseGrid>
+          {AUTOMATION_CREATE_TEMPLATES.map((template) => (
+            <ResourceTemplateBrowseCard
+              key={template.label}
+              title={template.label}
+              description={template.description}
+              onUse={() => createViaChat(template.prompt)}
             />
-          ),
-          body,
-        }}
-      />
-      <DeleteAutomationDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-        name={deleteTarget?.automation.name ?? ""}
-        pending={deleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-    </>
+          ))}
+        </ResourceBrowseGrid>
+      ) : (
+        <div className="space-y-3">
+          <ResourceToolbar
+            searchValue={query}
+            searchPlaceholder="Search automations"
+            onSearchChange={setQuery}
+            controls={
+              <>
+                <ResourceMultiSelectMenu
+                  label="Projects"
+                  icon="Layers"
+                  selectedValues={projectFilters}
+                  options={projectOptions}
+                  onChange={(values) =>
+                    setProjectFilters(values as AutomationProjectFilter[])
+                  }
+                />
+                <ResourceSortMenu
+                  value={sortMode}
+                  direction={sortDirection}
+                  options={[
+                    {
+                      id: "project",
+                      label: "Project",
+                      disabled: projectBucketCount <= 1,
+                    },
+                    { id: "alpha", label: "Automation name" },
+                  ]}
+                  onChange={handleSortChange}
+                />
+              </>
+            }
+          />
+          {body}
+        </div>
+      )}
+    </ResourceCollectionPage>
   );
 }
 
@@ -1035,6 +1007,8 @@ function DetailView({
 function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
+  const collectionMode: AutomationCollectionMode =
+    subPath === "browse" ? "browse" : "installed";
   const createViaChat = useCallback(
     (prompt?: string) => {
       navigate.toCompose({
@@ -1058,6 +1032,14 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const backToList = useCallback(() => {
     navigate.toPluginPanel(PANEL_PATH, { subPath: "" });
   }, [navigate]);
+  const changeCollectionMode = useCallback(
+    (mode: AutomationCollectionMode) => {
+      navigate.toPluginPanel(PANEL_PATH, {
+        subPath: mode === "browse" ? "browse" : "",
+      });
+    },
+    [navigate],
+  );
   if (parsedRoute !== null) {
     return (
       <DetailView
@@ -1067,7 +1049,13 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
       />
     );
   }
-  return <OverviewView onOpenDetail={openDetail} />;
+  return (
+    <OverviewView
+      onOpenDetail={openDetail}
+      activeMode={collectionMode}
+      onModeChange={changeCollectionMode}
+    />
+  );
 }
 
 export default definePluginApp((app) => {

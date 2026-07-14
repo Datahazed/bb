@@ -6,7 +6,7 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 /**
- * Shared pieces of the Settings → Plugins surfaces. Tinted styles derive
+ * Shared pieces of the Plugins collection and detail surfaces. Tinted styles derive
  * from the theme anchors per the repo palette rules. These mix a *chromatic*
  * token (--success/--warning-text/--destructive-text) against the near-zero
  * chroma --canvas/--ink anchors, so they mix `in oklab`, not `in oklch`:
@@ -157,7 +157,9 @@ export function DetailsDisclosure({
         />
       </button>
       {expanded ? (
-        <div className="border-t border-border-seam px-3 py-2.5">{children}</div>
+        <div className="border-t border-border-seam px-3 py-2.5">
+          {children}
+        </div>
       ) : null}
     </div>
   );

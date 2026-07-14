@@ -201,10 +201,6 @@ export function getSettingsRoutePath(section?: string): string {
     : `/settings/${encodeURIComponent(section)}`;
 }
 
-export function getSettingsPluginRoutePath(pluginId: string): string {
-  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
-}
-
 export function getSettingsProviderRoutePath(providerId: string): string {
   return `/settings/providers/${encodeURIComponent(providerId)}`;
 }

@@ -151,7 +151,11 @@ function AddPluginDialogContent({
         <FullTrustWarning />
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+        >
           Cancel
         </Button>
         <Button

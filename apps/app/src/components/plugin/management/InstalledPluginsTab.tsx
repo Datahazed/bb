@@ -10,7 +10,7 @@ import {
   setPluginEnabled,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { getSettingsPluginRoutePath } from "@/lib/route-paths";
+import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal } from "./plugin-update-signals";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import {
@@ -27,7 +27,11 @@ import {
  * failure. Newer-incompatible and pinned never badge. Hover reveals the
  * chevron; the row navigates to the plugin's detail page where depth lives.
  */
-export function InstalledPluginsTab({ plugins }: { plugins: PluginListItem[] }) {
+export function InstalledPluginsTab({
+  plugins,
+}: {
+  plugins: PluginListItem[];
+}) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
     updateTargetId === null
@@ -93,7 +97,8 @@ export function InstalledPluginRow({
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
 
-  const openDetail = () => navigate(getSettingsPluginRoutePath(plugin.id));
+  const openDetail = () =>
+    navigate(getPluginDetailRoutePath({ pluginId: plugin.id }));
   const onRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
@@ -106,7 +111,7 @@ export function InstalledPluginRow({
     <div
       role="link"
       tabIndex={0}
-      aria-label={`${plugin.displayName ?? plugin.id} plugin settings`}
+      aria-label={`${plugin.displayName ?? plugin.id} plugin details`}
       className="group flex cursor-pointer items-center gap-3 py-3 focus-visible:outline-none"
       data-testid={`plugin-row-${plugin.id}`}
       onClick={openDetail}
