@@ -83,6 +83,7 @@ interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   showTopReserve: boolean;
+  settingsRoutePath: string;
 }
 
 export function isThreadSearchKeyboardEventTarget(
@@ -102,6 +103,7 @@ export function AppSidebar({
   onResizeMouseDown,
   isResizing,
   showTopReserve,
+  settingsRoutePath,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const { threadId: activeThreadId } = useRouteState();
@@ -477,7 +479,7 @@ export function AppSidebar({
                 }}
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
               >
-                <Link to="/settings" onClick={closeOnMobile}>
+                <Link to={settingsRoutePath} onClick={closeOnMobile}>
                   <Icon name="Settings" />
                   <span className="sr-only">Settings</span>
                 </Link>

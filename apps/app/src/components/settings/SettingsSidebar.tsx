@@ -22,7 +22,6 @@ import {
 } from "@/lib/bb-desktop";
 import {
   SETTINGS_ROUTE_PATH,
-  getRootComposeRoutePath,
   getSettingsProviderRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
@@ -33,6 +32,7 @@ interface SettingsSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   showTopReserve: boolean;
+  appRoutePath: string;
 }
 
 interface SettingsSidebarRowProps {
@@ -98,16 +98,13 @@ export function SettingsSidebar({
   onResizeMouseDown,
   isResizing,
   showTopReserve,
+  appRoutePath,
 }: SettingsSidebarProps) {
   const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const {
-    activeProviderId,
-    activeSection,
-    providerEntries,
-    sections,
-  } = useSettingsNavState();
+  const { activeProviderId, activeSection, providerEntries, sections } =
+    useSettingsNavState();
 
   const sectionIcon = (name: IconName) => (
     <Icon name={name} className={COARSE_POINTER_ICON_SIZE_CLASS} />
@@ -142,7 +139,7 @@ export function SettingsSidebar({
             active={false}
             label="Back to app"
             onNavigate={closeOnMobile}
-            to={getRootComposeRoutePath()}
+            to={appRoutePath}
           >
             {sectionIcon("ChevronLeft")}
           </SettingsSidebarRow>
