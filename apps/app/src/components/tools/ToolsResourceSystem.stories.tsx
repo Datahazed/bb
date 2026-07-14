@@ -2,20 +2,29 @@ import { useEffect, useState } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { automationsOverviewResponseSchema } from "bb-plugin-automations/rpc-types";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { usePluginFrontendBoot } from "@/hooks/usePluginFrontendBoot";
 import { fetchPluginList } from "@/hooks/queries/plugin-settings-queries";
 import * as api from "@/lib/api";
 import {
   AUTOMATIONS_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getPluginDetailRoutePath,
@@ -41,12 +50,14 @@ function storyPath(location: ReturnType<typeof useLocation>): string {
  * Route-level Ladle harness for the production ToolsView. It intentionally
  * owns no resource fixtures: lists, detail identifiers, file contents,
  * marketplace results, settings, and automation history all come from this
- * checkout's running dev server through Ladle's Vite proxy.
+ * checkout's running dev server through Ladle's Vite proxy. The target seeds
+ * only the initial route so production links and controls can navigate freely.
  */
 function LiveToolsPage({ target }: { target: LivePath }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [resolvedLivePath, setResolvedLivePath] = useState<string | null>(null);
+  const [openedLivePath, setOpenedLivePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolvedPath = typeof target === "string" ? target : resolvedLivePath;
 
@@ -55,7 +66,12 @@ function LiveToolsPage({ target }: { target: LivePath }) {
   usePluginFrontendBoot();
 
   useEffect(() => {
-    if (typeof target === "string") return;
+    setError(null);
+    if (typeof target === "string") {
+      setResolvedLivePath(null);
+      return;
+    }
+    setResolvedLivePath(null);
     let cancelled = false;
     void target().then(
       (path) => {
@@ -72,10 +88,13 @@ function LiveToolsPage({ target }: { target: LivePath }) {
   }, [target]);
 
   useEffect(() => {
-    if (resolvedPath !== null && storyPath(location) !== resolvedPath) {
+    if (resolvedPath === null || openedLivePath === resolvedPath) return;
+    if (storyPath(location) !== resolvedPath) {
       navigate(resolvedPath, { replace: true });
+      return;
     }
-  }, [location, navigate, resolvedPath]);
+    setOpenedLivePath(resolvedPath);
+  }, [location, navigate, openedLivePath, resolvedPath]);
 
   if (error !== null) {
     return (
@@ -84,7 +103,7 @@ function LiveToolsPage({ target }: { target: LivePath }) {
       </div>
     );
   }
-  if (resolvedPath === null || storyPath(location) !== resolvedPath) {
+  if (resolvedPath === null || openedLivePath !== resolvedPath) {
     return (
       <div className="mx-auto w-full max-w-3xl p-5">
         <ResourceListState state="loading" message="Opening live page" />
@@ -95,6 +114,10 @@ function LiveToolsPage({ target }: { target: LivePath }) {
   return (
     <div className="flex h-screen min-w-0 flex-col p-4 md:p-5">
       <Routes>
+        <Route
+          path={TOOLS_ROUTE_PATH}
+          element={<Navigate to={TOOLS_SKILLS_ROUTE_PATH} replace />}
+        />
         <Route path={TOOLS_SKILLS_ROUTE_PATH} element={<ToolsView />} />
         <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
         <Route
@@ -106,8 +129,18 @@ function LiveToolsPage({ target }: { target: LivePath }) {
           element={<ToolsView />}
         />
         <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+        <Route
+          path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
+          element={<Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />}
+        />
         <Route path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH} element={<ToolsView />} />
         <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+        <Route
+          path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
+          element={
+            <Navigate to={`${AUTOMATIONS_ROUTE_PATH}?view=browse`} replace />
+          }
+        />
         <Route
           path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
           element={<ToolsView />}

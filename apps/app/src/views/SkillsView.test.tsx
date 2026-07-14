@@ -364,6 +364,7 @@ describe("SkillDetailDialogView", () => {
       scope: "bb-builtin",
       manageable: false,
     });
+    const onBack = vi.fn();
     renderDom(
       <SkillDetailDialogView
         skill={skill}
@@ -380,12 +381,15 @@ describe("SkillDetailDialogView", () => {
         isSaving={false}
         isDeleting={false}
         onSave={async () => true}
+        onBack={onBack}
         onRetry={() => {}}
         onDelete={() => {}}
         onOpenInEditor={() => {}}
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Back to skills" }));
+    expect(onBack).toHaveBeenCalledOnce();
     expect(screen.queryByText("Built-in", { exact: true })).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "bb-cli actions" }),
@@ -432,6 +436,7 @@ describe("SkillDetailDialogView", () => {
         isSaving={false}
         isDeleting={false}
         onSave={async () => true}
+        onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
         onOpenInEditor={() => {}}
@@ -482,6 +487,7 @@ describe("SkillDetailDialogView", () => {
         isSaving={false}
         isDeleting={false}
         onSave={async () => true}
+        onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
         onOpenInEditor={() => {}}
@@ -526,6 +532,7 @@ describe("SkillDetailDialogView", () => {
         isDeleting={false}
         onInitialEditStarted={onInitialEditStarted}
         onSave={async () => true}
+        onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
         onOpenInEditor={() => {}}
@@ -570,6 +577,7 @@ describe("SkillDetailDialogView", () => {
       isDeleting: false,
       onInitialEditStarted,
       onSave: async () => true,
+      onBack: () => {},
       onRetry: () => {},
       onDelete: () => {},
       onOpenInEditor: () => {},

@@ -26,6 +26,7 @@ import {
   ResourceBrowseGrid,
   ResourceCardStat,
   ResourceCollectionPage,
+  ResourceDetailBackButton,
   ResourceListPanel,
   ResourceListState,
   ResourceMultiSelectMenu,
@@ -926,6 +927,7 @@ function RegistrySkillDetailView({
   onInstall,
   onUninstall,
   onEditInstalledSkill,
+  onBack,
 }: {
   skill: RegistrySkill;
   detail: RegistrySkillDetail | null;
@@ -940,6 +942,7 @@ function RegistrySkillDetailView({
   onInstall: (skill: RegistrySkill) => void;
   onUninstall: (skill: RegistrySkill) => void;
   onEditInstalledSkill: (skill: SkillSummary) => void;
+  onBack: () => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
@@ -953,6 +956,12 @@ function RegistrySkillDetailView({
     : `skills.sh/${skill.source}/${skill.skillId}`;
   return (
     <SkillDetailView
+      back={
+        <ResourceDetailBackButton
+          label="Back to browse skills"
+          onClick={onBack}
+        />
+      }
       leading={installed ? <BbLogo /> : <RegistrySkillLeading skill={skill} />}
       title={skill.name}
       path={path}
@@ -1051,6 +1060,7 @@ export interface SkillDetailDialogViewProps {
    * leaves edit mode; `false` keeps the draft for retry.
    */
   onSave: (content: string) => Promise<boolean>;
+  onBack: () => void;
   onRetry: () => void;
   onDelete: () => void;
   onOpenInEditor: () => void;
@@ -1080,6 +1090,7 @@ export function SkillDetailDialogView({
   isDeleting,
   onInitialEditStarted = () => {},
   onSave,
+  onBack,
   onRetry,
   onDelete,
   onOpenInEditor,
@@ -1212,6 +1223,9 @@ export function SkillDetailDialogView({
 
   return (
     <SkillDetailView
+      back={
+        <ResourceDetailBackButton label="Back to skills" onClick={onBack} />
+      }
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       path={skill.filePath}
@@ -1329,6 +1343,7 @@ function SkillDetailPage({
       isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
       onInitialEditStarted={onInitialEditStarted}
+      onBack={onClose}
       onRetry={() => {
         void filesQuery.refetch();
         void contentQuery.refetch();
@@ -1562,6 +1577,9 @@ export function SkillsLibrary() {
   const closeSkillDetail = useCallback(() => {
     navigate(getSkillsRoutePath());
   }, [navigate]);
+  const closeRegistrySkillDetail = useCallback(() => {
+    navigate(`${getSkillsRoutePath()}?view=browse`);
+  }, [navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -1630,6 +1648,7 @@ export function SkillsLibrary() {
           onInstall={installRegistry}
           onUninstall={uninstallRegistry}
           onEditInstalledSkill={(skill) => openSkill(skill, { editing: true })}
+          onBack={closeRegistrySkillDetail}
         />
       ) : (
         <SkillsOverview
