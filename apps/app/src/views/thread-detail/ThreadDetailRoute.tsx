@@ -1,8 +1,10 @@
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import type { ReactNode } from "react";
 import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
+import { SplitThreadArea } from "./SplitThreadArea";
 import { ThreadDetailView } from "./ThreadDetailView";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 
@@ -27,25 +29,46 @@ type ThreadDetailRouteProps =
   | ThreadDetailRoutePageProps
   | ThreadDetailRoutePopoutProps;
 
-export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
-  const view =
-    props.surface === "popout" ? (
-      <ThreadDetailView
-        surface="popout"
-        onPopoutHide={props.onPopoutHide}
-        onPopoutNewQuickThread={props.onPopoutNewQuickThread}
-        onPopoutOpenInMain={props.onPopoutOpenInMain}
-      />
-    ) : (
-      <ThreadDetailView surface="page" />
-    );
+interface ThreadDetailWorkerPoolProviderProps {
+  children: ReactNode;
+}
 
+export function ThreadDetailWorkerPoolProvider({
+  children,
+}: ThreadDetailWorkerPoolProviderProps) {
   return (
     <WorkerPoolContextProvider
       poolOptions={WORKER_POOL_OPTIONS}
       highlighterOptions={HIGHLIGHTER_OPTIONS}
     >
-      {view}
+      {children}
     </WorkerPoolContextProvider>
+  );
+}
+
+export function SingleThreadDetailRoute(props: ThreadDetailRouteProps) {
+  return props.surface === "popout" ? (
+    <ThreadDetailView
+      surface="popout"
+      onPopoutHide={props.onPopoutHide}
+      onPopoutNewQuickThread={props.onPopoutNewQuickThread}
+      onPopoutOpenInMain={props.onPopoutOpenInMain}
+    />
+  ) : (
+    <ThreadDetailView surface="page" />
+  );
+}
+
+export default function ThreadDetailRoute(props: ThreadDetailRouteProps) {
+  // Popout keeps its dedicated single-thread route. The page surface renders
+  // the split area, with one shared diff worker pool above all panes.
+  return (
+    <ThreadDetailWorkerPoolProvider>
+      {props.surface === "popout" ? (
+        <SingleThreadDetailRoute {...props} />
+      ) : (
+        <SplitThreadArea />
+      )}
+    </ThreadDetailWorkerPoolProvider>
   );
 }

@@ -122,6 +122,9 @@ before bb receives them.
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
+| Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
+| Layout    | Focus chat pane 1–4           | `Mod+1` … `Mod+4`                 | While split              |
+| Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
 | Window    | Settings                      | `Mod+,`                           | All clients              |
 | Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |
@@ -351,6 +354,15 @@ back to npm only when the package route returns 404. Installed services enable
 `--auto-update`; remove that flag from the launchd plist or systemd user unit
 and reload the service to opt out. Updates only move to a newer server protocol,
 are limited to one attempt per 15 minutes, and never downgrade a daemon.
+
+## Thread splits Experiment
+
+The **Thread splits** experiment (Settings → Experiments, off by default)
+enables the app's multi-pane thread view and its sidebar, menu, and keyboard
+split controls. It also enables explicit split placement through
+`bb thread open <thread-id> --split right|down|left|top|replace` and the matching
+SDK request. Ordinary thread and file opens without an explicit split placement
+continue to work while the experiment is off.
 
 ## bb connect
 
