@@ -174,7 +174,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/skills-cache-effects.ts": [
     "projectSkillsQueryKey",
-    "skillContentQueryKey",
+    "skillContentQueryKeyPrefix",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allEnvironmentDiffFilesQueryKeyPrefix",
