@@ -24,13 +24,62 @@ import {
 
 const SKILL_FILE_NAME = "SKILL.md";
 
+interface SkillRootResolution extends CommandRootResolution {
+  /** Built-in bb skills bundled with the server. */
+  builtinSkillsRootPath: string;
+  /** bb data directory containing user-installed bb skills. */
+  dataDir: string;
+}
+
+function createBbSkillScanRoot(
+  rootPath: string,
+  rootKind: Extract<SkillRootKind, `bb-${string}`>,
+): SkillScanRoot {
+  return {
+    rootPath,
+    shape: "skill",
+    namePrefix: "",
+    source: "skill",
+    origin: rootKind === "bb-project" ? "project" : "user",
+    rootKind,
+  };
+}
+
+/**
+ * Resolve the bb-managed roots owned by the Skills management surface. These
+ * deliberately do not live in the provider command resolver: autocomplete now
+ * receives the canonical bb catalog from the server instead of scanning it in
+ * the daemon.
+ */
+function resolveBbSkillScanRoots(
+  resolution: SkillRootResolution,
+): SkillScanRoot[] {
+  const roots: SkillScanRoot[] = [];
+  if (resolution.cwd !== null) {
+    roots.push(
+      createBbSkillScanRoot(
+        path.join(resolution.cwd, ".bb", "skills"),
+        "bb-project",
+      ),
+    );
+  }
+  roots.push(
+    createBbSkillScanRoot(
+      resolveDataDirSkillsRootPath(resolution.dataDir),
+      "bb-data-dir",
+    ),
+    createBbSkillScanRoot(resolution.builtinSkillsRootPath, "bb-builtin"),
+  );
+  return roots;
+}
+
 /**
  * Classify a scan root by its originating identity so the server can map it to a
  * product scope. Plugin roots are tagged structurally (they always carry a
- * `namePrefix`); the bb/provider base roots are matched by exact path against
- * the same resolution that produced them, keeping a single source of truth for
- * the paths in `resolveProviderCommandScanRoots`. Returns `null` for roots that
- * are not surfaced as skills (legacy command roots, or an unrecognized root).
+ * `namePrefix`); provider base roots are matched by exact path against the same
+ * resolution that produced them. bb roots arrive already tagged from
+ * `resolveBbSkillScanRoots`. Returns `null` for legacy command roots or an
+ * unrecognized root.
  */
 function classifySkillRootKind(
   root: CommandScanRoot,
@@ -47,18 +96,6 @@ function classifySkillRootKind(
     return null;
   }
   const { rootPath } = root;
-  if (
-    resolution.cwd !== null &&
-    rootPath === path.join(resolution.cwd, ".bb", "skills")
-  ) {
-    return "bb-project";
-  }
-  if (rootPath === resolveDataDirSkillsRootPath(resolution.dataDir)) {
-    return "bb-data-dir";
-  }
-  if (rootPath === resolution.builtinSkillsRootPath) {
-    return "bb-builtin";
-  }
   if (
     resolution.cwd !== null &&
     (rootPath === path.join(resolution.cwd, ".claude", "skills") ||
@@ -82,11 +119,11 @@ function classifySkillRootKind(
  * paths), then drops non-skill roots and roots that do not classify.
  */
 export async function resolveSkillScanRoots(
-  resolution: CommandRootResolution,
+  resolution: SkillRootResolution,
 ): Promise<SkillScanRoot[]> {
-  const roots = await resolveProviderCommandScanRoots(resolution);
-  const skillRoots: SkillScanRoot[] = [];
-  for (const root of roots) {
+  const skillRoots = resolveBbSkillScanRoots(resolution);
+  const providerRoots = await resolveProviderCommandScanRoots(resolution);
+  for (const root of providerRoots) {
     const rootKind = classifySkillRootKind(root, resolution);
     if (rootKind === null) {
       continue;
@@ -113,10 +150,6 @@ export async function listHostSkills(
   const roots = await resolveSkillScanRoots({
     cwd: command.cwd,
     builtinSkillsRootPath: command.builtinSkillsRootPath,
-    // Skill listing does not surface managed-dev-app inherited roots; they are
-    // not classified as skills (see classifySkillRootKind) and `host.list_skills`
-    // carries no such field.
-    additionalSkillsRootPaths: [],
     dataDir: options.dataDir,
     homeDir,
     codexHome: resolveCodexHome(homeDir),
