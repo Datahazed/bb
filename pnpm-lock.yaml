@@ -68,6 +68,9 @@ importers:
       '@bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@bb/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract

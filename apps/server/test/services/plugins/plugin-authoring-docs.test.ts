@@ -297,13 +297,15 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("openSettings");
   });
 
-  it("documents the plugin logo convention (both theme variants)", () => {
-    expect(skill).toContain("logo.svg");
-    expect(skill).toContain("bb.logo");
-    expect(skill).toContain("logo-dark.svg");
-    expect(skill).toContain("bb.logoDark");
+  it("documents the explicit plugin branding contract", () => {
+    expect(skill).toContain("bb.name");
+    expect(skill).toContain("bb.description");
+    expect(skill).toContain("bb.branding");
+    expect(skill).toContain("logo.light");
+    expect(skill).toContain("logo.dark");
+    expect(skill).toContain("no root logo auto-detection");
     expect(skill).toContain("currentColor");
-    expect(skill).toContain("named `icon` hint");
+    expect(skill).toContain("branding.icon");
   });
 
   it("documents every frontend slot and its prop fields", () => {

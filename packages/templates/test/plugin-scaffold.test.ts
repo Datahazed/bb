@@ -54,6 +54,12 @@ describe("scaffoldPlugin bundled types", () => {
       bb: ">=0.9",
       bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
     });
+    expect(pkg.bb).toMatchObject({
+      name: "Headless",
+      description: "A BB plugin.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    });
     expect(pkg.devDependencies["@bb/plugin-sdk"]).toBeUndefined();
     expect(pkg.devDependencies["@types/react"]).toBeDefined();
     expect(pkg.devDependencies.zod).toBeDefined();

@@ -86,7 +86,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Wire fixture",
+        description: "Plugin wire fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -217,6 +222,16 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(issued.status).toBe(200);
     const { token } = (await issued.json()) as { token: string };
     expect(token).toMatch(/^[0-9a-f]{64}$/);
+
+    const malformed = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/token`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      },
+    );
+    expect(malformed.status).toBe(400);
 
     const viaHeader = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/guarded`,

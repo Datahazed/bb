@@ -55,7 +55,12 @@ async function commitPlugin(
       name: "bb-plugin-updater",
       version,
       ...(engines ? { engines } : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Updater fixture",
+        description: "Plugin update fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(
@@ -255,6 +260,17 @@ describe("plugin update service and routes", () => {
       applied: true,
       to: { version: nextCommit },
       outcome: "updated",
+    });
+
+    const sourceResponse = await app.request("/plugins/updater/source");
+    expect(sourceResponse.status).toBe(200);
+    expect(await sourceResponse.json()).toMatchObject({
+      requested: expect.any(String),
+      resolved: expect.any(String),
+      installedAt: expect.any(Number),
+      history: expect.arrayContaining([
+        { version: nextCommit, activatedAt: expect.any(Number) },
+      ]),
     });
   });
 

@@ -46,7 +46,12 @@ async function setUpPluginHarness(serverSource: string): Promise<{
     JSON.stringify({
       name: "bb-plugin-observer",
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Observer fixture",
+        description: "Thread events plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), serverSource);

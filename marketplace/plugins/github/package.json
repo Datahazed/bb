@@ -29,8 +29,15 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
-    "displayName": "GitHub",
-    "icon": "Github",
+    "name": "GitHub",
+    "description": "Browse GitHub issues and pull requests in BB, then send them to agents.",
+    "branding": {
+      "icon": "Github",
+      "logo": {
+        "light": "./logo.svg",
+        "dark": "./logo-dark.svg"
+      }
+    },
     "server": "./server.ts",
     "app": "./app.tsx"
   },

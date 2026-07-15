@@ -27,7 +27,7 @@ const HIGHLIGHTER_OPTIONS = {};
  * frontends load after first paint, so a deep link can land here briefly
  * before registrations arrive.
  *
- * This view renders ONLY the panel body. The shared title bar (plugin logo +
+ * This view renders ONLY the panel body. The shared title bar (plugin icon +
  * panel title + the registration's `headerContent`) lives in the shared app
  * header — AppLayout's AppHeader + PluginPanelHeader. The component owns the
  * entire body below it with zero host padding; only the crash boundary remains.

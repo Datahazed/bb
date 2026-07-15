@@ -224,6 +224,11 @@ Plugin administration is exposed through:
 ```text
 bb.plugins.list()
 bb.plugins.install({ source })
+bb.plugins.installFromMarketplace({ marketplaceId, entryId, version })
+bb.plugins.getSource({ pluginId })
+bb.plugins.checkUpdates({ pluginId })
+bb.plugins.listUpdateResults()
+bb.plugins.applyUpdate({ pluginId })
 bb.plugins.reload({ pluginId })
 bb.plugins.enable({ pluginId })
 bb.plugins.disable({ pluginId })
@@ -231,7 +236,19 @@ bb.plugins.remove({ pluginId })
 bb.plugins.getSettings({ pluginId })
 bb.plugins.updateSettings({ pluginId, values })
 bb.plugins.token({ pluginId, rotate })
+bb.plugins.marketplaces.list()
+bb.plugins.marketplaces.add({ source, name })
+bb.plugins.marketplaces.search({ query })
+bb.plugins.marketplaces.refresh({ marketplaceId })
+bb.plugins.marketplaces.remove({ marketplaceId })
 ```
+
+Direct and marketplace installs are separate methods so source strings and
+catalog coordinates cannot be confused. Omitting `version` from
+`installFromMarketplace` lets the catalog source select its normal compatible
+candidate. These administration methods are available to backend plugins via
+the complete `bb.sdk`; they are intentionally absent from the restricted
+`@bb/plugin-sdk/app` frontend contract.
 
 Plugin-specific UI features can be called through validated RPC. Callers must
 provide a Zod output schema so plugin data is narrowed at the SDK boundary:

@@ -1140,11 +1140,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin?.manifest.description ??
             identity?.manifest.description ??
             null,
-          displayName:
-            exposedPlugin?.manifest.displayName ??
-            identity?.manifest.displayName ??
+          name: exposedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          icon:
+            exposedPlugin?.manifest.branding.icon ??
+            identity?.manifest.branding.icon ??
             null,
-          icon: exposedPlugin?.manifest.icon ?? identity?.manifest.icon ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.

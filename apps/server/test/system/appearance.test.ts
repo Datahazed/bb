@@ -184,6 +184,9 @@ describe("appearance settings", () => {
           name: "bb-plugin-palette",
           version: "0.1.0",
           bb: {
+            name: "Palette fixture",
+            description: "Plugin palette fixture.",
+            branding: { icon: "Zap" },
             server: "./server.ts",
             themes: [
               {

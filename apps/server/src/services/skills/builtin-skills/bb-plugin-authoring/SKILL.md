@@ -31,7 +31,14 @@ The manifest is `package.json`:
   "version": "0.1.0",
   "type": "module",
   "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.2.0" },
-  "bb": { "server": "./server.ts", "app": "./app.tsx", "skills": ["skills"] }
+  "bb": {
+    "name": "Hello",
+    "description": "A friendly example plugin.",
+    "branding": { "icon": "Zap" },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": ["skills"]
+  }
 }
 ```
 
@@ -51,24 +58,25 @@ The manifest is `package.json`:
   `bb theme list`. Each entry is
   `{ id, name, description?, css: "./themes/name.css" }`; bb namespaces its
   selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins contribute.
-- Logo (optional, convention over configuration) — a `logo.svg`, `logo.png`,
-  or `logo.webp` at the plugin root (that precedence) is auto-detected and
-  shown wherever bb renders your plugin's contributions: the sidebar entry,
-  the panel title bar, composer command/mention menus, thread action
-  buttons, and Settings → Plugins. `bb.logo: "./assets/mark.svg"` relocates
-  it (svg/png/webp only; anything else fails the manifest). An optional
-  dark-theme variant — `logo-dark.svg` / `logo-dark.png` / `logo-dark.webp`
-  at the root (same precedence), or `bb.logoDark` (same rules) — is
-  preferred whenever the app is in dark mode, falling back to the light
-  logo. Without a logo, manifest-level `bb.icon` is the plugin's canonical app
-  icon across every host-rendered plugin surface; a contribution's own `icon`
-  hint is the fallback when the manifest omits one. Unknown hints use a generic
-  icon. Picked up on `bb plugin reload`. Inline icons
-  must use `currentColor` for their stroke/fill and take their color from semantic
-  text-token classes; never hardcode gray or palette values. An SVG loaded
+- `bb.name` and `bb.description` (required) — non-empty human-facing plugin
+  identity. The top-level package `name` remains the package identity and
+  source of the plugin id.
+- `bb.branding` (required) — declare at least `icon` or `logo.light`. `icon`
+  is the compact host icon-name identity. `logo.light` is the rich/full-size
+  identity artwork; optional `logo.dark` is preferred in dark mode. Logo paths
+  are explicit plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty
+  strings, missing/escaping files, unsupported extensions, and a dark logo
+  without a light logo fail the manifest. There is no root logo auto-detection.
+  BB uses the logo where space permits, such as roomy Settings rows and cards.
+  Compact sidebar, menu, action, mention, and panel-title surfaces use the
+  manifest icon, then a contribution's distinct local `icon` hint, then the
+  generic Zap icon. Branding changes are picked up on `bb plugin reload`.
+  Inline icons must use `currentColor` for their stroke/fill and take their
+  color from semantic text-token classes; never hardcode gray or palette
+  values. An SVG loaded
   through `<img>` cannot inherit `currentColor`, so omit the logo and use a
-  named `icon` hint when a monochrome glyph should match the surrounding bb
-  chrome. Reserve logo assets for intentionally branded artwork (and provide
+  named `branding.icon` hint when a monochrome glyph should match the surrounding
+  bb chrome. Reserve logo assets for intentionally branded artwork (and provide
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
@@ -743,8 +751,8 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration: `{ id, title, icon, path, component, headerContent? }`.
-  The host renders your plugin logo + `title` into the SHARED app header
-  (the same title bar as Settings pages) with your optional
+  The host renders your compact plugin icon + `title` into the SHARED app
+  header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component. The component owns the full-bleed
   body below with zero host padding; add your own padding and scrolling when
@@ -755,7 +763,7 @@ Slot props contracts (versioned, additive-only):
   `mx-auto w-full max-w-3xl space-y-4` div.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
-  `title` with your plugin logo. Registration:
+  `title` with your compact plugin icon. Registration:
   `{ id, title, icon?, component, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
@@ -765,8 +773,8 @@ Slot props contracts (versioned, additive-only):
   `@bb/plugin-sdk` and `@bb/plugin-sdk/app`; they persist with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
-  shows your plugin logo + the tab title. Errors thrown from `run` (sync
-  or async) are contained and logged, never breaking the launcher.
+  shows your compact plugin icon + the tab title. Errors thrown from `run`
+  (sync or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the

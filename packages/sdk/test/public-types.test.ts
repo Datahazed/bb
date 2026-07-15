@@ -8,6 +8,9 @@ import type {
   GuideRenderResult as RootGuideRender,
   HostGetResult as RootHostGet,
   PluginListResult as RootPluginList,
+  PluginGetSourceResult as RootPluginGetSource,
+  PluginApplyUpdateResult as RootPluginApplyUpdate,
+  PluginMarketplaceListResult as RootPluginMarketplaceList,
   ProjectGetResult as RootProjectGet,
   ProviderListResult as RootProviderList,
   StatusResult as RootStatus,
@@ -24,6 +27,9 @@ import type {
   GuideRenderResult as BrowserGuideRender,
   HostGetResult as BrowserHostGet,
   PluginListResult as BrowserPluginList,
+  PluginGetSourceResult as BrowserPluginGetSource,
+  PluginApplyUpdateResult as BrowserPluginApplyUpdate,
+  PluginMarketplaceListResult as BrowserPluginMarketplaceList,
   ProjectGetResult as BrowserProjectGet,
   ProviderListResult as BrowserProviderList,
   StatusResult as BrowserStatus,
@@ -40,6 +46,9 @@ import type {
   GuideRenderResult as CoreGuideRender,
   HostGetResult as CoreHostGet,
   PluginListResult as CorePluginList,
+  PluginGetSourceResult as CorePluginGetSource,
+  PluginApplyUpdateResult as CorePluginApplyUpdate,
+  PluginMarketplaceListResult as CorePluginMarketplaceList,
   ProjectGetResult as CoreProjectGet,
   ProviderListResult as CoreProviderList,
   StatusResult as CoreStatus,
@@ -56,6 +65,9 @@ import type {
   GuideRenderResult as NodeGuideRender,
   HostGetResult as NodeHostGet,
   PluginListResult as NodePluginList,
+  PluginGetSourceResult as NodePluginGetSource,
+  PluginApplyUpdateResult as NodePluginApplyUpdate,
+  PluginMarketplaceListResult as NodePluginMarketplaceList,
   ProjectGetResult as NodeProjectGet,
   ProviderListResult as NodeProviderList,
   StatusResult as NodeStatus,
@@ -71,6 +83,9 @@ interface RootSurface {
   guideRender: RootGuideRender;
   hostGet: RootHostGet;
   pluginList: RootPluginList;
+  pluginGetSource: RootPluginGetSource;
+  pluginApplyUpdate: RootPluginApplyUpdate;
+  pluginMarketplaceList: RootPluginMarketplaceList;
   projectGet: RootProjectGet;
   providerList: RootProviderList;
   realtimeConnection: RootRealtimeConnection;
@@ -87,6 +102,9 @@ interface BrowserSurface {
   guideRender: BrowserGuideRender;
   hostGet: BrowserHostGet;
   pluginList: BrowserPluginList;
+  pluginGetSource: BrowserPluginGetSource;
+  pluginApplyUpdate: BrowserPluginApplyUpdate;
+  pluginMarketplaceList: BrowserPluginMarketplaceList;
   projectGet: BrowserProjectGet;
   providerList: BrowserProviderList;
   realtimeConnection: BrowserRealtimeConnection;
@@ -103,6 +121,9 @@ interface CoreSurface {
   guideRender: CoreGuideRender;
   hostGet: CoreHostGet;
   pluginList: CorePluginList;
+  pluginGetSource: CorePluginGetSource;
+  pluginApplyUpdate: CorePluginApplyUpdate;
+  pluginMarketplaceList: CorePluginMarketplaceList;
   projectGet: CoreProjectGet;
   providerList: CoreProviderList;
   realtimeConnection: CoreRealtimeConnection;
@@ -119,6 +140,9 @@ interface NodeSurface {
   guideRender: NodeGuideRender;
   hostGet: NodeHostGet;
   pluginList: NodePluginList;
+  pluginGetSource: NodePluginGetSource;
+  pluginApplyUpdate: NodePluginApplyUpdate;
+  pluginMarketplaceList: NodePluginMarketplaceList;
   projectGet: NodeProjectGet;
   providerList: NodeProviderList;
   realtimeConnection: NodeRealtimeConnection;
@@ -190,16 +214,29 @@ type ExpectedHostsKey =
   | "update";
 
 type ExpectedPluginsKey =
+  | "applyUpdate"
   | "callRpc"
+  | "checkUpdates"
   | "disable"
   | "enable"
   | "getSettings"
+  | "getSource"
   | "install"
+  | "installFromMarketplace"
   | "list"
+  | "listUpdateResults"
+  | "marketplaces"
   | "reload"
   | "remove"
   | "token"
   | "updateSettings";
+
+type ExpectedPluginMarketplacesKey =
+  | "add"
+  | "list"
+  | "refresh"
+  | "remove"
+  | "search";
 
 type ExpectedProjectsKey =
   | "branches"
@@ -320,6 +357,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["plugins"]
     >().toEqualTypeOf<ExpectedPluginsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["plugins"]["marketplaces"]
+    >().toEqualTypeOf<ExpectedPluginMarketplacesKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();

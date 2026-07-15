@@ -739,7 +739,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const manifest = await readPluginManifest(row.rootDir);
       identities.set(row.id, {
         manifest,
-        logos: await loadPluginLogos(row.id, row.rootDir, manifest),
+        logos: await loadPluginLogos(row.id, manifest),
       });
     } catch {
       identities.delete(row.id);
@@ -811,7 +811,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
     // Logo refresh rides every load too, so `bb plugin reload` picks up a
     // changed/added/removed logo file (either variant).
-    const logoCandidate = await loadPluginLogos(row.id, row.rootDir, manifest);
+    const logoCandidate = await loadPluginLogos(row.id, manifest);
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,

@@ -5525,6 +5525,416 @@ type HostProviderCliStatusResponse = ProviderCliStatusResponse;
 type HostProviderCliInstallRequest = ProviderCliInstallRequest;
 type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 
+declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    outcome: z$1.ZodEnum<{
+        unavailable: "unavailable";
+        incompatible: "incompatible";
+        current: "current";
+        "update-available": "update-available";
+        pinned: "pinned";
+    }>;
+    devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
+    installed: z$1.ZodObject<{
+        version: z$1.ZodString;
+        display: z$1.ZodString;
+    }, z$1.core.$strip>;
+    candidate: z$1.ZodOptional<z$1.ZodObject<{
+        version: z$1.ZodString;
+        display: z$1.ZodString;
+    }, z$1.core.$strip>>;
+    blocked: z$1.ZodOptional<z$1.ZodObject<{
+        version: z$1.ZodString;
+        reasons: z$1.ZodArray<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+    detail: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type PluginUpdateCheckEntry = z$1.infer<typeof pluginUpdateCheckEntrySchema>;
+declare const pluginApplyUpdateResultSchema: z$1.ZodObject<{
+    applied: z$1.ZodBoolean;
+    from: z$1.ZodObject<{
+        version: z$1.ZodString;
+        display: z$1.ZodString;
+    }, z$1.core.$strip>;
+    to: z$1.ZodOptional<z$1.ZodObject<{
+        version: z$1.ZodString;
+        display: z$1.ZodString;
+    }, z$1.core.$strip>>;
+    outcome: z$1.ZodEnum<{
+        current: "current";
+        updated: "updated";
+        "rolled-back": "rolled-back";
+    }>;
+    detail: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type PluginApplyUpdateResult$1 = z$1.infer<typeof pluginApplyUpdateResultSchema>;
+declare const pluginSourceDetailSchema: z$1.ZodObject<{
+    requested: z$1.ZodString;
+    resolved: z$1.ZodString;
+    integrity: z$1.ZodOptional<z$1.ZodString>;
+    registry: z$1.ZodOptional<z$1.ZodString>;
+    engines: z$1.ZodObject<{
+        bb: z$1.ZodOptional<z$1.ZodString>;
+        bbPluginSdk: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strip>;
+    installedAt: z$1.ZodOptional<z$1.ZodNumber>;
+    history: z$1.ZodArray<z$1.ZodObject<{
+        version: z$1.ZodString;
+        activatedAt: z$1.ZodNumber;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type PluginSourceDetail = z$1.infer<typeof pluginSourceDetailSchema>;
+declare const installedPluginSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    source: z$1.ZodString;
+    rootDir: z$1.ZodString;
+    version: z$1.ZodString;
+    provenance: z$1.ZodEnum<{
+        builtin: "builtin";
+        direct: "direct";
+        marketplace: "marketplace";
+    }>;
+    isOrphanedBuiltin: z$1.ZodBoolean;
+    marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+    sourceDisplay: z$1.ZodString;
+    updateState: z$1.ZodObject<{
+        outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            unavailable: "unavailable";
+            incompatible: "incompatible";
+            current: "current";
+            "update-available": "update-available";
+            pinned: "pinned";
+        }>>;
+        availableVersion: z$1.ZodOptional<z$1.ZodString>;
+        blockedVersion: z$1.ZodOptional<z$1.ZodString>;
+        blockedReasons: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+        lastCheckAt: z$1.ZodOptional<z$1.ZodNumber>;
+        lastFailure: z$1.ZodOptional<z$1.ZodObject<{
+            version: z$1.ZodString;
+            at: z$1.ZodNumber;
+            detail: z$1.ZodString;
+        }, z$1.core.$strip>>;
+    }, z$1.core.$strip>;
+    enabled: z$1.ZodBoolean;
+    description: z$1.ZodNullable<z$1.ZodString>;
+    name: z$1.ZodNullable<z$1.ZodString>;
+    icon: z$1.ZodNullable<z$1.ZodString>;
+    status: z$1.ZodEnum<{
+        error: "error";
+        running: "running";
+        missing: "missing";
+        incompatible: "incompatible";
+        disabled: "disabled";
+        degraded: "degraded";
+        "needs-configuration": "needs-configuration";
+    }>;
+    statusDetail: z$1.ZodNullable<z$1.ZodString>;
+    handlerStats: z$1.ZodObject<{
+        count: z$1.ZodNumber;
+        totalMs: z$1.ZodNumber;
+        maxMs: z$1.ZodNumber;
+        errorCount: z$1.ZodNumber;
+    }, z$1.core.$strip>;
+    services: z$1.ZodArray<z$1.ZodObject<{
+        name: z$1.ZodString;
+        state: z$1.ZodEnum<{
+            running: "running";
+            stopped: "stopped";
+            backoff: "backoff";
+        }>;
+    }, z$1.core.$strip>>;
+    schedules: z$1.ZodArray<z$1.ZodObject<{
+        name: z$1.ZodString;
+        cron: z$1.ZodString;
+        nextRunAt: z$1.ZodNumber;
+        lastRunAt: z$1.ZodNullable<z$1.ZodNumber>;
+        lastStatus: z$1.ZodNullable<z$1.ZodEnum<{
+            error: "error";
+            running: "running";
+            ok: "ok";
+        }>>;
+        lastError: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+    cliCommand: z$1.ZodNullable<z$1.ZodObject<{
+        name: z$1.ZodString;
+        summary: z$1.ZodString;
+    }, z$1.core.$strip>>;
+    hasSettings: z$1.ZodBoolean;
+    app: z$1.ZodObject<{
+        hasApp: z$1.ZodBoolean;
+        bundle: z$1.ZodNullable<z$1.ZodObject<{
+            jsUrl: z$1.ZodString;
+            cssUrl: z$1.ZodNullable<z$1.ZodString>;
+            hash: z$1.ZodString;
+            sdkMajor: z$1.ZodNumber;
+            sdkVersion: z$1.ZodString;
+            compatible: z$1.ZodBoolean;
+        }, z$1.core.$strip>>;
+    }, z$1.core.$strip>;
+    logoUrl: z$1.ZodNullable<z$1.ZodString>;
+    logoDarkUrl: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>;
+type InstalledPlugin = z$1.infer<typeof installedPluginSchema>;
+declare const pluginListResponseSchema: z$1.ZodObject<{
+    enabled: z$1.ZodBoolean;
+    plugins: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        source: z$1.ZodString;
+        rootDir: z$1.ZodString;
+        version: z$1.ZodString;
+        provenance: z$1.ZodEnum<{
+            builtin: "builtin";
+            direct: "direct";
+            marketplace: "marketplace";
+        }>;
+        isOrphanedBuiltin: z$1.ZodBoolean;
+        marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+        sourceDisplay: z$1.ZodString;
+        updateState: z$1.ZodObject<{
+            outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
+                incompatible: "incompatible";
+                current: "current";
+                "update-available": "update-available";
+                pinned: "pinned";
+            }>>;
+            availableVersion: z$1.ZodOptional<z$1.ZodString>;
+            blockedVersion: z$1.ZodOptional<z$1.ZodString>;
+            blockedReasons: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            lastCheckAt: z$1.ZodOptional<z$1.ZodNumber>;
+            lastFailure: z$1.ZodOptional<z$1.ZodObject<{
+                version: z$1.ZodString;
+                at: z$1.ZodNumber;
+                detail: z$1.ZodString;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>;
+        enabled: z$1.ZodBoolean;
+        description: z$1.ZodNullable<z$1.ZodString>;
+        name: z$1.ZodNullable<z$1.ZodString>;
+        icon: z$1.ZodNullable<z$1.ZodString>;
+        status: z$1.ZodEnum<{
+            error: "error";
+            running: "running";
+            missing: "missing";
+            incompatible: "incompatible";
+            disabled: "disabled";
+            degraded: "degraded";
+            "needs-configuration": "needs-configuration";
+        }>;
+        statusDetail: z$1.ZodNullable<z$1.ZodString>;
+        handlerStats: z$1.ZodObject<{
+            count: z$1.ZodNumber;
+            totalMs: z$1.ZodNumber;
+            maxMs: z$1.ZodNumber;
+            errorCount: z$1.ZodNumber;
+        }, z$1.core.$strip>;
+        services: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            state: z$1.ZodEnum<{
+                running: "running";
+                stopped: "stopped";
+                backoff: "backoff";
+            }>;
+        }, z$1.core.$strip>>;
+        schedules: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            cron: z$1.ZodString;
+            nextRunAt: z$1.ZodNumber;
+            lastRunAt: z$1.ZodNullable<z$1.ZodNumber>;
+            lastStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                error: "error";
+                running: "running";
+                ok: "ok";
+            }>>;
+            lastError: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strip>>;
+        cliCommand: z$1.ZodNullable<z$1.ZodObject<{
+            name: z$1.ZodString;
+            summary: z$1.ZodString;
+        }, z$1.core.$strip>>;
+        hasSettings: z$1.ZodBoolean;
+        app: z$1.ZodObject<{
+            hasApp: z$1.ZodBoolean;
+            bundle: z$1.ZodNullable<z$1.ZodObject<{
+                jsUrl: z$1.ZodString;
+                cssUrl: z$1.ZodNullable<z$1.ZodString>;
+                hash: z$1.ZodString;
+                sdkMajor: z$1.ZodNumber;
+                sdkVersion: z$1.ZodString;
+                compatible: z$1.ZodBoolean;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>;
+        logoUrl: z$1.ZodNullable<z$1.ZodString>;
+        logoDarkUrl: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type PluginListResponse = z$1.infer<typeof pluginListResponseSchema>;
+declare const pluginReloadResponseSchema: z$1.ZodObject<{
+    ok: z$1.ZodLiteral<true>;
+    plugins: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        source: z$1.ZodString;
+        rootDir: z$1.ZodString;
+        version: z$1.ZodString;
+        provenance: z$1.ZodEnum<{
+            builtin: "builtin";
+            direct: "direct";
+            marketplace: "marketplace";
+        }>;
+        isOrphanedBuiltin: z$1.ZodBoolean;
+        marketplaceName: z$1.ZodOptional<z$1.ZodString>;
+        sourceDisplay: z$1.ZodString;
+        updateState: z$1.ZodObject<{
+            outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
+                incompatible: "incompatible";
+                current: "current";
+                "update-available": "update-available";
+                pinned: "pinned";
+            }>>;
+            availableVersion: z$1.ZodOptional<z$1.ZodString>;
+            blockedVersion: z$1.ZodOptional<z$1.ZodString>;
+            blockedReasons: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            lastCheckAt: z$1.ZodOptional<z$1.ZodNumber>;
+            lastFailure: z$1.ZodOptional<z$1.ZodObject<{
+                version: z$1.ZodString;
+                at: z$1.ZodNumber;
+                detail: z$1.ZodString;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>;
+        enabled: z$1.ZodBoolean;
+        description: z$1.ZodNullable<z$1.ZodString>;
+        name: z$1.ZodNullable<z$1.ZodString>;
+        icon: z$1.ZodNullable<z$1.ZodString>;
+        status: z$1.ZodEnum<{
+            error: "error";
+            running: "running";
+            missing: "missing";
+            incompatible: "incompatible";
+            disabled: "disabled";
+            degraded: "degraded";
+            "needs-configuration": "needs-configuration";
+        }>;
+        statusDetail: z$1.ZodNullable<z$1.ZodString>;
+        handlerStats: z$1.ZodObject<{
+            count: z$1.ZodNumber;
+            totalMs: z$1.ZodNumber;
+            maxMs: z$1.ZodNumber;
+            errorCount: z$1.ZodNumber;
+        }, z$1.core.$strip>;
+        services: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            state: z$1.ZodEnum<{
+                running: "running";
+                stopped: "stopped";
+                backoff: "backoff";
+            }>;
+        }, z$1.core.$strip>>;
+        schedules: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            cron: z$1.ZodString;
+            nextRunAt: z$1.ZodNumber;
+            lastRunAt: z$1.ZodNullable<z$1.ZodNumber>;
+            lastStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                error: "error";
+                running: "running";
+                ok: "ok";
+            }>>;
+            lastError: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strip>>;
+        cliCommand: z$1.ZodNullable<z$1.ZodObject<{
+            name: z$1.ZodString;
+            summary: z$1.ZodString;
+        }, z$1.core.$strip>>;
+        hasSettings: z$1.ZodBoolean;
+        app: z$1.ZodObject<{
+            hasApp: z$1.ZodBoolean;
+            bundle: z$1.ZodNullable<z$1.ZodObject<{
+                jsUrl: z$1.ZodString;
+                cssUrl: z$1.ZodNullable<z$1.ZodString>;
+                hash: z$1.ZodString;
+                sdkMajor: z$1.ZodNumber;
+                sdkVersion: z$1.ZodString;
+                compatible: z$1.ZodBoolean;
+            }, z$1.core.$strip>>;
+        }, z$1.core.$strip>;
+        logoUrl: z$1.ZodNullable<z$1.ZodString>;
+        logoDarkUrl: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type PluginReloadResponse = z$1.infer<typeof pluginReloadResponseSchema>;
+declare const pluginRemoveResponseSchema: z$1.ZodObject<{
+    ok: z$1.ZodLiteral<true>;
+}, z$1.core.$strip>;
+type PluginRemoveResponse = z$1.infer<typeof pluginRemoveResponseSchema>;
+declare const pluginSettingsResponseSchema: z$1.ZodObject<{
+    ok: z$1.ZodLiteral<true>;
+    schema: z$1.ZodRecord<z$1.ZodString, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        type: z$1.ZodLiteral<"string">;
+        secret: z$1.ZodOptional<z$1.ZodLiteral<true>>;
+        default: z$1.ZodOptional<z$1.ZodString>;
+        label: z$1.ZodString;
+        description: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"boolean">;
+        default: z$1.ZodOptional<z$1.ZodBoolean>;
+        label: z$1.ZodString;
+        description: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"select">;
+        options: z$1.ZodArray<z$1.ZodString>;
+        default: z$1.ZodOptional<z$1.ZodString>;
+        label: z$1.ZodString;
+        description: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"project">;
+        default: z$1.ZodOptional<z$1.ZodString>;
+        label: z$1.ZodString;
+        description: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>], "type">>;
+    values: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>;
+}, z$1.core.$strip>;
+type PluginSettingsResponse = z$1.infer<typeof pluginSettingsResponseSchema>;
+declare const pluginTokenResponseSchema: z$1.ZodObject<{
+    ok: z$1.ZodLiteral<true>;
+    token: z$1.ZodString;
+}, z$1.core.$strip>;
+type PluginTokenResponse = z$1.infer<typeof pluginTokenResponseSchema>;
+declare const marketplaceViewSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    name: z$1.ZodString;
+    displayName: z$1.ZodString;
+    source: z$1.ZodString;
+    resolvedCommit: z$1.ZodOptional<z$1.ZodString>;
+    pluginCount: z$1.ZodNumber;
+    lastRefreshAt: z$1.ZodOptional<z$1.ZodNumber>;
+    lastAttemptAt: z$1.ZodOptional<z$1.ZodNumber>;
+    lastError: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type MarketplaceView = z$1.infer<typeof marketplaceViewSchema>;
+declare const marketplaceAddRequestSchema: z$1.ZodObject<{
+    source: z$1.ZodString;
+    name: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strict>;
+type MarketplaceAddRequest = z$1.infer<typeof marketplaceAddRequestSchema>;
+declare const marketplaceSearchResultSchema: z$1.ZodObject<{
+    marketplaceId: z$1.ZodString;
+    entryId: z$1.ZodString;
+    displayName: z$1.ZodString;
+    description: z$1.ZodString;
+    icon: z$1.ZodNullable<z$1.ZodString>;
+    category: z$1.ZodOptional<z$1.ZodString>;
+    source: z$1.ZodString;
+    installed: z$1.ZodBoolean;
+    compatible: z$1.ZodBoolean;
+    incompatibleReason: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type MarketplaceSearchResult = z$1.infer<typeof marketplaceSearchResultSchema>;
+declare const marketplaceRemoveResponseSchema: z$1.ZodObject<{
+    convertedPluginIds: z$1.ZodArray<z$1.ZodString>;
+}, z$1.core.$strip>;
+type MarketplaceRemoveResponse = z$1.infer<typeof marketplaceRemoveResponseSchema>;
+
 declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
     providers: z$1.ZodArray<z$1.ZodObject<{
         id: z$1.ZodString;
@@ -8794,8 +9204,15 @@ interface ProvidersArea {
 interface PluginIdArgs {
     pluginId: string;
 }
+/** Install directly from a path:, git:, npm:, or builtin: source spec. */
 interface PluginInstallArgs {
     source: string;
+}
+/** Install a catalog entry, optionally selecting an exact published version. */
+interface PluginInstallFromMarketplaceArgs {
+    marketplaceId: string;
+    entryId: string;
+    version?: string;
 }
 interface PluginReloadArgs {
     pluginId?: string;
@@ -8806,27 +9223,60 @@ interface PluginSettingsUpdateArgs extends PluginIdArgs {
 interface PluginTokenArgs extends PluginIdArgs {
     rotate?: boolean;
 }
+interface PluginCheckUpdatesArgs {
+    pluginId?: string;
+}
 interface PluginRpcArgs<TOutput> extends PluginIdArgs {
     input?: JsonValue;
     method: string;
     outputSchema: z$1.ZodType<TOutput>;
 }
-type PluginDisableResult = JsonValue;
-type PluginEnableResult = JsonValue;
-type PluginGetSettingsResult = JsonValue;
-type PluginInstallResult = JsonValue;
-type PluginListResult = JsonValue;
-type PluginReloadResult = JsonValue;
-type PluginRemoveResult = JsonValue;
-type PluginTokenResult = JsonValue;
-type PluginUpdateSettingsResult = JsonValue;
+interface PluginMarketplaceRefreshArgs {
+    marketplaceId: string;
+}
+interface PluginMarketplaceRemoveArgs {
+    marketplaceId: string;
+}
+interface PluginMarketplaceSearchArgs {
+    query: string;
+}
+type PluginDisableResult = InstalledPlugin;
+type PluginEnableResult = InstalledPlugin;
+type PluginGetSettingsResult = PluginSettingsResponse;
+type PluginInstallResult = InstalledPlugin;
+type PluginListResult = PluginListResponse;
+type PluginReloadResult = PluginReloadResponse;
+type PluginRemoveResult = PluginRemoveResponse;
+type PluginTokenResult = PluginTokenResponse;
+type PluginUpdateSettingsResult = PluginSettingsResponse;
+type PluginGetSourceResult = PluginSourceDetail;
+type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
+type PluginApplyUpdateResult = PluginApplyUpdateResult$1;
+type PluginMarketplaceListResult = MarketplaceView[];
+type PluginMarketplaceAddResult = MarketplaceView;
+type PluginMarketplaceSearchResult = MarketplaceSearchResult[];
+type PluginMarketplaceRefreshResult = MarketplaceView;
+type PluginMarketplaceRemoveResult = MarketplaceRemoveResponse;
+interface PluginMarketplacesArea {
+    add(args: MarketplaceAddRequest): Promise<PluginMarketplaceAddResult>;
+    list(): Promise<PluginMarketplaceListResult>;
+    refresh(args: PluginMarketplaceRefreshArgs): Promise<PluginMarketplaceRefreshResult>;
+    remove(args: PluginMarketplaceRemoveArgs): Promise<PluginMarketplaceRemoveResult>;
+    search(args: PluginMarketplaceSearchArgs): Promise<PluginMarketplaceSearchResult>;
+}
 interface PluginsArea {
+    applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
     callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
+    checkUpdates(args?: PluginCheckUpdatesArgs): Promise<PluginCheckUpdatesResult>;
     disable(args: PluginIdArgs): Promise<PluginDisableResult>;
     enable(args: PluginIdArgs): Promise<PluginEnableResult>;
     getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
+    getSource(args: PluginIdArgs): Promise<PluginGetSourceResult>;
     install(args: PluginInstallArgs): Promise<PluginInstallResult>;
+    installFromMarketplace(args: PluginInstallFromMarketplaceArgs): Promise<PluginInstallResult>;
     list(): Promise<PluginListResult>;
+    listUpdateResults(): Promise<PluginCheckUpdatesResult>;
+    marketplaces: PluginMarketplacesArea;
     reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
     remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
     token(args: PluginTokenArgs): Promise<PluginTokenResult>;

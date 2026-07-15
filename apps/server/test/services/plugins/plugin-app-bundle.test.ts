@@ -80,6 +80,9 @@ async function writeAppPluginFixture(
       name: options.name,
       version: "0.1.0",
       bb: {
+        name: "App bundle fixture",
+        description: "Plugin app bundle fixture.",
+        branding: { icon: "Zap" },
         server: "./server.ts",
         ...(options.app === false ? {} : { app: "./app.tsx" }),
       },
