@@ -414,6 +414,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
+  - `bb plugin source <id> [--json]` — requested and resolved source, engine
+    ranges, install time, integrity/registry details, and recent activation
+    history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared

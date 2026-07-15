@@ -192,6 +192,16 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     const { token } = (await issued.json()) as { token: string };
     expect(token).toMatch(/^[0-9a-f]{64}$/);
 
+    const malformed = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/token`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      },
+    );
+    expect(malformed.status).toBe(400);
+
     const viaHeader = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/guarded`,
       // Token routes are for webhooks: a foreign origin is fine.

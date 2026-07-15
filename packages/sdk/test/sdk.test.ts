@@ -382,6 +382,238 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("routes every typed plugin administration method through the transport", async () => {
+    const plugin = {
+      id: "notes",
+      source: "npm:@bb/notes@^1",
+      rootDir: "/plugins/notes",
+      version: "1.2.0",
+      provenance: "marketplace" as const,
+      isOrphanedBuiltin: false,
+      marketplaceName: "official",
+      sourceDisplay: "npm · @bb/notes · tracks compatible",
+      updateState: {},
+      enabled: true,
+      description: "Notes",
+      name: "Notes",
+      icon: null,
+      status: "running" as const,
+      statusDetail: null,
+      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+      services: [],
+      schedules: [],
+      cliCommand: null,
+      hasSettings: false,
+      app: { hasApp: false, bundle: null },
+      logoUrl: null,
+      logoDarkUrl: null,
+    };
+    const marketplace = {
+      id: "official",
+      name: "official",
+      displayName: "Official",
+      source: "owner/catalog@main",
+      resolvedCommit: "abc123",
+      pluginCount: 1,
+      lastRefreshAt: 10,
+    };
+    const checked = {
+      id: "notes",
+      outcome: "update-available" as const,
+      installed: { version: "1.2.0", display: "1.2.0" },
+      candidate: { version: "1.3.0", display: "1.3.0" },
+    };
+    const queue = createFetchQueue([
+      { body: { enabled: true, plugins: [plugin] } },
+      { body: { ok: true, plugin } },
+      { body: { ok: true, plugin } },
+      { body: { ok: true, plugin } },
+      {
+        body: {
+          requested: "npm:@bb/notes@^1",
+          resolved: "1.2.0",
+          engines: { bb: ">=0.9", bbPluginSdk: "^0.2.0" },
+          installedAt: 5,
+          history: [{ version: "1.2.0", activatedAt: 5 }],
+        },
+      },
+      { body: { results: [checked] } },
+      { body: { results: [checked] } },
+      {
+        body: {
+          applied: false,
+          from: checked.installed,
+          to: checked.candidate,
+          outcome: "rolled-back",
+          detail: "activation failed; restored 1.2.0",
+        },
+      },
+      { body: { marketplaces: [marketplace] } },
+      { body: { marketplace } },
+      {
+        body: {
+          results: [
+            {
+              marketplaceId: "official",
+              entryId: "notes",
+              displayName: "Notes",
+              description: "Notes",
+              icon: null,
+              source: "npm:@bb/notes@^1",
+              installed: true,
+              compatible: true,
+            },
+          ],
+        },
+      },
+      { body: { marketplace } },
+      { body: { convertedPluginIds: ["notes"] } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test/",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.plugins.list()).resolves.toEqual({
+      enabled: true,
+      plugins: [plugin],
+    });
+    await expect(
+      sdk.plugins.install({ source: "npm:@bb/notes@^1" }),
+    ).resolves.toEqual(plugin);
+    await expect(
+      sdk.plugins.installFromMarketplace({
+        marketplaceId: "official",
+        entryId: "notes",
+      }),
+    ).resolves.toEqual(plugin);
+    await expect(
+      sdk.plugins.installFromMarketplace({
+        marketplaceId: "official",
+        entryId: "notes",
+        version: "1.2.0",
+      }),
+    ).resolves.toEqual(plugin);
+    await expect(
+      sdk.plugins.getSource({ pluginId: "notes" }),
+    ).resolves.toMatchObject({ history: [{ version: "1.2.0" }] });
+    await expect(
+      sdk.plugins.checkUpdates({ pluginId: "notes" }),
+    ).resolves.toEqual([checked]);
+    await expect(sdk.plugins.listUpdateResults()).resolves.toEqual([checked]);
+    await expect(
+      sdk.plugins.applyUpdate({ pluginId: "notes" }),
+    ).resolves.toMatchObject({ outcome: "rolled-back", applied: false });
+    await expect(sdk.plugins.marketplaces.list()).resolves.toEqual([
+      marketplace,
+    ]);
+    await expect(
+      sdk.plugins.marketplaces.add({ source: "owner/catalog", name: "work" }),
+    ).resolves.toEqual(marketplace);
+    await expect(
+      sdk.plugins.marketplaces.search({ query: "notes" }),
+    ).resolves.toMatchObject([{ entryId: "notes", compatible: true }]);
+    await expect(
+      sdk.plugins.marketplaces.refresh({ marketplaceId: "official" }),
+    ).resolves.toEqual(marketplace);
+    await expect(
+      sdk.plugins.marketplaces.remove({ marketplaceId: "official" }),
+    ).resolves.toEqual({ convertedPluginIds: ["notes"] });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/plugins",
+      },
+      {
+        bodyText: JSON.stringify({ source: "npm:@bb/notes@^1" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/plugins/install",
+      },
+      {
+        bodyText: JSON.stringify({
+          marketplace: { marketplaceId: "official", entryId: "notes" },
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/plugins/install",
+      },
+      {
+        bodyText: JSON.stringify({
+          marketplace: { marketplaceId: "official", entryId: "notes" },
+          version: "1.2.0",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/plugins/install",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/plugins/notes/source",
+      },
+      {
+        bodyText: JSON.stringify({ id: "notes" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/plugins/updates/check",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/plugins/updates",
+      },
+      {
+        bodyText: "{}",
+        method: "POST",
+        url: "http://bb.test/api/v1/plugins/notes/update",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/marketplaces",
+      },
+      {
+        bodyText: JSON.stringify({ source: "owner/catalog", name: "work" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/marketplaces",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/marketplaces/search?q=notes",
+      },
+      {
+        bodyText: "{}",
+        method: "POST",
+        url: "http://bb.test/api/v1/marketplaces/official/refresh",
+      },
+      {
+        bodyText: undefined,
+        method: "DELETE",
+        url: "http://bb.test/api/v1/marketplaces/official",
+      },
+    ]);
+  });
+
+  it("surfaces typed plugin update failures as HTTP errors", async () => {
+    const queue = createFetchQueue([
+      { body: { error: "candidate unavailable" }, status: 422 },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.plugins.applyUpdate({ pluginId: "notes" }),
+    ).rejects.toThrow("candidate unavailable");
+  });
+
   it("rejects thread spawn requests with both prompt and input", async () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({

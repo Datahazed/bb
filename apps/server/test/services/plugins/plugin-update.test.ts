@@ -261,6 +261,17 @@ describe("plugin update service and routes", () => {
       to: { version: nextCommit },
       outcome: "updated",
     });
+
+    const sourceResponse = await app.request("/plugins/updater/source");
+    expect(sourceResponse.status).toBe(200);
+    expect(await sourceResponse.json()).toMatchObject({
+      requested: expect.any(String),
+      resolved: expect.any(String),
+      installedAt: expect.any(Number),
+      history: expect.arrayContaining([
+        { version: nextCommit, activatedAt: expect.any(Number) },
+      ]),
+    });
   });
 
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {

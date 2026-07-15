@@ -5,6 +5,7 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Switch } from "@bb/shared-ui/switch";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   setPluginEnabled,
@@ -27,7 +28,11 @@ import {
  * failure. Newer-incompatible and pinned never badge. Hover reveals the
  * chevron; the row navigates to the plugin's detail page where depth lives.
  */
-export function InstalledPluginsTab({ plugins }: { plugins: PluginListItem[] }) {
+export function InstalledPluginsTab({
+  plugins,
+}: {
+  plugins: PluginListItem[];
+}) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
     updateTargetId === null
@@ -83,7 +88,7 @@ export function InstalledPluginRow({
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
         {
-          description: error instanceof Error ? error.message : String(error),
+          description: pluginAdminErrorMessage(error),
         },
       );
     },

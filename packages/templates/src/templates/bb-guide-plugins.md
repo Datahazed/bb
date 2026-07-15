@@ -88,6 +88,8 @@ added/updated/unchanged counts.
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
   bb plugin list                 Status, services, schedules, handler timings
+  bb plugin source <id> [--json] Show requested/resolved source, engine ranges,
+                                 install time, and recent activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
   bb plugin config <id> [set <key> <value> | unset <key>]

@@ -751,6 +751,83 @@ describe("marketplace HTTP routes", () => {
     expect(materializations).toBe(2);
   });
 
+  it("preserves catalog selection when version is omitted and forwards an exact override", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bb-marketplace-version-"));
+    try {
+      await writeFile(
+        join(root, "marketplace.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "version-test",
+          displayName: "Version Test",
+          plugins: [
+            {
+              id: "versioned",
+              displayName: "Versioned",
+              description: "Version selection fixture",
+              source: {
+                npm: { package: "bb-plugin-versioned", range: "^1.0.0" },
+              },
+            },
+          ],
+        }),
+      );
+      const sources: string[] = [];
+      const service = createMarketplaceService({
+        db: harness.db,
+        dataDir: harness.config.dataDir,
+        appVersion: harness.config.appVersion,
+        plugins: {
+          ...harness.pluginService,
+          async installFromMarketplace(args) {
+            sources.push(args.source);
+            return {
+              id: "versioned",
+              source: args.source,
+              rootDir: "/plugins/versioned",
+              version: "1.4.2",
+              provenance: "marketplace",
+              isOrphanedBuiltin: false,
+              marketplaceName: "Version Test",
+              sourceDisplay: args.source,
+              updateState: {},
+              enabled: true,
+              description: "Version selection fixture",
+              name: "Versioned",
+              icon: null,
+              status: "running",
+              statusDetail: null,
+              handlerStats: {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: 0,
+              },
+              services: [],
+              schedules: [],
+              cliCommand: null,
+              hasSettings: false,
+              app: { hasApp: false, bundle: null },
+              logoUrl: null,
+              logoDarkUrl: null,
+            };
+          },
+        },
+      });
+      await service.add(root);
+
+      await service.install("version-test", "versioned");
+      await service.install("version-test", "versioned", "1.4.2");
+
+      expect(sources).toEqual([
+        "npm:bb-plugin-versioned@^1.0.0",
+        "npm:bb-plugin-versioned@1.4.2",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("orders install before removal and never leaves orphaned provenance", async () => {
     let releaseInstall = (): void => {};
     let markInstallEntered = (): void => {};

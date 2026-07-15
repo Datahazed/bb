@@ -399,6 +399,30 @@ describe("sdk", () => {
     ]);
   });
 
+  it("keeps nested plugin administration available through the backend SDK", async () => {
+    const marketplace = {
+      id: "official",
+      name: "official",
+      displayName: "Official",
+      source: "owner/catalog@main",
+      pluginCount: 1,
+    };
+    const { bb, harness } = createFakePluginHost({
+      sdk: {
+        plugins: {
+          marketplaces: {
+            list: async () => [marketplace],
+          },
+        },
+      },
+    });
+
+    await expect(bb.sdk.plugins.marketplaces.list()).resolves.toEqual([
+      marketplace,
+    ]);
+    expect(harness.sdk.callsTo("plugins.marketplaces.list")).toEqual([[]]);
+  });
+
   it("throws a stub-naming error for unstubbed methods and accepts late stubs", async () => {
     const { bb, harness } = createFakePluginHost();
     expect(() => bb.sdk.projects.list({})).toThrow(
