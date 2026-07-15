@@ -177,8 +177,7 @@ export function registerSystemRoutes(
         );
       }
     }
-    // Favicon tint is omitted for theme-only changes; keep the current value.
-    const faviconColor = payload.faviconColor ?? getStoredFaviconColor(deps.db);
+    const { faviconColor } = payload;
     setStoredAppearance(deps.db, { themeId, faviconColor });
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.

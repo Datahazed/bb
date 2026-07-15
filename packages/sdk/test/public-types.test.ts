@@ -16,6 +16,7 @@ import type {
   StatusResult as RootStatus,
   SystemVersionResult as RootSystemVersion,
   ThemeCatalogResult as RootThemeCatalog,
+  ThemeSetInput as RootThemeSetInput,
   ThreadFolderListResult as RootThreadFolderList,
   ThreadSpawnResult as RootThreadSpawn,
 } from "@bb/sdk";
@@ -35,6 +36,7 @@ import type {
   StatusResult as BrowserStatus,
   SystemVersionResult as BrowserSystemVersion,
   ThemeCatalogResult as BrowserThemeCatalog,
+  ThemeSetInput as BrowserThemeSetInput,
   ThreadFolderListResult as BrowserThreadFolderList,
   ThreadSpawnResult as BrowserThreadSpawn,
 } from "@bb/sdk/browser";
@@ -54,6 +56,7 @@ import type {
   StatusResult as CoreStatus,
   SystemVersionResult as CoreSystemVersion,
   ThemeCatalogResult as CoreThemeCatalog,
+  ThemeSetInput as CoreThemeSetInput,
   ThreadFolderListResult as CoreThreadFolderList,
   ThreadSpawnResult as CoreThreadSpawn,
 } from "@bb/sdk/core";
@@ -73,6 +76,7 @@ import type {
   StatusResult as NodeStatus,
   SystemVersionResult as NodeSystemVersion,
   ThemeCatalogResult as NodeThemeCatalog,
+  ThemeSetInput as NodeThemeSetInput,
   ThreadFolderListResult as NodeThreadFolderList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
@@ -92,6 +96,7 @@ interface RootSurface {
   status: RootStatus;
   systemVersion: RootSystemVersion;
   themeCatalog: RootThemeCatalog;
+  themeSetInput: RootThemeSetInput;
   threadFolderList: RootThreadFolderList;
   threadSpawn: RootThreadSpawn;
 }
@@ -111,6 +116,7 @@ interface BrowserSurface {
   status: BrowserStatus;
   systemVersion: BrowserSystemVersion;
   themeCatalog: BrowserThemeCatalog;
+  themeSetInput: BrowserThemeSetInput;
   threadFolderList: BrowserThreadFolderList;
   threadSpawn: BrowserThreadSpawn;
 }
@@ -130,6 +136,7 @@ interface CoreSurface {
   status: CoreStatus;
   systemVersion: CoreSystemVersion;
   themeCatalog: CoreThemeCatalog;
+  themeSetInput: CoreThemeSetInput;
   threadFolderList: CoreThreadFolderList;
   threadSpawn: CoreThreadSpawn;
 }
@@ -149,6 +156,7 @@ interface NodeSurface {
   status: NodeStatus;
   systemVersion: NodeSystemVersion;
   themeCatalog: NodeThemeCatalog;
+  themeSetInput: NodeThemeSetInput;
   threadFolderList: NodeThreadFolderList;
   threadSpawn: NodeThreadSpawn;
 }

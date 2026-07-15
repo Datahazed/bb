@@ -579,6 +579,27 @@ declare const appThemeSchema: z$1.ZodObject<{
     }>;
 }, z$1.core.$strip>;
 type AppTheme = z$1.infer<typeof appThemeSchema>;
+/**
+ * The complete appearance selection a client sends when changing the palette
+ * and/or favicon tint. The server validates `themeId` (built-in id or an
+ * existing custom theme) and resolves the CSS from disk for custom themes.
+ * Callers changing only one facet must carry the other facet forward explicitly.
+ */
+declare const appThemeSelectionSchema: z$1.ZodObject<{
+    themeId: z$1.ZodString;
+    faviconColor: z$1.ZodEnum<{
+        default: "default";
+        red: "red";
+        orange: "orange";
+        yellow: "yellow";
+        green: "green";
+        teal: "teal";
+        blue: "blue";
+        purple: "purple";
+        pink: "pink";
+    }>;
+}, z$1.core.$strip>;
+type AppThemeSelection = z$1.infer<typeof appThemeSelectionSchema>;
 
 declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     type: z$1.ZodLiteral<"changed">;
@@ -2946,32 +2967,32 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     target: z$1.ZodLiteral<"uncommitted">;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"branch_committed">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"all">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"commit">;
     sha: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        new: "new";
         old: "old";
+        new: "new";
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
@@ -2993,8 +3014,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -3025,8 +3046,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -3173,11 +3194,11 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
         }, z$1.core.$strict>;
         review: z$1.ZodObject<{
             state: z$1.ZodEnum<{
-                none: "none";
                 approved: "approved";
                 changes_requested: "changes_requested";
                 review_required: "review_required";
                 review_requested: "review_requested";
+                none: "none";
             }>;
             reviewRequestCount: z$1.ZodNumber;
         }, z$1.core.$strict>;
@@ -3206,12 +3227,12 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
             }>>;
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
-            none: "none";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
+            none: "none";
             conflicts: "conflicts";
             blocked: "blocked";
             checks_failed: "checks_failed";
@@ -9394,15 +9415,19 @@ interface StatusArea {
 
 type ThemeGetResult = AppTheme;
 type ThemeCatalogResult = ThemeCatalogResponse;
+type ThemeSetInput = AppThemeSelection;
 type ThemeSetResult = AppTheme;
 interface ThemeArea {
     /** The active app palette, resolved server-side (built-in id or custom CSS). */
     get(): Promise<ThemeGetResult>;
     /** The custom-theme directory plus discovered themes and the active palette. */
     catalog(): Promise<ThemeCatalogResult>;
+    /** Set the complete app appearance selection in one request. */
+    set(selection: ThemeSetInput): Promise<ThemeSetResult>;
     /**
-     * Activate a palette by id — a built-in id or a custom theme name that exists
-     * under `<data-dir>/theme/<name>/theme.css`. Broadcasts to all open windows.
+     * Activate a palette by id while preserving the active favicon color. This
+     * compatibility shorthand reads the active appearance before writing the
+     * complete selection; prefer the object form when both values are known.
      */
     set(themeId: string): Promise<ThemeSetResult>;
 }
