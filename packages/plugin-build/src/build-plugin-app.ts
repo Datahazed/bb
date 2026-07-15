@@ -10,7 +10,7 @@ import {
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "esbuild";
-import { PLUGIN_SDK_APP_EXPORT_NAMES } from "@bb/plugin-sdk";
+import * as pluginSdkAppFacade from "@bb/plugin-sdk/app";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
@@ -73,13 +73,12 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
 };
 
 /**
- * Named exports of `@bb/plugin-sdk/app`, sourced from the facade package's
- * PLUGIN_SDK_APP_EXPORT_NAMES so shim, facade, and the app implementation
- * cannot drift (the app asserts its implementation keys equal the same
- * list); the React lists next to it come from
+ * Named exports of `@bb/plugin-sdk/app`, read from the facade module itself so
+ * a declaration-only manifest cannot drift from the runtime module; the React
+ * lists next to it come from
  * scripts/generate-runtime-export-manifest.mjs instead.
  */
-const PLUGIN_SDK_APP_EXPORTS: readonly string[] = PLUGIN_SDK_APP_EXPORT_NAMES;
+const PLUGIN_SDK_APP_EXPORTS = Object.keys(pluginSdkAppFacade).sort();
 
 function shimExportsOf(specifier: string): readonly string[] {
   if (specifier === "@bb/plugin-sdk/app") return PLUGIN_SDK_APP_EXPORTS;

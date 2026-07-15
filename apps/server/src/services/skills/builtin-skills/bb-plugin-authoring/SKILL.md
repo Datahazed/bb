@@ -652,29 +652,27 @@ Slot props contracts (versioned, additive-only):
   `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
   back/forward then walks panel-internal history (prefer this over hash
   routing).
-  Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
+  Registration: `{ id, title, icon, path, component, headerContent? }`.
   The host renders your plugin logo + `title` into the SHARED app header
-  (the same chrome as Settings pages) with your optional
+  (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
-  repeat the title inside your component; the body below is yours,
-  full-width. `headerContent` is plugin code inside host chrome and is
+  repeat the title inside your component. The component owns the full-bleed
+  body below with zero host padding; add your own padding and scrolling when
+  the design needs them. `headerContent` is plugin code inside the host title bar and is
   contained separately: a throw hides the accessory without breaking the
-  header or the panel body. `chrome: "page"` (the default) gives the body
-  the standard page padding at full width — wrap your content in a
-  `mx-auto w-full max-w-3xl space-y-4` div to opt back into the classic
-  centered, width-capped column instead; `chrome: "none"` is the escape hatch — your
-  `component` owns the ENTIRE body region with zero host padding and only the
-  crash boundary remains; the shared header still shows logo + title +
-  `headerContent`.
+  title bar or the panel body. For a classic page, use an outer scroll region
+  with `p-4 md:p-5` and wrap its content in a
+  `mx-auto w-full max-w-3xl space-y-4` div.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your plugin logo. Registration:
   `{ id, title, icon?, component, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
-  rendering `component` with `{ threadId: string, params: unknown }`.
-  Omitting `run` opens a tab immediately with defaults. `params` must be
-  JSON-serializable — it persists with the tab across reloads (null when
+  rendering `component` with `{ threadId: string, params: JsonValue | null }`.
+  Omitting `run` opens a tab immediately with defaults. Write parameters are
+  typed as the recursively JSON-safe `JsonValue` exported by both
+  `@bb/plugin-sdk` and `@bb/plugin-sdk/app`; they persist with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
   shows your plugin logo + the tab title. Errors thrown from `run` (sync
@@ -728,7 +726,7 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   the path. `openThreadPanel` is either
   `({ actionId, title?, params? }) => boolean` or `null`; it opens one of the
   same plugin's registered `threadPanelAction` components in the enclosing
-  thread side panel. `params` must be JSON-serializable, and the return value
+  thread side panel. `params` is typed as `JsonValue`, and the return value
   reports whether the host accepted the action. Use a normal plugin navigation
   action as the fallback when the callback is `null` or returns `false`.
   **Host behavior / fallbacks:** only assistant and
@@ -917,7 +915,7 @@ slot.composer.quotes; // recorded hook activity
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
-patterns, settingsSection optional title, navPanel path, chrome,
+patterns, settingsSection optional title, navPanel path,
 fileOpener extensions) and returns them typed with defaults filled. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav

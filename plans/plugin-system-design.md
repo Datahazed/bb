@@ -658,7 +658,7 @@ BB-owned registry, edited freely, compiled by `bb plugin build` into the plugin'
 scoped bundle. `@bb/plugin-sdk/app` shrinks to `definePluginApp` + the five hooks.
 
 - **Why removal beats coexistence.** The 65-component kit made every component's props a
-  pinned compatibility surface (`PLUGIN_SDK_APP_EXPORT_NAMES` + sync tests) — the app's
+  pinned compatibility surface (runtime/declaration parity tests) — the app's
   own components could never evolve without risking plugin breakage, forever. Vendored
   copies invert the ownership: plugins own their UI (drift is the model, as in every
   shadcn app), and `apps/app` components evolve freely. It also deletes a whole rendering
@@ -743,7 +743,7 @@ scoped bundle. `@bb/plugin-sdk/app` shrinks to `definePluginApp` + the five hook
 - **Migration (kit removal is a breaking change inside the experiment):** the github and
   small-ux-pack examples re-import from `./components/ui/*`; delete the kit members from
   `plugin-sdk-app-impl.tsx`, the shadcn prop types from `app-contract.ts`, and shrink
-  `PLUGIN_SDK_APP_EXPORT_NAMES` to `definePluginApp` + hooks; QA-catalog kit items
+  the frontend runtime/declaration surface to `definePluginApp` + hooks; QA-catalog kit items
   re-pointed at the vendored flow.
 - **Recorded downsides (accepted):** every UI plugin bundles its component copies,
   icons, and non-portal deps (~tens of KB; the heavy portaling radix families are
@@ -918,7 +918,7 @@ vendored components (no component imports from `@bb/plugin-sdk/app` anywhere in
 examples or scaffold); `npx shadcn add @bb/select` against the GitHub registry
 compiles and renders styled + animated in a plugin panel; its `toast()` reaches the
 host toaster; a host overlay above a vendored plugin dialog dismisses/stacks correctly
-(shared radix); `PLUGIN_SDK_APP_EXPORT_NAMES` equals `definePluginApp` + hooks; a
+(shared radix); frontend runtime exports equal `definePluginApp` + hooks; a
 plugin shipping committed `dist/` installs and runs on a machine with no npm and no
 plugin node_modules.
 *Validation*: CI fixture plugin that vendors every registry item and builds; regression

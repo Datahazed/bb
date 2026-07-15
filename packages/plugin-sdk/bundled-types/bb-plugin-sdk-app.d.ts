@@ -6,17 +6,20 @@
 
 import { ComponentType } from 'react';
 
-interface JsonObject {
+/**
+ * A value that survives a JSON round trip without coercion or data loss.
+ *
+ * Host boundaries still validate values at runtime because TypeScript cannot
+ * exclude non-finite numbers and plugin bundles can bypass static types.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | {
     [key: string]: JsonValue;
-}
-type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+};
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
- * the runtime export-name list, with no side effects. This module is what the
- * BB app imports to keep its real implementation in sync (`satisfies
- * PluginSdkApp`) and what `bb plugin build` imports to generate the shim's
- * named-export list. Plugin authors import the same shapes through
+ * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * side effects. The BB app imports these to keep its real implementation in
+ * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
  * `@bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
@@ -53,7 +56,7 @@ interface PluginThreadPanelProps {
      * through persistence, so the tab restores across reloads); null when the
      * action opened the panel without params.
      */
-    params: unknown;
+    params: JsonValue | null;
 }
 /** Props passed to a `composerAccessory` component. */
 interface PluginComposerAccessoryProps {
@@ -142,17 +145,6 @@ interface PluginMessageDirectiveProps {
      */
     openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
 }
-/**
- * Slot/panel ids and nav-panel paths must match this pattern (letters,
- * digits, `-`, `_`): they ride URLs and persisted panel-tab keys.
- */
-declare const PLUGIN_SLOT_ID_PATTERN: RegExp;
-/**
- * Message-directive ids must be lowercase kebab-case beginning with a letter
- * (e.g. `inline-vis` matching `::inline-vis{...}`). Stricter than general
- * slot ids so directive names stay URL/Markdown-safe and case-stable.
- */
-declare const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN: RegExp;
 interface PluginHomepageSectionRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
     id: string;
@@ -181,15 +173,6 @@ interface PluginNavPanelRegistration {
     path: string;
     component: ComponentType<PluginNavPanelProps>;
     /**
-     * Panel chrome (default "page"): "page" renders the host title bar (plugin
-     * logo + `title` + your `headerContent`) above a full-width padded body;
-     * "none" hands the entire BODY area to `component` with no host padding.
-     * The shared app/pane title bar remains host-owned in both modes and still
-     * renders `headerContent`; only the per-plugin body boundary remains inside
-     * the body area.
-     */
-    chrome?: "page" | "none";
-    /**
      * Optional component rendered on the right side of the shared title bar
      * (e.g. a sync button or a count). Contained separately from the body: a
      * throwing headerContent is hidden without breaking the title bar.
@@ -211,7 +194,7 @@ interface PluginThreadPanelActionContext {
      */
     openPanel(options?: {
         title?: string;
-        params?: unknown;
+        params?: JsonValue;
     }): void;
 }
 interface PluginThreadPanelActionRegistration {
@@ -297,8 +280,7 @@ interface PluginFileOpenerRegistration {
  */
 interface PluginMessageDirectiveRegistration {
     /**
-     * The directive name. Lowercase kebab-case beginning with a letter
-     * (see {@link PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN}).
+     * The directive name. Lowercase kebab-case beginning with a letter.
      */
     id: string;
     component: ComponentType<PluginMessageDirectiveProps>;
@@ -429,13 +411,6 @@ interface PluginSdkApp {
     useBbNavigate(): BbNavigate;
     useComposer(): PluginComposerApi;
 }
-/**
- * Named runtime exports of `@bb/plugin-sdk/app`, in sorted order. Single
- * source of truth for the build shim's export list and the app's
- * implementation-key test — adding a surface member without updating this
- * list fails the type assertion below.
- */
-declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useComposer", "useRealtime", "useRpc", "useSettings"];
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
 declare const useRpc: () => PluginRpcClient;
@@ -445,5 +420,5 @@ declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
-export { PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN, PLUGIN_SDK_APP_EXPORT_NAMES, PLUGIN_SLOT_ID_PATTERN, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };
+export { definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
+export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcClient, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps };

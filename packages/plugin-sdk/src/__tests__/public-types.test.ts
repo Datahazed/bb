@@ -86,6 +86,7 @@ function rootExportNames(
     new RegExp(`^${prefix} \\{ ([^}]+) \\};$`, "mu"),
   );
 
+  if (kind === "value" && match === null) return new Set();
   expect(match, `${prefix} declaration`).not.toBeNull();
   return new Set(match?.[1].split(", ") ?? []);
 }

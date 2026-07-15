@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { JsonValue } from "@bb/domain";
+import type { JsonValue } from "./json-value.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's

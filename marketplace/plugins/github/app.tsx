@@ -2227,15 +2227,17 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
   }, []);
 
   return (
-    <PageBody className="max-w-5xl">
-      <GithubPanelBody
-        route={route}
-        navigate={navigate}
-        status={status}
-        query={query}
-        setQuery={setQuery}
-      />
-    </PageBody>
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+      <PageBody className="max-w-5xl">
+        <GithubPanelBody
+          route={route}
+          navigate={navigate}
+          status={status}
+          query={query}
+          setQuery={setQuery}
+        />
+      </PageBody>
+    </div>
   );
 }
 

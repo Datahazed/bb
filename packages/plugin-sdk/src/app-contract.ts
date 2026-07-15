@@ -1,12 +1,10 @@
 import type { ComponentType } from "react";
-import type { JsonValue } from "@bb/domain";
+import type { JsonValue } from "./json-value.js";
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types plus
- * the runtime export-name list, with no side effects. This module is what the
- * BB app imports to keep its real implementation in sync (`satisfies
- * PluginSdkApp`) and what `bb plugin build` imports to generate the shim's
- * named-export list. Plugin authors import the same shapes through
+ * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * side effects. The BB app imports these to keep its real implementation in
+ * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
  * `@bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
@@ -50,7 +48,7 @@ export interface PluginThreadPanelProps {
    * through persistence, so the tab restores across reloads); null when the
    * action opened the panel without params.
    */
-  params: unknown;
+  params: JsonValue | null;
 }
 
 /** Props passed to a `composerAccessory` component. */
@@ -156,20 +154,6 @@ export interface PluginMessageDirectiveProps {
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
 
-/**
- * Slot/panel ids and nav-panel paths must match this pattern (letters,
- * digits, `-`, `_`): they ride URLs and persisted panel-tab keys.
- */
-export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-/**
- * Message-directive ids must be lowercase kebab-case beginning with a letter
- * (e.g. `inline-vis` matching `::inline-vis{...}`). Stricter than general
- * slot ids so directive names stay URL/Markdown-safe and case-stable.
- */
-export const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN =
-  /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-
 export interface PluginHomepageSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -200,15 +184,6 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
-   * Panel chrome (default "page"): "page" renders the host title bar (plugin
-   * logo + `title` + your `headerContent`) above a full-width padded body;
-   * "none" hands the entire BODY area to `component` with no host padding.
-   * The shared app/pane title bar remains host-owned in both modes and still
-   * renders `headerContent`; only the per-plugin body boundary remains inside
-   * the body area.
-   */
-  chrome?: "page" | "none";
-  /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.
@@ -229,7 +204,7 @@ export interface PluginThreadPanelActionContext {
    * (updating its title) instead of duplicating it. May be called more than
    * once (different params ⇒ multiple tabs) or not at all.
    */
-  openPanel(options?: { title?: string; params?: unknown }): void;
+  openPanel(options?: { title?: string; params?: JsonValue }): void;
 }
 
 export interface PluginThreadPanelActionRegistration {
@@ -321,8 +296,7 @@ export interface PluginFileOpenerRegistration {
  */
 export interface PluginMessageDirectiveRegistration {
   /**
-   * The directive name. Lowercase kebab-case beginning with a letter
-   * (see {@link PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN}).
+   * The directive name. Lowercase kebab-case beginning with a letter.
    */
   id: string;
   component: ComponentType<PluginMessageDirectiveProps>;
@@ -455,7 +429,8 @@ export interface BbNavigate {
 }
 
 // ---------------------------------------------------------------------------
-// The whole surface + its runtime export names.
+// The whole runtime surface. Declaration-versus-runtime parity is tested
+// against the actual `@bb/plugin-sdk/app` module namespace.
 //
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
@@ -479,28 +454,3 @@ export interface PluginSdkApp {
   useBbNavigate(): BbNavigate;
   useComposer(): PluginComposerApi;
 }
-
-/**
- * Named runtime exports of `@bb/plugin-sdk/app`, in sorted order. Single
- * source of truth for the build shim's export list and the app's
- * implementation-key test — adding a surface member without updating this
- * list fails the type assertion below.
- */
-export const PLUGIN_SDK_APP_EXPORT_NAMES = [
-  "definePluginApp",
-  "useBbContext",
-  "useBbNavigate",
-  "useComposer",
-  "useRealtime",
-  "useRpc",
-  "useSettings",
-] as const satisfies readonly (keyof PluginSdkApp)[];
-
-// Compile-time exhaustiveness: every PluginSdkApp key must appear in
-// PLUGIN_SDK_APP_EXPORT_NAMES (the `satisfies` above covers the converse).
-type MissingExportName = Exclude<
-  keyof PluginSdkApp,
-  (typeof PLUGIN_SDK_APP_EXPORT_NAMES)[number]
->;
-const _assertAllExported: MissingExportName extends never ? true : never = true;
-void _assertAllExported;
