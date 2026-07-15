@@ -119,19 +119,31 @@ Existing project source operations remain available under
 
 ## Environments and pull requests
 
-| SDK                                                           | CLI                                                                       |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `bb.environments.archiveThreads({ environmentId })`           | `bb environment archive-threads <id>`                                     |
-| `bb.environments.markPullRequestReady({ environmentId })`     | `bb environment pull-request ready <id>`                                  |
-| `bb.environments.markPullRequestDraft({ environmentId })`     | `bb environment pull-request draft <id>`                                  |
-| `bb.environments.mergePullRequest({ environmentId, method })` | `bb environment pull-request merge <id> [--method <merge/squash/rebase>]` |
-| `bb.environments.diffFiles(...)`                              | SDK                                                                       |
-| `bb.environments.diffFile(...)`                               | SDK                                                                       |
-| `bb.environments.diffPatch(...)`                              | SDK                                                                       |
-| `bb.environments.paths(...)`                                  | SDK                                                                       |
+Every direct inspection command accepts an arbitrary environment ID; none
+requires a thread.
 
-The pre-existing environment show, update, status, commit, diff, pull-request
-inspection, and squash-merge operations remain unchanged.
+| SDK                                                           | CLI                                                                                                 |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `bb.environments.get({ environmentId })`                      | `bb environment show <id>`                                                                          |
+| `bb.environments.update(...)`                                 | `bb environment update <id> [metadata flags]`                                                       |
+| `bb.environments.status(...)`                                 | `bb environment status <id> [--merge-base-branch <branch>]`                                         |
+| `bb.environments.diffBranches(...)`                           | `bb environment branches <id> [--query <query>] [--limit <count>]`                                  |
+| `bb.environments.paths(...)`                                  | `bb environment paths <id> [--query <query>] [--limit <count>] [--files] [--directories]`           |
+| `bb.environments.diff(...)`                                   | `bb environment diff <id> --target <target> [--merge-base-branch <branch> / --sha <sha>]`           |
+| `bb.environments.diffFiles(...)`                              | `bb environment diff-files <id> --target <target> [--merge-base-branch <branch> / --sha <sha>]`     |
+| `bb.environments.diffFile(...)`                               | `bb environment diff-file <id> --target <target> --path <path> --side <old/new> [target ref flags]` |
+| `bb.environments.diffPatch(...)`                              | `bb environment diff-patch <id> --target <target> --path <path>... [--merge-base-branch / --sha]`   |
+| `bb.environments.pullRequest({ environmentId })`              | `bb environment pull-request show <id>`                                                             |
+| `bb.environments.commit({ environmentId })`                   | `bb environment commit <id>`                                                                        |
+| `bb.environments.squashMerge(...)`                            | `bb environment squash-merge <id> --merge-base-branch <branch>`                                     |
+| `bb.environments.archiveThreads({ environmentId })`           | `bb environment archive-threads <id>`                                                               |
+| `bb.environments.markPullRequestReady({ environmentId })`     | `bb environment pull-request ready <id>`                                                            |
+| `bb.environments.markPullRequestDraft({ environmentId })`     | `bb environment pull-request draft <id>`                                                            |
+| `bb.environments.mergePullRequest({ environmentId, method })` | `bb environment pull-request merge <id> [--method <merge/squash/rebase>]`                           |
+
+Diff targets are `uncommitted`, `branch_committed`, `all`, and `commit`.
+Branch targets require `--merge-base-branch`, commit targets require `--sha`,
+and `diff-file` uses the resolved `--merge-base-ref` for branch targets.
 
 ## Machines
 
