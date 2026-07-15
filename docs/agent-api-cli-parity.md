@@ -105,17 +105,25 @@ Both attachment flags are repeatable. `thread spawn` additionally supports
 
 ## Projects
 
-| SDK                                               | CLI                                                                              |
-| ------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                      |
-| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                         |
-| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`       |
-| `bb.projects.paths(...)`                          | `bb project paths <id> [--environment <id>] [--query <query>] [--limit <count>]` |
-| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--environment <id>]`                  |
-| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.  |
+| SDK                                               | CLI                                                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                                                      |
+| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                                                         |
+| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`                                       |
+| `bb.projects.paths(...)`                          | `bb project paths <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.files(...)`                          | `bb project files <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.fileContent(...)`                    | `bb project content <id> <path> [--machine/--host <id-or-name> / --environment <id>]`                            |
+| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--machine/--host <id-or-name> / --environment <id>]`                  |
+| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.                                  |
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.
+
+Project workspace host and environment selectors are mutually exclusive. An
+environment selects its owning host and workspace; otherwise an explicit host
+selects that host's project source. Omitting both intentionally falls back to
+the primary host's project source. File content uses UTF-8 for text and base64
+for binary data in the portable SDK/CLI JSON DTO.
 
 ## Environments and pull requests
 

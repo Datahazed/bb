@@ -9,7 +9,11 @@ import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
-import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
+import {
+  resolveMachineEnvironmentRouting,
+  resolveMachineHostId,
+  resolveMachineTargetOption,
+} from "./machine.js";
 
 interface ProjectListCommandOptions {
   json?: boolean;
@@ -39,10 +43,21 @@ interface ProjectReorderCommandOptions {
 interface ProjectDiscoveryCommandOptions {
   environment?: string;
   host?: string;
+  machine?: string;
   json?: boolean;
   limit?: string;
   provider?: string;
   query?: string;
+}
+
+function addProjectWorkspaceRoutingOptions(command: Command): Command {
+  return command
+    .option("--machine <id-or-name>", "Project source machine")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--environment <id>",
+      "Environment workspace (mutually exclusive with machine)",
+    );
 }
 
 interface ProjectUpdateCommandOptions {
@@ -262,21 +277,17 @@ export function registerProjectCommands(
       }),
     );
 
-  project
-    .command("paths <id>")
+  addProjectWorkspaceRoutingOptions(project.command("paths <id>"))
     .description("Search project workspace files and directories")
-    .option(
-      "--environment <id>",
-      "Environment workspace; omit for default source",
-    )
     .option("--query <query>", "Fuzzy path query")
     .option("--limit <count>", "Maximum paths")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
         const result = await createCliBbSdk(getUrl()).projects.paths({
           projectId: id,
-          environmentId: opts.environment ?? null,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
           includeFiles: "true",
           includeDirectories: "true",
           ...(opts.query ? { query: opts.query } : {}),
@@ -287,25 +298,62 @@ export function registerProjectCommands(
       }),
     );
 
-  project
-    .command("commands <id>")
+  addProjectWorkspaceRoutingOptions(project.command("commands <id>"))
     .description("List provider commands and skills available to a project")
     .requiredOption("--provider <id>", "Provider ID")
-    .option(
-      "--environment <id>",
-      "Environment workspace; omit for default source",
-    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
         const result = await createCliBbSdk(getUrl()).projects.commands({
           projectId: id,
           provider: opts.provider ?? "",
-          environmentId: opts.environment ?? null,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),
+    );
+
+  addProjectWorkspaceRoutingOptions(project.command("files <id>"))
+    .description("List files in a project workspace")
+    .option("--query <query>", "Fuzzy file query")
+    .option("--limit <count>", "Maximum files")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
+        const serverUrl = getUrl();
+        const result = await createCliBbSdk(serverUrl).projects.files({
+          projectId: id,
+          ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+          ...(opts.query ? { query: opts.query } : {}),
+          ...(opts.limit ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+
+  addProjectWorkspaceRoutingOptions(project.command("content <id> <path>"))
+    .description("Read project workspace file content")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          path: string,
+          opts: ProjectDiscoveryCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const result = await createCliBbSdk(serverUrl).projects.fileContent({
+            projectId: id,
+            path,
+            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+          });
+          if (outputJson(opts, result)) return;
+          console.log(result.content);
+        },
+      ),
     );
 
   project

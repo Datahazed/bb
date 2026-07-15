@@ -83,6 +83,84 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("routes project file APIs and returns portable text/binary DTOs", async () => {
+    const requests: CapturedRequest[] = [];
+    const responses = [
+      jsonResponse({
+        body: {
+          files: [{ name: "remote.txt", path: "remote.txt" }],
+          truncated: false,
+        },
+      }),
+      new Response("remote text", {
+        headers: {
+          "content-type": "text/plain",
+          "x-bb-content-encoding": "utf8",
+        },
+      }),
+      new Response(new Uint8Array([0, 1, 254, 255]), {
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-bb-content-encoding": "base64",
+        },
+      }),
+    ];
+    const fetch: FetchImplementation = async (input, init) => {
+      requests.push({
+        bodyText: bodyText(init),
+        method: init?.method ?? "GET",
+        url: String(input),
+      });
+      const response = responses.shift();
+      if (!response) throw new Error("No queued project file response");
+      return response;
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "browser",
+      }),
+    });
+
+    await expect(
+      sdk.projects.files({
+        projectId: "proj_remote",
+        hostId: "host_remote",
+      }),
+    ).resolves.toMatchObject({ files: [{ path: "remote.txt" }] });
+    await expect(
+      sdk.projects.fileContent({
+        projectId: "proj_remote",
+        environmentId: "env_remote",
+        path: "remote.txt",
+      }),
+    ).resolves.toEqual({
+      content: "remote text",
+      contentEncoding: "utf8",
+      mimeType: "text/plain",
+      sizeBytes: 11,
+    });
+    await expect(
+      sdk.projects.fileContent({
+        projectId: "proj_remote",
+        hostId: "host_remote",
+        path: "image.bin",
+      }),
+    ).resolves.toEqual({
+      content: "AAH+/w==",
+      contentEncoding: "base64",
+      mimeType: "application/octet-stream",
+      sizeBytes: 4,
+    });
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/projects/proj_remote/files?hostId=host_remote",
+      "http://bb.test/api/v1/projects/proj_remote/files/content?environmentId=env_remote&path=remote.txt",
+      "http://bb.test/api/v1/projects/proj_remote/files/content?hostId=host_remote&path=image.bin",
+    ]);
+  });
+
   it("routes provider list and model discovery through portable host selectors", async () => {
     const queue = createFetchQueue([
       { body: [] },

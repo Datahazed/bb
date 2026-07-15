@@ -5,6 +5,8 @@ import type {
   ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
+  ProjectFileContentQuery,
+  ProjectFilesQuery,
   ProjectResponse,
   ProjectWithThreadsResponse,
   ProjectListQuery,
@@ -15,6 +17,7 @@ import type {
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   WorkspacePathListResponse,
+  WorkspaceFileListResponse,
 } from "@bb/server-contract";
 import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
 import type { CreateSdkAreaArgs } from "./common.js";
@@ -43,13 +46,31 @@ export interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
   projectId: string;
 }
 
-export interface ProjectPathsArgs extends ProjectPathsQuery {
-  projectId: string;
-}
+/** Select one project workspace source, or omit both for the primary host. */
+export type ProjectWorkspaceRoutingArgs =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
 
-export interface ProjectCommandsArgs extends ProjectCommandsQuery {
-  projectId: string;
-}
+export type ProjectFilesArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectPathsArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
+
+export type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs &
+  Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+  };
 
 export interface ProjectBranchesArgs extends ProjectBranchesQuery {
   projectId: string;
@@ -79,6 +100,14 @@ export type ProjectCreateResult = ProjectResponse;
 export type ProjectDefaultExecutionOptionsResult =
   ProjectExecutionDefaults | null;
 export type ProjectDeleteResult = { ok: true };
+export interface ProjectFileContentResult {
+  /** UTF-8 text or base64, as selected by `contentEncoding`. */
+  content: string;
+  contentEncoding: "utf8" | "base64";
+  mimeType: string;
+  sizeBytes: number;
+}
+export type ProjectFilesResult = WorkspaceFileListResponse;
 export type ProjectGetResult = ProjectResponse;
 export type ProjectListResult =
   | ProjectResponse[]
@@ -105,6 +134,8 @@ export interface ProjectsArea {
     args: ProjectDefaultExecutionOptionsArgs,
   ): Promise<ProjectDefaultExecutionOptionsResult>;
   delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
+  fileContent(args: ProjectFileContentArgs): Promise<ProjectFileContentResult>;
+  files(args: ProjectFilesArgs): Promise<ProjectFilesResult>;
   get(args: ProjectGetArgs): Promise<ProjectGetResult>;
   list(args?: ProjectListArgs): Promise<ProjectListResult>;
   paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;
@@ -144,6 +175,26 @@ function projectSourceUpdateJson(
     path: args.path,
     type: args.type,
   };
+}
+
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function encodeBase64(bytes: Uint8Array): string {
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+    const block =
+      (first << 16) | ((second ?? 0) << 8) | (third === undefined ? 0 : third);
+    encoded += BASE64_ALPHABET.charAt((block >> 18) & 63);
+    encoded += BASE64_ALPHABET.charAt((block >> 12) & 63);
+    encoded +=
+      second === undefined ? "=" : BASE64_ALPHABET.charAt((block >> 6) & 63);
+    encoded += third === undefined ? "=" : BASE64_ALPHABET.charAt(block & 63);
+  }
+  return encoded;
 }
 
 export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
@@ -214,6 +265,41 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
         transport.api.v1.projects[":id"]["default-execution-options"].$get({
           param: { id: input.projectId },
           query: {},
+        }),
+      );
+    },
+    async fileContent(input) {
+      const { projectId, ...query } = input;
+      const response = await transport.resolve(
+        transport.api.v1.projects[":id"].files.content.$get({
+          param: { id: projectId },
+          query,
+        }),
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const contentEncoding = response.headers.get("x-bb-content-encoding");
+      if (contentEncoding !== "utf8" && contentEncoding !== "base64") {
+        throw new Error(
+          "Project file response is missing its content encoding",
+        );
+      }
+      return {
+        content:
+          contentEncoding === "utf8"
+            ? new TextDecoder().decode(bytes)
+            : encodeBase64(bytes),
+        contentEncoding,
+        mimeType:
+          response.headers.get("content-type") ?? "application/octet-stream",
+        sizeBytes: bytes.byteLength,
+      };
+    },
+    async files(input) {
+      const { projectId, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"].files.$get({
+          param: { id: projectId },
+          query,
         }),
       );
     },

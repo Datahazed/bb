@@ -6,7 +6,7 @@ import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
-import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
+import { resolveMachineEnvironmentRouting } from "./machine.js";
 
 interface ProviderListCommandOptions {
   environment?: string;
@@ -33,24 +33,7 @@ async function resolveProviderRouting(
   opts: ProviderListCommandOptions,
   serverUrl: string,
 ): Promise<ProviderHostRoutingArgs> {
-  const machineTarget = resolveMachineTargetOption(opts);
-  if (machineTarget !== undefined && opts.environment !== undefined) {
-    throw new Error(
-      "Cannot combine --machine or --host with --environment; the environment already selects its machine.",
-    );
-  }
-  if (opts.environment !== undefined) {
-    return { environmentId: opts.environment };
-  }
-  if (machineTarget !== undefined) {
-    return {
-      hostId: await resolveMachineHostId({
-        serverUrl,
-        target: machineTarget,
-      }),
-    };
-  }
-  return {};
+  return resolveMachineEnvironmentRouting(opts, serverUrl);
 }
 
 function addProviderRoutingOptions(command: Command): Command {

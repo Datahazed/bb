@@ -763,6 +763,19 @@ export function resolveComposeHostId(
     : primaryHostId;
 }
 
+export function resolveRootComposeProjectRouting(
+  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
+  primaryHostId: string | null,
+): { environmentId?: string; hostId?: string } {
+  if (parsedEnvironment?.type === "reuse") {
+    return parsedEnvironment.environmentId === null
+      ? {}
+      : { environmentId: parsedEnvironment.environmentId };
+  }
+  const hostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
+  return hostId === null ? {} : { hostId };
+}
+
 export function resolveRootComposeProviderRouting(
   args: ResolveRootComposeEffectiveEnvironmentValueArgs,
 ): SystemProvidersQuery {
@@ -1931,12 +1944,18 @@ export function RootComposeView(props: RootComposeViewProps) {
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const rootProjectRouting = resolveRootComposeProjectRouting(
+    parsedEnvironment,
+    primaryHostId,
+  );
+  const rootProjectHostId = rootProjectRouting.hostId ?? null;
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
+    hostId: rootProjectHostId,
     query: commandQuery,
   });
   const rootPanelEnvironmentId = reuseEnvironmentId;
@@ -1951,6 +1970,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     {
       currentThreadId: rootPanelThreadId ?? undefined,
       environmentId: rootPanelEnvironmentId,
+      hostId: rootProjectHostId,
     },
   );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
@@ -2888,14 +2908,23 @@ export function RootComposeView(props: RootComposeViewProps) {
           )?.sources ?? []);
   const projectSourcePreviewRootPath =
     activeWorkspaceFileEnvironmentId === null &&
-    activeWorkspaceFileProjectPreviewId !== null &&
-    primaryHostId !== null
-      ? (findLocalPathProjectSourceForHost(activeProjectSources, primaryHostId)
-          ?.path ?? null)
+    activeWorkspaceFileProjectPreviewId !== null
+      ? rootPanelEnvironmentId !== null
+        ? (rootPanelEnvironment?.path ?? null)
+        : rootProjectHostId !== null
+          ? (findLocalPathProjectSourceForHost(
+              activeProjectSources,
+              rootProjectHostId,
+            )?.path ?? null)
+          : null
       : null;
+  const projectSourcePreviewHostId =
+    projectSourcePreviewRootPath === null
+      ? null
+      : (rootPanelEnvironment?.hostId ?? rootProjectHostId);
   const projectSourceOpenContext = resolveHostOpenContext({
-    hostId: projectSourcePreviewRootPath === null ? null : primaryHostId,
-    isLocal: isLocalDaemonHost(primaryHostId),
+    hostId: projectSourcePreviewHostId,
+    isLocal: isLocalDaemonHost(projectSourcePreviewHostId),
     serverOrigin,
   });
   const activeHostOpenContext = resolveEnvironmentOpenContext({
@@ -3062,6 +3091,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <NewTabPage
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         currentThreadId={rootPanelThreadId ?? ""}
         focusRequest={newTabFocusRequest}
         onSelect={handleSelectFileSearchResult}
@@ -3090,6 +3120,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       <ProjectFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={projectFileCopyPath}
+        environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}

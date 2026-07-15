@@ -8,7 +8,9 @@ import type {
   GuideRenderResult as RootGuideRender,
   HostGetResult as RootHostGet,
   PluginListResult as RootPluginList,
+  ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
+  ProjectWorkspaceRoutingArgs as RootProjectWorkspaceRoutingArgs,
   ProviderListArgs as RootProviderListArgs,
   ProviderListResult as RootProviderList,
   ProviderModelsArgs as RootProviderModelsArgs,
@@ -26,7 +28,9 @@ import type {
   GuideRenderResult as BrowserGuideRender,
   HostGetResult as BrowserHostGet,
   PluginListResult as BrowserPluginList,
+  ProjectFileContentResult as BrowserProjectFileContent,
   ProjectGetResult as BrowserProjectGet,
+  ProjectWorkspaceRoutingArgs as BrowserProjectWorkspaceRoutingArgs,
   ProviderListArgs as BrowserProviderListArgs,
   ProviderListResult as BrowserProviderList,
   ProviderModelsArgs as BrowserProviderModelsArgs,
@@ -44,7 +48,9 @@ import type {
   GuideRenderResult as CoreGuideRender,
   HostGetResult as CoreHostGet,
   PluginListResult as CorePluginList,
+  ProjectFileContentResult as CoreProjectFileContent,
   ProjectGetResult as CoreProjectGet,
+  ProjectWorkspaceRoutingArgs as CoreProjectWorkspaceRoutingArgs,
   ProviderListArgs as CoreProviderListArgs,
   ProviderListResult as CoreProviderList,
   ProviderModelsArgs as CoreProviderModelsArgs,
@@ -62,7 +68,9 @@ import type {
   GuideRenderResult as NodeGuideRender,
   HostGetResult as NodeHostGet,
   PluginListResult as NodePluginList,
+  ProjectFileContentResult as NodeProjectFileContent,
   ProjectGetResult as NodeProjectGet,
+  ProjectWorkspaceRoutingArgs as NodeProjectWorkspaceRoutingArgs,
   ProviderListArgs as NodeProviderListArgs,
   ProviderListResult as NodeProviderList,
   ProviderModelsArgs as NodeProviderModelsArgs,
@@ -79,7 +87,9 @@ interface RootSurface {
   guideRender: RootGuideRender;
   hostGet: RootHostGet;
   pluginList: RootPluginList;
+  projectFileContent: RootProjectFileContent;
   projectGet: RootProjectGet;
+  projectWorkspaceRoutingArgs: RootProjectWorkspaceRoutingArgs;
   providerList: RootProviderList;
   providerListArgs: RootProviderListArgs;
   providerModelsArgs: RootProviderModelsArgs;
@@ -97,7 +107,9 @@ interface BrowserSurface {
   guideRender: BrowserGuideRender;
   hostGet: BrowserHostGet;
   pluginList: BrowserPluginList;
+  projectFileContent: BrowserProjectFileContent;
   projectGet: BrowserProjectGet;
+  projectWorkspaceRoutingArgs: BrowserProjectWorkspaceRoutingArgs;
   providerList: BrowserProviderList;
   providerListArgs: BrowserProviderListArgs;
   providerModelsArgs: BrowserProviderModelsArgs;
@@ -115,7 +127,9 @@ interface CoreSurface {
   guideRender: CoreGuideRender;
   hostGet: CoreHostGet;
   pluginList: CorePluginList;
+  projectFileContent: CoreProjectFileContent;
   projectGet: CoreProjectGet;
+  projectWorkspaceRoutingArgs: CoreProjectWorkspaceRoutingArgs;
   providerList: CoreProviderList;
   providerListArgs: CoreProviderListArgs;
   providerModelsArgs: CoreProviderModelsArgs;
@@ -133,7 +147,9 @@ interface NodeSurface {
   guideRender: NodeGuideRender;
   hostGet: NodeHostGet;
   pluginList: NodePluginList;
+  projectFileContent: NodeProjectFileContent;
   projectGet: NodeProjectGet;
+  projectWorkspaceRoutingArgs: NodeProjectWorkspaceRoutingArgs;
   providerList: NodeProviderList;
   providerListArgs: NodeProviderListArgs;
   providerModelsArgs: NodeProviderModelsArgs;
@@ -223,6 +239,8 @@ type ExpectedProjectsKey =
   | "create"
   | "defaultExecutionOptions"
   | "delete"
+  | "fileContent"
+  | "files"
   | "get"
   | "list"
   | "paths"
@@ -334,6 +352,19 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<{
       environmentId: string;
     }>().toMatchTypeOf<RootProviderModelsArgs>();
+  });
+
+  it("makes project workspace selectors mutually exclusive", () => {
+    expectTypeOf<{
+      environmentId: string;
+      hostId: string;
+    }>().not.toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
+    expectTypeOf<{
+      hostId: string;
+    }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
+    expectTypeOf<{
+      environmentId: string;
+    }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
   });
 
   it("snapshots every SDK area and nested method group", () => {

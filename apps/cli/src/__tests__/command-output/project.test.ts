@@ -60,6 +60,105 @@ describe("bb project command output", () => {
     ]);
   });
 
+  it("bb project files resolves a machine name and prints JSON", async () => {
+    const getFiles = vi.fn(async () => ({
+      files: [{ name: "remote.txt", path: "remote.txt" }],
+      truncated: false,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.projects.:id.files.$get": getFiles,
+    });
+
+    await runCommand(
+      ["project", "files", "proj-1", "--machine", "builder", "--json"],
+      register,
+    );
+
+    expect(getFiles).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      query: { hostId: "host-remote" },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual({
+      files: [{ name: "remote.txt", path: "remote.txt" }],
+      truncated: false,
+    });
+  });
+
+  it("bb project content routes by environment and prints the portable DTO as JSON", async () => {
+    const getContent = vi.fn(
+      async () =>
+        new Response("environment text", {
+          headers: {
+            "content-type": "text/plain",
+            "x-bb-content-encoding": "utf8",
+          },
+        }),
+    );
+    stubServerApi({
+      "v1.projects.:id.files.content.$get": getContent,
+    });
+
+    await runCommand(
+      [
+        "project",
+        "content",
+        "proj-1",
+        "README.md",
+        "--environment",
+        "env-remote",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(getContent).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      query: { environmentId: "env-remote", path: "README.md" },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual({
+      content: "environment text",
+      contentEncoding: "utf8",
+      mimeType: "text/plain",
+      sizeBytes: 16,
+    });
+  });
+
+  it("bb project discovery rejects simultaneous machine and environment selectors", async () => {
+    await expect(
+      runCommand(
+        [
+          "project",
+          "paths",
+          "proj-1",
+          "--machine",
+          "builder",
+          "--environment",
+          "env-remote",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --machine or --host with --environment; the environment already selects its machine.",
+    );
+  });
+
   it("bb project create --json prints the created project", async () => {
     const created = {
       id: "proj-created",

@@ -127,6 +127,8 @@ export type ProjectPromptHistoryQueryKey = readonly [
 export type ProjectPathsQueryKey = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
   string | undefined,
+  string | null,
+  string | null,
   string,
   number,
   boolean,
@@ -139,6 +141,8 @@ export type ProjectPathsQueryKeyPrefix = readonly [
 export type ProjectFilePreviewQueryKey = readonly [
   typeof PROJECT_FILE_PREVIEW_QUERY_KEY,
   string | undefined,
+  string | null,
+  string | null,
   string | null,
 ];
 export type ProjectSourceBranchesQueryKey = readonly [
@@ -228,6 +232,7 @@ export type ProjectCommandsQueryKey = readonly [
   typeof PROJECT_COMMANDS_QUERY_KEY,
   string | undefined,
   string | undefined,
+  string | null,
   string | null,
 ];
 export type AllProjectCommandsQueryKeyPrefix = readonly [
@@ -494,6 +499,8 @@ export function projectsQueryKey(): ProjectsQueryKey {
 
 export function projectPathsQueryKey(
   projectId: string | undefined,
+  environmentId: string | null,
+  hostId: string | null,
   query: string,
   limit: number,
   includeFiles: boolean,
@@ -502,6 +509,8 @@ export function projectPathsQueryKey(
   return [
     PROJECT_PATHS_QUERY_KEY,
     projectId,
+    environmentId,
+    hostId,
     query,
     limit,
     includeFiles,
@@ -511,9 +520,17 @@ export function projectPathsQueryKey(
 
 export function projectFilePreviewQueryKey(
   projectId: string | undefined,
+  environmentId: string | null,
+  hostId: string | null,
   path: string | null,
 ): ProjectFilePreviewQueryKey {
-  return [PROJECT_FILE_PREVIEW_QUERY_KEY, projectId, path];
+  return [
+    PROJECT_FILE_PREVIEW_QUERY_KEY,
+    projectId,
+    environmentId,
+    hostId,
+    path,
+  ];
 }
 
 export function allProjectPathsQueryKeyPrefix(): AllProjectPathsQueryKeyPrefix {
@@ -710,8 +727,15 @@ export function projectCommandsQueryKey(
   projectId: string | undefined,
   providerId: string | undefined,
   environmentId: string | null,
+  hostId: string | null,
 ): ProjectCommandsQueryKey {
-  return [PROJECT_COMMANDS_QUERY_KEY, projectId, providerId, environmentId];
+  return [
+    PROJECT_COMMANDS_QUERY_KEY,
+    projectId,
+    providerId,
+    environmentId,
+    hostId,
+  ];
 }
 
 export function allProjectCommandsQueryKeyPrefix(): AllProjectCommandsQueryKeyPrefix {

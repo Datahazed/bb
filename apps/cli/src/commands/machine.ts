@@ -64,6 +64,32 @@ export function resolveMachineTargetOption(args: {
   return args.machine ?? args.host;
 }
 
+export type MachineEnvironmentRouting =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
+
+export async function resolveMachineEnvironmentRouting(
+  args: { environment?: string; host?: string; machine?: string },
+  serverUrl: string,
+): Promise<MachineEnvironmentRouting> {
+  const machineTarget = resolveMachineTargetOption(args);
+  if (machineTarget !== undefined && args.environment !== undefined) {
+    throw new Error(
+      "Cannot combine --machine or --host with --environment; the environment already selects its machine.",
+    );
+  }
+  if (args.environment !== undefined) {
+    return { environmentId: args.environment };
+  }
+  if (machineTarget !== undefined) {
+    return {
+      hostId: await resolveMachineHostId({ serverUrl, target: machineTarget }),
+    };
+  }
+  return {};
+}
+
 export function formatMachineLastSeen(
   timestamp: number | null,
   now = Date.now(),

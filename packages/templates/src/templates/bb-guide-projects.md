@@ -28,8 +28,18 @@ Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
   bb project paths <id>                   Search workspace paths
+  bb project files <id>                   List workspace files
+  bb project content <id> <path>          Read file content (binary is base64)
   bb project commands <id> --provider <id>
                                           List commands and skills
+    --machine <id-or-name>                Target project source machine
+    --host <id-or-name>                   Alias for --machine
+    --environment <id>                    Target environment workspace
+
+  The machine/host and environment selectors are mutually exclusive. An
+  environment selects its owning machine and workspace; otherwise an explicit
+  machine selects that machine's project source. Omitting both intentionally
+  falls back to the primary machine's project source.
 
 Sources:
 

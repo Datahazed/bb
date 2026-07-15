@@ -2412,6 +2412,14 @@ interface PluginSdkApp {
  */
 declare const PLUGIN_SDK_APP_EXPORT_NAMES: readonly ["definePluginApp", "useBbContext", "useBbNavigate", "useComposer", "useRealtime", "useRpc", "useSettings"];
 
+declare const workspaceFileListResponseSchema: z$1.ZodObject<{
+    files: z$1.ZodArray<z$1.ZodObject<{
+        path: z$1.ZodString;
+        name: z$1.ZodString;
+    }, z$1.core.$strip>>;
+    truncated: z$1.ZodBoolean;
+}, z$1.core.$strip>;
+type WorkspaceFileListResponse = z$1.infer<typeof workspaceFileListResponseSchema>;
 declare const workspacePathListResponseSchema: z$1.ZodObject<{
     paths: z$1.ZodArray<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
@@ -2482,10 +2490,16 @@ declare const projectListQuerySchema: z$1.ZodObject<{
     include: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ProjectListQuery = z$1.infer<typeof projectListQuerySchema>;
+declare const projectFilesQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    limit: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
+}, z$1.core.$strip>;
+type ProjectFilesQuery = z$1.infer<typeof projectFilesQuerySchema>;
 declare const projectPathsQuerySchema: z$1.ZodObject<{
-    query: z$1.ZodOptional<z$1.ZodString>;
-    limit: z$1.ZodOptional<z$1.ZodString>;
-    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
+    query: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    limit: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
     includeFiles: z$1.ZodEnum<{
         true: "true";
         false: "false";
@@ -2494,8 +2508,16 @@ declare const projectPathsQuerySchema: z$1.ZodObject<{
         true: "true";
         false: "false";
     }>;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
 }, z$1.core.$strip>;
 type ProjectPathsQuery = z$1.infer<typeof projectPathsQuerySchema>;
+declare const projectFileContentQuerySchema: z$1.ZodObject<{
+    path: z$1.ZodString;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
+}, z$1.core.$strip>;
+type ProjectFileContentQuery = z$1.infer<typeof projectFileContentQuerySchema>;
 declare const projectBranchesQuerySchema: z$1.ZodObject<{
     query: z$1.ZodOptional<z$1.ZodString>;
     limit: z$1.ZodOptional<z$1.ZodString>;
@@ -2678,8 +2700,9 @@ declare const commandListResponseSchema: z$1.ZodObject<{
 type CommandListResponse = z$1.infer<typeof commandListResponseSchema>;
 /** Query for the complete command catalog available to a project and provider. */
 declare const projectCommandsQuerySchema: z$1.ZodObject<{
-    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
     provider: z$1.ZodString;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
 }, z$1.core.$strict>;
 type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
@@ -3494,14 +3517,14 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"workspace-write">;
             permissionEscalation: z$1.ZodEnum<{
-                deny: "deny";
                 ask: "ask";
+                deny: "deny";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"readonly">;
             permissionEscalation: z$1.ZodEnum<{
-                deny: "deny";
                 ask: "ask";
+                deny: "deny";
             }>;
         }, z$1.core.$strip>], "permissionMode">>;
         instructions: z$1.ZodString;
@@ -3530,8 +3553,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            append: "append";
             replace: "replace";
+            append: "append";
         }>;
         type: z$1.ZodLiteral<"thread.start">;
         requestId: z$1.ZodString;
@@ -3576,9 +3599,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        user: "user";
-                        project: "project";
                         builtin: "builtin";
+                        project: "project";
+                        user: "user";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3653,9 +3676,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        user: "user";
-                        project: "project";
                         builtin: "builtin";
+                        project: "project";
+                        user: "user";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3742,9 +3765,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        user: "user";
-                        project: "project";
                         builtin: "builtin";
+                        project: "project";
+                        user: "user";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3819,9 +3842,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        user: "user";
-                        project: "project";
                         builtin: "builtin";
+                        project: "project";
+                        user: "user";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3885,14 +3908,14 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"workspace-write">;
             permissionEscalation: z$1.ZodEnum<{
-                deny: "deny";
                 ask: "ask";
+                deny: "deny";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"readonly">;
             permissionEscalation: z$1.ZodEnum<{
-                deny: "deny";
                 ask: "ask";
+                deny: "deny";
             }>;
         }, z$1.core.$strip>], "permissionMode">>;
         acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
@@ -3996,13 +4019,12 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
-            projectId: z$1.ZodString;
-            providerThreadId: z$1.ZodString;
-            providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
+            projectId: z$1.ZodString;
+            providerId: z$1.ZodString;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
                 command: z$1.ZodString;
@@ -4120,6 +4142,7 @@ declare const hostDaemonCommandRegistry: {
                 skillFilePath: z$1.ZodString;
             }, z$1.core.$strict>], "kind">>;
             disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            providerThreadId: z$1.ZodString;
         }, z$1.core.$strict>;
         target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             mode: z$1.ZodLiteral<"start">;
@@ -4132,8 +4155,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "mode">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         appliedAs: z$1.ZodEnum<{
-            "new-turn": "new-turn";
             steer: "steer";
+            "new-turn": "new-turn";
         }>;
     }, z$1.core.$strip>, "settled", false>;
     "thread.stop": HostDaemonCommandDescriptor<"thread.stop", z$1.ZodObject<{
@@ -4287,9 +4310,9 @@ declare const hostDaemonCommandRegistry: {
             text: z$1.ZodString;
             startedAt: z$1.ZodOptional<z$1.ZodNumber>;
             status: z$1.ZodOptional<z$1.ZodEnum<{
+                started: "started";
                 completed: "completed";
                 failed: "failed";
-                started: "started";
             }>>;
             metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         }, z$1.core.$strip>>;
@@ -4517,8 +4540,8 @@ declare const hostDaemonCommandRegistry: {
                 skill: "skill";
             }>;
             origin: z$1.ZodEnum<{
-                user: "user";
                 project: "project";
+                user: "user";
             }>;
             description: z$1.ZodNullable<z$1.ZodString>;
             argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4872,9 +4895,9 @@ declare const hostDaemonCommandRegistry: {
         executablePath: z$1.ZodNullable<z$1.ZodString>;
         installed: z$1.ZodBoolean;
         installSource: z$1.ZodEnum<{
-            external: "external";
             notInstalled: "notInstalled";
             npmGlobal: "npmGlobal";
+            external: "external";
         }>;
         currentVersion: z$1.ZodNullable<z$1.ZodString>;
         latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -4883,8 +4906,8 @@ declare const hostDaemonCommandRegistry: {
         npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
         installAction: z$1.ZodNullable<z$1.ZodObject<{
             kind: z$1.ZodEnum<{
-                update: "update";
                 install: "install";
+                update: "update";
             }>;
             label: z$1.ZodEnum<{
                 Install: "Install";
@@ -4906,8 +4929,8 @@ declare const hostDaemonCommandRegistry: {
             cursor: "cursor";
         }>;
         actionKind: z$1.ZodEnum<{
-            update: "update";
             install: "install";
+            update: "update";
         }>;
         type: z$1.ZodLiteral<"provider_cli.install">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -5255,9 +5278,9 @@ declare const hostDaemonCommandRegistry: {
                 conclusion: z$1.ZodNullable<z$1.ZodEnum<{
                     unknown: "unknown";
                     success: "success";
-                    skipped: "skipped";
-                    cancelled: "cancelled";
                     failure: "failure";
+                    cancelled: "cancelled";
+                    skipped: "skipped";
                     neutral: "neutral";
                     timed_out: "timed_out";
                     action_required: "action_required";
@@ -5325,9 +5348,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
-        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
+        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -5336,8 +5359,8 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
     installAction: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
-            update: "update";
             install: "install";
+            update: "update";
         }>;
         label: z$1.ZodEnum<{
             Install: "Install";
@@ -5360,8 +5383,8 @@ declare const providerCliInstallRequestSchema: z$1.ZodObject<{
         cursor: "cursor";
     }>;
     actionKind: z$1.ZodEnum<{
-        update: "update";
         install: "install";
+        update: "update";
     }>;
 }, z$1.core.$strip>;
 type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;
@@ -8667,12 +8690,29 @@ interface ProjectReorderArgs extends ReorderProjectRequest {
 interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
     projectId: string;
 }
-interface ProjectPathsArgs extends ProjectPathsQuery {
+/** Select one project workspace source, or omit both for the primary host. */
+type ProjectWorkspaceRoutingArgs = {
+    environmentId: string;
+    hostId?: never;
+} | {
+    environmentId?: never;
+    hostId: string;
+} | {
+    environmentId?: never;
+    hostId?: never;
+};
+type ProjectFilesArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
     projectId: string;
-}
-interface ProjectCommandsArgs extends ProjectCommandsQuery {
+};
+type ProjectPathsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
     projectId: string;
-}
+};
+type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+};
+type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+};
 interface ProjectBranchesArgs extends ProjectBranchesQuery {
     projectId: string;
 }
@@ -8697,6 +8737,14 @@ type ProjectDefaultExecutionOptionsResult = ProjectExecutionDefaults | null;
 type ProjectDeleteResult = {
     ok: true;
 };
+interface ProjectFileContentResult {
+    /** UTF-8 text or base64, as selected by `contentEncoding`. */
+    content: string;
+    contentEncoding: "utf8" | "base64";
+    mimeType: string;
+    sizeBytes: number;
+}
+type ProjectFilesResult = WorkspaceFileListResponse;
 type ProjectGetResult = ProjectResponse;
 type ProjectListResult = ProjectResponse[] | ProjectWithThreadsResponse[];
 type ProjectPathsResult = WorkspacePathListResponse;
@@ -8719,6 +8767,8 @@ interface ProjectsArea {
     create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
     defaultExecutionOptions(args: ProjectDefaultExecutionOptionsArgs): Promise<ProjectDefaultExecutionOptionsResult>;
     delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
+    fileContent(args: ProjectFileContentArgs): Promise<ProjectFileContentResult>;
+    files(args: ProjectFilesArgs): Promise<ProjectFilesResult>;
     get(args: ProjectGetArgs): Promise<ProjectGetResult>;
     list(args?: ProjectListArgs): Promise<ProjectListResult>;
     paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;

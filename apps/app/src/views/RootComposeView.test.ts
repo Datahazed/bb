@@ -29,6 +29,7 @@ import {
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposeProviderRouting,
+  resolveRootComposeProjectRouting,
   resolveRootComposePanelThreadId,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
@@ -593,6 +594,23 @@ describe("resolveComposeHostId", () => {
       resolveComposeHostId(parseEnvironmentValue("reuse:env_1"), "host_primary"),
     ).toBe("host_primary");
     expect(resolveComposeHostId(parseEnvironmentValue(""), null)).toBeNull();
+  });
+});
+
+describe("resolveRootComposeProjectRouting", () => {
+  it("propagates the selected host or environment to project workspace calls", () => {
+    expect(
+      resolveRootComposeProjectRouting(
+        parseEnvironmentValue("host:host_remote:worktree"),
+        "host_primary",
+      ),
+    ).toEqual({ hostId: "host_remote" });
+    expect(
+      resolveRootComposeProjectRouting(
+        parseEnvironmentValue("reuse:env_remote"),
+        "host_primary",
+      ),
+    ).toEqual({ environmentId: "env_remote" });
   });
 });
 

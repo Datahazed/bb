@@ -121,6 +121,12 @@ message agents, or inspect projects, providers, and environments.
   to register a path on another machine. Use `--clone` instead of `--path` to
   clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
+- `bb project paths|files|content|commands` accept `--machine <id-or-name>`
+  (`--host` alias) or `--environment <id>`, but not both. An environment uses
+  its owning machine and workspace; an explicit machine uses that machine's
+  project source; omitting both intentionally uses the primary machine source.
+  `bb project content --json` returns UTF-8 text or base64 binary content with
+  an explicit `contentEncoding`.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
