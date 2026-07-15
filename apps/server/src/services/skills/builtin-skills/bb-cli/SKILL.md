@@ -75,7 +75,9 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--folder <id>` to file the new thread immediately.
+  attachments, and `--folder <id>` to file the new thread immediately. These
+  flags pass host-readable absolute paths (or relative server-upload tokens)
+  through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
@@ -117,10 +119,31 @@ message agents, or inspect projects, providers, and environments.
 - `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
+- Use `bb project create --name <name> --root <path> --machine <id-or-name>`
+  to bind a new project's local path to a connected enrolled machine. Use
+  `--host` as an alias. Omitting both selectors preserves the existing local
+  CLI machine fallback (normally the primary machine).
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
-  to register a path on another machine. Use `--clone` instead of `--path` to
-  clone the project's remote there; `--remote-url` and `--target-path` are
+  to register a path on another connected machine. It uses the same selector
+  resolution and fallback as project create. Use `--clone` instead of `--path`
+  to clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
+- `bb project paths|files|content|commands` accept `--machine <id-or-name>`
+  (`--host` alias) or `--environment <id>`, but not both. An environment uses
+  its owning machine and workspace; an explicit machine uses that machine's
+  project source; omitting both intentionally uses the primary machine source.
+  `bb project content --json` returns UTF-8 text or base64 binary content with
+  an explicit `contentEncoding`.
+- Use `bb project attachment upload <project-id> --client-file <path>` when the
+  bytes live on the CLI machine, including when the CLI and bb server are on
+  different hosts. It reads locally and sends multipart bytes through the
+  configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
+  returning the stable server attachment DTO. Optional `--filename` and
+  `--mime-type` override inferred metadata. Pass the returned relative `path`
+  to thread `--file` or `--image`; image MIME types are capped at 10MB and
+  other files at 25MB. `bb project attachment download <project-id>
+<attachment-path> --client-file <path>` writes existing attachment bytes on
+  the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - Direct environment inspection accepts any environment ID: use `bb environment
 status|branches|paths|diff|diff-files|diff-file|diff-patch <id>` and `bb
@@ -136,7 +159,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
-  and `bb provider models <provider-id>`.
+  and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
+  (alias `--host`) or `--environment <id>` to inspect the machine where work
+  will run; the selectors cannot be combined. With neither selector they
+  intentionally inspect the primary machine.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,

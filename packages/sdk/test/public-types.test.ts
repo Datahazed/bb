@@ -11,8 +11,13 @@ import type {
   PluginGetSourceResult as RootPluginGetSource,
   PluginApplyUpdateResult as RootPluginApplyUpdate,
   PluginMarketplaceListResult as RootPluginMarketplaceList,
+  ProjectAttachmentUploadResult as RootProjectAttachmentUpload,
+  ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
+  ProjectWorkspaceRoutingArgs as RootProjectWorkspaceRoutingArgs,
+  ProviderListArgs as RootProviderListArgs,
   ProviderListResult as RootProviderList,
+  ProviderModelsArgs as RootProviderModelsArgs,
   StatusResult as RootStatus,
   SystemVersionResult as RootSystemVersion,
   ThemeCatalogResult as RootThemeCatalog,
@@ -31,8 +36,13 @@ import type {
   PluginGetSourceResult as BrowserPluginGetSource,
   PluginApplyUpdateResult as BrowserPluginApplyUpdate,
   PluginMarketplaceListResult as BrowserPluginMarketplaceList,
+  ProjectAttachmentUploadResult as BrowserProjectAttachmentUpload,
+  ProjectFileContentResult as BrowserProjectFileContent,
   ProjectGetResult as BrowserProjectGet,
+  ProjectWorkspaceRoutingArgs as BrowserProjectWorkspaceRoutingArgs,
+  ProviderListArgs as BrowserProviderListArgs,
   ProviderListResult as BrowserProviderList,
+  ProviderModelsArgs as BrowserProviderModelsArgs,
   StatusResult as BrowserStatus,
   SystemVersionResult as BrowserSystemVersion,
   ThemeCatalogResult as BrowserThemeCatalog,
@@ -51,8 +61,13 @@ import type {
   PluginGetSourceResult as CorePluginGetSource,
   PluginApplyUpdateResult as CorePluginApplyUpdate,
   PluginMarketplaceListResult as CorePluginMarketplaceList,
+  ProjectAttachmentUploadResult as CoreProjectAttachmentUpload,
+  ProjectFileContentResult as CoreProjectFileContent,
   ProjectGetResult as CoreProjectGet,
+  ProjectWorkspaceRoutingArgs as CoreProjectWorkspaceRoutingArgs,
+  ProviderListArgs as CoreProviderListArgs,
   ProviderListResult as CoreProviderList,
+  ProviderModelsArgs as CoreProviderModelsArgs,
   StatusResult as CoreStatus,
   SystemVersionResult as CoreSystemVersion,
   ThemeCatalogResult as CoreThemeCatalog,
@@ -71,8 +86,13 @@ import type {
   PluginGetSourceResult as NodePluginGetSource,
   PluginApplyUpdateResult as NodePluginApplyUpdate,
   PluginMarketplaceListResult as NodePluginMarketplaceList,
+  ProjectAttachmentUploadResult as NodeProjectAttachmentUpload,
+  ProjectFileContentResult as NodeProjectFileContent,
   ProjectGetResult as NodeProjectGet,
+  ProjectWorkspaceRoutingArgs as NodeProjectWorkspaceRoutingArgs,
+  ProviderListArgs as NodeProviderListArgs,
   ProviderListResult as NodeProviderList,
+  ProviderModelsArgs as NodeProviderModelsArgs,
   StatusResult as NodeStatus,
   SystemVersionResult as NodeSystemVersion,
   ThemeCatalogResult as NodeThemeCatalog,
@@ -90,8 +110,13 @@ interface RootSurface {
   pluginGetSource: RootPluginGetSource;
   pluginApplyUpdate: RootPluginApplyUpdate;
   pluginMarketplaceList: RootPluginMarketplaceList;
+  projectAttachmentUpload: RootProjectAttachmentUpload;
+  projectFileContent: RootProjectFileContent;
   projectGet: RootProjectGet;
+  projectWorkspaceRoutingArgs: RootProjectWorkspaceRoutingArgs;
   providerList: RootProviderList;
+  providerListArgs: RootProviderListArgs;
+  providerModelsArgs: RootProviderModelsArgs;
   realtimeConnection: RootRealtimeConnection;
   status: RootStatus;
   systemVersion: RootSystemVersion;
@@ -110,8 +135,13 @@ interface BrowserSurface {
   pluginGetSource: BrowserPluginGetSource;
   pluginApplyUpdate: BrowserPluginApplyUpdate;
   pluginMarketplaceList: BrowserPluginMarketplaceList;
+  projectAttachmentUpload: BrowserProjectAttachmentUpload;
+  projectFileContent: BrowserProjectFileContent;
   projectGet: BrowserProjectGet;
+  projectWorkspaceRoutingArgs: BrowserProjectWorkspaceRoutingArgs;
   providerList: BrowserProviderList;
+  providerListArgs: BrowserProviderListArgs;
+  providerModelsArgs: BrowserProviderModelsArgs;
   realtimeConnection: BrowserRealtimeConnection;
   status: BrowserStatus;
   systemVersion: BrowserSystemVersion;
@@ -130,8 +160,13 @@ interface CoreSurface {
   pluginGetSource: CorePluginGetSource;
   pluginApplyUpdate: CorePluginApplyUpdate;
   pluginMarketplaceList: CorePluginMarketplaceList;
+  projectAttachmentUpload: CoreProjectAttachmentUpload;
+  projectFileContent: CoreProjectFileContent;
   projectGet: CoreProjectGet;
+  projectWorkspaceRoutingArgs: CoreProjectWorkspaceRoutingArgs;
   providerList: CoreProviderList;
+  providerListArgs: CoreProviderListArgs;
+  providerModelsArgs: CoreProviderModelsArgs;
   realtimeConnection: CoreRealtimeConnection;
   status: CoreStatus;
   systemVersion: CoreSystemVersion;
@@ -150,8 +185,13 @@ interface NodeSurface {
   pluginGetSource: NodePluginGetSource;
   pluginApplyUpdate: NodePluginApplyUpdate;
   pluginMarketplaceList: NodePluginMarketplaceList;
+  projectAttachmentUpload: NodeProjectAttachmentUpload;
+  projectFileContent: NodeProjectFileContent;
   projectGet: NodeProjectGet;
+  projectWorkspaceRoutingArgs: NodeProjectWorkspaceRoutingArgs;
   providerList: NodeProviderList;
+  providerListArgs: NodeProviderListArgs;
+  providerModelsArgs: NodeProviderModelsArgs;
   realtimeConnection: NodeRealtimeConnection;
   status: NodeStatus;
   systemVersion: NodeSystemVersion;
@@ -247,11 +287,14 @@ type ExpectedPluginMarketplacesKey =
   | "search";
 
 type ExpectedProjectsKey =
+  | "attachments"
   | "branches"
   | "commands"
   | "create"
   | "defaultExecutionOptions"
   | "delete"
+  | "fileContent"
+  | "files"
   | "get"
   | "list"
   | "paths"
@@ -261,6 +304,7 @@ type ExpectedProjectsKey =
   | "update";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
+type ExpectedProjectAttachmentsKey = "read" | "upload";
 
 type ExpectedProvidersKey = "list" | "models";
 
@@ -354,6 +398,30 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<NodeBbSdk>().toEqualTypeOf<RootBbSdk>();
   });
 
+  it("makes provider host selectors mutually exclusive", () => {
+    expectTypeOf<{
+      environmentId: string;
+      hostId: string;
+    }>().not.toMatchTypeOf<RootProviderListArgs>();
+    expectTypeOf<{ hostId: string }>().toMatchTypeOf<RootProviderModelsArgs>();
+    expectTypeOf<{
+      environmentId: string;
+    }>().toMatchTypeOf<RootProviderModelsArgs>();
+  });
+
+  it("makes project workspace selectors mutually exclusive", () => {
+    expectTypeOf<{
+      environmentId: string;
+      hostId: string;
+    }>().not.toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
+    expectTypeOf<{
+      hostId: string;
+    }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
+    expectTypeOf<{
+      environmentId: string;
+    }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
+  });
+
   it("snapshots every SDK area and nested method group", () => {
     expectTypeOf<keyof RootBbRealtime>().toEqualTypeOf<ExpectedRealtimeKey>();
     expectTypeOf<
@@ -371,6 +439,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["projects"]["attachments"]
+    >().toEqualTypeOf<ExpectedProjectAttachmentsKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]["sources"]
     >().toEqualTypeOf<ExpectedProjectSourcesKey>();

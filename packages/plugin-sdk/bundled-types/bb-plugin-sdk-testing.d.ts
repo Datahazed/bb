@@ -2006,6 +2006,14 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
 }, z$1.core.$strip>;
 type ThreadQueuedMessage = z$1.infer<typeof threadQueuedMessageSchema>;
 
+declare const workspaceFileListResponseSchema: z$1.ZodObject<{
+    files: z$1.ZodArray<z$1.ZodObject<{
+        path: z$1.ZodString;
+        name: z$1.ZodString;
+    }, z$1.core.$strip>>;
+    truncated: z$1.ZodBoolean;
+}, z$1.core.$strip>;
+type WorkspaceFileListResponse = z$1.infer<typeof workspaceFileListResponseSchema>;
 declare const workspacePathListResponseSchema: z$1.ZodObject<{
     paths: z$1.ZodArray<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
@@ -2076,10 +2084,16 @@ declare const projectListQuerySchema: z$1.ZodObject<{
     include: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ProjectListQuery = z$1.infer<typeof projectListQuerySchema>;
+declare const projectFilesQuerySchema: z$1.ZodObject<{
+    query: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    limit: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
+}, z$1.core.$strip>;
+type ProjectFilesQuery = z$1.infer<typeof projectFilesQuerySchema>;
 declare const projectPathsQuerySchema: z$1.ZodObject<{
-    query: z$1.ZodOptional<z$1.ZodString>;
-    limit: z$1.ZodOptional<z$1.ZodString>;
-    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
+    query: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
+    limit: z$1.ZodOptional<z$1.ZodOptional<z$1.ZodString>>;
     includeFiles: z$1.ZodEnum<{
         true: "true";
         false: "false";
@@ -2088,8 +2102,16 @@ declare const projectPathsQuerySchema: z$1.ZodObject<{
         true: "true";
         false: "false";
     }>;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
 }, z$1.core.$strip>;
 type ProjectPathsQuery = z$1.infer<typeof projectPathsQuerySchema>;
+declare const projectFileContentQuerySchema: z$1.ZodObject<{
+    path: z$1.ZodString;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
+}, z$1.core.$strip>;
+type ProjectFileContentQuery = z$1.infer<typeof projectFileContentQuerySchema>;
 declare const projectBranchesQuerySchema: z$1.ZodObject<{
     query: z$1.ZodOptional<z$1.ZodString>;
     limit: z$1.ZodOptional<z$1.ZodString>;
@@ -2148,9 +2170,9 @@ declare const projectBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
     defaultWorktreeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -2272,15 +2294,16 @@ declare const commandListResponseSchema: z$1.ZodObject<{
 type CommandListResponse = z$1.infer<typeof commandListResponseSchema>;
 /** Query for the complete command catalog available to a project and provider. */
 declare const projectCommandsQuerySchema: z$1.ZodObject<{
-    environmentId: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodNullable<z$1.ZodString>>;
     provider: z$1.ZodString;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
 }, z$1.core.$strict>;
 type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2301,8 +2324,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2407,6 +2430,17 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
 type ProjectWithThreadsResponse = z$1.infer<typeof projectWithThreadsResponseSchema>;
+declare const uploadedPromptAttachmentSchema: z$1.ZodObject<{
+    type: z$1.ZodEnum<{
+        localImage: "localImage";
+        localFile: "localFile";
+    }>;
+    path: z$1.ZodString;
+    name: z$1.ZodString;
+    mimeType: z$1.ZodOptional<z$1.ZodString>;
+    sizeBytes: z$1.ZodNumber;
+}, z$1.core.$strip>;
+type UploadedPromptAttachment = z$1.infer<typeof uploadedPromptAttachmentSchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
     mergeBaseBranch: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
@@ -2446,9 +2480,9 @@ declare const environmentDiffBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2519,8 +2553,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -2533,8 +2567,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2565,8 +2599,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -5162,8 +5196,8 @@ declare const installedPluginSchema: z$1.ZodObject<{
     status: z$1.ZodEnum<{
         error: "error";
         running: "running";
-        incompatible: "incompatible";
         missing: "missing";
+        incompatible: "incompatible";
         disabled: "disabled";
         degraded: "degraded";
         "needs-configuration": "needs-configuration";
@@ -5255,8 +5289,8 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";
@@ -5349,8 +5383,8 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";
@@ -5934,9 +5968,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
-        running: "running";
         starting: "starting";
         disconnected: "disconnected";
+        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -5965,9 +5999,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
-            running: "running";
             starting: "starting";
             disconnected: "disconnected";
+            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7573,9 +7607,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            unmanaged: "unmanaged";
-            "managed-worktree": "managed-worktree";
             personal: "personal";
+            "managed-worktree": "managed-worktree";
+            unmanaged: "unmanaged";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -8023,8 +8057,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;
@@ -8200,8 +8234,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            paused: "paused";
             active: "active";
+            paused: "paused";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -8671,16 +8705,58 @@ interface ProjectReorderArgs extends ReorderProjectRequest {
 interface ProjectPromptHistoryArgs extends PromptHistoryQuery {
     projectId: string;
 }
-interface ProjectPathsArgs extends ProjectPathsQuery {
+/** Select one project workspace source, or omit both for the primary host. */
+type ProjectWorkspaceRoutingArgs = {
+    environmentId: string;
+    hostId?: never;
+} | {
+    environmentId?: never;
+    hostId: string;
+} | {
+    environmentId?: never;
+    hostId?: never;
+};
+type ProjectFilesArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFilesQuery, "environmentId" | "hostId"> & {
     projectId: string;
-}
-interface ProjectCommandsArgs extends ProjectCommandsQuery {
+};
+type ProjectPathsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectPathsQuery, "environmentId" | "hostId"> & {
     projectId: string;
-}
+};
+type ProjectCommandsArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectCommandsQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+};
+type ProjectFileContentArgs = ProjectWorkspaceRoutingArgs & Omit<ProjectFileContentQuery, "environmentId" | "hostId"> & {
+    projectId: string;
+};
 interface ProjectBranchesArgs extends ProjectBranchesQuery {
     projectId: string;
 }
 interface ProjectDefaultExecutionOptionsArgs {
+    projectId: string;
+}
+interface ProjectAttachmentFileLike {
+    arrayBuffer(): Promise<ArrayBuffer>;
+    readonly name: string;
+    readonly type?: string;
+}
+interface ProjectAttachmentUploadArgsBase {
+    /** MIME override. Omit to use the File/Blob type, when available. */
+    mimeType?: string;
+    projectId: string;
+}
+/**
+ * Upload bytes owned by this SDK client. A bare Blob/byte buffer needs an
+ * explicit filename; File-like values can supply their own name.
+ */
+type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase & ({
+    clientFile: ProjectAttachmentFileLike;
+    filename?: string;
+} | {
+    clientFile: ArrayBuffer | Blob | Uint8Array;
+    filename: string;
+});
+interface ProjectAttachmentReadArgs {
+    path: string;
     projectId: string;
 }
 type ProjectSourceAddArgs = CreateProjectSourceRequest & {
@@ -8695,12 +8771,26 @@ interface ProjectSourceDeleteArgs {
     sourceId: string;
 }
 type ProjectBranchesResult = ProjectBranchesResponse;
+interface ProjectAttachmentReadResult {
+    bytes: Uint8Array;
+    mimeType: string;
+    sizeBytes: number;
+}
+type ProjectAttachmentUploadResult = UploadedPromptAttachment;
 type ProjectCommandsResult = CommandListResponse;
 type ProjectCreateResult = ProjectResponse;
 type ProjectDefaultExecutionOptionsResult = ProjectExecutionDefaults | null;
 type ProjectDeleteResult = {
     ok: true;
 };
+interface ProjectFileContentResult {
+    /** UTF-8 text or base64, as selected by `contentEncoding`. */
+    content: string;
+    contentEncoding: "utf8" | "base64";
+    mimeType: string;
+    sizeBytes: number;
+}
+type ProjectFilesResult = WorkspaceFileListResponse;
 type ProjectGetResult = ProjectResponse;
 type ProjectListResult = ProjectResponse[] | ProjectWithThreadsResponse[];
 type ProjectPathsResult = WorkspacePathListResponse;
@@ -8717,12 +8807,19 @@ interface ProjectSourcesArea {
     delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
     update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
+interface ProjectAttachmentsArea {
+    read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
+    upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;
+}
 interface ProjectsArea {
+    attachments: ProjectAttachmentsArea;
     branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
     commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
     create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
     defaultExecutionOptions(args: ProjectDefaultExecutionOptionsArgs): Promise<ProjectDefaultExecutionOptionsResult>;
     delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
+    fileContent(args: ProjectFileContentArgs): Promise<ProjectFileContentResult>;
+    files(args: ProjectFilesArgs): Promise<ProjectFilesResult>;
     get(args: ProjectGetArgs): Promise<ProjectGetResult>;
     list(args?: ProjectListArgs): Promise<ProjectListResult>;
     paths(args: ProjectPathsArgs): Promise<ProjectPathsResult>;
@@ -8732,12 +8829,27 @@ interface ProjectsArea {
     update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }
 
-interface ProviderModelsArgs extends SystemExecutionOptionsQuery {
-}
+/** Select exactly one provider-discovery host source, or omit both for primary. */
+type ProviderHostRoutingArgs = {
+    environmentId: string;
+    hostId?: never;
+} | {
+    environmentId?: never;
+    hostId: string;
+} | {
+    environmentId?: never;
+    hostId?: never;
+};
+type ProviderListArgs = ProviderHostRoutingArgs;
+type ProviderModelsArgs = ProviderHostRoutingArgs & {
+    providerId?: string;
+};
 type ProviderListResult = ProviderInfo[];
 type ProviderModelsResult = SystemExecutionOptionsResponse;
 interface ProvidersArea {
-    list(): Promise<ProviderListResult>;
+    /** List providers on the environment host, explicit host, or primary host. */
+    list(args?: ProviderListArgs): Promise<ProviderListResult>;
+    /** List models on the environment host, explicit host, or primary host. */
     models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
 }
 

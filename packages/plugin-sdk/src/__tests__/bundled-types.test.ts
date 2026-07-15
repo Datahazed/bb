@@ -17,6 +17,12 @@ describe("bundled plugin SDK declarations", () => {
     );
     expect(declarations).toContain("type ProjectGetResult = ProjectResponse;");
     expect(declarations).toContain(
+      "type ProjectAttachmentUploadResult = UploadedPromptAttachment;",
+    );
+    expect(declarations).toContain(
+      "upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;",
+    );
+    expect(declarations).toContain(
       "type EnvironmentStatusResult = EnvironmentStatusResponse;",
     );
     expect(declarations).toContain("interface PluginMarketplacesArea");
@@ -32,6 +38,12 @@ describe("bundled plugin SDK declarations", () => {
     expect(appDeclarations).not.toContain("PluginMarketplacesArea");
     expect(appDeclarations).not.toContain("installFromMarketplace");
     expect(appDeclarations).not.toContain("applyUpdate(args: PluginIdArgs)");
+    expect(declarations).toContain(
+      "list(args?: ProviderListArgs): Promise<ProviderListResult>;",
+    );
+    expect(declarations).toContain(
+      "models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;",
+    );
   });
 
   it("ships portable declarations for every exported subpath", async () => {

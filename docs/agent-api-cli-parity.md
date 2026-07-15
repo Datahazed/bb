@@ -91,7 +91,7 @@ storageFiles               storagePaths
 timelineTurnSummaryDetails
 ```
 
-Thread creation and messaging also support structured local attachments:
+Thread creation and messaging also support structured path attachments:
 
 ```text
 bb thread spawn ... --file <path> --image <path>
@@ -103,19 +103,48 @@ Both attachment flags are repeatable. `thread spawn` additionally supports
 `--source-seq-end <seq>`. The SDK accepts the equivalent `input`, `folderId`,
 `originKind`, `sourceThreadId`, and `sourceSeqEnd` fields.
 
+`--file` and `--image` do not read paths on the CLI machine. Absolute paths are
+passed through for the thread execution host to read; relative values are
+server-managed project attachment paths returned by the upload API.
+
 ## Projects
 
-| SDK                                               | CLI                                                                              |
-| ------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                      |
-| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                         |
-| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`       |
-| `bb.projects.paths(...)`                          | `bb project paths <id> [--environment <id>] [--query <query>] [--limit <count>]` |
-| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--environment <id>]`                  |
-| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.  |
+| SDK                                               | CLI                                                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bb.projects.create({ name, source })`            | `bb project create --name <name> --root <path> [--machine/--host <id-or-name>]`                                  |
+| `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                                                      |
+| `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                                                         |
+| `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`                                       |
+| `bb.projects.paths(...)`                          | `bb project paths <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.files(...)`                          | `bb project files <id> [--machine/--host <id-or-name> / --environment <id>] [--query <query>] [--limit <count>]` |
+| `bb.projects.fileContent(...)`                    | `bb project content <id> <path> [--machine/--host <id-or-name> / --environment <id>]`                            |
+| `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--machine/--host <id-or-name> / --environment <id>]`                  |
+| `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.                                  |
+| `bb.projects.attachments.upload(...)`             | `bb project attachment upload <id> --client-file <path> [--filename <name>] [--mime-type <type>]`                |
+| `bb.projects.attachments.read(...)`               | `bb project attachment download <id> <attachment-path> --client-file <path>`                                     |
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.
+
+Project creation already has explicit host parity in the SDK contract: its
+local-path `source` requires `hostId`. The CLI resolves an explicit connected
+machine ID or unambiguous name into that field; without a selector it preserves
+the existing local CLI machine fallback (normally the primary machine).
+
+Project workspace host and environment selectors are mutually exclusive. An
+environment selects its owning host and workspace; otherwise an explicit host
+selects that host's project source. Omitting both intentionally falls back to
+the primary host's project source. File content uses UTF-8 for text and base64
+for binary data in the portable SDK/CLI JSON DTO.
+
+Project attachment upload is the client-local byte path: the SDK accepts
+`Uint8Array`, `ArrayBuffer`, `Blob`, and File-like input and sends multipart
+data to the selected server. The CLI reads `--client-file` on the CLI machine,
+so it works when that machine is different from both the server and thread
+execution host. The result is the existing uploaded-attachment DTO; image MIME
+types are limited to 10MB and other uploads to 25MB. The server currently has
+no attachment list or per-attachment remove operation, so neither surface
+invents one.
 
 ## Environments and pull requests
 
@@ -144,6 +173,17 @@ requires a thread.
 Diff targets are `uncommitted`, `branch_committed`, `all`, and `commit`.
 Branch targets require `--merge-base-branch`, commit targets require `--sha`,
 and `diff-file` uses the resolved `--merge-base-ref` for branch targets.
+
+## Providers
+
+| SDK                                                              | CLI                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `bb.providers.list({ hostId? / environmentId? })`                | `bb provider list [--machine <id-or-name> / --host <id-or-name> / --environment <id>]`                |
+| `bb.providers.models({ providerId?, hostId? / environmentId? })` | `bb provider models [providerId] [--machine <id-or-name> / --host <id-or-name> / --environment <id>]` |
+
+Host and environment selectors are mutually exclusive. An environment resolves
+to its owning host; otherwise an explicit host is used. Omitting both selectors
+intentionally falls back to the primary machine.
 
 ## Machines
 

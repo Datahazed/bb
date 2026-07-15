@@ -340,6 +340,17 @@ if (saved.outcome === "conflict") {
 listing under a directory. Writes cap at 25 MB and return
 `{ outcome: "written", sha256, sizeBytes }`.
 
+Project prompt attachments use a separate server-managed byte surface. Upload
+bytes available to the SDK caller with
+`bb.sdk.projects.attachments.upload({ projectId, clientFile, filename?,
+mimeType? })`; `clientFile` accepts `Uint8Array`, `ArrayBuffer`, `Blob`, or a
+File-like value (bare bytes/Blob require `filename`). The SDK sends multipart
+bytes and returns the stable uploaded-attachment DTO whose relative `path` can
+be used in `localFile`/`localImage` prompt input. Read an existing attachment
+with `bb.sdk.projects.attachments.read({ projectId, path })`. Image MIME types
+cap at 10 MB and other files at 25 MB. There is no attachment list or
+per-attachment remove operation.
+
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
 returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`

@@ -161,6 +161,273 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("uploads client-local binary attachments as authenticated multipart data", async () => {
+    const binary = new Uint8Array([0, 255, 1, 128, 42]);
+    let forwardedRequest: Request | undefined;
+    const authenticatedFetch: FetchImplementation = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set("authorization", "Bearer client-token");
+      forwardedRequest = new Request(input, { ...init, headers });
+      return jsonResponse({
+        body: {
+          type: "localFile",
+          path: "payload-uploaded.bin",
+          name: "payload.bin",
+          mimeType: "application/x-bb-test",
+          sizeBytes: binary.byteLength,
+        },
+        status: 201,
+      });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "https://remote-bb.test/",
+        fetch: authenticatedFetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.projects.attachments.upload({
+        clientFile: binary,
+        filename: "payload.bin",
+        mimeType: "application/x-bb-test",
+        projectId: "proj_remote",
+      }),
+    ).resolves.toEqual({
+      type: "localFile",
+      path: "payload-uploaded.bin",
+      name: "payload.bin",
+      mimeType: "application/x-bb-test",
+      sizeBytes: binary.byteLength,
+    });
+
+    expect(forwardedRequest?.url).toBe(
+      "https://remote-bb.test/api/v1/projects/proj_remote/attachments",
+    );
+    expect(forwardedRequest?.method).toBe("POST");
+    expect(forwardedRequest?.headers.get("authorization")).toBe(
+      "Bearer client-token",
+    );
+    expect(forwardedRequest?.headers.get("content-type")).toMatch(
+      /^multipart\/form-data; boundary=/u,
+    );
+    const form = await forwardedRequest?.formData();
+    const file = form?.get("file");
+    expect(file).toBeInstanceOf(File);
+    if (!(file instanceof File)) {
+      throw new Error("Expected multipart attachment file");
+    }
+    expect(file.name).toBe("payload.bin");
+    expect(file.type).toBe("application/x-bb-test");
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(binary);
+  });
+
+  it("uses File-like attachment metadata and reads server attachment bytes", async () => {
+    const requests: string[] = [];
+    const responses = [
+      jsonResponse({
+        body: {
+          type: "localImage",
+          path: "pixel-uploaded.png",
+          name: "pixel.png",
+          mimeType: "image/png",
+          sizeBytes: 4,
+        },
+        status: 201,
+      }),
+      new Response(new Uint8Array([137, 80, 78, 71]), {
+        headers: { "content-type": "image/png" },
+      }),
+    ];
+    const fetch: FetchImplementation = async (input) => {
+      requests.push(String(input));
+      const response = responses.shift();
+      if (!response) throw new Error("No queued attachment response");
+      return response;
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "browser",
+      }),
+    });
+
+    await sdk.projects.attachments.upload({
+      clientFile: new File([new Uint8Array([137, 80, 78, 71])], "pixel.png", {
+        type: "image/png",
+      }),
+      projectId: "proj_image",
+    });
+    await expect(
+      sdk.projects.attachments.read({
+        path: "pixel-uploaded.png",
+        projectId: "proj_image",
+      }),
+    ).resolves.toEqual({
+      bytes: new Uint8Array([137, 80, 78, 71]),
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+    expect(requests).toEqual([
+      "http://bb.test/api/v1/projects/proj_image/attachments",
+      "http://bb.test/api/v1/projects/proj_image/attachments/content?path=pixel-uploaded.png",
+    ]);
+  });
+
+  it("preserves project attachment error envelopes", async () => {
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: async () =>
+          jsonResponse({
+            body: {
+              code: "invalid_request",
+              message: "Attachment exceeds 10MB limit",
+            },
+            status: 400,
+          }),
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.projects.attachments.upload({
+        clientFile: new Uint8Array([1]),
+        filename: "huge.png",
+        mimeType: "image/png",
+        projectId: "proj_remote",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_request",
+      message: "HTTP 400: Attachment exceeds 10MB limit",
+      status: 400,
+    });
+  });
+
+  it("routes project file APIs and returns portable text/binary DTOs", async () => {
+    const requests: CapturedRequest[] = [];
+    const responses = [
+      jsonResponse({
+        body: {
+          files: [{ name: "remote.txt", path: "remote.txt" }],
+          truncated: false,
+        },
+      }),
+      new Response("remote text", {
+        headers: {
+          "content-type": "text/plain",
+          "x-bb-content-encoding": "utf8",
+        },
+      }),
+      new Response(new Uint8Array([0, 1, 254, 255]), {
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-bb-content-encoding": "base64",
+        },
+      }),
+    ];
+    const fetch: FetchImplementation = async (input, init) => {
+      requests.push({
+        bodyText: bodyText(init),
+        method: init?.method ?? "GET",
+        url: String(input),
+      });
+      const response = responses.shift();
+      if (!response) throw new Error("No queued project file response");
+      return response;
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "browser",
+      }),
+    });
+
+    await expect(
+      sdk.projects.files({
+        projectId: "proj_remote",
+        hostId: "host_remote",
+      }),
+    ).resolves.toMatchObject({ files: [{ path: "remote.txt" }] });
+    await expect(
+      sdk.projects.fileContent({
+        projectId: "proj_remote",
+        environmentId: "env_remote",
+        path: "remote.txt",
+      }),
+    ).resolves.toEqual({
+      content: "remote text",
+      contentEncoding: "utf8",
+      mimeType: "text/plain",
+      sizeBytes: 11,
+    });
+    await expect(
+      sdk.projects.fileContent({
+        projectId: "proj_remote",
+        hostId: "host_remote",
+        path: "image.bin",
+      }),
+    ).resolves.toEqual({
+      content: "AAH+/w==",
+      contentEncoding: "base64",
+      mimeType: "application/octet-stream",
+      sizeBytes: 4,
+    });
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/projects/proj_remote/files?hostId=host_remote",
+      "http://bb.test/api/v1/projects/proj_remote/files/content?environmentId=env_remote&path=remote.txt",
+      "http://bb.test/api/v1/projects/proj_remote/files/content?hostId=host_remote&path=image.bin",
+    ]);
+  });
+
+  it("routes provider list and model discovery through portable host selectors", async () => {
+    const queue = createFetchQueue([
+      { body: [] },
+      {
+        body: {
+          providers: [],
+          models: [],
+          selectedOnlyModels: [],
+          modelLoadError: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.providers.list({ hostId: "host_remote" }),
+    ).resolves.toEqual([]);
+    await expect(
+      sdk.providers.models({
+        environmentId: "env_remote",
+        providerId: "acp-remote",
+      }),
+    ).resolves.toMatchObject({ models: [], providers: [] });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/providers?hostId=host_remote",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
