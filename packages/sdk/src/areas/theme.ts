@@ -2,16 +2,20 @@ import type { AppTheme } from "@bb/domain";
 import type { ThemeCatalogResponse } from "@bb/server-contract";
 import type { CreateSdkAreaArgs } from "./common.js";
 
+export type ThemeGetResult = AppTheme;
+export type ThemeCatalogResult = ThemeCatalogResponse;
+export type ThemeSetResult = AppTheme;
+
 export interface ThemeArea {
   /** The active app palette, resolved server-side (built-in id or custom CSS). */
-  get(): Promise<AppTheme>;
+  get(): Promise<ThemeGetResult>;
   /** The custom-theme directory plus discovered themes and the active palette. */
-  catalog(): Promise<ThemeCatalogResponse>;
+  catalog(): Promise<ThemeCatalogResult>;
   /**
    * Activate a palette by id — a built-in id or a custom theme name that exists
    * under `<data-dir>/theme/<name>/theme.css`. Broadcasts to all open windows.
    */
-  set(themeId: string): Promise<AppTheme>;
+  set(themeId: string): Promise<ThemeSetResult>;
 }
 
 export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {

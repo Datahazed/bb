@@ -24,15 +24,13 @@ contracts), so standalone plugins outside a checkout cannot use them yet.
 
 ## Dependency surface
 
-The public types reference external type sources: `hono` (`Context` in http
-route handlers), `better-sqlite3` + `@types/better-sqlite3` (`bb.storage`
-database handles), `zod` (tool input schemas), and `react` + `@types/react`
-(the app contract). They are declared as **optional peerDependencies**: a
-plugin only needs the ones its surfaces touch (a backend-only plugin never
-needs react; a frontend-only plugin never needs better-sqlite3). Install the
-peers matching the surfaces you use, or your typecheck will fail resolving
-those imports.
+The root contract preserves the complete `BbPluginApi`, including the full
+`BbSdk` and app contract. Its public types reference `hono`,
+`better-sqlite3` + `@types/better-sqlite3`, `zod`, and `react` +
+`@types/react`; they are optional peers for in-repo consumers. A
+`bb plugin new` scaffold declares the type dependencies its bundled `.d.ts`
+needs and typechecks them with `skipLibCheck: false`.
 
 The `@bb/*` type dependencies (`@bb/domain`, `@bb/sdk`, `@bb/server-contract`)
-are workspace-internal; this package is currently consumed from inside the BB
-monorepo (plugins are typechecked against the workspace sources via jiti).
+are workspace-internal. The scaffold declaration generator flattens them into
+portable named DTOs, so generated plugins resolve no workspace packages.
