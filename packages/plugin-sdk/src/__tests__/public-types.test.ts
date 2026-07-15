@@ -24,6 +24,8 @@ type ExpectedBbPluginApiKey =
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
   "PluginAgents",
+  "PluginAgentConfiguration",
+  "PluginAgentConfigurationContext",
   "PluginAgentToolContentPart",
   "PluginAgentToolContext",
   "PluginAgentToolRegistrationBase",

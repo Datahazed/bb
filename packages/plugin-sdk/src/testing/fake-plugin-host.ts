@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type {
   BbPluginApi,
+  PluginAgentConfiguration,
+  PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolResult,
   PluginAgents,
@@ -108,6 +110,9 @@ const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
+const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MENTION_TRIGGER_VALUES = [
@@ -275,6 +280,10 @@ export interface FakePluginRegistrations {
   schedules: FakeScheduleRecord[];
   cli: FakeCliRecord | null;
   agentTools: FakeAgentToolRecord[];
+  /** Provider from bb.agents.configure, or null when none registered. */
+  agentConfigurationProvider:
+    | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
+    | null;
   /** Provider from contributeInstructions, or null when none registered. */
   instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
@@ -368,6 +377,14 @@ export interface FakePluginHarness {
     input: unknown,
     ctx?: Partial<PluginAgentToolContext>,
   ): Promise<PluginAgentToolResult>;
+  /** Evaluate `bb.agents.configure` with production validation/fail-closed
+   * semantics. With no callback, every registered tool/declared test skill is
+   * selected. Callback failures are logged and return empty selections. */
+  resolveAgentConfiguration(context: PluginAgentConfigurationContext): Promise<{
+    tools: FakeAgentToolRecord[];
+    skills: string[];
+    instructions: string | null;
+  }>;
   /**
    * Dispose like a host reload/disable: abort services started via
    * runService, run onDispose hooks LIFO (isolated), close database handles,
@@ -394,6 +411,8 @@ export interface CreateFakePluginHostOptions {
   settings?: Record<string, PluginSettingValue>;
   /** Initial `bb.sdk` stubs; extend later via `harness.sdk.stub`. */
   sdk?: FakeSdkOverrides;
+  /** Static manifest skill ids available to configure() in this fake host. */
+  agentSkillIds?: readonly string[];
   /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
 }
@@ -588,10 +607,107 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
   return JSON.parse(json);
 }
 
+function normalizeAgentConfigurationIds(args: {
+  field: "tools" | "skills";
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): string[] {
+  if (!Array.isArray(args.value)) {
+    throw new Error(`configure() output.${args.field} must be an array`);
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const id = args.value[index];
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(
+        `configure() output.${args.field}[${index}] must be a non-empty string`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(
+        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+      );
+    }
+    if (!args.knownIds.has(id)) {
+      throw new Error(
+        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(id);
+    selected.push(id);
+  }
+  return selected;
+}
+
+function normalizeAgentConfiguration(args: {
+  knownSkillIds: ReadonlySet<string>;
+  knownToolIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): { toolIds: string[]; skillIds: string[]; instructions: string | null } {
+  if (
+    typeof args.value !== "object" ||
+    args.value === null ||
+    Array.isArray(args.value)
+  ) {
+    throw new Error(
+      "configure() must return { tools: string[], skills: string[], instructions?: string }",
+    );
+  }
+  const output = args.value as Record<string, unknown>;
+  const unknownKeys = Object.keys(output)
+    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    output.instructions !== undefined &&
+    typeof output.instructions !== "string"
+  ) {
+    throw new Error("configure() output.instructions must be a string");
+  }
+  return {
+    toolIds: normalizeAgentConfigurationIds({
+      field: "tools",
+      knownIds: args.knownToolIds,
+      pluginId: args.pluginId,
+      value: output.tools,
+    }),
+    skillIds: normalizeAgentConfigurationIds({
+      field: "skills",
+      knownIds: args.knownSkillIds,
+      pluginId: args.pluginId,
+      value: output.skills,
+    }),
+    instructions:
+      typeof output.instructions === "string" &&
+      output.instructions.trim().length > 0
+        ? output.instructions.slice(
+            0,
+            PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+          )
+        : null,
+  };
+}
+
 export function createFakePluginHost(
   options: CreateFakePluginHostOptions = {},
 ): FakePluginHost {
   const pluginId = options.pluginId ?? "test-plugin";
+  const agentSkillIds = [...(options.agentSkillIds ?? [])];
+  if (new Set(agentSkillIds).size !== agentSkillIds.length) {
+    throw new Error("agentSkillIds must not contain duplicates");
+  }
   let invalidated = false;
   let disposed = false;
 
@@ -915,10 +1031,25 @@ export function createFakePluginHost(
 
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
+  let agentConfigurationProvider:
+    | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
+    | null = null;
   let instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null = null;
   const agents: PluginAgents = {
+    configure(provider) {
+      assertLive();
+      if (agentConfigurationProvider !== null) {
+        throw new Error("agent configuration is already registered");
+      }
+      if (typeof provider !== "function") {
+        throw new Error(
+          "configure requires a provider function (context) => ({ tools, skills, instructions? })",
+        );
+      }
+      agentConfigurationProvider = provider;
+    },
     contributeInstructions(provider) {
       assertLive();
       if (instructionProvider !== null) {
@@ -964,6 +1095,14 @@ export function createFakePluginHost(
         typeof tool.instructions !== "string"
       ) {
         throw new Error(`tool "${name}" instructions must be a string`);
+      }
+      if (
+        typeof tool.instructions === "string" &&
+        tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
+      ) {
+        throw new Error(
+          `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+        );
       }
       if (typeof tool.execute !== "function") {
         throw new Error(
@@ -1348,6 +1487,9 @@ export function createFakePluginHost(
         return cliRecord.registration;
       },
       agentTools,
+      get agentConfigurationProvider() {
+        return agentConfigurationProvider;
+      },
       get instructionProvider() {
         return instructionProvider;
       },
@@ -1552,6 +1694,33 @@ export function createFakePluginHost(
         projectId: ctx?.projectId ?? "project-test",
         signal: ctx?.signal ?? new AbortController().signal,
       });
+    },
+
+    async resolveAgentConfiguration(context) {
+      if (agentConfigurationProvider === null) {
+        return {
+          tools: [...agentTools],
+          skills: [...agentSkillIds],
+          instructions: null,
+        };
+      }
+      try {
+        const normalized = normalizeAgentConfiguration({
+          knownSkillIds: new Set(agentSkillIds),
+          knownToolIds: new Set(agentTools.map((tool) => tool.name)),
+          pluginId,
+          value: agentConfigurationProvider(context),
+        });
+        const selectedTools = new Set(normalized.toolIds);
+        return {
+          tools: agentTools.filter((tool) => selectedTools.has(tool.name)),
+          skills: normalized.skillIds,
+          instructions: normalized.instructions,
+        };
+      } catch (error) {
+        emitLog("warn", `agent configure failed: ${errorMessage(error)}`);
+        return { tools: [], skills: [], instructions: null };
+      }
     },
 
     async dispose() {

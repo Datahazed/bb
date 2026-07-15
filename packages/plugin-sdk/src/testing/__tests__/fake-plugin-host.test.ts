@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { BbPluginApi } from "../../backend-contract.js";
+import type {
+  BbPluginApi,
+  PluginAgentConfigurationContext,
+} from "../../backend-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
 describe("ui.requestInput", () => {
@@ -437,6 +440,32 @@ describe("sdk", () => {
 });
 
 describe("agent tools", () => {
+  const configurationContext = {
+    thread: {
+      id: "thread-test",
+      title: null,
+      parentThreadId: null,
+      sourceThreadId: null,
+    },
+    project: {
+      id: "project-test",
+      kind: "standard",
+      name: "Test",
+      gitRemoteUrl: null,
+    },
+    environment: {
+      id: "environment-test",
+      name: null,
+      path: "/tmp/test",
+      workspaceProvisionType: "unmanaged",
+      branchName: null,
+    },
+    host: { id: "host-test", name: "Test host" },
+    provider: { id: "codex", model: "gpt-5" },
+    sideChat: false,
+    origin: { kind: null, pluginId: null },
+  } satisfies PluginAgentConfigurationContext;
+
   it("validates zod parameters per call and executes with a default context", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.agents.registerTool({
@@ -472,6 +501,80 @@ describe("agent tools", () => {
     bb.agents.contributeInstructions(() => "first");
     expect(() => bb.agents.contributeInstructions(() => "second")).toThrow(
       "agent instructions are already registered",
+    );
+    bb.agents.configure(() => ({ tools: [], skills: [] }));
+    expect(() =>
+      bb.agents.configure(() => ({ tools: [], skills: [] })),
+    ).toThrow("agent configuration is already registered");
+  });
+
+  it("resolves conditional tools, skills, context, and capped instructions without rebuilding registrations", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "conditional",
+      agentSkillIds: ["alpha-skill", "beta-skill"],
+    });
+    for (const name of ["alpha_tool", "beta_tool"]) {
+      bb.agents.registerTool({
+        name,
+        description: name,
+        parameters: { type: "object" },
+        execute: () => name,
+      });
+    }
+    const contexts: PluginAgentConfigurationContext[] = [];
+    bb.agents.configure((context) => {
+      contexts.push(context);
+      const alpha = context.host.id === "host-test";
+      return {
+        tools: [alpha ? "alpha_tool" : "beta_tool"],
+        skills: [alpha ? "alpha-skill" : "beta-skill"],
+        instructions:
+          `${context.provider.id}:${context.provider.model}:`.padEnd(5000, "x"),
+      };
+    });
+
+    const alpha = await harness.resolveAgentConfiguration(configurationContext);
+    const betaContext: PluginAgentConfigurationContext = {
+      ...configurationContext,
+      thread: { ...configurationContext.thread, id: "thread-beta" },
+      host: { id: "host-beta", name: "Beta host" },
+      provider: { id: "claude-code", model: "claude-opus" },
+    };
+    const beta = await harness.resolveAgentConfiguration(betaContext);
+
+    expect(alpha.tools.map((tool) => tool.name)).toEqual(["alpha_tool"]);
+    expect(alpha.skills).toEqual(["alpha-skill"]);
+    expect(alpha.instructions).toHaveLength(4096);
+    expect(beta.tools.map((tool) => tool.name)).toEqual(["beta_tool"]);
+    expect(beta.skills).toEqual(["beta-skill"]);
+    expect(contexts).toEqual([configurationContext, betaContext]);
+    expect(harness.registrations.agentTools.map((tool) => tool.name)).toEqual([
+      "alpha_tool",
+      "beta_tool",
+    ]);
+  });
+
+  it("fails closed for unknown and duplicate configure ids", async () => {
+    const unknown = createFakePluginHost({ agentSkillIds: ["known-skill"] });
+    unknown.bb.agents.configure(() => ({
+      tools: ["missing-tool"],
+      skills: ["known-skill"],
+    }));
+    await expect(
+      unknown.harness.resolveAgentConfiguration(configurationContext),
+    ).resolves.toEqual({ tools: [], skills: [], instructions: null });
+    expect(unknown.harness.logEntries.at(-1)?.message).toContain(
+      'unknown tool id "missing-tool"',
+    );
+
+    const duplicate = createFakePluginHost({ agentSkillIds: ["known-skill"] });
+    duplicate.bb.agents.configure(() => ({
+      tools: [],
+      skills: ["known-skill", "known-skill"],
+    }));
+    await duplicate.harness.resolveAgentConfiguration(configurationContext);
+    expect(duplicate.harness.logEntries.at(-1)?.message).toContain(
+      'duplicate id "known-skill"',
     );
   });
 });

@@ -492,7 +492,7 @@ invocation and are never persisted. Pair `rendererId` with a frontend
 `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
 the caller cancels the request.
 
-### bb.agents — native tools and dynamic instructions
+### bb.agents — native tools and conditional session configuration
 
 To give agents standing knowledge (conventions, workflows), ship a
 `skills/` directory. For schema'd capabilities, register a native tool.
@@ -510,6 +510,14 @@ bb.agents.registerTool({
     return excerpts.join("\n"); // or { content: [{ type: "text", text }], isError? }
   },
 });
+
+// All tools and manifest skills are static registrations. configure() only
+// selects this plugin's own ids when BB resolves a thread/session config.
+bb.agents.configure((context) => ({
+  tools: context.provider.id === "codex" ? ["docs_search"] : [],
+  skills: context.project.kind === "standard" ? ["repo-conventions"] : [],
+  instructions: `Docs selection resolved for ${context.project.name}.`,
+}));
 
 // Dynamic section evaluated at thread.start / turn.submit (sync, fast).
 // Return null to contribute nothing for that resolution. Duplicate factory
@@ -532,6 +540,30 @@ and yours is dropped with the reason in your status detail.
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this
 only when the text must reflect live plugin state at resolution time.
+
+Ordering is standard BB instructions, selected tools' static snippets,
+`contributeInstructions` output, `configure` dynamic instructions, data-dir
+user instructions, then workspace instructions. Tool snippets are rejected at
+registration above 4096 characters; each legacy/dynamic callback contribution
+is truncated to 4096 characters.
+
+`configure` is also synchronous and may be registered only once per factory
+execution. Its context has required, plain-data `thread`, `project`,
+`environment`, `host`, and `provider: { id, model }` objects, plus `sideChat`
+and `origin: { kind, pluginId }`; genuinely absent values are `null`, not
+omitted. `tools` names and `skills` frontmatter names may select only this
+plugin's static registrations. Unknown or duplicate ids, malformed output,
+more than 256 ids in either array, or a throwing callback fail closed for that
+plugin only. Dynamic `instructions` are truncated to 4096 characters.
+
+Resolution happens for `thread.start` and `turn.submit`. A selected tool set
+takes effect only when the provider session is next started/resumed; BB never
+hot-mutates a running provider session. Instructions apply to the next turn.
+Skill catalog changes follow the daemon's established runtime policy: a busy
+environment keeps its current staged catalog until a safe relaunch. Side chats
+evaluate `configure` with `sideChat: true`, but BB excludes the returned plugin
+tools and dynamic instructions; their existing static plugin-skill catalog
+behavior is preserved.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
@@ -893,6 +925,7 @@ await harness.emitThreadEvent("thread.idle", {
   lastAssistantText: "done",
 });
 await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.resolveAgentConfiguration(context); // validated tools/skills/instructions
 await harness.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
 
@@ -901,7 +934,9 @@ Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
-agent tools, thread actions, mention providers).
+agent tools/configure provider, thread actions, mention providers). Pass
+`agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
+available to the configure driver.
 
 Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
 

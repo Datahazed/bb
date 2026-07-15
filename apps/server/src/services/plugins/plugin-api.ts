@@ -16,6 +16,8 @@ import {
 } from "@bb/domain";
 import type {
   BbPluginApi,
+  PluginAgentConfiguration,
+  PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolResult,
   PluginAgents,
@@ -63,6 +65,8 @@ import {
 // keeps one import site for plugin API types.
 export type {
   BbPluginApi,
+  PluginAgentConfiguration,
+  PluginAgentConfigurationContext,
   PluginAgentToolContentPart,
   PluginAgentToolContext,
   PluginAgentToolRegistrationBase,
@@ -282,6 +286,7 @@ const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Agent tool names are shown to (and called by) the model.
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 
 // Thread action ids become URL path segments.
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -373,6 +378,8 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
+  /** Per-resolution selector from `bb.agents.configure` (at most one). */
+  agentConfigurationProvider: PluginAgentConfigurationProvider | null;
   /**
    * Dynamic thread-instructions provider from
    * `bb.agents.contributeInstructions` (at most one; null when none).
@@ -393,6 +400,11 @@ export type PluginInstructionProvider = (ctx: {
   threadId: string;
   projectId: string;
 }) => string | null;
+
+/** Provider registered by `bb.agents.configure`. */
+export type PluginAgentConfigurationProvider = (
+  context: PluginAgentConfigurationContext,
+) => PluginAgentConfiguration;
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
@@ -839,8 +851,22 @@ export function createPluginApi(options: {
   };
 
   const agentTools: PluginAgentToolRecord[] = [];
+  let agentConfigurationProvider: PluginAgentConfigurationProvider | null =
+    null;
   let instructionProvider: PluginInstructionProvider | null = null;
   const agents: PluginAgents = {
+    configure(provider) {
+      assertLive();
+      if (agentConfigurationProvider !== null) {
+        throw new Error("agent configuration is already registered");
+      }
+      if (typeof provider !== "function") {
+        throw new Error(
+          "configure requires a provider function (context) => ({ tools, skills, instructions? })",
+        );
+      }
+      agentConfigurationProvider = provider;
+    },
     contributeInstructions(provider) {
       assertLive();
       if (instructionProvider !== null) {
@@ -886,6 +912,14 @@ export function createPluginApi(options: {
         typeof tool.instructions !== "string"
       ) {
         throw new Error(`tool "${name}" instructions must be a string`);
+      }
+      if (
+        typeof tool.instructions === "string" &&
+        tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
+      ) {
+        throw new Error(
+          `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+        );
       }
       if (typeof tool.execute !== "function") {
         throw new Error(
@@ -1214,6 +1248,9 @@ export function createPluginApi(options: {
     schedules,
     cli: cliRecord,
     agentTools,
+    get agentConfigurationProvider() {
+      return agentConfigurationProvider;
+    },
     get instructionProvider() {
       return instructionProvider;
     },

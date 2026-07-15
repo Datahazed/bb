@@ -45,6 +45,7 @@ import { listBuiltinPluginRegistrations } from "./builtin-registry.js";
 import {
   RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
+  type PluginAgentConfigurationContext,
   type PluginAgentToolContext,
   type PluginAgentToolRecord,
   type PluginCliContext,
@@ -95,6 +96,7 @@ import type {
   PluginThreadEventEmitter,
   PluginUpdateCheckEntry,
   PluginWireLookup,
+  PluginResolvedAgentConfiguration,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -102,6 +104,7 @@ export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginInstructionContribution,
+  PluginResolvedAgentConfiguration,
   PluginListEntry,
   PluginMentionProviderContribution,
   PluginMentionResolveResult,
@@ -281,6 +284,15 @@ export interface PluginService {
    * NEXT session start. Empty when the experiment is off.
    */
   listAgentTools(): PluginAgentToolContribution[];
+  /**
+   * Evaluate each plugin's optional `bb.agents.configure` callback for one
+   * server-owned thread/session boundary. Registrations stay static; invalid
+   * or throwing callbacks fail closed for that plugin and cannot affect peers.
+   */
+  resolveAgentConfiguration(args: {
+    context: PluginAgentConfigurationContext;
+    skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
+  }): Promise<PluginResolvedAgentConfiguration>;
   /**
    * Dynamic instruction providers from bb.agents.contributeInstructions,
    * ordered by plugin id. Resolved live at thread.start/turn.submit;
@@ -546,6 +558,109 @@ function normalizeMentionSearchItems(
           : null,
     };
   });
+}
+
+const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
+const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+
+interface NormalizedPluginAgentConfiguration {
+  toolIds: string[];
+  skillIds: string[];
+  instructions: string | null;
+}
+
+function normalizePluginAgentSelectionIds(args: {
+  field: "tools" | "skills";
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): string[] {
+  if (!Array.isArray(args.value)) {
+    throw new Error(`configure() output.${args.field} must be an array`);
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const id = args.value[index];
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(
+        `configure() output.${args.field}[${index}] must be a non-empty string`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(
+        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+      );
+    }
+    if (!args.knownIds.has(id)) {
+      throw new Error(
+        `configure() selected unknown ${args.field === "tools" ? "tool" : "skill"} id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(id);
+    selected.push(id);
+  }
+  return selected;
+}
+
+function normalizePluginAgentConfiguration(args: {
+  knownSkillIds: ReadonlySet<string>;
+  knownToolIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): NormalizedPluginAgentConfiguration {
+  if (
+    typeof args.value !== "object" ||
+    args.value === null ||
+    Array.isArray(args.value)
+  ) {
+    throw new Error(
+      "configure() must return { tools: string[], skills: string[], instructions?: string }",
+    );
+  }
+  const output = args.value as Record<string, unknown>;
+  const unknownKeys = Object.keys(output)
+    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    output.instructions !== undefined &&
+    typeof output.instructions !== "string"
+  ) {
+    throw new Error("configure() output.instructions must be a string");
+  }
+  const instructions =
+    typeof output.instructions === "string" &&
+    output.instructions.trim().length > 0
+      ? output.instructions.slice(
+          0,
+          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+        )
+      : null;
+  return {
+    toolIds: normalizePluginAgentSelectionIds({
+      field: "tools",
+      knownIds: args.knownToolIds,
+      pluginId: args.pluginId,
+      value: output.tools,
+    }),
+    skillIds: normalizePluginAgentSelectionIds({
+      field: "skills",
+      knownIds: args.knownSkillIds,
+      pluginId: args.pluginId,
+      value: output.skills,
+    }),
+    instructions,
+  };
 }
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
@@ -1425,6 +1540,77 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         },
         instructions: record.instructions,
       }));
+    },
+
+    async resolveAgentConfiguration({ context, skillIdsByPlugin }) {
+      const allTools = collectAgentTools();
+      const tools: PluginAgentToolContribution[] = [];
+      const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
+      const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
+
+      for (const [pluginId, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        const pluginTools = allTools.filter(
+          (entry) => entry.pluginId === pluginId,
+        );
+        const provider = plugin.handle.agentConfigurationProvider;
+        if (provider === null) {
+          tools.push(
+            ...pluginTools.map(({ record }) => ({
+              pluginId,
+              tool: {
+                name: record.name,
+                description: record.description,
+                inputSchema: record.inputSchema,
+              },
+              instructions: record.instructions,
+            })),
+          );
+          continue;
+        }
+
+        const knownSkillIds = new Set(skillIdsByPlugin.get(pluginId) ?? []);
+        const knownToolIds = new Set(
+          pluginTools.map(({ record }) => record.name),
+        );
+        const outcome = await invokeWrapped(pluginId, "agent configure", () =>
+          normalizePluginAgentConfiguration({
+            knownSkillIds,
+            knownToolIds,
+            pluginId,
+            value: provider(context),
+          }),
+        );
+        if (!outcome.ok) {
+          selectedSkillIdsByPlugin.set(pluginId, new Set());
+          continue;
+        }
+
+        const selectedTools = new Set(outcome.value.toolIds);
+        tools.push(
+          ...pluginTools
+            .filter(({ record }) => selectedTools.has(record.name))
+            .map(({ record }) => ({
+              pluginId,
+              tool: {
+                name: record.name,
+                description: record.description,
+                inputSchema: record.inputSchema,
+              },
+              instructions: record.instructions,
+            })),
+        );
+        selectedSkillIdsByPlugin.set(pluginId, new Set(outcome.value.skillIds));
+        if (outcome.value.instructions !== null) {
+          dynamicInstructions.push({
+            pluginId,
+            text: outcome.value.instructions,
+          });
+        }
+      }
+
+      return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
     },
 
     listInstructionContributions() {

@@ -237,6 +237,15 @@ export interface PluginInstructionContribution {
   provider: (ctx: { threadId: string; projectId: string }) => string | null;
 }
 
+/** Fully validated conditional selections for one thread/session resolution. */
+export interface PluginResolvedAgentConfiguration {
+  tools: PluginAgentToolContribution[];
+  /** Only configured plugins appear. An empty set means fail-closed or an
+   * intentional empty selection; absent plugins keep all manifest skills. */
+  selectedSkillIdsByPlugin: ReadonlyMap<string, ReadonlySet<string>>;
+  dynamicInstructions: Array<{ pluginId: string; text: string }>;
+}
+
 /** One thread action contributed by a running plugin (design §4.9). */
 export interface PluginThreadActionContribution {
   pluginId: string;
