@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
+import type { PluginRpcClient, PluginRpcHandlers } from "@bb/plugin-sdk";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import simpleNotes from "./server";
+import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
 
@@ -39,7 +40,10 @@ async function loadNotebook(notes: Record<string, string>) {
           truncated: false,
         }),
         read: async ({ path: filePath }) => ({
+          path: filePath,
           content: await readFile(filePath, "utf8"),
+          contentEncoding: "utf8" as const,
+          sizeBytes: 1,
           sha256: "test-sha",
         }),
         write: async () => ({
@@ -61,6 +65,60 @@ async function loadNotebook(notes: Record<string, string>) {
   await simpleNotes(host.bb);
   return host;
 }
+
+function assertDocsFrontendInference(
+  client: PluginRpcClient<typeof docsRpcContract>,
+) {
+  expectTypeOf(
+    client.call("readNote", { vaultId: "personal", path: "plan.md" }),
+  ).toMatchTypeOf<
+    Promise<{ path: string; content: string; sha256: string }>
+  >();
+  expectTypeOf(
+    client.call("saveNote", { path: "plan.md", content: "# Plan" }),
+  ).toMatchTypeOf<
+    Promise<
+      | { outcome: "written"; sha256: string; sizeBytes: number }
+      | { outcome: "conflict"; currentSha256: string | null }
+    >
+  >();
+
+  // @ts-expect-error Docs file content is validated as a string.
+  void client.call("saveNote", { path: "plan.md", content: 42 });
+  // @ts-expect-error readNote requires a path.
+  void client.call("readNote", { vaultId: "personal" });
+}
+
+describe("Docs RPC contract", () => {
+  it("infers backend inputs and frontend results", () => {
+    type Handlers = PluginRpcHandlers<typeof docsRpcContract>;
+    expectTypeOf<Parameters<Handlers["saveNote"]>[0]>().toEqualTypeOf<{
+      vaultId?: string;
+      path: string;
+      content: string;
+      expectedSha256?: string | null;
+    }>();
+    expectTypeOf(assertDocsFrontendInference).toBeFunction();
+  });
+
+  it("rejects method-specific invalid input and output", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+
+    await expect(
+      harness.callRpc("saveNote", { path: "plan.md", content: 42 }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(harness.sdk.callsTo("files.write")).toEqual([]);
+
+    const output = await docsRpcContract.readNote.output["~standard"].validate({
+      path: "plan.md",
+      content: 42,
+      contentEncoding: "utf8",
+      sizeBytes: 1,
+      sha256: "sha",
+    });
+    expect(output).toHaveProperty("issues");
+  });
+});
 
 async function waitForSignal(
   predicate: () => boolean,
@@ -240,6 +298,9 @@ describe("Docs vault operations", () => {
         harness.realtimeSignals.some(
           (signal) =>
             signal.channel === "vault-changed" &&
+            typeof signal.payload === "object" &&
+            signal.payload !== null &&
+            "vaultId" in signal.payload &&
             signal.payload.vaultId === "personal",
         ),
       );

@@ -19,6 +19,7 @@
     "server.ts",
     "app.tsx",
     "app.test.tsx",
+    "server.test.ts",
     "vitest.config.ts",
     "components",
     "lib",

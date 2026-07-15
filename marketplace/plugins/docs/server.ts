@@ -2,7 +2,12 @@
 import { watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type PluginRpcHandlers,
+} from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
@@ -40,6 +45,233 @@ interface ResolvedOpenerFile {
   rootPath: string;
   hostId: string | null;
 }
+
+const nonEmptyStringSchema = z.string().trim().min(1);
+const vaultIdSchema = nonEmptyStringSchema.optional();
+const vaultSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    hostId: z.string().nullable(),
+    rootPath: z.string(),
+  })
+  .strict();
+const hostSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    type: z.literal("persistent"),
+    status: z.enum(["connected", "disconnected"]),
+    lastSeenAt: z.number().finite().nullable(),
+    lastRejectedProtocolVersion: z.number().int().positive().nullable(),
+    createdAt: z.number().finite(),
+    updatedAt: z.number().finite(),
+  })
+  .strict();
+const vaultEntrySchema = z
+  .object({
+    kind: z.enum(["file", "directory"]),
+    path: z.string(),
+  })
+  .strict();
+const noteSummarySchema = z
+  .object({
+    path: z.string(),
+    title: z.string(),
+    preview: z.string(),
+    modifiedAtMs: z.number().finite().nonnegative(),
+  })
+  .strict();
+const fileReadSchema = z
+  .object({
+    path: z.string(),
+    content: z.string(),
+    contentEncoding: z.enum(["utf8", "base64"]),
+    mimeType: z.string().optional(),
+    sizeBytes: z.number().int().nonnegative(),
+    modifiedAtMs: z.number().finite().nonnegative().optional(),
+    sha256: z.string(),
+  })
+  .strict();
+const fileWriteSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("written"),
+      sha256: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("conflict"),
+      currentSha256: z.string().nullable(),
+    })
+    .strict(),
+]);
+const previewSchema = z
+  .object({
+    baseUrl: z.string(),
+    expiresAtMs: z.number().finite(),
+  })
+  .strict();
+const openerSourceSchema = z
+  .object({
+    kind: z.enum(["workspace", "host", "thread-storage"]),
+    threadId: z.string().nullable(),
+    environmentId: z.string().nullable(),
+    projectId: z.string().nullable(),
+  })
+  .strict();
+const okSchema = z.object({ ok: z.literal(true) }).strict();
+const pathResultSchema = z.object({ path: z.string() }).strict();
+
+export const docsRpcContract = defineRpcContract({
+  listNotes: {
+    input: z.object({ vaultId: vaultIdSchema }).strict(),
+    output: z
+      .object({
+        vaults: z.array(vaultSchema),
+        vault: vaultSchema,
+        hosts: z.array(hostSchema),
+        entries: z.array(vaultEntrySchema),
+        entryOrder: z.array(z.string()),
+        notes: z.array(noteSummarySchema),
+        truncated: z.boolean(),
+        error: z.string().nullable(),
+      })
+      .strict(),
+  },
+  readNote: {
+    input: z
+      .object({ vaultId: vaultIdSchema, path: nonEmptyStringSchema })
+      .strict(),
+    output: fileReadSchema,
+  },
+  saveNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: nonEmptyStringSchema,
+        content: z.string(),
+        expectedSha256: z.string().nullable().optional(),
+      })
+      .strict(),
+    output: fileWriteSchema,
+  },
+  createNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        parent: z.string().optional(),
+        name: z.string().optional(),
+        content: z.string().optional(),
+      })
+      .strict(),
+    output: pathResultSchema,
+  },
+  deletePath: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: nonEmptyStringSchema,
+        recursive: z.boolean().optional(),
+      })
+      .strict(),
+    output: okSchema,
+  },
+  createFolder: {
+    input: z
+      .object({ vaultId: vaultIdSchema, path: nonEmptyStringSchema })
+      .strict(),
+    output: pathResultSchema,
+  },
+  reorderFiles: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        parent: z.string().optional(),
+        paths: z.array(nonEmptyStringSchema),
+      })
+      .strict(),
+    output: z.object({ paths: z.array(z.string()) }).strict(),
+  },
+  movePath: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        from: nonEmptyStringSchema,
+        to: nonEmptyStringSchema,
+      })
+      .strict(),
+    output: pathResultSchema,
+  },
+  renameToTitle: {
+    input: z
+      .object({ vaultId: vaultIdSchema, path: nonEmptyStringSchema })
+      .strict(),
+    output: pathResultSchema,
+  },
+  createVault: {
+    input: z
+      .object({
+        name: nonEmptyStringSchema,
+        rootPath: nonEmptyStringSchema,
+        hostId: nonEmptyStringSchema.optional(),
+      })
+      .strict(),
+    output: vaultSchema,
+  },
+  removeVault: {
+    input: z.object({ vaultId: nonEmptyStringSchema }).strict(),
+    output: okSchema,
+  },
+  uploadAttachment: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        notePath: nonEmptyStringSchema,
+        content: nonEmptyStringSchema,
+        name: nonEmptyStringSchema,
+      })
+      .strict(),
+    output: z
+      .object({
+        path: z.string(),
+        markdownPath: z.string(),
+        result: fileWriteSchema,
+      })
+      .strict(),
+  },
+  preparePreview: {
+    input: z
+      .object({ vaultId: vaultIdSchema, path: nonEmptyStringSchema })
+      .strict(),
+    output: previewSchema,
+  },
+  openFile: {
+    input: z
+      .object({ source: openerSourceSchema, path: nonEmptyStringSchema })
+      .strict(),
+    output: z
+      .object({
+        file: fileReadSchema,
+        preview: previewSchema,
+        previewPath: z.string(),
+      })
+      .strict(),
+  },
+  saveOpenedFile: {
+    input: z
+      .object({
+        source: openerSourceSchema,
+        path: nonEmptyStringSchema,
+        content: z.string(),
+        expectedSha256: z.string().nullable().optional(),
+      })
+      .strict(),
+    output: fileWriteSchema,
+  },
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -538,19 +770,19 @@ export default async function plugin(bb: BbPluginApi) {
       recursive,
     });
     bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { ok: true };
+    return { ok: true } satisfies { ok: true };
   }
 
-  const handlers = {
-    async listNotes(input: unknown) {
+  const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async listNotes(input) {
       const record = input === undefined ? {} : requireRecord(input);
       return notebookData(optionalString(record.vaultId));
     },
-    async readNote(input: unknown) {
+    async readNote(input) {
       const record = requireRecord(input);
       return readFile(optionalString(record.vaultId), record.path);
     },
-    async saveNote(input: unknown) {
+    async saveNote(input) {
       const record = requireRecord(input);
       return writeFile({
         vaultId: optionalString(record.vaultId),
@@ -559,11 +791,11 @@ export default async function plugin(bb: BbPluginApi) {
         expectedSha256: record.expectedSha256,
       });
     },
-    async createNote(input: unknown) {
+    async createNote(input) {
       const record = requireRecord(input);
       return createNote(optionalString(record.vaultId), record);
     },
-    async deletePath(input: unknown) {
+    async deletePath(input) {
       const record = requireRecord(input);
       return removePath(
         optionalString(record.vaultId),
@@ -571,7 +803,7 @@ export default async function plugin(bb: BbPluginApi) {
         record.recursive === true,
       );
     },
-    async createFolder(input: unknown) {
+    async createFolder(input) {
       const record = requireRecord(input);
       const vault = getVault(optionalString(record.vaultId));
       const relativePath = requireVaultPath(record.path);
@@ -584,7 +816,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: relativePath };
     },
-    async reorderFiles(input: unknown) {
+    async reorderFiles(input) {
       const record = requireRecord(input);
       const vault = getVault(optionalString(record.vaultId));
       const parent = requireOptionalDirectory(record.parent);
@@ -630,11 +862,11 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { paths };
     },
-    async movePath(input: unknown) {
+    async movePath(input) {
       const record = requireRecord(input);
       return movePath(optionalString(record.vaultId), record.from, record.to);
     },
-    async renameToTitle(input: unknown) {
+    async renameToTitle(input) {
       const record = requireRecord(input);
       const vaultId = optionalString(record.vaultId);
       const currentPath = requireVaultPath(record.path, { extension: ".md" });
@@ -651,7 +883,7 @@ export default async function plugin(bb: BbPluginApi) {
         return { path: currentPath };
       }
     },
-    async createVault(input: unknown) {
+    async createVault(input) {
       const record = requireRecord(input);
       const name = requireString(record.name, "name");
       const rootPath = requireString(record.rootPath, "rootPath");
@@ -675,7 +907,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: id });
       return getVault(id);
     },
-    async removeVault(input: unknown) {
+    async removeVault(input) {
       const record = requireRecord(input);
       const id = requireString(record.vaultId, "vaultId");
       if (listVaults().length <= 1)
@@ -685,7 +917,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: id });
       return { ok: true };
     },
-    async uploadAttachment(input: unknown) {
+    async uploadAttachment(input) {
       const record = requireRecord(input);
       const vaultId = optionalString(record.vaultId);
       const notePath = requireVaultPath(record.notePath, { extension: ".md" });
@@ -723,7 +955,7 @@ export default async function plugin(bb: BbPluginApi) {
         result,
       };
     },
-    async preparePreview(input: unknown) {
+    async preparePreview(input) {
       const record = requireRecord(input);
       const vault = getVault(optionalString(record.vaultId));
       const relativePath = requireVaultPath(record.path);
@@ -737,7 +969,7 @@ export default async function plugin(bb: BbPluginApi) {
         rootPath: vault.rootPath,
       });
     },
-    async openFile(input: unknown) {
+    async openFile(input) {
       const record = requireRecord(input);
       const target = await resolveOpenerFile(record.source, record.path);
       const args = {
@@ -763,7 +995,7 @@ export default async function plugin(bb: BbPluginApi) {
           .replace(/\\/g, "/"),
       };
     },
-    async saveOpenedFile(input: unknown) {
+    async saveOpenedFile(input) {
       const record = requireRecord(input);
       const target = await resolveOpenerFile(record.source, record.path);
       if (typeof record.content !== "string") {
@@ -782,14 +1014,16 @@ export default async function plugin(bb: BbPluginApi) {
     },
   };
 
-  bb.rpc.register(handlers);
+  bb.rpc.register(docsRpcContract, handlers);
 
   bb.http.route(
     "POST",
     "/list",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.listNotes(input));
+      return context.json(
+        await handlers.listNotes(docsRpcContract.listNotes.input.parse(input)),
+      );
     },
     { auth: "token" },
   );
@@ -798,7 +1032,9 @@ export default async function plugin(bb: BbPluginApi) {
     "/read",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.readNote(input));
+      return context.json(
+        await handlers.readNote(docsRpcContract.readNote.input.parse(input)),
+      );
     },
     { auth: "token" },
   );
@@ -807,7 +1043,9 @@ export default async function plugin(bb: BbPluginApi) {
     "/write",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.saveNote(input));
+      return context.json(
+        await handlers.saveNote(docsRpcContract.saveNote.input.parse(input)),
+      );
     },
     { auth: "token" },
   );
@@ -816,7 +1054,11 @@ export default async function plugin(bb: BbPluginApi) {
     "/mkdir",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.createFolder(input));
+      return context.json(
+        await handlers.createFolder(
+          docsRpcContract.createFolder.input.parse(input),
+        ),
+      );
     },
     { auth: "token" },
   );
@@ -825,7 +1067,9 @@ export default async function plugin(bb: BbPluginApi) {
     "/move",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.movePath(input));
+      return context.json(
+        await handlers.movePath(docsRpcContract.movePath.input.parse(input)),
+      );
     },
     { auth: "token" },
   );
@@ -834,7 +1078,11 @@ export default async function plugin(bb: BbPluginApi) {
     "/remove",
     async (context) => {
       const input: unknown = await context.req.json();
-      return context.json(await handlers.deletePath(input));
+      return context.json(
+        await handlers.deletePath(
+          docsRpcContract.deletePath.input.parse(input),
+        ),
+      );
     },
     { auth: "token" },
   );
