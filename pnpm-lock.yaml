@@ -1870,6 +1870,9 @@ importers:
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.1
       hono:
         specifier: 4.11.9
         version: 4.11.9

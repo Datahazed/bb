@@ -55,10 +55,7 @@ import type {
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
 } from "../rpc-contract.js";
-import {
-  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
-  type JsonValue,
-} from "@bb/domain";
+import type { JsonValue } from "../json-value.js";
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -75,8 +72,10 @@ import {
  * error messages, the kv 256KB cap, append-only database migrations, settings
  * read/update semantics (including onChange), schema-validated rpc/cli
  * invocation shapes (strict JSON boundaries, exit-code normalization), `threads.spawn`
- * attribution, and dispose order (services aborted, hooks LIFO, database
- * closed, stale handles throw).
+ * attribution, atomic reload, and dispose order (services aborted, hooks LIFO,
+ * database closed, stale handles throw). New tests can keep host inputs,
+ * assertions, and shutdown explicit through `harness.behavior`,
+ * `harness.inspection`, and `harness.lifecycle`; direct members remain aliases.
  *
  * Deliberately different from the real host:
  * - storage is process-local: kv in a Map, `storage.database()` one shared
@@ -103,6 +102,8 @@ export class PluginContextStaleError extends Error {
 
 /** JSON values ≤256KB; larger writes are rejected with a clear error. */
 const KV_VALUE_MAX_BYTES = 256 * 1024;
+/** Mirrors the server's pending-interaction title schema. */
+const PLUGIN_INTERACTION_MAX_TITLE_LENGTH = 160;
 
 const PLUGIN_HTTP_METHODS = new Set([
   "GET",
@@ -301,7 +302,8 @@ export interface FakePluginRegistrations {
   mentionProviders: FakeMentionProviderRecord[];
 }
 
-export interface FakePluginHarness {
+/** Read-only state for assertions after a plugin registers or handles work. */
+export interface FakePluginInspectionState {
   readonly pluginId: string;
   /** Every `bb.log` line, in order. */
   readonly logEntries: FakeLogEntry[];
@@ -319,6 +321,10 @@ export interface FakePluginHarness {
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
+}
+
+/** Deterministic inputs that stand in for behavior normally driven by BB. */
+export interface FakePluginBehaviorDrivers {
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
   /**
@@ -392,6 +398,18 @@ export interface FakePluginHarness {
     skills: string[];
     instructions: string | null;
   }>;
+}
+
+/** Reload/shutdown controls, kept separate from behavior and inspection. */
+export interface FakePluginLifecycleControls {
+  /**
+   * Load a replacement against the same persisted settings, kv, and database.
+   * The current host remains live when the factory throws; on success its
+   * services/hooks are disposed and the returned host becomes current.
+   */
+  reload(
+    factory: (bb: BbPluginApi) => void | Promise<void>,
+  ): Promise<FakePluginHost>;
   /**
    * Dispose like a host reload/disable: abort services started via
    * runService, run onDispose hooks LIFO (isolated), close database handles,
@@ -399,6 +417,20 @@ export interface FakePluginHarness {
    * PluginContextStaleError). Idempotent.
    */
   dispose(): Promise<void>;
+}
+
+/**
+ * Complete fake-host harness. Direct members are retained for compatibility;
+ * the named views make intent explicit in new tests.
+ */
+export interface FakePluginHarness
+  extends
+    FakePluginInspectionState,
+    FakePluginBehaviorDrivers,
+    FakePluginLifecycleControls {
+  readonly behavior: FakePluginBehaviorDrivers;
+  readonly inspection: FakePluginInspectionState;
+  readonly lifecycle: FakePluginLifecycleControls;
 }
 
 export interface CreateFakePluginHostOptions {
@@ -864,9 +896,36 @@ function normalizeAgentConfiguration(args: {
   };
 }
 
+interface FakePluginPersistentState {
+  kvRows: Map<string, string>;
+  storageRoot: string;
+  storedSettings: Map<string, PluginSettingValue>;
+}
+
+const fakeHostDisposers = new WeakMap<
+  FakePluginHarness,
+  (cleanupStorage: boolean) => Promise<void>
+>();
+
 export function createFakePluginHost(
   options: CreateFakePluginHostOptions = {},
 ): FakePluginHost {
+  return createFakePluginHostInternal(options);
+}
+
+function createFakePluginHostInternal(
+  options: CreateFakePluginHostOptions,
+  sharedState?: FakePluginPersistentState,
+): FakePluginHost {
+  const persistentState =
+    sharedState ??
+    ({
+      kvRows: new Map<string, string>(),
+      storageRoot: mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-")),
+      storedSettings: new Map<string, PluginSettingValue>(
+        Object.entries(options.settings ?? {}),
+      ),
+    } satisfies FakePluginPersistentState);
   const pluginId = options.pluginId ?? "test-plugin";
   const agentSkillIds = [...(options.agentSkillIds ?? [])];
   if (new Set(agentSkillIds).size !== agentSkillIds.length) {
@@ -892,7 +951,7 @@ export function createFakePluginHost(
   };
 
   // --- storage ---
-  const kvRows = new Map<string, string>();
+  const kvRows = persistentState.kvRows;
   const kv: PluginKvStorage = {
     async get(key) {
       assertLive();
@@ -927,7 +986,7 @@ export function createFakePluginHost(
     },
   };
 
-  const storageRoot = mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-"));
+  const storageRoot = persistentState.storageRoot;
 
   // One shared temp-file handle: every database() call sees the same data,
   // like the host's handles over one on-disk file.
@@ -975,9 +1034,7 @@ export function createFakePluginHost(
       prev: Record<string, PluginSettingValue | undefined>,
     ) => void
   > = [];
-  const storedSettings = new Map<string, PluginSettingValue>(
-    Object.entries(options.settings ?? {}),
-  );
+  const storedSettings = persistentState.storedSettings;
 
   const settings: PluginSettings = {
     define(descriptors) {
@@ -1670,7 +1727,47 @@ export function createFakePluginHost(
     },
   };
 
+  async function disposeHost(cleanupStorage: boolean): Promise<void> {
+    if (disposed) return;
+    disposed = true;
+    for (const [id, pending] of pendingInteractions) {
+      clearTimeout(pending.timer);
+      pendingInteractions.delete(id);
+      pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
+    }
+    // Host order (§3): services first, then hooks LIFO (isolated), then
+    // vended database handles, then handle invalidation.
+    for (const controller of serviceControllers) controller.abort();
+    for (const hook of [...disposeHooks].reverse()) {
+      try {
+        await hook();
+      } catch (error) {
+        emitLog("warn", `dispose hook failed: ${errorMessage(error)}`);
+      }
+    }
+    if (databaseHandle) {
+      try {
+        databaseHandle.close();
+      } catch (error) {
+        emitLog("warn", `database close failed: ${errorMessage(error)}`);
+      }
+    }
+    if (cleanupStorage) {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+    invalidated = true;
+  }
+
   const harness: FakePluginHarness = {
+    get behavior() {
+      return this;
+    },
+    get inspection() {
+      return this;
+    },
+    get lifecycle() {
+      return this;
+    },
     pluginId,
     logEntries,
     realtimeSignals,
@@ -1943,35 +2040,27 @@ export function createFakePluginHost(
       }
     },
 
+    async reload(factory) {
+      assertLive();
+      const replacement = createFakePluginHostInternal(
+        options,
+        persistentState,
+      );
+      try {
+        await factory(replacement.bb);
+      } catch (error) {
+        await fakeHostDisposers.get(replacement.harness)?.(false);
+        throw error;
+      }
+      await disposeHost(false);
+      return replacement;
+    },
+
     async dispose() {
-      if (disposed) return;
-      disposed = true;
-      for (const [id, pending] of pendingInteractions) {
-        clearTimeout(pending.timer);
-        pendingInteractions.delete(id);
-        pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
-      }
-      // Host order (§3): services first, then hooks LIFO (isolated), then
-      // vended database handles, then handle invalidation.
-      for (const controller of serviceControllers) controller.abort();
-      for (const hook of [...disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
-          emitLog("warn", `dispose hook failed: ${errorMessage(error)}`);
-        }
-      }
-      if (databaseHandle) {
-        try {
-          databaseHandle.close();
-        } catch (error) {
-          emitLog("warn", `database close failed: ${errorMessage(error)}`);
-        }
-      }
-      rmSync(storageRoot, { recursive: true, force: true });
-      invalidated = true;
+      await disposeHost(true);
     },
   };
 
+  fakeHostDisposers.set(harness, disposeHost);
   return { bb, harness };
 }

@@ -4,23 +4,19 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { ComponentType } from 'react';
+import { ComponentType, ReactNode } from 'react';
+import { RenderResult } from '@testing-library/react';
 
-/** A JSON-safe path segment reported by a Standard Schema validation issue. */
-type PluginRpcIssuePathSegment = string | number;
-/** Validator-neutral validation detail carried by an RPC error envelope. */
-interface PluginRpcValidationIssue {
-    message: string;
-    path?: PluginRpcIssuePathSegment[];
-}
-/** Stable wire error categories for plugin RPC. */
-type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
-/** Structured RPC failure returned as `{ ok: false, error }`. */
-interface PluginRpcError {
-    code: PluginRpcErrorCode;
-    message: string;
-    issues?: PluginRpcValidationIssue[];
-}
+/**
+ * A value that survives a JSON round trip without coercion or data loss.
+ *
+ * Host boundaries still validate values at runtime because TypeScript cannot
+ * exclude non-finite numbers and plugin bundles can bypass static types.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+
 /**
  * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
  * Zod 4 schemas implement this interface directly; other validators can do
@@ -56,22 +52,7 @@ interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = Standar
     readonly output: OutputSchema;
 }
 type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
-type PluginRpcHandlers<Contract extends PluginRpcContract> = {
-    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
-};
-type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
-type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
 type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
-
-/**
- * A value that survives a JSON round trip without coercion or data loss.
- *
- * Host boundaries still validate values at runtime because TypeScript cannot
- * exclude non-finite numbers and plugin bundles can bypass static types.
- */
-type JsonValue = string | number | boolean | null | JsonValue[] | {
-    [key: string]: JsonValue;
-};
 
 /**
  * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
@@ -132,12 +113,6 @@ interface PluginPendingInteractionProps {
     interaction: PluginPendingInteractionView;
     submit(value: JsonValue): Promise<void>;
     cancel(): Promise<void>;
-}
-/**
- * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
- * Deliberately empty; the registration's `run` carries the behavior.
- */
-interface PluginSidebarFooterActionProps {
 }
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
@@ -367,31 +342,6 @@ interface PluginAppDefinition {
     readonly __bbPluginApp: true;
     readonly setup: PluginAppSetup;
 }
-interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
-    /**
-     * Invoke one of the plugin's `bb.rpc` methods (POST
-     * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-     * inferred output; rejects with an `Error` carrying the server's message,
-     * stable `code`, and validation `issues` when present.
-     */
-    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
-}
-interface PluginSettingsState {
-    /**
-     * Effective non-secret setting values (secret settings are excluded —
-     * read them server-side). Undefined while loading or unavailable.
-     */
-    values: Record<string, string | boolean> | undefined;
-    isLoading: boolean;
-}
-/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
-type PluginComposerScope = {
-    kind: "thread";
-    threadId: string;
-} | {
-    kind: "new-thread";
-    projectId: string | null;
-};
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
 interface PluginComposerMention {
     /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
@@ -401,96 +351,147 @@ interface PluginComposerMention {
     /** Pill text shown in the composer. */
     label: string;
 }
+
 /**
- * Programmatic access to the chat composer draft — the same shared draft the
- * built-in "Add to chat" affordances (file preview, diff, terminal selections)
- * write to. Inside a thread context writes land in that thread's draft;
- * anywhere else (nav panel, homepage section) they seed the new-thread
- * composer draft, which persists until the user sends or clears it.
+ * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
+ * plugin's `app.tsx` source directly under vitest + jsdom, without the bb
+ * host or the esbuild bundle:
+ *
+ * - {@link installTestPluginRuntime} fills `globalThis.__bbPluginRuntime.
+ *   pluginSdkApp` with a test implementation of the `@bb/plugin-sdk/app`
+ *   surface (the same seam `bb plugin build` shims to the real app). It must
+ *   run BEFORE the plugin's `app.tsx` module evaluates, because that module
+ *   binds the runtime at import time — so import `app.tsx` through
+ *   {@link loadPluginApp}'s thunk form, or call the installer from a vitest
+ *   setup file when you prefer static imports.
+ * - {@link loadPluginApp} runs the definition's setup against a validating
+ *   collector (ported from the BB app's interpreter, same error messages)
+ *   and returns the typed slot registrations.
+ * - {@link renderSlot} mounts one registration's component with mock hook
+ *   backends: rpc as a method→handler map with a call log, realtime as a
+ *   channel you can push events into, settings/context as plain values, and
+ *   navigate/composer as recorders. Its `behavior`, `inspection`, and
+ *   `lifecycle` views separate host inputs, assertions, and mount controls;
+ *   the existing direct members remain aliases.
+ *
+ * Add `// @vitest-environment jsdom` to test files using renderSlot.
  */
-interface PluginComposerApi {
-    scope: PluginComposerScope;
-    /** Current plain text for this composer scope. */
-    readonly text: string;
-    /**
-     * Replace the draft's plain text. Attachments are preserved. Inline mentions
-     * outside the changed range are preserved and rebased; mentions overlapped
-     * by the replacement are removed because their text representation changed.
-     */
-    setText(next: string): void;
-    /**
-     * Replace the draft's plain text from the latest committed value. Uses the
-     * same structured-state reconciliation as `setText`.
-     */
-    updateText(updater: (current: string) => string): void;
-    /** Clear plain text without clearing independently attached files. */
-    clear(): void;
-    /**
-     * Append text to the draft as a `> ` blockquote block and focus the
-     * composer. Blank text is a no-op. This is the "reference this selection
-     * in chat" primitive.
-     */
-    addQuote(text: string): void;
-    /**
-     * Insert an @-mention pill that resolves through this plugin's mention
-     * provider at send time — the durable way to reference an entity whose
-     * content should be fetched fresh when the message is sent.
-     */
-    insertMention(mention: PluginComposerMention): void;
-    /** Focus the composer caret at the end of the draft. */
-    focus(): void;
+interface RpcCall {
+    method: string;
+    input: unknown;
 }
-/** Current app selection, derived from the route. */
-interface BbContext {
-    projectId: string | null;
-    threadId: string | null;
-}
-interface BbNavigate {
-    toThread(threadId: string): void;
-    toProject(projectId: string): void;
-    /**
-     * Navigate to one of this plugin's own nav panels by its `path`.
-     * `subPath` targets a location inside the panel (the component's
-     * `subPath` prop); `replace` swaps the current history entry instead of
-     * pushing — use it for redirects so back does not bounce.
-     */
-    toPluginPanel(path: string, options?: {
+type NavigateCall = {
+    method: "toThread";
+    threadId: string;
+} | {
+    method: "toProject";
+    projectId: string;
+} | {
+    method: "toPluginPanel";
+    path: string;
+    options?: {
         subPath?: string;
         replace?: boolean;
-    }): void;
-    /**
-     * Navigate to the root compose surface (the new-thread screen). Pass
-     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
-     * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
-     */
-    toCompose(options?: {
+    };
+} | {
+    method: "toCompose";
+    options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
-    }): void;
+    };
+};
+interface ComposerLog {
+    /** Latest plain text in this isolated composer scope. */
+    readonly text: string;
+    quotes: string[];
+    mentions: PluginComposerMention[];
+    focusCount: number;
 }
 /**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
- * the real implementation and `satisfies` this interface; `bb plugin build`
- * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
+ * Install the test runtime at `globalThis.__bbPluginRuntime.pluginSdkApp`.
+ * Idempotent per module instance; must run before the plugin's `app.tsx`
+ * (and therefore `@bb/plugin-sdk/app`) is imported.
  */
-interface PluginSdkApp {
-    definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
-    useRealtime(channel: string, handler: (payload: unknown) => void): void;
-    useSettings(): PluginSettingsState;
-    useBbContext(): BbContext;
-    useBbNavigate(): BbNavigate;
-    useComposer(): PluginComposerApi;
+declare function installTestPluginRuntime(): void;
+interface CapturedPluginApp {
+    homepageSections: PluginHomepageSectionRegistration[];
+    settingsSections: PluginSettingsSectionRegistration[];
+    navPanels: PluginNavPanelRegistration[];
+    threadPanelActions: PluginThreadPanelActionRegistration[];
+    composerAccessories: PluginComposerAccessoryRegistration[];
+    pendingInteractions: PluginPendingInteractionRegistration[];
+    sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+    fileOpeners: PluginFileOpenerRegistration[];
+    messageDirectives: PluginMessageDirectiveRegistration[];
 }
+type PluginAppModule = {
+    default: unknown;
+};
+type PluginAppSource = PluginAppDefinition | PluginAppModule | (() => Promise<PluginAppDefinition | PluginAppModule>);
+/**
+ * Install the test runtime, resolve the plugin app definition, and capture
+ * its slot registrations. Pass a thunk (`() => import("../app.tsx")`) so the
+ * plugin module evaluates after the runtime is installed — a static import
+ * would bind `definePluginApp` before the installer runs.
+ */
+declare function loadPluginApp(source: PluginAppSource): Promise<CapturedPluginApp>;
+type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
+    [Method in keyof Contract]: (input: StandardSchemaV1InferInput<Contract[Method]["input"]>) => PluginRpcResult<Contract[Method]> | Promise<PluginRpcResult<Contract[Method]>>;
+};
+interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContract> {
+    /**
+     * Backing handlers for `useRpc().call`: method name → implementation.
+     * Inputs and results are JSON-round-tripped like the wire; a method
+     * without a handler rejects, and a throwing handler rejects with its
+     * message (what the real rpc client surfaces).
+     */
+    rpc?: PluginRpcTestHandlers<Contract>;
+    /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
+    settings?: Record<string, string | boolean>;
+    /** `useBbContext()` selection; both default to null. */
+    context?: {
+        projectId?: string | null;
+        threadId?: string | null;
+    };
+    /** Initial plain text for this render's isolated `useComposer()` scope. */
+    composer?: {
+        text?: string;
+    };
+}
+/** Host-originated inputs a slot test can drive deterministically. */
+interface RenderedSlotBehaviorDrivers {
+    /**
+     * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
+     * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
+     */
+    emitRealtime(channel: string, payload: unknown): Promise<void>;
+}
+/** Read-only call/write logs produced while the slot is mounted. */
+interface RenderedSlotInspectionState {
+    /** Every `useRpc().call`, in order. */
+    readonly rpcCalls: RpcCall[];
+    /** Every `useBbNavigate()` call, in order. */
+    readonly navigateCalls: NavigateCall[];
+    /** Everything written through `useComposer()`. */
+    readonly composer: ComposerLog;
+}
+/** Explicit mount controls, separate from behavior inputs and call logs. */
+interface RenderedSlotLifecycleControls {
+    rerender(ui: ReactNode): void;
+    unmount(): void;
+}
+/**
+ * Testing Library result plus BB-specific helpers. Direct members are
+ * retained for compatibility; named views make intent explicit in new tests.
+ */
+interface RenderedSlot extends RenderResult, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState {
+    readonly behavior: RenderedSlotBehaviorDrivers;
+    readonly inspection: RenderedSlotInspectionState;
+    readonly lifecycle: RenderedSlotLifecycleControls;
+}
+declare function renderSlot<Props extends object, Contract extends PluginRpcContract = PluginRpcContract>(registration: {
+    component: ComponentType<Props>;
+}, props: Props, options?: RenderSlotOptions<Contract>): RenderedSlot;
 
-declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
-declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
-declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
-declare const useSettings: () => PluginSettingsState;
-declare const useBbContext: () => BbContext;
-declare const useBbNavigate: () => BbNavigate;
-declare const useComposer: () => PluginComposerApi;
-
-export { definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRpc, useSettings };
-export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
+export { installTestPluginRuntime, loadPluginApp, renderSlot };
+export type { CapturedPluginApp, ComposerLog, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };

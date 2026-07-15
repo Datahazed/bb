@@ -20,4 +20,29 @@ describe("bundled plugin SDK declarations", () => {
       "type EnvironmentStatusResult = EnvironmentStatusResponse;",
     );
   });
+
+  it("ships portable declarations for every exported subpath", async () => {
+    const fileNames = [
+      "bb-plugin-sdk.d.ts",
+      "bb-plugin-sdk-app.d.ts",
+      "bb-plugin-sdk-testing.d.ts",
+      "bb-plugin-sdk-testing-app.d.ts",
+    ];
+    const declarations = await Promise.all(
+      fileNames.map((fileName) =>
+        readFile(
+          new URL(`../../bundled-types/${fileName}`, import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    for (const content of declarations) {
+      expect(content).not.toMatch(/from ['"]@bb\//u);
+      expect(content).not.toMatch(/import\(['"]@bb\//u);
+    }
+    expect(declarations[2]).toContain("interface FakePluginBehaviorDrivers");
+    expect(declarations[3]).toContain(
+      "interface RenderedSlotLifecycleControls",
+    );
+  });
 });

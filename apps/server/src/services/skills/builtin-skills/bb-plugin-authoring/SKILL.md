@@ -941,14 +941,18 @@ hardcoded colors break custom palettes.
 
 ### Unit tests with `@bb/plugin-sdk/testing`
 
-In a bb checkout (workspace/in-repo plugins), `@bb/plugin-sdk/testing` is
-the official vitest harness: a fake plugin host whose `bb` satisfies
-`BbPluginApi` with host-faithful semantics — real better-sqlite3 `:memory:`
-storage (never mock the db), the kv 256KB cap, the same registration
-name-validation and error messages, rpc/cli JSON round-tripping, and
-`threads.spawn` plugin attribution. It is NOT part of the bundled `.d.ts`
-that `bb plugin new` scaffolds ship (V1 is workspace consumers only), so
-standalone plugins outside a checkout cannot import it yet.
+`@bb/plugin-sdk/testing` is the official vitest harness for workspace and
+standalone plugins. The packed package ships runtime JavaScript and portable
+declarations for both testing subpaths. A scaffold still vendors the root/app
+types, so add `@bb/plugin-sdk` as a devDependency when tests import the
+testing harness (plus its optional peers: `better-sqlite3` for backend tests;
+React, React DOM, Testing Library, and jsdom for frontend tests).
+
+The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
+semantics: real better-sqlite3 temporary storage (never mock the db), the kv
+256KB cap, schema-RPC validation/error/strict-JSON behavior, additive events,
+keyed registration failures, atomic reload, conditional agent configuration,
+request input, and `threads.spawn` plugin attribution.
 
 Backend (`server.ts`) — `createFakePluginHost()`:
 
@@ -966,22 +970,29 @@ const { bb, harness } = createFakePluginHost({
 });
 await plugin(bb);
 
-await harness.callRpc("list", { q: "x" }); // JSON round-trip like the wire
-await harness.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
-await harness.runCli(["search", "x"]); // { exitCode, stdout, stderr }
-const svc = harness.runService("watcher"); // start now; svc.controller.abort(); await svc.done
-await harness.runSchedule("sync"); // no timers, no cron sweep
-await harness.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
-await harness.emitThreadEvent("thread.idle", {
+await harness.behavior.callRpc("list", { q: "x" }); // JSON round-trip like the wire
+await harness.behavior.fetchHttp("POST", "/events", { body }); // real Hono context; auth not enforced
+await harness.behavior.runCli(["search", "x"]); // { exitCode, stdout, stderr }
+const svc = harness.behavior.runService("watcher"); // start now; svc.controller.abort(); await svc.done
+await harness.behavior.runSchedule("sync"); // no timers, no cron sweep
+await harness.behavior.setSettings({ apiToken: "next" }); // validates + fires onChange like a host save
+await harness.behavior.emitThreadEvent("thread.idle", {
   thread: makeThreadResponse({ id: "th_1" }), // complete ThreadResponse fixture
   lastAssistantText: "done",
 });
-await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
-await harness.resolveAgentConfiguration(context); // validated tools/skills/instructions
-await harness.dispose(); // abort services, hooks LIFO, close database; stale bb throws
+await harness.behavior.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.behavior.resolveAgentConfiguration(context); // validated tools/skills/instructions
+await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
 
-Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
+New tests should use the named views: `harness.behavior` drives host inputs,
+`harness.inspection` exposes observable state, and `harness.lifecycle` owns
+atomic reload/disposal. Direct members remain aliases for compatibility.
+`lifecycle.reload(factory)` preserves settings/KV/database state; a throwing
+replacement leaves the current registrations and API live.
+
+Inspect: `harness.inspection.sdk.calls` /
+`harness.inspection.sdk.callsTo("threads.spawn")` (every
 `bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
@@ -1013,9 +1024,10 @@ const slot = renderSlot(
   },
 );
 await slot.findByText("…"); // Testing Library queries
-slot.rpcCalls;
-slot.navigateCalls;
-slot.composer.quotes; // recorded hook activity
+slot.inspection.rpcCalls;
+slot.inspection.navigateCalls;
+slot.inspection.composer.quotes; // recorded hook activity
+slot.lifecycle.unmount();
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
@@ -1024,6 +1036,14 @@ fileOpener extensions) and returns them typed with defaults filled. Working exam
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `marketplace/plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).
+
+Fidelity boundaries: HTTP auth is recorded but not enforced; services and
+schedules run only when driven (no restart timers or cron sweep); storage is
+process-local and secrets stay in memory; `bb.sdk` is always bound and
+unstubbed calls throw; cross-plugin collisions are outside one fake host. The
+frontend harness validates registrations and JSON/composer behavior but does
+not reproduce BB layout/CSS, persistence, routing, crash boundaries, or
+multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 

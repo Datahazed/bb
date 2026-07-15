@@ -4,491 +4,10 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { ComponentType } from 'react';
 import Database from 'better-sqlite3';
 import { Context } from 'hono';
 import * as z from 'zod';
 import { z as z$1 } from 'zod';
-
-/**
- * A value that survives a JSON round trip without coercion or data loss.
- *
- * Host boundaries still validate values at runtime because TypeScript cannot
- * exclude non-finite numbers and plugin bundles can bypass static types.
- */
-type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | {
-    [key: string]: JsonValue$1;
-};
-
-/** A JSON-safe path segment reported by a Standard Schema validation issue. */
-type PluginRpcIssuePathSegment = string | number;
-/** Validator-neutral validation detail carried by an RPC error envelope. */
-interface PluginRpcValidationIssue {
-    message: string;
-    path?: PluginRpcIssuePathSegment[];
-}
-/** Stable wire error categories for plugin RPC. */
-type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
-/** Structured RPC failure returned as `{ ok: false, error }`. */
-interface PluginRpcError {
-    code: PluginRpcErrorCode;
-    message: string;
-    issues?: PluginRpcValidationIssue[];
-}
-/**
- * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
- * Zod 4 schemas implement this interface directly; other validators can do
- * the same without becoming part of BB's public protocol.
- */
-interface StandardSchemaV1<Input = unknown, Output = Input> {
-    readonly "~standard": {
-        readonly version: 1;
-        readonly vendor: string;
-        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
-        readonly types?: {
-            readonly input: Input;
-            readonly output: Output;
-        };
-    };
-}
-type StandardSchemaV1Result<Output> = {
-    readonly value: Output;
-    readonly issues?: undefined;
-} | {
-    readonly issues: readonly StandardSchemaV1Issue[];
-};
-interface StandardSchemaV1Issue {
-    readonly message: string;
-    readonly path?: PropertyKey | readonly (PropertyKey | {
-        readonly key: PropertyKey;
-    })[];
-}
-type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
-type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
-interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
-    readonly input: InputSchema;
-    readonly output: OutputSchema;
-}
-type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
-/** Define a shared RPC contract while preserving exact method/schema types. */
-declare function defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
-type PluginRpcHandlers<Contract extends PluginRpcContract> = {
-    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
-};
-type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
-type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
-type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
-
-/**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
- * side effects. The BB app imports these to keep its real implementation in
- * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
- * `@bb/plugin-sdk/app`.
- *
- * Per-slot props are versioned contracts: additive-only within an SDK major.
- */
-/** Props passed to a `homepageSection` component. */
-interface PluginHomepageSectionProps {
-    /** Project in view on the compose surface; null when none is selected. */
-    projectId: string | null;
-}
-/**
- * Props passed to a `settingsSection` component.
- *
- * Deliberately empty in V1; versioned additive like the other slot props.
- */
-interface PluginSettingsSectionProps {
-}
-/** Props passed to a `navPanel` component (it owns its whole route). */
-interface PluginNavPanelProps {
-    /**
-     * The route remainder after the panel root, "" at the root. The panel's
-     * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
-     * `/plugins/notes/notes/work/ideas.md` renders the panel with
-     * `subPath: "work/ideas.md"`. Navigate within the panel via
-     * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
-     * back/forward then walks panel-internal history.
-     */
-    subPath: string;
-}
-/** Props passed to a panel tab opened by a `threadPanelAction`. */
-interface PluginThreadPanelProps {
-    threadId: string;
-    /**
-     * The JSON value the action's `openPanel` call passed (round-tripped
-     * through persistence, so the tab restores across reloads); null when the
-     * action opened the panel without params.
-     */
-    params: JsonValue$1 | null;
-}
-/** Props passed to a `composerAccessory` component. */
-interface PluginComposerAccessoryProps {
-    projectId: string | null;
-    threadId: string | null;
-}
-interface PluginPendingInteractionView {
-    id: string;
-    threadId: string;
-    title: string;
-    payload: JsonValue$1;
-    createdAt: number;
-    expiresAt: number | null;
-}
-interface PluginPendingInteractionProps {
-    interaction: PluginPendingInteractionView;
-    submit(value: JsonValue$1): Promise<void>;
-    cancel(): Promise<void>;
-}
-/**
- * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
- * Deliberately empty; the registration's `run` carries the behavior.
- */
-interface PluginSidebarFooterActionProps {
-}
-/**
- * Where a file being opened by a `fileOpener` lives. `path` semantics follow
- * the source: workspace paths are relative to the environment's worktree,
- * thread-storage paths are relative to the thread's storage root, host paths
- * are absolute on the thread's host.
- */
-interface PluginFileOpenerSource {
-    kind: "workspace" | "host" | "thread-storage";
-    threadId: string | null;
-    environmentId: string | null;
-    projectId: string | null;
-}
-/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
-interface PluginFileOpenerProps {
-    path: string;
-    source: PluginFileOpenerSource;
-}
-/**
- * Message context passed to a `messageDirective` component — the assistant
- * (or nested agent) message that contained the directive.
- */
-interface PluginMessageDirectiveMessage {
-    id: string;
-    threadId: string;
-    turnId: string | null;
-    projectId: string | null;
-}
-/**
- * Open a worktree-relative file in the host's workspace file viewer. Returns
- * true when the host accepted the path; false when the path is invalid or the
- * viewer declined it.
- */
-type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
-interface PluginMessageDirectiveThreadPanelOptions {
-    /** A `threadPanelAction` id registered by this same plugin. */
-    actionId: string;
-    title?: string;
-    params?: JsonValue$1;
-}
-/** Open this plugin's registered action in the current thread side panel. */
-type PluginMessageDirectiveOpenThreadPanel = (options: PluginMessageDirectiveThreadPanelOptions) => boolean;
-/**
- * Props passed to a `messageDirective` component. Attributes are untrusted
- * strings parsed from the directive; the plugin validates its own fields.
- */
-interface PluginMessageDirectiveProps {
-    /** Parsed, untrusted directive attributes (e.g. `{ file: "demo.html" }`). */
-    attributes: Readonly<Record<string, string>>;
-    /** Original directive source text (useful for diagnostics / crash fallback). */
-    source: string;
-    message: PluginMessageDirectiveMessage;
-    /**
-     * Opens a worktree-relative file in the host's workspace file viewer. Null
-     * when the message surface has no workspace viewer available.
-     */
-    openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
-    /**
-     * Opens one of this plugin's own `threadPanelAction` components in the
-     * current thread side panel. Omitted by older hosts; null on message
-     * surfaces without a thread panel.
-     */
-    openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
-}
-interface PluginHomepageSectionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    title: string;
-    component: ComponentType<PluginHomepageSectionProps>;
-}
-interface PluginSettingsSectionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Optional host-rendered section heading. */
-    title?: string;
-    /**
-     * Optional one-line host-rendered subheading under `title`, in the built-in
-     * SettingsSection idiom (ignored when `title` is absent).
-     */
-    description?: string;
-    component: ComponentType<PluginSettingsSectionProps>;
-}
-interface PluginNavPanelRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon: string;
-    /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
-    path: string;
-    component: ComponentType<PluginNavPanelProps>;
-    /**
-     * Optional component rendered on the right side of the shared title bar
-     * (e.g. a sync button or a count). Contained separately from the body: a
-     * throwing headerContent is hidden without breaking the title bar.
-     */
-    headerContent?: ComponentType<PluginNavPanelProps>;
-}
-/** Context handed to a `threadPanelAction`'s `run`. */
-interface PluginThreadPanelActionContext {
-    /** The thread whose panel launcher invoked the action. */
-    threadId: string;
-    /**
-     * Open a tab in the thread's side panel rendering this action's
-     * `component`. `title` labels the tab (default: the action's `title`);
-     * `params` must be JSON-serializable — it is persisted with the tab and
-     * reaches the component as its `params` prop. Opening with params
-     * identical to an already-open tab of this action focuses that tab
-     * (updating its title) instead of duplicating it. May be called more than
-     * once (different params ⇒ multiple tabs) or not at all.
-     */
-    openPanel(options?: {
-        title?: string;
-        params?: JsonValue$1;
-    }): void;
-}
-interface PluginThreadPanelActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Label of the action row in the panel's new-tab launcher. */
-    title: string;
-    /**
-     * Icon hint (BB icon name) used when the plugin ships no logo; the
-     * launcher row and opened tabs prefer the plugin's logo.
-     */
-    icon?: string;
-    /** Rendered inside every panel tab this action opens. */
-    component: ComponentType<PluginThreadPanelProps>;
-    /**
-     * Runs when the user activates the action: call your RPC methods, show a
-     * toast, and/or open panel tabs via `context.openPanel`. Omitted =
-     * immediately open a panel tab with defaults. Errors (sync or async) are
-     * contained and logged; they never break the launcher.
-     */
-    run?(context: PluginThreadPanelActionContext): void | Promise<void>;
-}
-interface PluginComposerAccessoryRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    component: ComponentType<PluginComposerAccessoryProps>;
-}
-interface PluginPendingInteractionRegistration {
-    /** Matches `rendererId` passed to `bb.ui.requestInput`. */
-    id: string;
-    component: ComponentType<PluginPendingInteractionProps>;
-}
-/** Context handed to a `sidebarFooterAction`'s `run`. */
-interface PluginSidebarFooterActionContext {
-    /**
-     * Navigate to this plugin's Settings detail page
-     * (`/settings/plugins/<pluginId>`), where declarative settings and
-     * `settingsSection` slots render.
-     */
-    openSettings(): void;
-}
-/**
- * An icon button in the app sidebar footer (next to Settings / bug report).
- * Host-rendered for consistent chrome — plugins supply icon, label, and
- * `run` behavior only.
- */
-interface PluginSidebarFooterActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip and accessible label for the icon button. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon: string;
-    /**
-     * Runs when the user activates the action (e.g. call `openSettings()`,
-     * open a panel via other surfaces, toast). Errors (sync or async) are
-     * contained and logged; they never break the sidebar.
-     */
-    run(context: PluginSidebarFooterActionContext): void | Promise<void>;
-}
-/**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
- */
-interface PluginFileOpenerRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Label in the "Open with" menu (e.g. "Notes editor"). */
-    title: string;
-    /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
-    extensions: readonly string[];
-    component: ComponentType<PluginFileOpenerProps>;
-}
-/**
- * Register a leaf message directive rendered inside assistant (and nested
- * agent) message Markdown. `id` is the directive name: `inline-vis` matches
- * `::inline-vis{file="demo.html"}`.
- */
-interface PluginMessageDirectiveRegistration {
-    /**
-     * The directive name. Lowercase kebab-case beginning with a letter.
-     */
-    id: string;
-    component: ComponentType<PluginMessageDirectiveProps>;
-}
-interface PluginAppSlots {
-    homepageSection(registration: PluginHomepageSectionRegistration): void;
-    settingsSection(registration: PluginSettingsSectionRegistration): void;
-    navPanel(registration: PluginNavPanelRegistration): void;
-    threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
-    composerAccessory(registration: PluginComposerAccessoryRegistration): void;
-    pendingInteraction(registration: PluginPendingInteractionRegistration): void;
-    sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
-    fileOpener(registration: PluginFileOpenerRegistration): void;
-    messageDirective(registration: PluginMessageDirectiveRegistration): void;
-}
-interface PluginAppBuilder {
-    slots: PluginAppSlots;
-}
-type PluginAppSetup = (app: PluginAppBuilder) => void;
-/**
- * The opaque product of `definePluginApp` — a plugin's `app.tsx` default
- * export. The host re-runs `setup` against a fresh collector on every
- * (re)interpretation, replacing that plugin's registrations wholesale.
- */
-interface PluginAppDefinition {
-    /** Brand the host checks before interpreting a bundle's default export. */
-    readonly __bbPluginApp: true;
-    readonly setup: PluginAppSetup;
-}
-interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
-    /**
-     * Invoke one of the plugin's `bb.rpc` methods (POST
-     * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-     * inferred output; rejects with an `Error` carrying the server's message,
-     * stable `code`, and validation `issues` when present.
-     */
-    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
-}
-interface PluginSettingsState {
-    /**
-     * Effective non-secret setting values (secret settings are excluded —
-     * read them server-side). Undefined while loading or unavailable.
-     */
-    values: Record<string, string | boolean> | undefined;
-    isLoading: boolean;
-}
-/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
-type PluginComposerScope = {
-    kind: "thread";
-    threadId: string;
-} | {
-    kind: "new-thread";
-    projectId: string | null;
-};
-/** An @-mention pill bound to one of the calling plugin's mention providers. */
-interface PluginComposerMention {
-    /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
-    provider: string;
-    /** Item id your provider's `resolve` will receive at send time. */
-    id: string;
-    /** Pill text shown in the composer. */
-    label: string;
-}
-/**
- * Programmatic access to the chat composer draft — the same shared draft the
- * built-in "Add to chat" affordances (file preview, diff, terminal selections)
- * write to. Inside a thread context writes land in that thread's draft;
- * anywhere else (nav panel, homepage section) they seed the new-thread
- * composer draft, which persists until the user sends or clears it.
- */
-interface PluginComposerApi {
-    scope: PluginComposerScope;
-    /** Current plain text for this composer scope. */
-    readonly text: string;
-    /**
-     * Replace the draft's plain text. Attachments are preserved. Inline mentions
-     * outside the changed range are preserved and rebased; mentions overlapped
-     * by the replacement are removed because their text representation changed.
-     */
-    setText(next: string): void;
-    /**
-     * Replace the draft's plain text from the latest committed value. Uses the
-     * same structured-state reconciliation as `setText`.
-     */
-    updateText(updater: (current: string) => string): void;
-    /** Clear plain text without clearing independently attached files. */
-    clear(): void;
-    /**
-     * Append text to the draft as a `> ` blockquote block and focus the
-     * composer. Blank text is a no-op. This is the "reference this selection
-     * in chat" primitive.
-     */
-    addQuote(text: string): void;
-    /**
-     * Insert an @-mention pill that resolves through this plugin's mention
-     * provider at send time — the durable way to reference an entity whose
-     * content should be fetched fresh when the message is sent.
-     */
-    insertMention(mention: PluginComposerMention): void;
-    /** Focus the composer caret at the end of the draft. */
-    focus(): void;
-}
-/** Current app selection, derived from the route. */
-interface BbContext {
-    projectId: string | null;
-    threadId: string | null;
-}
-interface BbNavigate {
-    toThread(threadId: string): void;
-    toProject(projectId: string): void;
-    /**
-     * Navigate to one of this plugin's own nav panels by its `path`.
-     * `subPath` targets a location inside the panel (the component's
-     * `subPath` prop); `replace` swaps the current history entry instead of
-     * pushing — use it for redirects so back does not bounce.
-     */
-    toPluginPanel(path: string, options?: {
-        subPath?: string;
-        replace?: boolean;
-    }): void;
-    /**
-     * Navigate to the root compose surface (the new-thread screen). Pass
-     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
-     * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
-     */
-    toCompose(options?: {
-        initialPrompt?: string;
-        focusPrompt?: boolean;
-    }): void;
-}
-/**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
- * the real implementation and `satisfies` this interface; `bb plugin build`
- * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
- */
-interface PluginSdkApp {
-    definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
-    useRealtime(channel: string, handler: (payload: unknown) => void): void;
-    useSettings(): PluginSettingsState;
-    useBbContext(): BbContext;
-    useBbNavigate(): BbNavigate;
-    useComposer(): PluginComposerApi;
-}
 
 /**
  * App-wide server-backed preferences.
@@ -716,9 +235,9 @@ declare const hostSchema: z$1.ZodObject<{
 type Host = z$1.infer<typeof hostSchema>;
 
 interface JsonObject {
-    [key: string]: JsonValue;
+    [key: string]: JsonValue$1;
 }
-type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | JsonObject;
 
 declare const pendingInteractionResolutionSchema: z$1.ZodUnion<readonly [z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     decision: z$1.ZodLiteral<"allow_once">;
@@ -914,7 +433,7 @@ declare const pluginPendingInteractionSchema: z$1.ZodObject<{
     payload: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin">;
         title: z$1.ZodString;
-        data: z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>;
+        data: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
     }, z$1.core.$strip>;
     resolution: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin_submitted">;
@@ -1811,7 +1330,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         jsonrpc: z$1.ZodLiteral<"2.0">;
         id: z$1.ZodOptional<z$1.ZodUnion<readonly [z$1.ZodString, z$1.ZodNumber]>>;
         method: z$1.ZodString;
-        params: z$1.ZodOptional<z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>;
+        params: z$1.ZodOptional<z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>;
     }, z$1.core.$strip>;
     parentToolCallId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>], "type">, z$1.ZodObject<{
@@ -2123,7 +1642,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     status: z$1.ZodString;
     message: z$1.ZodString;
     operationId: z$1.ZodString;
-    metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>>;
+    metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"system/permissionGrant/lifecycle">;
     threadId: z$1.ZodString;
@@ -2739,8 +2258,8 @@ type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2761,8 +2280,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -3548,14 +3067,14 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"workspace-write">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"readonly">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>], "permissionMode">>;
         instructions: z$1.ZodString;
@@ -3630,9 +3149,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3707,9 +3226,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3796,9 +3315,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3873,9 +3392,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3939,14 +3458,14 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"workspace-write">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"readonly">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>], "permissionMode">>;
         acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
@@ -4050,12 +3569,13 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
+            projectId: z$1.ZodString;
+            providerThreadId: z$1.ZodString;
+            providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
                 append: "append";
                 replace: "replace";
             }>;
-            projectId: z$1.ZodString;
-            providerId: z$1.ZodString;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
                 command: z$1.ZodString;
@@ -4173,7 +3693,6 @@ declare const hostDaemonCommandRegistry: {
                 skillFilePath: z$1.ZodString;
             }, z$1.core.$strict>], "kind">>;
             disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
-            providerThreadId: z$1.ZodString;
         }, z$1.core.$strict>;
         target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             mode: z$1.ZodLiteral<"start">;
@@ -4186,8 +3705,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "mode">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         appliedAs: z$1.ZodEnum<{
-            steer: "steer";
             "new-turn": "new-turn";
+            steer: "steer";
         }>;
     }, z$1.core.$strip>, "settled", false>;
     "thread.stop": HostDaemonCommandDescriptor<"thread.stop", z$1.ZodObject<{
@@ -4341,9 +3860,9 @@ declare const hostDaemonCommandRegistry: {
             text: z$1.ZodString;
             startedAt: z$1.ZodOptional<z$1.ZodNumber>;
             status: z$1.ZodOptional<z$1.ZodEnum<{
-                started: "started";
                 completed: "completed";
                 failed: "failed";
+                started: "started";
             }>>;
             metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         }, z$1.core.$strip>>;
@@ -4571,8 +4090,8 @@ declare const hostDaemonCommandRegistry: {
                 skill: "skill";
             }>;
             origin: z$1.ZodEnum<{
-                project: "project";
                 user: "user";
+                project: "project";
             }>;
             description: z$1.ZodNullable<z$1.ZodString>;
             argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4937,8 +4456,8 @@ declare const hostDaemonCommandRegistry: {
         npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
         installAction: z$1.ZodNullable<z$1.ZodObject<{
             kind: z$1.ZodEnum<{
-                install: "install";
                 update: "update";
+                install: "install";
             }>;
             label: z$1.ZodEnum<{
                 Install: "Install";
@@ -4960,8 +4479,8 @@ declare const hostDaemonCommandRegistry: {
             cursor: "cursor";
         }>;
         actionKind: z$1.ZodEnum<{
-            install: "install";
             update: "update";
+            install: "install";
         }>;
         type: z$1.ZodLiteral<"provider_cli.install">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -5101,13 +4620,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5151,13 +4670,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5213,13 +4732,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5261,13 +4780,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5309,9 +4828,9 @@ declare const hostDaemonCommandRegistry: {
                 conclusion: z$1.ZodNullable<z$1.ZodEnum<{
                     unknown: "unknown";
                     success: "success";
-                    failure: "failure";
-                    cancelled: "cancelled";
                     skipped: "skipped";
+                    cancelled: "cancelled";
+                    failure: "failure";
                     neutral: "neutral";
                     timed_out: "timed_out";
                     action_required: "action_required";
@@ -5390,8 +4909,8 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
     installAction: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
-            install: "install";
             update: "update";
+            install: "install";
         }>;
         label: z$1.ZodEnum<{
             Install: "Install";
@@ -5414,8 +4933,8 @@ declare const providerCliInstallRequestSchema: z$1.ZodObject<{
         cursor: "cursor";
     }>;
     actionKind: z$1.ZodEnum<{
-        install: "install";
         update: "update";
+        install: "install";
     }>;
 }, z$1.core.$strip>;
 type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;
@@ -5984,9 +5503,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6015,9 +5534,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6389,7 +5908,7 @@ declare const timelineToolWorkRowSchema: z$1.ZodObject<{
     workKind: z$1.ZodLiteral<"tool">;
     callId: z$1.ZodString;
     toolName: z$1.ZodString;
-    toolArgs: z$1.ZodNullable<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>>;
+    toolArgs: z$1.ZodNullable<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>>;
     output: z$1.ZodString;
     completedAt: z$1.ZodNullable<z$1.ZodNumber>;
     approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
@@ -7623,9 +7142,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            personal: "personal";
-            "managed-worktree": "managed-worktree";
             unmanaged: "unmanaged";
+            "managed-worktree": "managed-worktree";
+            personal: "personal";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -7817,7 +7336,7 @@ declare const threadPendingInteractionsResponseSchema: z$1.ZodArray<z$1.ZodUnion
     payload: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin">;
         title: z$1.ZodString;
-        data: z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>;
+        data: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
     }, z$1.core.$strip>;
     resolution: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin_submitted">;
@@ -8250,8 +7769,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -8801,25 +8320,25 @@ interface PluginReloadArgs {
     pluginId?: string;
 }
 interface PluginSettingsUpdateArgs extends PluginIdArgs {
-    values: Record<string, JsonValue>;
+    values: Record<string, JsonValue$1>;
 }
 interface PluginTokenArgs extends PluginIdArgs {
     rotate?: boolean;
 }
 interface PluginRpcArgs<TOutput> extends PluginIdArgs {
-    input?: JsonValue;
+    input?: JsonValue$1;
     method: string;
     outputSchema: z$1.ZodType<TOutput>;
 }
-type PluginDisableResult = JsonValue;
-type PluginEnableResult = JsonValue;
-type PluginGetSettingsResult = JsonValue;
-type PluginInstallResult = JsonValue;
-type PluginListResult = JsonValue;
-type PluginReloadResult = JsonValue;
-type PluginRemoveResult = JsonValue;
-type PluginTokenResult = JsonValue;
-type PluginUpdateSettingsResult = JsonValue;
+type PluginDisableResult = JsonValue$1;
+type PluginEnableResult = JsonValue$1;
+type PluginGetSettingsResult = JsonValue$1;
+type PluginInstallResult = JsonValue$1;
+type PluginListResult = JsonValue$1;
+type PluginReloadResult = JsonValue$1;
+type PluginRemoveResult = JsonValue$1;
+type PluginTokenResult = JsonValue$1;
+type PluginUpdateSettingsResult = JsonValue$1;
 interface PluginsArea {
     callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
     disable(args: PluginIdArgs): Promise<PluginDisableResult>;
@@ -9175,7 +8694,7 @@ interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
     resolution: PendingInteractionResolution;
 }
 interface ThreadInteractionRespondArgs extends ThreadInteractionGetArgs {
-    value: JsonValue;
+    value: JsonValue$1;
 }
 type ThreadWaitTarget = {
     kind: "status";
@@ -9298,6 +8817,55 @@ interface BbSdk extends BbRealtime {
     threadFolders: ThreadFoldersArea;
     threads: ThreadsArea;
 }
+
+/**
+ * A value that survives a JSON round trip without coercion or data loss.
+ *
+ * Host boundaries still validate values at runtime because TypeScript cannot
+ * exclude non-finite numbers and plugin bundles can bypass static types.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+
+/**
+ * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
+ * Zod 4 schemas implement this interface directly; other validators can do
+ * the same without becoming part of BB's public protocol.
+ */
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        };
+    };
+}
+type StandardSchemaV1Result<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: readonly StandardSchemaV1Issue[];
+};
+interface StandardSchemaV1Issue {
+    readonly message: string;
+    readonly path?: PropertyKey | readonly (PropertyKey | {
+        readonly key: PropertyKey;
+    })[];
+}
+type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
+type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
+interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly input: InputSchema;
+    readonly output: OutputSchema;
+}
+type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
+type PluginRpcHandlers<Contract extends PluginRpcContract> = {
+    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
+};
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -9492,7 +9060,7 @@ interface PluginCliContext {
 type PluginInteractionCancelReason = "user" | "request-aborted" | "thread-stopped" | "thread-deleted" | "plugin-disposed" | "server-restarted" | "timeout";
 type PluginInteractionResult = {
     outcome: "submitted";
-    value: JsonValue$1;
+    value: JsonValue;
 } | {
     outcome: "cancelled";
     reason: PluginInteractionCancelReason;
@@ -9501,7 +9069,7 @@ interface PluginInteractionRequest {
     threadId: string;
     rendererId: string;
     title: string;
-    payload: JsonValue$1;
+    payload: JsonValue;
     /** Defaults to ten minutes; capped at one hour. */
     timeoutMs?: number;
 }
@@ -9858,5 +9426,309 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export { defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
+/**
+ * Recordable `bb.sdk` stand-in for {@link createFakePluginHost}. Every call
+ * through the fake is recorded (post plugin-attribution defaulting, so
+ * assertions see what the server would receive); calls without a stubbed
+ * implementation throw with a message naming the exact path to stub.
+ */
+/** One recorded `bb.sdk` call. `path` is dot-joined, e.g. "threads.spawn". */
+interface FakeSdkCall {
+    path: string;
+    args: unknown[];
+}
+/**
+ * A stub keeps the real method's parameter types but may return anything —
+ * tests usually only build the fields the plugin reads, not the full wire
+ * response.
+ */
+type LooseStub<F> = F extends (...args: infer A) => unknown ? (...args: A) => unknown : never;
+/**
+ * Stub implementations keyed like `BbSdk`: an object per area with a subset
+ * of its methods, or a function for the root-level members (`on`).
+ */
+type FakeSdkOverrides = {
+    [K in keyof BbSdk]?: BbSdk[K] extends (...args: never[]) => unknown ? LooseStub<BbSdk[K]> : {
+        [M in keyof BbSdk[K]]?: LooseStub<BbSdk[K][M]>;
+    };
+};
+interface FakeSdkHarness {
+    /** Every `bb.sdk` call in order, including ones whose stub threw. */
+    readonly calls: FakeSdkCall[];
+    /** Argument lists of the calls to one dot-joined path. */
+    callsTo(path: string): unknown[][];
+    /** Add or replace one method's implementation after creation. */
+    stub(path: string, implementation: (...args: never[]) => unknown): void;
+}
+declare function createFakeSdk(options: {
+    pluginId: string;
+    overrides?: FakeSdkOverrides;
+}): {
+    sdk: BbSdk;
+    harness: FakeSdkHarness;
+};
+
+/**
+ * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
+ * runtime (apps/server/src/services/plugins/plugin-api.ts), for unit-testing
+ * a plugin's `server.ts` without a server. `bb` satisfies {@link BbPluginApi};
+ * `harness` drives and inspects it.
+ *
+ * Faithful where a plugin can observe it: registration name validation and
+ * error messages, the kv 256KB cap, append-only database migrations, settings
+ * read/update semantics (including onChange), schema-validated rpc/cli
+ * invocation shapes (strict JSON boundaries, exit-code normalization), `threads.spawn`
+ * attribution, atomic reload, and dispose order (services aborted, hooks LIFO,
+ * database closed, stale handles throw). New tests can keep host inputs,
+ * assertions, and shutdown explicit through `harness.behavior`,
+ * `harness.inspection`, and `harness.lifecycle`; direct members remain aliases.
+ *
+ * Deliberately different from the real host:
+ * - storage is process-local: kv in a Map, `storage.database()` one shared
+ *   better-sqlite3 handle in a temp directory (same data across calls, like
+ *   the host's shared file), secret settings alongside plain values (no files).
+ * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
+ *   throws instead of hitting a server.
+ * - http auth modes are recorded but not enforced — signature checks and
+ *   token handling inside handlers still run.
+ * - background services/schedules never run on timers; `harness.runService`
+ *   and `harness.runSchedule` invoke them deterministically.
+ */
+/** Same shape (and name) the real host throws for stale API handles. */
+declare class PluginContextStaleError extends Error {
+    constructor(pluginId: string);
+}
+type FakeLogLevel = "debug" | "info" | "warn" | "error";
+interface FakeLogEntry {
+    level: FakeLogLevel;
+    message: string;
+}
+interface FakeHttpRouteRecord {
+    method: string;
+    path: string;
+    auth: PluginHttpAuthMode;
+    handler: PluginHttpHandler;
+}
+interface FakeScheduleRecord {
+    name: string;
+    cron: string;
+    fn: () => void | Promise<void>;
+}
+interface FakeServiceRecord {
+    name: string;
+    start: (signal: AbortSignal) => void | Promise<void>;
+}
+interface FakeCliRecord {
+    name: string;
+    summary: string;
+    commands: PluginCliCommandInfo[];
+    run: (argv: string[], ctx: PluginCliContext) => PluginCliResult | Promise<PluginCliResult>;
+}
+interface FakeAgentToolRecord {
+    name: string;
+    description: string;
+    instructions: string | null;
+    /** JSON-schema object the host would send providers. */
+    inputSchema: unknown;
+    parse(input: unknown): {
+        ok: true;
+        value: unknown;
+    } | {
+        ok: false;
+        error: string;
+    };
+    execute(params: unknown, ctx: PluginAgentToolContext): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+}
+interface FakeThreadActionRecord {
+    id: string;
+    title: string;
+    icon: string | null;
+    confirm: string | null;
+    run: (ctx: PluginThreadActionContext) => PluginThreadActionResult | Promise<PluginThreadActionResult>;
+}
+interface FakeMentionProviderRecord {
+    id: string;
+    label: string;
+    triggers: readonly PluginMentionTrigger[];
+    search: (ctx: PluginMentionSearchContext) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
+    resolve: (itemId: string) => {
+        context: string;
+    } | Promise<{
+        context: string;
+    }>;
+}
+interface FakeRealtimeSignal {
+    channel: string;
+    /** JSON-round-tripped, like the WS broadcast; `undefined` → `null`. */
+    payload: unknown;
+}
+/** Everything the plugin registered, exposed raw for assertions. */
+interface FakePluginRegistrations {
+    settingsDescriptors: PluginSettingDescriptors;
+    httpRoutes: FakeHttpRouteRecord[];
+    rpcMethods: string[];
+    services: FakeServiceRecord[];
+    schedules: FakeScheduleRecord[];
+    cli: FakeCliRecord | null;
+    agentTools: FakeAgentToolRecord[];
+    /** Provider from bb.agents.configure, or null when none registered. */
+    agentConfigurationProvider: ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration) | null;
+    /** Provider from contributeInstructions, or null when none registered. */
+    instructionProvider: ((ctx: {
+        threadId: string;
+        projectId: string;
+    }) => string | null) | null;
+    threadActions: FakeThreadActionRecord[];
+    threadEventHandlers: Record<PluginThreadEventName, number>;
+    mentionProviders: FakeMentionProviderRecord[];
+}
+/** Read-only state for assertions after a plugin registers or handles work. */
+interface FakePluginInspectionState {
+    readonly pluginId: string;
+    /** Every `bb.log` line, in order. */
+    readonly logEntries: FakeLogEntry[];
+    /** Every `bb.realtime.publish`, payload normalized like the wire. */
+    readonly realtimeSignals: FakeRealtimeSignal[];
+    /** Every `bb.status.needsConfiguration` message, in order. */
+    readonly needsConfigurationMessages: string[];
+    /** Recorded `bb.sdk` calls + stub control. */
+    readonly sdk: FakeSdkHarness;
+    readonly registrations: FakePluginRegistrations;
+    readonly sharedPortDeclarations: Array<{
+        hostId: string;
+        ports: number[];
+    }>;
+    readonly pendingInteractions: readonly (PluginInteractionRequest & {
+        id: string;
+    })[];
+}
+/** Deterministic inputs that stand in for behavior normally driven by BB. */
+interface FakePluginBehaviorDrivers {
+    submitInteraction(id: string, value: JsonValue): void;
+    cancelInteraction(id: string): void;
+    /**
+     * Apply a settings update the way the host's settings save does:
+     * validate against the declared descriptors (`null` unsets), store, and
+     * fire `onChange` listeners when effective values changed. Throws on
+     * unknown keys or wrong value types.
+     */
+    setSettings(values: Record<string, PluginSettingValue | null>): Promise<void>;
+    /**
+     * Invoke a registered rpc method with host semantics: input/output schemas,
+     * strict JSON result normalization, and structured failure codes. Rejects
+     * with the same message/code/issues the frontend client surfaces.
+     */
+    callRpc(method: string, input?: unknown): Promise<unknown>;
+    /**
+     * Invoke the plugin's CLI command with host semantics: the result's
+     * exitCode must be a number, stdout/stderr default to "", and a throwing
+     * run() becomes `{ exitCode: 1, stderr: "bb <name> failed: …" }`.
+     */
+    runCli(argv: string[], ctx?: PluginCliContext): Promise<PluginCliResult>;
+    /**
+     * Dispatch a request to a registered `bb.http` route (exact method+path
+     * match, like the host's V1 router) through a real Hono context. Auth
+     * modes are not enforced. A throwing handler yields the host's 500
+     * `{ ok: false, error: "plugin route failed: …" }` response.
+     */
+    fetchHttp(method: string, path: string, init?: RequestInit): Promise<Response>;
+    /**
+     * Start a registered background service once, deterministically. `done`
+     * settles when `start` returns; abort `controller` to signal shutdown.
+     * A thrown NeedsConfigurationError (matched by name, like the host) is
+     * recorded via needsConfiguration and resolves `done`; other errors
+     * reject it.
+     */
+    runService(name: string): {
+        controller: AbortController;
+        done: Promise<void>;
+    };
+    /** Run a registered schedule's function once (no timers, no cron sweep). */
+    runSchedule(name: string): Promise<void>;
+    /**
+     * Deliver a thread lifecycle event to every `bb.events.on` handler. Handlers run
+     * sequentially; errors are caught and logged like the host's
+     * fire-and-forget dispatch, and returned for assertions.
+     */
+    emitThreadEvent<E extends PluginThreadEventName>(event: E, payload: PluginThreadEventPayloads[E]): Promise<{
+        errors: unknown[];
+    }>;
+    /**
+     * Call a registered agent tool the way a provider tool-call would:
+     * arguments go through the tool's parse step (zod-validated for zod
+     * registrations; a parse failure throws), then execute. `ctx` fields
+     * default to "thread-test"/"project-test" and a fresh signal.
+     */
+    callAgentTool(name: string, input: unknown, ctx?: Partial<PluginAgentToolContext>): Promise<PluginAgentToolResult>;
+    /** Evaluate `bb.agents.configure` with production validation/fail-closed
+     * semantics. With no callback, every registered tool/declared test skill is
+     * selected. Callback failures are logged and return empty selections. */
+    resolveAgentConfiguration(context: PluginAgentConfigurationContext): Promise<{
+        tools: FakeAgentToolRecord[];
+        skills: string[];
+        instructions: string | null;
+    }>;
+}
+/** Reload/shutdown controls, kept separate from behavior and inspection. */
+interface FakePluginLifecycleControls {
+    /**
+     * Load a replacement against the same persisted settings, kv, and database.
+     * The current host remains live when the factory throws; on success its
+     * services/hooks are disposed and the returned host becomes current.
+     */
+    reload(factory: (bb: BbPluginApi) => void | Promise<void>): Promise<FakePluginHost>;
+    /**
+     * Dispose like a host reload/disable: abort services started via
+     * runService, run onDispose hooks LIFO (isolated), close database handles,
+     * then poison the `bb` handle (further use throws
+     * PluginContextStaleError). Idempotent.
+     */
+    dispose(): Promise<void>;
+}
+/**
+ * Complete fake-host harness. Direct members are retained for compatibility;
+ * the named views make intent explicit in new tests.
+ */
+interface FakePluginHarness extends FakePluginInspectionState, FakePluginBehaviorDrivers, FakePluginLifecycleControls {
+    readonly behavior: FakePluginBehaviorDrivers;
+    readonly inspection: FakePluginInspectionState;
+    readonly lifecycle: FakePluginLifecycleControls;
+}
+interface CreateFakePluginHostOptions {
+    /** Defaults to "test-plugin". */
+    pluginId?: string;
+    /**
+     * Value served by `bb.server.loopbackBaseUrl` (always bound here, like
+     * `bb.sdk`). Defaults to "http://127.0.0.1:38886".
+     */
+    loopbackBaseUrl?: string;
+    /**
+     * Pre-seeded stored settings values (as if saved before this load) —
+     * including secret ones, which the fake keeps in memory instead of
+     * files. Values with the wrong type for their descriptor fall back to
+     * the descriptor default on read, like the host.
+     */
+    settings?: Record<string, PluginSettingValue>;
+    /** Initial `bb.sdk` stubs; extend later via `harness.sdk.stub`. */
+    sdk?: FakeSdkOverrides;
+    /** Static manifest skill ids available to configure() in this fake host. */
+    agentSkillIds?: readonly string[];
+    /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
+    sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
+}
+interface FakePluginHost {
+    bb: BbPluginApi;
+    harness: FakePluginHarness;
+}
+declare function createFakePluginHost(options?: CreateFakePluginHostOptions): FakePluginHost;
+
+/**
+ * A complete, deterministic `ThreadResponse` for thread lifecycle event
+ * payloads (`harness.emitThreadEvent`). Defaults are the minimal idle
+ * thread; override the fields the test cares about. If the contract grows a
+ * required field, this builder fails typecheck — update the default here.
+ */
+declare function makeThreadResponse(overrides?: Partial<ThreadResponse>): ThreadResponse;
+
+export { PluginContextStaleError, createFakePluginHost, createFakeSdk, makeThreadResponse };
+export type { CreateFakePluginHostOptions, FakeAgentToolRecord, FakeCliRecord, FakeHttpRouteRecord, FakeLogEntry, FakeLogLevel, FakeMentionProviderRecord, FakePluginBehaviorDrivers, FakePluginHarness, FakePluginHost, FakePluginInspectionState, FakePluginLifecycleControls, FakePluginRegistrations, FakeRealtimeSignal, FakeScheduleRecord, FakeSdkCall, FakeSdkHarness, FakeSdkOverrides, FakeServiceRecord, FakeThreadActionRecord };

@@ -4,41 +4,105 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 const execFileAsync = promisify(execFile);
-const dependencyRequire = createRequire(
-  fileURLToPath(new URL("../../plugin-sdk/package.json", import.meta.url)),
-);
+const pluginSdkRoot = resolve(process.cwd(), "../plugin-sdk");
+const dependencyRequire = createRequire(join(pluginSdkRoot, "package.json"));
 
 const EXTERNAL_DEPENDENCIES = [
   "@hugeicons/core-free-icons",
   "@hugeicons/react",
   "@radix-ui/react-dialog",
   "@radix-ui/react-slot",
+  "@testing-library/react",
   "@types/better-sqlite3",
   "@types/node",
   "@types/react",
   "better-sqlite3",
   "class-variance-authority",
   "clsx",
+  "cron-parser",
   "hono",
+  "jsdom",
   "react",
+  "react-dom",
   "tailwind-merge",
   "vaul",
+  "vitest",
   "zod",
 ] as const;
+
+const BACKEND_TEST = `
+import { describe, expect, it } from "vitest";
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import plugin from "./server";
+
+describe("scaffold backend", () => {
+  it("loads, inspects, and atomically reloads through the packed harness", async () => {
+    const host = createFakePluginHost({ pluginId: "external-backend" });
+    await plugin(host.bb);
+    await expect(host.harness.behavior.callRpc("greeting")).resolves.toEqual({
+      greeting: "hello",
+      loadCount: 1,
+    });
+    expect(host.harness.inspection.registrations.rpcMethods).toEqual(["greeting"]);
+
+    const next = await host.harness.lifecycle.reload(plugin);
+    await expect(next.harness.behavior.callRpc("greeting")).resolves.toEqual({
+      greeting: "hello",
+      loadCount: 2,
+    });
+    await next.harness.lifecycle.dispose();
+  });
+});
+`;
+
+const FRONTEND_TEST = `
+// @vitest-environment jsdom
+import { fireEvent } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+
+describe("scaffold frontend", () => {
+  it("loads and renders a slot through the packed harness", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    const slot = renderSlot(
+      app.homepageSections[0]!,
+      { projectId: "proj_external" },
+      {
+        context: { projectId: "proj_external", threadId: null },
+        rpc: { greeting: () => ({ greeting: "external", loadCount: 3 }) },
+      },
+    );
+
+    fireEvent.click(slot.getByText("Say hello"));
+    await slot.findByText("external (#3)");
+    expect(slot.inspection.rpcCalls).toEqual([{ method: "greeting", input: null }]);
+    slot.lifecycle.unmount();
+  });
+});
+`;
+
+const VITEST_CONFIG = `
+import { resolve } from "node:path";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  resolve: { alias: { "@": resolve(process.cwd()) } },
+});
+`;
 
 const REPRESENTATIVE_SERVER = `
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
@@ -135,6 +199,47 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
   }
 }
 
+async function includeTestsInTypecheck(targetDir: string): Promise<void> {
+  const tsconfigPath = join(targetDir, "tsconfig.json");
+  const tsconfig = JSON.parse(await readFile(tsconfigPath, "utf8")) as {
+    include: string[];
+  };
+  tsconfig.include.push("*.test.ts", "*.test.tsx");
+  await writeFile(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
+}
+
+async function runTypecheck(targetDir: string): Promise<void> {
+  const typescriptRoot = packageRoot("typescript");
+  try {
+    await execFileAsync(
+      process.execPath,
+      [join(typescriptRoot, "lib", "tsc.js"), "--project", "tsconfig.json"],
+      { cwd: targetDir },
+    );
+  } catch (error) {
+    const failed = error as { stderr?: string; stdout?: string };
+    throw new Error(
+      `external scaffold typecheck failed:\n${failed.stdout ?? ""}${failed.stderr ?? ""}`,
+    );
+  }
+}
+
+async function runVitest(targetDir: string): Promise<void> {
+  const vitestRoot = packageRoot("vitest");
+  try {
+    await execFileAsync(
+      process.execPath,
+      [join(vitestRoot, "vitest.mjs"), "run", "--passWithNoTests=false"],
+      { cwd: targetDir },
+    );
+  } catch (error) {
+    const failed = error as { stderr?: string; stdout?: string };
+    throw new Error(
+      `external scaffold tests failed:\n${failed.stdout ?? ""}${failed.stderr ?? ""}`,
+    );
+  }
+}
+
 describe("external plugin scaffold types", () => {
   let workDir: string;
 
@@ -166,20 +271,129 @@ describe("external plugin scaffold types", () => {
       access(join(targetDir, "node_modules", "@bb")),
     ).rejects.toThrow();
 
-    const typescriptRoot = packageRoot("typescript");
-    let result: { stderr: string; stdout: string };
-    try {
-      result = await execFileAsync(
-        process.execPath,
-        [join(typescriptRoot, "lib", "tsc.js"), "--project", "tsconfig.json"],
-        { cwd: targetDir },
-      );
-    } catch (error) {
-      const failed = error as { stderr?: string; stdout?: string };
-      throw new Error(
-        `external scaffold typecheck failed:\n${failed.stdout ?? ""}${failed.stderr ?? ""}`,
-      );
-    }
-    expect(result.stderr).toBe("");
+    await runTypecheck(targetDir);
   }, 120_000);
+
+  it("installs the packed testing runtimes and executes scaffold backend and frontend tests", async () => {
+    const packDir = join(workDir, "pack");
+    await mkdir(packDir);
+    await execFileAsync(
+      "npm",
+      ["pack", "--silent", "--pack-destination", packDir],
+      { cwd: pluginSdkRoot },
+    );
+    const tarballs = (await readdir(packDir)).filter((name) =>
+      name.endsWith(".tgz"),
+    );
+    expect(tarballs).toHaveLength(1);
+    const tarball = join(packDir, tarballs[0]!);
+    const packedListing = (
+      await execFileAsync("tar", ["-tzf", tarball])
+    ).stdout.split("\n");
+    expect(packedListing).toContain("package/dist/testing/index.js");
+    expect(packedListing).toContain("package/dist/testing/app.js");
+    expect(packedListing).toContain(
+      "package/bundled-types/bb-plugin-sdk-testing.d.ts",
+    );
+    expect(packedListing).toContain(
+      "package/bundled-types/bb-plugin-sdk-testing-app.d.ts",
+    );
+    expect(
+      packedListing.some((entry) => entry.startsWith("package/src/")),
+    ).toBe(false);
+    expect(
+      packedListing.some((entry) => entry.startsWith("package/scripts/")),
+    ).toBe(false);
+
+    const backendDir = join(workDir, "bb-plugin-external-backend");
+    await scaffoldPlugin({
+      targetDir: backendDir,
+      packageName: "bb-plugin-external-backend",
+      bbVersion: "0.9.0",
+    });
+    await execFileAsync(
+      "npm",
+      [
+        "install",
+        "--ignore-scripts",
+        "--legacy-peer-deps",
+        "--no-package-lock",
+        "--no-save",
+        "--omit=dev",
+        tarball,
+      ],
+      { cwd: backendDir },
+    );
+    await linkExternalDependencies(backendDir);
+    await writeFile(join(backendDir, "server.test.ts"), BACKEND_TEST);
+    await includeTestsInTypecheck(backendDir);
+
+    expect(await readdir(join(backendDir, "node_modules", "@bb"))).toEqual([
+      "plugin-sdk",
+    ]);
+    const installedSdk = join(backendDir, "node_modules", "@bb", "plugin-sdk");
+    const installedManifest = JSON.parse(
+      await readFile(join(installedSdk, "package.json"), "utf8"),
+    ) as {
+      version: string;
+      private?: boolean;
+      dependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      exports: Record<string, { import: string; types: string }>;
+    };
+    expect(installedManifest.version).toBe("0.2.0");
+    expect(installedManifest.private).not.toBe(true);
+    expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
+      "workspace:",
+    );
+    expect(
+      JSON.stringify(installedManifest.optionalDependencies ?? {}),
+    ).not.toContain("workspace:");
+    expect(
+      JSON.stringify(installedManifest.peerDependencies ?? {}),
+    ).not.toContain("workspace:");
+    for (const subpath of ["./testing", "./testing/app"] as const) {
+      const entry = installedManifest.exports[subpath];
+      await expect(
+        access(join(installedSdk, entry.import.replace(/^\.\//u, ""))),
+      ).resolves.toBeUndefined();
+      const declarations = await readFile(
+        join(installedSdk, entry.types.replace(/^\.\//u, "")),
+        "utf8",
+      );
+      expect(declarations).not.toMatch(/from ['"]@bb\//u);
+    }
+    for (const runtimePath of [
+      "dist/testing/index.js",
+      "dist/testing/app.js",
+    ]) {
+      const runtime = await readFile(join(installedSdk, runtimePath), "utf8");
+      expect(runtime).not.toMatch(/from ['"]@bb\//u);
+    }
+    await expect(access(join(installedSdk, "src"))).rejects.toThrow();
+    const backendTsconfig = JSON.parse(
+      await readFile(join(backendDir, "tsconfig.json"), "utf8"),
+    ) as { compilerOptions: { skipLibCheck: boolean } };
+    expect(backendTsconfig.compilerOptions.skipLibCheck).toBe(false);
+    await runTypecheck(backendDir);
+    await runVitest(backendDir);
+
+    const frontendDir = join(workDir, "bb-plugin-external-frontend");
+    await scaffoldPlugin({
+      targetDir: frontendDir,
+      packageName: "bb-plugin-external-frontend",
+      bbVersion: "0.9.0",
+      app: true,
+    });
+    const frontendSdk = join(frontendDir, "node_modules", "@bb", "plugin-sdk");
+    await mkdir(dirname(frontendSdk), { recursive: true });
+    await symlink(installedSdk, frontendSdk, "dir");
+    await linkExternalDependencies(frontendDir);
+    await writeFile(join(frontendDir, "app.test.tsx"), FRONTEND_TEST);
+    await writeFile(join(frontendDir, "vitest.config.ts"), VITEST_CONFIG);
+    await includeTestsInTypecheck(frontendDir);
+    await runTypecheck(frontendDir);
+    await runVitest(frontendDir);
+  }, 180_000);
 });

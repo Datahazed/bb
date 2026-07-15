@@ -55,7 +55,9 @@ import type { JsonValue } from "../json-value.js";
  * - {@link renderSlot} mounts one registration's component with mock hook
  *   backends: rpc as a method→handler map with a call log, realtime as a
  *   channel you can push events into, settings/context as plain values, and
- *   navigate/composer as recorders.
+ *   navigate/composer as recorders. Its `behavior`, `inspection`, and
+ *   `lifecycle` views separate host inputs, assertions, and mount controls;
+ *   the existing direct members remain aliases.
  *
  * Add `// @vitest-environment jsdom` to test files using renderSlot.
  */
@@ -521,18 +523,43 @@ export interface RenderSlotOptions<
   composer?: { text?: string };
 }
 
-export interface RenderedSlot extends RenderResult {
-  /** Every `useRpc().call`, in order. */
-  rpcCalls: RpcCall[];
+/** Host-originated inputs a slot test can drive deterministically. */
+export interface RenderedSlotBehaviorDrivers {
   /**
    * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
   emitRealtime(channel: string, payload: unknown): Promise<void>;
+}
+
+/** Read-only call/write logs produced while the slot is mounted. */
+export interface RenderedSlotInspectionState {
+  /** Every `useRpc().call`, in order. */
+  readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
-  navigateCalls: NavigateCall[];
+  readonly navigateCalls: NavigateCall[];
   /** Everything written through `useComposer()`. */
-  composer: ComposerLog;
+  readonly composer: ComposerLog;
+}
+
+/** Explicit mount controls, separate from behavior inputs and call logs. */
+export interface RenderedSlotLifecycleControls {
+  rerender(ui: ReactNode): void;
+  unmount(): void;
+}
+
+/**
+ * Testing Library result plus BB-specific helpers. Direct members are
+ * retained for compatibility; named views make intent explicit in new tests.
+ */
+export interface RenderedSlot
+  extends
+    RenderResult,
+    RenderedSlotBehaviorDrivers,
+    RenderedSlotInspectionState {
+  readonly behavior: RenderedSlotBehaviorDrivers;
+  readonly inspection: RenderedSlotInspectionState;
+  readonly lifecycle: RenderedSlotLifecycleControls;
 }
 
 function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
@@ -723,27 +750,36 @@ export function renderSlot<
   );
   const result = render(element);
 
+  const rerenderSlot = (ui: ReactNode): void => {
+    result.rerender(
+      <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
+    );
+  };
+  const emitRealtime = async (
+    channel: string,
+    payload: unknown,
+  ): Promise<void> => {
+    const normalized =
+      payload === undefined
+        ? null
+        : strictJsonRoundTrip(payload, `realtime "${channel}" payload`);
+    const listeners = realtimeHandlers.get(channel);
+    await act(async () => {
+      for (const listener of [...(listeners ?? [])]) {
+        listener(normalized);
+      }
+    });
+  };
+
   return {
     ...result,
-    rerender(ui: ReactNode) {
-      result.rerender(
-        <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
-      );
-    },
+    rerender: rerenderSlot,
     rpcCalls,
-    async emitRealtime(channel, payload) {
-      const normalized =
-        payload === undefined
-          ? null
-          : strictJsonRoundTrip(payload, `realtime "${channel}" payload`);
-      const listeners = realtimeHandlers.get(channel);
-      await act(async () => {
-        for (const listener of [...(listeners ?? [])]) {
-          listener(normalized);
-        }
-      });
-    },
+    emitRealtime,
     navigateCalls,
     composer: composerLog,
+    behavior: { emitRealtime },
+    inspection: { rpcCalls, navigateCalls, composer: composerLog },
+    lifecycle: { rerender: rerenderSlot, unmount: result.unmount },
   };
 }

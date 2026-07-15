@@ -225,8 +225,8 @@ export default definePluginApp((app) => {
  * Typecheck-only tsconfig: server.ts compiles against the BbPluginApi contract
  * (type-only, erased at load time); app.tsx is included when the plugin
  * declares a frontend entry. `@bb/plugin-sdk` resolves to the bundled `.d.ts`
- * files shipped in `types/` — the workspace package is unpublished, so authors
- * get real types without it on disk.
+ * files shipped in `types/`, so authors get the root/app types without a
+ * package install. Tests can install `@bb/plugin-sdk` for its testing subpaths.
  */
 function tsconfigSource(app: boolean): string {
   return `${JSON.stringify(
@@ -380,7 +380,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           : { server: "./server.ts" },
         // Typecheck-only. The BbPluginApi/SDK types come from the bundled
         // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
-        // unpublished workspace package is never needed. These deps supply the
+        // package is not needed for normal plugin source. These deps supply the
         // real npm types the bundle references (zod/hono/better-sqlite3 and
         // the root contract's React types); BB provides them all at runtime, and
         // `bb plugin build` never bundles them.
@@ -409,9 +409,9 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
-  // Bundled type declarations so the plugin typechecks without the (unpublished)
-  // @bb/plugin-sdk workspace package on disk. tsconfig `paths` maps the imports
-  // here.
+  // Bundled root/app declarations keep normal plugin source self-contained.
+  // Tests that use @bb/plugin-sdk/testing install the published package; the
+  // exact root/app paths below intentionally continue to resolve here.
   const typesDir = join(targetDir, "types");
   await mkdir(typesDir, { recursive: true });
   await writeFile(join(typesDir, "bb-plugin-sdk.d.ts"), PLUGIN_SDK_DTS);

@@ -652,6 +652,56 @@ describe("agent tools", () => {
 });
 
 describe("dispose", () => {
+  it("reloads atomically while preserving storage and the direct harness API", async () => {
+    const host = createFakePluginHost({ pluginId: "reloadable" });
+    const oldContract = defineRpcContract({
+      version: { input: z.null(), output: z.literal("old") },
+    });
+    host.bb.rpc.register(oldContract, { version: () => "old" as const });
+    await host.bb.storage.kv.set("cursor", { page: 2 });
+    const oldDatabase = host.bb.storage.database();
+    oldDatabase.exec("CREATE TABLE state (value TEXT NOT NULL)");
+    oldDatabase.prepare("INSERT INTO state (value) VALUES (?)").run("kept");
+
+    expect(host.harness.behavior.callRpc).toBe(host.harness.callRpc);
+    expect(host.harness.inspection.registrations).toBe(
+      host.harness.registrations,
+    );
+    expect(host.harness.lifecycle.dispose).toBe(host.harness.dispose);
+
+    await expect(
+      host.harness.lifecycle.reload((bb) => {
+        bb.rpc.register(oldContract, { version: () => "old" as const });
+        bb.rpc.register(oldContract, { version: () => "old" as const });
+      }),
+    ).rejects.toThrow('rpc method "version" is already registered');
+
+    // Failed replacement registrations never poison or partially replace the
+    // current load.
+    await expect(host.harness.callRpc("version")).resolves.toBe("old");
+    await expect(host.bb.storage.kv.get("cursor")).resolves.toEqual({
+      page: 2,
+    });
+
+    const nextContract = defineRpcContract({
+      version: { input: z.null(), output: z.literal("new") },
+    });
+    const replacement = await host.harness.lifecycle.reload(async (bb) => {
+      await expect(bb.storage.kv.get("cursor")).resolves.toEqual({ page: 2 });
+      expect(
+        bb.storage.database().prepare("SELECT value FROM state").get(),
+      ).toEqual({ value: "kept" });
+      bb.rpc.register(nextContract, { version: () => "new" as const });
+    });
+
+    await expect(replacement.harness.callRpc("version")).resolves.toBe("new");
+    await expect(host.bb.storage.kv.get("cursor")).rejects.toThrow(
+      "used a stale API handle",
+    );
+    expect(oldDatabase.open).toBe(false);
+    await replacement.harness.dispose();
+  });
+
   it("aborts services, runs hooks LIFO, closes the database, and poisons the handle", async () => {
     const { bb, harness } = createFakePluginHost();
     const order: string[] = [];

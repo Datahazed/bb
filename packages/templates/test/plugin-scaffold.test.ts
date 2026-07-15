@@ -45,8 +45,8 @@ describe("scaffoldPlugin bundled types", () => {
     expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
     expect(tsconfig.include).toContain("types");
 
-    // The unpublished workspace package must NOT be a dependency; the real npm
-    // types the bundle references are.
+    // Normal scaffold source vendors root/app declarations; only tests using
+    // the separately packaged testing subpaths need an SDK dependency.
     const pkg = JSON.parse(
       await readFile(join(targetDir, "package.json"), "utf8"),
     );

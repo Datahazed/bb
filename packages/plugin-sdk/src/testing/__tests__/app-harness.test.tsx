@@ -226,11 +226,15 @@ describe("renderSlot", () => {
     expect(slot.rpcCalls).toEqual([
       { method: "listItems", input: { subPath: "" } },
     ]);
+    expect(slot.inspection.rpcCalls).toBe(slot.rpcCalls);
+    expect(slot.behavior.emitRealtime).toBe(slot.emitRealtime);
 
     // A realtime push re-fetches and renders the new listing.
     listing = ["a.md", "b.md"];
-    await slot.emitRealtime("items-changed", null);
+    await slot.behavior.emitRealtime("items-changed", null);
     await slot.findByText("b.md");
+    slot.lifecycle.unmount();
+    expect(slot.queryByText("b.md")).toBeNull();
   });
 
   it("reports RPC methods without handlers", async () => {
