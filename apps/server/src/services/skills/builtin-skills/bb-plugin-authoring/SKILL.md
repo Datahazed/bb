@@ -717,6 +717,7 @@ export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "settings",
     title: "Connection",
+    description: "Configure the remote service used by this plugin.",
     component: SettingsSection,
   });
   app.slots.navPanel({
@@ -755,8 +756,9 @@ Slot props contracts (versioned, additive-only):
 - `settingsSection` → `{}` (deliberately no props in V1). Rendered on
   `/settings/plugins/<pluginId>` below the host-rendered declarative settings
   form for running, needs-configuration, and degraded plugins. Registration:
-  `{ id, title?, component }`; `title` is an optional host-rendered section
-  heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
+  `{ id, title?, description?, component }`; `title` is an optional host-rendered
+  section heading and `description` is optional supporting copy rendered with
+  that heading. Use the existing hooks (`useRpc`, `useRealtime`, `useSettings`,
   `useBbNavigate`, `useBbContext`) for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
   settings sections. Slot-derived sidebar entries work for builtin plugin
@@ -1120,7 +1122,10 @@ Remaining reference examples in `examples/plugins/`:
   handlers, services, and timers.
 - kv values cap at 256KB; put caches and datasets in `storage.database()`.
 - `storage.migrate` is append-only by statement index.
-- Settings saves do NOT auto-reload the plugin; `bb plugin reload <id>`.
+- Settings saves do not reload healthy or degraded plugins; live `onChange`
+  listeners receive those updates. A save automatically retries load when the
+  plugin is `needs-configuration`; `bb plugin reload <id>` remains available
+  for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
 - Thread events are observe-only; there are exactly four
   (`thread.created`, `thread.idle`, `thread.failed`, `thread.deleted`).
