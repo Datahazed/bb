@@ -114,7 +114,7 @@ export interface PluginStorage {
    * busy_timeout 5000. Handles are host-tracked and closed on
    * dispose/reload; a closed handle throws on use.
    */
-  sqlite(): Database.Database;
+  database(): Database.Database;
   /**
    * Ordered-statement migration helper: statement index = migration id in a
    * `_bb_migrations` table; unapplied statements run in one transaction.
@@ -268,14 +268,6 @@ export interface PluginInteractionRequest {
   timeoutMs?: number;
 }
 
-export interface PluginInteractions {
-  /** Block until the app submits or cancels a plugin-owned composer form. */
-  request(
-    request: PluginInteractionRequest,
-    options?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult>;
-}
-
 export interface PluginCliResult {
   exitCode: number;
   stdout?: string;
@@ -298,9 +290,9 @@ export interface PluginCliRegistration {
 
 export interface PluginCli {
   /**
-   * Register this plugin's `bb` subcommand. One registration per plugin —
-   * a second call replaces the first. Core bb commands always win name
-   * collisions; reserved names are rejected at registration.
+   * Register this plugin's `bb` subcommand. One registration per factory
+   * execution; a repeated call is rejected. Core bb commands always win
+   * name collisions; reserved names are rejected at registration.
    */
   register(registration: PluginCliRegistration): void;
 }
@@ -350,8 +342,8 @@ export interface PluginAgents {
    * arguments as `unknown`). Tool-set changes apply on the NEXT session
    * start — a tool registered mid-session is not hot-added to running
    * provider sessions. A second registration of the same name within this
-   * plugin replaces the first; a name already registered by another plugin
-   * is rejected and surfaced as this plugin's status detail.
+   * plugin is rejected; a name already registered by another plugin is
+   * rejected and surfaced as this plugin's status detail.
    */
   registerTool<Schema extends z.ZodType>(
     tool: PluginAgentToolRegistrationBase & {
@@ -377,9 +369,9 @@ export interface PluginAgents {
    * provider runs when a thread's runtime command config is resolved
    * (thread.start / turn.submit); return null to contribute nothing for
    * that resolution. Must be synchronous and fast — it sits on the
-   * thread-start path. A repeated call replaces this plugin's previous
-   * provider. Output longer than 4096 characters is truncated; a throwing
-   * provider is logged against the plugin and contributes nothing.
+   * thread-start path. Output longer than 4096 characters is truncated; a
+   * throwing provider is logged against the plugin and contributes nothing.
+   * A repeated registration within one factory execution is rejected.
    * Side-chat threads never receive plugin instructions.
    */
   contributeInstructions(
@@ -474,6 +466,11 @@ export interface PluginMentionProviderRegistration {
 }
 
 export interface PluginUi {
+  /** Block until the app submits or cancels a plugin-owned composer form. */
+  requestInput(
+    request: PluginInteractionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
   /**
    * Register a thread action rendered in the shipped app's thread header
    * (design §4.9). Multiple actions per plugin; ids must be unique within
@@ -489,6 +486,17 @@ export interface PluginUi {
    * unique within the plugin.
    */
   registerMentionProvider(provider: PluginMentionProviderRegistration): void;
+}
+
+export interface PluginEvents {
+  /**
+   * Add a thread lifecycle listener. Multiple listeners for the same event
+   * are additive and run independently in registration order.
+   */
+  on<E extends PluginThreadEventName>(
+    event: E,
+    handler: PluginThreadEventHandler<E>,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +571,7 @@ export interface BbPluginApi {
   readonly log: PluginLogger;
   /** Declarative settings (design §4.2). */
   readonly settings: PluginSettings;
-  /** Namespaced KV + per-plugin SQLite (design §4.3). */
+  /** Namespaced KV + per-plugin database (design §4.3). */
   readonly storage: PluginStorage;
   /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
   readonly http: PluginHttp;
@@ -575,12 +583,12 @@ export interface BbPluginApi {
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */
   readonly cli: PluginCli;
-  /** Secure, user-mediated pending interactions rendered by this plugin. */
-  readonly interactions: PluginInteractions;
   /** Per-turn agent context contributions (design §4.4). */
   readonly agents: PluginAgents;
   /** Host-rendered UI contributions (design §4.9). */
   readonly ui: PluginUi;
+  /** Additive plugin lifecycle listeners (design §4.5). */
+  readonly events: PluginEvents;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
@@ -597,15 +605,6 @@ export interface BbPluginApi {
    * this plugin's id so spawned threads are attributed automatically.
    */
   readonly sdk: BbSdk;
-  /**
-   * Observe thread lifecycle events (design §4.5). Load-safe registration;
-   * handlers run async after the transition and never affect it. Errors are
-   * caught, logged, and counted against this plugin's handler stats.
-   */
-  on<E extends PluginThreadEventName>(
-    event: E,
-    handler: PluginThreadEventHandler<E>,
-  ): void;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

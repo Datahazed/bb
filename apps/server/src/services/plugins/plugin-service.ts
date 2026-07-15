@@ -285,7 +285,7 @@ export interface PluginService {
    * Dynamic instruction providers from bb.agents.contributeInstructions,
    * ordered by plugin id. Resolved live at thread.start/turn.submit;
    * empty when the experiment is off or no plugin registered a provider.
-   * At most one provider per plugin (re-register replaces).
+   * At most one provider per plugin (duplicate registration is rejected).
    */
   listInstructionContributions(): PluginInstructionContribution[];
   /** Resolve one registered native tool by name (same view as listAgentTools). */
@@ -1192,10 +1192,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         (row) => (id === undefined || row.id === id) && shouldLoadRow(row),
       );
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        await withLifecycleLock(row.id, async () => {
-          await disposeOne(row.id);
-          await loadOne(row);
-        });
+        await withLifecycleLock(row.id, () => loadOne(row));
       }
       await syncCliSkill();
       notifyPluginsChanged();

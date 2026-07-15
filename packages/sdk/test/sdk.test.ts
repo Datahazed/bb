@@ -83,6 +83,20 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("keeps realtime subscriptions distinct under subscribe", () => {
+    const queue = createFetchQueue([]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    expect(typeof sdk.subscribe).toBe("function");
+    expect("on" in sdk).toBe(false);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

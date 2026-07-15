@@ -104,7 +104,7 @@ export default async function plugin(bb: BbPluginApi) {
   const { greeting } = await settings.get();
 
   // Namespaced key-value storage in bb.db (JSON values, up to 256KB each).
-  // For bigger or relational data use bb.storage.sqlite().
+  // For bigger or relational data use bb.storage.database().
   const loadCount = ((await bb.storage.kv.get<number>("load-count")) ?? 0) + 1;
   await bb.storage.kv.set("load-count", loadCount);
   bb.log.info(\`\${greeting} — load #\${loadCount}\`);

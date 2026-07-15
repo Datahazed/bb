@@ -13,7 +13,7 @@ function resolveServerUrl(): string {
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
   const pluginDataDir = pluginDataDirFromDb(db);
   await ingestLegacyImport({ bb, db, pluginDataDir });
@@ -28,13 +28,13 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
-  bb.on("thread.idle", ({ thread }) => {
+  bb.events.on("thread.idle", ({ thread }) => {
     closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "idle",
     });
   });
-  bb.on("thread.failed", ({ thread, error }) => {
+  bb.events.on("thread.failed", ({ thread, error }) => {
     closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "failed",
@@ -42,7 +42,7 @@ export default async function plugin(bb: BbPluginApi) {
     });
   });
 
-  bb.on("thread.deleted", ({ thread }) => {
+  bb.events.on("thread.deleted", ({ thread }) => {
     disableAutomationsForDeletedThreadEvent(bb, db, thread.id);
   });
 
