@@ -119,9 +119,14 @@ message agents, or inspect projects, providers, and environments.
 - `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
+- Use `bb project create --name <name> --root <path> --machine <id-or-name>`
+  to bind a new project's local path to a connected enrolled machine. Use
+  `--host` as an alias. Omitting both selectors preserves the existing local
+  CLI machine fallback (normally the primary machine).
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
-  to register a path on another machine. Use `--clone` instead of `--path` to
-  clone the project's remote there; `--remote-url` and `--target-path` are
+  to register a path on another connected machine. It uses the same selector
+  resolution and fallback as project create. Use `--clone` instead of `--path`
+  to clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
 - `bb project paths|files|content|commands` accept `--machine <id-or-name>`
   (`--host` alias) or `--environment <id>`, but not both. An environment uses

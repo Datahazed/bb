@@ -106,11 +106,19 @@ export function formatMachineLastSeen(
 }
 
 export async function resolveMachineHostId(args: {
+  requireConnected?: boolean;
   serverUrl: string;
   target: string;
 }): Promise<string> {
   const hosts = await createCliBbSdk(args.serverUrl).hosts.list();
-  return resolveMachineId(hosts, args.target);
+  const hostId = resolveMachineId(hosts, args.target);
+  if (
+    args.requireConnected &&
+    hosts.find((host) => host.id === hostId)?.status !== "connected"
+  ) {
+    throw new Error(`Machine '${args.target.trim()}' is disconnected.`);
+  }
+  return hostId;
 }
 
 export function registerMachineCommands(

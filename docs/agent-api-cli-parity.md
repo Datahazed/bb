@@ -111,6 +111,7 @@ server-managed project attachment paths returned by the upload API.
 
 | SDK                                               | CLI                                                                                                              |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bb.projects.create({ name, source })`            | `bb project create --name <name> --root <path> [--machine/--host <id-or-name>]`                                  |
 | `bb.projects.promptHistory({ projectId, limit })` | `bb project history <id> [--limit <count>]`                                                                      |
 | `bb.projects.reorder(...)`                        | `bb project reorder <id> [--after <id>] [--before <id>]`                                                         |
 | `bb.projects.branches(...)`                       | `bb project branches <id> --host <id> [--query <query>] [--limit <count>]`                                       |
@@ -124,6 +125,11 @@ server-managed project attachment paths returned by the upload API.
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.
+
+Project creation already has explicit host parity in the SDK contract: its
+local-path `source` requires `hostId`. The CLI resolves an explicit connected
+machine ID or unambiguous name into that field; without a selector it preserves
+the existing local CLI machine fallback (normally the primary machine).
 
 Project workspace host and environment selectors are mutually exclusive. An
 environment selects its owning host and workspace; otherwise an explicit host

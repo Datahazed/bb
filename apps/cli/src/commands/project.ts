@@ -23,6 +23,8 @@ interface ProjectListCommandOptions {
 }
 
 interface ProjectCreateCommandOptions {
+  host?: string;
+  machine?: string;
   name: string;
   root?: string;
   json?: boolean;
@@ -148,17 +150,31 @@ function buildProjectSourceAddRequest(
   };
 }
 
-async function buildProjectSourceFromOptions(
-  args: ProjectSourceInputOptions,
-): Promise<Extract<CreateProjectSourceRequest, { type: "local_path" }>> {
+function buildProjectSourceFromOptions(
+  args: ProjectSourceInputOptions & { hostId: string },
+): Extract<CreateProjectSourceRequest, { type: "local_path" }> {
   if (args.path) {
     return {
-      hostId: await resolveLocalHostId(),
+      hostId: args.hostId,
       path: args.path,
       type: "local_path",
     };
   }
   throw new Error("Provide --path.");
+}
+
+async function resolveProjectSourceHostId(
+  args: { host?: string; machine?: string },
+  serverUrl: string,
+): Promise<string> {
+  const machineTarget = resolveMachineTargetOption(args);
+  return machineTarget
+    ? resolveMachineHostId({
+        requireConnected: true,
+        serverUrl,
+        target: machineTarget,
+      })
+    : resolveLocalHostId();
 }
 
 function requireProjectSource(
@@ -468,11 +484,19 @@ export function registerProjectCommands(
     .description("Create a project")
     .requiredOption("--name <name>", "Project name")
     .option("--root <path>", "Project source path")
+    .option(
+      "--machine <id-or-name>",
+      "Execution machine ID or unambiguous name",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectCreateCommandOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const source = await buildProjectSourceFromOptions({
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const hostId = await resolveProjectSourceHostId(opts, serverUrl);
+        const source = buildProjectSourceFromOptions({
+          hostId,
           path: opts.root,
         });
         const created = await sdk.projects.create({
@@ -559,15 +583,10 @@ export function registerProjectCommands(
     .action(
       action(
         async (projectId: string, opts: ProjectSourceAddCommandOptions) => {
-          const sdk = createCliBbSdk(getUrl());
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
           validateProjectSourceAddOptions(opts);
-          const machineTarget = resolveMachineTargetOption(opts);
-          const hostId = machineTarget
-            ? await resolveMachineHostId({
-                serverUrl: getUrl(),
-                target: machineTarget,
-              })
-            : await resolveLocalHostId();
+          const hostId = await resolveProjectSourceHostId(opts, serverUrl);
           const createPayload = buildProjectSourceAddRequest({
             ...opts,
             hostId,

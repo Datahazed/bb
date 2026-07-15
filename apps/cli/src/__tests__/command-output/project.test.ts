@@ -34,6 +34,15 @@ describe("bb project command output", () => {
     );
   });
 
+  it("documents project creation machine selectors", async () => {
+    const help = await getHelpOutput(["project", "create"], register);
+
+    expect(help).toContain("--machine <id-or-name>");
+    expect(help).toContain("Execution machine ID or unambiguous name");
+    expect(help).toContain("--host <id-or-name>");
+    expect(help).toContain("Alias for --machine");
+  });
+
   it("uploads binary bytes read on a remote CLI machine with explicit metadata", async () => {
     const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
     try {
@@ -350,9 +359,236 @@ describe("bb project command output", () => {
       register,
     );
 
+    expect(resolveLocalHostIdMock).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        name: "Alpha",
+        source: {
+          hostId: "host-test-001",
+          path: "/tmp/alpha",
+          type: "local_path",
+        },
+      },
+    });
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(created);
+  });
+
+  it.each([
+    ["machine name", "--machine", "builder"],
+    ["host alias", "--host", "host-remote"],
+  ])(
+    "bb project create binds a local path through an explicit %s",
+    async (_selectorKind, selectorFlag, selector) => {
+      const post = vi.fn(async () => ({
+        id: "proj-created",
+        name: "Remote Alpha",
+        createdAt: 1,
+        updatedAt: 2,
+      }));
+      stubServerApi({
+        "v1.hosts.$get": vi.fn(async () => [
+          {
+            id: "host-remote",
+            name: "builder",
+            type: "persistent",
+            status: "connected",
+            lastSeenAt: 1,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ]),
+        "v1.projects.$post": post,
+      });
+
+      await runCommand(
+        [
+          "project",
+          "create",
+          "--name",
+          "Remote Alpha",
+          "--root",
+          "/srv/alpha",
+          selectorFlag,
+          selector,
+          "--json",
+        ],
+        register,
+      );
+
+      expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+      expect(post).toHaveBeenCalledWith({
+        json: {
+          name: "Remote Alpha",
+          source: {
+            hostId: "host-remote",
+            path: "/srv/alpha",
+            type: "local_path",
+          },
+        },
+      });
+    },
+  );
+
+  it("bb project create rejects simultaneous machine and host selectors", async () => {
+    await expect(
+      runCommand(
+        [
+          "project",
+          "create",
+          "--name",
+          "Alpha",
+          "--root",
+          "/tmp/alpha",
+          "--machine",
+          "builder",
+          "--host",
+          "host-remote",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --machine with --host.",
+    );
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+  });
+
+  it("bb project create rejects an unknown machine selection", async () => {
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-primary",
+          name: "workstation",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+    });
+
+    await expect(
+      runCommand(
+        [
+          "project",
+          "create",
+          "--name",
+          "Alpha",
+          "--root",
+          "/tmp/alpha",
+          "--machine",
+          "builder",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Machine 'builder' was not found. Available machines: workstation (host-primary).",
+    );
+  });
+
+  it("bb project create rejects an ambiguous machine name", async () => {
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-builder-1",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "host-builder-2",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+    });
+
+    await expect(
+      runCommand(
+        [
+          "project",
+          "create",
+          "--name",
+          "Alpha",
+          "--root",
+          "/tmp/alpha",
+          "--host",
+          "builder",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Machine name 'builder' is ambiguous. Matches: builder (host-builder-1), builder (host-builder-2).",
+    );
+  });
+
+  it("project creation and source add reject a disconnected machine", async () => {
+    const hosts = [
+      {
+        id: "host-remote",
+        name: "builder",
+        type: "persistent",
+        status: "disconnected",
+        lastSeenAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
+
+    await expect(
+      runCommand(
+        [
+          "project",
+          "create",
+          "--name",
+          "Alpha",
+          "--root",
+          "/srv/alpha",
+          "--machine",
+          "builder",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenLastCalledWith(
+      "Error: Machine 'builder' is disconnected.",
+    );
+
+    vi.mocked(console.error).mockClear();
+    await expect(
+      runCommand(
+        [
+          "project",
+          "source",
+          "add",
+          "proj-1",
+          "--path",
+          "/srv/alpha",
+          "--machine",
+          "builder",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenLastCalledWith(
+      "Error: Machine 'builder' is disconnected.",
+    );
   });
 
   it("bb project source add targets an unambiguous machine name", async () => {

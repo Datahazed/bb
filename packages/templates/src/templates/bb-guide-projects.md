@@ -15,7 +15,13 @@ A project maps to a code repository. All threads belong to a project.
     --after <id>                          Previous project, or omit for start
     --before <id>                         Next project, or omit for end
   bb project create --name "..." [options]
-    --root <path>                         Project root path
+    --root <path>                         Project source path
+    --machine <id-or-name>                Bind the path to a connected machine
+    --host <id-or-name>                   Alias for --machine
+
+  An explicit machine/host selector accepts an exact ID or unambiguous name and
+  binds --root to that machine. Omitting the selector preserves the existing
+  local CLI machine fallback (normally the primary machine).
 
   bb project show <id>                    Show project details
   bb project update <id>                  Update a project
@@ -66,6 +72,9 @@ Sources:
     --target-path <path>                  Destination override for --clone
     --machine <id-or-name>                Target machine (--host is an alias)
     --default                             Set as default source
+
+  Explicit project source selectors must name a connected machine. Omitting
+  the selector preserves the same local CLI machine fallback as project create.
 
   bb project source update <projectId> <sourceId>
     --path <path>
