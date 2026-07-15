@@ -3,10 +3,10 @@ import { z } from "zod";
 import type { BbPluginApi } from "../../backend-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
-describe("interactions", () => {
+describe("ui.requestInput", () => {
   it("settles a blocking request through the harness", async () => {
     const { bb, harness } = createFakePluginHost();
-    const pending = bb.interactions.request({
+    const pending = bb.ui.requestInput({
       threadId: "thread-test",
       rendererId: "secret-request",
       title: "Add secrets",
@@ -28,7 +28,7 @@ describe("interactions", () => {
   it("settles requests on abort and plugin disposal", async () => {
     const first = createFakePluginHost();
     const controller = new AbortController();
-    const aborted = first.bb.interactions.request(
+    const aborted = first.bb.ui.requestInput(
       {
         threadId: "thread-test",
         rendererId: "form",
@@ -44,7 +44,7 @@ describe("interactions", () => {
     });
 
     const second = createFakePluginHost();
-    const disposed = second.bb.interactions.request({
+    const disposed = second.bb.ui.requestInput({
       threadId: "thread-test",
       rendererId: "form",
       title: "Form",
@@ -55,6 +55,18 @@ describe("interactions", () => {
       outcome: "cancelled",
       reason: "plugin-disposed",
     });
+  });
+
+  it("uses the production validation and error names", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.ui.requestInput({
+        threadId: "",
+        rendererId: "form",
+        title: "Form",
+        payload: null,
+      }),
+    ).toThrow("ui.requestInput threadId must be a non-empty string");
   });
 });
 
@@ -104,16 +116,16 @@ describe("storage", () => {
     ).rejects.toThrow(/limit is 262144 \(256KB\)/);
   });
 
-  it("sqlite() returns one shared database and migrate() is append-only by index", () => {
+  it("database() returns one shared database and migrate() is append-only by index", () => {
     const { bb } = createFakePluginHost();
-    const db = bb.storage.sqlite();
+    const db = bb.storage.database();
     bb.storage.migrate(db, [
       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)",
     ]);
     db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
 
     // A later load appends a statement; the first must not re-run.
-    const again = bb.storage.sqlite();
+    const again = bb.storage.database();
     expect(again).toBe(db);
     bb.storage.migrate(again, [
       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)",
@@ -292,6 +304,19 @@ describe("cli", () => {
       }),
     ).toThrow('cli command name "thread" is reserved by the bb CLI');
   });
+
+  it("rejects a duplicate registration like the production host", () => {
+    const { bb } = createFakePluginHost();
+    const registration = {
+      name: "docs",
+      summary: "Docs tools",
+      run: () => ({ exitCode: 0 }),
+    };
+    bb.cli.register(registration);
+    expect(() => bb.cli.register(registration)).toThrow(
+      "cli command is already registered",
+    );
+  });
 });
 
 describe("background", () => {
@@ -346,10 +371,10 @@ describe("thread events", () => {
   it("emitThreadEvent delivers typed payloads and captures handler errors", async () => {
     const { bb, harness } = createFakePluginHost();
     const seen: Array<string | null> = [];
-    bb.on("thread.idle", ({ thread, lastAssistantText }) => {
+    bb.events.on("thread.idle", ({ thread, lastAssistantText }) => {
       seen.push(`${thread.id}:${lastAssistantText}`);
     });
-    bb.on("thread.idle", () => {
+    bb.events.on("thread.idle", () => {
       throw new Error("handler exploded");
     });
     const { errors } = await harness.emitThreadEvent("thread.idle", {
@@ -366,9 +391,9 @@ describe("thread events", () => {
 
   it("rejects unknown events at registration", () => {
     const { bb } = createFakePluginHost();
-    expect(() => bb.on("thread.unknown" as "thread.idle", () => {})).toThrow(
-      'unknown event "thread.unknown"',
-    );
+    expect(() =>
+      bb.events.on("thread.unknown" as "thread.idle", () => {}),
+    ).toThrow('unknown event "thread.unknown"');
   });
 });
 
@@ -431,10 +456,28 @@ describe("agent tools", () => {
       harness.callAgentTool("lookup_doc", { query: 3 }),
     ).rejects.toThrow('tool "lookup_doc" arguments are invalid');
   });
+
+  it("rejects duplicate keyed registrations like the production host", () => {
+    const { bb } = createFakePluginHost();
+    const tool = {
+      name: "lookup_doc",
+      description: "Look up a doc",
+      parameters: { type: "object" },
+      execute: () => "ok",
+    };
+    bb.agents.registerTool(tool);
+    expect(() => bb.agents.registerTool(tool)).toThrow(
+      'tool "lookup_doc" is already registered',
+    );
+    bb.agents.contributeInstructions(() => "first");
+    expect(() => bb.agents.contributeInstructions(() => "second")).toThrow(
+      "agent instructions are already registered",
+    );
+  });
 });
 
 describe("dispose", () => {
-  it("aborts services, runs hooks LIFO, closes sqlite, and poisons the handle", async () => {
+  it("aborts services, runs hooks LIFO, closes the database, and poisons the handle", async () => {
     const { bb, harness } = createFakePluginHost();
     const order: string[] = [];
     bb.onDispose(() => {
@@ -454,7 +497,7 @@ describe("dispose", () => {
         });
       },
     });
-    const db = bb.storage.sqlite();
+    const db = bb.storage.database();
     const { done } = harness.runService("svc");
 
     await harness.dispose();

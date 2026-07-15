@@ -240,7 +240,7 @@ interface PluginComposerAccessoryRegistration {
     component: ComponentType<PluginComposerAccessoryProps>;
 }
 interface PluginPendingInteractionRegistration {
-    /** Matches `rendererId` passed to `bb.interactions.request`. */
+    /** Matches `rendererId` passed to `bb.ui.requestInput`. */
     id: string;
     component: ComponentType<PluginPendingInteractionProps>;
 }

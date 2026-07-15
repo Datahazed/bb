@@ -86,7 +86,7 @@ describe("bb.agents.registerTool", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("registers tools; a second same-name registration within one plugin wins", async () => {
+  it("rejects duplicate tool names within one factory execution", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-replacer",
       serverSource: `
@@ -108,38 +108,11 @@ describe("bb.agents.registerTool", () => {
       `,
     });
     const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("running");
-    expect(entry.statusDetail).toBeNull();
-
-    const tools = service.listAgentTools();
-    expect(tools).toEqual([
-      {
-        pluginId: "replacer",
-        tool: {
-          name: "echo_tool",
-          description: "second version",
-          inputSchema: { type: "object" },
-        },
-        instructions: "Prefer echo_tool for echoing.",
-      },
-    ]);
-
-    const found = service.findAgentTool("echo_tool");
-    expect(found?.pluginId).toBe("replacer");
-    const response = await service.invokeAgentTool({
-      pluginId: found!.pluginId,
-      record: found!.record,
-      input: { text: "hi" },
-      ctx: {
-        threadId: "thr_1",
-        projectId: "proj_1",
-        signal: new AbortController().signal,
-      },
-    });
-    expect(response).toEqual({
-      success: true,
-      contentItems: [{ type: "inputText", text: 'echo:{"text":"hi"}' }],
-    });
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      'tool "echo_tool" is already registered',
+    );
+    expect(service.listAgentTools()).toEqual([]);
   });
 
   it("two tools from different plugins dispatch by name (design §9 regression)", async () => {
@@ -407,7 +380,7 @@ describe("bb.agents.contributeInstructions", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("registers a provider; re-register replaces; listed by plugin id", async () => {
+  it("rejects duplicate instruction providers within one factory execution", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-advisor",
       serverSource: `
@@ -418,14 +391,11 @@ describe("bb.agents.contributeInstructions", () => {
       `,
     });
     const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("running");
-
-    const listed = service.listInstructionContributions();
-    expect(listed).toHaveLength(1);
-    expect(listed[0]?.pluginId).toBe("advisor");
-    expect(
-      listed[0]?.provider({ threadId: "thr_1", projectId: "proj_1" }),
-    ).toBe("second");
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      "agent instructions are already registered",
+    );
+    expect(service.listInstructionContributions()).toEqual([]);
   });
 
   it("two plugins each contribute one provider, ordered by plugin id", async () => {

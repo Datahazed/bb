@@ -240,7 +240,7 @@ export default async function plugin(bb: BbPluginApi) {
       default: DEFAULT_DIR,
     },
   });
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS vaults (
       id TEXT PRIMARY KEY,

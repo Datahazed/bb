@@ -24,7 +24,7 @@ const MEMORY_KINDS = [
 type MemoryKind = (typeof MEMORY_KINDS)[number];
 type MemoryScope = "global" | "project";
 type ReadScope = MemoryScope | "all";
-type PluginDatabase = ReturnType<BbPluginApi["storage"]["sqlite"]>;
+type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
 interface MemoryRecord {
   id: string;
@@ -806,7 +806,7 @@ function parseRpcTags(record: Record<string, unknown>): string[] {
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS memories (
        id TEXT PRIMARY KEY,

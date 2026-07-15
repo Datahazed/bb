@@ -134,17 +134,17 @@ type ExpectedBbSdkKey =
   | "files"
   | "guide"
   | "hosts"
-  | "on"
   | "plugins"
   | "projects"
   | "providers"
   | "status"
+  | "subscribe"
   | "system"
   | "theme"
   | "threadFolders"
   | "threads";
 
-type ExpectedRealtimeKey = "on";
+type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
   | "archiveThreads"

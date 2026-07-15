@@ -158,7 +158,10 @@ export interface PluginServiceDeps {
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
   sharedPorts?: Pick<
     HostSharedPortCoordinator,
-    "declareSharedPorts" | "clearDeclarationsForOwner"
+    | "declareSharedPorts"
+    | "validateSharedPortDeclaration"
+    | "replaceDeclarationsForOwner"
+    | "clearDeclarationsForOwner"
   >;
   ensureSharedPortTunnel?: (
     hostId: string,
@@ -174,7 +177,7 @@ export interface PluginServiceDeps {
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     "requestPluginInteraction" | "interruptPluginInteractions"
   >;
-  /** BB data dir: plugin sqlite files and secrets live under <dataDir>/plugins/<id>/. */
+  /** BB data dir: plugin database files and secrets live under <dataDir>/plugins/<id>/. */
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;

@@ -438,7 +438,7 @@ describe("plugin update service and routes", () => {
     if (oldArtifact === undefined) throw new Error("missing old artifact");
     const api = service.getApi("updater");
     if (api === undefined) throw new Error("updater did not load");
-    const pluginDb = api.storage.sqlite();
+    const pluginDb = api.storage.database();
     pluginDb.exec("CREATE TABLE restart_state (value TEXT NOT NULL)");
     pluginDb.prepare("INSERT INTO restart_state VALUES (?)").run("old-db");
     await api.storage.kv.set("restart-cursor", "old-kv");
@@ -455,7 +455,7 @@ describe("plugin update service and routes", () => {
       `
         import { writeFileSync } from "node:fs";
         export default async function plugin(bb: any) {
-          const database = bb.storage.sqlite();
+          const database = bb.storage.database();
           database.prepare("UPDATE restart_state SET value = ?").run("new-db");
           await bb.storage.kv.set("restart-cursor", "new-kv");
           writeFileSync(${JSON.stringify(secretPath)}, "changed-secret");

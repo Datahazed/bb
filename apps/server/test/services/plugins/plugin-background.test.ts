@@ -161,7 +161,7 @@ describe("plugin background services", () => {
               start(signal: any) {
                 return new Promise<void>((resolve) => {
                   signal.addEventListener("abort", () => {
-                    void bb.interactions.request({
+                    void bb.ui.requestInput({
                       threadId: "thread-test",
                       rendererId: "form",
                       title: "Form",

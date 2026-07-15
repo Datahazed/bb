@@ -278,7 +278,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(entry?.statusDetail).toContain("http GET /boom failed");
   });
 
-  it("reload swaps the live route and rpc tables without re-registering Hono routes", async () => {
+  it("successful reload atomically replaces the complete route and rpc tables", async () => {
     await writeFile(
       join(rootDir, "server.ts"),
       `
@@ -297,6 +297,45 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     // v2 registers no rpc handlers: the old method is gone.
     const staleRpc = await rpc(harness, "echo", { x: 1 });
     expect(staleRpc.status).toBe(404);
+  });
+
+  it("failed reload keeps the complete previous route and rpc tables", async () => {
+    const previousApi = harness.pluginService.getApi("wire");
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `
+        export default function plugin(bb: any) {
+          bb.http.route("GET", "/candidate", (c: any) => c.json({ candidate: true }));
+          bb.rpc.register({ candidate: () => ({ candidate: true }) });
+          throw new Error("candidate failed");
+        }
+      `,
+    );
+
+    await harness.pluginService.reload("wire");
+
+    expect(harness.pluginService.getApi("wire")).toBe(previousApi);
+    const oldRoute = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/hello`,
+    );
+    expect(await oldRoute.json()).toEqual({ message: "hello v1" });
+    const oldRpc = await rpc(harness, "echo", { kept: true });
+    expect(await oldRpc.json()).toEqual({
+      ok: true,
+      result: { echoed: { kept: true } },
+    });
+    const candidateRoute = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/candidate`,
+    );
+    expect(candidateRoute.status).toBe(404);
+    const candidateRpc = await rpc(harness, "candidate", {});
+    expect(candidateRpc.status).toBe(404);
+    expect(
+      harness.pluginService.list().find((plugin) => plugin.id === "wire"),
+    ).toMatchObject({
+      status: "running",
+      statusDetail: expect.stringContaining("reload failed: candidate failed"),
+    });
   });
 
   it("rpc: happy path, handler error → 500 envelope, unknown method → 404", async () => {
