@@ -333,12 +333,81 @@ export interface PluginAgentToolRegistrationBase {
   /**
    * Optional usage snippet appended to the thread instructions whenever
    * this tool is in the session's tool set (mirrors the built-in
-   * update_environment_directory guidance). Keep it short.
+   * update_environment_directory guidance). Limited to 4096 characters.
    */
   instructions?: string;
 }
 
+/** Stable, plain-data context resolved by the server for one agent session. */
+export interface PluginAgentConfigurationContext {
+  thread: {
+    id: string;
+    title: string | null;
+    parentThreadId: string | null;
+    sourceThreadId: string | null;
+  };
+  project: {
+    id: string;
+    kind: "standard" | "personal";
+    name: string;
+    gitRemoteUrl: string | null;
+  };
+  environment: {
+    id: string;
+    name: string | null;
+    path: string | null;
+    workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal";
+    branchName: string | null;
+  };
+  host: {
+    id: string;
+    name: string;
+  };
+  provider: {
+    id: string;
+    model: string;
+  };
+  sideChat: boolean;
+  origin: {
+    kind: "fork" | "side-chat" | null;
+    pluginId: string | null;
+  };
+}
+
+/** Per-resolution selection returned by {@link PluginAgents.configure}. */
+export interface PluginAgentConfiguration {
+  /** Tool names registered by this plugin. Duplicate or unknown names reject
+   * this plugin's complete selection for the resolution. */
+  tools: string[];
+  /** Skill frontmatter names from this plugin's manifest skill roots.
+   * Duplicate or unknown names reject this plugin's complete selection. */
+  skills: string[];
+  /** Optional dynamic instructions. Output is truncated to 4096 characters. */
+  instructions?: string;
+}
+
 export interface PluginAgents {
+  /**
+   * Select this plugin's statically registered tools and manifest skills for
+   * each thread/session resolution, with optional dynamic instructions. The
+   * callback is synchronous and runs at `thread.start` / `turn.submit`; it
+   * never rebuilds registrations. Exactly one callback may be registered per
+   * factory execution. A throw, malformed result, duplicate id, unknown id,
+   * or more than 256 tool/skill ids fails closed for this plugin only.
+   *
+   * Tools take effect when the provider session is next started or resumed;
+   * an already-running session is not hot-mutated. Instructions are resolved
+   * for the next turn. Skill changes follow BB's environment runtime policy:
+   * a busy runtime keeps its current catalog until a safe relaunch. Side-chat
+   * threads receive `sideChat: true`, and their returned tool, skill, and
+   * dynamic-instruction selections apply at the same boundaries. Independent
+   * side-chat safety policy (such as permission escalation) is unchanged.
+   */
+  configure(
+    provider: (
+      context: PluginAgentConfigurationContext,
+    ) => PluginAgentConfiguration,
+  ): void;
   /**
    * Register a native dynamic tool (design §4.4). `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
@@ -376,7 +445,8 @@ export interface PluginAgents {
    * thread-start path. Output longer than 4096 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.
-   * Side-chat threads never receive plugin instructions.
+   * This legacy contribution is not applied to side-chat threads; use
+   * configure() when sideChat-aware dynamic instructions are required.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,

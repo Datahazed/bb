@@ -248,8 +248,9 @@ The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` (add --app
 for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
 watches and reloads on every save. The manifest is package.json: `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
-(frontend entry), optional `bb.skills` (skills directories auto-imported
-into agent threads; default `skills/`), `engines.bb` (supported bb range),
+(frontend entry), optional `bb.skills` (static skill directories auto-imported
+into agent threads unless filtered by `bb.agents.configure`; default
+`skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
 writes `"^0.2.0"` for SDK 0.2.0). The plugin id is the package name minus
 `bb-plugin-`.
@@ -296,8 +297,11 @@ bb.realtime.publish (ephemeral signals to open app pages);
 bb.background.service (long-lived, AbortSignal, restart w/ backoff) and
 bb.background.schedule (durable cron rows); bb.cli.register (a top-level
 `bb <name>` command agents run through bash); bb.agents.registerTool
-(native tools with
-zod or JSON-schema parameters); bb.ui.registerThreadAction /
+(static native tools with zod or JSON-schema parameters) and
+bb.agents.configure (one synchronous per-resolution callback selecting this
+plugin's own tool/skill ids and optional dynamic instructions; tools apply on
+the next provider session start/resume, while busy skill runtimes defer catalog
+changes); bb.ui.registerThreadAction /
 registerMentionProvider (host-rendered UI — no
 frontend bundle needed); bb.status.needsConfiguration (report
 "unconfigured" instead of crashing); bb.onDispose (LIFO cleanup on
