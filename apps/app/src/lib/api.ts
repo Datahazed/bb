@@ -52,6 +52,7 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
   SystemVersionResponse,
   TimelinePaginationCursor,
   SystemVoiceTranscriptionResponse,
@@ -1787,6 +1788,7 @@ export async function getEnvironmentDiffPatches(
 
 export async function getSystemExecutionOptions(args: {
   environmentId?: string;
+  hostId?: string;
   providerId?: string;
   signal?: AbortSignal;
 }): Promise<SystemExecutionOptionsResponse> {
@@ -1795,6 +1797,7 @@ export async function getSystemExecutionOptions(args: {
       {
         query: {
           ...(args.environmentId ? { environmentId: args.environmentId } : {}),
+          ...(args.hostId ? { hostId: args.hostId } : {}),
           ...(args.providerId ? { providerId: args.providerId } : {}),
         },
       },
@@ -1803,9 +1806,11 @@ export async function getSystemExecutionOptions(args: {
   );
 }
 
-export async function listSystemProviders(): Promise<SystemProviderInfo[]> {
+export async function listSystemProviders(
+  args: SystemProvidersQuery = {},
+): Promise<SystemProviderInfo[]> {
   return request<SystemProviderInfo[]>(
-    apiClient.system.providers.$get({ query: {} }),
+    apiClient.system.providers.$get({ query: args }),
   );
 }
 

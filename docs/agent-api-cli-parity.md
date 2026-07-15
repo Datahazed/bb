@@ -133,6 +133,17 @@ Existing project source operations remain available under
 The pre-existing environment show, update, status, commit, diff, pull-request
 inspection, and squash-merge operations remain unchanged.
 
+## Providers
+
+| SDK                                                              | CLI                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `bb.providers.list({ hostId? / environmentId? })`                | `bb provider list [--machine <id-or-name> / --host <id-or-name> / --environment <id>]`                |
+| `bb.providers.models({ providerId?, hostId? / environmentId? })` | `bb provider models [providerId] [--machine <id-or-name> / --host <id-or-name> / --environment <id>]` |
+
+Host and environment selectors are mutually exclusive. An environment resolves
+to its owning host; otherwise an explicit host is used. Omitting both selectors
+intentionally falls back to the primary machine.
+
 ## Machines
 
 The SDK area is named `hosts`; the end-user CLI terminology is `machine`.

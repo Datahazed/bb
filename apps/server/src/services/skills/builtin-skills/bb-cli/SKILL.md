@@ -132,7 +132,10 @@ message agents, or inspect projects, providers, and environments.
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
-  and `bb provider models <provider-id>`.
+  and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
+  (alias `--host`) or `--environment <id>` to inspect the machine where work
+  will run; the selectors cannot be combined. With neither selector they
+  intentionally inspect the primary machine.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,

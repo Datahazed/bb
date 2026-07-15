@@ -421,6 +421,11 @@ export type EnvironmentPathsQueryKeyPrefix = readonly [
 ];
 export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
+  string | null,
+  string | null,
+];
+export type AllSystemProvidersQueryKeyPrefix = readonly [
+  typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
@@ -434,6 +439,7 @@ export type SystemUsageLimitsQueryKey = readonly [
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
+  string | null,
   string | null,
   string | null,
 ];
@@ -999,7 +1005,22 @@ export function environmentFilePreviewQueryKeyPrefix(
   return [ENVIRONMENT_FILE_PREVIEW_QUERY_KEY, environmentId];
 }
 
-export function systemProvidersQueryKey(): SystemProvidersQueryKey {
+export interface SystemProvidersQueryKeyArgs {
+  environmentId?: string | null;
+  hostId?: string | null;
+}
+
+export function systemProvidersQueryKey(
+  args: SystemProvidersQueryKeyArgs = {},
+): SystemProvidersQueryKey {
+  return [
+    SYSTEM_PROVIDERS_QUERY_KEY,
+    args.environmentId ?? null,
+    args.hostId ?? null,
+  ];
+}
+
+export function allSystemProvidersQueryKeyPrefix(): AllSystemProvidersQueryKeyPrefix {
   return [SYSTEM_PROVIDERS_QUERY_KEY];
 }
 
@@ -1025,14 +1046,21 @@ export function systemUsageLimitsQueryKey(
 
 export interface SystemExecutionOptionsQueryKeyArgs {
   environmentId: string | null;
+  hostId: string | null;
   providerId: string | null;
 }
 
 export function systemExecutionOptionsQueryKey({
   environmentId,
+  hostId,
   providerId,
 }: SystemExecutionOptionsQueryKeyArgs): SystemExecutionOptionsQueryKey {
-  return [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY, environmentId, providerId];
+  return [
+    SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
+    environmentId,
+    hostId,
+    providerId,
+  ];
 }
 
 export function allSystemExecutionOptionsQueryKeyPrefix(): AllSystemExecutionOptionsQueryKeyPrefix {

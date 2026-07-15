@@ -9,7 +9,9 @@ import type {
   HostGetResult as RootHostGet,
   PluginListResult as RootPluginList,
   ProjectGetResult as RootProjectGet,
+  ProviderListArgs as RootProviderListArgs,
   ProviderListResult as RootProviderList,
+  ProviderModelsArgs as RootProviderModelsArgs,
   StatusResult as RootStatus,
   SystemVersionResult as RootSystemVersion,
   ThemeCatalogResult as RootThemeCatalog,
@@ -25,7 +27,9 @@ import type {
   HostGetResult as BrowserHostGet,
   PluginListResult as BrowserPluginList,
   ProjectGetResult as BrowserProjectGet,
+  ProviderListArgs as BrowserProviderListArgs,
   ProviderListResult as BrowserProviderList,
+  ProviderModelsArgs as BrowserProviderModelsArgs,
   StatusResult as BrowserStatus,
   SystemVersionResult as BrowserSystemVersion,
   ThemeCatalogResult as BrowserThemeCatalog,
@@ -41,7 +45,9 @@ import type {
   HostGetResult as CoreHostGet,
   PluginListResult as CorePluginList,
   ProjectGetResult as CoreProjectGet,
+  ProviderListArgs as CoreProviderListArgs,
   ProviderListResult as CoreProviderList,
+  ProviderModelsArgs as CoreProviderModelsArgs,
   StatusResult as CoreStatus,
   SystemVersionResult as CoreSystemVersion,
   ThemeCatalogResult as CoreThemeCatalog,
@@ -57,7 +63,9 @@ import type {
   HostGetResult as NodeHostGet,
   PluginListResult as NodePluginList,
   ProjectGetResult as NodeProjectGet,
+  ProviderListArgs as NodeProviderListArgs,
   ProviderListResult as NodeProviderList,
+  ProviderModelsArgs as NodeProviderModelsArgs,
   StatusResult as NodeStatus,
   SystemVersionResult as NodeSystemVersion,
   ThemeCatalogResult as NodeThemeCatalog,
@@ -73,6 +81,8 @@ interface RootSurface {
   pluginList: RootPluginList;
   projectGet: RootProjectGet;
   providerList: RootProviderList;
+  providerListArgs: RootProviderListArgs;
+  providerModelsArgs: RootProviderModelsArgs;
   realtimeConnection: RootRealtimeConnection;
   status: RootStatus;
   systemVersion: RootSystemVersion;
@@ -89,6 +99,8 @@ interface BrowserSurface {
   pluginList: BrowserPluginList;
   projectGet: BrowserProjectGet;
   providerList: BrowserProviderList;
+  providerListArgs: BrowserProviderListArgs;
+  providerModelsArgs: BrowserProviderModelsArgs;
   realtimeConnection: BrowserRealtimeConnection;
   status: BrowserStatus;
   systemVersion: BrowserSystemVersion;
@@ -105,6 +117,8 @@ interface CoreSurface {
   pluginList: CorePluginList;
   projectGet: CoreProjectGet;
   providerList: CoreProviderList;
+  providerListArgs: CoreProviderListArgs;
+  providerModelsArgs: CoreProviderModelsArgs;
   realtimeConnection: CoreRealtimeConnection;
   status: CoreStatus;
   systemVersion: CoreSystemVersion;
@@ -121,6 +135,8 @@ interface NodeSurface {
   pluginList: NodePluginList;
   projectGet: NodeProjectGet;
   providerList: NodeProviderList;
+  providerListArgs: NodeProviderListArgs;
+  providerModelsArgs: NodeProviderModelsArgs;
   realtimeConnection: NodeRealtimeConnection;
   status: NodeStatus;
   systemVersion: NodeSystemVersion;
@@ -307,6 +323,17 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<BrowserBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<CoreBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<NodeBbSdk>().toEqualTypeOf<RootBbSdk>();
+  });
+
+  it("makes provider host selectors mutually exclusive", () => {
+    expectTypeOf<{
+      environmentId: string;
+      hostId: string;
+    }>().not.toMatchTypeOf<RootProviderListArgs>();
+    expectTypeOf<{ hostId: string }>().toMatchTypeOf<RootProviderModelsArgs>();
+    expectTypeOf<{
+      environmentId: string;
+    }>().toMatchTypeOf<RootProviderModelsArgs>();
   });
 
   it("snapshots every SDK area and nested method group", () => {

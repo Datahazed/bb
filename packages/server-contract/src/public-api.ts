@@ -130,6 +130,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -238,6 +239,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   threadEventWaitQuerySchema,
@@ -1199,7 +1201,9 @@ export const publicApiRoutes = {
     providers: defineRoute({
       path: "/system/providers",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
+        systemProvidersQuerySchema,
+      ),
       response: jsonResponse<SystemProviderInfo[]>(),
     }),
     providerLogo: defineRoute({

@@ -19,5 +19,11 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain(
       "type EnvironmentStatusResult = EnvironmentStatusResponse;",
     );
+    expect(declarations).toContain(
+      "list(args?: ProviderListArgs): Promise<ProviderListResult>;",
+    );
+    expect(declarations).toContain(
+      "models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;",
+    );
   });
 });

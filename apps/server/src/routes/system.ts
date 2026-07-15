@@ -212,8 +212,8 @@ export function registerSystemRoutes(
     return context.json({ ok: true });
   });
 
-  get(routes.providers, async (context) =>
-    context.json(await listSystemProviderInfos(deps)),
+  get(routes.providers, async (context, query) =>
+    context.json(await listSystemProviderInfos(deps, query)),
   );
 
   get(routes.providerLogo, async (context) => {

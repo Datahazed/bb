@@ -83,6 +83,50 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("routes provider list and model discovery through portable host selectors", async () => {
+    const queue = createFetchQueue([
+      { body: [] },
+      {
+        body: {
+          providers: [],
+          models: [],
+          selectedOnlyModels: [],
+          modelLoadError: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.providers.list({ hostId: "host_remote" }),
+    ).resolves.toEqual([]);
+    await expect(
+      sdk.providers.models({
+        environmentId: "env_remote",
+        providerId: "acp-remote",
+      }),
+    ).resolves.toMatchObject({ models: [], providers: [] });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/providers?hostId=host_remote",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

@@ -28,6 +28,7 @@ import {
   restorePromptDraftAfterOptionChange,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposeProviderRouting,
   resolveRootComposePanelThreadId,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
@@ -749,6 +750,53 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("host:host_1:local");
+  });
+});
+
+describe("resolveRootComposeProviderRouting", () => {
+  it("routes discovery through the effective selected host", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1", "host_2"]),
+        environmentSelectionValue: "host:host_2:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [
+          makeProjectSource("host_1"),
+          makeProjectSource("host_2"),
+        ],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ hostId: "host_2" });
+  });
+
+  it("routes stale selections through the effective primary fallback", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "host:host_gone:local",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ hostId: "host_1" });
+  });
+
+  it("routes reusable worktrees by environment", () => {
+    expect(
+      resolveRootComposeProviderRouting({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "reuse:env_remote",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_remote")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toEqual({ environmentId: "env_remote" });
   });
 });
 

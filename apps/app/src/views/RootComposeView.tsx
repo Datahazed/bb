@@ -24,6 +24,7 @@ import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
   ProjectBranchesResponse,
   SidebarBootstrapResponse,
+  SystemProvidersQuery,
   TerminalSession,
 } from "@bb/server-contract";
 import {
@@ -762,6 +763,21 @@ export function resolveComposeHostId(
     : primaryHostId;
 }
 
+export function resolveRootComposeProviderRouting(
+  args: ResolveRootComposeEffectiveEnvironmentValueArgs,
+): SystemProvidersQuery {
+  const parsed = parseEnvironmentValue(
+    resolveRootComposeEffectiveEnvironmentValue(args),
+  );
+  if (parsed?.type === "host") {
+    return { hostId: parsed.hostId };
+  }
+  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
+    return { environmentId: parsed.environmentId };
+  }
+  return {};
+}
+
 export function buildMobileRecentThreads({
   sidebarNavigation,
 }: BuildMobileRecentThreadsArgs): ThreadListEntry[] {
@@ -1057,6 +1073,38 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
+  // Worktree picker options come from the project's unarchived threads.
+  // Threads on managed or unmanaged worktrees with a non-null environmentId
+  // contribute; envs with only archived threads disappear naturally.
+  const threadsQuery = useThreads(
+    { projectId, archived: false },
+    { enabled: Boolean(projectId) },
+  );
+  const reuseThreadOptions = useMemo(
+    () =>
+      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    [threadsQuery.data, worktreeHostNameById],
+  );
+  const resolveProviderRouting = useCallback(
+    (environmentSelectionValue: string) =>
+      resolveRootComposeProviderRouting({
+        environmentSelectionValue,
+        isProjectless,
+        knownHostIds,
+        primaryHostId,
+        projectSources,
+        reuseThreadOptions,
+        reuseThreadOptionsLoading: threadsQuery.isLoading,
+      }),
+    [
+      isProjectless,
+      knownHostIds,
+      primaryHostId,
+      projectSources,
+      reuseThreadOptions,
+      threadsQuery.isLoading,
+    ],
+  );
   // Seed the picker from the server-resolved project defaults so the visible
   // default matches what create-thread will use when the user submits without
   // touching execution controls. Values normally ride along with sidebar
@@ -1077,6 +1125,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
+    resolveProviderRouting,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -1084,6 +1133,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
   const {
+    executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
     providerOptions,
@@ -1295,17 +1345,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     });
   }, [location.search, location.state, navigate, seedInitialPrompt]);
 
-  // Worktree picker options come from the project's unarchived threads.
-  // Threads on managed or unmanaged worktrees with a non-null environmentId
-  // contribute; envs with only archived threads disappear naturally.
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
-  const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
-    [threadsQuery.data, worktreeHostNameById],
-  );
   const mobileRecentThreads = useMemo(
     () =>
       buildMobileRecentThreads({
@@ -3165,6 +3204,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const executionConfig = useMemo(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -3196,6 +3236,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [
       activeModel,
+      executionOptionsRouting,
       forkSeed,
       hasMultipleProviders,
       handleSelectedProviderIdChange,
