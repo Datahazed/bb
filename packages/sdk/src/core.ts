@@ -14,6 +14,7 @@ import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea, type StatusArea } from "./areas/status.js";
 import { createThemeArea, type ThemeArea } from "./areas/theme.js";
 import { createSystemArea, type SystemArea } from "./areas/system.js";
+import { createTerminalsArea, type TerminalsArea } from "./areas/terminals.js";
 import { createThreadsArea, type ThreadsArea } from "./areas/threads.js";
 import {
   createThreadFoldersArea,
@@ -37,6 +38,7 @@ export interface BbSdk extends BbRealtime {
   providers: ProvidersArea;
   status: StatusArea;
   system: SystemArea;
+  terminals: TerminalsArea;
   theme: ThemeArea;
   threadFolders: ThreadFoldersArea;
   threads: ThreadsArea;
@@ -61,6 +63,7 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     providers: createProvidersArea(sdkContext),
     status: createStatusArea(sdkContext),
     system: createSystemArea(sdkContext),
+    terminals: createTerminalsArea(sdkContext),
     theme: createThemeArea(sdkContext),
     threadFolders: createThreadFoldersArea(sdkContext),
     threads: createThreadsArea(sdkContext),

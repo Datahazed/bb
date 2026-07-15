@@ -11,16 +11,11 @@ import {
 } from "@bb/domain";
 import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
-  CloseTerminalRequest,
   CreateQueuedMessageRequest,
-  CreateTerminalRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
   SendQueuedMessageResponse,
-  TerminalListResponse,
-  TerminalOutputResponse,
-  TerminalSession,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadConversationOutlineResponse,
@@ -44,9 +39,6 @@ import type {
   SendMessageRequest,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
-  TerminalInputRequest,
-  TerminalOutputQuery,
-  TerminalResizeRequest,
   ThreadEventsQuery,
   ThreadEventWaitQuery,
   ThreadGetQuery,
@@ -57,7 +49,6 @@ import type {
   ThreadTimelineQuery,
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
-  UpdateTerminalRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs } from "./common.js";
@@ -107,13 +98,6 @@ export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
 export type ThreadStopResult = { ok: true };
-export type ThreadTerminalCloseResult = TerminalSession;
-export type ThreadTerminalCreateResult = TerminalSession;
-export type ThreadTerminalInputResult = TerminalSession;
-export type ThreadTerminalListResult = TerminalListResponse;
-export type ThreadTerminalOutputResult = TerminalOutputResponse;
-export type ThreadTerminalResizeResult = TerminalSession;
-export type ThreadTerminalUpdateResult = TerminalSession;
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
 export type ThreadReadStateResult = ThreadResponse;
@@ -249,37 +233,6 @@ export interface ThreadOutputArgs {
   threadId: string;
 }
 
-export interface ThreadTerminalListArgs {
-  threadId: string;
-}
-
-export interface ThreadTerminalCreateArgs extends Omit<
-  CreateTerminalRequest,
-  "target"
-> {
-  threadId: string;
-}
-
-export interface ThreadTerminalTargetArgs {
-  terminalId: string;
-  threadId: string;
-}
-
-export interface ThreadTerminalUpdateArgs
-  extends ThreadTerminalTargetArgs, UpdateTerminalRequest {}
-
-export interface ThreadTerminalCloseArgs
-  extends ThreadTerminalTargetArgs, CloseTerminalRequest {}
-
-export interface ThreadTerminalInputArgs
-  extends ThreadTerminalTargetArgs, TerminalInputRequest {}
-
-export interface ThreadTerminalResizeArgs
-  extends ThreadTerminalTargetArgs, TerminalResizeRequest {}
-
-export interface ThreadTerminalOutputArgs
-  extends ThreadTerminalTargetArgs, TerminalOutputQuery {}
-
 export interface ThreadInteractionListArgs {
   threadId: string;
 }
@@ -374,16 +327,6 @@ export interface ThreadEventsArea {
   wait(args: ThreadEventWaitArgs): Promise<ThreadEventWaitResult>;
 }
 
-export interface ThreadTerminalsArea {
-  close(args: ThreadTerminalCloseArgs): Promise<ThreadTerminalCloseResult>;
-  create(args: ThreadTerminalCreateArgs): Promise<ThreadTerminalCreateResult>;
-  input(args: ThreadTerminalInputArgs): Promise<ThreadTerminalInputResult>;
-  list(args: ThreadTerminalListArgs): Promise<ThreadTerminalListResult>;
-  output(args: ThreadTerminalOutputArgs): Promise<ThreadTerminalOutputResult>;
-  resize(args: ThreadTerminalResizeArgs): Promise<ThreadTerminalResizeResult>;
-  update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
-}
-
 export interface ThreadQueuedMessagesArea {
   create(
     args: ThreadQueuedMessageCreateArgs,
@@ -437,7 +380,6 @@ export interface ThreadsArea {
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-  terminals: ThreadTerminalsArea;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
   timelineTurnSummaryDetails(
@@ -557,18 +499,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       : {}),
     ...(args.beforeAnchorId !== undefined
       ? { beforeAnchorId: args.beforeAnchorId }
-      : {}),
-  };
-}
-
-function terminalOutputQuery(
-  args: ThreadTerminalOutputArgs,
-): TerminalOutputQuery {
-  return {
-    ...(args.sinceSeq !== undefined ? { sinceSeq: args.sinceSeq } : {}),
-    ...(args.tailBytes !== undefined ? { tailBytes: args.tailBytes } : {}),
-    ...(args.limitChunks !== undefined
-      ? { limitChunks: args.limitChunks }
       : {}),
   };
 }
@@ -716,68 +646,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ].respond.$post({
           param: { id: input.threadId, interactionId: input.interactionId },
           json: { value: input.value },
-        }),
-      );
-    },
-  };
-  const terminals: ThreadTerminalsArea = {
-    async close(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].close.$post({
-          param: { terminalId: input.terminalId },
-          json: { mode: input.mode, reason: input.reason },
-        }),
-      );
-    },
-    async create(input) {
-      return transport.readJson(
-        transport.api.v1.terminals.$post({
-          json: {
-            cols: input.cols,
-            rows: input.rows,
-            title: input.title,
-            start: input.start,
-            target: { kind: "thread", threadId: input.threadId },
-          },
-        }),
-      );
-    },
-    async input(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].input.$post({
-          param: { terminalId: input.terminalId },
-          json: { dataBase64: input.dataBase64 },
-        }),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.terminals.$get({
-          query: { threadId: input.threadId },
-        }),
-      );
-    },
-    async output(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].output.$get({
-          param: { terminalId: input.terminalId },
-          query: terminalOutputQuery(input),
-        }),
-      );
-    },
-    async resize(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].resize.$post({
-          param: { terminalId: input.terminalId },
-          json: { cols: input.cols, rows: input.rows },
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].$patch({
-          param: { terminalId: input.terminalId },
-          json: { title: input.title },
         }),
       );
     },
@@ -1023,7 +891,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
-    terminals,
     tabs,
     async timeline(input) {
       return transport.readJson(

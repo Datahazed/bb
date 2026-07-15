@@ -596,6 +596,12 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<TerminalSession>({ status: 201 }),
     }),
+    get: defineRoute({
+      path: "/terminals/:terminalId",
+      method: "get",
+      request: noRequest<PathTerminal>(),
+      response: jsonResponse<TerminalSession>(),
+    }),
     update: defineRoute({
       path: "/terminals/:terminalId",
       method: "patch",

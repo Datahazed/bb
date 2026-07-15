@@ -44,6 +44,16 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain(
       "models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;",
     );
+    expect(declarations).toContain("interface TerminalsArea");
+    expect(declarations).toContain("terminals: TerminalsArea;");
+    expect(declarations).toContain(
+      "type TerminalListResult = TerminalListResponse;",
+    );
+    expect(declarations).toContain(
+      "rename(args: TerminalRenameArgs): Promise<TerminalRenameResult>;",
+    );
+    expect(declarations).not.toContain("ThreadTerminalsArea");
+    expect(declarations).not.toContain("threads.terminals");
   });
 
   it("ships portable declarations for every exported subpath", async () => {

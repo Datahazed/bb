@@ -35,6 +35,9 @@ describe("scaffoldPlugin bundled types", () => {
       "utf8",
     );
     expect(rootDts).toContain("interface BbPluginApi");
+    expect(rootDts).toContain("interface TerminalsArea");
+    expect(rootDts).toContain("terminals: TerminalsArea;");
+    expect(rootDts).not.toContain("ThreadTerminalsArea");
 
     const tsconfig = JSON.parse(
       await readFile(join(targetDir, "tsconfig.json"), "utf8"),

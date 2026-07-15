@@ -2302,8 +2302,8 @@ type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2324,8 +2324,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2553,8 +2553,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -2758,10 +2758,10 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
-                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
+                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -2781,13 +2781,13 @@ declare const environmentPullRequestResponseSchema: z$1.ZodObject<{
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
-            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
             conflicts: "conflicts";
+            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -5102,11 +5102,11 @@ type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
     id: z$1.ZodString;
     outcome: z$1.ZodEnum<{
+        unavailable: "unavailable";
         incompatible: "incompatible";
         current: "current";
         "update-available": "update-available";
         pinned: "pinned";
-        unavailable: "unavailable";
     }>;
     devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
     installed: z$1.ZodObject<{
@@ -5173,11 +5173,11 @@ declare const installedPluginSchema: z$1.ZodObject<{
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            unavailable: "unavailable";
             incompatible: "incompatible";
             current: "current";
             "update-available": "update-available";
             pinned: "pinned";
-            unavailable: "unavailable";
         }>>;
         availableVersion: z$1.ZodOptional<z$1.ZodString>;
         blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -5266,11 +5266,11 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -5360,11 +5360,11 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -5968,9 +5968,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -5999,9 +5999,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6043,14 +6043,6 @@ declare const createTerminalRequestSchema: z$1.ZodObject<{
     title: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strict>;
 type CreateTerminalRequest = z$1.infer<typeof createTerminalRequestSchema>;
-declare const closeTerminalRequestSchema: z$1.ZodObject<{
-    mode: z$1.ZodEnum<{
-        force: "force";
-        "if-clean": "if-clean";
-    }>;
-    reason: z$1.ZodLiteral<"user">;
-}, z$1.core.$strict>;
-type CloseTerminalRequest = z$1.infer<typeof closeTerminalRequestSchema>;
 declare const updateTerminalRequestSchema: z$1.ZodObject<{
     title: z$1.ZodString;
 }, z$1.core.$strict>;
@@ -7607,9 +7599,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            personal: "personal";
-            "managed-worktree": "managed-worktree";
             unmanaged: "unmanaged";
+            "managed-worktree": "managed-worktree";
+            personal: "personal";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -8234,8 +8226,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -9093,6 +9085,97 @@ interface SystemArea {
     version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
 
+interface TerminalThreadScope {
+    cwd?: never;
+    environmentId?: never;
+    hostId?: never;
+    kind: "thread";
+    threadId: string;
+}
+interface TerminalEnvironmentScope {
+    environmentId: string;
+    cwd?: never;
+    hostId?: never;
+    kind: "environment";
+    threadId?: never;
+}
+interface TerminalHostPathListScope {
+    /** Optional exact initial working-directory filter on the selected host. */
+    cwd?: string;
+    environmentId?: never;
+    hostId: string;
+    kind: "host_path";
+    threadId?: never;
+}
+interface TerminalHostPathCreateScope {
+    /** Null starts in the selected host's home directory. */
+    cwd: string | null;
+    environmentId?: never;
+    hostId: string;
+    kind: "host_path";
+    threadId?: never;
+}
+type TerminalListScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathListScope;
+type TerminalCreateScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathCreateScope;
+interface TerminalListArgs {
+    scope: TerminalListScope;
+}
+interface TerminalCreateArgs {
+    cols: number;
+    rows: number;
+    scope: TerminalCreateScope;
+    start?: CreateTerminalRequest["start"];
+    title?: string;
+}
+interface TerminalTargetArgs {
+    terminalId: string;
+}
+type TerminalGetArgs = TerminalTargetArgs;
+interface TerminalRenameArgs extends TerminalTargetArgs {
+    title: UpdateTerminalRequest["title"];
+}
+interface TerminalCloseArgs extends TerminalTargetArgs {
+    mode: "force" | "if-clean";
+}
+interface TerminalInputArgs extends TerminalTargetArgs {
+    dataBase64: TerminalInputRequest["dataBase64"];
+}
+interface TerminalResizeArgs extends TerminalTargetArgs {
+    cols: TerminalResizeRequest["cols"];
+    rows: TerminalResizeRequest["rows"];
+}
+interface TerminalOutputArgs extends TerminalTargetArgs {
+    limitChunks?: TerminalOutputQuery["limitChunks"];
+    sinceSeq?: TerminalOutputQuery["sinceSeq"];
+    tailBytes?: TerminalOutputQuery["tailBytes"];
+}
+type TerminalRestartArgs = TerminalTargetArgs;
+type TerminalListResult = TerminalListResponse;
+type TerminalCreateResult = TerminalSession;
+type TerminalGetResult = TerminalSession;
+type TerminalRenameResult = TerminalSession;
+type TerminalCloseResult = TerminalSession;
+type TerminalInputResult = TerminalSession;
+type TerminalResizeResult = TerminalSession;
+type TerminalOutputResult = TerminalOutputResponse;
+type TerminalRestartResult = TerminalSession;
+interface TerminalsArea {
+    close(args: TerminalCloseArgs): Promise<TerminalCloseResult>;
+    create(args: TerminalCreateArgs): Promise<TerminalCreateResult>;
+    get(args: TerminalGetArgs): Promise<TerminalGetResult>;
+    input(args: TerminalInputArgs): Promise<TerminalInputResult>;
+    list(args: TerminalListArgs): Promise<TerminalListResult>;
+    output(args: TerminalOutputArgs): Promise<TerminalOutputResult>;
+    rename(args: TerminalRenameArgs): Promise<TerminalRenameResult>;
+    /**
+     * Replace a terminal with a shell at the same scope, size, and title.
+     * The original command is not replayed because terminal sessions do not
+     * persist launch commands. The replacement has a new terminal ID.
+     */
+    restart(args: TerminalRestartArgs): Promise<TerminalRestartResult>;
+    resize(args: TerminalResizeArgs): Promise<TerminalResizeResult>;
+}
+
 interface ThreadListArgs {
     archived?: boolean;
     excludeSideChats?: boolean;
@@ -9139,13 +9222,6 @@ type ThreadSendResult = {
 type ThreadStopResult = {
     ok: true;
 };
-type ThreadTerminalCloseResult = TerminalSession;
-type ThreadTerminalCreateResult = TerminalSession;
-type ThreadTerminalInputResult = TerminalSession;
-type ThreadTerminalListResult = TerminalListResponse;
-type ThreadTerminalOutputResult = TerminalOutputResponse;
-type ThreadTerminalResizeResult = TerminalSession;
-type ThreadTerminalUpdateResult = TerminalSession;
 type ThreadUnarchiveResult = {
     ok: true;
 };
@@ -9251,26 +9327,6 @@ interface ThreadTimelineArgs extends ThreadTimelineQuery {
 interface ThreadOutputArgs {
     threadId: string;
 }
-interface ThreadTerminalListArgs {
-    threadId: string;
-}
-interface ThreadTerminalCreateArgs extends Omit<CreateTerminalRequest, "target"> {
-    threadId: string;
-}
-interface ThreadTerminalTargetArgs {
-    terminalId: string;
-    threadId: string;
-}
-interface ThreadTerminalUpdateArgs extends ThreadTerminalTargetArgs, UpdateTerminalRequest {
-}
-interface ThreadTerminalCloseArgs extends ThreadTerminalTargetArgs, CloseTerminalRequest {
-}
-interface ThreadTerminalInputArgs extends ThreadTerminalTargetArgs, TerminalInputRequest {
-}
-interface ThreadTerminalResizeArgs extends ThreadTerminalTargetArgs, TerminalResizeRequest {
-}
-interface ThreadTerminalOutputArgs extends ThreadTerminalTargetArgs, TerminalOutputQuery {
-}
 interface ThreadInteractionListArgs {
     threadId: string;
 }
@@ -9323,15 +9379,6 @@ interface ThreadEventsArea {
     list(args: ThreadEventsListArgs): Promise<ThreadEventsListResult>;
     wait(args: ThreadEventWaitArgs): Promise<ThreadEventWaitResult>;
 }
-interface ThreadTerminalsArea {
-    close(args: ThreadTerminalCloseArgs): Promise<ThreadTerminalCloseResult>;
-    create(args: ThreadTerminalCreateArgs): Promise<ThreadTerminalCreateResult>;
-    input(args: ThreadTerminalInputArgs): Promise<ThreadTerminalInputResult>;
-    list(args: ThreadTerminalListArgs): Promise<ThreadTerminalListResult>;
-    output(args: ThreadTerminalOutputArgs): Promise<ThreadTerminalOutputResult>;
-    resize(args: ThreadTerminalResizeArgs): Promise<ThreadTerminalResizeResult>;
-    update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
-}
 interface ThreadQueuedMessagesArea {
     create(args: ThreadQueuedMessageCreateArgs): Promise<ThreadQueuedMessageCreateResult>;
     delete(args: ThreadQueuedMessageTargetArgs): Promise<ThreadQueuedMessageDeleteResult>;
@@ -9367,7 +9414,6 @@ interface ThreadsArea {
     send(args: ThreadSendArgs): Promise<ThreadSendResult>;
     spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
     stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-    terminals: ThreadTerminalsArea;
     tabs: ThreadTabsArea;
     timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
     timelineTurnSummaryDetails(args: ThreadTimelineTurnSummaryDetailsArgs): Promise<ThreadTimelineTurnSummaryDetailsResult>;
@@ -9400,6 +9446,7 @@ interface BbSdk extends BbRealtime {
     providers: ProvidersArea;
     status: StatusArea;
     system: SystemArea;
+    terminals: TerminalsArea;
     theme: ThemeArea;
     threadFolders: ThreadFoldersArea;
     threads: ThreadsArea;

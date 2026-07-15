@@ -20,6 +20,8 @@ import type {
   ProviderModelsArgs as RootProviderModelsArgs,
   StatusResult as RootStatus,
   SystemVersionResult as RootSystemVersion,
+  TerminalCreateArgs as RootTerminalCreateArgs,
+  TerminalListResult as RootTerminalListResult,
   ThemeCatalogResult as RootThemeCatalog,
   ThemeSetInput as RootThemeSetInput,
   ThreadFolderListResult as RootThreadFolderList,
@@ -45,6 +47,8 @@ import type {
   ProviderModelsArgs as BrowserProviderModelsArgs,
   StatusResult as BrowserStatus,
   SystemVersionResult as BrowserSystemVersion,
+  TerminalCreateArgs as BrowserTerminalCreateArgs,
+  TerminalListResult as BrowserTerminalListResult,
   ThemeCatalogResult as BrowserThemeCatalog,
   ThemeSetInput as BrowserThemeSetInput,
   ThreadFolderListResult as BrowserThreadFolderList,
@@ -70,6 +74,8 @@ import type {
   ProviderModelsArgs as CoreProviderModelsArgs,
   StatusResult as CoreStatus,
   SystemVersionResult as CoreSystemVersion,
+  TerminalCreateArgs as CoreTerminalCreateArgs,
+  TerminalListResult as CoreTerminalListResult,
   ThemeCatalogResult as CoreThemeCatalog,
   ThemeSetInput as CoreThemeSetInput,
   ThreadFolderListResult as CoreThreadFolderList,
@@ -95,6 +101,8 @@ import type {
   ProviderModelsArgs as NodeProviderModelsArgs,
   StatusResult as NodeStatus,
   SystemVersionResult as NodeSystemVersion,
+  TerminalCreateArgs as NodeTerminalCreateArgs,
+  TerminalListResult as NodeTerminalListResult,
   ThemeCatalogResult as NodeThemeCatalog,
   ThemeSetInput as NodeThemeSetInput,
   ThreadFolderListResult as NodeThreadFolderList,
@@ -120,6 +128,8 @@ interface RootSurface {
   realtimeConnection: RootRealtimeConnection;
   status: RootStatus;
   systemVersion: RootSystemVersion;
+  terminalCreateArgs: RootTerminalCreateArgs;
+  terminalList: RootTerminalListResult;
   themeCatalog: RootThemeCatalog;
   themeSetInput: RootThemeSetInput;
   threadFolderList: RootThreadFolderList;
@@ -145,6 +155,8 @@ interface BrowserSurface {
   realtimeConnection: BrowserRealtimeConnection;
   status: BrowserStatus;
   systemVersion: BrowserSystemVersion;
+  terminalCreateArgs: BrowserTerminalCreateArgs;
+  terminalList: BrowserTerminalListResult;
   themeCatalog: BrowserThemeCatalog;
   themeSetInput: BrowserThemeSetInput;
   threadFolderList: BrowserThreadFolderList;
@@ -170,6 +182,8 @@ interface CoreSurface {
   realtimeConnection: CoreRealtimeConnection;
   status: CoreStatus;
   systemVersion: CoreSystemVersion;
+  terminalCreateArgs: CoreTerminalCreateArgs;
+  terminalList: CoreTerminalListResult;
   themeCatalog: CoreThemeCatalog;
   themeSetInput: CoreThemeSetInput;
   threadFolderList: CoreThreadFolderList;
@@ -195,6 +209,8 @@ interface NodeSurface {
   realtimeConnection: NodeRealtimeConnection;
   status: NodeStatus;
   systemVersion: NodeSystemVersion;
+  terminalCreateArgs: NodeTerminalCreateArgs;
+  terminalList: NodeTerminalListResult;
   themeCatalog: NodeThemeCatalog;
   themeSetInput: NodeThemeSetInput;
   threadFolderList: NodeThreadFolderList;
@@ -212,6 +228,7 @@ type ExpectedBbSdkKey =
   | "status"
   | "subscribe"
   | "system"
+  | "terminals"
   | "theme"
   | "threadFolders"
   | "threads";
@@ -352,7 +369,6 @@ type ExpectedThreadsKey =
   | "storageFiles"
   | "storagePaths"
   | "tabs"
-  | "terminals"
   | "timeline"
   | "timelineTurnSummaryDetails"
   | "unarchive"
@@ -375,14 +391,16 @@ type ExpectedThreadQueuedMessagesKey =
   | "send"
   | "setGroupBoundary";
 type ExpectedThreadTabsKey = "get" | "update";
-type ExpectedThreadTerminalsKey =
+type ExpectedTerminalsKey =
   | "close"
   | "create"
+  | "get"
   | "input"
   | "list"
   | "output"
-  | "resize"
-  | "update";
+  | "rename"
+  | "restart"
+  | "resize";
 
 describe("SDK public type entrypoints", () => {
   it("export the same transport-independent DTO surface", () => {
@@ -422,6 +440,28 @@ describe("SDK public type entrypoints", () => {
     }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
   });
 
+  it("uses explicit mutually exclusive terminal scopes", () => {
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: {
+        kind: "thread";
+        threadId: string;
+        environmentId: string;
+      };
+    }>().not.toMatchTypeOf<RootTerminalCreateArgs>();
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: { kind: "environment"; environmentId: string };
+    }>().toMatchTypeOf<RootTerminalCreateArgs>();
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: { kind: "host_path"; hostId: string; cwd: null };
+    }>().toMatchTypeOf<RootTerminalCreateArgs>();
+  });
+
   it("snapshots every SDK area and nested method group", () => {
     expectTypeOf<keyof RootBbRealtime>().toEqualTypeOf<ExpectedRealtimeKey>();
     expectTypeOf<
@@ -454,6 +494,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["system"]
     >().toEqualTypeOf<ExpectedSystemKey>();
+    expectTypeOf<
+      keyof RootBbSdk["terminals"]
+    >().toEqualTypeOf<ExpectedTerminalsKey>();
     expectTypeOf<keyof RootBbSdk["theme"]>().toEqualTypeOf<ExpectedThemeKey>();
     expectTypeOf<
       keyof RootBbSdk["threadFolders"]
@@ -473,8 +516,5 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["threads"]["tabs"]
     >().toEqualTypeOf<ExpectedThreadTabsKey>();
-    expectTypeOf<
-      keyof RootBbSdk["threads"]["terminals"]
-    >().toEqualTypeOf<ExpectedThreadTerminalsKey>();
   });
 });
