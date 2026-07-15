@@ -561,9 +561,11 @@ takes effect only when the provider session is next started/resumed; BB never
 hot-mutates a running provider session. Instructions apply to the next turn.
 Skill catalog changes follow the daemon's established runtime policy: a busy
 environment keeps its current staged catalog until a safe relaunch. Side chats
-evaluate `configure` with `sideChat: true`, but BB excludes the returned plugin
-tools and dynamic instructions; their existing static plugin-skill catalog
-behavior is preserved.
+evaluate `configure` with `sideChat: true`; returned tool, skill, and dynamic
+instruction selections apply at those same boundaries. Independent side-chat
+safety policy such as permission escalation is unchanged. The legacy
+`contributeInstructions` provider remains excluded from side chats, so use
+`configure` for side-chat-aware dynamic instructions.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 

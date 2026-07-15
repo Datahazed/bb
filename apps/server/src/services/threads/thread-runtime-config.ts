@@ -114,14 +114,19 @@ interface DynamicToolContribution {
  * The session's dynamic tool set: built-ins first, then native plugin tools
  * (bb.agents.registerTool), resolved live at thread.start/turn.submit — so
  * tool-set changes apply on the next session start, never mid-session.
- * Side-chat threads get no dynamic tools.
+ * Side-chat threads keep the independent built-in-tool exclusion, while
+ * conditionally selected plugin tools follow configure() like any thread.
  */
 function resolveDynamicTools(
   thread: Thread,
   pluginTools: ReturnType<typeof listPluginAgentTools>,
 ): DynamicToolContribution[] {
   if (isSideChatThread(thread)) {
-    return [];
+    return pluginTools.map((contribution) => ({
+      tool: contribution.tool,
+      instructions: contribution.instructions,
+      pluginId: contribution.pluginId,
+    }));
   }
   return [
     {
@@ -234,12 +239,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
   const injectedSkillSources = resolveSkillCatalogSources(deps, {
     projectSkillSources,
-    ...(!sideChat
-      ? {
-          pluginSkillSelections:
-            conditionalConfiguration.selectedSkillIdsByPlugin,
-        }
-      : {}),
+    pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
@@ -267,9 +267,9 @@ export async function resolveThreadRuntimeCommandConfig(
       );
     }
   }
-  // Plugin-level contributeInstructions providers (after per-tool snippets,
-  // before data-dir user instructions). Side chats get no plugin tools and
-  // no plugin instructions.
+  // Legacy plugin-level contributeInstructions providers (after per-tool
+  // snippets, before configure dynamic instructions). Their established
+  // side-chat exclusion remains independent of configure().
   if (!isSideChatThread(args.thread)) {
     for (const contribution of listPluginInstructionContributions()) {
       let text: string | null;
@@ -298,15 +298,16 @@ export async function resolveThreadRuntimeCommandConfig(
         text,
       );
     }
-    // Conditional dynamic instructions follow the legacy/static plugin-level
-    // providers. Each configure output was already validated and capped by
-    // the plugin service; user/data-dir/workspace instructions still follow.
-    for (const contribution of conditionalConfiguration.dynamicInstructions) {
-      instructionSections.push(
-        `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
-        contribution.text,
-      );
-    }
+  }
+  // Conditional dynamic instructions follow the legacy/static plugin-level
+  // providers on every thread, including side chats. Each configure output
+  // was already validated and capped by the plugin service;
+  // user/data-dir/workspace instructions still follow.
+  for (const contribution of conditionalConfiguration.dynamicInstructions) {
+    instructionSections.push(
+      `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
+      contribution.text,
+    );
   }
   if (dataDirAgentInstructions) {
     instructionSections.push(

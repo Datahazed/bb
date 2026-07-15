@@ -395,9 +395,9 @@ export interface PluginAgents {
    * an already-running session is not hot-mutated. Instructions are resolved
    * for the next turn. Skill changes follow BB's environment runtime policy:
    * a busy runtime keeps its current catalog until a safe relaunch. Side-chat
-   * threads receive `sideChat: true`, but BB deliberately excludes their
-   * returned tools/dynamic instructions and preserves the existing static
-   * plugin-skill catalog behavior.
+   * threads receive `sideChat: true`, and their returned tool, skill, and
+   * dynamic-instruction selections apply at the same boundaries. Independent
+   * side-chat safety policy (such as permission escalation) is unchanged.
    */
   configure(
     provider: (
@@ -441,7 +441,8 @@ export interface PluginAgents {
    * thread-start path. Output longer than 4096 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.
-   * Side-chat threads never receive plugin instructions.
+   * This legacy contribution is not applied to side-chat threads; use
+   * configure() when sideChat-aware dynamic instructions are required.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,

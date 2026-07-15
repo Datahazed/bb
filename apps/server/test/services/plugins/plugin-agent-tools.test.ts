@@ -783,20 +783,34 @@ describe("plugin tools reach thread runtime config", () => {
       sourceThreadId: alpha.thread.id,
     });
     const sideCommand = await build({ ...alpha, thread: sideThread }, 12);
-    expect(sideCommand.dynamicTools).toEqual([]);
-    expect(sideCommand.instructions).not.toContain("context=");
-    // Preserve established side-chat behavior: plugin skill roots remain in
-    // the static catalog, while configure/tools/instructions are excluded.
-    expect(sideCommand.injectedSkillSources.map((skill) => skill.name)).toEqual(
-      expect.arrayContaining(["alpha-skill", "beta-skill"]),
+    // The independent side-chat policy still excludes the built-in mutable
+    // environment tool, while configure() selections apply consistently.
+    expect(sideCommand.dynamicTools.map((tool) => tool.name)).toEqual([
+      "alpha_tool",
+    ]);
+    expect(sideCommand.instructions).toContain('"sideChat":true');
+    expect(sideCommand.instructions).toContain(
+      "Static instructions for alpha_tool",
+    );
+    expect(sideCommand.instructions).not.toContain(
+      "Static instructions for beta_tool",
+    );
+    expect(
+      sideCommand.injectedSkillSources.map((skill) => skill.name),
+    ).toContain("alpha-skill");
+    expect(
+      sideCommand.injectedSkillSources.map((skill) => skill.name),
+    ).not.toContain("beta-skill");
+    expect(sideCommand.instructions).toContain(
+      'The following dynamic instructions come from the BB plugin "conditional":',
     );
     expect(
       harness.pluginService.list().find((plugin) => plugin.id === "conditional")
         ?.handlerStats.errorCount,
     ).toBe(0);
     const betaAgain = await build(beta, 13);
-    // The side-chat resolution evaluated configure with sideChat=true, but
-    // BB ignored its selected tools/instructions, so this is the fourth call.
+    // The side-chat resolution applied configure with sideChat=true, so this
+    // remains the fourth callback invocation without rebuilding the factory.
     expect(betaAgain.instructions).toContain("factory=1;configure=4");
 
     const betaExecution = await resolveExecutionOptions(harness.deps, {
