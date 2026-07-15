@@ -10,9 +10,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@/*": ["./*"],
-      "@bb/plugin-sdk": ["../../../packages/plugin-sdk/src/index.ts"],
-      "@bb/plugin-sdk/*": ["../../../packages/plugin-sdk/src/*"]
+      "@/*": ["./*"]
     }
   },
   "include": [
