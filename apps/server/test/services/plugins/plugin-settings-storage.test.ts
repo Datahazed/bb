@@ -307,10 +307,10 @@ describe("plugin settings + storage", () => {
     });
   });
 
-  describe("sqlite + migrate", () => {
+  describe("database + migrate", () => {
     const sqlerSource = `
       export default function plugin(bb: any) {
-        const db = bb.storage.sqlite();
+        const db = bb.storage.database();
         bb.storage.migrate(db, [
           "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
           "INSERT INTO items (name) VALUES ('seed')",
