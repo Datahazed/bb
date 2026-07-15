@@ -1,16 +1,23 @@
 import type {
+  CommandListResponse,
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
+  ProjectResponse,
+  ProjectWithThreadsResponse,
   ProjectListQuery,
   ProjectPathsQuery,
+  PromptHistoryResponse,
   PromptHistoryQuery,
   ReorderProjectRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
+  WorkspacePathListResponse,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface ProjectListArgs extends ProjectListQuery {}
 
@@ -66,44 +73,23 @@ export interface ProjectSourceDeleteArgs {
   sourceId: string;
 }
 
-export type ProjectCreateResult = PublicApiOutput<"/projects", "$post">;
-export type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
-export type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
-export type ProjectListResult = PublicApiOutput<"/projects", "$get">;
-export type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
-export type ProjectReorderResult = PublicApiOutput<
-  "/projects/:id/order",
-  "$patch"
->;
-export type ProjectPromptHistoryResult = PublicApiOutput<
-  "/projects/:id/prompt-history",
-  "$get"
->;
-export type ProjectPathsResult = PublicApiOutput<"/projects/:id/paths", "$get">;
-export type ProjectCommandsResult = PublicApiOutput<
-  "/projects/:id/commands",
-  "$get"
->;
-export type ProjectBranchesResult = PublicApiOutput<
-  "/projects/:id/branches",
-  "$get"
->;
-export type ProjectDefaultExecutionOptionsResult = PublicApiOutput<
-  "/projects/:id/default-execution-options",
-  "$get"
->;
-export type ProjectSourceAddResult = PublicApiOutput<
-  "/projects/:id/sources",
-  "$post"
->;
-export type ProjectSourceUpdateResult = PublicApiOutput<
-  "/projects/:id/sources/:sourceId",
-  "$patch"
->;
-export type ProjectSourceDeleteResult = PublicApiOutput<
-  "/projects/:id/sources/:sourceId",
-  "$delete"
->;
+export type ProjectBranchesResult = ProjectBranchesResponse;
+export type ProjectCommandsResult = CommandListResponse;
+export type ProjectCreateResult = ProjectResponse;
+export type ProjectDefaultExecutionOptionsResult =
+  ProjectExecutionDefaults | null;
+export type ProjectDeleteResult = { ok: true };
+export type ProjectGetResult = ProjectResponse;
+export type ProjectListResult =
+  | ProjectResponse[]
+  | ProjectWithThreadsResponse[];
+export type ProjectPathsResult = WorkspacePathListResponse;
+export type ProjectPromptHistoryResult = PromptHistoryResponse;
+export type ProjectReorderResult = ProjectResponse[];
+export type ProjectSourceAddResult = ProjectSource;
+export type ProjectSourceDeleteResult = { ok: true };
+export type ProjectSourceUpdateResult = ProjectSource;
+export type ProjectUpdateResult = ProjectResponse;
 
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;

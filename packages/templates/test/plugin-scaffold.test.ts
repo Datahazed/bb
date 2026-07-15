@@ -1,14 +1,15 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 /**
  * The scaffold ships @bb/plugin-sdk's bundled .d.ts into the new plugin's
  * types/ dir so it typechecks without the (unpublished) workspace package on
- * disk. These guard that wiring — the actual typecheck against those types is
- * exercised end to end by @bb/cli's plugin-build scaffold test.
+ * disk. These guard that wiring; plugin-scaffold-external.test.ts performs the
+ * actual outside-the-workspace typecheck with library checks enabled.
  */
 describe("scaffoldPlugin bundled types", () => {
   let workDir: string;
@@ -41,6 +42,7 @@ describe("scaffoldPlugin bundled types", () => {
     expect(tsconfig.compilerOptions.paths["@bb/plugin-sdk"]).toEqual([
       "./types/bb-plugin-sdk.d.ts",
     ]);
+    expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
     expect(tsconfig.include).toContain("types");
 
     // The unpublished workspace package must NOT be a dependency; the real npm
@@ -50,9 +52,10 @@ describe("scaffoldPlugin bundled types", () => {
     );
     expect(pkg.engines).toEqual({
       bb: ">=0.9",
-      bbPluginSdk: "^0.2.0",
+      bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
     });
     expect(pkg.devDependencies["@bb/plugin-sdk"]).toBeUndefined();
+    expect(pkg.devDependencies["@types/react"]).toBeDefined();
     expect(pkg.devDependencies.zod).toBeDefined();
 
     // No app entry ⇒ no app types.

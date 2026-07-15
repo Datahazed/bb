@@ -1,13 +1,14 @@
-import type { SystemExecutionOptionsQuery } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
+import type {
+  SystemExecutionOptionsQuery,
+  SystemExecutionOptionsResponse,
+  SystemProviderInfo,
+} from "@bb/server-contract";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface ProviderModelsArgs extends SystemExecutionOptionsQuery {}
 
-export type ProviderListResult = PublicApiOutput<"/system/providers", "$get">;
-export type ProviderModelsResult = PublicApiOutput<
-  "/system/execution-options",
-  "$get"
->;
+export type ProviderListResult = SystemProviderInfo[];
+export type ProviderModelsResult = SystemExecutionOptionsResponse;
 
 export interface ProvidersArea {
   list(): Promise<ProviderListResult>;
