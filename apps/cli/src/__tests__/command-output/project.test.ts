@@ -1,8 +1,12 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   collectLogPayloads,
+  getHelpOutput,
   readlineMocks,
   resolveLocalHostIdMock,
   runCommand,
@@ -16,6 +20,170 @@ describe("bb project command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerProjectCommands(program, () => "http://server");
+
+  it("documents that attachment upload reads the CLI machine", async () => {
+    const help = await getHelpOutput(
+      ["project", "attachment", "upload"],
+      register,
+    );
+
+    expect(help).toContain("Upload a file read from this CLI machine");
+    expect(help).toContain("--client-file <path>");
+    expect(help.replace(/\s+/gu, " ")).toContain(
+      "not the thread execution host",
+    );
+  });
+
+  it("uploads binary bytes read on a remote CLI machine with explicit metadata", async () => {
+    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
+    try {
+      const clientPath = join(clientDir, "payload.bin");
+      const bytes = new Uint8Array([0, 255, 1, 128, 42]);
+      await writeFile(clientPath, bytes);
+      let request: Request | undefined;
+      vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+        request = new Request(input, init);
+        return new Response(
+          JSON.stringify({
+            type: "localFile",
+            path: "payload-uploaded.bin",
+            name: "renamed.bin",
+            mimeType: "application/x-bb-test",
+            sizeBytes: bytes.byteLength,
+          }),
+          {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      });
+
+      await runCommand(
+        [
+          "project",
+          "attachment",
+          "upload",
+          "proj-remote",
+          "--client-file",
+          clientPath,
+          "--filename",
+          "renamed.bin",
+          "--mime-type",
+          "application/x-bb-test",
+          "--json",
+        ],
+        register,
+      );
+
+      expect(request?.url).toBe(
+        "http://server/api/v1/projects/proj-remote/attachments",
+      );
+      const form = await request?.formData();
+      const file = form?.get("file");
+      expect(file).toBeInstanceOf(File);
+      if (!(file instanceof File)) {
+        throw new Error("Expected multipart attachment file");
+      }
+      expect(file.name).toBe("renamed.bin");
+      expect(file.type).toBe("application/x-bb-test");
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(bytes);
+      expect(
+        JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+      ).toEqual({
+        type: "localFile",
+        path: "payload-uploaded.bin",
+        name: "renamed.bin",
+        mimeType: "application/x-bb-test",
+        sizeBytes: bytes.byteLength,
+      });
+    } finally {
+      await rm(clientDir, { force: true, recursive: true });
+    }
+  });
+
+  it("downloads attachment bytes to an explicit client-local path", async () => {
+    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
+    try {
+      const outputPath = join(clientDir, "downloaded.bin");
+      const bytes = new Uint8Array([3, 2, 1, 0, 255]);
+      const get = vi.fn(
+        async () =>
+          new Response(bytes, {
+            headers: { "content-type": "application/octet-stream" },
+          }),
+      );
+      stubServerApi({ "v1.projects.:id.attachments.content.$get": get });
+
+      await runCommand(
+        [
+          "project",
+          "attachment",
+          "download",
+          "proj-remote",
+          "stored.bin",
+          "--client-file",
+          outputPath,
+          "--json",
+        ],
+        register,
+      );
+
+      expect(get).toHaveBeenCalledWith({
+        param: { id: "proj-remote" },
+        query: { path: "stored.bin" },
+      });
+      expect(new Uint8Array(await readFile(outputPath))).toEqual(bytes);
+      expect(
+        JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+      ).toEqual({
+        attachmentPath: "stored.bin",
+        clientFile: outputPath,
+        mimeType: "application/octet-stream",
+        sizeBytes: bytes.byteLength,
+      });
+    } finally {
+      await rm(clientDir, { force: true, recursive: true });
+    }
+  });
+
+  it("prints the server attachment limit envelope without rewriting it", async () => {
+    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
+    try {
+      const clientPath = join(clientDir, "huge.png");
+      await writeFile(clientPath, new Uint8Array([1]));
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "invalid_request",
+            message: "Attachment exceeds 10MB limit",
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+
+      await expect(
+        runCommand(
+          [
+            "project",
+            "attachment",
+            "upload",
+            "proj-remote",
+            "--client-file",
+            clientPath,
+          ],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        "Error: HTTP 400: Attachment exceeds 10MB limit",
+      );
+    } finally {
+      await rm(clientDir, { force: true, recursive: true });
+    }
+  });
 
   it("bb project list --json prints raw projects", async () => {
     const projects = [

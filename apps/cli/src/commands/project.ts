@@ -1,9 +1,12 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { Command } from "commander";
 import type {
   CreateProjectSourceRequest,
   ProjectResponse,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
+import mimeTypes from "mime-types";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
@@ -67,6 +70,18 @@ interface ProjectUpdateCommandOptions {
 
 interface ProjectDeleteCommandOptions {
   yes?: boolean;
+  json?: boolean;
+}
+
+interface ProjectAttachmentUploadCommandOptions {
+  clientFile: string;
+  filename?: string;
+  json?: boolean;
+  mimeType?: string;
+}
+
+interface ProjectAttachmentDownloadCommandOptions {
+  clientFile: string;
   json?: boolean;
 }
 
@@ -192,6 +207,22 @@ function printProjectSource(source: ProjectSource): void {
   console.log(`${source.id}  ${source.type}  ${source.path}${defaultMarker}`);
 }
 
+function attachmentMimeType(
+  clientPath: string,
+  filename: string,
+  explicitMimeType: string | undefined,
+): string {
+  if (explicitMimeType !== undefined) {
+    const normalized = explicitMimeType.trim();
+    if (normalized.length === 0) {
+      throw new Error("--mime-type must not be empty.");
+    }
+    return normalized;
+  }
+  const inferred = mimeTypes.lookup(filename) || mimeTypes.lookup(clientPath);
+  return typeof inferred === "string" ? inferred : "application/octet-stream";
+}
+
 export function registerProjectCommands(
   program: Command,
   getUrl: () => string,
@@ -202,6 +233,82 @@ export function registerProjectCommands(
   const source = project
     .command("source")
     .description("Manage project sources");
+  const attachment = project
+    .command("attachment")
+    .description("Upload and download server-managed project attachments");
+
+  attachment
+    .command("upload <id>")
+    .description("Upload a file read from this CLI machine")
+    .requiredOption(
+      "--client-file <path>",
+      "File path on this CLI machine (not the thread execution host)",
+    )
+    .option("--filename <name>", "Filename stored in attachment metadata")
+    .option(
+      "--mime-type <type>",
+      "MIME type (inferred from filename by default)",
+    )
+    .option("--json", "Print the uploaded attachment DTO")
+    .action(
+      action(
+        async (id: string, opts: ProjectAttachmentUploadCommandOptions) => {
+          const filename = opts.filename ?? basename(opts.clientFile);
+          if (filename.trim().length === 0) {
+            throw new Error("Attachment filename must not be empty.");
+          }
+          const bytes = await readFile(opts.clientFile);
+          const uploaded = await createCliBbSdk(
+            getUrl(),
+          ).projects.attachments.upload({
+            clientFile: bytes,
+            filename,
+            mimeType: attachmentMimeType(
+              opts.clientFile,
+              filename,
+              opts.mimeType,
+            ),
+            projectId: id,
+          });
+          if (outputJson(opts, uploaded)) return;
+          console.log(`Attachment uploaded: ${uploaded.path}`);
+        },
+      ),
+    );
+
+  attachment
+    .command("download <id> <attachmentPath>")
+    .description("Download an attachment to this CLI machine")
+    .requiredOption(
+      "--client-file <path>",
+      "Destination path on this CLI machine",
+    )
+    .option("--json", "Print machine-readable download metadata")
+    .action(
+      action(
+        async (
+          id: string,
+          attachmentPath: string,
+          opts: ProjectAttachmentDownloadCommandOptions,
+        ) => {
+          const downloaded = await createCliBbSdk(
+            getUrl(),
+          ).projects.attachments.read({
+            path: attachmentPath,
+            projectId: id,
+          });
+          await writeFile(opts.clientFile, downloaded.bytes);
+          const result = {
+            attachmentPath,
+            clientFile: opts.clientFile,
+            mimeType: downloaded.mimeType,
+            sizeBytes: downloaded.sizeBytes,
+          };
+          if (outputJson(opts, result)) return;
+          console.log(`Attachment downloaded: ${opts.clientFile}`);
+        },
+      ),
+    );
 
   project
     .command("list")

@@ -75,7 +75,9 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--folder <id>` to file the new thread immediately.
+  attachments, and `--folder <id>` to file the new thread immediately. These
+  flags pass host-readable absolute paths (or relative server-upload tokens)
+  through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
@@ -127,6 +129,16 @@ message agents, or inspect projects, providers, and environments.
   project source; omitting both intentionally uses the primary machine source.
   `bb project content --json` returns UTF-8 text or base64 binary content with
   an explicit `contentEncoding`.
+- Use `bb project attachment upload <project-id> --client-file <path>` when the
+  bytes live on the CLI machine, including when the CLI and bb server are on
+  different hosts. It reads locally and sends multipart bytes through the
+  configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
+  returning the stable server attachment DTO. Optional `--filename` and
+  `--mime-type` override inferred metadata. Pass the returned relative `path`
+  to thread `--file` or `--image`; image MIME types are capped at 10MB and
+  other files at 25MB. `bb project attachment download <project-id>
+<attachment-path> --client-file <path>` writes existing attachment bytes on
+  the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.

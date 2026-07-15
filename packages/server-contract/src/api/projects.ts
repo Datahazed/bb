@@ -249,9 +249,7 @@ export type PromptHistoryQuery = z.infer<typeof promptHistoryQuerySchema>;
 export const promptHistoryResponseSchema = z.array(promptHistoryEntrySchema);
 export type PromptHistoryResponse = z.infer<typeof promptHistoryResponseSchema>;
 
-export interface ProjectAttachmentUploadForm {
-  [key: string]: string | Blob;
-}
+export type ProjectAttachmentUploadForm = Record<"file", Blob>;
 
 export const updateProjectRequestSchema = z
   .object({

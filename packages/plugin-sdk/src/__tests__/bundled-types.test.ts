@@ -17,6 +17,12 @@ describe("bundled plugin SDK declarations", () => {
     );
     expect(declarations).toContain("type ProjectGetResult = ProjectResponse;");
     expect(declarations).toContain(
+      "type ProjectAttachmentUploadResult = UploadedPromptAttachment;",
+    );
+    expect(declarations).toContain(
+      "upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;",
+    );
+    expect(declarations).toContain(
       "type EnvironmentStatusResult = EnvironmentStatusResponse;",
     );
     expect(declarations).toContain(

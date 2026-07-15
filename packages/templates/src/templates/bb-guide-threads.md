@@ -28,8 +28,8 @@ Spawning:
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --folder <id>                  Create the thread in a folder
-    --file <path>                  Attach a local file (repeatable)
-    --image <path>                 Attach a local image (repeatable)
+    --file <path>                  Host-readable absolute or uploaded file path
+    --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork or side-chat thread
     --source-thread <id>           Source thread for fork/side-chat
     --source-seq-end <seq>         Last included source event sequence
@@ -167,8 +167,8 @@ Messaging:
     --mode <mode>                          Message mode: queue (default), steer, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
-    --file <path>                          Attach a local file (repeatable)
-    --image <path>                         Attach a local image (repeatable)
+    --file <path>                          Host-readable absolute or uploaded file path
+    --image <path>                         Host-readable absolute or uploaded image path
 
   By default, tell queues: if the agent is working, the message is delivered
   after the current turn finishes. Use --mode steer to send immediately into

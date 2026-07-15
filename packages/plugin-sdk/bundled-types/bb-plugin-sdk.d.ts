@@ -2836,6 +2836,17 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
 type ProjectWithThreadsResponse = z$1.infer<typeof projectWithThreadsResponseSchema>;
+declare const uploadedPromptAttachmentSchema: z$1.ZodObject<{
+    type: z$1.ZodEnum<{
+        localImage: "localImage";
+        localFile: "localFile";
+    }>;
+    path: z$1.ZodString;
+    name: z$1.ZodString;
+    mimeType: z$1.ZodOptional<z$1.ZodString>;
+    sizeBytes: z$1.ZodNumber;
+}, z$1.core.$strip>;
+type UploadedPromptAttachment = z$1.infer<typeof uploadedPromptAttachmentSchema>;
 
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
     mergeBaseBranch: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
@@ -8719,6 +8730,31 @@ interface ProjectBranchesArgs extends ProjectBranchesQuery {
 interface ProjectDefaultExecutionOptionsArgs {
     projectId: string;
 }
+interface ProjectAttachmentFileLike {
+    arrayBuffer(): Promise<ArrayBuffer>;
+    readonly name: string;
+    readonly type?: string;
+}
+interface ProjectAttachmentUploadArgsBase {
+    /** MIME override. Omit to use the File/Blob type, when available. */
+    mimeType?: string;
+    projectId: string;
+}
+/**
+ * Upload bytes owned by this SDK client. A bare Blob/byte buffer needs an
+ * explicit filename; File-like values can supply their own name.
+ */
+type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase & ({
+    clientFile: ProjectAttachmentFileLike;
+    filename?: string;
+} | {
+    clientFile: ArrayBuffer | Blob | Uint8Array;
+    filename: string;
+});
+interface ProjectAttachmentReadArgs {
+    path: string;
+    projectId: string;
+}
 type ProjectSourceAddArgs = CreateProjectSourceRequest & {
     projectId: string;
 };
@@ -8731,6 +8767,12 @@ interface ProjectSourceDeleteArgs {
     sourceId: string;
 }
 type ProjectBranchesResult = ProjectBranchesResponse;
+interface ProjectAttachmentReadResult {
+    bytes: Uint8Array;
+    mimeType: string;
+    sizeBytes: number;
+}
+type ProjectAttachmentUploadResult = UploadedPromptAttachment;
 type ProjectCommandsResult = CommandListResponse;
 type ProjectCreateResult = ProjectResponse;
 type ProjectDefaultExecutionOptionsResult = ProjectExecutionDefaults | null;
@@ -8761,7 +8803,12 @@ interface ProjectSourcesArea {
     delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
     update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
+interface ProjectAttachmentsArea {
+    read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
+    upload(args: ProjectAttachmentUploadArgs): Promise<ProjectAttachmentUploadResult>;
+}
 interface ProjectsArea {
+    attachments: ProjectAttachmentsArea;
     branches(args: ProjectBranchesArgs): Promise<ProjectBranchesResult>;
     commands(args: ProjectCommandsArgs): Promise<ProjectCommandsResult>;
     create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;

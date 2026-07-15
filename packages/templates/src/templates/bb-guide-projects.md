@@ -1,7 +1,7 @@
 ---
 kind: instruction
 title: bb Guide — Projects
-summary: Command reference for project CRUD and sources.
+summary: Command reference for project CRUD, attachments, and sources.
 intent: Provide complete project command documentation for agents.
 editingNotes: Keep flags accurate against the CLI implementation.
 ---
@@ -40,6 +40,20 @@ Discovery:
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
   falls back to the primary machine's project source.
+
+Attachments:
+
+  bb project attachment upload <id>       Upload bytes from the CLI machine
+    --client-file <path>                  Path read on this CLI machine
+    --filename <name>                     Attachment filename override
+    --mime-type <type>                    MIME override (otherwise inferred)
+  bb project attachment download <id> <attachment-path>
+    --client-file <path>                  Destination on this CLI machine
+
+  Uploads use multipart bytes and return a server-managed attachment DTO. Pass
+  its relative `path` to thread --file/--image input. Those thread flags never
+  read a client path: absolute values remain paths for the execution host.
+  image/* uploads are limited to 10MB; other files are limited to 25MB.
 
 Sources:
 

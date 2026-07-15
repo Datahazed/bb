@@ -710,9 +710,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));
     const formData = await context.req.formData();
+    const fields = [...formData.keys()];
+    if (fields.length === 0) {
+      throw new ApiError(400, "invalid_request", "Attachment file is required");
+    }
+    if (fields.length !== 1 || fields[0] !== "file") {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        'Attachment upload accepts exactly one multipart field named "file"',
+      );
+    }
     const file = formData.get("file");
     if (!(file instanceof File)) {
       throw new ApiError(400, "invalid_request", "Attachment file is required");
+    }
+    if (file.name.trim().length === 0) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Attachment filename is required",
+      );
     }
     return context.json(
       await storeAttachment(deps.config.dataDir, context.req.param("id"), file),

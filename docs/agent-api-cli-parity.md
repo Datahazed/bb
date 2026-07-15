@@ -91,7 +91,7 @@ storageFiles               storagePaths
 timelineTurnSummaryDetails
 ```
 
-Thread creation and messaging also support structured local attachments:
+Thread creation and messaging also support structured path attachments:
 
 ```text
 bb thread spawn ... --file <path> --image <path>
@@ -102,6 +102,10 @@ Both attachment flags are repeatable. `thread spawn` additionally supports
 `--folder <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
 `--source-seq-end <seq>`. The SDK accepts the equivalent `input`, `folderId`,
 `originKind`, `sourceThreadId`, and `sourceSeqEnd` fields.
+
+`--file` and `--image` do not read paths on the CLI machine. Absolute paths are
+passed through for the thread execution host to read; relative values are
+server-managed project attachment paths returned by the upload API.
 
 ## Projects
 
@@ -115,6 +119,8 @@ Both attachment flags are repeatable. `thread spawn` additionally supports
 | `bb.projects.fileContent(...)`                    | `bb project content <id> <path> [--machine/--host <id-or-name> / --environment <id>]`                            |
 | `bb.projects.commands(...)`                       | `bb project commands <id> --provider <id> [--machine/--host <id-or-name> / --environment <id>]`                  |
 | `bb.projects.defaultExecutionOptions(...)`        | Available through the SDK; existing CLI execution flags consume these defaults.                                  |
+| `bb.projects.attachments.upload(...)`             | `bb project attachment upload <id> --client-file <path> [--filename <name>] [--mime-type <type>]`                |
+| `bb.projects.attachments.read(...)`               | `bb project attachment download <id> <attachment-path> --client-file <path>`                                     |
 
 Existing project source operations remain available under
 `bb.projects.sources` and `bb project source`.
@@ -124,6 +130,15 @@ environment selects its owning host and workspace; otherwise an explicit host
 selects that host's project source. Omitting both intentionally falls back to
 the primary host's project source. File content uses UTF-8 for text and base64
 for binary data in the portable SDK/CLI JSON DTO.
+
+Project attachment upload is the client-local byte path: the SDK accepts
+`Uint8Array`, `ArrayBuffer`, `Blob`, and File-like input and sends multipart
+data to the selected server. The CLI reads `--client-file` on the CLI machine,
+so it works when that machine is different from both the server and thread
+execution host. The result is the existing uploaded-attachment DTO; image MIME
+types are limited to 10MB and other uploads to 25MB. The server currently has
+no attachment list or per-attachment remove operation, so neither surface
+invents one.
 
 ## Environments and pull requests
 

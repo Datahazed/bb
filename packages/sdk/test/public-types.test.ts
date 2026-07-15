@@ -8,6 +8,7 @@ import type {
   GuideRenderResult as RootGuideRender,
   HostGetResult as RootHostGet,
   PluginListResult as RootPluginList,
+  ProjectAttachmentUploadResult as RootProjectAttachmentUpload,
   ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
   ProjectWorkspaceRoutingArgs as RootProjectWorkspaceRoutingArgs,
@@ -28,6 +29,7 @@ import type {
   GuideRenderResult as BrowserGuideRender,
   HostGetResult as BrowserHostGet,
   PluginListResult as BrowserPluginList,
+  ProjectAttachmentUploadResult as BrowserProjectAttachmentUpload,
   ProjectFileContentResult as BrowserProjectFileContent,
   ProjectGetResult as BrowserProjectGet,
   ProjectWorkspaceRoutingArgs as BrowserProjectWorkspaceRoutingArgs,
@@ -48,6 +50,7 @@ import type {
   GuideRenderResult as CoreGuideRender,
   HostGetResult as CoreHostGet,
   PluginListResult as CorePluginList,
+  ProjectAttachmentUploadResult as CoreProjectAttachmentUpload,
   ProjectFileContentResult as CoreProjectFileContent,
   ProjectGetResult as CoreProjectGet,
   ProjectWorkspaceRoutingArgs as CoreProjectWorkspaceRoutingArgs,
@@ -68,6 +71,7 @@ import type {
   GuideRenderResult as NodeGuideRender,
   HostGetResult as NodeHostGet,
   PluginListResult as NodePluginList,
+  ProjectAttachmentUploadResult as NodeProjectAttachmentUpload,
   ProjectFileContentResult as NodeProjectFileContent,
   ProjectGetResult as NodeProjectGet,
   ProjectWorkspaceRoutingArgs as NodeProjectWorkspaceRoutingArgs,
@@ -87,6 +91,7 @@ interface RootSurface {
   guideRender: RootGuideRender;
   hostGet: RootHostGet;
   pluginList: RootPluginList;
+  projectAttachmentUpload: RootProjectAttachmentUpload;
   projectFileContent: RootProjectFileContent;
   projectGet: RootProjectGet;
   projectWorkspaceRoutingArgs: RootProjectWorkspaceRoutingArgs;
@@ -107,6 +112,7 @@ interface BrowserSurface {
   guideRender: BrowserGuideRender;
   hostGet: BrowserHostGet;
   pluginList: BrowserPluginList;
+  projectAttachmentUpload: BrowserProjectAttachmentUpload;
   projectFileContent: BrowserProjectFileContent;
   projectGet: BrowserProjectGet;
   projectWorkspaceRoutingArgs: BrowserProjectWorkspaceRoutingArgs;
@@ -127,6 +133,7 @@ interface CoreSurface {
   guideRender: CoreGuideRender;
   hostGet: CoreHostGet;
   pluginList: CorePluginList;
+  projectAttachmentUpload: CoreProjectAttachmentUpload;
   projectFileContent: CoreProjectFileContent;
   projectGet: CoreProjectGet;
   projectWorkspaceRoutingArgs: CoreProjectWorkspaceRoutingArgs;
@@ -147,6 +154,7 @@ interface NodeSurface {
   guideRender: NodeGuideRender;
   hostGet: NodeHostGet;
   pluginList: NodePluginList;
+  projectAttachmentUpload: NodeProjectAttachmentUpload;
   projectFileContent: NodeProjectFileContent;
   projectGet: NodeProjectGet;
   projectWorkspaceRoutingArgs: NodeProjectWorkspaceRoutingArgs;
@@ -234,6 +242,7 @@ type ExpectedPluginsKey =
   | "updateSettings";
 
 type ExpectedProjectsKey =
+  | "attachments"
   | "branches"
   | "commands"
   | "create"
@@ -250,6 +259,7 @@ type ExpectedProjectsKey =
   | "update";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
+type ExpectedProjectAttachmentsKey = "read" | "upload";
 
 type ExpectedProvidersKey = "list" | "models";
 
@@ -381,6 +391,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["projects"]["attachments"]
+    >().toEqualTypeOf<ExpectedProjectAttachmentsKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]["sources"]
     >().toEqualTypeOf<ExpectedProjectSourcesKey>();

@@ -49,6 +49,13 @@ async function verifyFullSdk(bb: BbPluginApi) {
   const project = await bb.sdk.projects.get({ projectId: "proj_fixture" });
   const projectName: string = project.name;
   const sourceId: string | undefined = project.sources[0]?.id;
+  const attachment = await bb.sdk.projects.attachments.upload({
+    projectId: "proj_fixture",
+    clientFile: new Uint8Array([0, 1, 255]),
+    filename: "fixture.bin",
+    mimeType: "application/octet-stream",
+  });
+  const attachmentPath: string = attachment.path;
 
   const environment = await bb.sdk.environments.status({
     environmentId: "env_fixture",
@@ -56,7 +63,7 @@ async function verifyFullSdk(bb: BbPluginApi) {
   const outcome: "available" | "not_applicable" | "unavailable" =
     environment.outcome;
 
-  return { outcome, projectName, sha256, sourceId, threadId };
+  return { attachmentPath, outcome, projectName, sha256, sourceId, threadId };
 }
 
 export default function plugin(bb: BbPluginApi) {
