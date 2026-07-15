@@ -51,14 +51,13 @@ const BB_PLUGIN_API_KEYS = [
   "realtime",
   "background",
   "cli",
-  "interactions",
   "agents",
   "ui",
+  "events",
   "status",
   "server",
   "hosts",
   "sdk",
-  "on",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
 

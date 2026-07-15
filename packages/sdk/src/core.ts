@@ -53,8 +53,8 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     files: createFilesArea(sdkContext),
     guide: createGuideArea(),
     hosts: createHostsArea(sdkContext),
-    on(args) {
-      return realtime.on(args);
+    subscribe(args) {
+      return realtime.subscribe(args);
     },
     projects: createProjectsArea(sdkContext),
     plugins: createPluginsArea(sdkContext),

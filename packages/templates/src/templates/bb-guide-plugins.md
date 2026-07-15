@@ -279,9 +279,9 @@ https://github.com/ymichael/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
-bb.storage.sqlite()+migrate (the plugin's own database); bb.sdk (the full
+bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
-attributed to the plugin); bb.on (observe thread.created/idle/failed/deleted);
+attributed to the plugin); bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); bb.rpc.register (the frontend data plane);
 bb.realtime.publish (ephemeral signals to open app pages);

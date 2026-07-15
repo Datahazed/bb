@@ -6,11 +6,10 @@ type ExpectedBbPluginApiKey =
   | "agents"
   | "background"
   | "cli"
+  | "events"
   | "hosts"
   | "http"
-  | "interactions"
   | "log"
-  | "on"
   | "onDispose"
   | "pluginId"
   | "realtime"
@@ -35,6 +34,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliContext",
   "PluginCliRegistration",
   "PluginCliResult",
+  "PluginEvents",
   "PluginHosts",
   "PluginHttp",
   "PluginHttpAuthMode",
@@ -42,7 +42,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginInteractionCancelReason",
   "PluginInteractionRequest",
   "PluginInteractionResult",
-  "PluginInteractions",
   "PluginKvStorage",
   "PluginLogger",
   "PluginMentionItem",

@@ -15,12 +15,12 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
-  PluginInteractions,
   PluginInteractionRequest,
   PluginInteractionResult,
   PluginKvStorage,
@@ -45,7 +45,10 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
 } from "../backend-contract.js";
-import type { JsonValue } from "@bb/domain";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type JsonValue,
+} from "@bb/domain";
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -59,14 +62,14 @@ import {
  * `harness` drives and inspects it.
  *
  * Faithful where a plugin can observe it: registration name validation and
- * error messages, the kv 256KB cap, append-only sqlite migrations, settings
+ * error messages, the kv 256KB cap, append-only database migrations, settings
  * read/update semantics (including onChange), rpc/cli invocation shapes
  * (JSON round-tripping, exit-code normalization), `threads.spawn`
- * attribution, and dispose order (services aborted, hooks LIFO, sqlite
+ * attribution, and dispose order (services aborted, hooks LIFO, database
  * closed, stale handles throw).
  *
  * Deliberately different from the real host:
- * - storage is process-local: kv in a Map, `storage.sqlite()` one shared
+ * - storage is process-local: kv in a Map, `storage.database()` one shared
  *   better-sqlite3 handle in a temp directory (same data across calls, like
  *   the host's shared file), secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
@@ -346,7 +349,7 @@ export interface FakePluginHarness {
   /** Run a registered schedule's function once (no timers, no cron sweep). */
   runSchedule(name: string): Promise<void>;
   /**
-   * Deliver a thread lifecycle event to every `bb.on` handler. Handlers run
+   * Deliver a thread lifecycle event to every `bb.events.on` handler. Handlers run
    * sequentially; errors are caught and logged like the host's
    * fire-and-forget dispatch, and returned for assertions.
    */
@@ -367,7 +370,7 @@ export interface FakePluginHarness {
   ): Promise<PluginAgentToolResult>;
   /**
    * Dispose like a host reload/disable: abort services started via
-   * runService, run onDispose hooks LIFO (isolated), close sqlite handles,
+   * runService, run onDispose hooks LIFO (isolated), close database handles,
    * then poison the `bb` handle (further use throws
    * PluginContextStaleError). Idempotent.
    */
@@ -627,7 +630,7 @@ export function createFakePluginHost(
       if (bytes > KV_VALUE_MAX_BYTES) {
         throw new Error(
           `kv value for "${key}" is ${bytes} bytes; the limit is ${KV_VALUE_MAX_BYTES} (256KB). ` +
-            `Store large data in storage.sqlite() instead.`,
+            `Store large data in storage.database() instead.`,
         );
       }
       kvRows.set(key, json);
@@ -646,18 +649,18 @@ export function createFakePluginHost(
 
   const storageRoot = mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-"));
 
-  // One shared temp-file handle: every sqlite() call sees the same data,
+  // One shared temp-file handle: every database() call sees the same data,
   // like the host's handles over one on-disk file.
-  let sqliteHandle: Database.Database | undefined;
+  let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
-    sqlite() {
+    database() {
       assertLive();
-      if (!sqliteHandle) {
-        sqliteHandle = new Database(join(storageRoot, "data.db"));
-        sqliteHandle.pragma("busy_timeout = 5000");
+      if (!databaseHandle) {
+        databaseHandle = new Database(join(storageRoot, "data.db"));
+        databaseHandle.pragma("busy_timeout = 5000");
       }
-      return sqliteHandle;
+      return databaseHandle;
     },
     migrate(database, statements) {
       assertLive();
@@ -855,6 +858,9 @@ export function createFakePluginHost(
   const cli: PluginCli = {
     register(registration) {
       assertLive();
+      if (cliRecord.registration !== null) {
+        throw new Error("cli command is already registered");
+      }
       const name = registration?.name;
       if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
         throw new Error(
@@ -915,6 +921,9 @@ export function createFakePluginHost(
   const agents: PluginAgents = {
     contributeInstructions(provider) {
       assertLive();
+      if (instructionProvider !== null) {
+        throw new Error("agent instructions are already registered");
+      }
       if (typeof provider !== "function") {
         throw new Error(
           "contributeInstructions requires a provider function (ctx) => string | null",
@@ -1013,14 +1022,10 @@ export function createFakePluginHost(
           ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
         ).bind(tool),
       };
-      const existingIndex = agentTools.findIndex(
-        (existing) => existing.name === name,
-      );
-      if (existingIndex >= 0) {
-        agentTools[existingIndex] = record;
-      } else {
-        agentTools.push(record);
+      if (agentTools.some((existing) => existing.name === name)) {
+        throw new Error(`tool "${name}" is already registered`);
       }
+      agentTools.push(record);
     },
   };
 
@@ -1028,6 +1033,7 @@ export function createFakePluginHost(
   const threadActions: FakeThreadActionRecord[] = [];
   const mentionProviders: FakeMentionProviderRecord[] = [];
   const ui: PluginUi = {
+    requestInput,
     registerThreadAction(action) {
       assertLive();
       const id = action?.id;
@@ -1155,32 +1161,87 @@ export function createFakePluginHost(
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  const interactions: PluginInteractions = {
-    request(request, requestOptions) {
-      assertLive();
-      const id = `fake-interaction-${nextInteractionId++}`;
-      return new Promise((resolve) => {
-        const settleAborted = () => {
-          const pending = pendingInteractions.get(id);
-          if (!pending) return;
-          clearTimeout(pending.timer);
-          pendingInteractions.delete(id);
-          resolve({ outcome: "cancelled", reason: "request-aborted" });
-        };
-        requestOptions?.signal?.addEventListener("abort", settleAborted, {
-          once: true,
-        });
-        const timer = setTimeout(
-          () => {
-            pendingInteractions.delete(id);
-            resolve({ outcome: "cancelled", reason: "timeout" });
-          },
-          request.timeoutMs ?? 10 * 60 * 1000,
-        );
-        pendingInteractions.set(id, { request, resolve, timer });
+  function requestInput(
+    request: Parameters<PluginUi["requestInput"]>[0],
+    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
+  ) {
+    assertLive();
+    if (!request || typeof request !== "object") {
+      throw new Error("ui.requestInput requires an options object");
+    }
+    if (typeof request.threadId !== "string" || request.threadId.length === 0) {
+      throw new Error("ui.requestInput threadId must be a non-empty string");
+    }
+    if (
+      typeof request.rendererId !== "string" ||
+      !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
+    ) {
+      throw new Error(
+        "ui.requestInput rendererId must use letters, digits, '-' or '_'",
+      );
+    }
+    if (
+      typeof request.title !== "string" ||
+      request.title.trim().length === 0 ||
+      request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
+    ) {
+      throw new Error(
+        `ui.requestInput title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+      );
+    }
+    let payload: JsonValue;
+    try {
+      const json = JSON.stringify(request.payload);
+      if (json === undefined) throw new Error();
+      if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
+        throw new Error("ui.requestInput payload exceeds 64 KiB");
+      }
+      payload = JSON.parse(json) as JsonValue;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("64 KiB")) {
+        throw error;
+      }
+      throw new Error("ui.requestInput payload must be JSON-serializable");
+    }
+    const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+    if (
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs <= 0 ||
+      timeoutMs > 60 * 60 * 1000
+    ) {
+      throw new Error(
+        "ui.requestInput timeoutMs must be between 1 and 3600000",
+      );
+    }
+    const normalizedRequest: PluginInteractionRequest = {
+      ...request,
+      title: request.title.trim(),
+      payload,
+      timeoutMs,
+    };
+    const id = `fake-interaction-${nextInteractionId++}`;
+    return new Promise<PluginInteractionResult>((resolve) => {
+      const settleAborted = () => {
+        const pending = pendingInteractions.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingInteractions.delete(id);
+        resolve({ outcome: "cancelled", reason: "request-aborted" });
+      };
+      requestOptions?.signal?.addEventListener("abort", settleAborted, {
+        once: true,
       });
-    },
-  };
+      const timer = setTimeout(() => {
+        pendingInteractions.delete(id);
+        resolve({ outcome: "cancelled", reason: "timeout" });
+      }, timeoutMs);
+      pendingInteractions.set(id, {
+        request: normalizedRequest,
+        resolve,
+        timer,
+      });
+    });
+  }
 
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
@@ -1227,26 +1288,7 @@ export function createFakePluginHost(
     sharedPortDeclarations.length = 0;
   });
 
-  const bb: BbPluginApi = {
-    pluginId,
-    log,
-    settings,
-    storage,
-    http,
-    rpc,
-    realtime,
-    background,
-    cli,
-    interactions,
-    agents,
-    ui,
-    status,
-    server,
-    hosts,
-    get sdk() {
-      assertLive();
-      return sdk;
-    },
+  const events: PluginEvents = {
     on(event, handler) {
       assertLive();
       const handlers = threadEventHandlers[event];
@@ -1258,6 +1300,28 @@ export function createFakePluginHost(
         );
       }
       handlers.push(handler);
+    },
+  };
+
+  const bb: BbPluginApi = {
+    pluginId,
+    log,
+    settings,
+    storage,
+    http,
+    rpc,
+    realtime,
+    background,
+    cli,
+    agents,
+    ui,
+    events,
+    status,
+    server,
+    hosts,
+    get sdk() {
+      assertLive();
+      return sdk;
     },
     onDispose(hook) {
       assertLive();
@@ -1499,7 +1563,7 @@ export function createFakePluginHost(
         pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
       }
       // Host order (§3): services first, then hooks LIFO (isolated), then
-      // vended sqlite handles, then handle invalidation.
+      // vended database handles, then handle invalidation.
       for (const controller of serviceControllers) controller.abort();
       for (const hook of [...disposeHooks].reverse()) {
         try {
@@ -1508,11 +1572,11 @@ export function createFakePluginHost(
           emitLog("warn", `dispose hook failed: ${errorMessage(error)}`);
         }
       }
-      if (sqliteHandle) {
+      if (databaseHandle) {
         try {
-          sqliteHandle.close();
+          databaseHandle.close();
         } catch (error) {
-          emitLog("warn", `sqlite close failed: ${errorMessage(error)}`);
+          emitLog("warn", `database close failed: ${errorMessage(error)}`);
         }
       }
       rmSync(storageRoot, { recursive: true, force: true });

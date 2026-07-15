@@ -104,7 +104,7 @@ export function createFakeSdk(options: {
   }
 
   const nodes = new Map<string, unknown>();
-  /** Callable-and-traversable proxy: `sdk.threads.spawn(...)` and `sdk.on(...)` both work. */
+  /** Callable-and-traversable proxy: `sdk.threads.spawn(...)` and `sdk.subscribe(...)` both work. */
   function node(path: string): unknown {
     const cached = nodes.get(path);
     if (cached) return cached;

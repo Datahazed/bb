@@ -171,15 +171,22 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 
 export default async function plugin(bb: BbPluginApi) {
   // Register surfaces here. Load-safe: settings, storage, http, rpc,
-  // realtime, background, cli, agents, ui, status, on, onDispose.
+  // realtime, background, cli, agents, ui, events, status, onDispose.
   // bb.sdk works here in the real server, but prefer it in handlers/services
   // (bind-gated — see below).
 }
 ```
 
-The factory runs at load/reload/enable (time-boxed 30s). A throwing factory
-puts the plugin in `error` status with the message as the detail. `bb.pluginId`
-is the plugin's own id.
+The factory runs at load/reload/enable (time-boxed 30s). A throwing initial
+factory puts the plugin in `error` status with the message as the detail; a
+throwing reload candidate leaves the prior registration set running and
+reports the reload failure in its detail. `bb.pluginId` is the plugin's own id.
+
+Keyed registrations must be unique within one factory execution: duplicate
+settings, routes, rpc methods, services, schedules, CLI registrations, tools,
+instruction providers, thread actions, or mention providers are rejected.
+Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
+are additive, so registering multiple listeners is supported.
 
 ### bb.log
 
@@ -221,8 +228,8 @@ give non-secrets defaults and handle missing secrets explicitly.
 - `bb.storage.kv` — namespaced JSON key-value rows in bb.db:
   `get<T>(key)`, `set(key, value)`, `delete(key)`, `list(prefix?)`. Values
   are capped at **256KB each** — kv is for cursors, links, and small state;
-  caches and datasets go in sqlite.
-- `bb.storage.sqlite()` — the plugin's own better-sqlite3 database at
+  caches and datasets go in the plugin database.
+- `bb.storage.database()` — the plugin's own better-sqlite3 database at
   `<dataDir>/plugins/<id>/data.db` (WAL, busy_timeout 5000). Handles are
   host-tracked and closed on reload; a closed handle throws.
 - `bb.storage.migrate(db, statements)` — statement index = migration id;
@@ -230,7 +237,7 @@ give non-secrets defaults and handle missing secrets explicitly.
   reorder or edit shipped statements, only push new ones.
 
 ```ts
-const db = bb.storage.sqlite();
+const db = bb.storage.database();
 bb.storage.migrate(db, [
   `CREATE TABLE IF NOT EXISTS issues (id TEXT PRIMARY KEY, title TEXT NOT NULL)`,
 ]);
@@ -293,6 +300,10 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+SDK realtime observation stays separate from plugin lifecycle events:
+`bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
+function. Do not use `bb.events.on` for SDK entity-change subscriptions.
+
 `bb.sdk.files` reads and writes files on a connected host (not just the
 server machine — this is the right primitive when the user's files may live
 on another host, and its `rootPath` confinement + compare-and-swap guard make
@@ -334,13 +345,13 @@ serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
 
-### bb.on — thread lifecycle events
+### bb.events.on — thread lifecycle events
 
 ```ts
-bb.on("thread.created", ({ thread }) => { ... });
-bb.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
-bb.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
-bb.on("thread.deleted", ({ thread }) => { ... });
+bb.events.on("thread.created", ({ thread }) => { ... });
+bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
+bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
 Exactly four events. Observe-only: handlers run fire-and-forget after the
@@ -438,7 +449,8 @@ if (!initial.apiKey)
 
 ### bb.cli — an agent-facing `bb` subcommand
 
-One top-level command per plugin (a second `register` replaces the first).
+One top-level command per plugin; a second `register` in one factory
+execution is rejected.
 Users and agents run `bb <name> …` like any core command; the bb CLI
 proxies it to the server, where `run` executes.
 
@@ -469,9 +481,9 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
-### bb.interactions — replace the composer with a blocking plugin form
+### bb.ui.requestInput — replace the composer with a blocking plugin form
 
-Use `bb.interactions.request({ threadId, rendererId, title, payload, timeoutMs? },
+Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
 { signal? })` when plugin backend code must wait for sensitive or structured
 user input. The promise resolves to `{ outcome: "submitted", value }` or
 `{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
@@ -500,8 +512,8 @@ bb.agents.registerTool({
 });
 
 // Dynamic section evaluated at thread.start / turn.submit (sync, fast).
-// Return null to contribute nothing for that resolution. Re-registering
-// replaces this plugin's previous provider. Output is capped at 4096
+// Return null to contribute nothing for that resolution. Duplicate factory
+// registrations are rejected. Output is capped at 4096
 // characters; a throw is logged and contributes nothing. Side-chat
 // threads never receive plugin instructions.
 bb.agents.contributeInstructions(({ threadId, projectId }) => {
@@ -513,8 +525,8 @@ bb.agents.contributeInstructions(({ threadId, projectId }) => {
 `parameters` is a zod schema (zod 4; validated per call — bad model args
 become a tool error, not a plugin crash) or a plain JSON-schema object
 (execute then receives raw `unknown`). Tool-set changes apply on the NEXT
-session start, not mid-session. Name collisions: within a plugin the later
-registration replaces the earlier; across plugins the earlier plugin wins
+session start, not mid-session. Name collisions: within one factory execution
+duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
@@ -564,10 +576,13 @@ failing. Cleared on the next load.
 ### bb.onDispose and the reload lifecycle
 
 `bb.onDispose(hook)` registers cleanup; hooks run **LIFO**. On
-reload/disable/shutdown the host: aborts background services and awaits
-them (bounded), runs dispose hooks LIFO (each isolated), drains in-flight
-http/rpc/event handlers, closes every `storage.sqlite()` handle, then
-invalidates the old `bb` handle and (on reload) calls the factory fresh. A
+reload the host first runs the factory against a candidate registration set.
+If it throws, the complete previous set stays live. Once the candidate
+succeeds, the host aborts old background services and awaits them (bounded),
+runs dispose hooks LIFO (each isolated), drains in-flight http/rpc/event
+handlers, closes every `storage.database()` handle, invalidates the old `bb`
+handle, and replaces the registration set wholesale. Disable/shutdown perform
+the same cleanup without a replacement. A
 captured `bb` from a previous load throws `PluginContextStaleError` on use
 — never stash the API object in module-level state that outlives a load.
 
@@ -876,7 +891,7 @@ await harness.emitThreadEvent("thread.idle", {
   lastAssistantText: "done",
 });
 await harness.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
-await harness.dispose(); // abort services, hooks LIFO, close sqlite; stale bb throws
+await harness.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
 
 Inspect: `harness.sdk.calls` / `harness.sdk.callsTo("threads.spawn")` (every
@@ -966,7 +981,7 @@ Remaining reference examples in `examples/plugins/`:
 - `bb.sdk` is bind-gated: the real server binds it before plugins load, so
   factories can use it there, but isolated harnesses may not — prefer
   handlers, services, and timers.
-- kv values cap at 256KB; put caches and datasets in `storage.sqlite()`.
+- kv values cap at 256KB; put caches and datasets in `storage.database()`.
 - `storage.migrate` is append-only by statement index.
 - Settings saves do NOT auto-reload the plugin; `bb plugin reload <id>`.
 - Descriptors without `default` produce `| undefined` values.

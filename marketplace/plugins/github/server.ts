@@ -206,7 +206,7 @@ export default async function plugin(bb: BbPluginApi) {
   // ------------------------------------------------------------------
   // SQLite cache of open issues + PRs across tracked repos.
   // ------------------------------------------------------------------
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS items (
        repo TEXT NOT NULL,

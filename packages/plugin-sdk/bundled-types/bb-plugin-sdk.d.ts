@@ -227,7 +227,7 @@ interface PluginComposerAccessoryRegistration {
     component: ComponentType<PluginComposerAccessoryProps>;
 }
 interface PluginPendingInteractionRegistration {
-    /** Matches `rendererId` passed to `bb.interactions.request`. */
+    /** Matches `rendererId` passed to `bb.ui.requestInput`. */
     id: string;
     component: ComponentType<PluginPendingInteractionProps>;
 }
@@ -2266,8 +2266,8 @@ type ThreadEventRow = {
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    starting: "starting";
     idle: "idle";
+    starting: "starting";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -2905,8 +2905,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -2919,8 +2919,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2951,8 +2951,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -8797,31 +8797,31 @@ interface BbRealtimeEventMap {
     "realtime:connection": BbRealtimeConnectionEvent;
 }
 type BbRealtimeCallback<TEventName extends BbRealtimeEventName> = (event: BbRealtimeEventMap[TEventName]) => void;
-interface ThreadRealtimeOnArgs {
+interface ThreadRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"thread:changed">;
     event: "thread:changed";
     threadId?: string;
 }
-interface ProjectRealtimeOnArgs {
+interface ProjectRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"project:changed">;
     event: "project:changed";
     projectId?: string;
 }
-interface EnvironmentRealtimeOnArgs {
+interface EnvironmentRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"environment:changed">;
     environmentId?: string;
     event: "environment:changed";
 }
-interface HostRealtimeOnArgs {
+interface HostRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"host:changed">;
     event: "host:changed";
     hostId?: string;
 }
-interface SystemRealtimeOnArgs {
+interface SystemRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"system:changed">;
     event: "system:changed";
 }
-interface SystemConfigRealtimeOnArgs {
+interface SystemConfigRealtimeSubscribeArgs {
     callback: BbRealtimeCallback<"system:config-changed">;
     event: "system:config-changed";
 }
@@ -8831,16 +8831,16 @@ interface SystemConfigRealtimeOnArgs {
  * latest connection event as a snapshot on the next microtask, so a status
  * UI mounted after connect still learns the current state.
  */
-interface RealtimeConnectionOnArgs {
+interface RealtimeConnectionSubscribeArgs {
     callback: BbRealtimeCallback<"realtime:connection">;
     event: "realtime:connection";
 }
-type BbRealtimeOnArgsUnion = ThreadRealtimeOnArgs | ProjectRealtimeOnArgs | EnvironmentRealtimeOnArgs | HostRealtimeOnArgs | SystemRealtimeOnArgs | SystemConfigRealtimeOnArgs | RealtimeConnectionOnArgs;
-type BbRealtimeOnArgs<TEventName extends BbRealtimeEventName = BbRealtimeEventName> = Extract<BbRealtimeOnArgsUnion, {
+type BbRealtimeSubscribeArgsUnion = ThreadRealtimeSubscribeArgs | ProjectRealtimeSubscribeArgs | EnvironmentRealtimeSubscribeArgs | HostRealtimeSubscribeArgs | SystemRealtimeSubscribeArgs | SystemConfigRealtimeSubscribeArgs | RealtimeConnectionSubscribeArgs;
+type BbRealtimeSubscribeArgs<TEventName extends BbRealtimeEventName = BbRealtimeEventName> = Extract<BbRealtimeSubscribeArgsUnion, {
     event: TEventName;
 }>;
 interface BbRealtime {
-    on<TEventName extends BbRealtimeEventName>(args: BbRealtimeOnArgs<TEventName>): BbRealtimeUnsubscribe;
+    subscribe<TEventName extends BbRealtimeEventName>(args: BbRealtimeSubscribeArgs<TEventName>): BbRealtimeUnsubscribe;
 }
 
 interface StatusGetArgs {
@@ -9309,7 +9309,7 @@ interface PluginStorage {
      * busy_timeout 5000. Handles are host-tracked and closed on
      * dispose/reload; a closed handle throws on use.
      */
-    sqlite(): Database.Database;
+    database(): Database.Database;
     /**
      * Ordered-statement migration helper: statement index = migration id in a
      * `_bb_migrations` table; unapplied statements run in one transaction.
@@ -9431,12 +9431,6 @@ interface PluginInteractionRequest {
     /** Defaults to ten minutes; capped at one hour. */
     timeoutMs?: number;
 }
-interface PluginInteractions {
-    /** Block until the app submits or cancels a plugin-owned composer form. */
-    request(request: PluginInteractionRequest, options?: {
-        signal?: AbortSignal;
-    }): Promise<PluginInteractionResult>;
-}
 interface PluginCliResult {
     exitCode: number;
     stdout?: string;
@@ -9454,9 +9448,9 @@ interface PluginCliRegistration {
 }
 interface PluginCli {
     /**
-     * Register this plugin's `bb` subcommand. One registration per plugin —
-     * a second call replaces the first. Core bb commands always win name
-     * collisions; reserved names are rejected at registration.
+     * Register this plugin's `bb` subcommand. One registration per factory
+     * execution; a repeated call is rejected. Core bb commands always win
+     * name collisions; reserved names are rejected at registration.
      */
     register(registration: PluginCliRegistration): void;
 }
@@ -9503,8 +9497,8 @@ interface PluginAgents {
      * arguments as `unknown`). Tool-set changes apply on the NEXT session
      * start — a tool registered mid-session is not hot-added to running
      * provider sessions. A second registration of the same name within this
-     * plugin replaces the first; a name already registered by another plugin
-     * is rejected and surfaced as this plugin's status detail.
+     * plugin is rejected; a name already registered by another plugin is
+     * rejected and surfaced as this plugin's status detail.
      */
     registerTool<Schema extends z.ZodType>(tool: PluginAgentToolRegistrationBase & {
         parameters: Schema;
@@ -9520,9 +9514,9 @@ interface PluginAgents {
      * provider runs when a thread's runtime command config is resolved
      * (thread.start / turn.submit); return null to contribute nothing for
      * that resolution. Must be synchronous and fast — it sits on the
-     * thread-start path. A repeated call replaces this plugin's previous
-     * provider. Output longer than 4096 characters is truncated; a throwing
-     * provider is logged against the plugin and contributes nothing.
+     * thread-start path. Output longer than 4096 characters is truncated; a
+     * throwing provider is logged against the plugin and contributes nothing.
+     * A repeated registration within one factory execution is rejected.
      * Side-chat threads never receive plugin instructions.
      */
     contributeInstructions(provider: (ctx: {
@@ -9605,6 +9599,10 @@ interface PluginMentionProviderRegistration {
     }>;
 }
 interface PluginUi {
+    /** Block until the app submits or cancels a plugin-owned composer form. */
+    requestInput(request: PluginInteractionRequest, options?: {
+        signal?: AbortSignal;
+    }): Promise<PluginInteractionResult>;
     /**
      * Register a thread action rendered in the shipped app's thread header
      * (design §4.9). Multiple actions per plugin; ids must be unique within
@@ -9620,6 +9618,13 @@ interface PluginUi {
      * unique within the plugin.
      */
     registerMentionProvider(provider: PluginMentionProviderRegistration): void;
+}
+interface PluginEvents {
+    /**
+     * Add a thread lifecycle listener. Multiple listeners for the same event
+     * are additive and run independently in registration order.
+     */
+    on<E extends PluginThreadEventName>(event: E, handler: PluginThreadEventHandler<E>): void;
 }
 interface PluginServerApi {
     /**
@@ -9674,7 +9679,7 @@ interface BbPluginApi {
     readonly log: PluginLogger;
     /** Declarative settings (design §4.2). */
     readonly settings: PluginSettings;
-    /** Namespaced KV + per-plugin SQLite (design §4.3). */
+    /** Namespaced KV + per-plugin database (design §4.3). */
     readonly storage: PluginStorage;
     /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
     readonly http: PluginHttp;
@@ -9686,12 +9691,12 @@ interface BbPluginApi {
     readonly background: PluginBackground;
     /** Agent-facing `bb` CLI subcommand (design §4.4). */
     readonly cli: PluginCli;
-    /** Secure, user-mediated pending interactions rendered by this plugin. */
-    readonly interactions: PluginInteractions;
     /** Per-turn agent context contributions (design §4.4). */
     readonly agents: PluginAgents;
     /** Host-rendered UI contributions (design §4.9). */
     readonly ui: PluginUi;
+    /** Additive plugin lifecycle listeners (design §4.5). */
+    readonly events: PluginEvents;
     /** Plugin-reported status (needs-configuration). */
     readonly status: PluginStatusApi;
     /** Read-only facts about the running server (loopback base URL). */
@@ -9709,16 +9714,10 @@ interface BbPluginApi {
      */
     readonly sdk: BbSdk;
     /**
-     * Observe thread lifecycle events (design §4.5). Load-safe registration;
-     * handlers run async after the transition and never affect it. Errors are
-     * caught, logged, and counted against this plugin's handler stats.
-     */
-    on<E extends PluginThreadEventName>(event: E, handler: PluginThreadEventHandler<E>): void;
-    /**
      * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
      * The sanctioned place to clear timers and close connections.
      */
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginInteractions, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
+export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRpc, PluginRpcClient, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi };
