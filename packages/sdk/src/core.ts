@@ -1,18 +1,26 @@
 import type { BbSdkContext, BbSdkTransport } from "./transport.js";
-import { createEnvironmentsArea } from "./areas/environments.js";
-import { createFilesArea } from "./areas/files.js";
-import { createGuideArea } from "./areas/guide.js";
-import { createHostsArea } from "./areas/hosts.js";
-import { createProjectsArea } from "./areas/projects.js";
-import { createProvidersArea } from "./areas/providers.js";
-import { createPluginsArea } from "./areas/plugins.js";
+import {
+  createEnvironmentsArea,
+  type EnvironmentsArea,
+} from "./areas/environments.js";
+import { createFilesArea, type FilesArea } from "./areas/files.js";
+import { createGuideArea, type GuideArea } from "./areas/guide.js";
+import { createHostsArea, type HostsArea } from "./areas/hosts.js";
+import { createProjectsArea, type ProjectsArea } from "./areas/projects.js";
+import { createProvidersArea, type ProvidersArea } from "./areas/providers.js";
+import { createPluginsArea, type PluginsArea } from "./areas/plugins.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
-import { createStatusArea } from "./areas/status.js";
-import { createThemeArea } from "./areas/theme.js";
-import { createSystemArea } from "./areas/system.js";
-import { createThreadsArea } from "./areas/threads.js";
-import { createThreadFoldersArea } from "./areas/thread-folders.js";
+import { createStatusArea, type StatusArea } from "./areas/status.js";
+import { createThemeArea, type ThemeArea } from "./areas/theme.js";
+import { createSystemArea, type SystemArea } from "./areas/system.js";
+import { createThreadsArea, type ThreadsArea } from "./areas/threads.js";
+import {
+  createThreadFoldersArea,
+  type ThreadFoldersArea,
+} from "./areas/thread-folders.js";
+
+export type * from "./public-types.js";
 
 export interface CreateBbSdkArgs {
   context?: BbSdkContext;
@@ -20,18 +28,18 @@ export interface CreateBbSdkArgs {
 }
 
 export interface BbSdk extends BbRealtime {
-  environments: ReturnType<typeof createEnvironmentsArea>;
-  files: ReturnType<typeof createFilesArea>;
-  guide: ReturnType<typeof createGuideArea>;
-  hosts: ReturnType<typeof createHostsArea>;
-  projects: ReturnType<typeof createProjectsArea>;
-  plugins: ReturnType<typeof createPluginsArea>;
-  providers: ReturnType<typeof createProvidersArea>;
-  status: ReturnType<typeof createStatusArea>;
-  system: ReturnType<typeof createSystemArea>;
-  theme: ReturnType<typeof createThemeArea>;
-  threadFolders: ReturnType<typeof createThreadFoldersArea>;
-  threads: ReturnType<typeof createThreadsArea>;
+  environments: EnvironmentsArea;
+  files: FilesArea;
+  guide: GuideArea;
+  hosts: HostsArea;
+  projects: ProjectsArea;
+  plugins: PluginsArea;
+  providers: ProvidersArea;
+  status: StatusArea;
+  system: SystemArea;
+  theme: ThemeArea;
+  threadFolders: ThreadFoldersArea;
+  threads: ThreadsArea;
 }
 
 export function createBbSdk(args: CreateBbSdkArgs): BbSdk {

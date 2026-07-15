@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   PLUGIN_SDK_APP_DTS,
   PLUGIN_SDK_DTS,
@@ -223,7 +224,6 @@ function tsconfigSource(app: boolean): string {
         // Only @types/node ambiently — stray ancestor node_modules/@types
         // (e.g. bun-types in a home directory) must not leak in.
         types: ["node"],
-        baseUrl: ".",
         paths: {
           "@bb/plugin-sdk": ["./types/bb-plugin-sdk.d.ts"],
           "@bb/plugin-sdk/app": ["./types/bb-plugin-sdk-app.d.ts"],
@@ -232,7 +232,7 @@ function tsconfigSource(app: boolean): string {
           ...(app ? { "@/*": ["./*"] } : {}),
         },
         noEmit: true,
-        skipLibCheck: true,
+        skipLibCheck: false,
       },
       include: app
         ? ["server.ts", "app.tsx", "types", "components", "lib", "hooks"]
@@ -295,7 +295,7 @@ ${componentsSection}
   \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or \`.webp\`
   files.
 - \`engines.bb\` — supported bb app version range.
-- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^0.2.0\`).
+- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^${PLUGIN_SDK_VERSION}\`).
 
 Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
@@ -360,7 +360,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         type: "module",
         engines: {
           bb: enginesRange(bbVersion),
-          bbPluginSdk: "^0.2.0",
+          bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
         },
         bb: {
           name: pluginNameOf(packageName),
@@ -372,8 +372,8 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         // Typecheck-only. The BbPluginApi/SDK types come from the bundled
         // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
         // unpublished workspace package is never needed. These deps supply the
-        // real npm types the bundle references (zod/hono/better-sqlite3, plus
-        // react for the frontend); BB provides them all at runtime, and
+        // real npm types the bundle references (zod/hono/better-sqlite3 and
+        // the root contract's React types); BB provides them all at runtime, and
         // `bb plugin build` never bundles them.
         // Real runtime deps of the vendored starter components — esbuild
         // bundles these into dist/app.js, so they must be installed to
@@ -383,7 +383,9 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         devDependencies: {
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
-          ...(app ? { "@types/react": "^19.0.0" } : {}),
+          // The root SDK declaration also exposes frontend contract types, so
+          // React's declarations are required for headless plugin typechecks.
+          "@types/react": "^19.0.0",
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",

@@ -28,17 +28,29 @@ export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
   outputSchema: z.ZodType<TOutput>;
 }
 
+export type PluginDisableResult = JsonValue;
+export type PluginEnableResult = JsonValue;
+export type PluginGetSettingsResult = JsonValue;
+export type PluginInstallResult = JsonValue;
+export type PluginListResult = JsonValue;
+export type PluginReloadResult = JsonValue;
+export type PluginRemoveResult = JsonValue;
+export type PluginTokenResult = JsonValue;
+export type PluginUpdateSettingsResult = JsonValue;
+
 export interface PluginsArea {
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
-  disable(args: PluginIdArgs): Promise<JsonValue>;
-  enable(args: PluginIdArgs): Promise<JsonValue>;
-  getSettings(args: PluginIdArgs): Promise<JsonValue>;
-  install(args: PluginInstallArgs): Promise<JsonValue>;
-  list(): Promise<JsonValue>;
-  reload(args?: PluginReloadArgs): Promise<JsonValue>;
-  remove(args: PluginIdArgs): Promise<JsonValue>;
-  token(args: PluginTokenArgs): Promise<JsonValue>;
-  updateSettings(args: PluginSettingsUpdateArgs): Promise<JsonValue>;
+  disable(args: PluginIdArgs): Promise<PluginDisableResult>;
+  enable(args: PluginIdArgs): Promise<PluginEnableResult>;
+  getSettings(args: PluginIdArgs): Promise<PluginGetSettingsResult>;
+  install(args: PluginInstallArgs): Promise<PluginInstallResult>;
+  list(): Promise<PluginListResult>;
+  reload(args?: PluginReloadArgs): Promise<PluginReloadResult>;
+  remove(args: PluginIdArgs): Promise<PluginRemoveResult>;
+  token(args: PluginTokenArgs): Promise<PluginTokenResult>;
+  updateSettings(
+    args: PluginSettingsUpdateArgs,
+  ): Promise<PluginUpdateSettingsResult>;
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
