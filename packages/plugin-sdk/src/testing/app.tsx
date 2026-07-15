@@ -2,7 +2,9 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
+  useSyncExternalStore,
   type ComponentType,
   type ReactElement,
   type ReactNode,
@@ -75,9 +77,17 @@ export type NavigateCall =
     };
 
 export interface ComposerLog {
+  /** Latest plain text in this isolated composer scope. */
+  readonly text: string;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
+}
+
+interface TestComposerStore {
+  api: Omit<PluginComposerApi, "text">;
+  getSnapshot(): string;
+  subscribe(listener: () => void): () => void;
 }
 
 interface SlotEnv {
@@ -88,7 +98,7 @@ interface SlotEnv {
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
-  composer: PluginComposerApi;
+  composer: TestComposerStore;
   composerLog: ComposerLog;
 }
 
@@ -163,7 +173,13 @@ const testPluginSdkApp = {
     return useSlotEnv("useBbNavigate").navigate;
   },
   useComposer(): PluginComposerApi {
-    return useSlotEnv("useComposer").composer;
+    const composer = useSlotEnv("useComposer").composer;
+    const text = useSyncExternalStore(
+      composer.subscribe,
+      composer.getSnapshot,
+      composer.getSnapshot,
+    );
+    return useMemo(() => ({ ...composer.api, text }), [composer, text]);
   },
 } satisfies PluginSdkApp;
 
@@ -483,6 +499,8 @@ export interface RenderSlotOptions {
   settings?: Record<string, string | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
+  /** Initial plain text for this render's isolated `useComposer()` scope. */
+  composer?: { text?: string };
 }
 
 export interface RenderedSlot extends RenderResult {
@@ -551,24 +569,66 @@ export function renderSlot<Props extends object>(
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
 
+  let composerText = options.composer?.text ?? "";
+  const composerListeners = new Set<() => void>();
+  const commitComposerText = (next: string) => {
+    if (next === composerText) return;
+    composerText = next;
+    for (const listener of composerListeners) listener();
+  };
   const composerLog: ComposerLog = {
+    get text() {
+      return composerText;
+    },
     quotes: [],
     mentions: [],
     focusCount: 0,
   };
-  const composer: PluginComposerApi = {
-    scope:
-      threadId !== null
-        ? { kind: "thread", threadId }
-        : { kind: "new-thread", projectId },
-    addQuote(text) {
-      composerLog.quotes.push(text);
+  const composer: TestComposerStore = {
+    getSnapshot: () => composerText,
+    subscribe(listener) {
+      composerListeners.add(listener);
+      return () => composerListeners.delete(listener);
     },
-    insertMention(mention) {
-      composerLog.mentions.push(mention);
-    },
-    focus() {
-      composerLog.focusCount += 1;
+    api: {
+      scope:
+        threadId !== null
+          ? { kind: "thread", threadId }
+          : { kind: "new-thread", projectId },
+      setText(next) {
+        commitComposerText(next);
+      },
+      updateText(updater) {
+        commitComposerText(updater(composerText));
+      },
+      clear() {
+        commitComposerText("");
+      },
+      addQuote(text) {
+        const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
+        if (trimmed !== "") {
+          const block = trimmed
+            .split("\n")
+            .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+            .join("\n");
+          commitComposerText(
+            composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
+          );
+          composerLog.quotes.push(text);
+        }
+        composerLog.focusCount += 1;
+      },
+      insertMention(mention) {
+        const label = mention.label.trim() || mention.id;
+        const separator =
+          composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
+        commitComposerText(`${composerText}${separator}${label} `);
+        composerLog.mentions.push(mention);
+        composerLog.focusCount += 1;
+      },
+      focus() {
+        composerLog.focusCount += 1;
+      },
     },
   };
 

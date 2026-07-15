@@ -212,8 +212,10 @@ host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate, and useComposer (quote selections / insert mention pills
-into the chat composer draft). Components are vendored shadcn source the plugin owns (the
+useBbNavigate, and useComposer (read/replace/update/clear scoped composer
+text, quote selections, insert mention pills, and focus the composer;
+plain-text edits preserve attachments and reconcile only inline mentions
+overlapped by the edit). Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the

@@ -384,6 +384,21 @@ export interface PluginComposerMention {
  */
 export interface PluginComposerApi {
   scope: PluginComposerScope;
+  /** Current plain text for this composer scope. */
+  readonly text: string;
+  /**
+   * Replace the draft's plain text. Attachments are preserved. Inline mentions
+   * outside the changed range are preserved and rebased; mentions overlapped
+   * by the replacement are removed because their text representation changed.
+   */
+  setText(next: string): void;
+  /**
+   * Replace the draft's plain text from the latest committed value. Uses the
+   * same structured-state reconciliation as `setText`.
+   */
+  updateText(updater: (current: string) => string): void;
+  /** Clear plain text without clearing independently attached files. */
+  clear(): void;
   /**
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
