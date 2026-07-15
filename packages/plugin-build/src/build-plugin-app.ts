@@ -17,6 +17,7 @@ import {
 } from "./generated/plugin-theme.generated.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { validatePluginBuildManifest } from "./plugin-manifest.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
@@ -261,9 +262,13 @@ async function readDependencyTailwindSources(
 async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   const packageJsonPath = join(rootDir, "package.json");
   const pkg = await readPackageJson(packageJsonPath);
-  const bb = isRecord(pkg.bb) ? pkg.bb : undefined;
-  const app = bb?.app;
-  if (typeof app !== "string" || app.length === 0) {
+  const manifest = await validatePluginBuildManifest(
+    pkg,
+    rootDir,
+    packageJsonPath,
+  );
+  const app = manifest.bb.app;
+  if (app === undefined) {
     throw new Error(
       `no frontend entry: ${packageJsonPath} has no "bb": { "app": "./app.tsx" } field (only plugins with an app entry can be built)`,
     );
@@ -280,17 +285,11 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   } catch {
     throw new Error(`manifest bb.app points at a missing file: ${app}`);
   }
-  if (typeof pkg.name !== "string" || pkg.name.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty name at ${packageJsonPath}`,
-    );
-  }
-  if (typeof pkg.version !== "string" || pkg.version.length === 0) {
-    throw new Error(
-      `plugin package.json has no non-empty version at ${packageJsonPath}`,
-    );
-  }
-  return { appEntry, packageName: pkg.name, pluginVersion: pkg.version };
+  return {
+    appEntry,
+    packageName: manifest.name,
+    pluginVersion: manifest.version,
+  };
 }
 
 /**

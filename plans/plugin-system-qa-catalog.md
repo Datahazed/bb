@@ -231,7 +231,9 @@ tool registered or reloaded mid-session is not hot-added).
 
 - [ ] **Install a tool plugin**: `mkdir -p /tmp/bb-plugin-fruit`, write
       `package.json` with `{ "name": "bb-plugin-fruit", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "bb": { "name": "Fruit", "description": "Featured fruit tool.",
+      "branding": { "icon": "Apple" }, "server": "./server.ts" } }` and
+      `server.ts` with:
       `export default (bb: any) => { bb.agents.registerTool({ name:
       "fruit_lookup", description: "Look up today's featured fruit.",
       instructions: "When asked about the featured fruit, call fruit_lookup
@@ -285,7 +287,9 @@ small-ux-pack example instead of the scratch plugin below.
 
 - [ ] **Install an actions plugin**: `mkdir -p /tmp/bb-plugin-acts`, write
       `package.json` with `{ "name": "bb-plugin-acts", "version": "0.1.0",
-      "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "bb": { "name": "Actions", "description": "Thread action examples.",
+      "branding": { "icon": "Zap" }, "server": "./server.ts" } }` and
+      `server.ts` with:
       `export default (bb: any) => {
         bb.ui.registerThreadAction({ id: "ping", title: "Ping",
           icon: "Zap",
@@ -339,7 +343,9 @@ Prereq: `plugins` experiment on; dev server via `scripts/bb-dev-app` with
 
 - [ ] **Install a mention plugin**: `mkdir -p /tmp/bb-plugin-mentions`, write
       `package.json` with `{ "name": "bb-plugin-mentions", "version":
-      "0.1.0", "bb": { "server": "./server.ts" } }` and `server.ts` with:
+      "0.1.0", "bb": { "name": "Mentions", "description": "Mention
+      provider examples.", "branding": { "icon": "AtSign" }, "server":
+      "./server.ts" } }` and `server.ts` with:
       `export default (bb: any) => {
         bb.ui.registerMentionProvider({ id: "issues",
           label: "Acme issues",
@@ -469,11 +475,12 @@ No server required for any of these (`bb plugin new` / `bb plugin build` are
 local commands).
 
 - [x] **Scaffold with a frontend entry**: `pnpm bb:dev plugin new hello --app`
-      → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has
-      `"bb": { "server": "./server.ts", "app": "./app.tsx" }`. Without
-      `--app`, no `app.tsx` and no `bb.app` field (headless scaffold
-      unchanged). (Verified 2026-07-02: github hero scaffolded with --app on
-      a packaged instance, incl. the new bundled `types/` dir.)
+      → `bb-plugin-hello/` contains `app.tsx`, and its `package.json` has the
+      required `bb.name`, `bb.description`, and `bb.branding` identity plus
+      `"server": "./server.ts"` and `"app": "./app.tsx"`. Without `--app`,
+      no `app.tsx` and no `bb.app` field (headless scaffold unchanged).
+      (Verified 2026-07-02: github hero scaffolded with --app on a packaged
+      instance, incl. the new bundled `types/` dir.)
 - [ ] **Build**: `pnpm bb:dev plugin build bb-plugin-hello` prints the three
       output paths. Check the outputs:
       - `dist/app.js` is a single ESM file with
@@ -804,10 +811,10 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
       `logoUrl` (hash-busted, null when no logo or plugin not running);
       `GET /api/v1/plugins/<id>/assets/logo?h=…` serves the file with the
       right image content-type, immutable when the hash matches, `no-store`
-      otherwise, 404 when absent or the plugin is disabled. `logo.svg`
-      beats `logo.png` beats `logo.webp`; manifest `bb.logo` relocates it
-      (svg/png/webp only — anything else fails install/load with a clear
-      error); `bb plugin reload` picks up a changed logo (new hash).
+      otherwise, 404 when absent or the plugin is disabled. The manifest's
+      explicit `bb.branding.logo.light` path accepts svg/png/webp only;
+      missing, escaping, and unsupported assets fail install/load clearly.
+      `bb plugin reload` picks up a changed logo (new hash).
 - [ ] **Plugin CSS can no longer break host layout** (regression fix): with
       the linear plugin loaded, a host `flex-col sm:flex-row` element (e.g.
       the Settings rows for Theme / Markdown formatting) still computes
@@ -820,12 +827,12 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 ### Theme-aware logos + PageBody
 
 Dark-logo variant + the PageBody UI-kit export. Automated coverage:
-`plugin-logo.test.ts` (logo-dark detection/override/escape/inventory/
+`plugin-logo.test.ts` (explicit dark path/escape/inventory/
 reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
 `plugin-sdk-app-impl.test.tsx` (PageBody render + export sync).
 
-- [ ] **Dark logo variant**: `logo-dark.(svg|png|webp)` at the plugin root
-      (or manifest `bb.logoDark`, same svg>png>webp precedence and rules)
+- [ ] **Dark logo variant**: manifest `bb.branding.logo.dark` (with required
+      `bb.branding.logo.light`, svg/png/webp only)
       is served at `GET /plugins/<id>/assets/logo-dark` and rides the
       inventory as `logoDarkUrl`. With the app in dark mode every logo
       surface (sidebar, panel title bar, composer menus, thread actions,

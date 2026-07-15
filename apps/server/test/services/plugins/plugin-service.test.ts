@@ -30,7 +30,12 @@ async function writePlugin(
       name: options.name,
       version: options.version ?? "0.1.0",
       ...(options.engines ? { engines: { bb: options.engines } } : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Service fixture",
+        description: "Plugin service fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);

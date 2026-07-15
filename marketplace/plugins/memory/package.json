@@ -28,8 +28,11 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
-    "displayName": "Memory",
-    "icon": "Brain",
+    "name": "Memory",
+    "description": "Provider-independent durable memory for agents. We recommend disabling provider-native memory when using this plugin.",
+    "branding": {
+      "icon": "Brain"
+    },
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": [

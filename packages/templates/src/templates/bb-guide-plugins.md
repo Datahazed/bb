@@ -237,7 +237,9 @@ Authoring a plugin
 
 The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` (add --app
 for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
-watches and reloads on every save. The manifest is package.json: `bb.server`
+watches and reloads on every save. The manifest is package.json: required
+`bb.name` and `bb.description` human identity, required `bb.branding` with at
+least `icon` or `logo.light`, `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
 (frontend entry), optional `bb.skills` (skills directories auto-imported
 into agent threads; default `skills/`), `engines.bb` (supported bb range),
@@ -251,17 +253,14 @@ file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
 list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
 removing the owning plugin makes bb fall back to the default palette.
 
-Logos: drop a logo.svg (or logo.png / logo.webp) in the plugin root and bb
-shows it wherever the plugin's contributions appear — the sidebar entry,
-panel title bar, composer command and mention menus, thread action
-buttons, and Settings → Plugins. Optional `bb.logo` in the manifest
-relocates the file (svg/png/webp only). An optional dark-theme variant —
-logo-dark.svg/png/webp at the root, or `bb.logoDark` — is preferred while
-the app is in dark mode. Without a logo, manifest-level `bb.icon` is the
-canonical app icon on every plugin surface; contribution icon hints are the
-fallback when it is omitted. Unknown icon names use the generic fallback.
-Reload the plugin to pick up logo or icon
-changes.
+Branding is explicit: `bb.branding.logo.light` points to the plugin's rich
+identity artwork and optional `bb.branding.logo.dark` is preferred in dark
+mode. Paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
+files are not auto-detected, and a dark logo requires a light logo.
+`bb.branding.icon` is the compact host icon-name fallback. At least the icon or
+light logo is required; contribution icon hints remain distinct local
+fallbacks. BB rejects nulls, empty strings, missing/escaping assets, and
+unsupported extensions. Reload the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 

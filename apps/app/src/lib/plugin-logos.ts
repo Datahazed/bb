@@ -12,7 +12,7 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 
 /** One plugin's logo asset URLs; either is null when that variant is absent. */
 export interface PluginLogoUrls {
-  /** Canonical manifest icon used when the plugin has no image logo. */
+  /** Canonical `bb.branding.icon` used when the plugin has no image logo. */
   icon: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;

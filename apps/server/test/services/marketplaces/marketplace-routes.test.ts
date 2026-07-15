@@ -84,7 +84,12 @@ async function writePlugin(
       name,
       version: "1.0.0",
       engines: { bb: ">=0.0.0", bbPluginSdk: ">=0.2.0" },
-      bb: { server: "./server.js" },
+      bb: {
+        name: "Marketplace fixture",
+        description: "Marketplace plugin fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.js",
+      },
     }),
   );
   await writeFile(
@@ -199,8 +204,8 @@ describe("marketplace HTTP routes", () => {
       const pluginRoot = officialPluginRoot(repositoryRoot, entry.id);
       const manifest = await readPluginManifest(pluginRoot);
       expect(manifest.id).toBe(entry.id);
-      expect(manifest.displayName).toBe(entry.displayName);
-      expect(manifest.icon).toBe(entry.icon);
+      expect(manifest.name).toBe(entry.displayName);
+      expect(manifest.branding.icon).toBe(entry.icon);
       await expect(stat(join(pluginRoot, "dist"))).rejects.toThrow();
     }
 
@@ -344,7 +349,13 @@ describe("marketplace HTTP routes", () => {
         name: "bb-plugin-marketplace-frontend",
         version: "1.0.0",
         engines: { bb: ">=0.0.0", bbPluginSdk: ">=0.2.0" },
-        bb: { server: "./server.js", app: "./app.tsx" },
+        bb: {
+          name: "Marketplace frontend",
+          description: "Marketplace frontend plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.js",
+          app: "./app.tsx",
+        },
       }),
     );
     await writeFile(

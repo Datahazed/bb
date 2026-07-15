@@ -13,8 +13,8 @@ export function pluginIconName(icon: string | null): IconName {
 /**
  * The leading icon for any plugin-contributed item (sidebar rows, thread
  * actions, command/mention menu rows, panel title bars): the plugin's logo
- * image when it ships one (logo.(svg|png|webp) / manifest `bb.logo`; in dark
- * mode the `logo-dark.*` / `bb.logoDark` variant is preferred when present),
+ * `bb.branding.logo.light` image when declared (the optional
+ * `bb.branding.logo.dark` variant is preferred in dark mode),
  * otherwise the contribution's named-icon hint with the generic-bolt
  * fallback. Size defaults to the standard icon box; pass className to match
  * the surrounding surface (e.g. `size-3.5` in menus).

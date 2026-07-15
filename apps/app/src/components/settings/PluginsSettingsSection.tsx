@@ -508,7 +508,7 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isBuiltin = plugin.provenance === "builtin";
   const isPathSource = plugin.sourceDisplay.toLowerCase().startsWith("path");
-  const name = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const remove = useMutation({
     mutationFn: () => removePlugin(fetch, plugin.id),
     onSuccess: () => {
@@ -594,7 +594,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const showDeclarativeSettingsCard =
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const displayName = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   // A running plugin whose only surface is a settingsSection lets that
@@ -618,7 +618,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
               <h2 className="text-sm font-semibold text-foreground">
-                {displayName}
+                {name}
               </h2>
               {/* The version + status pills read as diagnostics; a running,
                   configurable plugin doesn't need them on its settings page. */}

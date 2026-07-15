@@ -49,11 +49,11 @@ export interface PluginListItem {
   enabled: boolean;
   status: string;
   statusDetail: string | null;
-  /** Manifest description (package.json); null when absent or not loaded. */
+  /** `bb.description`; null only when the installed manifest is unreadable. */
   description: string | null;
-  /** `bb.displayName` — human nav/header label; null → fall back to `id`. */
-  displayName: string | null;
-  /** `bb.icon` — host icon-name hint; null → use the generic plugin icon. */
+  /** `bb.name` — human nav/header label; null only for unreadable manifests. */
+  name: string | null;
+  /** `bb.branding.icon` — host icon-name hint; null when omitted. */
   icon: string | null;
   /** Hash-busted logo asset URL; null when the plugin ships no logo. */
   logoUrl: string | null;
@@ -123,7 +123,7 @@ const pluginListItemSchema = z.object({
   status: z.string(),
   statusDetail: z.string().nullable(),
   description: z.string().nullish(),
-  displayName: z.string().nullish(),
+  name: z.string().nullish(),
   icon: z.string().nullish(),
   logoUrl: z.string().nullish(),
   logoDarkUrl: z.string().nullish(),
@@ -147,7 +147,7 @@ function parsePluginListItem(value: unknown): PluginListItem | null {
     status: item.status,
     statusDetail: item.statusDetail,
     description: item.description ?? null,
-    displayName: item.displayName ?? null,
+    name: item.name ?? null,
     icon: item.icon ?? null,
     logoUrl: item.logoUrl ?? null,
     logoDarkUrl: item.logoDarkUrl ?? null,

@@ -34,6 +34,13 @@ function pluginIdOf(packageName: string): string {
   return packageName.replace(/^bb-plugin-/, "");
 }
 
+function pluginNameOf(packageName: string): string {
+  return pluginIdOf(packageName)
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function enginesRange(bbVersion: string): string {
   const match = /^(\d+)\.(\d+)/.exec(bbVersion);
   return match ? `>=${match[1]}.${match[2]}` : ">=0.0";
@@ -283,6 +290,10 @@ ${componentsSection}
 \`package.json\` is the plugin manifest. Notable fields:
 
 - \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
+- \`bb.name\` and \`bb.description\` — required human-facing identity.
+- \`bb.branding\` — required; declare \`icon\` or \`logo.light\` (and optional
+  \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or \`.webp\`
+  files.
 - \`engines.bb\` — supported bb app version range.
 - \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^0.2.0\`).
 
@@ -351,9 +362,13 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           bb: enginesRange(bbVersion),
           bbPluginSdk: "^0.2.0",
         },
-        bb: app
-          ? { server: "./server.ts", app: "./app.tsx" }
-          : { server: "./server.ts" },
+        bb: {
+          name: pluginNameOf(packageName),
+          description: "A BB plugin.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          ...(app ? { app: "./app.tsx" } : {}),
+        },
         // Typecheck-only. The BbPluginApi/SDK types come from the bundled
         // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
         // unpublished workspace package is never needed. These deps supply the

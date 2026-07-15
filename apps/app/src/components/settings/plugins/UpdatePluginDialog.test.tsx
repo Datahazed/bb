@@ -18,7 +18,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: "Linear",
+    name: "Linear",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,

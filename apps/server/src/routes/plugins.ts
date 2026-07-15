@@ -377,8 +377,7 @@ export function registerPluginRoutes(
       return context.json(DISABLED, 422);
     }
     const file = context.req.param("file");
-    // The plugin's logo (logo.(svg|png|webp) / manifest bb.logo) and its
-    // optional dark-theme variant (logo-dark.* / bb.logoDark): same
+    // The plugin's explicit bb.branding.logo light/dark assets: same
     // hash-busting cache policy and live-runtime gating as the bundle assets.
     if (file === "logo" || file === "logo-dark") {
       const logo = plugins.getLogoAsset(context.req.param("id"), file);

@@ -36,7 +36,12 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "SDK fixture",
+        description: "Plugin SDK fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);

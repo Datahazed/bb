@@ -106,7 +106,7 @@ export function InstalledPluginRow({
     <div
       role="link"
       tabIndex={0}
-      aria-label={`${plugin.displayName ?? plugin.id} plugin settings`}
+      aria-label={`${plugin.name ?? plugin.id} plugin settings`}
       className="group flex cursor-pointer items-center gap-3 py-3 focus-visible:outline-none"
       data-testid={`plugin-row-${plugin.id}`}
       onClick={openDetail}
@@ -115,7 +115,7 @@ export function InstalledPluginRow({
       <PluginLogo plugin={plugin} className="size-6 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
-          {plugin.displayName ?? plugin.id}
+          {plugin.name ?? plugin.id}
         </p>
         {plugin.description !== null && plugin.description.length > 0 ? (
           <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">

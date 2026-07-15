@@ -64,7 +64,7 @@ function UpdatePluginDialogContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const displayName = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const state = plugin.updateState;
   const [rolledBack, setRolledBack] = useState<PluginUpdateResult | null>(null);
 
@@ -77,17 +77,17 @@ function UpdatePluginDialogContent({
         return;
       }
       if (result.applied) {
-        appToast.success(`${displayName} updated`, {
+        appToast.success(`${name} updated`, {
           description:
             result.to !== null ? `Now running ${result.to.display}.` : undefined,
         });
       } else {
-        appToast.message(`${displayName} is already up to date`);
+        appToast.message(`${name} is already up to date`);
       }
       onOpenChange(false);
     },
     onError: (error) => {
-      appToast.error(`Updating ${displayName} failed`, {
+      appToast.error(`Updating ${name} failed`, {
         description: error instanceof Error ? error.message : String(error),
       });
     },
@@ -138,7 +138,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {displayName} to {candidate}?
+            Update {name} to {candidate}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -191,7 +191,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {displayName} to {blocked}?
+            Update {name} to {blocked}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -241,7 +241,7 @@ function UpdatePluginDialogContent({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{displayName} is up to date</DialogTitle>
+        <DialogTitle>{name} is up to date</DialogTitle>
         <DialogDescription>{fromLine}</DialogDescription>
       </DialogHeader>
       <DialogFooter>

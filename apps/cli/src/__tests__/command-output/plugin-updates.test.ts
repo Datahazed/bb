@@ -23,7 +23,7 @@ const pluginList = (id: string, source: string) => ({
       updateState: {},
       enabled: true,
       description: null,
-      displayName: null,
+      name: null,
       icon: null,
       status: "active",
       statusDetail: null,

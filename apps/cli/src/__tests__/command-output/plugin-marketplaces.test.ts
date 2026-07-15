@@ -40,7 +40,7 @@ const installedPlugin = {
   updateState: {},
   enabled: true,
   description: "Linear issue tools",
-  displayName: "Linear",
+  name: "Linear",
   icon: null,
   status: "active",
   statusDetail: null,

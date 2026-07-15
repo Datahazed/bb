@@ -48,7 +48,7 @@ const pluginEntrySchema = z.object({
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
   description: z.string().nullable(),
-  displayName: z.string().nullable(),
+  name: z.string().nullable(),
   icon: z.string().nullable(),
   status: z.string(),
   statusDetail: z.string().nullable(),

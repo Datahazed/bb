@@ -53,7 +53,12 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
       JSON.stringify({
         name: "bb-plugin-review-fixes",
         version: "0.1.0",
-        bb: { server: "./server.ts" },
+        bb: {
+          name: "Review fixes fixture",
+          description: "Plugin review regression fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
       }),
     );
     await writeFile(join(rootDir, "server.ts"), FIXTURE_SOURCE);

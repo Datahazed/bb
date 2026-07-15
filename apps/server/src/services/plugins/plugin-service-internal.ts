@@ -82,14 +82,14 @@ export interface PluginListEntry {
     lastFailure?: { version: string; at: number; detail: string };
   };
   enabled: boolean;
-  /** Manifest description (package.json), null when not currently loaded. */
+  /** `bb.description`; null only when the installed manifest is unreadable. */
   description: string | null;
   /**
-   * `bb.displayName` — human nav/header label; null when not declared or the
-   * plugin is not currently loaded (falls back to the id in the UI).
+   * `bb.name` — human nav/header label; null only when the installed manifest
+   * is unreadable (falls back to the id in the UI).
    */
-  displayName: string | null;
-  /** `bb.icon` — host icon-name hint; null when not declared or unloaded. */
+  name: string | null;
+  /** `bb.branding.icon` — host icon-name hint; null when omitted. */
   icon: string | null;
   status: PluginRuntimeStatus;
   statusDetail: string | null;
@@ -114,17 +114,14 @@ export interface PluginListEntry {
    */
   app: PluginAppState;
   /**
-   * Hash-busted URL of the plugin's logo asset (logo.(svg|png|webp) at the
-   * plugin root, or the manifest's `bb.logo`). Null when the plugin ships
-   * no logo — or is not currently loaded (the asset route only serves live
-   * plugins, so an unservable URL never rides the inventory).
+   * Hash-busted URL of `bb.branding.logo.light`. Null when branding uses only
+   * an icon.
    */
   logoUrl: string | null;
   /**
    * Hash-busted URL of the optional dark-theme logo variant
-   * (logo-dark.(svg|png|webp) at the plugin root, or the manifest's
-   * `bb.logoDark`). Same gating as logoUrl; the frontend prefers it while
-   * the app is in dark mode.
+   * (`bb.branding.logo.dark`). The frontend prefers it while the app is in
+   * dark mode and falls back to the light logo.
    */
   logoDarkUrl: string | null;
 }

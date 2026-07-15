@@ -170,7 +170,7 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     status,
     statusDetail: null,
     description: null,
-    displayName: null,
+    name: null,
     icon: null,
     logoUrl,
     logoDarkUrl: null,

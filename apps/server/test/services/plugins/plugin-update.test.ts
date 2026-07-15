@@ -55,7 +55,12 @@ async function commitPlugin(
       name: "bb-plugin-updater",
       version,
       ...(engines ? { engines } : {}),
-      bb: { server: "./server.ts" },
+      bb: {
+        name: "Updater fixture",
+        description: "Plugin update fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
     }),
   );
   await writeFile(
