@@ -224,22 +224,26 @@ For review or fix pipelines, get the environment ID from
 
 ## Long-Running Commands
 
-- Use `bb thread terminal ...` for long-running commands the user may need to
-  inspect or stop later: dev servers, watch tasks, REPLs, database consoles, and
-  similar processes.
-- Prefer a thread terminal over a one-off foreground command for dev servers.
-  The terminal is a real PTY scoped to the thread's environment and appears in
-  the bb UI as a terminal tab.
+- Use `bb terminal ...` for long-running commands the user may need to inspect
+  or stop later: dev servers, watch tasks, REPLs, database consoles, and similar
+  processes. The terminal is a real persistent PTY shown in the bb UI.
+- `list` and `create` require exactly one explicit scope: `--thread <id>`,
+  `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
+  Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
+  explicit host ID; terminal commands never silently fall back to primary.
 - Start a server with
-  `bb thread terminal start <thread-id> --title "pnpm dev" --command "pnpm dev"`.
-- Use `bb thread terminal wait <terminal-id> <thread-id> --contains "Local:" --timeout 120`
-  to wait for readiness from new output. Pass `--from-start` only when matching
-  existing scrollback is intentional.
-- Use `bb thread terminal output <terminal-id> <thread-id> --json` to read
-  bounded output, then continue with `--since-seq <nextSeq>` when polling.
-- Use `bb thread terminal send <terminal-id> <thread-id> --text "..." --enter`
-  for interactive input, and `bb thread terminal stop <terminal-id> <thread-id>`
-  when the process is no longer needed.
+  `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- All existing-session operations need only the terminal ID. Use
+  `bb terminal wait <terminal-id> --contains "Local:" --timeout 120` to wait
+  for readiness from new output. Pass `--from-start` only when matching existing
+  scrollback is intentional.
+- Use `bb terminal output <terminal-id> --json` to read bounded output, then
+  continue with `--since-seq <nextSeq>` when polling. Use
+  `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
+  `bb terminal rename <terminal-id> <title>` to rename, and
+  `bb terminal close <terminal-id>` when the process is no longer needed.
+- `bb terminal restart <terminal-id>` replaces the session with a shell in the
+  same scope, size, and title. It does not replay the original launch command.
 
 ## Failures And Interruptions
 

@@ -2962,8 +2962,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2994,8 +2994,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -6028,14 +6028,6 @@ declare const createTerminalRequestSchema: z$1.ZodObject<{
     title: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strict>;
 type CreateTerminalRequest = z$1.infer<typeof createTerminalRequestSchema>;
-declare const closeTerminalRequestSchema: z$1.ZodObject<{
-    mode: z$1.ZodEnum<{
-        force: "force";
-        "if-clean": "if-clean";
-    }>;
-    reason: z$1.ZodLiteral<"user">;
-}, z$1.core.$strict>;
-type CloseTerminalRequest = z$1.infer<typeof closeTerminalRequestSchema>;
 declare const updateTerminalRequestSchema: z$1.ZodObject<{
     title: z$1.ZodString;
 }, z$1.core.$strict>;
@@ -8998,6 +8990,97 @@ interface SystemArea {
     version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
 
+interface TerminalThreadScope {
+    cwd?: never;
+    environmentId?: never;
+    hostId?: never;
+    kind: "thread";
+    threadId: string;
+}
+interface TerminalEnvironmentScope {
+    environmentId: string;
+    cwd?: never;
+    hostId?: never;
+    kind: "environment";
+    threadId?: never;
+}
+interface TerminalHostPathListScope {
+    /** Optional exact initial working-directory filter on the selected host. */
+    cwd?: string;
+    environmentId?: never;
+    hostId: string;
+    kind: "host_path";
+    threadId?: never;
+}
+interface TerminalHostPathCreateScope {
+    /** Null starts in the selected host's home directory. */
+    cwd: string | null;
+    environmentId?: never;
+    hostId: string;
+    kind: "host_path";
+    threadId?: never;
+}
+type TerminalListScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathListScope;
+type TerminalCreateScope = TerminalThreadScope | TerminalEnvironmentScope | TerminalHostPathCreateScope;
+interface TerminalListArgs {
+    scope: TerminalListScope;
+}
+interface TerminalCreateArgs {
+    cols: number;
+    rows: number;
+    scope: TerminalCreateScope;
+    start?: CreateTerminalRequest["start"];
+    title?: string;
+}
+interface TerminalTargetArgs {
+    terminalId: string;
+}
+type TerminalGetArgs = TerminalTargetArgs;
+interface TerminalRenameArgs extends TerminalTargetArgs {
+    title: UpdateTerminalRequest["title"];
+}
+interface TerminalCloseArgs extends TerminalTargetArgs {
+    mode: "force" | "if-clean";
+}
+interface TerminalInputArgs extends TerminalTargetArgs {
+    dataBase64: TerminalInputRequest["dataBase64"];
+}
+interface TerminalResizeArgs extends TerminalTargetArgs {
+    cols: TerminalResizeRequest["cols"];
+    rows: TerminalResizeRequest["rows"];
+}
+interface TerminalOutputArgs extends TerminalTargetArgs {
+    limitChunks?: TerminalOutputQuery["limitChunks"];
+    sinceSeq?: TerminalOutputQuery["sinceSeq"];
+    tailBytes?: TerminalOutputQuery["tailBytes"];
+}
+type TerminalRestartArgs = TerminalTargetArgs;
+type TerminalListResult = TerminalListResponse;
+type TerminalCreateResult = TerminalSession;
+type TerminalGetResult = TerminalSession;
+type TerminalRenameResult = TerminalSession;
+type TerminalCloseResult = TerminalSession;
+type TerminalInputResult = TerminalSession;
+type TerminalResizeResult = TerminalSession;
+type TerminalOutputResult = TerminalOutputResponse;
+type TerminalRestartResult = TerminalSession;
+interface TerminalsArea {
+    close(args: TerminalCloseArgs): Promise<TerminalCloseResult>;
+    create(args: TerminalCreateArgs): Promise<TerminalCreateResult>;
+    get(args: TerminalGetArgs): Promise<TerminalGetResult>;
+    input(args: TerminalInputArgs): Promise<TerminalInputResult>;
+    list(args: TerminalListArgs): Promise<TerminalListResult>;
+    output(args: TerminalOutputArgs): Promise<TerminalOutputResult>;
+    rename(args: TerminalRenameArgs): Promise<TerminalRenameResult>;
+    /**
+     * Replace a terminal with a shell at the same scope, size, and title.
+     * The original command is not replayed because terminal sessions do not
+     * persist launch commands. The replacement has a new terminal ID.
+     */
+    restart(args: TerminalRestartArgs): Promise<TerminalRestartResult>;
+    resize(args: TerminalResizeArgs): Promise<TerminalResizeResult>;
+}
+
 interface ThreadListArgs {
     archived?: boolean;
     excludeSideChats?: boolean;
@@ -9044,13 +9127,6 @@ type ThreadSendResult = {
 type ThreadStopResult = {
     ok: true;
 };
-type ThreadTerminalCloseResult = TerminalSession;
-type ThreadTerminalCreateResult = TerminalSession;
-type ThreadTerminalInputResult = TerminalSession;
-type ThreadTerminalListResult = TerminalListResponse;
-type ThreadTerminalOutputResult = TerminalOutputResponse;
-type ThreadTerminalResizeResult = TerminalSession;
-type ThreadTerminalUpdateResult = TerminalSession;
 type ThreadUnarchiveResult = {
     ok: true;
 };
@@ -9156,26 +9232,6 @@ interface ThreadTimelineArgs extends ThreadTimelineQuery {
 interface ThreadOutputArgs {
     threadId: string;
 }
-interface ThreadTerminalListArgs {
-    threadId: string;
-}
-interface ThreadTerminalCreateArgs extends Omit<CreateTerminalRequest, "target"> {
-    threadId: string;
-}
-interface ThreadTerminalTargetArgs {
-    terminalId: string;
-    threadId: string;
-}
-interface ThreadTerminalUpdateArgs extends ThreadTerminalTargetArgs, UpdateTerminalRequest {
-}
-interface ThreadTerminalCloseArgs extends ThreadTerminalTargetArgs, CloseTerminalRequest {
-}
-interface ThreadTerminalInputArgs extends ThreadTerminalTargetArgs, TerminalInputRequest {
-}
-interface ThreadTerminalResizeArgs extends ThreadTerminalTargetArgs, TerminalResizeRequest {
-}
-interface ThreadTerminalOutputArgs extends ThreadTerminalTargetArgs, TerminalOutputQuery {
-}
 interface ThreadInteractionListArgs {
     threadId: string;
 }
@@ -9228,15 +9284,6 @@ interface ThreadEventsArea {
     list(args: ThreadEventsListArgs): Promise<ThreadEventsListResult>;
     wait(args: ThreadEventWaitArgs): Promise<ThreadEventWaitResult>;
 }
-interface ThreadTerminalsArea {
-    close(args: ThreadTerminalCloseArgs): Promise<ThreadTerminalCloseResult>;
-    create(args: ThreadTerminalCreateArgs): Promise<ThreadTerminalCreateResult>;
-    input(args: ThreadTerminalInputArgs): Promise<ThreadTerminalInputResult>;
-    list(args: ThreadTerminalListArgs): Promise<ThreadTerminalListResult>;
-    output(args: ThreadTerminalOutputArgs): Promise<ThreadTerminalOutputResult>;
-    resize(args: ThreadTerminalResizeArgs): Promise<ThreadTerminalResizeResult>;
-    update(args: ThreadTerminalUpdateArgs): Promise<ThreadTerminalUpdateResult>;
-}
 interface ThreadQueuedMessagesArea {
     create(args: ThreadQueuedMessageCreateArgs): Promise<ThreadQueuedMessageCreateResult>;
     delete(args: ThreadQueuedMessageTargetArgs): Promise<ThreadQueuedMessageDeleteResult>;
@@ -9272,7 +9319,6 @@ interface ThreadsArea {
     send(args: ThreadSendArgs): Promise<ThreadSendResult>;
     spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
     stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-    terminals: ThreadTerminalsArea;
     tabs: ThreadTabsArea;
     timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
     timelineTurnSummaryDetails(args: ThreadTimelineTurnSummaryDetailsArgs): Promise<ThreadTimelineTurnSummaryDetailsResult>;
@@ -9305,6 +9351,7 @@ interface BbSdk extends BbRealtime {
     providers: ProvidersArea;
     status: StatusArea;
     system: SystemArea;
+    terminals: TerminalsArea;
     theme: ThemeArea;
     threadFolders: ThreadFoldersArea;
     threads: ThreadsArea;

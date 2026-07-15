@@ -293,6 +293,15 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+`bb.sdk.terminals` is the canonical terminal area. `list` and `create` take an
+explicit discriminated `scope`: `{ kind: "thread", threadId }`,
+`{ kind: "environment", environmentId }`, or
+`{ kind: "host_path", hostId, cwd }`. The host is always explicit; there is no
+primary-host default. Existing-session operations are terminal-ID-only:
+`get`, `input`, `resize`, `output`, `rename`, `restart`, and `close`.
+`restart` closes the old session and creates a shell with the same scope, size,
+and title; it returns a new terminal ID and does not replay the original command.
+
 `bb.sdk.files` reads and writes files on a connected host (not just the
 server machine — this is the right primitive when the user's files may live
 on another host, and its `rootPath` confinement + compare-and-swap guard make

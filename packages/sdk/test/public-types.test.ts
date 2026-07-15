@@ -16,6 +16,8 @@ import type {
   ProviderModelsArgs as RootProviderModelsArgs,
   StatusResult as RootStatus,
   SystemVersionResult as RootSystemVersion,
+  TerminalCreateArgs as RootTerminalCreateArgs,
+  TerminalListResult as RootTerminalListResult,
   ThemeCatalogResult as RootThemeCatalog,
   ThreadFolderListResult as RootThreadFolderList,
   ThreadSpawnResult as RootThreadSpawn,
@@ -36,6 +38,8 @@ import type {
   ProviderModelsArgs as BrowserProviderModelsArgs,
   StatusResult as BrowserStatus,
   SystemVersionResult as BrowserSystemVersion,
+  TerminalCreateArgs as BrowserTerminalCreateArgs,
+  TerminalListResult as BrowserTerminalListResult,
   ThemeCatalogResult as BrowserThemeCatalog,
   ThreadFolderListResult as BrowserThreadFolderList,
   ThreadSpawnResult as BrowserThreadSpawn,
@@ -56,6 +60,8 @@ import type {
   ProviderModelsArgs as CoreProviderModelsArgs,
   StatusResult as CoreStatus,
   SystemVersionResult as CoreSystemVersion,
+  TerminalCreateArgs as CoreTerminalCreateArgs,
+  TerminalListResult as CoreTerminalListResult,
   ThemeCatalogResult as CoreThemeCatalog,
   ThreadFolderListResult as CoreThreadFolderList,
   ThreadSpawnResult as CoreThreadSpawn,
@@ -76,6 +82,8 @@ import type {
   ProviderModelsArgs as NodeProviderModelsArgs,
   StatusResult as NodeStatus,
   SystemVersionResult as NodeSystemVersion,
+  TerminalCreateArgs as NodeTerminalCreateArgs,
+  TerminalListResult as NodeTerminalListResult,
   ThemeCatalogResult as NodeThemeCatalog,
   ThreadFolderListResult as NodeThreadFolderList,
   ThreadSpawnResult as NodeThreadSpawn,
@@ -96,6 +104,8 @@ interface RootSurface {
   realtimeConnection: RootRealtimeConnection;
   status: RootStatus;
   systemVersion: RootSystemVersion;
+  terminalCreateArgs: RootTerminalCreateArgs;
+  terminalList: RootTerminalListResult;
   themeCatalog: RootThemeCatalog;
   threadFolderList: RootThreadFolderList;
   threadSpawn: RootThreadSpawn;
@@ -116,6 +126,8 @@ interface BrowserSurface {
   realtimeConnection: BrowserRealtimeConnection;
   status: BrowserStatus;
   systemVersion: BrowserSystemVersion;
+  terminalCreateArgs: BrowserTerminalCreateArgs;
+  terminalList: BrowserTerminalListResult;
   themeCatalog: BrowserThemeCatalog;
   threadFolderList: BrowserThreadFolderList;
   threadSpawn: BrowserThreadSpawn;
@@ -136,6 +148,8 @@ interface CoreSurface {
   realtimeConnection: CoreRealtimeConnection;
   status: CoreStatus;
   systemVersion: CoreSystemVersion;
+  terminalCreateArgs: CoreTerminalCreateArgs;
+  terminalList: CoreTerminalListResult;
   themeCatalog: CoreThemeCatalog;
   threadFolderList: CoreThreadFolderList;
   threadSpawn: CoreThreadSpawn;
@@ -156,6 +170,8 @@ interface NodeSurface {
   realtimeConnection: NodeRealtimeConnection;
   status: NodeStatus;
   systemVersion: NodeSystemVersion;
+  terminalCreateArgs: NodeTerminalCreateArgs;
+  terminalList: NodeTerminalListResult;
   themeCatalog: NodeThemeCatalog;
   threadFolderList: NodeThreadFolderList;
   threadSpawn: NodeThreadSpawn;
@@ -172,6 +188,7 @@ type ExpectedBbSdkKey =
   | "providers"
   | "status"
   | "system"
+  | "terminals"
   | "theme"
   | "threadFolders"
   | "threads";
@@ -297,7 +314,6 @@ type ExpectedThreadsKey =
   | "storageFiles"
   | "storagePaths"
   | "tabs"
-  | "terminals"
   | "timeline"
   | "timelineTurnSummaryDetails"
   | "unarchive"
@@ -320,14 +336,16 @@ type ExpectedThreadQueuedMessagesKey =
   | "send"
   | "setGroupBoundary";
 type ExpectedThreadTabsKey = "get" | "update";
-type ExpectedThreadTerminalsKey =
+type ExpectedTerminalsKey =
   | "close"
   | "create"
+  | "get"
   | "input"
   | "list"
   | "output"
-  | "resize"
-  | "update";
+  | "rename"
+  | "restart"
+  | "resize";
 
 describe("SDK public type entrypoints", () => {
   it("export the same transport-independent DTO surface", () => {
@@ -367,6 +385,28 @@ describe("SDK public type entrypoints", () => {
     }>().toMatchTypeOf<RootProjectWorkspaceRoutingArgs>();
   });
 
+  it("uses explicit mutually exclusive terminal scopes", () => {
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: {
+        kind: "thread";
+        threadId: string;
+        environmentId: string;
+      };
+    }>().not.toMatchTypeOf<RootTerminalCreateArgs>();
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: { kind: "environment"; environmentId: string };
+    }>().toMatchTypeOf<RootTerminalCreateArgs>();
+    expectTypeOf<{
+      cols: number;
+      rows: number;
+      scope: { kind: "host_path"; hostId: string; cwd: null };
+    }>().toMatchTypeOf<RootTerminalCreateArgs>();
+  });
+
   it("snapshots every SDK area and nested method group", () => {
     expectTypeOf<keyof RootBbRealtime>().toEqualTypeOf<ExpectedRealtimeKey>();
     expectTypeOf<
@@ -393,6 +433,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["system"]
     >().toEqualTypeOf<ExpectedSystemKey>();
+    expectTypeOf<
+      keyof RootBbSdk["terminals"]
+    >().toEqualTypeOf<ExpectedTerminalsKey>();
     expectTypeOf<keyof RootBbSdk["theme"]>().toEqualTypeOf<ExpectedThemeKey>();
     expectTypeOf<
       keyof RootBbSdk["threadFolders"]
@@ -412,8 +455,5 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["threads"]["tabs"]
     >().toEqualTypeOf<ExpectedThreadTabsKey>();
-    expectTypeOf<
-      keyof RootBbSdk["threads"]["terminals"]
-    >().toEqualTypeOf<ExpectedThreadTerminalsKey>();
   });
 });
