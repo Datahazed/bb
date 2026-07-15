@@ -1,6 +1,7 @@
 import type { PluginSdkApp } from "./app-contract.js";
 
 export type * from "./app-contract.js";
+export type * from "./json-value.js";
 
 /**
  * `@bb/plugin-sdk/app` — typed facade over the BB app's plugin runtime.

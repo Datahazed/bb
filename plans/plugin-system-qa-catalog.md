@@ -704,7 +704,7 @@ confirms them with eyes on a real browser:
 
 Automated coverage: the skill is pinned to the API by
 `apps/server/test/services/plugins/plugin-authoring-docs.test.ts` (every
-`BbPluginApi` key and every `PLUGIN_SDK_APP_EXPORT_NAMES` entry must appear
+`BbPluginApi` key and every actual `@bb/plugin-sdk/app` runtime export must appear
 in the SKILL.md) and the guide chapter by
 `apps/cli/src/__tests__/plugin-guide-docs.test.ts` (every `bb plugin`
 subcommand must appear in `bb guide plugins`).
@@ -770,27 +770,27 @@ regression coverage, listed here because a manual tester would notice:
 - [ ] `bb plugin token --rotate` is documented in `bb guide plugins` and
       the authoring skill.
 
-### Panel chrome + plugin logos
+### Plugin panel layout + plugin logos
 
-navPanel chrome control, panel title-bar `headerContent`, plugin logos on
+Always-on panel title-bar `headerContent`, full-bleed bodies, plugin logos on
 every contribution surface, and the plugin-CSS containment fix. Automated
 coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 `plugin-app-bundle.test.ts` (@scope regression), and the app's
 `plugin-slot-mounts` / `PluginThreadActions` / `MentionMenu` /
 `PluginsSettingsSection` tests.
 
-- [x] **Page chrome (default)**: a navPanel shows a host title bar —
+- [x] **Shared title bar**: every navPanel shows a host title bar —
       plugin logo + title left, the plugin's `headerContent` right — above
-      a FULL-WIDTH body (no prose max-width cap). (Verified 2026-07-02 via
+      a zero-padding FULL-BLEED body. The component owns padding and scrolling.
+      (Verified 2026-07-02 via
       the github hero: logo + "GitHub" title bar, live headerContent,
       full-width issues/PRs table, in daily use on the packaged instance.)
 - [ ] **headerContent containment**: a throwing `headerContent` disappears
       (console warning only); the title bar and panel body keep rendering,
       no "plugin crashed" chip for the accessory.
-- [ ] **`chrome: "none"`**: a panel registered with `chrome: "none"` gets
-      the entire panel area (no host padding, no title bar, headerContent
-      ignored) and a crash inside it still collapses to the "plugin <id>
-      crashed" chip.
+- [ ] **Full-bleed containment**: every panel component gets the entire body
+      below the shared title bar with no host padding, and a crash inside it
+      still collapses to the "plugin <id> crashed" chip.
 - [ ] **Logos everywhere**: with a logo-shipping plugin installed, its logo
       replaces the bolt/named icon on: the sidebar row, the panel title
       bar, the `@`-mention menu's provider rows (agent-enrichment's docs

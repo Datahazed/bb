@@ -385,7 +385,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
   });
 });
 
-describe("plugin panel chrome (shared header + body modes)", () => {
+describe("plugin panel shared title bar and full-bleed body", () => {
   function PanelBody() {
     return <div>panel body</div>;
   }
@@ -433,21 +433,36 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
   });
 
-  it('renders headerContent for a full-bleed "none" panel', () => {
+  it("always renders the shared title and headerContent", () => {
     function Accessory() {
       return <button type="button">Toggle sidebar</button>;
     }
-    const panel = panelSlot({
-      chrome: "none",
-      headerContent: Accessory,
-    });
-    render(<PluginPanelHeaderActions panel={panel} subPath="notes/today.md" />);
+    const panel = panelSlot({ headerContent: Accessory });
+    render(
+      <>
+        <PluginPanelHeaderCenter panel={panel} />
+        <PluginPanelHeaderActions panel={panel} subPath="notes/today.md" />
+      </>,
+    );
+    expect(screen.getByText("Demo board")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }),
     ).toBeDefined();
   });
 
-  it('still contains a crashing "none" panel inside the error boundary', () => {
+  it("gives the component a zero-padding full-bleed body", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({ navPanels: [panelSlot({})] }),
+    );
+    renderPanelBody();
+    const body = screen.getByTestId("plugin-panel-body");
+    expect(body.className).toContain("-m-4");
+    expect(body.className).toContain("md:-m-5");
+    expect(body.className).not.toMatch(/(?:^|\s)p[trblxy]?-/u);
+  });
+
+  it("still contains a crashing panel inside the error boundary", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashes(): never {
@@ -456,7 +471,7 @@ describe("plugin panel chrome (shared header + body modes)", () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
-        navPanels: [panelSlot({ component: Crashes, chrome: "none" })],
+        navPanels: [panelSlot({ component: Crashes })],
       }),
     );
     renderPanelBody();
@@ -502,7 +517,10 @@ describe("plugin thread panel actions", () => {
             title: "Issue",
             component: PanelProbe,
             run: ({ threadId, openPanel }) => {
-              openPanel({ title: `Issue for ${threadId}`, params: { n: 1 } });
+              openPanel({
+                title: `Issue for ${threadId}`,
+                params: { n: 1, nested: [true, null, { label: "ok" }] },
+              });
             },
           },
         ],
@@ -529,10 +547,14 @@ describe("plugin thread panel actions", () => {
     render(<ActionHarness />);
     fireEvent.click(screen.getByText("Issue"));
 
-    expect(screen.getByText('panel body for thr_9 / {"n":1}')).toBeDefined();
+    expect(
+      screen.getByText(
+        'panel body for thr_9 / {"n":1,"nested":[true,null,{"label":"ok"}]}',
+      ),
+    ).toBeDefined();
   });
 
-  it("contains a throwing run (sync) and non-serializable params (no open, no crash)", () => {
+  it("contains a throwing run and rejects non-JSON params without opening", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
@@ -552,7 +574,14 @@ describe("plugin thread panel actions", () => {
             id: "cyclic",
             title: "Cyclic",
             component: PanelProbe,
-            run: ({ openPanel }) => openPanel({ params: cyclic }),
+            run: ({ openPanel }) => openPanel({ params: cyclic as never }),
+          },
+          {
+            id: "coerced",
+            title: "Coerced",
+            component: PanelProbe,
+            run: ({ openPanel }) =>
+              openPanel({ params: new Date("2026-01-01") as never }),
           },
         ],
       }),
@@ -561,8 +590,9 @@ describe("plugin thread panel actions", () => {
     render(<ActionsProbe threadId="thr_9" openPluginPanel={openPluginPanel} />);
     fireEvent.click(screen.getByText("Boom"));
     fireEvent.click(screen.getByText("Cyclic"));
+    fireEvent.click(screen.getByText("Coerced"));
     expect(openPluginPanel).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(3);
   });
 
   it("offers no actions outside a thread context", () => {
@@ -587,6 +617,26 @@ describe("plugin thread panel actions", () => {
     });
     render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
     expect(screen.getByText(/This plugin tab is not available/)).toBeDefined();
+  });
+
+  it("narrows invalid persisted params to null before rendering plugin code", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "issue", title: "Issue", component: PanelProbe },
+        ],
+      }),
+    );
+    const tab = createPluginPanelFixedPanelTab({
+      actionId: "issue",
+      paramsJson: "1e999",
+      pluginId: "demo",
+      title: "Issue",
+    });
+
+    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
+    expect(screen.getByText("panel body for thr_9 / null")).toBeDefined();
   });
 });
 

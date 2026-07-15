@@ -2263,7 +2263,6 @@ export default definePluginApp((app) => {
     title: "Docs",
     icon: "FileText",
     path: "docs",
-    chrome: "none",
     component: NotesPanel,
     headerContent: NotesPanelHeader,
   });

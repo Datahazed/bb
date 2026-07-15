@@ -57,9 +57,8 @@ export function PluginPanelHeaderCenter({
 
 /**
  * Header actions for a plugin panel route: the registration's
- * `headerContent`, in its own boundary. The body chrome mode is deliberately
- * independent: full-bleed panels still use the shared app/pane header and may
- * contribute actions there.
+ * `headerContent`, in its own boundary. Every panel uses this shared title bar
+ * while its component owns the full-bleed body below.
  */
 export function PluginPanelHeaderActions({
   panel,

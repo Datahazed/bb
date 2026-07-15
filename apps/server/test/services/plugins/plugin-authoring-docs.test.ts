@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import * as pluginSdkApp from "@bb/plugin-sdk/app";
 import {
-  PLUGIN_SDK_APP_EXPORT_NAMES,
   type BbPluginApi,
   type PluginAppSlots,
   type PluginComposerAccessoryProps,
@@ -20,6 +20,8 @@ import {
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
+
+const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
 
 /**
  * Durability test for the bb-plugin-authoring builtin skill: the skill must
@@ -186,10 +188,9 @@ const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
 void _assertAllSlotPropFieldsListed;
 
 /**
- * Mirrors PluginNavPanelRegistration (app-contract.ts) — the one slot whose
- * registration carries behavior fields (`chrome`, `headerContent`) beyond
- * id/title/component, so those must stay documented too. Compile-time
- * checked in both directions like the slot props above.
+ * Mirrors PluginNavPanelRegistration (app-contract.ts), including the shared
+ * title-bar `headerContent` action surface. Compile-time checked in both
+ * directions like the slot props above.
  */
 const NAV_PANEL_REGISTRATION_FIELDS = [
   "id",
@@ -197,7 +198,6 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "icon",
   "path",
   "component",
-  "chrome",
   "headerContent",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
 
@@ -242,7 +242,7 @@ describe("bb-plugin-authoring skill", () => {
   });
 
   it("documents every @bb/plugin-sdk/app runtime export", () => {
-    for (const name of PLUGIN_SDK_APP_EXPORT_NAMES) {
+    for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }
   });
@@ -279,16 +279,13 @@ describe("bb-plugin-authoring skill", () => {
     }
   });
 
-  it("documents every navPanel registration field (incl. chrome + headerContent)", () => {
+  it("documents every navPanel registration field", () => {
     for (const field of NAV_PANEL_REGISTRATION_FIELDS) {
       expect(
         skill,
         `navPanel registration field "${field}" is not documented in the skill`,
       ).toContain(field);
     }
-    // Both chrome modes must be spelled out.
-    expect(skill).toContain('"page"');
-    expect(skill).toContain('"none"');
   });
 
   it("documents every sidebarFooterAction registration field", () => {

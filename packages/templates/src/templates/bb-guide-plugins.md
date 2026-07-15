@@ -193,10 +193,13 @@ form; no props in V1, optional host-rendered title; builtin slot entries work
 with the Plugins experiment off while the Settings → Plugins management
 bucket stays experiment-gated),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
-arrives as the component's subPath prop for panel-internal deep links),
+arrives as the component's subPath prop for panel-internal deep links; the
+host always renders the shared plugin title bar and the component owns a
+zero-padding full-bleed body, including its scrolling),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
-open closable panel tabs with JSON params), composerAccessory (prompt box
+open closable panel tabs with recursive `JsonValue` params; restored
+components read `JsonValue | null`), composerAccessory (prompt box
 footer), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a

@@ -1023,10 +1023,15 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
     navigate.toPluginPanel(PANEL_PATH, { subPath: "" });
   }, [navigate]);
 
-  if (route !== null) {
-    return <DetailView route={route} onBack={backToList} />;
-  }
-  return <OverviewView onOpenDetail={openDetail} />;
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+      {route !== null ? (
+        <DetailView route={route} onBack={backToList} />
+      ) : (
+        <OverviewView onOpenDetail={openDetail} />
+      )}
+    </div>
+  );
 }
 
 export default definePluginApp((app) => {
