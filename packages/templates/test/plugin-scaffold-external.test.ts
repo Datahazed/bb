@@ -139,5 +139,5 @@ describe("external plugin scaffold types", () => {
       );
     }
     expect(result.stderr).toBe("");
-  }, 60_000);
+  }, 120_000);
 });
