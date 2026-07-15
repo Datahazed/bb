@@ -320,6 +320,31 @@ describe("PluginSettingsDetail settings gating", () => {
 });
 
 describe("InstalledPluginRow", () => {
+  it("uses the rich logo in a roomy settings row when an icon also exists", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ ok: true })),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <InstalledPluginRow
+          plugin={{
+            ...rowPlugin("running", "/plugin-logo.svg"),
+            icon: "Smartphone",
+          }}
+          onUpdateClick={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(
+      screen.getByTestId("plugin-settings-logo-linear").getAttribute("src"),
+    ).toBe("/plugin-logo.svg");
+    expect(document.querySelector('[data-icon="Smartphone"]')).toBeNull();
+  });
+
   it("falls back to the manifest icon when a plugin logo fails to load", () => {
     vi.stubGlobal(
       "fetch",

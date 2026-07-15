@@ -62,18 +62,18 @@ The manifest is `package.json`:
   identity. The top-level package `name` remains the package identity and
   source of the plugin id.
 - `bb.branding` (required) — declare at least `icon` or `logo.light`. `icon`
-  is the compact host icon-name fallback. `logo.light` is the rich/full-size
+  is the compact host icon-name identity. `logo.light` is the rich/full-size
   identity artwork; optional `logo.dark` is preferred in dark mode. Logo paths
   are explicit plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty
   strings, missing/escaping files, unsupported extensions, and a dark logo
   without a light logo fail the manifest. There is no root logo auto-detection.
-  The logo appears wherever bb renders the plugin's contributions: the sidebar,
-  panel title bar, composer command/mention menus, thread action buttons, and
-  Settings → Plugins. A contribution's own `icon` hint remains a distinct
-  local fallback; unknown hints use a generic icon. Branding changes are picked
-  up on `bb plugin reload`. Inline icons
-  must use `currentColor` for their stroke/fill and take their color from semantic
-  text-token classes; never hardcode gray or palette values. An SVG loaded
+  BB uses the logo where space permits, such as roomy Settings rows and cards.
+  Compact sidebar, menu, action, mention, and panel-title surfaces use the
+  manifest icon, then a contribution's distinct local `icon` hint, then the
+  generic Zap icon. Branding changes are picked up on `bb plugin reload`.
+  Inline icons must use `currentColor` for their stroke/fill and take their
+  color from semantic text-token classes; never hardcode gray or palette
+  values. An SVG loaded
   through `<img>` cannot inherit `currentColor`, so omit the logo and use a
   named `branding.icon` hint when a monochrome glyph should match the surrounding
   bb chrome. Reserve logo assets for intentionally branded artwork (and provide
@@ -661,7 +661,8 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration: `{ id, title, icon, path, component, chrome?, headerContent? }`.
-  The host renders your plugin logo + `title` into the SHARED app header
+  The host renders your compact plugin icon + `title` into the SHARED app
+  header
   (the same chrome as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component; the body below is yours,
@@ -672,11 +673,11 @@ Slot props contracts (versioned, additive-only):
   `mx-auto w-full max-w-3xl space-y-4` div to opt back into the classic
   centered, width-capped column instead; `chrome: "none"` is the escape hatch — your
   `component` owns the ENTIRE body region with zero host padding and only the
-  crash boundary remains; the shared header still shows logo + title +
+  crash boundary remains; the shared header still shows icon + title +
   `headerContent`.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
-  `title` with your plugin logo. Registration:
+  `title` with your compact plugin icon. Registration:
   `{ id, title, icon?, component, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
@@ -685,8 +686,8 @@ Slot props contracts (versioned, additive-only):
   JSON-serializable — it persists with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
-  shows your plugin logo + the tab title. Errors thrown from `run` (sync
-  or async) are contained and logged, never breaking the launcher.
+  shows your compact plugin icon + the tab title. Errors thrown from `run`
+  (sync or async) are contained and logged, never breaking the launcher.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the

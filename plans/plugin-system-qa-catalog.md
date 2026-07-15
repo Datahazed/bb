@@ -73,9 +73,10 @@ as `marketplace/plugins/github`. What that flow proved:
       `dist/` itself; inventory shows `app.hasApp: true`, hash-busted
       `jsUrl`/`cssUrl`, `compatible: true`; the app loads the bundle and
       renders the panel.
-- [x] **navPanel + headerContent + logos**: sidebar entry renders the
-      plugin's `logo.svg` (dark variant shipped too), panel title bar shows
-      logo + title with the plugin's `headerContent` on the right.
+- [x] **navPanel + headerContent + branding**: sidebar entry and panel title
+      bar render the compact plugin icon + title, with the plugin's
+      `headerContent` on the right; rich light/dark logos remain available
+      for roomy surfaces.
 - [x] **rpc under real load**: 328 handler calls / 0 errors in
       `bb plugin list --json` after an evening of browsing issues/PRs.
 - [x] **Realtime + background service**: `sync` service `running`; panel
@@ -572,8 +573,8 @@ scaffolded with `bb plugin new hello --app` (the scaffold now default-exports
       the sidebar shows the nav entry above the project list (active state
       when on the route) → clicking it lands on `/plugins/hello/board`
       rendering the panel component; a thread's right panel "+" new-tab
-      page lists the action under Actions (plugin logo icon) and selecting
-      it opens a closable tab (plugin logo + title) rendering the component
+      page lists the action under Actions (compact plugin icon) and selecting
+      it opens a closable tab (plugin icon + title) rendering the component
       with `{ threadId, params }` — the tab persists per thread across
       reloads (params round-trip), re-selecting with identical params
       focuses the existing tab, and `run` errors only log a warning;
@@ -777,19 +778,19 @@ regression coverage, listed here because a manual tester would notice:
 - [ ] `bb plugin token --rotate` is documented in `bb guide plugins` and
       the authoring skill.
 
-### Panel chrome + plugin logos
+### Panel chrome + plugin branding
 
-navPanel chrome control, panel title-bar `headerContent`, plugin logos on
-every contribution surface, and the plugin-CSS containment fix. Automated
-coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
+navPanel chrome control, panel title-bar `headerContent`, compact icons on
+contribution chrome, roomy logos in Settings, and the plugin-CSS containment
+fix. Automated coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
 `plugin-app-bundle.test.ts` (@scope regression), and the app's
 `plugin-slot-mounts` / `PluginThreadActions` / `MentionMenu` /
 `PluginsSettingsSection` tests.
 
 - [x] **Page chrome (default)**: a navPanel shows a host title bar —
-      plugin logo + title left, the plugin's `headerContent` right — above
+      plugin icon + title left, the plugin's `headerContent` right — above
       a FULL-WIDTH body (no prose max-width cap). (Verified 2026-07-02 via
-      the github hero: logo + "GitHub" title bar, live headerContent,
+      the github hero: branded "GitHub" title bar, live headerContent,
       full-width issues/PRs table, in daily use on the packaged instance.)
 - [ ] **headerContent containment**: a throwing `headerContent` disappears
       (console warning only); the title bar and panel body keep rendering,
@@ -798,15 +799,12 @@ coverage: `apps/server/test/services/plugins/plugin-logo.test.ts`,
       the entire panel area (no host padding, no title bar, headerContent
       ignored) and a crash inside it still collapses to the "plugin <id>
       crashed" chip.
-- [ ] **Logos everywhere**: with a logo-shipping plugin installed, its logo
-      replaces the bolt/named icon on: the sidebar row, the panel title
-      bar, the `@`-mention menu's provider rows (agent-enrichment's docs
-      provider after adding a logo, since linear was removed),
-      thread-header action buttons (small-ux-pack + logo), and Settings →
-      Plugins next to the plugin id. A logo-less plugin falls back to its
-      named `icon` / the generic bolt on every surface. (Sidebar row +
-      panel title bar verified live 2026-07-02 via the github hero's
-      logo.)
+- [ ] **Density-aware branding**: a plugin with both icon and logo uses its
+      manifest icon on sidebar rows, panel title bars, mention/provider rows,
+      and thread action buttons, while roomy Settings rows/cards use its logo.
+      Without a manifest icon, compact surfaces use the contribution icon and
+      then Zap; without a logo, roomy surfaces use the manifest icon and then
+      Zap.
 - [ ] **Logo plumbing**: `GET /api/v1/plugins` entries carry
       `logoUrl` (hash-busted, null when no logo or plugin not running);
       `GET /api/v1/plugins/<id>/assets/logo?h=…` serves the file with the
@@ -902,8 +900,8 @@ authoring-docs pins (`threadPanelAction: ["threadId", "params"]`).
 
 - [ ] **Action row live**: install a plugin registering a
       threadPanelAction → open a thread → "+" new tab → the action lists
-      under Actions with the plugin logo; selecting it replaces the
-      new-tab with a closable tab (logo + title) rendering the component.
+      under Actions with the compact plugin icon; selecting it replaces the
+      new-tab with a closable tab (icon + title) rendering the component.
 - [ ] **Params + dedupe**: `openPanel({ title, params })` twice with the
       same params focuses one tab; different params open a second tab;
       both restore after a page reload with their params.

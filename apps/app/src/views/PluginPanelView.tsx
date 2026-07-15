@@ -27,7 +27,7 @@ const HIGHLIGHTER_OPTIONS = {};
  * frontends load after first paint, so a deep link can land here briefly
  * before registrations arrive.
  *
- * This view renders ONLY the panel body. The title chrome (plugin logo +
+ * This view renders ONLY the panel body. The title chrome (plugin icon +
  * panel title + the registration's `headerContent`) lives in the shared app
  * header — AppLayout's AppHeader + PluginPanelHeader — so plugin panels get
  * the same chrome as Settings. Body per the registration's

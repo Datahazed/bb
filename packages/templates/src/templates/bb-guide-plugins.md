@@ -257,10 +257,12 @@ Branding is explicit: `bb.branding.logo.light` points to the plugin's rich
 identity artwork and optional `bb.branding.logo.dark` is preferred in dark
 mode. Paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
 files are not auto-detected, and a dark logo requires a light logo.
-`bb.branding.icon` is the compact host icon-name fallback. At least the icon or
-light logo is required; contribution icon hints remain distinct local
-fallbacks. BB rejects nulls, empty strings, missing/escaping assets, and
-unsupported extensions. Reload the plugin to pick up branding changes.
+`bb.branding.icon` is the compact host icon-name identity. Compact chrome uses
+it first, then a contribution's distinct local icon hint, then Zap. Roomy
+Settings rows and cards use the image logo where available. At least the icon
+or light logo is required. BB rejects nulls, empty strings, missing/escaping
+assets, and unsupported extensions. Reload the plugin to pick up branding
+changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
