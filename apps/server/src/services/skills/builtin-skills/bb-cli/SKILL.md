@@ -122,6 +122,10 @@ message agents, or inspect projects, providers, and environments.
   clone the project's remote there; `--remote-url` and `--target-path` are
   optional clone overrides.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
+- Direct environment inspection accepts any environment ID: use `bb environment
+status|branches|paths|diff|diff-files|diff-file|diff-patch <id>` and `bb
+environment pull-request show <id>`. Diff commands require an explicit target
+  and the matching merge-base or commit flags; all support `--json`.
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
