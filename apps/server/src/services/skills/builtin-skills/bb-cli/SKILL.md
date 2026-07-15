@@ -327,11 +327,18 @@ For review or fix pipelines, get the environment ID from
   - `bb theme list` — built-in and custom themes and which palette is active.
   - `bb theme dir` — print the absolute custom-theme directory (where to create
     `<name>/theme.css`). Use this instead of guessing the path.
-  - `bb theme set <id>` — activate a built-in (`default`, `nord`, `dracula`,
-    `solarized`, `gruvbox`, `catppuccin`) or a custom theme by its folder name.
+  - `bb theme set <id> [--favicon-color <color>]` — activate a built-in
+    (`default`, `nord`, `dracula`, `solarized`, `gruvbox`, `catppuccin`), custom,
+    or plugin-contributed theme. Without the flag it preserves the favicon
+    color; with the flag it updates the complete appearance selection.
   - `bb theme show [--css]` — print the active palette; `--css` dumps the active
     theme's CSS.
-  - `bb theme reset` — back to `default`.
+  - `bb theme reset` — back to `default` while preserving the favicon color.
+  - `bb theme favicon set <color>` — set the favicon color while preserving the
+    active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+    `blue`, `purple`, `pink`.
+  - `bb theme favicon reset` — reset the favicon color to `default` while
+    preserving the active theme.
 
 ### Creating or editing a custom theme
 

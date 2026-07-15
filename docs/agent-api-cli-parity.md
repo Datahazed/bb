@@ -178,6 +178,25 @@ bb settings keyboard reset [command]
 Values passed to the settings CLI are parsed against the same schemas as the
 server contract; invalid keys or values fail before a request is sent.
 
+## Appearance
+
+The canonical appearance input is the complete `{ themeId, faviconColor }`
+selection. `bb.theme.set(selection)` sends it atomically. The compatible
+`bb.theme.set(themeId)` shorthand reads the active appearance first and carries
+its favicon color forward.
+
+| SDK                                       | CLI                                                              |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| `bb.theme.get()`                          | `bb theme show`                                                  |
+| `bb.theme.catalog()`                      | `bb theme list`                                                  |
+| `bb.theme.set({ themeId, faviconColor })` | `bb theme set <id> --favicon-color <color>`                      |
+| `bb.theme.set(themeId)`                   | `bb theme set <id>` or `bb theme reset`; preserves favicon color |
+| Read current, then `set({ ... })`         | `bb theme favicon set <color>` or `reset`; preserves theme       |
+
+Valid favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
+`blue`, `purple`, and `pink`. Invalid values are rejected before the CLI sends a
+write and by the shared server request schema.
+
 ## Files
 
 The public SDK now exposes the canonical `bb.files` area:

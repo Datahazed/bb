@@ -83,6 +83,70 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("sends a complete appearance selection through the theme transport", async () => {
+    const appearance = {
+      themeId: "nord",
+      customCss: null,
+      faviconColor: "teal" as const,
+    };
+    const queue = createFetchQueue([{ body: appearance }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.theme.set({ themeId: "nord", faviconColor: "teal" }),
+    ).resolves.toEqual(appearance);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({ themeId: "nord", faviconColor: "teal" }),
+        method: "PUT",
+        url: "http://bb.test/api/v1/settings/appearance",
+      },
+    ]);
+  });
+
+  it("preserves the favicon color for the theme-id shorthand", async () => {
+    const current = {
+      appearance: {
+        themeId: "dracula",
+        customCss: null,
+        faviconColor: "purple" as const,
+      },
+    };
+    const updated = {
+      themeId: "nord",
+      customCss: null,
+      faviconColor: "purple" as const,
+    };
+    const queue = createFetchQueue([{ body: current }, { body: updated }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.theme.set("nord")).resolves.toEqual(updated);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/config",
+      },
+      {
+        bodyText: JSON.stringify({ themeId: "nord", faviconColor: "purple" }),
+        method: "PUT",
+        url: "http://bb.test/api/v1/settings/appearance",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
