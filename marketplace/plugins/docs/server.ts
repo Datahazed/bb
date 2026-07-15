@@ -2,7 +2,12 @@
 import { watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type PluginRpcHandlers,
+} from "@bb/plugin-sdk";
+import { z } from "zod";
 
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
@@ -40,6 +45,240 @@ interface ResolvedOpenerFile {
   rootPath: string;
   hostId: string | null;
 }
+
+const vaultIdSchema = z.string().min(1).optional();
+const vaultSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    hostId: z.string().min(1).nullable(),
+    rootPath: z.string().min(1),
+  })
+  .strict();
+const vaultPathSchema = z.string().transform((value, context) => {
+  try {
+    return requireVaultPath(value);
+  } catch (error) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return z.NEVER;
+  }
+});
+const vaultDirectorySchema = z
+  .union([z.literal(""), vaultPathSchema])
+  .optional();
+const openerSourceSchema = z
+  .object({
+    kind: z.enum(["workspace", "host", "thread-storage"]),
+    threadId: z.string().nullable(),
+    environmentId: z.string().nullable(),
+    projectId: z.string().nullable(),
+  })
+  .strict();
+const fileReadSchema = z
+  .object({
+    path: z.string(),
+    content: z.string(),
+    contentEncoding: z.enum(["base64", "utf8"]),
+    mimeType: z.string().optional(),
+    sizeBytes: z.number().int().nonnegative(),
+    modifiedAtMs: z.number().nonnegative().optional(),
+    sha256: z.string(),
+  })
+  .strict();
+const fileWriteSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("written"),
+      sha256: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("conflict"),
+      currentSha256: z.string().nullable(),
+    })
+    .strict(),
+]);
+const previewSchema = z
+  .object({
+    baseUrl: z.string().min(1),
+    expiresAtMs: z.number().nonnegative(),
+  })
+  .strict();
+const hostSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    type: z.literal("persistent"),
+    status: z.enum(["connected", "disconnected"]),
+    lastSeenAt: z.number().nullable(),
+    lastRejectedProtocolVersion: z.number().int().positive().nullable(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict();
+const pathResultSchema = z.object({ path: z.string().min(1) }).strict();
+const okResultSchema = z.object({ ok: z.literal(true) }).strict();
+
+export const docsRpcContract = defineRpcContract({
+  listNotes: {
+    input: z.object({ vaultId: vaultIdSchema }).strict(),
+    output: z
+      .object({
+        vaults: z.array(vaultSchema),
+        vault: vaultSchema,
+        hosts: z.array(hostSchema),
+        entries: z.array(
+          z
+            .object({
+              kind: z.enum(["file", "directory"]),
+              path: z.string(),
+            })
+            .strict(),
+        ),
+        entryOrder: z.array(z.string()),
+        notes: z.array(
+          z
+            .object({
+              path: z.string(),
+              title: z.string(),
+              preview: z.string(),
+              modifiedAtMs: z.number().nonnegative(),
+            })
+            .strict(),
+        ),
+        truncated: z.boolean(),
+        error: z.string().nullable(),
+      })
+      .strict(),
+  },
+  readNote: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: fileReadSchema,
+  },
+  saveNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        content: z.string(),
+        expectedSha256: z.string().nullable().optional(),
+      })
+      .strict(),
+    output: fileWriteSchema,
+  },
+  createNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        parent: vaultDirectorySchema,
+        name: z.string().optional(),
+        content: z.string().optional(),
+      })
+      .strict(),
+    output: pathResultSchema,
+  },
+  deletePath: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        recursive: z.boolean().optional(),
+      })
+      .strict(),
+    output: okResultSchema,
+  },
+  createFolder: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: pathResultSchema,
+  },
+  reorderFiles: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        parent: vaultDirectorySchema,
+        paths: z.array(vaultPathSchema),
+      })
+      .strict(),
+    output: z.object({ paths: z.array(vaultPathSchema) }).strict(),
+  },
+  movePath: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        from: vaultPathSchema,
+        to: vaultPathSchema,
+      })
+      .strict(),
+    output: pathResultSchema,
+  },
+  renameToTitle: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: pathResultSchema,
+  },
+  createVault: {
+    input: z
+      .object({
+        name: z.string().min(1),
+        rootPath: z.string().min(1),
+        hostId: z.string().min(1).optional(),
+      })
+      .strict(),
+    output: vaultSchema,
+  },
+  removeVault: {
+    input: z.object({ vaultId: z.string().min(1) }).strict(),
+    output: okResultSchema,
+  },
+  uploadAttachment: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        notePath: vaultPathSchema,
+        content: z.string().min(1),
+        name: z.string().min(1),
+      })
+      .strict(),
+    output: z
+      .object({
+        path: z.string().min(1),
+        markdownPath: z.string().min(1),
+        result: fileWriteSchema,
+      })
+      .strict(),
+  },
+  preparePreview: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: previewSchema,
+  },
+  openFile: {
+    input: z
+      .object({ source: openerSourceSchema, path: z.string().min(1) })
+      .strict(),
+    output: z
+      .object({
+        file: fileReadSchema,
+        preview: previewSchema,
+        previewPath: z.string(),
+      })
+      .strict(),
+  },
+  saveOpenedFile: {
+    input: z
+      .object({
+        source: openerSourceSchema,
+        path: z.string().min(1),
+        content: z.string(),
+        expectedSha256: z.string().nullable().optional(),
+      })
+      .strict(),
+    output: fileWriteSchema,
+  },
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -203,20 +442,30 @@ function parseCli(argv: string[]): {
   positionals: string[];
   vaultId?: string;
   content?: string;
+  recursive: boolean;
   json: boolean;
 } {
   const positionals: string[] = [];
   let vaultId: string | undefined;
   let content: string | undefined;
+  let recursive = false;
   let json = false;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === "--vault") vaultId = argv[++index];
     else if (arg === "--content") content = argv[++index] ?? "";
+    else if (arg === "--recursive") recursive = true;
     else if (arg === "--json") json = true;
     else positionals.push(arg);
   }
-  return { command: argv[0] ?? "help", positionals, vaultId, content, json };
+  return {
+    command: argv[0] ?? "help",
+    positionals,
+    vaultId,
+    content,
+    recursive,
+    json,
+  };
 }
 
 function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -240,7 +489,7 @@ export default async function plugin(bb: BbPluginApi) {
       default: DEFAULT_DIR,
     },
   });
-  const db = bb.storage.sqlite();
+  const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS vaults (
       id TEXT PRIMARY KEY,
@@ -528,7 +777,7 @@ export default async function plugin(bb: BbPluginApi) {
     vaultId: string | undefined,
     rawPath: unknown,
     recursive = false,
-  ) {
+  ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
     await bb.sdk.files.remove({
@@ -541,40 +790,30 @@ export default async function plugin(bb: BbPluginApi) {
     return { ok: true };
   }
 
-  const handlers = {
-    async listNotes(input: unknown) {
-      const record = input === undefined ? {} : requireRecord(input);
-      return notebookData(optionalString(record.vaultId));
+  const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async listNotes(input) {
+      return notebookData(input.vaultId);
     },
-    async readNote(input: unknown) {
-      const record = requireRecord(input);
-      return readFile(optionalString(record.vaultId), record.path);
+    async readNote(input) {
+      return readFile(input.vaultId, input.path);
     },
-    async saveNote(input: unknown) {
-      const record = requireRecord(input);
+    async saveNote(input) {
       return writeFile({
-        vaultId: optionalString(record.vaultId),
-        rawPath: record.path,
-        content: record.content,
-        expectedSha256: record.expectedSha256,
+        vaultId: input.vaultId,
+        rawPath: input.path,
+        content: input.content,
+        expectedSha256: input.expectedSha256,
       });
     },
-    async createNote(input: unknown) {
-      const record = requireRecord(input);
-      return createNote(optionalString(record.vaultId), record);
+    async createNote(input) {
+      return createNote(input.vaultId, input);
     },
-    async deletePath(input: unknown) {
-      const record = requireRecord(input);
-      return removePath(
-        optionalString(record.vaultId),
-        record.path,
-        record.recursive === true,
-      );
+    async deletePath(input) {
+      return removePath(input.vaultId, input.path, input.recursive === true);
     },
-    async createFolder(input: unknown) {
-      const record = requireRecord(input);
-      const vault = getVault(optionalString(record.vaultId));
-      const relativePath = requireVaultPath(record.path);
+    async createFolder(input) {
+      const vault = getVault(input.vaultId);
+      const relativePath = requireVaultPath(input.path);
       await bb.sdk.files.mkdir({
         ...hostArgs(vault),
         path: absolutePath(vault, relativePath),
@@ -584,12 +823,10 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { path: relativePath };
     },
-    async reorderFiles(input: unknown) {
-      const record = requireRecord(input);
-      const vault = getVault(optionalString(record.vaultId));
-      const parent = requireOptionalDirectory(record.parent);
-      if (!Array.isArray(record.paths)) throw new Error('"paths" must be an array');
-      const paths = record.paths.map((value) => requireVaultPath(value));
+    async reorderFiles(input) {
+      const vault = getVault(input.vaultId);
+      const parent = requireOptionalDirectory(input.parent);
+      const paths = input.paths.map((value) => requireVaultPath(value));
       if (new Set(paths).size !== paths.length) {
         throw new Error('"paths" must not contain duplicates');
       }
@@ -613,7 +850,9 @@ export default async function plugin(bb: BbPluginApi) {
         paths.length !== currentFiles.length ||
         currentFiles.some((filePath) => !paths.includes(filePath))
       ) {
-        throw new Error("Files changed while reordering; refresh and try again");
+        throw new Error(
+          "Files changed while reordering; refresh and try again",
+        );
       }
       const replaceOrder = db.transaction(() => {
         db.prepare(
@@ -630,14 +869,12 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
       return { paths };
     },
-    async movePath(input: unknown) {
-      const record = requireRecord(input);
-      return movePath(optionalString(record.vaultId), record.from, record.to);
+    async movePath(input) {
+      return movePath(input.vaultId, input.from, input.to);
     },
-    async renameToTitle(input: unknown) {
-      const record = requireRecord(input);
-      const vaultId = optionalString(record.vaultId);
-      const currentPath = requireVaultPath(record.path, { extension: ".md" });
+    async renameToTitle(input) {
+      const vaultId = input.vaultId;
+      const currentPath = requireVaultPath(input.path, { extension: ".md" });
       const file = await readFile(vaultId, currentPath);
       const base = kebabCase(deriveTitle(file.content, ""));
       if (!base) return { path: currentPath };
@@ -651,13 +888,12 @@ export default async function plugin(bb: BbPluginApi) {
         return { path: currentPath };
       }
     },
-    async createVault(input: unknown) {
-      const record = requireRecord(input);
-      const name = requireString(record.name, "name");
-      const rootPath = requireString(record.rootPath, "rootPath");
+    async createVault(input) {
+      const name = requireString(input.name, "name");
+      const rootPath = requireString(input.rootPath, "rootPath");
       if (!isAbsoluteHostPath(rootPath))
         throw new Error('"rootPath" must be absolute');
-      const hostId = optionalString(record.hostId) ?? null;
+      const hostId = optionalString(input.hostId) ?? null;
       const resolvedRoot = normalizeHostRoot(rootPath);
       await bb.sdk.files.mkdir({
         ...(hostId ? { hostId } : {}),
@@ -675,9 +911,8 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: id });
       return getVault(id);
     },
-    async removeVault(input: unknown) {
-      const record = requireRecord(input);
-      const id = requireString(record.vaultId, "vaultId");
+    async removeVault(input) {
+      const id = requireString(input.vaultId, "vaultId");
       if (listVaults().length <= 1)
         throw new Error("At least one vault is required");
       db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
@@ -685,15 +920,14 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish("vault-changed", { vaultId: id });
       return { ok: true };
     },
-    async uploadAttachment(input: unknown) {
-      const record = requireRecord(input);
-      const vaultId = optionalString(record.vaultId);
-      const notePath = requireVaultPath(record.notePath, { extension: ".md" });
-      const content = requireString(record.content, "content");
+    async uploadAttachment(input) {
+      const vaultId = input.vaultId;
+      const notePath = requireVaultPath(input.notePath, { extension: ".md" });
+      const content = requireString(input.content, "content");
       const bytes = Buffer.from(content, "base64");
       if (bytes.length > MAX_ATTACHMENT_BYTES)
         throw new Error("Attachment exceeds 20 MB");
-      const rawName = requireString(record.name, "name");
+      const rawName = requireString(input.name, "name");
       const extension = path.extname(rawName).toLowerCase();
       const original =
         sanitizeName(path.basename(rawName, extension)) || "image";
@@ -723,10 +957,9 @@ export default async function plugin(bb: BbPluginApi) {
         result,
       };
     },
-    async preparePreview(input: unknown) {
-      const record = requireRecord(input);
-      const vault = getVault(optionalString(record.vaultId));
-      const relativePath = requireVaultPath(record.path);
+    async preparePreview(input) {
+      const vault = getVault(input.vaultId);
+      const relativePath = requireVaultPath(input.path);
       await bb.sdk.files.read({
         ...hostArgs(vault),
         path: absolutePath(vault, relativePath),
@@ -737,9 +970,8 @@ export default async function plugin(bb: BbPluginApi) {
         rootPath: vault.rootPath,
       });
     },
-    async openFile(input: unknown) {
-      const record = requireRecord(input);
-      const target = await resolveOpenerFile(record.source, record.path);
+    async openFile(input) {
+      const target = await resolveOpenerFile(input.source, input.path);
       const args = {
         ...(target.hostId ? { hostId: target.hostId } : {}),
         path: target.path,
@@ -763,33 +995,78 @@ export default async function plugin(bb: BbPluginApi) {
           .replace(/\\/g, "/"),
       };
     },
-    async saveOpenedFile(input: unknown) {
-      const record = requireRecord(input);
-      const target = await resolveOpenerFile(record.source, record.path);
-      if (typeof record.content !== "string") {
-        throw new Error('"content" must be a string');
-      }
+    async saveOpenedFile(input) {
+      const target = await resolveOpenerFile(input.source, input.path);
       return bb.sdk.files.write({
         ...(target.hostId ? { hostId: target.hostId } : {}),
         path: target.path,
         rootPath: target.rootPath,
-        content: record.content,
-        ...(record.expectedSha256 === null ||
-        typeof record.expectedSha256 === "string"
-          ? { expectedSha256: record.expectedSha256 }
+        content: input.content,
+        ...(input.expectedSha256 === null ||
+        typeof input.expectedSha256 === "string"
+          ? { expectedSha256: input.expectedSha256 }
           : {}),
       });
     },
   };
 
-  bb.rpc.register(handlers);
+  bb.rpc.register(docsRpcContract, handlers);
+
+  async function readHttpInput<Schema extends z.ZodType>(
+    context: Parameters<Parameters<BbPluginApi["http"]["route"]>[2]>[0],
+    schema: Schema,
+  ): Promise<
+    { ok: true; value: z.output<Schema> } | { ok: false; response: Response }
+  > {
+    let input: unknown;
+    try {
+      input = await context.req.json();
+    } catch {
+      return {
+        ok: false,
+        response: context.json(
+          {
+            ok: false,
+            error: {
+              code: "invalid_json",
+              message: "request body must be JSON",
+            },
+          },
+          400,
+        ),
+      };
+    }
+    const result = await schema.safeParseAsync(input);
+    if (result.success) return { ok: true, value: result.data };
+    return {
+      ok: false,
+      response: context.json(
+        {
+          ok: false,
+          error: {
+            code: "invalid_input",
+            message: "request input validation failed",
+            issues: result.error.issues.map((issue) => ({
+              message: issue.message,
+              ...(issue.path.length > 0 ? { path: issue.path } : {}),
+            })),
+          },
+        },
+        400,
+      ),
+    };
+  }
 
   bb.http.route(
     "POST",
     "/list",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.listNotes(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.listNotes.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.listNotes(input.value));
     },
     { auth: "token" },
   );
@@ -797,8 +1074,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/read",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.readNote(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.readNote.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.readNote(input.value));
     },
     { auth: "token" },
   );
@@ -806,8 +1087,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/write",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.saveNote(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.saveNote.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.saveNote(input.value));
     },
     { auth: "token" },
   );
@@ -815,8 +1100,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/mkdir",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.createFolder(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.createFolder.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.createFolder(input.value));
     },
     { auth: "token" },
   );
@@ -824,8 +1113,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/move",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.movePath(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.movePath.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.movePath(input.value));
     },
     { auth: "token" },
   );
@@ -833,8 +1126,12 @@ export default async function plugin(bb: BbPluginApi) {
     "POST",
     "/remove",
     async (context) => {
-      const input: unknown = await context.req.json();
-      return context.json(await handlers.deletePath(input));
+      const input = await readHttpInput(
+        context,
+        docsRpcContract.deletePath.input,
+      );
+      if (!input.ok) return input.response;
+      return context.json(await handlers.deletePath(input.value));
     },
     { auth: "token" },
   );
@@ -885,8 +1182,8 @@ export default async function plugin(bb: BbPluginApi) {
       },
       {
         name: "remove",
-        summary: "Remove a file",
-        usage: "bb docs remove <path> [--vault <id>]",
+        summary: "Remove a file or directory",
+        usage: "bb docs remove <path> [--vault <id>] [--recursive]",
       },
     ],
     async run(argv) {
@@ -926,7 +1223,11 @@ export default async function plugin(bb: BbPluginApi) {
             args.positionals[1],
           );
         } else if (args.command === "remove") {
-          result = await removePath(args.vaultId, args.positionals[0]);
+          result = await removePath(
+            args.vaultId,
+            args.positionals[0],
+            args.recursive,
+          );
         } else {
           return {
             exitCode: 1,

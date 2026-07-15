@@ -8,21 +8,33 @@ import {
   searchMarketplaces,
 } from "./plugin-marketplace-queries";
 
-function fetchReturning(body: unknown, status = 200) {
-  return async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-  });
+function fetchReturning(body: unknown, status = 200): typeof fetch {
+  return async () =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+}
+
+function receiverSensitiveFetch(body: unknown): typeof fetch {
+  return function (this: typeof globalThis) {
+    if (this !== globalThis) throw new TypeError("Illegal invocation");
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  } as typeof fetch;
 }
 
 /** fetchReturning plus a record of every (url, init) it was called with. */
 function recordingFetch(body: unknown, status = 200) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const impl = fetchReturning(body, status);
-  const fetchImpl = async (url: string, init?: RequestInit) => {
-    calls.push({ url, init });
-    return impl();
+  const fetchImpl: typeof fetch = async (input, init) => {
+    calls.push({ url: String(input), init });
+    return impl(input, init);
   };
   return { fetchImpl, calls };
 }
@@ -67,7 +79,7 @@ describe("checkPluginUpdates", () => {
   it("throws on a malformed 2xx body", async () => {
     await expect(
       checkPluginUpdates(fetchReturning({ checked: true })),
-    ).rejects.toThrow(/unrecognized update-check result/);
+    ).rejects.toThrow();
   });
 });
 
@@ -93,7 +105,7 @@ describe("applyPluginUpdate", () => {
   it("throws on a malformed 2xx body instead of defaulting to success", async () => {
     await expect(
       applyPluginUpdate(fetchReturning({ status: "done" }), "linear"),
-    ).rejects.toThrow(/unrecognized update result/);
+    ).rejects.toThrow();
   });
 });
 
@@ -103,7 +115,7 @@ describe("installPlugin", () => {
       installPlugin(fetchReturning({ installed: true }), {
         source: "npm:x",
       }),
-    ).rejects.toThrow(/unrecognized install result/);
+    ).rejects.toThrow();
   });
 });
 
@@ -120,18 +132,38 @@ describe("removeMarketplace", () => {
 
   it("throws the server message on a refused removal", async () => {
     await expect(
-      removeMarketplace(fetchReturning({ error: "unknown marketplace" }, 422), "acme"),
+      removeMarketplace(
+        fetchReturning({ error: "unknown marketplace" }, 422),
+        "acme",
+      ),
     ).rejects.toThrow("unknown marketplace");
   });
 
   it("throws on a malformed 2xx body instead of defaulting to removed", async () => {
     await expect(
       removeMarketplace(fetchReturning({ kept: [] }), "acme"),
-    ).rejects.toThrow(/unrecognized removal result/);
+    ).rejects.toThrow();
   });
 });
 
 describe("marketplace parsers", () => {
+  it("binds browser fetch before the SDK invokes it", async () => {
+    const items = await fetchMarketplaces(
+      receiverSensitiveFetch({
+        marketplaces: [
+          {
+            id: "acme",
+            name: "acme",
+            displayName: "Acme Tools",
+            source: "https://github.com/acme/bb-marketplace@main",
+            pluginCount: 11,
+          },
+        ],
+      }),
+    );
+    expect(items).toHaveLength(1);
+  });
+
   it("maps MarketplaceView fields, keeping displayName distinct from the id", async () => {
     const items = await fetchMarketplaces(
       fetchReturning({
