@@ -416,6 +416,21 @@ interface PluginComposerMention {
  */
 interface PluginComposerApi {
     scope: PluginComposerScope;
+    /** Current plain text for this composer scope. */
+    readonly text: string;
+    /**
+     * Replace the draft's plain text. Attachments are preserved. Inline mentions
+     * outside the changed range are preserved and rebased; mentions overlapped
+     * by the replacement are removed because their text representation changed.
+     */
+    setText(next: string): void;
+    /**
+     * Replace the draft's plain text from the latest committed value. Uses the
+     * same structured-state reconciliation as `setText`.
+     */
+    updateText(updater: (current: string) => string): void;
+    /** Clear plain text without clearing independently attached files. */
+    clear(): void;
     /**
      * Append text to the draft as a `> ` blockquote block and focus the
      * composer. Blank text is a no-op. This is the "reference this selection
@@ -2964,8 +2979,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -8058,8 +8073,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            codex: "codex";
             "claude-code": "claude-code";
+            codex: "codex";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;

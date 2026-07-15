@@ -844,6 +844,12 @@ Hooks:
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt).
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
+  `text` is the current plain text; `setText(next)` replaces it;
+  `updateText(current => next)` receives the latest committed text; and
+  `clear()` clears the text. These edits preserve attachments. Inline
+  mentions outside the changed range are preserved and rebased, while a
+  mention overlapped by replaced text is removed because its inline text no
+  longer represents that pill. Text edits do not focus the composer;
   `addQuote(text)` appends the text as a `> ` blockquote block and focuses
   the composer — the "reference this selection in chat" primitive;
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
@@ -852,6 +858,11 @@ Hooks:
   where writes land (`{ kind: "thread", threadId }` inside a thread
   context, `{ kind: "new-thread", projectId }` from nav panels and
   homepage sections — those seed the composer the user lands on next).
+
+```tsx
+const composer = useComposer();
+composer.updateText((current) => `${current}\n\nPlease summarize this.`);
+```
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports

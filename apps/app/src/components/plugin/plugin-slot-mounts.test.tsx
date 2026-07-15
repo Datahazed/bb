@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +100,9 @@ function ThreadDraftViewer({ threadId }: { threadId: string }) {
       <div data-testid="draft-key">{draft.storageKey}</div>
       <div data-testid="draft-text">{draft.text}</div>
       <div data-testid="draft-mentions">{JSON.stringify(draft.mentions)}</div>
+      <div data-testid="draft-attachments">
+        {JSON.stringify(draft.attachments)}
+      </div>
     </div>
   );
 }
@@ -111,7 +114,69 @@ function NewThreadDraftViewer() {
       <div data-testid="draft-key">{draft.storageKey}</div>
       <div data-testid="draft-text">{draft.text}</div>
       <div data-testid="draft-mentions">{JSON.stringify(draft.mentions)}</div>
+      <div data-testid="draft-attachments">
+        {JSON.stringify(draft.attachments)}
+      </div>
     </div>
+  );
+}
+
+function ThreadDraftSeeder({ threadId }: { threadId: string }) {
+  const draft = usePromptDraftStorage({
+    kind: "thread",
+    projectId: PERSONAL_PROJECT_ID,
+    threadId,
+  });
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        draft.setDraft({
+          text: "Before ideas.md after",
+          mentions: [
+            {
+              start: 7,
+              end: 15,
+              resource: {
+                kind: "plugin",
+                pluginId: "demo",
+                icon: null,
+                itemId: "notes:work/ideas.md",
+                label: "ideas.md",
+              },
+            },
+          ],
+          attachments: [
+            {
+              type: "localFile",
+              path: "uploads/spec.md",
+              name: "spec.md",
+              sizeBytes: 42,
+            },
+          ],
+        })
+      }
+    >
+      seed-thread
+    </button>
+  );
+}
+
+function NewThreadDraftSeeder() {
+  const draft = usePromptDraftStorage({ kind: "new-thread" });
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        draft.setDraft({
+          text: "new-thread seed",
+          mentions: [],
+          attachments: [],
+        })
+      }
+    >
+      seed-new-thread
+    </button>
   );
 }
 
@@ -123,9 +188,47 @@ describe("useComposer", () => {
   function registerComposerProbe(label: string) {
     function ComposerProbe() {
       const composer = useComposer();
+      const initialMethods = useRef({
+        setText: composer.setText,
+        updateText: composer.updateText,
+        clear: composer.clear,
+      });
+      const methodsAreStable =
+        initialMethods.current.setText === composer.setText &&
+        initialMethods.current.updateText === composer.updateText &&
+        initialMethods.current.clear === composer.clear;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
+          <div data-testid={`${label}-composer-text`}>{composer.text}</div>
+          <div data-testid={`${label}-stable-methods`}>
+            {String(methodsAreStable)}
+          </div>
+          <button type="button" onClick={() => composer.setText("replacement")}>
+            {label}-replace
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.updateText((current) => `${current} + updated`)
+            }
+          >
+            {label}-update
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.updateText((current) => `prefix ${current}`)
+            }
+          >
+            {label}-prefix
+          </button>
+          <button type="button" onClick={() => composer.clear()}>
+            {label}-clear
+          </button>
+          <button type="button" onClick={() => composer.focus()}>
+            {label}-focus
+          </button>
           <button
             type="button"
             onClick={() => composer.addQuote("picked text")}
@@ -188,6 +291,131 @@ describe("useComposer", () => {
     );
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+
+  it("reads, replaces, functionally updates, and clears the latest thread text without leaking to the new-thread scope", () => {
+    registerComposerProbe("edit-thread");
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_edit"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftSeeder threadId="thr_edit" />
+        <ThreadDraftViewer threadId="thr_edit" />
+        <NewThreadDraftSeeder />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("seed-thread"));
+    fireEvent.click(screen.getByText("seed-new-thread"));
+    expect(screen.getByTestId("edit-thread-composer-text").textContent).toBe(
+      "Before ideas.md after",
+    );
+
+    let focusRequests = 0;
+    const storageKey = screen.getAllByTestId("draft-key")[0]?.textContent ?? "";
+    const unsubscribe = subscribeComposerFocusRequests(storageKey, () => {
+      focusRequests += 1;
+    });
+
+    fireEvent.click(screen.getByText("edit-thread-replace"));
+    fireEvent.click(screen.getByText("edit-thread-update"));
+    fireEvent.click(screen.getByText("edit-thread-update"));
+    expect(screen.getByTestId("edit-thread-composer-text").textContent).toBe(
+      "replacement + updated + updated",
+    );
+    expect(screen.getByTestId("edit-thread-stable-methods").textContent).toBe(
+      "true",
+    );
+    expect(focusRequests).toBe(0);
+    expect(screen.getAllByTestId("draft-text")[1]?.textContent).toBe(
+      "new-thread seed",
+    );
+    fireEvent.click(screen.getByText("edit-thread-focus"));
+    expect(focusRequests).toBe(1);
+    unsubscribe();
+
+    fireEvent.click(screen.getByText("edit-thread-clear"));
+    expect(screen.getByTestId("edit-thread-composer-text").textContent).toBe(
+      "",
+    );
+    expect(screen.getAllByTestId("draft-text")[1]?.textContent).toBe(
+      "new-thread seed",
+    );
+  });
+
+  it("preserves attachments and reconciles only mentions touched by plain-text edits", () => {
+    registerComposerProbe("structured");
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_structured"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftSeeder threadId="thr_structured" />
+        <ThreadDraftViewer threadId="thr_structured" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("seed-thread"));
+
+    fireEvent.click(screen.getByText("structured-prefix"));
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toMatchObject([{ start: 14, end: 22 }]);
+    expect(
+      JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
+    ).toEqual([
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 42,
+      },
+    ]);
+
+    fireEvent.click(screen.getByText("structured-update"));
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toMatchObject([{ start: 14, end: 22 }]);
+
+    fireEvent.click(screen.getByText("structured-quote"));
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toMatchObject([{ start: 14, end: 22 }]);
+    expect(
+      JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("structured-replace"));
+    expect(screen.getByTestId("draft-mentions").textContent).toBe("[]");
+    expect(
+      JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("structured-clear"));
+    expect(screen.getByTestId("draft-text").textContent).toBe("");
+    expect(
+      JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+  });
+
+  it("targets the new-thread composer without leaking replacements to thread drafts", () => {
+    registerComposerProbe("edit-new");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginComposerAccessories />
+        <NewThreadDraftSeeder />
+        <NewThreadDraftViewer />
+        <ThreadDraftSeeder threadId="thr_other" />
+        <ThreadDraftViewer threadId="thr_other" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("seed-new-thread"));
+    fireEvent.click(screen.getByText("seed-thread"));
+
+    fireEvent.click(screen.getByText("edit-new-replace"));
+    expect(screen.getAllByTestId("draft-text")[0]?.textContent).toBe(
+      "replacement",
+    );
+    expect(screen.getAllByTestId("draft-text")[1]?.textContent).toBe(
+      "Before ideas.md after",
+    );
   });
 
   it("appends mention pills with offsets into the new-thread draft", () => {

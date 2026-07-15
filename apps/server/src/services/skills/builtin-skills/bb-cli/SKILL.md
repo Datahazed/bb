@@ -435,7 +435,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, composerAccessory,
     fileOpener) with hooks (useRpc, useRealtime, useSettings, useBbContext,
-    useBbNavigate, useComposer); components are vendored shadcn source the
+    useBbNavigate, useComposer for scoped text editing / quote / mention /
+    focus access); components are vendored shadcn source the
     plugin owns. Installed
     plugins and their settings also appear under Settings → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run

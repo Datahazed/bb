@@ -212,8 +212,10 @@ host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
 same plugin's thread-panel actions). Hooks:
 useRpc, useRealtime, useSettings (secrets excluded), useBbContext,
-useBbNavigate, and useComposer (quote selections / insert mention pills
-into the chat composer draft). Define RPC methods with `defineRpcContract`
+useBbNavigate, and useComposer (read/replace/update/clear scoped composer
+text, quote selections, insert mention pills, and focus the composer;
+plain-text edits preserve attachments and reconcile only inline mentions
+overlapped by the edit). Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),
 register via `bb.rpc.register(contract, handlers)`, then use a type-only
 backend contract import with `useRpc<typeof contract>()` for exact frontend
