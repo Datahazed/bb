@@ -21,6 +21,7 @@ import {
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
+  threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
@@ -107,6 +108,8 @@ export const createThreadRequestSchema = z
      * origin is "plugin" (enforced below); persisted for attribution.
      */
     originPluginId: z.string().min(1).optional(),
+    /** Hidden threads stay out of sidebar organization and attention surfaces. */
+    visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     // A source-derived side-chat preload may establish the cloned provider
     // session without a first prompt. Normal starts and forks require at least

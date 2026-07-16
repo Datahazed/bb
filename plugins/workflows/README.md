@@ -87,6 +87,12 @@ Worker output is either the final assistant text or an Ajv-validated value
 submitted through `bb_workflow_result`. Structured workers receive two
 corrective retries after their initial invalid attempt.
 
+Workflow workers use BB's generic hidden-thread visibility. They remain
+out of sidebar organization without contributing unread/pending favicon
+attention or native parent notifications. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workflows does not create a
+temporary Workflow folder.
+
 Workflows may invoke one child workflow level with
 `workflow(nameOrRef, args)`. A string and `{ name }` resolve under
 `.bb/workflows`, `{ scriptPath }` uses the same origin-workspace confinement as

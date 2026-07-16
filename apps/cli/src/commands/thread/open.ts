@@ -118,7 +118,7 @@ export function registerOpenCommand(
 function resolveThreadOpenTarget(
   first: string | undefined,
   second: string | undefined,
-  hasExplicitSplit: boolean,
+  allowsExplicitThreadTarget: boolean,
 ): ThreadOpenTarget {
   const contextThreadId = resolveContextThreadId();
   if (contextThreadId) {
@@ -138,21 +138,23 @@ function resolveThreadOpenTarget(
       if (!explicitThreadId) {
         throw new Error("Missing thread ID. Pass <threadId>.");
       }
-      if (explicitThreadId !== contextThreadId && !hasExplicitSplit) {
+      if (explicitThreadId !== contextThreadId && !allowsExplicitThreadTarget) {
         throw new Error(
           "BB_THREAD_ID is set, so bb thread open targets the current thread. Omit the thread ID.",
         );
       }
       return {
-        threadId: hasExplicitSplit ? explicitThreadId : contextThreadId,
+        threadId: allowsExplicitThreadTarget
+          ? explicitThreadId
+          : contextThreadId,
         inputPath: second,
-        resolved: hasExplicitSplit
+        resolved: allowsExplicitThreadTarget
           ? { id: explicitThreadId, source: "arg" }
           : { id: contextThreadId, source: "env" },
       };
     }
 
-    if (hasExplicitSplit) {
+    if (allowsExplicitThreadTarget) {
       const threadId = resolveExplicitIdFlag({
         flagName: "<threadId> argument",
         value: first,

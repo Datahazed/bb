@@ -83,6 +83,11 @@ message agents, or inspect projects, providers, and environments.
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Pass `--visibility hidden` for background/plugin workers that should remain
+  out of sidebar organization without contributing unread/pending favicon
+  attention or native parent notifications. Hidden threads otherwise retain
+  ordinary list, search, prompt-history, folder, lifecycle, parent-operation,
+  and direct-open behavior. Visible is the default.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the

@@ -270,6 +270,7 @@ const thread = await bb.sdk.threads.spawn({
   environment: { type: "project-default" }, // server resolves the project's default environment
   prompt: "Work on this issue…", // prompt XOR input — exactly one
   title: "ENG-42: fix the flaky test",
+  visibility: "hidden", // optional background worker; visible is the default
 });
 ```
 
@@ -278,6 +279,13 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 `originPluginId: <your id>` unless you set them. `bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
+
+Use `visibility: "hidden"` for background workers. Hidden threads stay
+out of sidebar organization and do not contribute unread/pending favicon
+attention or native parent notifications. They otherwise retain ordinary
+list, search, prompt-history, folder, lifecycle, parent-operation, direct-open,
+and direct-ID behavior. This is an organization contract, not a security
+boundary: plugins are full-trust server code.
 
 SDK realtime observation stays separate from plugin lifecycle events:
 `bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
@@ -359,6 +367,9 @@ transition enters the running `active` state. Observe-only handlers run
 fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
+
+Lifecycle events are broadcast to all loaded plugins regardless of sidebar
+visibility.
 
 ### bb.http — HTTP routes
 
