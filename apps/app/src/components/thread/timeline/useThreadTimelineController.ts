@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { replaceEqualDeep } from "@tanstack/react-query";
 import type {
   ThreadTimelineResponse,
   TimelinePaginationCursor,
@@ -74,7 +75,7 @@ interface MergeLatestTimelineRowsResult {
 
 interface TimelineRowIdentityEntry {
   row: TimelineRow;
-  signature: string;
+  fastChangeSignature: string;
 }
 
 interface PreserveTimelineRowIdentityArgs {
@@ -183,7 +184,7 @@ function appendTimelineRowsPreservingOrder(
   }
 }
 
-function timelineRowIdentitySignature(row: TimelineRow): string {
+function timelineRowFastChangeSignature(row: TimelineRow): string {
   return [
     row.kind,
     row.id,
@@ -196,6 +197,20 @@ function timelineRowIdentitySignature(row: TimelineRow): string {
   ].join("\u001f");
 }
 
+function areTimelineRowsRenderEquivalent(
+  previousRow: TimelineRow,
+  nextRow: TimelineRow,
+): boolean {
+  if (previousRow === nextRow) {
+    return true;
+  }
+  // Timeline rows are parsed JSON-compatible contract values. Structural
+  // equality checks every enumerable field recursively, including nested rows
+  // and lazy child-page intervals, without allocating serialized output copies.
+  // Different unsupported/non-plain values fail closed to the next row.
+  return replaceEqualDeep(previousRow, nextRow) === previousRow;
+}
+
 function buildTimelineRowIdentityMap(
   rows: readonly TimelineRow[],
 ): ReadonlyMap<string, TimelineRowIdentityEntry> {
@@ -203,7 +218,7 @@ function buildTimelineRowIdentityMap(
   for (const row of rows) {
     rowsById.set(row.id, {
       row,
-      signature: timelineRowIdentitySignature(row),
+      fastChangeSignature: timelineRowFastChangeSignature(row),
     });
   }
   return rowsById;
@@ -216,7 +231,11 @@ function preserveTimelineRowIdentity({
   const previousRowsById = buildTimelineRowIdentityMap(previousRows);
   return nextRows.map((row) => {
     const previous = previousRowsById.get(row.id);
-    if (previous && previous.signature === timelineRowIdentitySignature(row)) {
+    if (
+      previous &&
+      previous.fastChangeSignature === timelineRowFastChangeSignature(row) &&
+      areTimelineRowsRenderEquivalent(previous.row, row)
+    ) {
       return previous.row;
     }
     return row;

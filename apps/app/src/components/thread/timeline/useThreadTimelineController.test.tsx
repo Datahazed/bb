@@ -10,8 +10,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
-import { useThreadTimelineController } from "./useThreadTimelineController";
+import {
+  commandRow,
+  conversationRow,
+  delegationRow,
+} from "@/test/fixtures/thread-timeline-rows";
+import {
+  mergeLatestTimelineRows,
+  useThreadTimelineController,
+} from "./useThreadTimelineController";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -60,6 +67,133 @@ function makeTimelineResponse({
     },
   };
 }
+
+describe("timeline row identity preservation", () => {
+  it("replaces a same-identity command when pending state becomes interrupted", () => {
+    const pendingRow = commandRow({
+      command: "pnpm test",
+      durationMs: null,
+      id: "active-command",
+      output: "running",
+      status: "pending",
+    });
+    const interruptedRow = {
+      ...pendingRow,
+      status: "interrupted" as const,
+    };
+
+    const merge = mergeLatestTimelineRows({
+      latestRows: [interruptedRow],
+      loadedRows: [pendingRow],
+    });
+
+    expect(merge.rows[0]).toBe(interruptedRow);
+    expect(merge.rows[0]).toMatchObject({ status: "interrupted" });
+  });
+
+  it("replaces a delegation when nested output or lazy interval content changes", () => {
+    const childRow = commandRow({
+      command: "rg timeline",
+      durationMs: null,
+      id: "delegated-command",
+      output: "partial output",
+      status: "pending",
+    });
+    const delegation = {
+      ...delegationRow({
+        childRows: [childRow],
+        durationMs: null,
+        id: "delegation",
+        status: "pending",
+      }),
+      childPage: {
+        intervals: [
+          {
+            beforeChildRowId: null,
+            directTurnSourceSeqEnd: 8,
+            directTurnSourceSeqStart: 2,
+          },
+        ],
+        ownerTurnId: "turn-1",
+        parentToolCallId: "delegation",
+        sourceSeqEnd: 10,
+        sourceSeqStart: 1,
+      },
+    };
+    const nestedOutputUpdate = {
+      ...delegation,
+      childRows: [{ ...childRow, output: "complete output" }],
+    };
+    const intervalUpdate = {
+      ...delegation,
+      childPage: {
+        ...delegation.childPage,
+        intervals: [
+          {
+            ...delegation.childPage.intervals[0],
+            directTurnSourceSeqEnd: 9,
+          },
+        ],
+      },
+    };
+
+    expect(
+      mergeLatestTimelineRows({
+        latestRows: [nestedOutputUpdate],
+        loadedRows: [delegation],
+      }).rows[0],
+    ).toBe(nestedOutputUpdate);
+    expect(
+      mergeLatestTimelineRows({
+        latestRows: [intervalUpdate],
+        loadedRows: [delegation],
+      }).rows[0],
+    ).toBe(intervalUpdate);
+  });
+
+  it("retains the previous reference for a fully equivalent cloned row", () => {
+    const childRow = commandRow({
+      command: "rg timeline",
+      id: "delegated-command",
+      output: "complete output",
+    });
+    const delegation = {
+      ...delegationRow({ childRows: [childRow], id: "delegation" }),
+      childPage: {
+        intervals: [
+          {
+            beforeChildRowId: null,
+            directTurnSourceSeqEnd: 8,
+            directTurnSourceSeqStart: 2,
+          },
+        ],
+        ownerTurnId: "turn-1",
+        parentToolCallId: "delegation",
+        sourceSeqEnd: 10,
+        sourceSeqStart: 1,
+      },
+    };
+    const refetchedDelegation = {
+      ...delegation,
+      childRows: delegation.childRows.map((row) => ({ ...row })),
+      childPage: {
+        ...delegation.childPage,
+        intervals: delegation.childPage.intervals.map((interval) => ({
+          ...interval,
+        })),
+      },
+    };
+    const loadedRows = [delegation];
+
+    const merge = mergeLatestTimelineRows({
+      latestRows: [refetchedDelegation],
+      loadedRows,
+    });
+
+    expect(merge.rows).toBe(loadedRows);
+    expect(merge.rows[0]).toBe(delegation);
+  });
+});
 
 describe("useThreadTimelineController", () => {
   it("keeps an initial timeline refetch in loading state instead of showing the previous error", async () => {
