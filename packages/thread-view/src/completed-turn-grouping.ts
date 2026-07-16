@@ -252,6 +252,14 @@ export function groupPartialTurnMessages(
     }
     tailMessages.push(message);
   }
+  if (prefixMessages.length === 0) {
+    // Nothing settled below the frontier (e.g. every counted completion
+    // belongs to still-running or suppressed work): no summary row. Without
+    // this guard the single-group fast path would fall back to
+    // turn.summaryCount and whole-turn bounds, emitting a bogus "Worked so
+    // far" row above the same rows rendered flat.
+    return { summaryItems: [], tailMessages };
+  }
   return {
     summaryItems: groupCompletedTurnSummaryMessages(turn, prefixMessages),
     tailMessages,

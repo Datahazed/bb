@@ -9,6 +9,7 @@ import {
   createConnection,
   createProject,
   createThread,
+  getLatestThreadSequence,
   insertEvents,
   migrate,
   noopNotifier,
@@ -233,7 +234,9 @@ function insertTurnCompleted({
 function latestTimelineRows(db: DbConnection, thread: Thread): TimelineRow[] {
   return buildThreadTimeline(db, thread, {
     includeProviderUnhandledOperations: false,
-    maxSeq: 0,
+    // The collapse frontier is bounded by maxSeq for cache determinism, so
+    // the build must see the real revision like the route does.
+    maxSeq: getLatestThreadSequence(db, { threadId: thread.id }),
     page: { kind: "latest", segmentLimit: 20 },
   }).rows;
 }
@@ -302,6 +305,25 @@ describe("active-turn collapse frontier", () => {
     const nextChunkRows = latestTimelineRows(db, thread);
     expect(turnRows(nextChunkRows)[0]?.summaryCount).toBe(48);
     expect(visibleCommandCount(nextChunkRows)).toBe(24);
+  });
+
+  it("derives the frontier only from events at or below maxSeq", () => {
+    const { db, thread } = setup();
+    insertTurnScaffold({ db, thread, requestValue: 1, startSeq: 1 });
+    insertCommandPairs(db, thread, 72);
+
+    // Build at an older revision (60 completions): the 12 newer pairs must
+    // not advance the frontier baked into that revision's cached response.
+    const olderMaxSeq = 10 + 60 * 2 - 1;
+    const rows = buildThreadTimeline(db, thread, {
+      includeProviderUnhandledOperations: false,
+      maxSeq: olderMaxSeq,
+      page: { kind: "latest", segmentLimit: 20 },
+    }).rows;
+    expect(turnRows(rows)[0]?.summaryCount).toBe(24);
+
+    const latestRows = latestTimelineRows(db, thread);
+    expect(turnRows(latestRows)[0]?.summaryCount).toBe(48);
   });
 
   it("does not collapse completed turns via the frontier path", () => {
@@ -472,7 +494,9 @@ describe("conversation outline targeted selection", () => {
     });
     insertTurnCompleted({ db, thread, seq: seq + 1, turnId: "turn-2" });
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 0 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      maxSeq: getLatestThreadSequence(db, { threadId: thread.id }),
+    });
     const timelineConversationRows = latestTimelineRows(db, thread).filter(
       (row) => row.kind === "conversation",
     );

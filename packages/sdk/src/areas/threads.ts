@@ -908,6 +908,12 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             turnId: input.turnId,
             sourceSeqStart: input.sourceSeqStart,
             sourceSeqEnd: input.sourceSeqEnd,
+            ...(input.workItemLimit === undefined
+              ? {}
+              : { workItemLimit: input.workItemLimit }),
+            ...(input.afterSeq === undefined
+              ? {}
+              : { afterSeq: input.afterSeq }),
           },
         }),
       );

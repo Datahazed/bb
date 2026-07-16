@@ -21,7 +21,7 @@ import type {
 import {
   countTurnWorkItemCompletions,
   findTimelineSegmentAnchorSequenceAfter,
-  getActiveStoredTurnId,
+  getActiveStoredTurnIdAtSequence,
   getEnvironment,
   getTimelineSegmentAnchorAtSequence,
   getTurnWorkItemCompletionSequenceByIndex,
@@ -164,20 +164,27 @@ const ACTIVE_TURN_COLLAPSE_CHUNK_ITEMS = 24;
  * completions at or before the returned sequence are summarized instead of
  * rendered flat. Derived from indexed completion counts only — never from
  * event payloads — so it stays cheap on turns with tens of thousands of
- * events. Deterministic per (thread, maxSeq), which keeps it compatible with
- * the per-maxSeq timeline response cache.
+ * events. Every query is bounded by `maxSeq`, so the result is deterministic
+ * per (thread, maxSeq) even while events keep appending — the timeline
+ * response cache and the conversation outline cache both key on that revision
+ * and must see identical projections for it.
  */
 function resolveActiveTurnCollapseFrontiers(
   db: DbConnection,
   threadId: string,
+  maxSeq: number,
 ): ReadonlyMap<string, number> | undefined {
-  const activeTurnId = getActiveStoredTurnId(db, threadId);
+  const activeTurnId = getActiveStoredTurnIdAtSequence(db, {
+    threadId,
+    sequenceEnd: maxSeq,
+  });
   if (activeTurnId === null) {
     return undefined;
   }
   const completionCount = countTurnWorkItemCompletions(db, {
     threadId,
     turnId: activeTurnId,
+    sequenceEnd: maxSeq,
   });
   const collapsedCount =
     Math.floor(
@@ -191,6 +198,7 @@ function resolveActiveTurnCollapseFrontiers(
     threadId,
     turnId: activeTurnId,
     index: collapsedCount - 1,
+    sequenceEnd: maxSeq,
   });
   if (frontierSeq === null) {
     return undefined;
@@ -1092,7 +1100,7 @@ function buildThreadTimelineInternal(
   };
   const activeTurnCollapseFrontiers =
     options.page.kind === "latest"
-      ? resolveActiveTurnCollapseFrontiers(db, thread.id)
+      ? resolveActiveTurnCollapseFrontiers(db, thread.id, options.maxSeq)
       : undefined;
   const timeline = measureThreadTimelineStage(
     profile,
@@ -1240,6 +1248,16 @@ export function buildThreadConversationOutline(
     contextWindowEvents: [],
     events: decodedEvents,
     options: {
+      // Same frontiers as the timeline build at this revision: a settled
+      // interim assistant message collapsed into a partial "Worked so far"
+      // summary must not surface as an outline item, or the minimap would
+      // list ids the timeline never renders and jump-to-message would page
+      // the whole thread hunting for them.
+      activeTurnCollapseFrontiers: resolveActiveTurnCollapseFrontiers(
+        db,
+        thread.id,
+        options.maxSeq,
+      ),
       includeDebugRawEvents: false,
       includeNestedRows: false,
       includeProviderUnhandledOperations: false,
@@ -1269,6 +1287,69 @@ export function buildThreadConversationOutline(
   return { items, maxSeq: options.maxSeq };
 }
 
+interface SelectTurnWindowEventRowsArgs {
+  seqEnd: number;
+  seqStart: number;
+  turnId: string;
+}
+
+interface TurnWindowEventSelection {
+  /** Window rows filtered to the requested turn plus its accepted inputs. */
+  eventRows: StoredEventRow[];
+  /** Pre-merge filter result; the full-detail path derives exact range bounds from it. */
+  exactEventRowsForRequestedTurn: FilterExactEventRowsForRequestedTurnResult;
+}
+
+/**
+ * Shared selection pipeline for a turn-detail window: fetch the raw sequence
+ * range, resolve accepted steer inputs (which may land after the range),
+ * partition them by requested turn, and drop other turns' rows. Both the full
+ * turn-detail path and the paged work path use this; they differ only in
+ * bounds policy and how missing turn rows are reported.
+ */
+function selectTurnWindowEventRows(
+  db: DbConnection,
+  thread: Thread,
+  args: SelectTurnWindowEventRowsArgs,
+): TurnWindowEventSelection {
+  const exactEventRows = listStoredEventRowsInRange(db, {
+    threadId: thread.id,
+    seqStart: args.seqStart,
+    seqEnd: args.seqEnd,
+  });
+  const clientRequestIds = listStoredClientTurnRequestIdsInRange(db, {
+    threadId: thread.id,
+    seqStart: args.seqStart,
+    seqEnd: args.seqEnd,
+  });
+  const exactAcceptedInputRows = exactEventRows.filter(
+    (row) => row.type === "turn/input/accepted",
+  );
+  const futureAcceptedInputRows =
+    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+      threadId: thread.id,
+      afterSequence: args.seqEnd,
+      clientRequestIds,
+    });
+  const acceptedInputRowsByTurn = partitionAcceptedInputRowsByRequestedTurn({
+    acceptedInputRows: [...exactAcceptedInputRows, ...futureAcceptedInputRows],
+    turnId: args.turnId,
+  });
+  const exactEventRowsForRequestedTurn = filterExactEventRowsForRequestedTurn({
+    acceptedClientRequestIdsForOtherTurns:
+      acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
+    exactEventRows,
+    turnId: args.turnId,
+  });
+  return {
+    eventRows: mergeStoredEventRowsById([
+      ...exactEventRowsForRequestedTurn.rows,
+      ...acceptedInputRowsByTurn.requestedTurnRows,
+    ]),
+    exactEventRowsForRequestedTurn,
+  };
+}
+
 export function buildTimelineTurnSummaryDetails(
   db: DbConnection,
   thread: Thread,
@@ -1284,39 +1365,12 @@ export function buildTimelineTurnSummaryDetails(
 
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
-  const exactEventRows = listStoredEventRowsInRange(db, {
-    threadId: thread.id,
-    seqStart: options.sourceSeqStart,
-    seqEnd: options.sourceSeqEnd,
-  });
-  const clientRequestIds = listStoredClientTurnRequestIdsInRange(db, {
-    threadId: thread.id,
-    seqStart: options.sourceSeqStart,
-    seqEnd: options.sourceSeqEnd,
-  });
-  const exactAcceptedInputRows = exactEventRows.filter(
-    (row) => row.type === "turn/input/accepted",
-  );
-  const futureAcceptedInputRows =
-    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
-      threadId: thread.id,
-      afterSequence: options.sourceSeqEnd,
-      clientRequestIds,
+  const { eventRows, exactEventRowsForRequestedTurn } =
+    selectTurnWindowEventRows(db, thread, {
+      seqStart: options.sourceSeqStart,
+      seqEnd: options.sourceSeqEnd,
+      turnId: options.turnId,
     });
-  const acceptedInputRowsByTurn = partitionAcceptedInputRowsByRequestedTurn({
-    acceptedInputRows: [...exactAcceptedInputRows, ...futureAcceptedInputRows],
-    turnId: options.turnId,
-  });
-  const exactEventRowsForRequestedTurn = filterExactEventRowsForRequestedTurn({
-    acceptedClientRequestIdsForOtherTurns:
-      acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
-    exactEventRows,
-    turnId: options.turnId,
-  });
-  const eventRows = mergeStoredEventRowsById([
-    ...exactEventRowsForRequestedTurn.rows,
-    ...acceptedInputRowsByTurn.requestedTurnRows,
-  ]);
 
   const hasTurnScopedRowsForRequestedTurn = eventRows.some(
     (row) => row.scopeKind === "turn" && row.turnId === options.turnId,
@@ -1465,39 +1519,11 @@ export function buildTimelineTurnWorkPage(
     }
   }
 
-  const exactEventRows = listStoredEventRowsInRange(db, {
-    threadId: thread.id,
+  const { eventRows } = selectTurnWindowEventRows(db, thread, {
     seqStart: lower,
     seqEnd: upper,
-  });
-  const clientRequestIds = listStoredClientTurnRequestIdsInRange(db, {
-    threadId: thread.id,
-    seqStart: lower,
-    seqEnd: upper,
-  });
-  const exactAcceptedInputRows = exactEventRows.filter(
-    (row) => row.type === "turn/input/accepted",
-  );
-  const futureAcceptedInputRows =
-    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
-      threadId: thread.id,
-      afterSequence: upper,
-      clientRequestIds,
-    });
-  const acceptedInputRowsByTurn = partitionAcceptedInputRowsByRequestedTurn({
-    acceptedInputRows: [...exactAcceptedInputRows, ...futureAcceptedInputRows],
     turnId: options.turnId,
   });
-  const exactEventRowsForRequestedTurn = filterExactEventRowsForRequestedTurn({
-    acceptedClientRequestIdsForOtherTurns:
-      acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
-    exactEventRows,
-    turnId: options.turnId,
-  });
-  const eventRows = mergeStoredEventRowsById([
-    ...exactEventRowsForRequestedTurn.rows,
-    ...acceptedInputRowsByTurn.requestedTurnRows,
-  ]);
 
   const hasTurnScopedRowsForRequestedTurn = eventRows.some(
     (row) => row.scopeKind === "turn" && row.turnId === options.turnId,

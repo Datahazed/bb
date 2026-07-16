@@ -295,6 +295,7 @@ export {
   findStoredClientTurnRequestSequenceByRequestId,
   findStoredEventRow,
   getActiveStoredTurnId,
+  getActiveStoredTurnIdAtSequence,
   getTurnWorkItemCompletionSequenceByIndex,
   hasTurnCompletedEvent,
   listTurnWorkItemCompletionSequencesDescending,

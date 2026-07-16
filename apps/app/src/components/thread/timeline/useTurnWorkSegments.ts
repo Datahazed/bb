@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
@@ -15,18 +15,30 @@ export const TURN_WORK_SEGMENT_ITEM_LIMIT = 40;
  * (the server reports where the page actually started via its
  * `earlierCursor`). `range` covers `(afterSeq, endSeq]` exactly — used to pick
  * up work that collapsed into a partial "Worked so far" summary after the
- * previous fetch. Both are stable descriptions of history, so their query
- * results never need refetching.
+ * previous fetch. Both are stable descriptions of history while the turn
+ * runs; on turn completion the windows are refetched once so work that never
+ * completed is re-served with its finalized (interrupted) status.
  */
 type TurnWorkSegmentParam =
   | { kind: "page"; beforeSeq: number }
   | { kind: "range"; afterSeq: number; endSeq: number };
 
 interface TurnWorkSegmentsState {
-  /** Ordered oldest → newest by covered window. */
+  /**
+   * Ordered oldest → newest by covered window — an invariant of how segments
+   * are created: the initial page first, older pages only ever prepended,
+   * catch-up ranges only ever appended above the covered end.
+   */
   segments: TurnWorkSegmentParam[];
   /** Highest sequence any fetched segment covers; appends start above it. */
   coveredEndSeq: number;
+  /**
+   * Bumped when the turn finishes so every window re-keys and refetches:
+   * while the turn ran, windows dropped still-pending work (it rendered live
+   * in the flat tail); after completion that work is finalized as interrupted
+   * and must appear in the expansion instead of silently vanishing.
+   */
+  generation: number;
 }
 
 /**
@@ -39,33 +51,32 @@ const turnWorkSegmentsAtomFamily = atomFamily((_rowKey: string) =>
   atom<TurnWorkSegmentsState | null>(null),
 );
 
-function segmentDescriptor(segment: TurnWorkSegmentParam): string {
-  return segment.kind === "page"
-    ? `page:${segment.beforeSeq}:${TURN_WORK_SEGMENT_ITEM_LIMIT}`
-    : `range:${segment.afterSeq}:${segment.endSeq}`;
+function segmentDescriptor(
+  segment: TurnWorkSegmentParam,
+  generation: number,
+): string {
+  const window =
+    segment.kind === "page"
+      ? `page:${segment.beforeSeq}:${TURN_WORK_SEGMENT_ITEM_LIMIT}`
+      : `range:${segment.afterSeq}:${segment.endSeq}`;
+  return `g${generation}:${window}`;
 }
 
 /**
  * Segment windows can share an item when its events straddle their boundary
  * (started in the older window, completed in the newer). Both windows project
- * the same row id; the newer window's version has the completed payload, and
- * the older window's position preserves chronological start order.
+ * the same row id; a JS Map keeps the first insertion's position (the older
+ * window's chronological slot) while the last set wins the payload (the newer
+ * window's completed version).
  */
 function mergeSegmentRows(orderedSegmentRows: TimelineRow[][]): TimelineRow[] {
   const rowsById = new Map<string, TimelineRow>();
-  const orderedIds: string[] = [];
   for (const segmentRows of orderedSegmentRows) {
     for (const row of segmentRows) {
-      if (!rowsById.has(row.id)) {
-        orderedIds.push(row.id);
-      }
       rowsById.set(row.id, row);
     }
   }
-  return orderedIds.flatMap((id) => {
-    const row = rowsById.get(id);
-    return row === undefined ? [] : [row];
-  });
+  return [...rowsById.values()];
 }
 
 export interface UseTurnWorkSegmentsArgs {
@@ -75,6 +86,8 @@ export interface UseTurnWorkSegmentsArgs {
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
+  /** True while the summary row's turn is still running (partial row). */
+  turnActive: boolean;
   turnId: string;
 }
 
@@ -94,6 +107,7 @@ export function useTurnWorkSegments({
   sourceSeqEnd,
   sourceSeqStart,
   threadId,
+  turnActive,
   turnId,
 }: UseTurnWorkSegmentsArgs): UseTurnWorkSegmentsResult {
   const atomKey = `${threadId}:${rowId}`;
@@ -114,6 +128,7 @@ export function useTurnWorkSegments({
         return {
           segments: [{ kind: "page", beforeSeq: sourceSeqEnd + 1 }],
           coveredEndSeq: sourceSeqEnd,
+          generation: 0,
         };
       }
       if (sourceSeqEnd > current.coveredEndSeq) {
@@ -121,6 +136,7 @@ export function useTurnWorkSegments({
         // completed): append exactly the newly covered range, leaving every
         // already-fetched window untouched.
         return {
+          ...current,
           segments: [
             ...current.segments,
             {
@@ -136,22 +152,31 @@ export function useTurnWorkSegments({
     });
   }, [enabled, setState, sourceSeqEnd]);
 
-  const segments = useMemo(
-    () => state?.segments ?? [],
-    [state],
-  );
-  const orderedSegments = useMemo(() => {
-    const upperBound = (segment: TurnWorkSegmentParam): number =>
-      segment.kind === "page" ? segment.beforeSeq - 1 : segment.endSeq;
-    return [...segments].sort((left, right) => upperBound(left) - upperBound(right));
-  }, [segments]);
+  // While the turn runs, windows drop work that is still pending (it renders
+  // live in the flat tail). When the turn finishes, work that never completed
+  // is finalized as interrupted — bump the generation so every window re-keys
+  // and refetches with finalized statuses instead of silently losing it.
+  const wasTurnActiveRef = useRef(turnActive);
+  useEffect(() => {
+    if (wasTurnActiveRef.current && !turnActive) {
+      setState((current) =>
+        current === null
+          ? current
+          : { ...current, generation: current.generation + 1 },
+      );
+    }
+    wasTurnActiveRef.current = turnActive;
+  }, [setState, turnActive]);
+
+  const segments = state?.segments ?? [];
+  const generation = state?.generation ?? 0;
 
   const queries = useQueries({
-    queries: orderedSegments.map((segment) => ({
+    queries: segments.map((segment) => ({
       queryKey: threadTurnWorkSegmentQueryKey(
         threadId,
         turnId,
-        segmentDescriptor(segment),
+        segmentDescriptor(segment, generation),
       ),
       queryFn: ({ signal }: { signal?: AbortSignal }) =>
         segment.kind === "page"
@@ -204,12 +229,19 @@ export function useTurnWorkSegments({
   const rows = mergedRowsRef.current.rows;
 
   // Earlier-work paging state lives on the oldest page segment: its response
-  // carries the cursor for the next-older window.
-  const oldestPageIndex = orderedSegments.findIndex(
+  // carries the cursor for the next-older window. While that query is still
+  // pending (right after "Show earlier work"), the control must stay mounted
+  // in its loading state rather than flickering away, so `hasEarlierWork`
+  // holds true until the page resolves and reports its own cursor.
+  const oldestPageIndex = segments.findIndex(
     (segment) => segment.kind === "page",
   );
   const oldestPageQuery =
     oldestPageIndex === -1 ? undefined : queries[oldestPageIndex];
+  const isLoadingEarlier =
+    oldestPageQuery !== undefined &&
+    oldestPageQuery.isPending &&
+    rows !== null;
   const earlierCursor =
     oldestPageQuery?.data?.workPage?.earlierCursor ?? null;
 
@@ -239,19 +271,20 @@ export function useTurnWorkSegments({
     });
   }, [earlierCursor, setState]);
 
+  const queriesRef = useRef(queries);
+  queriesRef.current = queries;
   const retry = useCallback(() => {
-    for (const query of queries) {
+    for (const query of queriesRef.current) {
       if (query.isError) {
         void query.refetch();
       }
     }
-  }, [queries]);
+  }, []);
 
   return {
     rows,
-    hasEarlierWork: earlierCursor !== null,
-    isLoadingEarlier:
-      oldestPageQuery !== undefined && oldestPageQuery.isPending,
+    hasEarlierWork: isLoadingEarlier || earlierCursor !== null,
+    isLoadingEarlier,
     isError: queries.some((query) => query.isError),
     loadEarlierWork,
     retry,

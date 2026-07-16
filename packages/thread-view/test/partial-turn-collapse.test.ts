@@ -153,6 +153,18 @@ describe("active-turn partial collapse", () => {
     );
   });
 
+  it("emits no partial row when nothing settled sits below the frontier", () => {
+    const factory = event();
+    const rows = buildTimelineRowsFromEvents(activeTurnEvents(factory), {
+      // Frontier below every message's end: the settled prefix is empty, so
+      // no "Worked so far" row may appear (a bogus one would double-count the
+      // flat rows below it).
+      activeTurnCollapseFrontiers: new Map([["turn-1", 9]]),
+    });
+    expect(turnRows(rows)).toEqual([]);
+    expect(commandRowCommands(rows)).toHaveLength(6);
+  });
+
   it("renders flat rows when no frontier is provided", () => {
     const rows = buildTimelineRowsFromEvents(activeTurnEvents(event()));
     expect(turnRows(rows)).toEqual([]);

@@ -6,6 +6,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   max,
@@ -1680,12 +1681,20 @@ export function listStoredConversationOutlineEventRows(
     "system/error",
     "system/thread/interrupted",
     "item/agentMessage/delta",
+    "item/plan/delta",
     "system/manager/user_message",
   ] satisfies ThreadEventType[];
   const agentItemTypes = [
     "item/started",
     "item/completed",
   ] satisfies ThreadEventType[];
+  // Plan items project to assistant text too (parseAssistantFinalText). The
+  // json_extract fallback runs only for legacy rows written before the
+  // item_kind column — typed rows never touch the (potentially huge) payload.
+  const conversationItemKinds = [
+    "agentMessage",
+    "plan",
+  ] satisfies ThreadEventItemType[];
 
   return db
     .select(storedEventRowFields)
@@ -1698,8 +1707,11 @@ export function listStoredConversationOutlineEventRows(
           and(
             inArray(events.type, agentItemTypes),
             or(
-              eq(events.itemKind, "agentMessage"),
-              sql`json_extract(${events.data}, '$.item.type') = 'agentMessage'`,
+              inArray(events.itemKind, conversationItemKinds),
+              and(
+                isNull(events.itemKind),
+                sql`json_extract(${events.data}, '$.item.type') IN ('agentMessage', 'plan')`,
+              ),
             ),
           ),
         ),
@@ -1714,17 +1726,25 @@ export function listStoredConversationOutlineEventRows(
  * reasoning — the unit the timeline's turn-work pagination and the active-turn
  * collapse frontier count in. Reasoning completions are excluded because they
  * never render as work rows, so counting them would make page sizes drift with
- * how chatty a model's thinking is.
+ * how chatty a model's thinking is. Legacy rows written before the item_kind
+ * column fall back to the item payload's type. All completion queries are
+ * bounded by `sequenceEnd` so results are deterministic per (thread, maxSeq) —
+ * the timeline response cache keys on that revision.
  */
 function turnWorkItemCompletionConditions(args: {
   threadId: string;
   turnId: string;
+  sequenceEnd: number;
 }): SQL | undefined {
   return and(
     eq(events.threadId, args.threadId),
     eq(events.turnId, args.turnId),
     eq(events.type, "item/completed"),
-    sql`(${events.itemKind} IS NULL OR ${events.itemKind} <> 'reasoning')`,
+    lte(events.sequence, args.sequenceEnd),
+    sql`CASE
+      WHEN ${events.itemKind} IS NOT NULL THEN ${events.itemKind} <> 'reasoning'
+      ELSE COALESCE(json_extract(${events.data}, '$.item.type'), '') <> 'reasoning'
+    END`,
   );
 }
 
@@ -1749,7 +1769,6 @@ export function listTurnWorkItemCompletionSequencesDescending(
       and(
         turnWorkItemCompletionConditions(args),
         gte(events.sequence, args.sequenceStart),
-        lte(events.sequence, args.sequenceEnd),
       ),
     )
     .orderBy(desc(events.sequence))
@@ -1761,6 +1780,8 @@ export function listTurnWorkItemCompletionSequencesDescending(
 export interface CountTurnWorkItemCompletionsArgs {
   threadId: string;
   turnId: string;
+  /** Inclusive upper sequence bound (the build's maxSeq). */
+  sequenceEnd: number;
 }
 
 export function countTurnWorkItemCompletions(
@@ -1780,6 +1801,8 @@ export interface GetTurnWorkItemCompletionSequenceByIndexArgs {
   turnId: string;
   /** Zero-based index in ascending sequence order. */
   index: number;
+  /** Inclusive upper sequence bound (the build's maxSeq). */
+  sequenceEnd: number;
 }
 
 export function getTurnWorkItemCompletionSequenceByIndex(
@@ -1795,6 +1818,59 @@ export function getTurnWorkItemCompletionSequenceByIndex(
     .offset(args.index)
     .get();
   return row?.sequence ?? null;
+}
+
+export interface GetActiveStoredTurnIdAtSequenceArgs {
+  threadId: string;
+  /** Inclusive upper sequence bound (the build's maxSeq). */
+  sequenceEnd: number;
+}
+
+/**
+ * Bounded variant of {@link getActiveStoredTurnId}: the turn that was running
+ * as of `sequenceEnd`. Used by the collapse-frontier resolution so a timeline
+ * response cached per (thread, maxSeq) never bakes in turn state from events
+ * appended after that revision.
+ */
+export function getActiveStoredTurnIdAtSequence(
+  db: DbQueryConnection,
+  args: GetActiveStoredTurnIdAtSequenceArgs,
+): string | null {
+  const latestStarted = db
+    .select({ turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/started"),
+        lte(events.sequence, args.sequenceEnd),
+        isNotNull(events.turnId),
+        isRootTurnStartedEventData,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+
+  if (!latestStarted?.turnId) {
+    return null;
+  }
+
+  const completed = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, latestStarted.turnId),
+        eq(events.type, "turn/completed"),
+        lte(events.sequence, args.sequenceEnd),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return completed ? null : latestStarted.turnId;
 }
 
 export interface HasTurnCompletedEventArgs {

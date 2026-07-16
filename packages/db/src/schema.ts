@@ -662,6 +662,15 @@ export const events = sqliteTable(
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
+    // Covering index for turn work-item completion queries (collapse frontier
+    // + turn-work paging): count/nth/descending-list all resolve without
+    // touching row payloads. item_kind is included so the reasoning exclusion
+    // stays an index-only residual. The WHERE expression must stay
+    // unqualified: SQLite rejects table-qualified column references in
+    // partial-index predicates.
+    index("events_turn_completion_idx")
+      .on(table.threadId, table.turnId, table.sequence, table.itemKind)
+      .where(sql`"type" = 'item/completed'`),
     check(
       "events_scope_shape_check",
       sql`(

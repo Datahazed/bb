@@ -1,0 +1,1 @@
+CREATE INDEX `events_turn_completion_idx` ON `events` (`thread_id`,`turn_id`,`sequence`,`item_kind`) WHERE "type" = 'item/completed';

@@ -320,6 +320,7 @@ function computeTimelineRowRenderSignature(row: ThreadTimelineViewRow): string {
         row.status,
         row.summaryCount,
         row.completedAt,
+        row.partial,
         row.children ? timelineRowsSignature(row.children) : null,
       ]);
     case "work":

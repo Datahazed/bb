@@ -222,6 +222,9 @@ function dropRewindAddedTables(db: DbConnection): void {
   // schema (thread folder columns + thread_folders table), thread tabs, and
   // normalized plugin persistence tables.
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
+  // Index added by 0074; the events table itself predates the rewind point,
+  // so only the index must be dropped for the forward re-migrate.
+  db.$client.prepare("DROP INDEX IF EXISTS events_turn_completion_idx").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
@@ -2941,6 +2944,7 @@ describe("migrate", () => {
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
+        "events_turn_completion_idx",
       ]);
 
       const migrationCreatedAts = db.$client

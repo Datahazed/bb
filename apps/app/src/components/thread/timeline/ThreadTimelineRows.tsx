@@ -1325,6 +1325,7 @@ function LazyTurnRowBody({
     sourceSeqEnd: rowSourceSeqEnd,
     sourceSeqStart: rowSourceSeqStart,
     threadId: threadId ?? rowThreadId,
+    turnActive: row.partial,
     turnId: rowTurnId,
   });
   const bottomAnchor = useBottomAnchoredScroll();

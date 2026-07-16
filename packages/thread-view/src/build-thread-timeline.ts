@@ -1335,7 +1335,9 @@ export interface BuildThreadTimelineTurnWorkPageFromEventsArgs {
   options: BuildThreadTimelineTurnWorkPageFromEventsOptions;
 }
 
-function isPendingStatusRow(row: TimelineRow): boolean {
+function isPendingStatusRow(
+  row: TimelineRow,
+): row is Extract<TimelineRow, { kind: "work" | "system" }> {
   switch (row.kind) {
     case "work":
       return row.status === "pending";
@@ -1350,13 +1352,24 @@ function isPendingStatusRow(row: TimelineRow): boolean {
 }
 
 function finalizePendingStatusRow(row: TimelineRow): TimelineRow {
-  if (row.kind === "work" && row.status === "pending") {
-    return { ...row, status: "interrupted" };
+  return isPendingStatusRow(row) ? { ...row, status: "interrupted" } : row;
+}
+
+/**
+ * User rows the main timeline renders at the top level must not repeat inside
+ * a work page — but agent/system-initiated steers are summary-groupable
+ * (mirrors isTimelineSummaryGroupableSteerMessage), fold INTO the summary for
+ * completed turns, and therefore must stay in the page or they would be
+ * unreachable anywhere in the UI.
+ */
+function isTopLevelUserConversationRow(row: TimelineRow): boolean {
+  if (row.kind !== "conversation" || row.role !== "user") {
+    return false;
   }
-  if (row.kind === "system" && row.status === "pending") {
-    return { ...row, status: "interrupted" };
-  }
-  return row;
+  const isGroupableSteer =
+    row.turnRequest.kind === "steer" &&
+    (row.initiator === "agent" || row.initiator === "system");
+  return !isGroupableSteer;
 }
 
 /**
@@ -1397,7 +1410,7 @@ export function buildThreadTimelineTurnWorkPageFromEvents(
     turnSummaryRows.length > 0
       ? turnSummaryRows.flatMap((row) => row.children ?? [])
       : rows.filter((row) => {
-          if (row.kind === "conversation" && row.role === "user") {
+          if (isTopLevelUserConversationRow(row)) {
             return false;
           }
           if (row.kind === "system" && row.systemKind === "debug") {
