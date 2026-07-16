@@ -75,6 +75,8 @@ describe("timeline response helpers", () => {
         sourceSeqEnd: 1,
         startedAt: 1,
         createdAt: 1,
+        detailContextItemIds: [],
+        detailParentToolCallId: null,
         status: "completed",
         summaryCount: 1,
         completedAt: null,
@@ -108,6 +110,7 @@ describe("timeline response helpers", () => {
         output: "",
         completedAt: null,
         childRows: [ASSISTANT_ROW],
+        childPage: null,
       },
     ]);
 
