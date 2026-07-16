@@ -43,6 +43,22 @@ deletion.
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
 
+The Tasks plugin is an opt-in install from the default BB Official marketplace:
+`bb plugin install tasks@bb-official`. It adds a task tracker, agent delegation,
+and the `bb tasks` command. Common agent operations are:
+
+  bb tasks show <key-or-id> [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--json]
+  bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
+  bb tasks attachment get <attachment-id> --out <path> [--json]
+  bb tasks attach <key-or-id> [--json]
+  bb tasks update <key-or-id> --status in_review [--json]
+
+Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
+commands, plus preset management, delegation, and attached-thread inspection.
+Delegated threads are attached automatically; use `bb tasks attach` only when
+work started outside Tasks.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
@@ -121,11 +137,11 @@ A failed check keeps the last-known-good catalog. Catalog refresh changes only
 discovery metadata; `bb plugin outdated` / `bb plugin update` move installed
 plugin artifacts.
 
-The catalog includes GitHub, Docs, and Memory as opt-in installs
-(`bb plugin install github`, `bb plugin install simple-notes`, or
-`bb plugin install memory`). Catalog entries may resolve to npm, Git, or a
-GitHub Release archive. Catalogs cannot contain local path sources and users
-cannot add or remove catalogs.
+The catalog includes GitHub, Docs, Memory, and Tasks as opt-in installs
+(`bb plugin install github`, `bb plugin install simple-notes`,
+`bb plugin install memory`, or `bb plugin install tasks`). Catalog entries may
+resolve to npm, Git, or a GitHub Release archive. Catalogs cannot contain local
+path sources and users cannot add or remove catalogs.
 
 Updates are manual: `bb plugin outdated` checks tracking sources and
 `bb plugin update` applies compatible candidates. Reinstalling an
@@ -305,7 +321,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
-The `official-plugins/` directory contains the BB Official GitHub, Docs, and
-Memory plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
+The `official-plugins/` directory contains the BB Official GitHub, Docs,
+Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
 (webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
 (host-rendered UI).
