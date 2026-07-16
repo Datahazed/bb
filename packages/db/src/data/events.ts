@@ -1654,6 +1654,173 @@ export function listRecentStoredEventRows(
     .all();
 }
 
+export interface ListStoredConversationOutlineEventRowsArgs {
+  threadId: string;
+}
+
+/**
+ * The conversation outline renders only user/assistant messages. Selecting
+ * command, tool, diff, goal, and usage events made its cost scale with all
+ * work performed in a thread even though none of those rows can reach the
+ * result. Turn lifecycle and error events are still selected — they are one
+ * row per turn and they decide completed-turn grouping, which determines
+ * whether an interim assistant message is (correctly) folded away instead of
+ * surfacing as an outline item the timeline never renders.
+ */
+export function listStoredConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+): StoredEventRow[] {
+  const directConversationTypes = [
+    "client/turn/requested",
+    "turn/input/accepted",
+    "turn/started",
+    "turn/completed",
+    "provider/error",
+    "system/error",
+    "system/thread/interrupted",
+    "item/agentMessage/delta",
+    "system/manager/user_message",
+  ] satisfies ThreadEventType[];
+  const agentItemTypes = [
+    "item/started",
+    "item/completed",
+  ] satisfies ThreadEventType[];
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        or(
+          inArray(events.type, directConversationTypes),
+          and(
+            inArray(events.type, agentItemTypes),
+            or(
+              eq(events.itemKind, "agentMessage"),
+              sql`json_extract(${events.data}, '$.item.type') = 'agentMessage'`,
+            ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+/**
+ * A "work item completion" is an `item/completed` event whose item is not
+ * reasoning — the unit the timeline's turn-work pagination and the active-turn
+ * collapse frontier count in. Reasoning completions are excluded because they
+ * never render as work rows, so counting them would make page sizes drift with
+ * how chatty a model's thinking is.
+ */
+function turnWorkItemCompletionConditions(args: {
+  threadId: string;
+  turnId: string;
+}): SQL | undefined {
+  return and(
+    eq(events.threadId, args.threadId),
+    eq(events.turnId, args.turnId),
+    eq(events.type, "item/completed"),
+    sql`(${events.itemKind} IS NULL OR ${events.itemKind} <> 'reasoning')`,
+  );
+}
+
+export interface ListTurnWorkItemCompletionSequencesDescendingArgs {
+  threadId: string;
+  turnId: string;
+  /** Inclusive lower sequence bound. */
+  sequenceStart: number;
+  /** Inclusive upper sequence bound. */
+  sequenceEnd: number;
+  limit: number;
+}
+
+export function listTurnWorkItemCompletionSequencesDescending(
+  db: DbConnection,
+  args: ListTurnWorkItemCompletionSequencesDescendingArgs,
+): number[] {
+  return db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        turnWorkItemCompletionConditions(args),
+        gte(events.sequence, args.sequenceStart),
+        lte(events.sequence, args.sequenceEnd),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(args.limit)
+    .all()
+    .map((row) => row.sequence);
+}
+
+export interface CountTurnWorkItemCompletionsArgs {
+  threadId: string;
+  turnId: string;
+}
+
+export function countTurnWorkItemCompletions(
+  db: DbConnection,
+  args: CountTurnWorkItemCompletionsArgs,
+): number {
+  const row = db
+    .select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(turnWorkItemCompletionConditions(args))
+    .get();
+  return row?.count ?? 0;
+}
+
+export interface GetTurnWorkItemCompletionSequenceByIndexArgs {
+  threadId: string;
+  turnId: string;
+  /** Zero-based index in ascending sequence order. */
+  index: number;
+}
+
+export function getTurnWorkItemCompletionSequenceByIndex(
+  db: DbConnection,
+  args: GetTurnWorkItemCompletionSequenceByIndexArgs,
+): number | null {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(turnWorkItemCompletionConditions(args))
+    .orderBy(events.sequence)
+    .limit(1)
+    .offset(args.index)
+    .get();
+  return row?.sequence ?? null;
+}
+
+export interface HasTurnCompletedEventArgs {
+  threadId: string;
+  turnId: string;
+}
+
+export function hasTurnCompletedEvent(
+  db: DbConnection,
+  args: HasTurnCompletedEventArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, args.turnId),
+        eq(events.type, "turn/completed"),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
 export interface StandardTimelineSegmentAnchorRow {
   rowId: string;
   sequence: number;

@@ -100,6 +100,7 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
+import { useTurnWorkSegments } from "./useTurnWorkSegments.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
@@ -1170,8 +1171,12 @@ function TimelineExpandableBody({
           compactActivityIntents={compactActivityIntents}
           // Completed turn details live under "Worked for..." as archival
           // context; pending "Working" rows keep the streaming affordance.
+          // Partial "Worked so far" rows are archival too — their live tail
+          // renders outside the collapse.
           showAssistantMessageActions={
-            showAssistantMessageActions && row.status === "pending"
+            showAssistantMessageActions &&
+            row.status === "pending" &&
+            !row.partial
           }
         />
       );
@@ -1272,6 +1277,14 @@ function TurnRowBody({
   );
 }
 
+/**
+ * Turns whose summary counts at most this many work items load their full
+ * detail in one un-truncated fetch. Larger turns page through
+ * `useTurnWorkSegments` — newest work first, with "Show earlier work"
+ * progressively revealing older windows.
+ */
+const FULL_TURN_DETAIL_MAX_ITEMS = 60;
+
 function LazyTurnRowBody({
   compactActivityIntents,
   row,
@@ -1284,6 +1297,10 @@ function LazyTurnRowBody({
     threadId: rowThreadId,
     turnId: rowTurnId,
   } = row;
+  // Partial rows always page (they exist because the turn is large and still
+  // growing); completed rows page only past the size threshold.
+  const usePagedWork =
+    row.partial || row.summaryCount > FULL_TURN_DETAIL_MAX_ITEMS;
   const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
     () =>
       buildTurnSummaryDetailsIdentity({
@@ -1297,18 +1314,43 @@ function LazyTurnRowBody({
   );
   const {
     data: detail,
-    isError,
+    isError: isFullDetailError,
     refetch,
-  } = useThreadTimelineTurnSummaryDetails(identity);
+  } = useThreadTimelineTurnSummaryDetails(identity, {
+    enabled: !usePagedWork,
+  });
+  const workSegments = useTurnWorkSegments({
+    enabled: usePagedWork,
+    rowId: row.id,
+    sourceSeqEnd: rowSourceSeqEnd,
+    sourceSeqStart: rowSourceSeqStart,
+    threadId: threadId ?? rowThreadId,
+    turnId: rowTurnId,
+  });
+  const bottomAnchor = useBottomAnchoredScroll();
+  const loadEarlierWork = workSegments.loadEarlierWork;
+  const handleShowEarlierWork = useCallback((): void => {
+    // Revealed earlier work inserts above the reader's position; anchor the
+    // scroll so the visible rows do not jump.
+    bottomAnchor?.captureScrollAnchor();
+    loadEarlierWork();
+  }, [bottomAnchor, loadEarlierWork]);
+  const retryWorkSegments = workSegments.retry;
   const handleRetry = useCallback((): void => {
+    if (usePagedWork) {
+      retryWorkSegments();
+      return;
+    }
     void refetch();
-  }, [refetch]);
-  const rows = detail
-    ? // Lazy turn-detail children belong to a completed turn — flag the
+  }, [refetch, retryWorkSegments, usePagedWork]);
+  const rawRows = usePagedWork ? workSegments.rows : (detail?.rows ?? null);
+  const rows = rawRows
+    ? // Lazy turn-detail children belong to settled work — flag the
       // scope as closed so trailing work in the children collapses into a
       // step-summary at end-of-input, matching the inline-children path.
-      getViewRows(detail.rows, { closedScope: true })
+      getViewRows(rawRows, { closedScope: true })
     : null;
+  const isError = usePagedWork ? workSegments.isError : isFullDetailError;
 
   if (!rows && isError) {
     return (
@@ -1328,17 +1370,43 @@ function LazyTurnRowBody({
     );
   }
   if (rows) {
+    const showEarlierWorkControl =
+      usePagedWork && (workSegments.hasEarlierWork || workSegments.isError);
     return (
-      <TimelineRowsList
-        rows={rows}
-        scopeActive={false}
-        showAssistantMessageActions={showAssistantMessageActions}
-        compactActivityIntents={compactActivityIntents}
-        spacing="nested"
-        className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
-        unreadDividerAutoScroll={false}
-        unreadDividerPlacement={null}
-      />
+      <div className="flex w-full flex-col gap-1">
+        {showEarlierWorkControl ? (
+          <div className="flex justify-start pb-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={workSegments.isError ? handleRetry : handleShowEarlierWork}
+              disabled={workSegments.isLoadingEarlier}
+              className="h-7 px-2 text-muted-foreground"
+            >
+              <Icon
+                name={workSegments.isError ? "RotateCcw" : "ChevronUp"}
+                aria-hidden="true"
+              />
+              {workSegments.isError
+                ? "Failed to load earlier work — retry"
+                : workSegments.isLoadingEarlier
+                  ? "Loading earlier work..."
+                  : "Show earlier work"}
+            </Button>
+          </div>
+        ) : null}
+        <TimelineRowsList
+          rows={rows}
+          scopeActive={false}
+          showAssistantMessageActions={showAssistantMessageActions}
+          compactActivityIntents={compactActivityIntents}
+          spacing="nested"
+          className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
+          unreadDividerAutoScroll={false}
+          unreadDividerPlacement={null}
+        />
+      </div>
     );
   }
   return (

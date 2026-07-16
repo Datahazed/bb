@@ -465,6 +465,7 @@ describe("timeline CLI rendering snapshots", () => {
           status: "completed",
           summaryCount: 0,
           completedAt: null,
+          partial: false,
           children: null,
         } satisfies TimelineRow,
       ],

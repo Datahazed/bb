@@ -42,6 +42,7 @@ export type { FileChangeAction } from "./file-change-summary.js";
 export {
   buildThreadTimelineFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
+  buildThreadTimelineTurnWorkPageFromEvents,
 } from "./build-thread-timeline.js";
 export { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";

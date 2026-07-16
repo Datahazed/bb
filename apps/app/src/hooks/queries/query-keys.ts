@@ -906,6 +906,33 @@ export function threadTimelineTurnSummaryDetailsQueryKey({
   ];
 }
 
+/**
+ * One immutable window of a large turn's work rows (see useTurnWorkSegments).
+ * Shares the turn-summary-details prefix so thread-level invalidation and
+ * cleanup cover both families.
+ */
+export type ThreadTurnWorkSegmentQueryKey = readonly [
+  typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
+  string,
+  string,
+  "work-segment",
+  string,
+];
+
+export function threadTurnWorkSegmentQueryKey(
+  threadId: string,
+  turnId: string,
+  segmentDescriptor: string,
+): ThreadTurnWorkSegmentQueryKey {
+  return [
+    THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
+    threadId,
+    turnId,
+    "work-segment",
+    segmentDescriptor,
+  ];
+}
+
 export function threadTimelineQueryKeyPrefix(
   threadId: string,
 ): ThreadTimelineQueryKeyPrefix {

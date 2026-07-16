@@ -105,6 +105,7 @@ describe("resolveSideChatReplyReference", () => {
           status: "completed",
           summaryCount: 0,
           completedAt: 9,
+          partial: false,
           children: [
             conversationRow("assistant", anchor),
             conversationRow("user", "And the latest message."),

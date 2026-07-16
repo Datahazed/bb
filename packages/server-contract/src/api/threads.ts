@@ -584,9 +584,43 @@ export const timelineTurnSummaryDetailsQuerySchema = z.object({
   turnId: z.string().min(1),
   sourceSeqStart: z.string().regex(/^\d+$/),
   sourceSeqEnd: z.string().regex(/^\d+$/),
+  /**
+   * Work-item pagination for large turns. When present, the response contains
+   * only the newest `workItemLimit` work items at or below `sourceSeqEnd`
+   * (instead of the whole range) plus `workPage` metadata with a cursor for
+   * progressively revealing earlier work. Omitted = full detail (legacy
+   * behavior, still used for small turns).
+   */
+  workItemLimit: z.string().regex(/^[1-9]\d*$/).optional(),
+  /**
+   * Lower sequence bound (exclusive) for a fixed-range fetch. Used to append
+   * work that collapsed into a partial turn summary after the client's last
+   * fetch: the response covers (afterSeq, sourceSeqEnd] exactly and carries no
+   * pagination metadata. Mutually exclusive with `workItemLimit`.
+   */
+  afterSeq: z.string().regex(/^\d+$/).optional(),
 });
 export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
+>;
+
+export const timelineTurnWorkPageCursorSchema = z
+  .object({
+    /** Request the next-older page with `sourceSeqEnd = beforeSeq - 1`. */
+    beforeSeq: z.number().int().positive(),
+  })
+  .strict();
+export type TimelineTurnWorkPageCursor = z.infer<
+  typeof timelineTurnWorkPageCursorSchema
+>;
+
+export const timelineTurnWorkPageMetadataSchema = z
+  .object({
+    earlierCursor: timelineTurnWorkPageCursorSchema.nullable(),
+  })
+  .strict();
+export type TimelineTurnWorkPageMetadata = z.infer<
+  typeof timelineTurnWorkPageMetadataSchema
 >;
 
 export const threadEventsQuerySchema = z
@@ -654,6 +688,11 @@ export type TimelineTurnSummaryDetailsRequest = z.infer<
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  /**
+   * Present only on `workItemLimit` (paged) requests. `earlierCursor` is null
+   * once the page reaches `sourceSeqStart`.
+   */
+  workPage: timelineTurnWorkPageMetadataSchema.nullable(),
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema

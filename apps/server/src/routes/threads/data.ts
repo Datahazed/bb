@@ -47,10 +47,13 @@ import {
   buildThreadConversationOutline,
   buildThreadTimeline,
   buildTimelineTurnSummaryDetails,
+  buildTimelineTurnWorkPage,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
+  TIMELINE_TURN_WORK_ITEM_LIMIT_MAX,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
+  type TimelineTurnWorkPageMode,
 } from "../../services/threads/timeline.js";
 import {
   buildThreadTimelineCacheKey,
@@ -58,7 +61,10 @@ import {
   createThreadTimelineCache,
 } from "../../services/threads/timeline-cache.js";
 import { createTimelineLatestRowsCache } from "../../services/threads/timeline-latest-rows-cache.js";
-import { truncateTimelineResponseOutputs } from "../../services/threads/timeline-output-truncation.js";
+import {
+  truncateTimelineResponseOutputs,
+  truncateTimelineRowsOutputs,
+} from "../../services/threads/timeline-output-truncation.js";
 import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
   findThreadEvent,
@@ -231,6 +237,37 @@ function parseThreadTimelinePage(
     kind,
     segmentLimit,
   };
+}
+
+function parseTimelineTurnWorkPageMode(query: {
+  afterSeq?: string;
+  workItemLimit?: string;
+}): TimelineTurnWorkPageMode | null {
+  if (query.workItemLimit !== undefined && query.afterSeq !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "workItemLimit and afterSeq are mutually exclusive",
+    );
+  }
+  if (query.workItemLimit !== undefined) {
+    return {
+      kind: "page",
+      workItemLimit: parseBoundedPositiveOptionalInteger({
+        defaultValue: TIMELINE_TURN_WORK_ITEM_LIMIT_MAX,
+        max: TIMELINE_TURN_WORK_ITEM_LIMIT_MAX,
+        name: "workItemLimit",
+        value: query.workItemLimit,
+      }),
+    };
+  }
+  if (query.afterSeq !== undefined) {
+    return {
+      kind: "range",
+      afterSeq: parseInteger(query.afterSeq, "afterSeq"),
+    };
+  }
+  return null;
 }
 
 export async function requireThreadStorageTarget(
@@ -461,18 +498,36 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeProviderUnhandledOperations =
       deps.config.isDevelopment ||
       getAppSettings(deps.db).showUnhandledProviderEvents;
-    return context.json(
-      buildTimelineTurnSummaryDetails(deps.db, thread, {
-        includeProviderUnhandledOperations,
-        providerDisplayName: resolveThreadProviderDisplayName(
-          deps,
-          thread.providerId,
-        ),
-        turnId: query.turnId,
-        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-      }),
+    const providerDisplayName = resolveThreadProviderDisplayName(
+      deps,
+      thread.providerId,
     );
+    const selection = {
+      turnId: query.turnId,
+      sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+      sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+    };
+
+    const mode = parseTimelineTurnWorkPageMode(query);
+    if (mode === null) {
+      return context.json(
+        buildTimelineTurnSummaryDetails(deps.db, thread, {
+          includeProviderUnhandledOperations,
+          providerDisplayName,
+          ...selection,
+        }),
+      );
+    }
+    const page = buildTimelineTurnWorkPage(deps.db, thread, {
+      includeProviderUnhandledOperations,
+      mode,
+      providerDisplayName,
+      ...selection,
+    });
+    return context.json({
+      ...page,
+      rows: truncateTimelineRowsOutputs(page.rows),
+    });
   });
 
   get(routes.output, (context) => {

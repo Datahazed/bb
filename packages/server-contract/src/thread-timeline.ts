@@ -483,6 +483,15 @@ export interface TimelineTurnRow extends TimelineRowBase {
   status: TimelineRowStatus;
   summaryCount: number;
   completedAt: number | null;
+  /**
+   * True while the turn is still running and this row summarizes only the
+   * finished prefix of its work — the live tail renders as sibling rows below.
+   * On turn completion the row converges to the normal completed summary
+   * (`partial: false`) at the same row id. `completedAt` on a partial row is
+   * the time of the newest collapsed work, so "Worked so far (…)" durations
+   * reflect covered work rather than the whole turn.
+   */
+  partial: boolean;
   children: TimelineRow[] | null;
 }
 
@@ -493,6 +502,7 @@ export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
     status: timelineRowStatusSchema,
     summaryCount: z.number().int().nonnegative(),
     completedAt: z.number().nullable(),
+    partial: z.boolean(),
     children: z.array(timelineRowSchema).nullable(),
   }),
 );

@@ -4,7 +4,10 @@ import type {
 } from "./event-projection-types.js";
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 import { getMessageStartedAt } from "./format-helpers.js";
-import { isTimelineUngroupableMessage } from "./timeline-message-helpers.js";
+import {
+  isSettledTimelineMessage,
+  isTimelineUngroupableMessage,
+} from "./timeline-message-helpers.js";
 
 export interface CompletedTurnSummaryGroup {
   kind: "summary";
@@ -135,7 +138,15 @@ function groupCompletedTurnSummaryMessages(
         completedAt: turn.completedAt,
         segmentIndex: null,
         sourceMessages: summaryMessages,
-        summaryCount: turn.summaryCount,
+        // Derived from the given messages when they are available: for a
+        // completed turn that equals turn.summaryCount (counting stops at the
+        // terminal message), but a partial collapse passes only the settled
+        // prefix. Summary-detail projections drop a completed turn's messages
+        // entirely, leaving turn.summaryCount as the only carrier.
+        summaryCount:
+          summaryMessages.length === 0
+            ? turn.summaryCount
+            : getProjectionSummaryCount(summaryMessages, undefined),
       },
     ];
   }
@@ -202,5 +213,47 @@ export function groupCompletedTurnMessages(
     summaryItems: groupCompletedTurnSummaryMessages(turn, summaryMessages),
     terminalMessages,
     trailingMessages,
+  };
+}
+
+export interface PartialTurnMessageGroups {
+  /**
+   * Grouped summary items for the collapsed prefix, built with the same
+   * segmentation as {@link groupCompletedTurnMessages} so row ids and boundary
+   * splits stay stable when the turn later completes.
+   */
+  summaryItems: CompletedTurnSummaryItem[];
+  /** Messages that stay flat below the collapse: everything after the frontier plus unsettled work before it. */
+  tailMessages: EventProjectionMessage[];
+}
+
+/**
+ * Splits an in-flight turn's messages at the collapse frontier. Messages whose
+ * source range ends at or before the frontier and whose work is settled form
+ * the collapsed prefix; everything else (newer work, running commands, waiting
+ * approvals/questions) stays visible. The prefix is grouped exactly like a
+ * completed turn so the resulting summary rows keep their identity across the
+ * turn-completion transition.
+ */
+export function groupPartialTurnMessages(
+  turn: EventProjectionTurn,
+  collapseFrontierSeq: number,
+): PartialTurnMessageGroups {
+  const messages = turn.messages ?? [];
+  const prefixMessages: EventProjectionMessage[] = [];
+  const tailMessages: EventProjectionMessage[] = [];
+  for (const message of messages) {
+    if (
+      message.sourceSeqEnd <= collapseFrontierSeq &&
+      isSettledTimelineMessage(message)
+    ) {
+      prefixMessages.push(message);
+      continue;
+    }
+    tailMessages.push(message);
+  }
+  return {
+    summaryItems: groupCompletedTurnSummaryMessages(turn, prefixMessages),
+    tailMessages,
   };
 }

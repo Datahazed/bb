@@ -2,6 +2,7 @@ import {
   buildThreadTimelineFromEvents,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
+  buildThreadTimelineTurnWorkPageFromEvents,
   compactThreadTimelineSummaryEvents,
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
@@ -15,11 +16,16 @@ import type {
   ThreadConversationOutlineAttachmentSummary,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
+  TimelineTurnWorkPageCursor,
 } from "@bb/server-contract";
 import {
+  countTurnWorkItemCompletions,
   findTimelineSegmentAnchorSequenceAfter,
+  getActiveStoredTurnId,
   getEnvironment,
   getTimelineSegmentAnchorAtSequence,
+  getTurnWorkItemCompletionSequenceByIndex,
+  hasTurnCompletedEvent,
   listContextWindowUsageRows,
   listRecentStoredEventRows,
   listStoredClientTurnRequestIdsInRange,
@@ -27,11 +33,13 @@ import {
   listStoredEventRowsInRange,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
+  listStoredConversationOutlineEventRows,
   listStoredTimelineWindowEventRows,
   listStoredToolCallRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
+  listTurnWorkItemCompletionSequencesDescending,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
@@ -119,8 +127,76 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
   providerDisplayName?: string;
 }
 
+/**
+ * How a paged turn-work request bounds its window. `page` serves the newest
+ * `workItemLimit` work items at or below the requested range end and reports
+ * an `earlierCursor` for the rest; `range` serves exactly
+ * `(afterSeq, sourceSeqEnd]`, used to append work that collapsed into a
+ * partial turn summary after the client's previous fetch.
+ */
+export type TimelineTurnWorkPageMode =
+  | { kind: "page"; workItemLimit: number }
+  | { kind: "range"; afterSeq: number };
+
+interface BuildTimelineTurnWorkPageOptions extends TimelineTurnSummarySelection {
+  includeProviderUnhandledOperations: boolean;
+  mode: TimelineTurnWorkPageMode;
+  providerDisplayName?: string;
+}
+
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
+export const TIMELINE_TURN_WORK_ITEM_LIMIT_MAX = 200;
+
+/**
+ * Active-turn collapse tuning. Once a running turn accumulates
+ * `KEEP + CHUNK` finished work items, everything up to a chunk-aligned
+ * frontier collapses into a partial "Worked so far" summary row; at least
+ * `KEEP` finished items stay visible below it. The frontier only moves in
+ * `CHUNK`-item steps so row identity churn (and the scroll adjustments it
+ * causes) happens at most once per chunk, not per completion.
+ */
+const ACTIVE_TURN_COLLAPSE_KEEP_ITEMS = 24;
+const ACTIVE_TURN_COLLAPSE_CHUNK_ITEMS = 24;
+
+/**
+ * Collapse frontier for the thread's currently-running turn, if any: work-item
+ * completions at or before the returned sequence are summarized instead of
+ * rendered flat. Derived from indexed completion counts only — never from
+ * event payloads — so it stays cheap on turns with tens of thousands of
+ * events. Deterministic per (thread, maxSeq), which keeps it compatible with
+ * the per-maxSeq timeline response cache.
+ */
+function resolveActiveTurnCollapseFrontiers(
+  db: DbConnection,
+  threadId: string,
+): ReadonlyMap<string, number> | undefined {
+  const activeTurnId = getActiveStoredTurnId(db, threadId);
+  if (activeTurnId === null) {
+    return undefined;
+  }
+  const completionCount = countTurnWorkItemCompletions(db, {
+    threadId,
+    turnId: activeTurnId,
+  });
+  const collapsedCount =
+    Math.floor(
+      (completionCount - ACTIVE_TURN_COLLAPSE_KEEP_ITEMS) /
+        ACTIVE_TURN_COLLAPSE_CHUNK_ITEMS,
+    ) * ACTIVE_TURN_COLLAPSE_CHUNK_ITEMS;
+  if (collapsedCount < ACTIVE_TURN_COLLAPSE_CHUNK_ITEMS) {
+    return undefined;
+  }
+  const frontierSeq = getTurnWorkItemCompletionSequenceByIndex(db, {
+    threadId,
+    turnId: activeTurnId,
+    index: collapsedCount - 1,
+  });
+  if (frontierSeq === null) {
+    return undefined;
+  }
+  return new Map([[activeTurnId, frontierSeq]]);
+}
 
 export type ThreadTimelineBuildProfileStage =
   | "event-query"
@@ -1014,6 +1090,10 @@ function buildThreadTimelineInternal(
       toThreadEventWithMeta(row),
     ),
   };
+  const activeTurnCollapseFrontiers =
+    options.page.kind === "latest"
+      ? resolveActiveTurnCollapseFrontiers(db, thread.id)
+      : undefined;
   const timeline = measureThreadTimelineStage(
     profile,
     "thread-view-projection",
@@ -1024,6 +1104,7 @@ function buildThreadTimelineInternal(
         events: decodedEvents,
         options: {
           ...commonProjectionOptions,
+          activeTurnCollapseFrontiers,
           contextOnlyToolCallIds: eventSelection.contextOnlyToolCallIds,
           includeNestedRows,
           providerId: thread.providerId,
@@ -1127,21 +1208,22 @@ function toConversationOutlineAttachmentSummary(
 /**
  * Projects the entire thread into a lightweight conversation outline for the
  * table-of-contents minimap. Unlike {@link buildThreadTimeline}, this is not
- * paginated: it reads every event and reuses the same
+ * paginated: it spans the whole thread and reuses the same
  * {@link buildThreadTimelineFromEvents} projection so each outline item's `id`
  * is identical to the timeline row it represents. That identity is what lets
  * the minimap scroll-spy the loaded window and jump to a message once it is
  * paginated in. Only conversation rows survive, and each is reduced to the few
- * fields the minimap renders.
+ * fields the minimap renders — so only message-producing and turn-lifecycle
+ * events are selected, keeping cost independent of how much tool/command work
+ * the thread performed.
  */
 export function buildThreadConversationOutline(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
-  const rawEventRows = listRecentStoredEventRows(db, {
+  const rawEventRows = listStoredConversationOutlineEventRows(db, {
     threadId: thread.id,
-    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   });
   const decodedRawEvents = rawEventRows.map((row) =>
     toThreadEventWithMeta(row),
@@ -1313,10 +1395,153 @@ export function buildTimelineTurnSummaryDetails(
   if (children.kind !== "missing-match") {
     return {
       rows: children.rows,
+      workPage: null,
     };
   }
 
   throw new Error(
     `Timeline turn summary details could not match range ${options.sourceSeqStart}-${options.sourceSeqEnd}`,
   );
+}
+
+/**
+ * Serves one window of a turn's work rows for the progressive "Worked for…" /
+ * "Worked so far" expansion. Unlike {@link buildTimelineTurnSummaryDetails}
+ * this never loads the whole turn: `page` mode resolves its lower bound from
+ * the indexed work-item-completion sequence so a request touches at most
+ * ~`workItemLimit` items' events, and `range` mode is already bounded by the
+ * caller. Items whose events straddle a window edge still project fully from
+ * their `item/completed` payload; the client deduplicates row ids across
+ * windows, preferring the newer window's version.
+ *
+ * Degrades instead of erroring: a window that no longer contains any rows for
+ * the requested turn (pruned events, stale cursor) returns empty rows with no
+ * earlier cursor.
+ */
+export function buildTimelineTurnWorkPage(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnWorkPageOptions,
+): TimelineTurnSummaryDetailsResponse {
+  if (options.sourceSeqStart > options.sourceSeqEnd) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceSeqStart must be less than or equal to sourceSeqEnd",
+    );
+  }
+
+  const upper = options.sourceSeqEnd;
+  const emptyWorkPage =
+    options.mode.kind === "page" ? { earlierCursor: null } : null;
+  let lower: number;
+  let earlierCursor: TimelineTurnWorkPageCursor | null = null;
+  if (options.mode.kind === "range") {
+    lower = options.mode.afterSeq + 1;
+    if (lower > upper) {
+      return { rows: [], workPage: null };
+    }
+  } else {
+    const workItemLimit = options.mode.workItemLimit;
+    const completionSequences = listTurnWorkItemCompletionSequencesDescending(
+      db,
+      {
+        threadId: thread.id,
+        turnId: options.turnId,
+        sequenceStart: options.sourceSeqStart,
+        sequenceEnd: upper,
+        limit: workItemLimit + 1,
+      },
+    );
+    const newestExcludedCompletionSeq = completionSequences[workItemLimit];
+    if (newestExcludedCompletionSeq !== undefined) {
+      // The page starts just after the newest completion that did not make the
+      // page, so the oldest included item's started/delta events stay in
+      // window with it.
+      lower = newestExcludedCompletionSeq + 1;
+      earlierCursor = { beforeSeq: lower };
+    } else {
+      lower = options.sourceSeqStart;
+    }
+  }
+
+  const exactEventRows = listStoredEventRowsInRange(db, {
+    threadId: thread.id,
+    seqStart: lower,
+    seqEnd: upper,
+  });
+  const clientRequestIds = listStoredClientTurnRequestIdsInRange(db, {
+    threadId: thread.id,
+    seqStart: lower,
+    seqEnd: upper,
+  });
+  const exactAcceptedInputRows = exactEventRows.filter(
+    (row) => row.type === "turn/input/accepted",
+  );
+  const futureAcceptedInputRows =
+    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+      threadId: thread.id,
+      afterSequence: upper,
+      clientRequestIds,
+    });
+  const acceptedInputRowsByTurn = partitionAcceptedInputRowsByRequestedTurn({
+    acceptedInputRows: [...exactAcceptedInputRows, ...futureAcceptedInputRows],
+    turnId: options.turnId,
+  });
+  const exactEventRowsForRequestedTurn = filterExactEventRowsForRequestedTurn({
+    acceptedClientRequestIdsForOtherTurns:
+      acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
+    exactEventRows,
+    turnId: options.turnId,
+  });
+  const eventRows = mergeStoredEventRowsById([
+    ...exactEventRowsForRequestedTurn.rows,
+    ...acceptedInputRowsByTurn.requestedTurnRows,
+  ]);
+
+  const hasTurnScopedRowsForRequestedTurn = eventRows.some(
+    (row) => row.scopeKind === "turn" && row.turnId === options.turnId,
+  );
+  if (!hasTurnScopedRowsForRequestedTurn) {
+    return { rows: [], workPage: emptyWorkPage };
+  }
+
+  const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
+    includeParentContext: false,
+    threadId: thread.id,
+    rows: eventRows,
+  }).rows;
+  const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
+    threadId: thread.id,
+    rows: eventRowsWithParentedChildren,
+  });
+  const eventRowsWithBackgroundTaskState =
+    ensureTimelineWindowBackgroundTaskStateRows(db, {
+      threadId: thread.id,
+      rows: eventRowsWithTurnStarts,
+    });
+
+  const rows = buildThreadTimelineTurnWorkPageFromEvents({
+    events: eventRowsWithBackgroundTaskState.map((row) =>
+      toThreadEventWithMeta(row),
+    ),
+    options: {
+      includeProviderUnhandledOperations:
+        options.includeProviderUnhandledOperations,
+      providerDisplayName: options.providerDisplayName,
+      threadStatus: thread.status,
+      threadName: thread.title ?? thread.titleFallback ?? "",
+      turnFinished: hasTurnCompletedEvent(db, {
+        threadId: thread.id,
+        turnId: options.turnId,
+      }),
+      turnId: options.turnId,
+      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    },
+  });
+
+  return {
+    rows,
+    workPage: options.mode.kind === "page" ? { earlierCursor } : null,
+  };
 }

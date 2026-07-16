@@ -1108,6 +1108,7 @@ export function turnRow({
     status,
     summaryCount,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    partial: false,
     children,
   };
 }

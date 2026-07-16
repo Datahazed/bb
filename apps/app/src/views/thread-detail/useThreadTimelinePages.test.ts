@@ -83,6 +83,7 @@ function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "turn",
+    partial: false,
     status: "completed",
     summaryCount: 1,
     completedAt: args.sequence,

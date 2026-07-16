@@ -132,6 +132,10 @@ interface GetThreadTimelineArgs {
 interface GetThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsRequest {
   id: string;
   signal?: AbortSignal;
+  /** Newest-page request: cap the response to this many work items. */
+  workItemLimit?: number;
+  /** Fixed-range request: only events with sequence > afterSeq. */
+  afterSeq?: number;
 }
 
 interface GetEnvironmentFilePreviewArgs {
@@ -1656,6 +1660,8 @@ export async function getThreadTimelineTurnSummaryDetails({
   turnId,
   sourceSeqStart,
   sourceSeqEnd,
+  workItemLimit,
+  afterSeq,
 }: GetThreadTimelineTurnSummaryDetailsArgs): Promise<TimelineTurnSummaryDetailsResponse> {
   return request<TimelineTurnSummaryDetailsResponse>(
     apiClient.threads[":id"].timeline["turn-summary-details"].$get(
@@ -1665,6 +1671,10 @@ export async function getThreadTimelineTurnSummaryDetails({
           turnId,
           sourceSeqStart: String(sourceSeqStart),
           sourceSeqEnd: String(sourceSeqEnd),
+          ...(workItemLimit === undefined
+            ? {}
+            : { workItemLimit: String(workItemLimit) }),
+          ...(afterSeq === undefined ? {} : { afterSeq: String(afterSeq) }),
         },
       },
       requestOptions(signal),

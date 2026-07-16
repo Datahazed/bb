@@ -53,6 +53,7 @@ import { parsePendingSteersFromClientRequest } from "./user-message-parsing.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
 import {
   groupCompletedTurnMessages,
+  groupPartialTurnMessages,
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
@@ -97,6 +98,16 @@ interface ThreadTimelineFromEventsBaseOptions {
    * the thread has no environment (the path is then left as-is).
    */
   workspaceRoot: string | null;
+  /**
+   * Per-turn collapse frontiers for in-flight turns (turnId → event sequence).
+   * Settled work at or before the frontier collapses into a partial
+   * "Worked so far" turn summary row instead of rendering flat, bounding row
+   * count and payload for very long-running turns. Computed by the server from
+   * an indexed work-item-completion query with chunked hysteresis, so it only
+   * moves in coarse steps. Absent (or a turn missing from the map) = today's
+   * fully-flat active-turn rendering.
+   */
+  activeTurnCollapseFrontiers?: ReadonlyMap<string, number>;
 }
 
 export interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
@@ -157,6 +168,7 @@ export type ThreadTimelineTurnDetailsFromEventsResult =
     };
 
 interface BuildTurnRowsArgs {
+  collapseFrontierSeq?: number;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
@@ -173,6 +185,7 @@ interface TimelineMessageBounds {
 interface BuildTurnSummaryRowArgs {
   completedAt: number | null;
   includeNestedRows: boolean;
+  partial: boolean;
   rowIdPrefix: string;
   segmentIndex: number | null;
   sourceMessages: EventProjectionMessage[];
@@ -182,8 +195,9 @@ interface BuildTurnSummaryRowArgs {
   turn: EventProjectionTurn;
 }
 
-interface BuildCompletedTurnSummaryRowsArgs {
+interface BuildTurnSummaryItemRowsArgs {
   includeNestedRows: boolean;
+  partial: boolean;
   rowIdPrefix: string;
   summaryItems: CompletedTurnSummaryItem[];
   turn: EventProjectionTurn;
@@ -191,6 +205,7 @@ interface BuildCompletedTurnSummaryRowsArgs {
 }
 
 interface BuildTimelineRowsOptions {
+  activeTurnCollapseFrontiers?: ReadonlyMap<string, number>;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   workspaceRoot: string | null;
@@ -955,6 +970,7 @@ function getTurnBounds(turn: EventProjectionTurn): TimelineMessageBounds {
 function buildTurnSummaryRow({
   completedAt,
   includeNestedRows,
+  partial,
   rowIdPrefix,
   segmentIndex,
   sourceMessages,
@@ -968,7 +984,7 @@ function buildTurnSummaryRow({
   }
 
   const bounds =
-    segmentIndex === null || sourceMessages.length === 0
+    (segmentIndex === null && !partial) || sourceMessages.length === 0
       ? getTurnBounds(turn)
       : getTimelineMessageBounds(sourceMessages);
   const rowId =
@@ -990,17 +1006,19 @@ function buildTurnSummaryRow({
     status: turn.status,
     summaryCount,
     completedAt: resolvedCompletedAt,
+    partial,
     children: includeNestedRows ? sourceRows : null,
   };
 }
 
-function buildCompletedTurnSummaryRows({
+function buildTurnSummaryItemRows({
   includeNestedRows,
+  partial,
   rowIdPrefix,
   summaryItems,
   turn,
   workspaceRoot,
-}: BuildCompletedTurnSummaryRowsArgs): TimelineRow[] {
+}: BuildTurnSummaryItemRowsArgs): TimelineRow[] {
   const rows: TimelineRow[] = [];
   for (const item of summaryItems) {
     if (item.kind === "ungrouped-message") {
@@ -1026,6 +1044,7 @@ function buildCompletedTurnSummaryRows({
     const turnRow = buildTurnSummaryRow({
       completedAt: item.completedAt,
       includeNestedRows,
+      partial,
       rowIdPrefix,
       segmentIndex: item.segmentIndex,
       sourceMessages: item.sourceMessages,
@@ -1041,17 +1060,43 @@ function buildCompletedTurnSummaryRows({
   return rows;
 }
 
-function buildTurnRows({
+function buildPartialTurnRows({
+  collapseFrontierSeq,
   includeNestedRows,
   rowIdPrefix,
   turn,
   workspaceRoot,
-}: BuildTurnRowsArgs): TimelineRow[] {
+}: BuildTurnRowsArgs & { collapseFrontierSeq: number }): TimelineRow[] {
+  const { summaryItems, tailMessages } = groupPartialTurnMessages(
+    turn,
+    collapseFrontierSeq,
+  );
+  const summaryRows = buildTurnSummaryItemRows({
+    includeNestedRows,
+    partial: true,
+    rowIdPrefix,
+    summaryItems,
+    turn,
+    workspaceRoot,
+  });
+  const tailRows = tailMessages.flatMap((message) =>
+    convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
+  );
+  return [...summaryRows, ...tailRows];
+}
+
+function buildTurnRows(args: BuildTurnRowsArgs): TimelineRow[] {
+  const { collapseFrontierSeq, includeNestedRows, rowIdPrefix, workspaceRoot } =
+    args;
+  const turn = args.turn;
   const messages = turn.messages ?? [];
   const isCompletedTurn =
     turn.status !== "pending" && turn.completedAt !== null;
 
   if (!isCompletedTurn) {
+    if (collapseFrontierSeq !== undefined) {
+      return buildPartialTurnRows({ ...args, collapseFrontierSeq });
+    }
     return messages.flatMap((message) =>
       convertMessage(message, {
         includeNestedRows,
@@ -1069,8 +1114,9 @@ function buildTurnRows({
   const trailingRows = trailingMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
-  const summaryRows = buildCompletedTurnSummaryRows({
+  const summaryRows = buildTurnSummaryItemRows({
     includeNestedRows,
+    partial: false,
     rowIdPrefix,
     summaryItems,
     turn,
@@ -1175,6 +1221,9 @@ function buildTimelineRows(
           rows,
           buildTurnRows({
             turn: entry.turn,
+            collapseFrontierSeq: options.activeTurnCollapseFrontiers?.get(
+              entry.turn.turnId,
+            ),
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
             workspaceRoot: options.workspaceRoot,
@@ -1210,6 +1259,7 @@ export function buildThreadTimelineFromEvents(
 
   const rows = [
     ...buildTimelineRows(projection, {
+      activeTurnCollapseFrontiers: args.options.activeTurnCollapseFrontiers,
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
@@ -1259,6 +1309,110 @@ export function buildThreadTimelineFromEvents(
         ),
     rows,
   };
+}
+
+export interface BuildThreadTimelineTurnWorkPageFromEventsOptions {
+  includeProviderUnhandledOperations: boolean;
+  providerDisplayName?: string;
+  threadStatus: Thread["status"];
+  /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
+  threadName: string;
+  /**
+   * Whether the requested turn has finished (a `turn/completed` event exists).
+   * Work that still projects as pending inside a finished turn's page window
+   * never completed — it is reported as interrupted, matching turn
+   * finalization. Inside a still-running turn, pending work is dropped from
+   * the page instead: it renders live in the visible tail.
+   */
+  turnFinished: boolean;
+  turnId: string;
+  /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
+  workspaceRoot: string | null;
+}
+
+export interface BuildThreadTimelineTurnWorkPageFromEventsArgs {
+  events: ThreadEventWithMeta[];
+  options: BuildThreadTimelineTurnWorkPageFromEventsOptions;
+}
+
+function isPendingStatusRow(row: TimelineRow): boolean {
+  switch (row.kind) {
+    case "work":
+      return row.status === "pending";
+    case "system":
+      return row.status === "pending";
+    case "conversation":
+    case "turn":
+      return false;
+    default:
+      return assertNever(row);
+  }
+}
+
+function finalizePendingStatusRow(row: TimelineRow): TimelineRow {
+  if (row.kind === "work" && row.status === "pending") {
+    return { ...row, status: "interrupted" };
+  }
+  if (row.kind === "system" && row.status === "pending") {
+    return { ...row, status: "interrupted" };
+  }
+  return row;
+}
+
+/**
+ * Projects one page window of a turn's work into detail rows for the
+ * "Worked for…" / "Worked so far" expansion. Unlike
+ * {@link buildThreadTimelineTurnDetailsFromEvents} this accepts windows that
+ * cover only part of the turn: when the window includes the turn's completion
+ * the completed-turn grouping applies and the summary children are returned
+ * (terminal and trailing rows are already rendered in the main timeline);
+ * when it does not, the turn projects as in-flight and the flat work rows are
+ * returned directly. Rows the main timeline renders at the top level — user
+ * messages, ungroupable system/debug rows — are filtered out so a page never
+ * duplicates them.
+ */
+export function buildThreadTimelineTurnWorkPageFromEvents(
+  args: BuildThreadTimelineTurnWorkPageFromEventsArgs,
+): TimelineRow[] {
+  const projection = buildEventProjectionEntries(args.events, {
+    includeDebugRawEvents: false,
+    includeProviderUnhandledOperations:
+      args.options.includeProviderUnhandledOperations,
+    providerDisplayName: args.options.providerDisplayName,
+    threadStatus: args.options.threadStatus,
+    threadName: args.options.threadName,
+    turnMessageDetail: "full",
+  });
+  const rows = buildTimelineRows(projection, {
+    includeNestedRows: true,
+    rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
+    workspaceRoot: args.options.workspaceRoot,
+  });
+
+  const turnSummaryRows = rows.filter(
+    (row): row is TimelineTurnSummaryRow =>
+      row.kind === "turn" && row.turnId === args.options.turnId,
+  );
+  const pageRows =
+    turnSummaryRows.length > 0
+      ? turnSummaryRows.flatMap((row) => row.children ?? [])
+      : rows.filter((row) => {
+          if (row.kind === "conversation" && row.role === "user") {
+            return false;
+          }
+          if (row.kind === "system" && row.systemKind === "debug") {
+            return false;
+          }
+          if (row.kind === "turn") {
+            return false;
+          }
+          return true;
+        });
+
+  if (args.options.turnFinished) {
+    return pageRows.map((row) => finalizePendingStatusRow(row));
+  }
+  return pageRows.filter((row) => !isPendingStatusRow(row));
 }
 
 export function buildThreadTimelineTurnDetailsFromEvents(

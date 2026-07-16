@@ -85,6 +85,7 @@ describe("truncateTimelineResponseOutputs", () => {
       status: "completed",
       summaryCount: 1,
       completedAt: 1,
+      partial: false,
       children: [commandRow(big)],
     };
     const out = truncateTimelineResponseOutputs(response([turn]));

@@ -384,6 +384,7 @@ function turnRow(): TimelineViewTurnRow {
     status: "completed",
     summaryCount: 1,
     completedAt: 3_661_001,
+    partial: false,
     children: null,
   };
 }

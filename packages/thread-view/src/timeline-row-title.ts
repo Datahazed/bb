@@ -1261,6 +1261,20 @@ function mapWorkSummaryTitle(
 }
 
 function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
+  if (row.partial) {
+    // A partial summary covers only the finished prefix of a still-running
+    // turn; the live tail renders below it. It reads as a settled recap
+    // ("Worked so far (2h 5m)") — never the shimmering "Working" treatment,
+    // which belongs to the turn's live frontier.
+    const partialDurationDeco = completedTurnDurationDecoration(
+      row.startedAt,
+      row.completedAt,
+    );
+    return makeTitle({
+      segments: [segment("Worked so far", { shimmer: false, accent: "subtle" })],
+      decorations: partialDurationDeco === null ? [] : [partialDurationDeco],
+    });
+  }
   const isPending = row.status === "pending";
   const durationDeco = isPending
     ? durationDecoration(row.startedAt, row.completedAt, { em: true })

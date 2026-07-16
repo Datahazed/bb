@@ -234,6 +234,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Turn work detail requests omit both paging selectors for legacy full detail; workItemLimit asks for the newest page of a large turn, afterSeq for a fixed catch-up range, and the two are mutually exclusive.",
+    fields: [
+      "timelineTurnSummaryDetailsQuerySchema.workItemLimit",
+      "timelineTurnSummaryDetailsQuerySchema.afterSeq",
+    ],
+  },
+  {
+    reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
   },
@@ -1025,9 +1033,22 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("Project path must be an absolute path.");
 
     expect(
-      timelineTurnSummaryDetailsResponseSchema.parse({ rows: [] }),
+      timelineTurnSummaryDetailsResponseSchema.parse({
+        rows: [],
+        workPage: null,
+      }),
     ).toEqual({
       rows: [],
+      workPage: null,
+    });
+    expect(
+      timelineTurnSummaryDetailsResponseSchema.parse({
+        rows: [],
+        workPage: { earlierCursor: { beforeSeq: 42 } },
+      }),
+    ).toEqual({
+      rows: [],
+      workPage: { earlierCursor: { beforeSeq: 42 } },
     });
   });
 

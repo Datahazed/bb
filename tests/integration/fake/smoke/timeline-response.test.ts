@@ -78,6 +78,7 @@ describe("timeline response helpers", () => {
         status: "completed",
         summaryCount: 1,
         completedAt: null,
+        partial: false,
         children: [ASSISTANT_ROW],
       },
     ]);

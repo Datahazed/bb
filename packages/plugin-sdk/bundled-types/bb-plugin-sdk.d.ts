@@ -6556,9 +6556,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6587,9 +6587,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7285,6 +7285,15 @@ interface TimelineTurnRow extends TimelineRowBase {
     status: TimelineRowStatus;
     summaryCount: number;
     completedAt: number | null;
+    /**
+     * True while the turn is still running and this row summarizes only the
+     * finished prefix of its work — the live tail renders as sibling rows below.
+     * On turn completion the row converges to the normal completed summary
+     * (`partial: false`) at the same row id. `completedAt` on a partial row is
+     * the time of the newest collapsed work, so "Worked so far (…)" durations
+     * reflect covered work rather than the whole turn.
+     */
+    partial: boolean;
     children: TimelineRow[] | null;
 }
 type TimelineSourceRow = TimelineConversationRow | TimelineWorkRow | TimelineSystemRow;
@@ -8636,6 +8645,8 @@ declare const timelineTurnSummaryDetailsQuerySchema: z$1.ZodObject<{
     turnId: z$1.ZodString;
     sourceSeqStart: z$1.ZodString;
     sourceSeqEnd: z$1.ZodString;
+    workItemLimit: z$1.ZodOptional<z$1.ZodString>;
+    afterSeq: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type TimelineTurnSummaryDetailsQuery = z$1.infer<typeof timelineTurnSummaryDetailsQuerySchema>;
 declare const threadStorageFilesQuerySchema: z$1.ZodObject<{
@@ -8658,6 +8669,11 @@ declare const threadStoragePathsQuerySchema: z$1.ZodObject<{
 type ThreadStoragePathsQuery = z$1.infer<typeof threadStoragePathsQuerySchema>;
 declare const timelineTurnSummaryDetailsResponseSchema: z$1.ZodObject<{
     rows: z$1.ZodArray<z$1.ZodType<TimelineRow, unknown, z$1.core.$ZodTypeInternals<TimelineRow, unknown>>>;
+    workPage: z$1.ZodNullable<z$1.ZodObject<{
+        earlierCursor: z$1.ZodNullable<z$1.ZodObject<{
+            beforeSeq: z$1.ZodNumber;
+        }, z$1.core.$strict>>;
+    }, z$1.core.$strict>>;
 }, z$1.core.$strip>;
 type TimelineTurnSummaryDetailsResponse = z$1.infer<typeof timelineTurnSummaryDetailsResponseSchema>;
 declare const threadTimelineResponseSchema: z$1.ZodObject<{
@@ -8842,8 +8858,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
