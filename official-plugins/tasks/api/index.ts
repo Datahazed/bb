@@ -349,6 +349,50 @@ function attachmentsForTasks(
   ]);
 }
 
+/**
+ * Resolve the current human title of each distinct agent thread that authored
+ * one of `comments`, keyed by thread id. Titles come from the live thread so
+ * renames are reflected. A thread contributes no entry — so callers fall back
+ * to `authorName` and expose no link — when it is:
+ *   - deleted, hidden, or otherwise inaccessible (the SDK read rejects), or
+ *   - a side chat (originKind/legacy childOrigin === "side-chat"), which is an
+ *     internal conversation that must not surface through an ordinary comment.
+ */
+async function resolveAgentThreadTitles(
+  bb: BbPluginApi,
+  comments: readonly StoredComment[],
+): Promise<Map<string, string>> {
+  const threadIds = new Set<string>();
+  for (const comment of comments) {
+    if (comment.kind === "agent" && comment.threadId !== null) {
+      threadIds.add(comment.threadId);
+    }
+  }
+  const titles = new Map<string, string>();
+  await Promise.all(
+    [...threadIds].map(async (threadId) => {
+      try {
+        const thread = await bb.sdk.threads.get({ threadId });
+        if (
+          thread.originKind === "side-chat" ||
+          thread.childOrigin === "side-chat"
+        ) {
+          return;
+        }
+        // Prefer the first non-blank candidate: a whitespace-only primary
+        // title must not suppress a useful fallback.
+        const title = [thread.title, thread.titleFallback].find(
+          (candidate) => candidate !== null && candidate.trim() !== "",
+        );
+        if (title !== null && title !== undefined) titles.set(threadId, title);
+      } catch {
+        // Deleted, hidden, or inaccessible threads leave no title.
+      }
+    }),
+  );
+  return titles;
+}
+
 interface CreateCommentInput {
   taskId: string;
   kind: StoredComment["kind"];
@@ -651,8 +695,18 @@ export function registerHandlers(
       });
       return { comment };
     },
-    listComments(input) {
-      return { comments: store.tasks.listComments(input.taskId) };
+    async listComments(input) {
+      const comments = store.tasks.listComments(input.taskId);
+      const threadTitles = await resolveAgentThreadTitles(bb, comments);
+      return {
+        comments: comments.map((comment) => ({
+          ...comment,
+          threadTitle:
+            comment.kind === "agent" && comment.threadId !== null
+              ? (threadTitles.get(comment.threadId) ?? null)
+              : null,
+        })),
+      };
     },
     listAttachments(input) {
       const attachments =

@@ -19,13 +19,19 @@ import {
   useTasksRpc,
 } from "../../shell/data.js";
 import { Lightbox } from "../detail/attachments.js";
-import type { Attachment, Comment, TaskThread } from "../../shared/contract.js";
+import type {
+  Attachment,
+  Comment,
+  DisplayComment,
+  TaskThread,
+} from "../../shared/contract.js";
 import {
   formatFileSize,
   formatRelativeTime,
   splitSystemBody,
   useNowTick,
 } from "./time.js";
+import { CommentAuthor } from "./comment-author.js";
 
 const PLUGIN_HTTP_BASE = "/api/v1/plugins/tasks/http";
 const TOKEN_URL = "/api/v1/plugins/tasks/token";
@@ -92,7 +98,7 @@ function attachmentDownloadUrl(attachmentId: string): string {
 }
 
 interface FeedEntry {
-  comment: Comment;
+  comment: DisplayComment;
   attachments: Attachment[];
 }
 
@@ -237,7 +243,7 @@ function CommentCard({
       {agent ? <AgentAvatar /> : <UserAvatar name={comment.authorName} />}
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-baseline gap-1.5 text-xs">
-          <span className="font-semibold">{comment.authorName}</span>
+          <CommentAuthor comment={comment} onOpenThread={navigate.toThread} />
           {agent && comment.presetName ? (
             <span className="rounded-sm bg-secondary px-1 py-px text-2xs font-semibold text-muted-foreground">
               {comment.presetName}
