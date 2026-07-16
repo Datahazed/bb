@@ -304,16 +304,17 @@ Ports must be integers from 1 through 65535. The server deduplicates and sorts t
 
 ### `bb.events.on`
 
-`events.on(event, handler) => void` observes exactly four thread lifecycle events:
+`events.on(event, handler) => void` observes exactly five thread lifecycle events:
 
 | Event | Payload |
 | --- | --- |
 | `thread.created` | `{ thread: ThreadResponse }` |
+| `thread.active` | `{ thread: ThreadResponse }` |
 | `thread.idle` | `{ thread: ThreadResponse, lastAssistantText: string | null }` |
 | `thread.failed` | `{ thread: ThreadResponse, error: string | null }` |
 | `thread.deleted` | `{ thread: ThreadResponse }` |
 
-Listeners are additive and run independently in registration order after the transition. They cannot veto or delay it. Errors are caught, logged, and counted in plugin handler stats.
+Listeners are additive and run independently in registration order after the transition. `thread.active` fires when an applied lifecycle transition enters the `active` running state. Listeners cannot veto or delay transitions. Errors are caught, logged, and counted in plugin handler stats.
 
 ### `bb.onDispose`
 
@@ -952,7 +953,7 @@ The source tests snapshot backend roots/types, RPC types, frontend declaration/r
 - [x] manifest/package fields
 - [x] backend factory and disposal lifecycle
 - [x] every `BbPluginApi` root member
-- [x] all four lifecycle events
+- [x] all five lifecycle events
 - [x] all frontend runtime functions
 - [x] all nine frontend slots and their component/callback props
 - [x] all 13 `BbSdk` areas and all 144 callable paths including realtime
