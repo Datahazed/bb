@@ -1,4 +1,7 @@
-import { ResourceCreateButton } from "@bb/shared-ui/resource-list";
+import {
+  ResourceCreateButton,
+  type ResourceCreateMenuAction,
+} from "@bb/shared-ui/resource-list";
 import {
   CREATE_AUTOMATION_PROMPT,
   CREATE_SKILL_PROMPT,
@@ -174,6 +177,7 @@ export interface CreateWithTemplatesButtonProps {
   kind: CreateViaPromptKind;
   /** Main-button text, e.g. "New automation" or "New bb skill". */
   label: string;
+  menuActions?: readonly ResourceCreateMenuAction[];
   /** Blank when called with no argument; seeded when given an example prompt. */
   onCreate: (prompt?: string) => void;
 }
@@ -186,6 +190,7 @@ export interface CreateWithTemplatesButtonProps {
 export function CreateWithTemplatesButton({
   kind,
   label,
+  menuActions,
   onCreate,
 }: CreateWithTemplatesButtonProps) {
   const { examples } = getCreateExamples(kind);
@@ -193,6 +198,7 @@ export function CreateWithTemplatesButton({
     <ResourceCreateButton
       label={label}
       templates={examples}
+      menuActions={menuActions}
       onCreate={onCreate}
     />
   );

@@ -61,7 +61,8 @@ describe("PluginDetail marketplace lifecycle", () => {
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
-    expect(screen.getByText("Source & updates")).toBeTruthy();
+    expect(screen.getByText("Release")).toBeTruthy();
+    expect(screen.getByText("0.1.0")).toBeTruthy();
     expect(screen.getByText("BB Official · GitHub")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Check now" })).toBeTruthy();
 

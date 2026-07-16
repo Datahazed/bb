@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -12,11 +13,17 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { ResourceInstalledControl } from "@bb/shared-ui/resource-list";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { appToast } from "@/components/ui/app-toast";
+import {
+  invalidateMarketplaces,
+  invalidatePluginList,
+} from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   useMarketplaceSearch,
   useMarketplaces,
   type MarketplaceSearchEntry,
 } from "@/hooks/queries/plugin-marketplace-queries";
+import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PlaceholderBadge } from "./plugin-ui";
 
@@ -189,7 +196,21 @@ function BrowseCard({
   marketplaceName: string;
   onInstall: (initial: AddPluginInitial) => void;
 }) {
+  const queryClient = useQueryClient();
   const sourceLabel = `${marketplaceName} · ${entry.source}`;
+  const uninstall = useMutation({
+    mutationFn: () => removePlugin(fetch, entry.entryId),
+    onSuccess: () => {
+      invalidatePluginList({ queryClient });
+      invalidateMarketplaces({ queryClient });
+      appToast.success(`${entry.displayName} uninstalled`);
+    },
+    onError: (error) => {
+      appToast.error(`Uninstalling ${entry.displayName} failed`, {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
 
   return (
     <div
@@ -225,7 +246,9 @@ function BrowseCard({
       {entry.installed ? (
         <span className="mt-0.5">
           <ResourceInstalledControl
-            accessibleLabel={`${entry.displayName} is installed`}
+            accessibleLabel={`Uninstall ${entry.displayName}`}
+            pending={uninstall.isPending}
+            onAction={() => uninstall.mutate()}
           />
         </span>
       ) : (

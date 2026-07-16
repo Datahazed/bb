@@ -25,6 +25,8 @@ import {
   ResourceDetailList,
   ResourceDetailListItem,
   ResourceListState,
+  ResourceProperty,
+  ResourcePropertyList,
 } from "@bb/shared-ui/resource-list";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -533,7 +535,6 @@ export function PluginDetail({
         <span key="locator" className="font-mono">
           {plugin.rootDir ?? plugin.source ?? plugin.id}
         </span>,
-        `v${plugin.version}`,
       ]}
       description={plugin.description}
       enabled={plugin.enabled}
@@ -574,22 +575,36 @@ export function PluginDetail({
             ]
       }
       definitionSections={[
-        ...(hasUpdateManagement
-          ? [
-              {
-                label: "Source & updates",
-                content: (
-                  <div className="space-y-3">
-                    <PluginUpdateBanner plugin={plugin} />
-                    <PluginUpdatesSourceCard
-                      plugin={plugin}
-                      showHeading={false}
-                    />
-                  </div>
-                ),
-              },
-            ]
-          : []),
+        {
+          label: "Release",
+          content: (
+            <div className="space-y-3">
+              {hasUpdateManagement ? (
+                <PluginUpdateBanner plugin={plugin} />
+              ) : null}
+              <ResourcePropertyList
+                surface="flat"
+                className="divide-y divide-border"
+              >
+                <ResourceProperty label="Version">
+                  <span className="font-mono">{plugin.version}</span>
+                </ResourceProperty>
+                {!hasUpdateManagement ? (
+                  <ResourceProperty label="Updates">
+                    Included with bb releases
+                  </ResourceProperty>
+                ) : null}
+              </ResourcePropertyList>
+              {hasUpdateManagement ? (
+                <PluginUpdatesSourceCard
+                  plugin={plugin}
+                  showHeading={false}
+                  embedded
+                />
+              ) : null}
+            </div>
+          ),
+        },
         ...(hasSettings
           ? [
               {

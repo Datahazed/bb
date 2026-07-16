@@ -1,6 +1,7 @@
 {
   "name": "bb-plugin-small-ux-pack",
   "version": "0.1.0",
+  "description": "Adds lightweight thread actions using host-rendered plugin surfaces.",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,6 +9,8 @@
     "bbPluginSdk": "^0.2.0"
   },
   "bb": {
+    "displayName": "Small UX Pack",
+    "icon": "Sparkles",
     "server": "./server.ts"
   },
   "keywords": [

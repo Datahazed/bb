@@ -13,6 +13,7 @@ import {
 import { Icon, type IconName } from "./icon";
 import { Input } from "./input";
 import { Skeleton } from "./skeleton";
+import { Textarea } from "./textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -421,15 +422,23 @@ export interface ResourceCreateTemplate {
   prompt: string;
 }
 
+export interface ResourceCreateMenuAction {
+  label: string;
+  icon: IconName;
+  onSelect: () => void;
+}
+
 export function ResourceCreateButton({
   label,
   templates,
   templateMenuLabel = "Start from an example",
+  menuActions = [],
   onCreate,
 }: {
   label: string;
   templates: readonly ResourceCreateTemplate[];
   templateMenuLabel?: string;
+  menuActions?: readonly ResourceCreateMenuAction[];
   onCreate: (prompt?: string) => void;
 }) {
   return (
@@ -448,7 +457,7 @@ export function ResourceCreateButton({
           <Button
             type="button"
             size="sm"
-            aria-label={`${label} from a template`}
+            aria-label={`${label} options`}
             className="rounded-l-none px-1.5"
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
@@ -459,6 +468,13 @@ export function ResourceCreateButton({
           className="w-72"
           mobileTitle={templateMenuLabel}
         >
+          {menuActions.map((action) => (
+            <DropdownMenuItem key={action.label} onSelect={action.onSelect}>
+              <Icon name={action.icon} className="size-4" aria-hidden />
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+          {menuActions.length > 0 ? <DropdownMenuSeparator /> : null}
           <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
             {templateMenuLabel}
           </DropdownMenuLabel>
@@ -949,14 +965,14 @@ export function ResourceDetailSection({
     <section
       className={cn(
         layout === "stacked" && "space-y-2",
-        layout === "inline" &&
-          "grid gap-x-6 gap-y-3 px-4 py-4 sm:grid-cols-[8.5rem_minmax(0,1fr)]",
+        layout === "inline" && "grid sm:grid-cols-[9rem_minmax(0,1fr)]",
       )}
     >
       <div
         className={cn(
           "flex min-h-6 items-center justify-between gap-3",
-          layout === "inline" && "sm:items-start",
+          layout === "inline" &&
+            "bg-surface-recessed/55 px-4 py-3.5 sm:items-start sm:border-r sm:border-border",
         )}
       >
         <h2 className="text-xs font-medium uppercase text-muted-foreground">
@@ -967,7 +983,7 @@ export function ResourceDetailSection({
         ) : null}
       </div>
       {layout === "inline" ? (
-        <div className="min-w-0">{children}</div>
+        <div className="min-w-0 px-4 py-3.5">{children}</div>
       ) : (
         children
       )}
@@ -1071,7 +1087,7 @@ export function ResourceInstalledControl({
     return (
       <span
         aria-label={accessibleLabel}
-        className="inline-flex h-7 shrink-0 items-center rounded-md border border-success/30 bg-success/10 px-2 text-xs font-medium text-success"
+        className="inline-flex h-7 min-w-20 shrink-0 items-center justify-center rounded-md border border-success/25 bg-success/5 px-2 text-xs font-medium text-[color:color-mix(in_oklch,var(--success)_58%,var(--ink))]"
       >
         {installedContent}
       </span>
@@ -1083,7 +1099,7 @@ export function ResourceInstalledControl({
       type="button"
       variant="outline"
       size="sm"
-      className="group/install h-7 shrink-0 border-success/30 bg-success/10 px-2 text-xs text-success hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/30 focus-visible:bg-destructive/10 focus-visible:text-destructive"
+      className="group/install h-7 min-w-20 shrink-0 justify-center border-success/25 bg-success/5 px-2 text-xs text-[color:color-mix(in_oklch,var(--success)_58%,var(--ink))] hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/30 focus-visible:bg-destructive/10 focus-visible:text-destructive-text"
       disabled={pending}
       aria-label={accessibleLabel}
       onClick={onAction}
@@ -1091,11 +1107,11 @@ export function ResourceInstalledControl({
       {pending ? (
         pendingLabel
       ) : (
-        <span className="grid">
-          <span className="col-start-1 row-start-1 transition-opacity group-hover/install:opacity-0 group-focus-visible/install:opacity-0">
+        <span className="grid place-items-center">
+          <span className="col-start-1 row-start-1 inline-flex items-center justify-center transition-opacity group-hover/install:opacity-0 group-focus-visible/install:opacity-0">
             {installedContent}
           </span>
-          <span className="col-start-1 row-start-1 inline-flex items-center gap-1 opacity-0 transition-opacity group-hover/install:opacity-100 group-focus-visible/install:opacity-100">
+          <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-1 opacity-0 transition-opacity group-hover/install:opacity-100 group-focus-visible/install:opacity-100">
             <Icon name="Trash2" className="size-3.5" aria-hidden />
             {actionLabel}
           </span>
@@ -1116,6 +1132,39 @@ export function ResourceProperty({
     <div className="grid gap-1 px-3 py-2 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
       <div className="font-medium text-muted-foreground">{label}</div>
       <div className="min-w-0 break-words text-foreground">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Prompt editing treatment for resources whose stored contract is plain text.
+ * It borrows the composer hierarchy without implying attachments, mentions,
+ * provider controls, or a send action that the resource cannot persist.
+ */
+export function ResourcePromptEditor({
+  value,
+  ariaLabel,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  ariaLabel: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+      <Textarea
+        value={value}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        className="min-h-52 resize-y rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="flex items-center gap-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-2xs text-muted-foreground">
+        <Icon name="Info" className="size-3.5" aria-hidden />
+        Sent to the agent each time this automation runs
+      </div>
     </div>
   );
 }

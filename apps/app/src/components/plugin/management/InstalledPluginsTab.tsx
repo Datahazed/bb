@@ -119,9 +119,16 @@ export function InstalledPluginRow({
     >
       <PluginLogo plugin={plugin} className="size-6 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
-          {plugin.displayName ?? plugin.id}
-        </p>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <p className="truncate text-sm font-medium text-foreground">
+            {plugin.displayName ?? plugin.id}
+          </p>
+          {plugin.isBuiltin ? (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              Built-in
+            </span>
+          ) : null}
+        </div>
         {plugin.description !== null && plugin.description.length > 0 ? (
           <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
             {plugin.description}

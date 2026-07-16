@@ -141,7 +141,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "New plugin from a template" }),
+      screen.getByRole("button", { name: "New plugin options" }),
     ).toBeTruthy();
     const marketplacesTab = await screen.findByRole("tab", {
       name: "Marketplaces, 1 marketplace",
@@ -152,6 +152,15 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(marketplacesTab);
     expect(await screen.findByText("BB Official")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Marketplaces are catalogs, not installed code. Adding or refreshing one never installs or runs a plugin.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Add marketplace" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New plugin" })).toBeNull();
   });
 
   it("opens installed resources on the canonical Tools detail route", async () => {

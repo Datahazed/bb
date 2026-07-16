@@ -65,6 +65,13 @@ export function MarketplacesTab({
 
   return (
     <div id="plugin-marketplaces-results" className="space-y-3">
+      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-recessed/55 px-3 py-2.5 text-xs text-muted-foreground">
+        <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        <p>
+          Marketplaces are catalogs, not installed code. Adding or refreshing
+          one never installs or runs a plugin.
+        </p>
+      </div>
       {marketplaces.length === 0 ? (
         <EmptyState
           message={
@@ -94,10 +101,6 @@ export function MarketplacesTab({
         onPageChange={pagination.setPage}
         scrollTargetId="plugin-marketplaces-results"
       />
-      <p className="text-2xs text-subtle-foreground">
-        Adding a marketplace installs nothing; refreshing a catalog never runs
-        plugin code.
-      </p>
       <AddMarketplaceDialog open={addOpen} onOpenChange={onAddOpenChange} />
       {removal !== null ? (
         <RemoveMarketplaceDialog

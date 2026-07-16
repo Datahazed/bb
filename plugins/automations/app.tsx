@@ -17,6 +17,7 @@ import {
 } from "@bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type {
+  AutomationExecution,
   AutomationResponse,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -28,7 +29,6 @@ import {
   automationEditBodyValue,
   automationIconName,
   automationScheduleLabel,
-  withAutomationEditBody,
 } from "./detail-view";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -856,7 +856,8 @@ function DetailView({
   const editing = initialEditing;
   const [saving, setSaving] = useState(false);
   const [draftName, setDraftName] = useState("");
-  const [draftBody, setDraftBody] = useState("");
+  const [draftExecution, setDraftExecution] =
+    useState<AutomationExecution | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const draftAutomationIdRef = useRef<string | null>(null);
@@ -867,7 +868,7 @@ function DetailView({
     if (editing && !automationChanged) return;
     draftAutomationIdRef.current = automation.id;
     setDraftName(automation.name);
-    setDraftBody(automationEditBodyValue(automation.execution));
+    setDraftExecution(automation.execution);
   }, [automation, editing]);
 
   const openThread = useCallback(
@@ -896,7 +897,7 @@ function DetailView({
   const closeEdit = useCallback(() => {
     if (automation !== null) {
       setDraftName(automation.name);
-      setDraftBody(automationEditBodyValue(automation.execution));
+      setDraftExecution(automation.execution);
     }
     navigate.exitPluginPanel(PANEL_PATH, {
       subPath: `${route.projectId}/${route.automationId}`,
@@ -913,20 +914,29 @@ function DetailView({
   const saveEdit = useCallback(() => {
     if (automation === null) return;
     const nextName = draftName.trim();
-    const nextBody = draftBody;
+    const nextExecution = draftExecution ?? automation.execution;
+    const nextBody = automationEditBodyValue(nextExecution);
     if (nextName.length === 0 || nextBody.trim().length === 0) {
       toast.error("Automation name and editable body are required");
       return;
     }
+    if (
+      nextExecution.mode === "script" &&
+      (nextExecution.timeoutMs <= 0 || nextExecution.timeoutMs > 900_000)
+    ) {
+      toast.error("Script timeout must be between 1 and 900 seconds");
+      return;
+    }
 
-    const currentBody = automationEditBodyValue(automation.execution);
     const input: UpdateAutomationInput = {
       projectId: route.projectId,
       automationId: route.automationId,
     };
     if (nextName !== automation.name) input.name = nextName;
-    if (nextBody !== currentBody) {
-      input.execution = withAutomationEditBody(automation.execution, nextBody);
+    if (
+      JSON.stringify(nextExecution) !== JSON.stringify(automation.execution)
+    ) {
+      input.execution = nextExecution;
     }
     if (input.name === undefined && input.execution === undefined) {
       closeEdit();
@@ -945,7 +955,7 @@ function DetailView({
           toast.error(`Failed to update automation: ${errorText(rpcError)}`),
       )
       .finally(() => setSaving(false));
-  }, [automation, closeEdit, draftBody, draftName, mutations, route]);
+  }, [automation, closeEdit, draftExecution, draftName, mutations, route]);
 
   const confirmDelete = useCallback(() => {
     setDeleting(true);
@@ -1010,7 +1020,7 @@ function DetailView({
       runsState={runsState}
       editing={editing}
       draftName={draftName}
-      draftBody={draftBody}
+      draftExecution={draftExecution ?? automation.execution}
       actionPending={actionPending}
       saving={saving}
       onBack={onBack}
@@ -1021,7 +1031,7 @@ function DetailView({
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onDraftNameChange={setDraftName}
-      onDraftBodyChange={setDraftBody}
+      onDraftExecutionChange={setDraftExecution}
       onOpenThread={openThread}
       footer={
         <DeleteAutomationDialog

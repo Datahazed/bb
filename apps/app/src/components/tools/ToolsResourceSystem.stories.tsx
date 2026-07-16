@@ -210,7 +210,15 @@ function resolveSecretsPluginDetailPath(): Promise<string> {
   return resolvePluginDetailPath("secrets");
 }
 
-async function resolveAutomationRoute(): Promise<{
+function resolveUserAuthoredPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("small-ux-pack");
+}
+
+function resolvePatternAtlasPluginDetailPath(): Promise<string> {
+  return resolvePluginDetailPath("ui-patterns");
+}
+
+async function resolveAutomationRoute(mode?: "agent" | "script"): Promise<{
   projectId: string;
   automationId: string;
 }> {
@@ -231,10 +239,18 @@ async function resolveAutomationRoute(): Promise<{
   }
   const result = automationsOverviewResponseSchema.safeParse(body.result);
   const automation = result.success
-    ? result.data.automations[0]?.automation
+    ? mode === undefined
+      ? result.data.automations[0]?.automation
+      : result.data.automations.find(
+          (entry) => entry.automation.execution.mode === mode,
+        )?.automation
     : undefined;
   if (automation === undefined) {
-    throw new Error("The live server has no automation to open.");
+    throw new Error(
+      mode === undefined
+        ? "The live server has no automation to open."
+        : `The live server has no ${mode} automation to open.`,
+    );
   }
   return {
     projectId: automation.projectId,
@@ -248,6 +264,14 @@ async function resolveAutomationDetailPath(): Promise<string> {
 
 async function resolveAutomationEditPath(): Promise<string> {
   return getAutomationEditRoutePath(await resolveAutomationRoute());
+}
+
+async function resolveScriptAutomationDetailPath(): Promise<string> {
+  return getAutomationDetailRoutePath(await resolveAutomationRoute("script"));
+}
+
+async function resolveScriptAutomationEditPath(): Promise<string> {
+  return getAutomationEditRoutePath(await resolveAutomationRoute("script"));
 }
 
 export function SkillsInstalled() {
@@ -300,6 +324,14 @@ export function PluginDetailSecrets() {
   return <LiveToolsPage target={resolveSecretsPluginDetailPath} />;
 }
 
+export function PluginDetailUserAuthored() {
+  return <LiveToolsPage target={resolveUserAuthoredPluginDetailPath} />;
+}
+
+export function PluginDetailPatternAtlas() {
+  return <LiveToolsPage target={resolvePatternAtlasPluginDetailPath} />;
+}
+
 export function AutomationsOverview() {
   return <LiveToolsPage target={AUTOMATIONS_ROUTE_PATH} />;
 }
@@ -314,4 +346,12 @@ export function AutomationDetail() {
 
 export function AutomationEdit() {
   return <LiveToolsPage target={resolveAutomationEditPath} />;
+}
+
+export function ScriptAutomationDetail() {
+  return <LiveToolsPage target={resolveScriptAutomationDetailPath} />;
+}
+
+export function ScriptAutomationEdit() {
+  return <LiveToolsPage target={resolveScriptAutomationEditPath} />;
 }

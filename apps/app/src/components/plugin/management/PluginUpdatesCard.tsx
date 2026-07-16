@@ -98,9 +98,12 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 export function PluginUpdatesSourceCard({
   plugin,
   showHeading = true,
+  embedded = false,
 }: {
   plugin: PluginListItem;
   showHeading?: boolean;
+  /** Removes the nested card when this content lives in a detail-stack row. */
+  embedded?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [renderedAt] = useState(() => Date.now());
@@ -132,7 +135,11 @@ export function PluginUpdatesSourceCard({
           Updates &amp; source
         </h3>
       ) : null}
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+      <div
+        className={
+          embedded ? "" : "rounded-lg border border-border bg-card px-4 py-3.5"
+        }
+      >
         <div className="divide-y divide-border">
           <div className="pb-3">
             <SettingsWithControl

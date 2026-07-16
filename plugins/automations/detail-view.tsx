@@ -17,9 +17,17 @@ import {
   ResourceDetailPanel,
   ResourceDetailStack,
   ResourceOverflowMenu,
+  ResourcePromptEditor,
   ResourceProperty,
   ResourcePropertyList,
 } from "@bb/shared-ui/resource-list";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
 import { Switch } from "@bb/shared-ui/switch";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -45,7 +53,7 @@ export interface AutomationDetailViewProps {
   runsState: AutomationRunsViewState;
   editing: boolean;
   draftName: string;
-  draftBody: string;
+  draftExecution: AutomationExecution;
   actionPending: boolean;
   saving: boolean;
   onBack: () => void;
@@ -56,7 +64,7 @@ export interface AutomationDetailViewProps {
   onRunNow: () => void;
   onDelete: () => void;
   onDraftNameChange: (name: string) => void;
-  onDraftBodyChange: (body: string) => void;
+  onDraftExecutionChange: (execution: AutomationExecution) => void;
   onOpenThread: (threadId: string) => void;
   footer?: ReactNode;
 }
@@ -102,23 +110,18 @@ export function automationEditBodyValue(
   return execution.script ?? execution.scriptFile ?? "";
 }
 
-export function withAutomationEditBody(
-  execution: AutomationExecution,
-  body: string,
-): AutomationExecution {
-  if (execution.mode === "agent") return { ...execution, prompt: body };
-  const base = {
-    mode: "script" as const,
-    timeoutMs: execution.timeoutMs,
-    ...(execution.interpreter !== undefined
-      ? { interpreter: execution.interpreter }
-      : {}),
-    ...(execution.env !== undefined ? { env: execution.env } : {}),
-  };
-  return execution.scriptFile !== undefined && execution.script === undefined
-    ? { ...base, scriptFile: body }
-    : { ...base, script: body };
-}
+type ScriptExecution = Extract<AutomationExecution, { mode: "script" }>;
+type ScriptInterpreter = NonNullable<ScriptExecution["interpreter"]>;
+
+const SCRIPT_INTERPRETERS: readonly {
+  value: ScriptInterpreter;
+  label: string;
+}[] = [
+  { value: "bash", label: "Bash" },
+  { value: "sh", label: "Shell (sh)" },
+  { value: "node", label: "Node.js" },
+  { value: "python3", label: "Python 3" },
+];
 
 function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (execution.mode !== "agent") return "Host";
@@ -254,7 +257,7 @@ export function AutomationDetailView({
   runsState,
   editing,
   draftName,
-  draftBody,
+  draftExecution,
   actionPending,
   saving,
   onBack,
@@ -265,7 +268,7 @@ export function AutomationDetailView({
   onRunNow,
   onDelete,
   onDraftNameChange,
-  onDraftBodyChange,
+  onDraftExecutionChange,
   onOpenThread,
   footer,
 }: AutomationDetailViewProps) {
@@ -275,9 +278,12 @@ export function AutomationDetailView({
     runCount: automation.runCount,
   });
   const editableBodyLabel = automationEditBodyLabel(automation.execution);
+  const draftBody = automationEditBodyValue(draftExecution);
   const canSave =
     draftName.trim().length > 0 &&
     draftBody.trim().length > 0 &&
+    (draftExecution.mode !== "script" ||
+      (draftExecution.timeoutMs > 0 && draftExecution.timeoutMs <= 900_000)) &&
     !saving &&
     !actionPending;
 
@@ -323,45 +329,122 @@ export function AutomationDetailView({
         }
       >
         <ResourceDetailStack>
-          <ResourceDefinitionSection label="Automation" layout="inline">
-            <div className="space-y-4">
-              <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
-                <span>Name</span>
-                <Input
-                  value={draftName}
-                  onChange={(event) => onDraftNameChange(event.target.value)}
-                  aria-label="Automation name"
-                  className="h-8"
-                />
-              </label>
-              <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
-                <span>{editableBodyLabel}</span>
-                {automation.execution.mode === "agent" ? (
-                  <Textarea
-                    value={draftBody}
-                    onChange={(event) => onDraftBodyChange(event.target.value)}
-                    aria-label="Automation prompt"
-                    className="min-h-48 resize-y text-sm leading-relaxed"
-                  />
-                ) : automation.execution.scriptFile !== undefined &&
-                  automation.execution.script === undefined ? (
+          <ResourceDefinitionSection label="Details" layout="inline">
+            <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
+              <span>Name</span>
+              <Input
+                value={draftName}
+                onChange={(event) => onDraftNameChange(event.target.value)}
+                aria-label="Automation name"
+                className="h-8"
+              />
+            </label>
+          </ResourceDefinitionSection>
+
+          {draftExecution.mode === "agent" ? (
+            <ResourceDefinitionSection label="Prompt" layout="inline">
+              <ResourcePromptEditor
+                value={draftExecution.prompt}
+                ariaLabel="Automation prompt"
+                placeholder="What should the agent do when this automation runs?"
+                onChange={(prompt) =>
+                  onDraftExecutionChange({ ...draftExecution, prompt })
+                }
+              />
+            </ResourceDefinitionSection>
+          ) : (
+            <>
+              <ResourceDefinitionSection label="Execution" layout="inline">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
+                    <span>Interpreter</span>
+                    <Select
+                      value={draftExecution.interpreter ?? "bash"}
+                      onValueChange={(value) => {
+                        const interpreter = SCRIPT_INTERPRETERS.find(
+                          (option) => option.value === value,
+                        )?.value;
+                        if (interpreter === undefined) return;
+                        onDraftExecutionChange({
+                          ...draftExecution,
+                          interpreter,
+                        });
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-8 text-xs"
+                        aria-label="Script interpreter"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCRIPT_INTERPRETERS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
+                    <span>Timeout</span>
+                    <span className="relative block">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={900}
+                        value={Math.round(draftExecution.timeoutMs / 1000)}
+                        onChange={(event) =>
+                          onDraftExecutionChange({
+                            ...draftExecution,
+                            timeoutMs:
+                              Number.parseInt(event.target.value, 10) * 1000 ||
+                              0,
+                          })
+                        }
+                        aria-label="Script timeout in seconds"
+                        className="h-8 pr-16 text-xs"
+                      />
+                      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">
+                        seconds
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </ResourceDefinitionSection>
+              <ResourceDefinitionSection
+                label={editableBodyLabel}
+                layout="inline"
+              >
+                {draftExecution.scriptFile !== undefined &&
+                draftExecution.script === undefined ? (
                   <Input
-                    value={draftBody}
-                    onChange={(event) => onDraftBodyChange(event.target.value)}
+                    value={draftExecution.scriptFile}
+                    onChange={(event) =>
+                      onDraftExecutionChange({
+                        ...draftExecution,
+                        scriptFile: event.target.value,
+                      })
+                    }
                     aria-label="Automation script file"
                     className="h-8 font-mono text-xs"
                   />
                 ) : (
                   <Textarea
-                    value={draftBody}
-                    onChange={(event) => onDraftBodyChange(event.target.value)}
+                    value={draftExecution.script ?? ""}
+                    onChange={(event) =>
+                      onDraftExecutionChange({
+                        ...draftExecution,
+                        script: event.target.value,
+                      })
+                    }
                     aria-label="Automation script"
-                    className="min-h-48 resize-y font-mono text-xs leading-relaxed"
+                    className="min-h-64 resize-y font-mono text-xs leading-relaxed"
                   />
                 )}
-              </label>
-            </div>
-          </ResourceDefinitionSection>
+              </ResourceDefinitionSection>
+            </>
+          )}
         </ResourceDetailStack>
       </ResourceDetailPage>
     );

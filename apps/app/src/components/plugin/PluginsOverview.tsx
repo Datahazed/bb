@@ -167,38 +167,35 @@ export function PluginsOverview() {
       },
     });
 
-  const actions = (
-    <>
+  const actions =
+    activeMode === "marketplaces" ? (
+      <Button
+        type="button"
+        size="sm"
+        className="h-7 px-2.5 text-xs"
+        onClick={() => setMarketplaceAddOpen(true)}
+      >
+        <Icon name="Plus" className="size-3.5" />
+        Add marketplace
+      </Button>
+    ) : (
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
+        menuActions={
+          marketplaceManagementEnabled
+            ? [
+                {
+                  label: "Install from source",
+                  icon: "Download",
+                  onSelect: () => setAddDialog({ open: true, initial: null }),
+                },
+              ]
+            : []
+        }
         onCreate={startCreatePlugin}
       />
-      {marketplaceManagementEnabled ? (
-        activeMode === "marketplaces" ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-7 px-2.5 text-xs"
-            onClick={() => setMarketplaceAddOpen(true)}
-          >
-            <Icon name="Plus" className="size-3.5" />
-            Add marketplace
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            className="h-7 px-2.5 text-xs"
-            onClick={() => setAddDialog({ open: true, initial: null })}
-          >
-            <Icon name="Plus" className="size-3.5" />
-            Add plugin
-          </Button>
-        )
-      ) : null}
-    </>
-  );
+    );
 
   let content: ReactNode;
   if (activeMode === "browse") {
