@@ -1105,6 +1105,28 @@ describe("bb tasks CLI", () => {
         },
       ]);
 
+      stdout(
+        await harness.runCli([
+          "update",
+          "FILE-1",
+          "--description",
+          `![pixel](/api/v1/plugins/tasks/http/attachments/download?attachmentId=${pngAttachment.id})`,
+        ]),
+      );
+      const signalsBeforeReferencedRemove = harness.realtimeSignals.length;
+      const referencedRemove = await harness.runCli([
+        "attachment",
+        "remove",
+        pngAttachment.id,
+      ]);
+      expect(referencedRemove.exitCode).toBe(1);
+      expect(referencedRemove.stderr).toContain(
+        "is used in the task description",
+      );
+      expect(harness.realtimeSignals).toHaveLength(
+        signalsBeforeReferencedRemove,
+      );
+
       const listed = JSON.parse(
         stdout(
           await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
@@ -1167,6 +1189,60 @@ describe("bb tasks CLI", () => {
       );
       expect(await readFile(outputPath, "utf8")).toBe(
         "attachment bytes from CLI\n",
+      );
+
+      const removed = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "remove",
+            attachment.id,
+            "--json",
+          ]),
+        ),
+      );
+      expect(removed).toMatchObject({
+        deleted: true,
+        attachment: { id: attachment.id },
+      });
+      const afterRemove = JSON.parse(
+        stdout(
+          await harness.runCli(["attachment", "list", "FILE-1", "--json"]),
+        ),
+      );
+      expect(
+        afterRemove.attachments.map((entry: { id: string }) => entry.id),
+      ).not.toContain(attachment.id);
+
+      // Removing an already-gone id is an explicit CLI error, not a silent 0.
+      const removeMissing = await harness.runCli([
+        "attachment",
+        "remove",
+        attachment.id,
+      ]);
+      expect(removeMissing.exitCode).toBe(1);
+      expect(removeMissing.stderr).toContain("attachment not found");
+
+      const removedReferenced = JSON.parse(
+        stdout(
+          await harness.runCli([
+            "attachment",
+            "remove",
+            pngAttachment.id,
+            "--remove-references",
+            "--json",
+          ]),
+        ),
+      );
+      expect(removedReferenced).toMatchObject({
+        deleted: true,
+        attachment: { id: pngAttachment.id },
+      });
+      const shownAfterReferencedRemove = JSON.parse(
+        stdout(await harness.runCli(["show", "FILE-1", "--json"])),
+      );
+      expect(shownAfterReferencedRemove.task.description).not.toContain(
+        pngAttachment.id,
       );
     } finally {
       await harness.dispose();
