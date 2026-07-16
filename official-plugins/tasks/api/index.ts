@@ -7,7 +7,7 @@ import {
   type TasksStore,
 } from "../db";
 import { removeAttachmentBlobs } from "../attachments";
-import { deliverCommentToAgents } from "../steer";
+import { deliverCommentToLatestAgent } from "../steer";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
@@ -398,6 +398,8 @@ interface CreateCommentInput {
   taskId: string;
   kind: StoredComment["kind"];
   authorName: string;
+  presetName: string | null;
+  threadId: string | null;
   body: string;
   notify: boolean;
 }
@@ -412,13 +414,15 @@ export async function createComment(
       taskId: input.taskId,
       kind: input.kind,
       authorName: input.authorName,
+      presetName: input.presetName,
+      threadId: input.threadId,
       body: input.body,
       notifiedCount: 0,
     }),
   );
 
-  if (input.notify && comment.kind === "user") {
-    const delivery = await deliverCommentToAgents(bb, store.tasks, {
+  if (input.notify) {
+    const delivery = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
@@ -841,6 +845,8 @@ export function registerHandlers(
         taskId: input.taskId,
         kind: "user",
         authorName: "You",
+        presetName: null,
+        threadId: null,
         body: input.body,
         notify: input.notify,
       });

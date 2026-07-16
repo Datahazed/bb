@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 
+import { createStore } from "../api";
 import plugin from "../server";
 
 // Passthrough mock with one injectable failure: files named boom.bin fail at
@@ -195,8 +196,14 @@ describe("bb tasks CLI", () => {
     );
     const seed = [
       { title: "No priority", args: [] },
-      { title: "High later", args: ["--priority", "high", "--due", "2026-08-01"] },
-      { title: "High soon", args: ["--priority", "high", "--due", "2026-07-20"] },
+      {
+        title: "High later",
+        args: ["--priority", "high", "--due", "2026-08-01"],
+      },
+      {
+        title: "High soon",
+        args: ["--priority", "high", "--due", "2026-07-20"],
+      },
       { title: "Urgent undated", args: ["--priority", "urgent"] },
     ];
     for (const task of seed) {
@@ -215,19 +222,30 @@ describe("bb tasks CLI", () => {
 
     const byPriority = JSON.parse(
       stdout(
-        await harness.runCli(["list", "--project", "SRT", "--sort", "priority", "--json"]),
+        await harness.runCli([
+          "list",
+          "--project",
+          "SRT",
+          "--sort",
+          "priority",
+          "--json",
+        ]),
       ),
     );
-    expect(byPriority.tasks.map((task: { title: string }) => task.title)).toEqual([
-      "Urgent undated",
-      "High soon",
-      "High later",
-      "No priority",
-    ]);
+    expect(
+      byPriority.tasks.map((task: { title: string }) => task.title),
+    ).toEqual(["Urgent undated", "High soon", "High later", "No priority"]);
 
     const byDue = JSON.parse(
       stdout(
-        await harness.runCli(["list", "--project", "SRT", "--sort", "due", "--json"]),
+        await harness.runCli([
+          "list",
+          "--project",
+          "SRT",
+          "--sort",
+          "due",
+          "--json",
+        ]),
       ),
     );
     expect(byDue.tasks.map((task: { title: string }) => task.title)).toEqual([
@@ -600,28 +618,51 @@ describe("bb tasks CLI", () => {
         presetName: "Attached",
       }),
     ]);
+    const taskStore = createStore(bb).tasks;
+    taskStore.createComment({
+      taskId: threads.task.id,
+      kind: "agent",
+      authorName: "Prior worker",
+      threadId: "thr_prior_worker",
+      body: "Prior reply from another agent.",
+    });
 
     const notified = JSON.parse(
       stdout(
-        await harness.runCli([
-          "comment",
-          "ATT-1",
-          "--body",
-          "Include the new edge case.",
-          "--notify",
-          "--json",
-        ]),
+        await harness.runCli(
+          [
+            "comment",
+            "ATT-1",
+            "--body",
+            "Include the new edge case.",
+            "--author",
+            "Custom CLI agent",
+            "--notify",
+            "--json",
+          ],
+          { threadId: "thr_cli_sender", projectId: "proj_bb" },
+        ),
       ),
     ).comment;
     expect(notified).toMatchObject({
       taskId: threads.task.id,
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
+      body: "Include the new edge case.",
+      notifiedCount: 1,
+    });
+    expect(taskStore.getComment(notified.id)).toMatchObject({
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId: "thr_cli_sender",
       notifiedCount: 1,
     });
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
         expect.objectContaining({
-          threadId: "thr_cli_self",
-          mode: "steer",
+          threadId: "thr_prior_worker",
+          mode: "steer-if-active",
         }),
       ],
     ]);
@@ -732,9 +773,7 @@ describe("bb tasks CLI", () => {
           outputPath,
         ]),
       );
-      expect(await readFile(outputPath, "utf8")).toBe(
-        "attach me at create\n",
-      );
+      expect(await readFile(outputPath, "utf8")).toBe("attach me at create\n");
     } finally {
       await rm(directory, { recursive: true, force: true });
       await harness.dispose();
@@ -784,8 +823,8 @@ describe("bb tasks CLI", () => {
       const payload = JSON.parse(mixed.stdout);
       expect(payload.task).toMatchObject({ key: "MIX-1" });
       expect(
-        payload.attachments.map((attachment: { fileName: string }) =>
-          attachment.fileName,
+        payload.attachments.map(
+          (attachment: { fileName: string }) => attachment.fileName,
         ),
       ).toEqual(["first.txt", "last.txt"]);
       expect(payload.failedAttachments).toEqual([
@@ -793,9 +832,7 @@ describe("bb tasks CLI", () => {
       ]);
       // Both successes really persisted on the created task.
       const listed = JSON.parse(
-        stdout(
-          await harness.runCli(["attachment", "list", "MIX-1", "--json"]),
-        ),
+        stdout(await harness.runCli(["attachment", "list", "MIX-1", "--json"])),
       );
       expect(listed.attachments).toHaveLength(2);
 
@@ -879,10 +916,23 @@ describe("bb tasks CLI", () => {
     });
     await plugin(bb);
     stdout(
-      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
     );
     stdout(
-      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
     );
     stdout(
       await harness.runCli(["attach", "PRS-1", "--thread", "thr_pr_worker"]),
@@ -943,12 +993,27 @@ describe("bb tasks CLI", () => {
     });
     await plugin(bb);
     stdout(
-      await harness.runCli(["project", "create", "--name", "PRs", "--prefix", "PRS"]),
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "PRs",
+        "--prefix",
+        "PRS",
+      ]),
     );
     stdout(
-      await harness.runCli(["create", "--project", "PRS", "--title", "Ship the pill"]),
+      await harness.runCli([
+        "create",
+        "--project",
+        "PRS",
+        "--title",
+        "Ship the pill",
+      ]),
     );
-    stdout(await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]));
+    stdout(
+      await harness.runCli(["attach", "PRS-1", "--thread", "thr_down_0000"]),
+    );
 
     const shown = stdout(await harness.runCli(["show", "PRS-1"]));
     expect(shown).toContain("PR lookup unavailable for: thr_down_0000");

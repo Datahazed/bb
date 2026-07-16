@@ -1162,11 +1162,30 @@ export function createTasksStore(db: PluginDatabase) {
     return db
       .prepare<[string], CommentRow>(
         `
-        SELECT * FROM comments WHERE task_id = ? ORDER BY created_at, id
+        SELECT * FROM comments WHERE task_id = ? ORDER BY created_at, rowid
       `,
       )
       .all(taskId)
       .map(commentFromRow);
+  }
+
+  function getLatestAgentComment(
+    taskId: string,
+    excludeCommentId: string | null,
+  ): Comment | undefined {
+    const row = db
+      .prepare<[string, string | null, string | null], CommentRow>(
+        `
+        SELECT * FROM comments
+        WHERE task_id = ?
+          AND kind = 'agent'
+          AND (? IS NULL OR id <> ?)
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `,
+      )
+      .get(taskId, excludeCommentId, excludeCommentId);
+    return row ? commentFromRow(row) : undefined;
   }
 
   function updateComment(id: string, input: UpdateCommentInput): Comment {
@@ -1578,6 +1597,7 @@ export function createTasksStore(db: PluginDatabase) {
     createComment,
     getComment,
     listComments,
+    getLatestAgentComment,
     updateComment,
     deleteComment,
     createAttachment,
