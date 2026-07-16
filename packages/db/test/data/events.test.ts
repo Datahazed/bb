@@ -29,6 +29,7 @@ import {
   listCompletedTurnsByThreadIds,
   listEvents,
   listLatestGoalEventRowsByThreadIds,
+  listLatestGoalEventRowsForThread,
   listRecentStoredEventRows,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
@@ -37,10 +38,21 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
+  listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
+  listStoredDelegatedTurnDescendantRanges,
+  listStoredDelegationChildTurnRanges,
+  listStoredDelegationDescendantRanges,
+  listStoredNonemptyDelegationChildTurnBucketIndexes,
+  listStoredTurnDescendantRanges,
+  listStoredItemStartedRowsByItemIds,
+  listStoredToolCallRowsByItemIds,
+  listStoredConversationOutlineEventRows,
   listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineWindowEventRowsDescending,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnStartedRowsByTurnIdsUpToSequence,
   MissingStoredTurnStartedError,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -52,6 +64,7 @@ import {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
+  type StoredEventRow,
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
@@ -105,6 +118,30 @@ function createTurnEventFields(args: CreateTurnEventFieldsArgs) {
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
+}
+
+function storedEventRowTextBytes(row: {
+  data: string;
+  id: string;
+  itemId: string | null;
+  itemKind: string | null;
+  providerThreadId: string | null;
+  scopeKind: string;
+  threadId: string;
+  turnId: string | null;
+  type: string;
+}): number {
+  return [
+    row.data,
+    row.id,
+    row.itemId ?? "",
+    row.itemKind ?? "",
+    row.providerThreadId ?? "",
+    row.scopeKind,
+    row.threadId,
+    row.turnId ?? "",
+    row.type,
+  ].reduce((bytes, value) => bytes + Buffer.byteLength(value, "utf8"), 0);
 }
 
 function clientTurnRequestData(requestId: string, text: string): string {
@@ -172,6 +209,122 @@ function createContextWindowUsageData(
 }
 
 describe("events", () => {
+  it("caps restored lifecycle context at a captured sequence", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread",
+        itemId: "parent-tool",
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "parent-tool",
+            tool: "Agent",
+            arguments: { prompt: "work", subagent_type: "general-purpose" },
+            status: "pending",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread",
+        itemId: "parent-tool",
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "parent-tool",
+            tool: "Agent",
+            arguments: { prompt: "work", subagent_type: "general-purpose" },
+            result: "done",
+            status: "completed",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread",
+        itemId: "reused-command",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "reused-command",
+            command: "first",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread",
+        itemId: "reused-command",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "reused-command",
+            command: "future",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      listStoredToolCallRowsByItemIds(db, {
+        itemIds: ["parent-tool"],
+        limit: 10,
+        maxBytes: 1_000_000,
+        sequenceEnd: 1,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([1]);
+    expect(
+      listStoredToolCallRowsByItemIds(db, {
+        itemIds: ["parent-tool"],
+        limit: 10,
+        maxBytes: 1_000_000,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([1, 2]);
+    expect(
+      listStoredItemStartedRowsByItemIds(db, {
+        itemIds: ["reused-command"],
+        limit: 10,
+        maxBytes: 1_000_000,
+        sequenceCutoff: 3,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([3]);
+    expect(
+      listStoredItemStartedRowsByItemIds(db, {
+        itemIds: ["reused-command"],
+        limit: 10,
+        maxBytes: 1_000_000,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([3, 4]);
+  });
+
   it("inserts events and returns count", () => {
     const { db, thread } = setup();
 
@@ -801,8 +954,10 @@ describe("events", () => {
 
     expect(
       listContextWindowUsageRows(db, {
+        limit: 2,
+        maxBytes: 32_000,
         threadId: thread.id,
-      }).map((row) => row.sequence),
+      }).rows.map((row) => row.sequence),
     ).toEqual([2, 3]);
   });
 
@@ -858,8 +1013,10 @@ describe("events", () => {
 
     expect(
       listContextWindowUsageRows(db, {
+        limit: 2,
+        maxBytes: 32_000,
         threadId: thread.id,
-      }).map((row) => row.sequence),
+      }).rows.map((row) => row.sequence),
     ).toEqual([2, 5]);
   });
 
@@ -1117,6 +1274,469 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([2, 3]);
+
+    expect(
+      listStoredTimelineWindowEventRowsDescending(db, {
+        excludedTypes: [],
+        limit: 2,
+        maxBytes: 750_000,
+        sequenceStart: 2,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([4, 3]);
+  });
+
+  it("returns a bounded representation for an oversized timeline event", () => {
+    const { db, thread } = setup();
+    const oversizedItemId = "item".repeat(1_000);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/commandExecution/outputDelta",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        itemId: "command-1",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          itemId: "command-1",
+          delta: '💥\u0000\\"'.repeat(50_000),
+          reset: true,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/commandExecution/outputDelta",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        itemId: oversizedItemId,
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          itemId: oversizedItemId,
+          delta: "x".repeat(50_000),
+        }),
+      },
+    ]);
+
+    const [oversizedIdentityRow, row] =
+      listStoredTimelineWindowEventRowsDescending(db, {
+      excludedTypes: [],
+      limit: 2,
+      maxBytes: 1_000,
+      sequenceStart: 1,
+      threadId: thread.id,
+      }).rows;
+
+    expect(row?.type).toBe("item/commandExecution/outputDelta");
+    expect(Buffer.byteLength(row?.data ?? "", "utf8")).toBeLessThanOrEqual(
+      1_000,
+    );
+    expect(JSON.parse(row?.data ?? "{}")).toMatchObject({
+      itemId: "command-1",
+      reset: true,
+      delta: expect.stringContaining(
+        "oversized event truncated for timeline rendering",
+      ),
+    });
+    expect(oversizedIdentityRow).toMatchObject({
+      itemId: null,
+      itemKind: null,
+      type: "system/error",
+    });
+    expect(
+      Buffer.byteLength(oversizedIdentityRow?.data ?? "", "utf8"),
+    ).toBeLessThanOrEqual(1_000);
+  });
+
+  it("pages past oversized provider and turn identities without losing events", () => {
+    const { db, thread } = setup();
+    const oversizedProviderThreadId = `provider-${"界".repeat(2_000)}`;
+    const oversizedTurnId = `turn-${"🧭".repeat(2_000)}`;
+    insertEvents(db, noopNotifier, [
+      ...Array.from({ length: 4 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: JSON.stringify({ message: `bounded-${index}-${"x".repeat(280)}` }),
+      })),
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "system/error",
+        ...threadEventFields,
+        providerThreadId: oversizedProviderThreadId,
+        data: JSON.stringify({ message: "oversized provider identity" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: oversizedTurnId }),
+        data: JSON.stringify({ message: "oversized turn identity" }),
+      },
+    ]);
+
+    const storedRowsBySequence = new Map(
+      listStoredEventRows(db, { threadId: thread.id }).map((row) => [
+        row.sequence,
+        row,
+      ]),
+    );
+    const sequences: number[] = [];
+    const projectedRows = new Map<number, StoredEventRow>();
+    let beforeSequence: number | undefined;
+    while (true) {
+      const page = listStoredTimelineWindowEventRowsDescending(db, {
+        ...(beforeSequence === undefined ? {} : { beforeSequence }),
+        excludedTypes: [],
+        limit: 10,
+        maxBytes: 700,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+
+      expect(page.rows.length).toBeGreaterThan(0);
+      expect(page.dataBytes).toBeLessThanOrEqual(700);
+      for (const row of page.rows) {
+        sequences.push(row.sequence);
+        projectedRows.set(row.sequence, row);
+      }
+      if (!page.hasMore) break;
+      beforeSequence = page.rows.at(-1)?.sequence;
+      expect(beforeSequence).toBeDefined();
+    }
+
+    expect(sequences).toEqual([6, 5, 4, 3, 2, 1]);
+    expect(new Set(sequences).size).toBe(sequences.length);
+    for (const sequence of [5, 6]) {
+      const projected = projectedRows.get(sequence);
+      const stored = storedRowsBySequence.get(sequence);
+      expect(projected).toMatchObject({
+        id: stored?.id,
+        providerThreadId: null,
+        scopeKind: "thread",
+        sequence,
+        threadId: thread.id,
+        turnId: null,
+        type: "system/error",
+      });
+      expect(JSON.parse(projected?.data ?? "{}")).toMatchObject({
+        code: "timeline_event_identity_too_large",
+      });
+    }
+  });
+
+  it("enforces cumulative UTF-8 bytes across all returned text columns", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 4 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        providerThreadId: `provider-🧭-${index}`,
+        data: JSON.stringify({ message: `界`.repeat(90 + index) }),
+      })),
+    );
+
+    const newestRows = listStoredEventRows(db, {
+      threadId: thread.id,
+    }).reverse();
+    const maxBytes = newestRows
+      .slice(0, 2)
+      .reduce((bytes, row) => bytes + storedEventRowTextBytes(row), 0);
+    const result = listStoredTimelineWindowEventRowsDescending(db, {
+      excludedTypes: [],
+      limit: 4,
+      maxBytes,
+      sequenceStart: 1,
+      threadId: thread.id,
+    });
+
+    expect(result.rows.map((row) => row.sequence)).toEqual([4, 3]);
+    expect(result.dataBytes).toBe(maxBytes);
+    expect(result.hasMore).toBe(true);
+    expect(
+      result.rows.reduce(
+        (bytes, row) => bytes + storedEventRowTextBytes(row),
+        0,
+      ),
+    ).toBe(result.dataBytes);
+  });
+
+  it("keyset-pages a row-limit sentinel without gaps or duplicates", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 7 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: JSON.stringify({ message: `event-${index + 1}` }),
+      })),
+    );
+
+    const sequences: number[] = [];
+    let beforeSequence: number | undefined;
+    while (true) {
+      const page = listStoredTimelineWindowEventRowsDescending(db, {
+        ...(beforeSequence === undefined ? {} : { beforeSequence }),
+        excludedTypes: [],
+        limit: 2,
+        maxBytes: 100_000,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      sequences.push(...page.rows.map((row) => row.sequence));
+      if (!page.hasMore) break;
+      beforeSequence = page.rows.at(-1)?.sequence;
+      expect(beforeSequence).toBeDefined();
+    }
+
+    expect(sequences).toEqual([7, 6, 5, 4, 3, 2, 1]);
+    expect(new Set(sequences).size).toBe(sequences.length);
+  });
+
+  it("returns an oversized newest placeholder and advances past it", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "older" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "x".repeat(100_000) }),
+      },
+    ]);
+
+    const newest = listStoredTimelineWindowEventRowsDescending(db, {
+      excludedTypes: [],
+      limit: 1,
+      maxBytes: 1_000,
+      sequenceStart: 1,
+      threadId: thread.id,
+    });
+    expect(newest.rows).toHaveLength(1);
+    expect(newest.rows[0]).toMatchObject({
+      sequence: 2,
+      type: "system/error",
+    });
+    expect(JSON.parse(newest.rows[0]?.data ?? "{}")).toMatchObject({
+      code: "timeline_event_payload_too_large",
+    });
+    expect(newest.dataBytes).toBeLessThanOrEqual(1_000);
+    expect(newest.hasMore).toBe(true);
+
+    const older = listStoredTimelineWindowEventRowsDescending(db, {
+      beforeSequence: 2,
+      excludedTypes: [],
+      limit: 1,
+      maxBytes: 1_000,
+      sequenceStart: 1,
+      threadId: thread.id,
+    });
+    expect(older.rows.map((row) => row.sequence)).toEqual([1]);
+    expect(older.hasMore).toBe(false);
+  });
+
+  it("excludes existing enrichment ids before applying its SQL budget", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 3 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: JSON.stringify({
+          parentToolCallId: "parent-tool",
+          message: `child-${index + 1}-${"界".repeat(40)}`,
+        }),
+      })),
+    );
+
+    const first = listStoredEventRowsByParentToolCallIds(db, {
+      limit: 1,
+      maxBytes: 10_000,
+      parentToolCallIds: ["parent-tool"],
+      threadId: thread.id,
+    });
+    const second = listStoredEventRowsByParentToolCallIds(db, {
+      excludedRowIds: first.rows.map((row) => row.id),
+      limit: 1,
+      maxBytes: first.dataBytes,
+      parentToolCallIds: ["parent-tool"],
+      threadId: thread.id,
+    });
+
+    expect(first.rows.map((row) => row.sequence)).toEqual([3]);
+    expect(second.rows.map((row) => row.sequence)).toEqual([2]);
+    expect(second.dataBytes).toBeLessThanOrEqual(first.dataBytes);
+    expect(second.rows).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: first.rows[0]?.id })]),
+    );
+  });
+
+  it("keeps lifecycle enrichment type-aware within each requested budget", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        data: JSON.stringify({ filler: "界".repeat(10_000) }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        itemId: "parent-tool",
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "parent-tool",
+            tool: "delegate",
+            status: "pending",
+            arguments: { prompt: "x".repeat(50_000) },
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/started",
+        ...createTurnEventFields({ turnId: "turn-1" }),
+        itemId: "child-command",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "child-command",
+            command: "x".repeat(50_000),
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+            parentToolCallId: "parent-tool",
+          },
+        }),
+      },
+    ]);
+
+    const maxBytes = 2_000;
+    const parent = listStoredToolCallRowsByItemIds(db, {
+      itemIds: ["parent-tool"],
+      limit: 2,
+      maxBytes,
+      threadId: thread.id,
+    });
+    const itemStart = listStoredItemStartedRowsByItemIds(db, {
+      itemIds: ["child-command"],
+      limit: 1,
+      maxBytes,
+      threadId: thread.id,
+    });
+    const turnStart = listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
+      limit: 1,
+      maxBytes,
+      sequenceCutoff: 3,
+      threadId: thread.id,
+      turnIds: ["turn-1"],
+    });
+
+    expect(parent.rows[0]).toMatchObject({
+      itemId: "parent-tool",
+      itemKind: "toolCall",
+      type: "item/started",
+    });
+    expect(itemStart.rows[0]).toMatchObject({
+      itemId: "child-command",
+      itemKind: "commandExecution",
+      type: "item/started",
+    });
+    expect(turnStart.rows[0]).toMatchObject({
+      turnId: "turn-1",
+      type: "turn/started",
+    });
+    for (const result of [parent, itemStart, turnStart]) {
+      expect(result.rows).toHaveLength(1);
+      expect(result.dataBytes).toBeLessThanOrEqual(maxBytes);
+      expect(
+        result.rows.reduce(
+          (bytes, row) => bytes + storedEventRowTextBytes(row),
+          0,
+        ),
+      ).toBe(result.dataBytes);
+    }
+  });
+
+  it("loads only message-producing events for conversation outlines", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: JSON.stringify({ input: textInput("question") }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        ...threadEventFields,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "command-1",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: { type: "commandExecution", id: "command-1" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "message-1",
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: { type: "agentMessage", id: "message-1", text: "answer" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "turn/completed",
+        ...threadEventFields,
+        data: JSON.stringify({ status: "completed" }),
+      },
+    ]);
+
+    expect(
+      listStoredConversationOutlineEventRows(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2, 4, 5]);
   });
 
   it("lists accepted input rows for requested client turn sequences", () => {
@@ -1174,6 +1794,7 @@ describe("events", () => {
         ...createTurnEventFields({ turnId: "turn-1" }),
         data: JSON.stringify({
           clientRequestId: "creq_23456789ab",
+          ignoredLargeField: "x".repeat(50_000),
         }),
       },
       {
@@ -1201,8 +1822,34 @@ describe("events", () => {
         threadId: thread.id,
         afterSequence: 2,
         clientRequestIds: ["creq_23456789ab", "creq_23456789ac"],
-      }).map((row) => row.sequence),
+        limit: 10,
+        maxBytes: 10_000,
+      }).rows.map((row) => row.sequence),
     ).toEqual([3, 5]);
+    expect(
+      listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+        afterSequence: 2,
+        beforeOrAtSequence: 4,
+        clientRequestIds: ["creq_23456789ab", "creq_23456789ac"],
+        limit: 10,
+        maxBytes: 10_000,
+        threadId: thread.id,
+      }).rows.map((row) => row.sequence),
+    ).toEqual([3]);
+    const [boundedAccepted] =
+      listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+        afterSequence: 2,
+        clientRequestIds: ["creq_23456789ab"],
+        limit: 10,
+        maxBytes: 1_000,
+        threadId: thread.id,
+      }).rows;
+    expect(Buffer.byteLength(boundedAccepted?.data ?? "", "utf8")).toBeLessThanOrEqual(
+      1_000,
+    );
+    expect(JSON.parse(boundedAccepted?.data ?? "{}")).toEqual({
+      clientRequestId: "creq_23456789ab",
+    });
   });
 
   it("lists only the latest goal event row per thread", () => {
@@ -1242,7 +1889,7 @@ describe("events", () => {
         ...threadEventFields,
         providerThreadId: "provider-thread-2",
         data: JSON.stringify({
-          objective: "Active goal",
+          objective: `Active goal ${"界".repeat(10_000)}`,
           status: "active",
           tokenBudget: null,
           tokensUsed: 2,
@@ -1263,6 +1910,19 @@ describe("events", () => {
       "thread/goal/updated",
     );
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
+
+    const boundedGoal = listLatestGoalEventRowsForThread(db, {
+      limit: 1,
+      maxBytes: 2_000,
+      threadId: otherThread.id,
+    });
+    expect(boundedGoal.dataBytes).toBeLessThanOrEqual(2_000);
+    expect(boundedGoal.rows[0]?.type).toBe("thread/goal/updated");
+    expect(JSON.parse(boundedGoal.rows[0]?.data ?? "{}")).toMatchObject({
+      objective: expect.stringContaining("large goal details omitted"),
+      status: "active",
+      tokensUsed: 2,
+    });
   });
 
   it("lists only open accepted turn inputs after the latest interruption", () => {
@@ -3143,7 +3803,9 @@ describe("events", () => {
     const rows = listLatestBackgroundTaskStateRowsByItemIds(db, {
       threadId: thread.id,
       itemIds: ["task:wf-1", "task:wf-2"],
-    });
+      limit: 10,
+      maxBytes: 100_000,
+    }).rows;
 
     expect(
       rows.map((row) => ({
@@ -3168,8 +3830,10 @@ describe("events", () => {
       listLatestBackgroundTaskStateRowsByItemIds(db, {
         threadId: thread.id,
         itemIds: [],
+        limit: 10,
+        maxBytes: 100_000,
       }),
-    ).toEqual([]);
+    ).toEqual({ dataBytes: 0, hasMore: false, rows: [] });
   });
 
   it("returns latest non-terminal open backgroundTask state rows for a thread", () => {
@@ -3341,8 +4005,11 @@ describe("events", () => {
     ]);
 
     const rows = listLatestOpenBackgroundTaskStateRowsForThread(db, {
+      limit: 16,
+      maxBytes: 256_000,
+      maxDataBytes: 16_000,
       threadId: thread.id,
-    });
+    }).rows;
 
     expect(
       rows.map((row) => ({
@@ -3367,6 +4034,76 @@ describe("events", () => {
         type: "item/backgroundTask/progress",
       },
     ]);
+  });
+
+  it("bounds and compacts newest open background-task state rows", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: 20 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        scope: turnScope("turn-1"),
+        type: "item/started" as const,
+        itemId: `task:${index}`,
+        itemKind: "backgroundTask" as const,
+        data: JSON.stringify({
+          item: {
+            type: "backgroundTask",
+            id: `task:${index}`,
+            taskType: "local_workflow",
+            description: `Workflow ${index}`,
+            status: "pending",
+            taskStatus: "running",
+            skipTranscript: false,
+            summary: "x".repeat(20_000),
+          },
+        }),
+      })),
+    );
+
+    const rows = listLatestOpenBackgroundTaskStateRowsForThread(db, {
+      limit: 16,
+      maxBytes: 256_000,
+      maxDataBytes: 16_000,
+      threadId: thread.id,
+    }).rows;
+
+    expect(rows.map((row) => row.sequence)).toEqual(
+      Array.from({ length: 16 }, (_, index) => index + 5),
+    );
+    expect(
+      rows.every((row) => Buffer.byteLength(row.data, "utf8") <= 16_000),
+    ).toBe(true);
+    expect(JSON.parse(rows[0]?.data ?? "{}")).toMatchObject({
+      item: {
+        id: "task:4",
+        description: expect.stringContaining("large task details omitted"),
+        status: "pending",
+      },
+    });
+
+    const historicalItemIds: string[] = [];
+    let beforeSequence: number | undefined;
+    do {
+      const page = listStoredTimelineWindowEventRowsDescending(db, {
+        ...(beforeSequence === undefined ? {} : { beforeSequence }),
+        excludedTypes: [],
+        limit: 7,
+        maxBytes: 16_000,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+      historicalItemIds.push(
+        ...page.rows.flatMap((row) =>
+          row.itemId === null ? [] : [row.itemId],
+        ),
+      );
+      beforeSequence = page.rows.at(-1)?.sequence;
+      if (!page.hasMore) break;
+    } while (beforeSequence !== undefined);
+    expect(new Set(historicalItemIds).size).toBe(20);
   });
 
   it("counts active workflow, agent, subagent, and command snapshots by thread", () => {
@@ -3768,5 +4505,391 @@ describe("events", () => {
       },
     );
     expect(spy.notifyThread).toHaveBeenCalledTimes(2);
+  });
+
+  it("keyset-pages direct delegation child turns with a hard result bound", () => {
+    const { db, thread } = setup();
+    const events = Array.from({ length: 120 }, (_, index) => {
+      const turnId = `child-${String(index).padStart(3, "0")}`;
+      const sequence = index * 2 + 1;
+      return [
+        {
+          threadId: thread.id,
+          sequence,
+          type: "turn/started" as const,
+          ...createTurnEventFields({ turnId }),
+          data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+        },
+        {
+          threadId: thread.id,
+          sequence: sequence + 1,
+          type: "turn/completed" as const,
+          ...createTurnEventFields({ turnId }),
+          data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+        },
+      ];
+    }).flat();
+    insertEvents(db, noopNotifier, [
+      ...events,
+      {
+        threadId: thread.id,
+        sequence: 241,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: "parent-turn" }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      },
+    ]);
+
+    const seenTurnIds: string[] = [];
+    let beforeSequence: number | undefined;
+    do {
+      const page = listStoredDelegationChildTurnRanges(db, {
+        beforeSequence,
+        directTurnSourceSeqEnd: 1_000,
+        directTurnSourceSeqStart: 0,
+        limit: 17,
+        ownerTurnId: "parent-turn",
+        parentToolCallId: "delegation-root",
+        sequenceEnd: 1_000,
+        sequenceStart: 0,
+        threadId: thread.id,
+      });
+      expect(page.length).toBeLessThanOrEqual(17);
+      seenTurnIds.push(...page.map((row) => row.turnId));
+      beforeSequence = page.at(-1)?.sourceSeqStart;
+      if (page.length < 17) break;
+    } while (beforeSequence !== undefined);
+
+    expect(new Set(seenTurnIds).size).toBe(120);
+    expect(seenTurnIds).toHaveLength(120);
+    expect(seenTurnIds).not.toContain("parent-turn");
+    expect(seenTurnIds[0]).toBe("child-119");
+    expect(seenTurnIds.at(-1)).toBe("child-000");
+  });
+
+  it("filters direct delegation children after grouping the complete snapshot", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "early-child" }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 40,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "interval-child" }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 50,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "early-child" }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      },
+    ]);
+
+    expect(
+      listStoredDelegationChildTurnRanges(db, {
+        directTurnSourceSeqEnd: 50,
+        directTurnSourceSeqStart: 40,
+        limit: 10,
+        ownerTurnId: "parent-turn",
+        parentToolCallId: "delegation-root",
+        sequenceEnd: 50,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }).map((range) => range.turnId),
+    ).toEqual(["interval-child"]);
+  });
+
+  it("maps many candidate gaps through one bounded grouped delegation scan", () => {
+    const { db, thread } = setup();
+    const buckets = Array.from({ length: 60 }, (_, bucketIndex) => ({
+      directTurnSourceSeqEnd: bucketIndex * 100 + 100,
+      directTurnSourceSeqStart: bucketIndex * 100 + 1,
+    }));
+    const expectedBucketIndexes = buckets.flatMap((_, bucketIndex) =>
+      bucketIndex % 2 === 0 ? [bucketIndex] : [],
+    );
+    const childEvents = expectedBucketIndexes.flatMap((bucketIndex) => {
+      const bucketStart = bucketIndex * 100 + 1;
+      const starts = Array.from({ length: 30 }, (_, childIndex) => ({
+        threadId: thread.id,
+        sequence: bucketStart + childIndex,
+        type: "turn/started" as const,
+        ...createTurnEventFields({
+          turnId: `bucket-${bucketIndex}-child-${childIndex}`,
+        }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      }));
+      return [
+        ...starts,
+        {
+          threadId: thread.id,
+          sequence: bucketStart + 150,
+          type: "turn/completed" as const,
+          ...createTurnEventFields({
+            turnId: `bucket-${bucketIndex}-child-0`,
+          }),
+          data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+        },
+      ];
+    });
+    insertEvents(
+      db,
+      noopNotifier,
+      childEvents.sort((left, right) => left.sequence - right.sequence),
+    );
+
+    const allSpy = vi.spyOn(db, "all");
+    const nonemptyBucketIndexes =
+      listStoredNonemptyDelegationChildTurnBucketIndexes(db, {
+        buckets,
+        ownerTurnId: "parent-turn",
+        parentToolCallId: "delegation-root",
+        sequenceEnd: 6_000,
+        sequenceStart: 1,
+        threadId: thread.id,
+      });
+    expect(allSpy).toHaveBeenCalledTimes(1);
+    allSpy.mockRestore();
+    expect(nonemptyBucketIndexes).toEqual(expectedBucketIndexes);
+    expect(nonemptyBucketIndexes.length).toBeLessThanOrEqual(buckets.length);
+  });
+
+  it("returns scalar recursive extents for only requested delegation roots", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/started",
+        scope: turnScope("child-a"),
+        itemId: "nested-a",
+        itemKind: "toolCall",
+        data: JSON.stringify({ parentToolCallId: "root-a" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope("child-a"),
+        itemId: "root-a",
+        itemKind: "toolCall",
+        data: JSON.stringify({ parentToolCallId: "root-a" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: "grandchild-a" }),
+        data: JSON.stringify({ parentToolCallId: "nested-a" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/started",
+        scope: turnScope("grandchild-a"),
+        itemId: "nested-b",
+        itemKind: "toolCall",
+        data: JSON.stringify({ parentToolCallId: "nested-a" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: "great-grandchild-a" }),
+        data: JSON.stringify({ parentToolCallId: "nested-b" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "item/started",
+        scope: turnScope("great-grandchild-a"),
+        itemId: "root-a",
+        itemKind: "toolCall",
+        data: JSON.stringify({ parentToolCallId: "nested-b" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "child-b" }),
+        data: JSON.stringify({ parentToolCallId: "root-b" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "child-b" }),
+        data: JSON.stringify({ parentToolCallId: "root-b" }),
+      },
+    ]);
+
+    expect(
+      listStoredDelegationDescendantRanges(db, {
+        roots: [
+          { ownerTurnId: "parent-a", parentToolCallId: "root-a" },
+          { ownerTurnId: "parent-b", parentToolCallId: "root-b" },
+        ],
+        sequenceEnd: 8,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    ).toEqual([
+      {
+        eventCount: 6,
+        parentToolCallId: "root-a",
+        sourceSeqEnd: 6,
+        sourceSeqStart: 1,
+      },
+      {
+        eventCount: 2,
+        parentToolCallId: "root-b",
+        sourceSeqEnd: 8,
+        sourceSeqStart: 7,
+      },
+    ]);
+
+    expect(
+      listStoredDelegationDescendantRanges(db, {
+        roots: [{ ownerTurnId: "child-a", parentToolCallId: "root-a" }],
+        sequenceEnd: 8,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    ).toEqual([]);
+
+    expect(
+      listStoredDelegationDescendantRanges(db, {
+        roots: [{ ownerTurnId: "parent-a", parentToolCallId: "root-a" }],
+        sequenceEnd: 8,
+        sequenceStart: 2,
+        threadId: thread.id,
+      }),
+    ).toEqual([
+      {
+        eventCount: 5,
+        parentToolCallId: "root-a",
+        sourceSeqEnd: 6,
+        sourceSeqStart: 2,
+      },
+    ]);
+
+    expect(
+      listStoredDelegatedTurnDescendantRanges(db, {
+        roots: [{ parentToolCallId: "root-a", turnId: "child-a" }],
+        sequenceEnd: 8,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    ).toEqual([
+      {
+        completedAt: null,
+        createdAt: expect.any(Number),
+        eventCount: 6,
+        parentToolCallId: "root-a",
+        sourceSeqEnd: 6,
+        sourceSeqStart: 1,
+        startedAt: expect.any(Number),
+        turnId: "child-a",
+      },
+    ]);
+
+    expect(
+      listStoredDelegatedTurnDescendantRanges(db, {
+        roots: [{ parentToolCallId: "root-a", turnId: "child-a" }],
+        sequenceEnd: 8,
+        sequenceStart: 2,
+        threadId: thread.id,
+      }),
+    ).toEqual([
+      {
+        completedAt: null,
+        createdAt: expect.any(Number),
+        eventCount: 5,
+        parentToolCallId: "root-a",
+        sourceSeqEnd: 6,
+        sourceSeqStart: 2,
+        startedAt: expect.any(Number),
+        turnId: "child-a",
+      },
+    ]);
+  });
+
+  it("extends a visible turn through unparented child lifecycle rows", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "parent-turn" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope("parent-turn"),
+        itemId: "delegation-root",
+        itemKind: "toolCall",
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "parent-turn" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "child-turn" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: "child-turn" }),
+        data: JSON.stringify({ parentToolCallId: "delegation-root" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "child-turn" }),
+        data: "{}",
+      },
+    ]);
+
+    expect(
+      listStoredTurnDescendantRanges(db, {
+        roots: [
+          {
+            sourceSeqEnd: 3,
+            sourceSeqStart: 1,
+            turnId: "parent-turn",
+          },
+        ],
+        sequenceEnd: 6,
+        threadId: thread.id,
+      }),
+    ).toEqual([
+      {
+        descendantSourceSeqEnd: 6,
+        sourceSeqEnd: 3,
+        sourceSeqStart: 1,
+        turnId: "parent-turn",
+      },
+    ]);
   });
 });

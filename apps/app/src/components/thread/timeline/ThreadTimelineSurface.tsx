@@ -1,7 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -17,7 +19,10 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import {
+  useBottomAnchoredScroll,
+  type CapturedScrollAnchor,
+} from "@/components/ui/bottom-anchored-scroll-body.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
@@ -57,12 +62,13 @@ export interface ThreadTimelineSurfaceProps {
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: () => Promise<boolean> | boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
+  paginationSurfaceKey?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
@@ -160,6 +166,7 @@ export function ThreadTimelineSurface({
   onOpenLocalFileLink,
   onOpenPluginPanel,
   onTitleAction,
+  paginationSurfaceKey,
   projectId,
   resolveMentionLink,
   showOngoingIndicator,
@@ -193,6 +200,90 @@ export function ThreadTimelineSurface({
     stoppingAnchorAt,
     threadId,
   });
+  const oldestTimelineRowId = timelineRowsWithPendingStop[0]?.id ?? null;
+  const olderPageSurfaceIdentity = paginationSurfaceKey ?? threadId;
+  const bottomAnchor = useBottomAnchoredScroll();
+  const nextOlderPageRequestIdRef = useRef(0);
+  const [completedOlderPageRequestId, setCompletedOlderPageRequestId] =
+    useState(0);
+  const pendingOlderPageRef = useRef<{
+    anchor: CapturedScrollAnchor;
+    oldestTimelineRowId: string | null;
+    requestId: number;
+    surfaceIdentity: string;
+    completed: boolean;
+    appended: boolean | null;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const pending = pendingOlderPageRef.current;
+    if (!pending || pending.requestId !== completedOlderPageRequestId) return;
+    if (pending.surfaceIdentity !== olderPageSurfaceIdentity) {
+      pendingOlderPageRef.current = null;
+      pending.anchor.cancel();
+      return;
+    }
+    if (!pending.completed) return;
+    if (pending.appended === false) {
+      pendingOlderPageRef.current = null;
+      pending.anchor.cancel();
+      return;
+    }
+    if (oldestTimelineRowId !== pending.oldestTimelineRowId) {
+      pendingOlderPageRef.current = null;
+      pending.anchor.restore();
+    }
+  }, [
+    completedOlderPageRequestId,
+    oldestTimelineRowId,
+    olderPageSurfaceIdentity,
+  ]);
+  useLayoutEffect(
+    () => () => {
+      pendingOlderPageRef.current?.anchor.cancel();
+      pendingOlderPageRef.current = null;
+    },
+    [olderPageSurfaceIdentity],
+  );
+  const handleLoadOlderRows = useCallback(() => {
+    if (!onLoadOlderRows) return;
+    pendingOlderPageRef.current?.anchor.cancel();
+    const anchor = bottomAnchor?.captureScrollAnchor();
+    const requestId = ++nextOlderPageRequestIdRef.current;
+    if (anchor) {
+      pendingOlderPageRef.current = {
+        anchor,
+        appended: null,
+        completed: false,
+        oldestTimelineRowId,
+        requestId,
+        surfaceIdentity: olderPageSurfaceIdentity,
+      };
+    }
+    Promise.resolve()
+      .then(() => onLoadOlderRows())
+      .then((appended) => {
+        const pending = pendingOlderPageRef.current;
+        if (
+          pending?.requestId === requestId &&
+          pending.surfaceIdentity === olderPageSurfaceIdentity
+        ) {
+          pending.appended = appended;
+          pending.completed = true;
+          setCompletedOlderPageRequestId(requestId);
+        }
+      })
+      .catch(() => {
+        if (pendingOlderPageRef.current?.requestId === requestId) {
+          pendingOlderPageRef.current = null;
+        }
+        anchor?.cancel();
+      });
+  }, [
+    bottomAnchor,
+    oldestTimelineRowId,
+    onLoadOlderRows,
+    olderPageSurfaceIdentity,
+  ]);
   const showLoadOlderRows =
     hasOlderTimelineRows &&
     onLoadOlderRows !== undefined &&
@@ -205,7 +296,7 @@ export function ThreadTimelineSurface({
       {showLoadOlderRows ? (
         <LoadOlderMessagesButton
           isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
-          onLoadOlderRows={onLoadOlderRows}
+          onClick={handleLoadOlderRows}
         />
       ) : null}
       {isThreadTimelinePending ? (
@@ -267,24 +358,18 @@ export function ThreadTimelineSurface({
 
 function LoadOlderMessagesButton({
   isLoadingOlderTimelineRows,
-  onLoadOlderRows,
+  onClick,
 }: {
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onClick: () => void;
 }) {
-  const bottomAnchor = useBottomAnchoredScroll();
-  const handleClick = useCallback(() => {
-    bottomAnchor?.captureScrollAnchor();
-    void onLoadOlderRows();
-  }, [bottomAnchor, onLoadOlderRows]);
-
   return (
     <div className="flex justify-center pt-2 mb-3">
       <Button
         type="button"
         variant="outline"
         size="sm"
-        onClick={handleClick}
+        onClick={onClick}
         disabled={isLoadingOlderTimelineRows}
       >
         <Icon name="ChevronUp" aria-hidden="true" />

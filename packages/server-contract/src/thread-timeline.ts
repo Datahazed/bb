@@ -403,6 +403,36 @@ export type TimelineQuestionWorkRow = z.infer<
   typeof timelineQuestionWorkRowSchema
 >;
 
+export interface TimelineDelegationChildInterval {
+  beforeChildRowId: string | null;
+  directTurnSourceSeqEnd: number;
+  directTurnSourceSeqStart: number;
+}
+
+export const timelineDelegationChildIntervalSchema: z.ZodType<TimelineDelegationChildInterval> =
+  z.object({
+    beforeChildRowId: z.string().min(1).nullable(),
+    directTurnSourceSeqEnd: z.number().int().nonnegative(),
+    directTurnSourceSeqStart: z.number().int().nonnegative(),
+  });
+
+export interface TimelineDelegationChildPage {
+  intervals: TimelineDelegationChildInterval[];
+  ownerTurnId: string;
+  parentToolCallId: string;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+}
+
+export const timelineDelegationChildPageSchema: z.ZodType<TimelineDelegationChildPage> =
+  z.object({
+    intervals: z.array(timelineDelegationChildIntervalSchema),
+    ownerTurnId: z.string().min(1),
+    parentToolCallId: z.string().min(1),
+    sourceSeqEnd: z.number().int().nonnegative(),
+    sourceSeqStart: z.number().int().nonnegative(),
+  });
+
 export interface TimelineDelegationWorkRow extends TimelineWorkRowBase {
   workKind: "delegation";
   callId: string;
@@ -412,6 +442,7 @@ export interface TimelineDelegationWorkRow extends TimelineWorkRowBase {
   output: string;
   completedAt: number | null;
   childRows: TimelineRow[];
+  childPage: TimelineDelegationChildPage | null;
 }
 
 export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRow> =
@@ -424,6 +455,7 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
     output: z.string(),
     completedAt: z.number().nullable(),
     childRows: z.array(z.lazy(() => timelineRowSchema)),
+    childPage: timelineDelegationChildPageSchema.nullable(),
   });
 
 /**
@@ -480,6 +512,10 @@ export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
 export interface TimelineTurnRow extends TimelineRowBase {
   kind: "turn";
   turnId: string;
+  /** Item lifecycles restored only as projection context in lazy details. */
+  detailContextItemIds: string[];
+  /** Direct delegation owner for child-turn details; null for ordinary turns. */
+  detailParentToolCallId: string | null;
   status: TimelineRowStatus;
   summaryCount: number;
   completedAt: number | null;
@@ -490,6 +526,8 @@ export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
   timelineRowBaseSchema.extend({
     kind: z.literal("turn"),
     turnId: z.string().min(1),
+    detailContextItemIds: z.array(z.string().min(1)),
+    detailParentToolCallId: z.string().min(1).nullable(),
     status: timelineRowStatusSchema,
     summaryCount: z.number().int().nonnegative(),
     completedAt: z.number().nullable(),

@@ -337,18 +337,37 @@ export type ThreadConversationOutlineQueryKeyPrefix = readonly [
 export type AllThreadConversationOutlineQueryKeyPrefix = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
 ];
-export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
+interface ThreadTimelineTurnSummaryDetailsQueryIdentityBase {
+  active: boolean;
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
   turnId: string;
 }
+export type ThreadTimelineTurnSummaryDetailsQueryIdentity =
+  | (ThreadTimelineTurnSummaryDetailsQueryIdentityBase & {
+      contextItemIds: readonly string[];
+      detailKind: "turn";
+      parentToolCallId: string | null;
+    })
+  | (ThreadTimelineTurnSummaryDetailsQueryIdentityBase & {
+      detailKind: "delegation-children";
+      directTurnSourceSeqEnd: number;
+      directTurnSourceSeqStart: number;
+      parentToolCallId: string;
+    });
 export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
   string,
   string,
   number,
-  number,
+  number | "active",
+  boolean,
+  readonly string[],
+  "turn" | "delegation-children",
+  string | null,
+  number | null,
+  number | "active" | null,
 ];
 export type ThreadTimelineQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
@@ -892,17 +911,35 @@ export function allThreadConversationOutlineQueryKeyPrefix(): AllThreadConversat
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKey({
-  sourceSeqEnd,
-  sourceSeqStart,
-  threadId,
-  turnId,
+  active,
+  ...identity
 }: ThreadTimelineTurnSummaryDetailsQueryIdentity): ThreadTimelineTurnSummaryDetailsQueryKey {
+  const {
+    detailKind,
+    parentToolCallId,
+    sourceSeqEnd,
+    sourceSeqStart,
+    threadId,
+    turnId,
+  } = identity;
   return [
     THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
     threadId,
     turnId,
     sourceSeqStart,
-    sourceSeqEnd,
+    active ? "active" : sourceSeqEnd,
+    active,
+    identity.detailKind === "turn" ? [...identity.contextItemIds].sort() : [],
+    detailKind,
+    parentToolCallId,
+    identity.detailKind === "delegation-children"
+      ? identity.directTurnSourceSeqStart
+      : null,
+    identity.detailKind === "delegation-children"
+      ? active
+        ? "active"
+        : identity.directTurnSourceSeqEnd
+      : null,
   ];
 }
 

@@ -1,9 +1,11 @@
 import {
+  Fragment,
   createContext,
   memo,
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +30,7 @@ import type {
 } from "@bb/domain";
 import type {
   TimelineActivityIntent,
+  TimelineDelegationChildInterval,
   TimelineParentChange,
   TimelineRow,
   TimelineSystemOperationKind,
@@ -88,7 +91,10 @@ import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import {
+  useBottomAnchoredScroll,
+  type CapturedScrollAnchor,
+} from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   collectSearchedMessageAncestorRowIds,
   readSearchMessageTarget,
@@ -106,6 +112,7 @@ import {
   allThreadQueryKeyPrefix,
   THREAD_QUERY_KEY,
   THREADS_QUERY_KEY,
+  threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
 } from "@/hooks/queries/query-keys";
@@ -169,7 +176,7 @@ export interface ThreadTimelineRowsProps {
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: () => Promise<boolean> | boolean;
   themeType?: ThreadTimelineTheme;
   timelineRows: TimelineRow[];
   threadId?: string;
@@ -262,7 +269,9 @@ interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: () => Promise<boolean> | boolean;
+  renderAfterRows?: () => ReactNode;
+  renderBeforeRow?: (row: ThreadTimelineViewRow) => ReactNode;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
   showAssistantMessageActions: boolean;
@@ -314,7 +323,17 @@ interface TurnRowBodyProps {
   showAssistantMessageActions: boolean;
 }
 
-type LazyTurnRowBodyProps = TurnRowBodyProps;
+type LazyTurnRowBodyProps = TurnRowBodyProps &
+  (
+    | {
+        delegationInterval?: never;
+        detailKind?: "turn";
+      }
+    | {
+        delegationInterval: TimelineDelegationChildInterval;
+        detailKind: "delegation-children";
+      }
+  );
 
 interface TimelineSystemDetailBlockProps {
   detail: string;
@@ -355,6 +374,11 @@ interface TimelineRowTitleRenderStateCache {
 }
 
 interface BuildTurnSummaryDetailsIdentityArgs {
+  active: boolean;
+  delegationInterval?: TimelineDelegationChildInterval;
+  detailKind: "turn" | "delegation-children";
+  rowDetailContextItemIds: TimelineViewTurnRow["detailContextItemIds"];
+  rowDetailParentToolCallId: TimelineViewTurnRow["detailParentToolCallId"];
   rowSourceSeqEnd: TimelineViewTurnRow["sourceSeqEnd"];
   rowSourceSeqStart: TimelineViewTurnRow["sourceSeqStart"];
   rowThreadId: TimelineViewTurnRow["threadId"];
@@ -587,13 +611,41 @@ function useTimelineSearchExpansionRowIds(
 }
 
 function buildTurnSummaryDetailsIdentity({
+  active,
+  delegationInterval,
+  detailKind,
+  rowDetailContextItemIds,
+  rowDetailParentToolCallId,
   rowSourceSeqEnd,
   rowSourceSeqStart,
   rowThreadId,
   rowTurnId,
   threadId,
 }: BuildTurnSummaryDetailsIdentityArgs): ThreadTimelineTurnSummaryDetailsQueryIdentity {
+  if (detailKind === "delegation-children") {
+    if (
+      delegationInterval === undefined ||
+      rowDetailParentToolCallId === null
+    ) {
+      throw new Error("Delegation child details require interval provenance");
+    }
+    return {
+      active,
+      detailKind,
+      directTurnSourceSeqEnd: delegationInterval.directTurnSourceSeqEnd,
+      directTurnSourceSeqStart: delegationInterval.directTurnSourceSeqStart,
+      parentToolCallId: rowDetailParentToolCallId,
+      sourceSeqEnd: rowSourceSeqEnd,
+      sourceSeqStart: rowSourceSeqStart,
+      threadId: threadId ?? rowThreadId,
+      turnId: rowTurnId,
+    };
+  }
   return {
+    active,
+    contextItemIds: rowDetailContextItemIds,
+    detailKind,
+    parentToolCallId: rowDetailParentToolCallId,
     sourceSeqEnd: rowSourceSeqEnd,
     sourceSeqStart: rowSourceSeqStart,
     threadId: threadId ?? rowThreadId,
@@ -1178,15 +1230,51 @@ function TimelineExpandableBody({
     case "work":
       if (row.workKind === "delegation") {
         const delegationActive = row.status === "pending";
+        const delegationChildPage = row.childPage;
+        const renderDelegationInterval = (
+          interval: TimelineDelegationChildInterval,
+        ): ReactNode => {
+          if (!delegationChildPage) return null;
+          const intervalRow: TimelineViewTurnRow = {
+            id: `${row.id}:children:${interval.directTurnSourceSeqStart}:${interval.directTurnSourceSeqEnd}`,
+            threadId: row.threadId,
+            turnId: delegationChildPage.ownerTurnId,
+            detailContextItemIds: [],
+            detailParentToolCallId: delegationChildPage.parentToolCallId,
+            sourceSeqStart: delegationChildPage.sourceSeqStart,
+            sourceSeqEnd: delegationChildPage.sourceSeqEnd,
+            startedAt: row.startedAt,
+            createdAt: row.createdAt,
+            kind: "turn",
+            status: row.status,
+            summaryCount: 0,
+            completedAt: row.completedAt,
+            children: null,
+          };
+          return (
+            <div
+              key={intervalRow.id}
+              data-delegation-child-interval={intervalRow.id}
+            >
+              <LazyTurnRowBody
+                compactActivityIntents={false}
+                delegationInterval={interval}
+                detailKind="delegation-children"
+                row={intervalRow}
+                showAssistantMessageActions={false}
+              />
+            </div>
+          );
+        };
         return (
           <TimelineDetailScroll
             size="delegation"
             streaming={delegationActive}
-            contentKey={`${timelineRowsSignature(row.childRows)}|${row.output.length}`}
+            contentKey={`${timelineRowsSignature(row.childRows)}|${JSON.stringify(row.childPage)}|${row.output.length}`}
             className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
           >
             <div className="flex flex-col gap-3">
-              {row.childRows.length > 0 ? (
+              {row.childRows.length > 0 || delegationChildPage ? (
                 <TimelineRowsList
                   rows={row.childRows}
                   scopeActive={delegationActive}
@@ -1195,6 +1283,18 @@ function TimelineExpandableBody({
                   spacing="nested"
                   unreadDividerAutoScroll={false}
                   unreadDividerPlacement={null}
+                  renderBeforeRow={(childRow) =>
+                    delegationChildPage?.intervals
+                      .filter(
+                        (interval) => interval.beforeChildRowId === childRow.id,
+                      )
+                      .map(renderDelegationInterval) ?? null
+                  }
+                  renderAfterRows={() =>
+                    delegationChildPage?.intervals
+                      .filter((interval) => interval.beforeChildRowId === null)
+                      .map(renderDelegationInterval) ?? null
+                  }
                 />
               ) : null}
               {row.output.trim().length > 0 ? (
@@ -1274,6 +1374,8 @@ function TurnRowBody({
 
 function LazyTurnRowBody({
   compactActivityIntents,
+  delegationInterval,
+  detailKind = "turn",
   row,
   showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
@@ -1281,34 +1383,151 @@ function LazyTurnRowBody({
   const {
     sourceSeqEnd: rowSourceSeqEnd,
     sourceSeqStart: rowSourceSeqStart,
+    detailParentToolCallId: rowDetailParentToolCallId,
     threadId: rowThreadId,
     turnId: rowTurnId,
   } = row;
   const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
     () =>
       buildTurnSummaryDetailsIdentity({
+        active: row.status === "pending",
+        delegationInterval,
+        detailKind,
+        rowDetailContextItemIds: row.detailContextItemIds,
+        rowDetailParentToolCallId,
         rowSourceSeqEnd,
         rowSourceSeqStart,
         rowThreadId,
         rowTurnId,
         threadId,
       }),
-    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
+    [
+      row.status,
+      delegationInterval,
+      detailKind,
+      row.detailContextItemIds,
+      rowDetailParentToolCallId,
+      rowSourceSeqEnd,
+      rowSourceSeqStart,
+      rowThreadId,
+      rowTurnId,
+      threadId,
+    ],
   );
   const {
     data: detail,
+    fetchNextPage,
+    hasNextPage,
     isError,
+    isFetchingNextPage,
     refetch,
   } = useThreadTimelineTurnSummaryDetails(identity);
+  const bottomAnchor = useBottomAnchoredScroll();
+  const loadedPageCount = detail?.pages.length ?? 0;
+  const detailSurfaceIdentity = useMemo(
+    () => JSON.stringify(threadTimelineTurnSummaryDetailsQueryKey(identity)),
+    [identity],
+  );
+  const nextPrependRequestIdRef = useRef(0);
+  const [prependRestoreRequestId, setPrependRestoreRequestId] = useState(0);
+  const pendingPrependAnchorRef = useRef<{
+    anchor: CapturedScrollAnchor;
+    completed: boolean;
+    detailSurfaceIdentity: string;
+    loadedPageCount: number;
+    requestId: number;
+  } | null>(null);
+  useLayoutEffect(
+    () => () => {
+      pendingPrependAnchorRef.current?.anchor.cancel();
+      pendingPrependAnchorRef.current = null;
+      nextPrependRequestIdRef.current += 1;
+    },
+    [detailSurfaceIdentity],
+  );
+  useLayoutEffect(() => {
+    const pending = pendingPrependAnchorRef.current;
+    if (!pending || pending.requestId !== prependRestoreRequestId) return;
+    if (pending.detailSurfaceIdentity !== detailSurfaceIdentity) {
+      pendingPrependAnchorRef.current = null;
+      pending.anchor.cancel();
+      return;
+    }
+    if (!pending.completed || loadedPageCount <= pending.loadedPageCount)
+      return;
+    pendingPrependAnchorRef.current = null;
+    pending.anchor.restore();
+  }, [detailSurfaceIdentity, loadedPageCount, prependRestoreRequestId]);
   const handleRetry = useCallback((): void => {
     void refetch();
   }, [refetch]);
   const rows = detail
-    ? // Lazy turn-detail children belong to a completed turn — flag the
-      // scope as closed so trailing work in the children collapses into a
-      // step-summary at end-of-input, matching the inline-children path.
-      getViewRows(detail.rows, { closedScope: true })
+    ? // Completed detail closes the scope; an active prefix remains open so
+      // its newest loaded work retains live-frontier presentation.
+      getViewRows(
+        detail.pages
+          .slice()
+          .reverse()
+          .flatMap((page) => page.rows),
+        { closedScope: row.status !== "pending" },
+      )
     : null;
+  const handleLoadEarlierWork = useCallback((): void => {
+    pendingPrependAnchorRef.current?.anchor.cancel();
+    const anchor = bottomAnchor?.captureScrollAnchor();
+    const requestId = ++nextPrependRequestIdRef.current;
+    if (anchor) {
+      pendingPrependAnchorRef.current = {
+        anchor,
+        completed: false,
+        detailSurfaceIdentity,
+        loadedPageCount,
+        requestId,
+      };
+    }
+    void fetchNextPage()
+      .then((result) => {
+        const nextLoadedPageCount = result.data?.pages.length ?? 0;
+        if (result.isError) {
+          if (pendingPrependAnchorRef.current?.anchor === anchor) {
+            pendingPrependAnchorRef.current = null;
+          }
+          anchor?.cancel();
+          // Signed detail cursors intentionally expire when the server's
+          // signing lifetime changes. Rebuild the active expansion from page
+          // one so the user can continue paging with fresh cursors.
+          void refetch();
+          return;
+        }
+        if (nextLoadedPageCount <= loadedPageCount) {
+          if (pendingPrependAnchorRef.current?.anchor === anchor) {
+            pendingPrependAnchorRef.current = null;
+          }
+          anchor?.cancel();
+          return;
+        }
+        const pending = pendingPrependAnchorRef.current;
+        if (
+          pending?.requestId === requestId &&
+          pending.detailSurfaceIdentity === detailSurfaceIdentity
+        ) {
+          pending.completed = true;
+          setPrependRestoreRequestId(requestId);
+        }
+      })
+      .catch(() => {
+        if (pendingPrependAnchorRef.current?.anchor === anchor) {
+          pendingPrependAnchorRef.current = null;
+        }
+        anchor?.cancel();
+      });
+  }, [
+    bottomAnchor,
+    detailSurfaceIdentity,
+    fetchNextPage,
+    loadedPageCount,
+    refetch,
+  ]);
 
   if (!rows && isError) {
     return (
@@ -1329,16 +1548,31 @@ function LazyTurnRowBody({
   }
   if (rows) {
     return (
-      <TimelineRowsList
-        rows={rows}
-        scopeActive={false}
-        showAssistantMessageActions={showAssistantMessageActions}
-        compactActivityIntents={compactActivityIntents}
-        spacing="nested"
-        className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
-        unreadDividerAutoScroll={false}
-        unreadDividerPlacement={null}
-      />
+      <div className="flex flex-col gap-3">
+        {hasNextPage ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-start text-muted-foreground"
+            disabled={isFetchingNextPage}
+            onClick={handleLoadEarlierWork}
+          >
+            <Icon name="ChevronUp" aria-hidden="true" />
+            {isFetchingNextPage ? "Loading earlier work…" : "Show earlier work"}
+          </Button>
+        ) : null}
+        <TimelineRowsList
+          rows={rows}
+          scopeActive={row.status === "pending"}
+          showAssistantMessageActions={showAssistantMessageActions}
+          compactActivityIntents={compactActivityIntents}
+          spacing="nested"
+          className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
+          unreadDividerAutoScroll={false}
+          unreadDividerPlacement={null}
+        />
+      </div>
     );
   }
   return (
@@ -1793,6 +2027,8 @@ function TimelineRowsList({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   onLoadOlderRows,
+  renderAfterRows,
+  renderBeforeRow,
   rows,
   scopeActive,
   showAssistantMessageActions,
@@ -1838,18 +2074,22 @@ function TimelineRowsList({
           }
 
           return (
-            <div key={item.row.id} data-timeline-row-id={item.row.id}>
-              <MemoizedTimelineRowView
-                activeLatestBundleId={activeLatestBundleId}
-                row={item.row}
-                scopeActive={scopeActive}
-                showAssistantMessageActions={showAssistantMessageActions}
-                spacing={spacing}
-                compactActivityIntents={compactActivityIntents}
-              />
-            </div>
+            <Fragment key={item.row.id}>
+              {renderBeforeRow?.(item.row)}
+              <div data-timeline-row-id={item.row.id}>
+                <MemoizedTimelineRowView
+                  activeLatestBundleId={activeLatestBundleId}
+                  row={item.row}
+                  scopeActive={scopeActive}
+                  showAssistantMessageActions={showAssistantMessageActions}
+                  spacing={spacing}
+                  compactActivityIntents={compactActivityIntents}
+                />
+              </div>
+            </Fragment>
           );
         })}
+        {renderAfterRows?.()}
       </div>
     </TimelineSearchExpansionContext.Provider>
   );

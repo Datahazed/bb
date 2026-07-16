@@ -81,6 +81,8 @@ describe("truncateTimelineResponseOutputs", () => {
     const turn: TimelineRow = {
       ...base,
       kind: "turn",
+      detailContextItemIds: [],
+      detailParentToolCallId: null,
       turnId: "turn_1",
       status: "completed",
       summaryCount: 1,

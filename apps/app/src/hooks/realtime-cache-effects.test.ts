@@ -216,6 +216,10 @@ describe("createRealtimeCacheEffects", () => {
     const configKey = systemConfigQueryKey();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const summaryKey = threadTimelineTurnSummaryDetailsQueryKey({
+      active: false,
+      contextItemIds: [],
+      detailKind: "turn",
+      parentToolCallId: null,
       threadId: "thr_1",
       turnId: "turn_1",
       sourceSeqStart: 1,
@@ -937,8 +941,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -968,20 +972,35 @@ describe("createRealtimeCacheEffects", () => {
     // A completed turn's expanded detail panel is immutable; events-appended
     // must not refetch it (W2).
     const turnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      active: false,
+      contextItemIds: [],
+      detailKind: "turn",
+      parentToolCallId: null,
       threadId: "thr_1",
       turnId: "turn_1",
       sourceSeqStart: 1,
       sourceSeqEnd: 5,
     });
+    const activeTurnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      active: true,
+      contextItemIds: [],
+      detailKind: "turn",
+      parentToolCallId: null,
+      threadId: "thr_1",
+      turnId: "turn_2",
+      sourceSeqStart: 6,
+      sourceSeqEnd: 10,
+    });
     queryClient.setQueryData(threadKey, { id: "thr_1" });
     queryClient.setQueryData(promptHistoryKey, []);
     queryClient.setQueryData(turnDetailsKey, { rows: [] });
+    queryClient.setQueryData(activeTurnDetailsKey, { rows: [] });
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1002,6 +1021,9 @@ describe("createRealtimeCacheEffects", () => {
       true,
     );
     expect(queryClient.getQueryState(turnDetailsKey)?.isInvalidated).not.toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(activeTurnDetailsKey)?.isInvalidated).toBe(
       true,
     );
 
@@ -1053,8 +1075,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1067,8 +1089,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1207,8 +1229,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1274,8 +1296,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },

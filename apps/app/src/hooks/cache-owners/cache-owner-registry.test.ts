@@ -162,13 +162,14 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "hostsQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
-      "threadDefaultExecutionOptionsQueryKey",
-      "threadQueryKey",
-      "threadTabsQueryKey",
-      "threadSearchQueryKeyPrefix",
+    "threadDefaultExecutionOptionsQueryKey",
+    "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
     "threadStoragePathsForThreadQueryKeyPrefix",
+    "threadTabsQueryKey",
+    "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
     "terminalsQueryKey",
     "threadsQueryKey",
   ],
@@ -206,9 +207,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/system-config-cache-owner.ts": ["systemConfigQueryKey"],
-  "hooks/cache-owners/system-version-cache-owner.ts": [
-    "systemVersionQueryKey",
-  ],
+  "hooks/cache-owners/system-version-cache-owner.ts": ["systemVersionQueryKey"],
   "hooks/cache-owners/terminal-cache-owner.ts": [
     "allTerminalsQueryKeyPrefix",
     "TerminalQueryScope",
@@ -248,6 +247,10 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueryKey",
     "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
+  ],
+  "hooks/cache-owners/thread-timeline-cache-owner.ts": [
+    "ThreadTimelineTurnSummaryDetailsQueryIdentity",
+    "threadTimelineTurnSummaryDetailsQueryKey",
   ],
 };
 

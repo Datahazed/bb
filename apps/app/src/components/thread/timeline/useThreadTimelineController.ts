@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   ThreadTimelineResponse,
   TimelinePaginationCursor,
@@ -28,7 +35,8 @@ export interface UseThreadTimelineControllerResult {
   modelFallback: ThreadTimelineResponse["modelFallback"];
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
-  loadOlderTimelineRows: () => Promise<void>;
+  loadOlderTimelineRows: () => Promise<boolean>;
+  paginationSurfaceKey: string;
   pendingTodos: ThreadTimelineResponse["pendingTodos"];
   timelineError: Error | null;
   timelineLoading: boolean;
@@ -373,6 +381,18 @@ export function useThreadTimelineController({
   );
   const [isLoadingOlderTimelineRows, setIsLoadingOlderTimelineRows] =
     useState(false);
+  const loadedTimelineRef = useRef(loadedTimeline);
+  loadedTimelineRef.current = loadedTimeline;
+  const nextOlderRequestIdRef = useRef(0);
+  const paginationSurfaceLifecycleRef = useRef({
+    generation: 0,
+    surfaceKey,
+  });
+  const inFlightOlderPageRef = useRef<{
+    generation: number;
+    requestId: number;
+    surfaceKey: string;
+  } | null>(null);
   const latestTimeline = useMemo(() => {
     if (!latestTimelineQuery.data) {
       return undefined;
@@ -405,6 +425,16 @@ export function useThreadTimelineController({
       }),
     );
   }, [latestTimeline, surfaceKey]);
+  useLayoutEffect(() => {
+    const lifecycle = paginationSurfaceLifecycleRef.current;
+    if (lifecycle.surfaceKey !== surfaceKey) {
+      paginationSurfaceLifecycleRef.current = {
+        generation: lifecycle.generation + 1,
+        surfaceKey,
+      };
+      setIsLoadingOlderTimelineRows(false);
+    }
+  }, [surfaceKey]);
   const refetchLatestTimeline = latestTimelineQuery.refetch;
 
   const nextOlderCursor =
@@ -412,16 +442,23 @@ export function useThreadTimelineController({
       ? loadedTimeline.olderCursor
       : null;
   const hasOlderTimelineRows = nextOlderCursor !== null;
-  const loadOlderTimelineRows = useCallback(async (): Promise<void> => {
+  const loadOlderTimelineRows = useCallback(async (): Promise<boolean> => {
+    if (!enabled || !nextOlderCursor || !threadId) {
+      return false;
+    }
+    const surfaceLifecycle = paginationSurfaceLifecycleRef.current;
     if (
-      !enabled ||
-      !nextOlderCursor ||
-      !threadId ||
-      isLoadingOlderTimelineRows
+      inFlightOlderPageRef.current?.generation === surfaceLifecycle.generation
     ) {
-      return;
+      return false;
     }
 
+    const requestId = ++nextOlderRequestIdRef.current;
+    inFlightOlderPageRef.current = {
+      generation: surfaceLifecycle.generation,
+      requestId,
+      surfaceKey,
+    };
     setIsLoadingOlderTimelineRows(true);
     try {
       const response = await api.getThreadTimeline({
@@ -432,24 +469,32 @@ export function useThreadTimelineController({
         rowFilter,
         rows: response.rows,
       });
-      setLoadedTimeline((current) => {
-        if (current.surfaceKey !== surfaceKey) {
-          return current;
-        }
-        return {
-          olderCursor: areTimelinePaginationCursorsEqual({
-            left: current.olderCursor,
-            right: nextOlderCursor,
-          })
-            ? response.timelinePage.olderCursor
-            : current.olderCursor,
-          rows: prependOlderTimelineRows({
-            loadedRows: current.rows,
-            olderRows,
-          }),
-          surfaceKey,
-        };
-      });
+      const current = loadedTimelineRef.current;
+      if (
+        paginationSurfaceLifecycleRef.current.generation !==
+          surfaceLifecycle.generation ||
+        inFlightOlderPageRef.current?.requestId !== requestId ||
+        current.surfaceKey !== surfaceKey ||
+        !areTimelinePaginationCursorsEqual({
+          left: current.olderCursor,
+          right: nextOlderCursor,
+        })
+      ) {
+        return false;
+      }
+      const loadedRowIds = new Set(current.rows.map((row) => row.id));
+      const appendedRows = olderRows.some((row) => !loadedRowIds.has(row.id));
+      const nextLoadedTimeline = {
+        olderCursor: response.timelinePage.olderCursor,
+        rows: prependOlderTimelineRows({
+          loadedRows: current.rows,
+          olderRows,
+        }),
+        surfaceKey,
+      };
+      loadedTimelineRef.current = nextLoadedTimeline;
+      setLoadedTimeline(nextLoadedTimeline);
+      return appendedRows;
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -457,36 +502,48 @@ export function useThreadTimelineController({
       ) {
         throw error;
       }
+      if (
+        paginationSurfaceLifecycleRef.current.generation !==
+          surfaceLifecycle.generation ||
+        inFlightOlderPageRef.current?.requestId !== requestId
+      ) {
+        return false;
+      }
 
       const latestTimelineResult = await refetchLatestTimeline();
+      if (
+        paginationSurfaceLifecycleRef.current.generation !==
+          surfaceLifecycle.generation ||
+        inFlightOlderPageRef.current?.requestId !== requestId
+      ) {
+        return false;
+      }
       const recoveredLatestTimeline = latestTimelineResult.data
         ? filterThreadTimelineResponse({
             response: latestTimelineResult.data,
             rowFilter,
           })
         : latestTimeline;
-      setLoadedTimeline((current) => {
-        if (current.surfaceKey !== surfaceKey) {
-          return current;
-        }
-        if (!recoveredLatestTimeline) {
-          return {
-            ...current,
-            olderCursor: null,
-          };
-        }
-        return recoverLoadedTimelineAfterStaleCursor({
-          current,
-          latestTimeline: recoveredLatestTimeline,
-          surfaceKey,
-        });
-      });
+      const current = loadedTimelineRef.current;
+      if (current.surfaceKey !== surfaceKey) return false;
+      const recoveredLoadedTimeline = recoveredLatestTimeline
+        ? recoverLoadedTimelineAfterStaleCursor({
+            current,
+            latestTimeline: recoveredLatestTimeline,
+            surfaceKey,
+          })
+        : { ...current, olderCursor: null };
+      loadedTimelineRef.current = recoveredLoadedTimeline;
+      setLoadedTimeline(recoveredLoadedTimeline);
+      return false;
     } finally {
-      setIsLoadingOlderTimelineRows(false);
+      if (inFlightOlderPageRef.current?.requestId === requestId) {
+        inFlightOlderPageRef.current = null;
+        setIsLoadingOlderTimelineRows(false);
+      }
     }
   }, [
     enabled,
-    isLoadingOlderTimelineRows,
     latestTimeline,
     nextOlderCursor,
     refetchLatestTimeline,
@@ -525,6 +582,7 @@ export function useThreadTimelineController({
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
+    paginationSurfaceKey: surfaceKey,
     pendingTodos: latestTimeline?.pendingTodos ?? null,
     timelineError,
     timelineLoading,

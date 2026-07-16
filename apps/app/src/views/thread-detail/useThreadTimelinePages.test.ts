@@ -83,6 +83,8 @@ function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "turn",
+    detailContextItemIds: [],
+    detailParentToolCallId: null,
     status: "completed",
     summaryCount: 1,
     completedAt: args.sequence,

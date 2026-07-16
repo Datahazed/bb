@@ -20,7 +20,7 @@ interface SearchMessageTarget {
 interface SearchMessagePaginationOptions {
   hasOlderRows?: boolean;
   isLoadingOlderRows?: boolean;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: () => Promise<boolean> | boolean;
 }
 
 interface SeqRange {

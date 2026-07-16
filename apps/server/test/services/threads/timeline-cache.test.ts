@@ -4,6 +4,7 @@ import type { ThreadTimelinePageRequest } from "../../../src/services/threads/ti
 import {
   buildThreadTimelineCacheKey,
   createThreadTimelineCache,
+  isThreadTimelineResponseCacheable,
   type ThreadTimelineCacheKeyArgs,
 } from "../../../src/services/threads/timeline-cache.js";
 
@@ -91,6 +92,17 @@ describe("createThreadTimelineCache", () => {
     expect(cache.size).toBe(0);
   });
 
+  it("does not cache actively running revisions even when rows are bounded", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(3));
+
+    cache.getOrBuild("active-10", build, { cacheable: false });
+    cache.getOrBuild("active-10", build, { cacheable: false });
+
+    expect(build).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(0);
+  });
+
   it("evicts least-recently-used entries beyond maxEntries", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
@@ -105,6 +117,16 @@ describe("createThreadTimelineCache", () => {
     cache.getOrBuild("a", buildAgain); // still cached
     cache.getOrBuild("b", buildAgain); // evicted -> rebuild
     expect(buildAgain).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isThreadTimelineResponseCacheable", () => {
+  it("caches settled statuses and skips every running status", () => {
+    expect(isThreadTimelineResponseCacheable("idle")).toBe(true);
+    expect(isThreadTimelineResponseCacheable("error")).toBe(true);
+    expect(isThreadTimelineResponseCacheable("starting")).toBe(false);
+    expect(isThreadTimelineResponseCacheable("active")).toBe(false);
+    expect(isThreadTimelineResponseCacheable("stopping")).toBe(false);
   });
 });
 

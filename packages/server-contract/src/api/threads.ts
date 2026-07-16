@@ -523,6 +523,17 @@ export type TimelinePaginationCursor = z.infer<
   typeof timelinePaginationCursorSchema
 >;
 
+export const TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_MAX_COUNT = 256;
+export const TIMELINE_TURN_DETAILS_CONTEXT_ITEM_ID_MAX_LENGTH = 1_024;
+export const TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_QUERY_MAX_LENGTH = 65_536;
+
+export const timelineTurnDetailsContextItemIdsSchema = z
+  .array(
+    z.string().min(1).max(TIMELINE_TURN_DETAILS_CONTEXT_ITEM_ID_MAX_LENGTH),
+  )
+  .max(TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_MAX_COUNT)
+  .transform((ids) => [...new Set(ids)].sort());
+
 export const timelinePageMetadataSchema = z
   .object({
     kind: z.enum(["latest", "older"]),
@@ -573,11 +584,57 @@ export const threadTimelineQuerySchema = z
   });
 export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
-export const timelineTurnSummaryDetailsQuerySchema = z.object({
-  turnId: z.string().min(1),
-  sourceSeqStart: z.string().regex(/^\d+$/),
-  sourceSeqEnd: z.string().regex(/^\d+$/),
-});
+const timelineTurnSummaryDetailsCursorQueryFields = {
+  beforeAnchorSeq: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .optional(),
+  beforeAnchorId: z.string().min(1).optional(),
+};
+
+export const timelineTurnSummaryDetailsQuerySchema = z
+  .discriminatedUnion("detailKind", [
+    z
+      .object({
+        detailKind: z.literal("turn"),
+        turnId: z.string().min(1),
+        sourceSeqStart: z.string().regex(/^\d+$/),
+        sourceSeqEnd: z.string().regex(/^\d+$/),
+        contextItemIds: z
+          .string()
+          .max(TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_QUERY_MAX_LENGTH)
+          .optional(),
+        parentToolCallId: z.string().min(1).optional(),
+        ...timelineTurnSummaryDetailsCursorQueryFields,
+      })
+      .strict(),
+    z
+      .object({
+        detailKind: z.literal("delegation-children"),
+        turnId: z.string().min(1),
+        sourceSeqStart: z.string().regex(/^\d+$/),
+        sourceSeqEnd: z.string().regex(/^\d+$/),
+        parentToolCallId: z.string().min(1),
+        directTurnSourceSeqStart: z.string().regex(/^\d+$/),
+        directTurnSourceSeqEnd: z.string().regex(/^\d+$/),
+        ...timelineTurnSummaryDetailsCursorQueryFields,
+      })
+      .strict(),
+  ])
+  .superRefine((query, context) => {
+    const hasBeforeAnchorSeq = query.beforeAnchorSeq !== undefined;
+    const hasBeforeAnchorId = query.beforeAnchorId !== undefined;
+
+    if (hasBeforeAnchorSeq === hasBeforeAnchorId) {
+      return;
+    }
+
+    context.addIssue({
+      code: "custom",
+      message: "beforeAnchorSeq and beforeAnchorId must be provided together",
+      path: hasBeforeAnchorSeq ? ["beforeAnchorId"] : ["beforeAnchorSeq"],
+    });
+  });
 export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
 >;
@@ -636,17 +693,45 @@ export const threadFilesRawQuerySchema = z.object({
 });
 export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
 
-export const timelineTurnSummaryDetailsRequestSchema = z.object({
+const timelineTurnSummaryDetailsRequestBase = {
   turnId: z.string().min(1),
   sourceSeqStart: z.number().int().nonnegative(),
   sourceSeqEnd: z.number().int().nonnegative(),
-});
+  beforeCursor: timelinePaginationCursorSchema.nullable(),
+};
+
+export const timelineTurnSummaryDetailsRequestSchema = z.discriminatedUnion(
+  "detailKind",
+  [
+    z
+      .object({
+        detailKind: z.literal("turn"),
+        ...timelineTurnSummaryDetailsRequestBase,
+        contextItemIds: timelineTurnDetailsContextItemIdsSchema,
+        parentToolCallId: z.string().min(1).nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        detailKind: z.literal("delegation-children"),
+        ...timelineTurnSummaryDetailsRequestBase,
+        parentToolCallId: z.string().min(1),
+        directTurnSourceSeqStart: z.number().int().nonnegative(),
+        directTurnSourceSeqEnd: z.number().int().nonnegative(),
+      })
+      .strict(),
+  ],
+);
 export type TimelineTurnSummaryDetailsRequest = z.infer<
   typeof timelineTurnSummaryDetailsRequestSchema
 >;
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  timelinePage: z.object({
+    hasOlderRows: z.boolean(),
+    olderCursor: timelinePaginationCursorSchema.nullable(),
+  }),
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema

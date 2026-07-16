@@ -30,7 +30,7 @@ it("forwards the plugin-panel opener to rendered message directives", () => {
       isLoadingOlderTimelineRows={false}
       isStopping={false}
       isThreadTimelinePending={false}
-      onLoadOlderRows={() => undefined}
+      onLoadOlderRows={() => false}
       onOpenPluginPanel={() => true}
       projectId="proj_1"
       resolveMentionLink={() => null}

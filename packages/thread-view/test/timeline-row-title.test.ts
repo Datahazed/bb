@@ -273,6 +273,7 @@ function delegationRow(): TimelineViewDelegationWorkRow {
     description: "Review correctness + plan adherence",
     output: "",
     completedAt: 45_001,
+    childPage: null,
     childRows: [],
   };
 }
@@ -380,6 +381,8 @@ function turnRow(): TimelineViewTurnRow {
   return {
     ...baseRow("turn-1"),
     kind: "turn",
+    detailContextItemIds: [],
+    detailParentToolCallId: null,
     turnId: "turn-1",
     status: "completed",
     summaryCount: 1,

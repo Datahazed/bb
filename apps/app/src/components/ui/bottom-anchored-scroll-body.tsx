@@ -46,9 +46,14 @@ export interface BottomAnchorContextValue {
   scrollElementIntoViewClampedToMaxScroll: (
     args: ScrollElementIntoViewClampedToMaxScrollArgs,
   ) => void;
-  // Snapshot the scroll area so the next height growth (e.g. prepending older
-  // messages) keeps the visible row at the same Y position instead of jumping.
-  captureScrollAnchor: () => void;
+  // Capture the visible row itself so callers can restore after their specific
+  // prepend commits. Unrelated streaming growth cannot consume this snapshot.
+  captureScrollAnchor: () => CapturedScrollAnchor;
+}
+
+export interface CapturedScrollAnchor {
+  cancel: () => void;
+  restore: () => void;
 }
 
 export interface BottomAnchoredScrollBodyProps {
@@ -161,6 +166,12 @@ interface TopMostVisibleRow {
   offsetWithinRow: number;
 }
 
+interface VisibleTimelineRowElement {
+  element: HTMLElement;
+  rect: DOMRect;
+  rowId: string;
+}
+
 // The top-most timeline row whose bottom edge is below the scroll area's top
 // edge — i.e. the first row still (at least partially) visible. `offsetWithinRow`
 // is how far the scroll area's top sits past that row's top, so restore can
@@ -169,20 +180,50 @@ function getTopMostVisibleRow(
   scrollArea: HTMLElement,
 ): TopMostVisibleRow | null {
   const scrollAreaTop = scrollArea.getBoundingClientRect().top;
+  const scrollAreaBottom = scrollArea.getBoundingClientRect().bottom;
   const rows = scrollArea.querySelectorAll<HTMLElement>(
     TIMELINE_ROW_ID_SELECTOR,
   );
+  const visibleRows: VisibleTimelineRowElement[] = [];
   for (const row of rows) {
     const rowId = row.dataset.timelineRowId;
     if (!rowId) continue;
     const rowRect = row.getBoundingClientRect();
     if (rowRect.bottom <= scrollAreaTop + 1) continue;
-    return {
-      rowId,
-      offsetWithinRow: Math.max(0, scrollAreaTop - rowRect.top),
-    };
+    if (rowRect.top >= scrollAreaBottom - 1) continue;
+    visibleRows.push({ element: row, rect: rowRect, rowId });
   }
-  return null;
+  // Expanded timeline rows wrap their nested row list, so DOM preorder sees
+  // the outer turn before the child the user is actually reading. Prefer leaf
+  // rows once a nested row reaches the viewport top; otherwise prepending
+  // inside the outer wrapper would leave its top unchanged and produce no
+  // compensation. A child visible only as a lower-viewport sliver does not
+  // displace the ancestor content the user is still reading.
+  const visibleLeafRows = visibleRows.filter(
+    (candidate) =>
+      !visibleRows.some(
+        (other) =>
+          other !== candidate &&
+          candidate.element.contains(other.element) &&
+          other.rect.top <= scrollAreaTop + 1 &&
+          other.rect.bottom > scrollAreaTop + 1,
+      ),
+  );
+  const topMost = visibleLeafRows.reduce<VisibleTimelineRowElement | null>(
+    (current, candidate) => {
+      if (!current) return candidate;
+      const currentVisibleTop = Math.max(scrollAreaTop, current.rect.top);
+      const candidateVisibleTop = Math.max(scrollAreaTop, candidate.rect.top);
+      return candidateVisibleTop < currentVisibleTop ? candidate : current;
+    },
+    null,
+  );
+  return topMost
+    ? {
+        rowId: topMost.rowId,
+        offsetWithinRow: Math.max(0, scrollAreaTop - topMost.rect.top),
+      }
+    : null;
 }
 
 function findTimelineRowElement(
@@ -243,12 +284,14 @@ export function BottomAnchoredScrollBody({
   const shouldStickToBottomRef = useRef(true);
   const userScrollIntentUntilRef = useRef(0);
   const pointerScrollIntentRef = useRef(false);
+  const userScrollIntentGenerationRef = useRef(0);
+  // A request-scoped prepend may end geometrically near the bottom. Remember
+  // the user-intent generation that initiated it so its programmatic scroll
+  // event cannot immediately re-arm sticky-bottom. New user intent makes the
+  // generations differ and restores the normal near-bottom behavior.
+  const requestRestoreDetachedGenerationRef = useRef<number | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreFramesRemainingRef = useRef(0);
-  const pendingPrependAnchorRef = useRef<{
-    scrollHeight: number;
-    scrollTop: number;
-  } | null>(null);
   // A non-bottom anchor being restored. It stays pending across ResizeObserver
   // settle frames because the mount layout pass can read stale row geometry
   // (rows hydrate after mount); re-applying converges on the right position.
@@ -336,6 +379,7 @@ export function BottomAnchoredScrollBody({
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
     userDetachedFromBottomRef.current = false;
+    requestRestoreDetachedGenerationRef.current = null;
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
     if (scrollArea) {
@@ -379,6 +423,7 @@ export function BottomAnchoredScrollBody({
       setIsAtBottom(targetIsAtBottom);
 
       if (targetIsAtBottom) {
+        requestRestoreDetachedGenerationRef.current = null;
         queueBottomRestore();
         return;
       }
@@ -390,22 +435,40 @@ export function BottomAnchoredScrollBody({
 
   const captureScrollAnchor = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
-    if (!scrollArea) return;
-    pendingPrependAnchorRef.current = {
-      scrollHeight: scrollArea.scrollHeight,
-      scrollTop: scrollArea.scrollTop,
+    const visibleRow = scrollArea ? getTopMostVisibleRow(scrollArea) : null;
+    const userScrollIntentGeneration = userScrollIntentGenerationRef.current;
+    let active = true;
+    return {
+      cancel: () => {
+        active = false;
+      },
+      restore: () => {
+        if (
+          !active ||
+          !scrollArea ||
+          !visibleRow ||
+          userScrollIntentGenerationRef.current !== userScrollIntentGeneration
+        ) {
+          return;
+        }
+        active = false;
+        const row = findTimelineRowElement(scrollArea, visibleRow.rowId);
+        if (!row) return;
+        // A successful request-scoped prepend intentionally detaches this view
+        // from the streaming bottom. Cancel any settle tail queued before the
+        // request committed so a later ResizeObserver pass cannot undo the
+        // row-relative correction.
+        shouldStickToBottomRef.current = false;
+        setIsAtBottom(false);
+        cancelQueuedRestore();
+        requestRestoreDetachedGenerationRef.current =
+          userScrollIntentGeneration;
+        const scrollAreaTop = scrollArea.getBoundingClientRect().top;
+        const desiredRowTop = scrollAreaTop - visibleRow.offsetWithinRow;
+        scrollArea.scrollTop += row.getBoundingClientRect().top - desiredRowTop;
+      },
     };
-  }, []);
-
-  useLayoutEffect(() => {
-    const scrollArea = scrollAreaRef.current;
-    const anchor = pendingPrependAnchorRef.current;
-    if (!scrollArea || !anchor) return;
-    const delta = scrollArea.scrollHeight - anchor.scrollHeight;
-    if (delta <= 0) return;
-    scrollArea.scrollTop = anchor.scrollTop + delta;
-    pendingPrependAnchorRef.current = null;
-  });
+  }, [cancelQueuedRestore]);
 
   const hasRecentUserScrollIntent = useCallback(() => {
     return (
@@ -426,9 +489,12 @@ export function BottomAnchoredScrollBody({
       if (!scrollArea) return;
       const atBottomByGeometry = isScrolledNearBottom(scrollArea);
       const recentUserIntent = hasRecentUserScrollIntent();
+      const requestRestoreDetached =
+        requestRestoreDetachedGenerationRef.current ===
+        userScrollIntentGenerationRef.current;
       const anchorAtom =
         threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
-      if (atBottomByGeometry) {
+      if (atBottomByGeometry && !requestRestoreDetached) {
         userDetachedFromBottomRef.current = false;
         store.set(anchorAtom, {
           rowId: "",
@@ -513,12 +579,14 @@ export function BottomAnchoredScrollBody({
   );
 
   const markUserScrollIntent = useCallback(() => {
+    userScrollIntentGenerationRef.current += 1;
     userScrollIntentUntilRef.current =
       window.performance.now() + USER_SCROLL_INTENT_MS;
   }, []);
 
   const markWheelScrollIntent = useCallback(
     (event: WheelEvent) => {
+      userScrollIntentGenerationRef.current += 1;
       const scrollArea = scrollAreaRef.current;
       if (event.deltaY > 0 && scrollArea && isScrolledNearBottom(scrollArea)) {
         userScrollIntentUntilRef.current = 0;
@@ -538,6 +606,7 @@ export function BottomAnchoredScrollBody({
   }, [markUserScrollIntent]);
 
   const startPointerScrollIntent = useCallback(() => {
+    userScrollIntentGenerationRef.current += 1;
     pointerScrollIntentRef.current = true;
   }, []);
 
@@ -563,6 +632,16 @@ export function BottomAnchoredScrollBody({
     if (!scrollArea) return;
 
     if (isScrolledNearBottom(scrollArea)) {
+      if (
+        requestRestoreDetachedGenerationRef.current ===
+        userScrollIntentGenerationRef.current
+      ) {
+        shouldStickToBottomRef.current = false;
+        setIsAtBottom(false);
+        cancelQueuedRestore();
+        return;
+      }
+      requestRestoreDetachedGenerationRef.current = null;
       userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;
       userScrollIntentUntilRef.current = 0;

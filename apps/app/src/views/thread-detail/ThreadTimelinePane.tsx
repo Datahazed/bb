@@ -15,7 +15,7 @@ interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   isStopping: boolean;
-  onLoadOlderRows: () => void;
+  onLoadOlderRows: () => Promise<boolean> | boolean;
   resolveMentionLink: PromptMentionLinkResolver;
   stoppingAnchorAt: number;
   unreadDividerAutoScroll: boolean;
@@ -44,6 +44,7 @@ export function ThreadTimelinePane({
   onOpenLocalFileLink,
   onOpenPluginPanel,
   onTitleAction,
+  paginationSurfaceKey,
   projectId,
   resolveMentionLink,
   showOngoingIndicator,
@@ -98,6 +99,7 @@ export function ThreadTimelinePane({
           onOpenLocalFileLink={onOpenLocalFileLink}
           onOpenPluginPanel={onOpenPluginPanel}
           onTitleAction={onTitleAction}
+          paginationSurfaceKey={paginationSurfaceKey}
           projectId={projectId}
           resolveMentionLink={resolveMentionLink}
           showOngoingIndicator={showOngoingIndicator}

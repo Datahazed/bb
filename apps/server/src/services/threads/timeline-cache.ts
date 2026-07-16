@@ -22,11 +22,10 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
  * (`pruneResolvedItemDeltas`, background-task progress) is output-preserving
  * and never lowers `maxSeq`, so it cannot stale a cached entry.
  *
- * Entries with many rows are not cached: an expanded active turn (the streaming
- * case) produces hundreds of rows AND a `maxSeq` that changes on every event,
- * so caching it only thrashes the LRU and pins large objects for no reuse. Idle
- * windows collapse completed turns to a handful of rows regardless of thread
- * size, so the cap excludes exactly the entries that would never be reused.
+ * Actively running thread revisions are never cached: their `maxSeq` changes on
+ * every event, so each entry is immediately obsolete. This remains explicit
+ * even when active-window pagination keeps their row count small. The row cap
+ * separately protects idle responses containing unusually large expansions.
  */
 
 const DEFAULT_MAX_ENTRIES = 128;
@@ -42,6 +41,7 @@ export interface ThreadTimelineCache {
   getOrBuild(
     key: string,
     build: () => ThreadTimelineResponse,
+    options?: { cacheable?: boolean },
   ): ThreadTimelineResponse;
   /** Number of currently cached entries (for tests/metrics). */
   readonly size: number;
@@ -56,8 +56,9 @@ export function createThreadTimelineCache(
   const entries = new Map<string, ThreadTimelineResponse>();
 
   return {
-    getOrBuild(key, build) {
-      const cached = entries.get(key);
+    getOrBuild(key, build, buildOptions = {}) {
+      const cacheable = buildOptions.cacheable !== false;
+      const cached = cacheable ? entries.get(key) : undefined;
       if (cached !== undefined) {
         // Re-insert to mark most-recently-used.
         entries.delete(key);
@@ -66,7 +67,7 @@ export function createThreadTimelineCache(
       }
 
       const value = build();
-      if (value.rows.length <= maxCacheableRows) {
+      if (cacheable && value.rows.length <= maxCacheableRows) {
         entries.set(key, value);
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
@@ -82,6 +83,12 @@ export function createThreadTimelineCache(
       return entries.size;
     },
   };
+}
+
+export function isThreadTimelineResponseCacheable(
+  status: ThreadStatus,
+): boolean {
+  return status === "idle" || status === "error";
 }
 
 export interface ThreadTimelineCacheKeyArgs {

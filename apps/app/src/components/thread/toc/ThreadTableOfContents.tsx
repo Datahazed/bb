@@ -32,7 +32,7 @@ interface ThreadTableOfContentsProps {
   timelineRows: readonly TimelineRow[];
   hasOlderTimelineRows: boolean;
   /** Loads the next older timeline page; awaited while jumping to an unloaded row. */
-  loadOlderTimelineRows: () => void | Promise<void>;
+  loadOlderTimelineRows: () => boolean | Promise<boolean>;
 }
 
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;

@@ -749,6 +749,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     modelFallback,
+    paginationSurfaceKey,
     pendingTodos,
     timelineError,
     timelineLoading,
@@ -2593,6 +2594,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               ? handleSelectionReplyInSideChat
               : undefined,
             onLoadOlderRows: loadOlderTimelineRows,
+            paginationSurfaceKey,
             onOpenLink: handleOpenTimelineLink,
             onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
             onOpenPluginPanel: handleOpenTimelinePluginPanel,

@@ -134,6 +134,7 @@ export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadT
   threadStatus: Thread["status"];
   /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
   threadName: string;
+  turnId: string;
   /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
   workspaceRoot: string | null;
 }
@@ -689,6 +690,7 @@ function convertMessage(
           description: message.description ?? null,
           output: message.output,
           completedAt: message.completedAt,
+          childPage: null,
           childRows: filterDelegationChildRows(
             buildTimelineRows(message.childProjection, {
               includeNestedRows: true,
@@ -982,6 +984,8 @@ function buildTurnSummaryRow({
     id: rowId,
     threadId: turn.threadId,
     turnId: turn.turnId,
+    detailContextItemIds: [],
+    detailParentToolCallId: null,
     sourceSeqStart: bounds.sourceSeqStart,
     sourceSeqEnd: bounds.sourceSeqEnd,
     startedAt,
@@ -1286,6 +1290,25 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     return {
       kind: "matched",
       rows: matchingTurnSummary.children ?? [],
+    };
+  }
+
+  // Bounded raw pages can backfill the turn root while omitting lifecycle
+  // events that normally define the synthetic summary's exact outer range.
+  // The server has already validated and filtered the request to one turn, so
+  // use that turn's overlapping summary as the page container when its exact
+  // range is wider than this raw window.
+  const requestedTurnSummaries = nestedRows.filter(
+    (row): row is TimelineTurnSummaryRow =>
+      row.kind === "turn" &&
+      row.turnId === args.options.turnId &&
+      row.sourceSeqEnd >= args.options.sourceSeqStart &&
+      row.sourceSeqStart <= args.options.sourceSeqEnd,
+  );
+  if (requestedTurnSummaries.length === 1) {
+    return {
+      kind: "matched",
+      rows: requestedTurnSummaries[0]?.children ?? [],
     };
   }
 

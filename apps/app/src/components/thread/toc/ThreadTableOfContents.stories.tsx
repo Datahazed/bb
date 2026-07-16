@@ -103,7 +103,7 @@ export function Default() {
             threadId="thr_toc_story"
             timelineRows={timelineRows}
             hasOlderTimelineRows={false}
-            loadOlderTimelineRows={() => {}}
+            loadOlderTimelineRows={() => false}
           />
         }
       >

@@ -627,6 +627,7 @@ const completedDelegation: TimelineRow = {
   output:
     "Perfect! Now let me review the full context of the change to complete my analysis:\n\nBased on my thorough review of commit range 97aa16934..e547e8106, here are my findings on **Correctness and Shortcuts/Workarounds**:\n\n## CRITICAL FINDINGS\n\n**1. No-op normalization function (Definite smell)**\n- **File**: packages/agent-runtime/src/shared/provider-tool-call-contract.ts:41-43\n- **Code**: \n  ```typescript\n  function normalizeDecodedTurnId(turnId: string | null): string | null {\n    return turnId;\n  }\n  ```\n- **Issue**: This function does nothing—it returns the input unchanged. The schema already validates `turnId: z.union([z.string().min(1), z.null()])`, so the input cannot be empty string or undefined. The function exists but serves no purpose and creates misleading API surface suggesting normalization happens.\n- **Verdict**: Dead code, increases confusion.\n\n**2. Empty string handling gap (Definite bug)**\n- **File**: packages/agent-runtime/src/runtime-provider-requests.ts:88-90\n- **Code**:\n  ```typescript\n  function normalizeProviderRequestTurnId(turnId: string | null): string | null {\n    return turnId && turnId.length > 0 ? turnId : null;\n  }\n  ```\n- **Issue**: The schema in provider-tool-call-contract.ts rejects empty strings (`z.string().min(1)`), yet runtime-provider-requests.ts's normalizer tries to handle them. Either:\n  - Empty strings slip past schema validation (broken contract), or\n  - The normalizer is defensive against a risk that validation already eliminated\n  - This inconsistency suggests the schema change (adding `.min(1)`) wasn't coordinated with the normalizer design\n- **Verdict**: Questionable—suggests incomplete refactoring or defensive layering.\n\n**3. Repair workaround masks earlier loss of turn context (Architectural issue)**\n- **Files**: runtime-provider-requests.ts:92-111, runtime-turn-state.ts\n- **Logic**: The new `resolveRuntimeProviderRequestTurnId()` accepts null turnIds and falls back to `getActiveTurnId()` to fill gaps. If both fail, it sends an error to the provider.\n- **Root cause**: Providers can emit `turnId: null` when they don't know the turn ID themselves. Rather than fixing this at the source (require providers to always resolve turns before emitting, or enhance the wire protocol to make turn context mandatory), the code patches it here.\n- **Verdict**: **This is a workaround for a deeper protocol issue**. The fix works but postpones fixing the data model. If providers shouldn't emit unresolved turns, enforce that upstream in schema validation. If they legitimately can't, the protocol needs redesign to make turn ID resolution a first-class concern.\n\n**4. ActiveTurnId state isolation risk (Potential edge case bug)**\n- **File**: runtime-turn-state.ts:15-17, runtime-provider-requests.ts:100-103\n- **Issue**: `RuntimeTurnState.getActiveTurnId()` returns the currently active turn for a thread. The repair logic assumes there's only one \"active\" turn at a time and uses it as fallback. But:\n  - Concurrent tool calls with... [truncated]",
   completedAt: 1778174341060,
+  childPage: null,
   childRows: [
     correctnessChild01,
     correctnessChild02,
@@ -1316,6 +1317,7 @@ const runningDelegation: TimelineRow = {
   description: "Maintainability and repo-guidance review",
   output: "",
   completedAt: null,
+  childPage: null,
   childRows: [
     maintainabilityChild01,
     maintainabilityChild02,
@@ -1445,7 +1447,7 @@ const testQualityChild04: TimelineRow = {
     limit: 50,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
+    "356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]",
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -1478,7 +1480,7 @@ const testQualityChild05: TimelineRow = {
     limit: 30,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
+    "356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]",
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -2052,6 +2054,7 @@ const errorDelegation: TimelineRow = {
   description: "Test quality review of commit range",
   output: "",
   completedAt: 1778174370069,
+  childPage: null,
   childRows: [
     testQualityChild01,
     testQualityChild02,
@@ -2103,6 +2106,7 @@ const interruptedDelegation: TimelineRow = {
   description: "Correctness review of commit range",
   output: "",
   completedAt: 1778174341060,
+  childPage: null,
   childRows: [
     correctnessChild01,
     correctnessChild02,

@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import type { PendingInteraction, ThreadWithRuntime } from "@bb/domain";
 import type {
@@ -20,6 +20,7 @@ import type {
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
+  TimelinePaginationCursor,
 } from "@bb/server-contract";
 import { applyTimelineDelta } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
@@ -76,6 +77,7 @@ import {
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
+import { invalidateActiveTurnSummaryDetails } from "../cache-owners/thread-timeline-cache-owner";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -811,10 +813,18 @@ export function useThreadTimelineTurnSummaryDetails(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
   options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
 ) {
-  return useQuery<TimelineTurnSummaryDetailsResponse>({
-    queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }) =>
-      api.getThreadTimelineTurnSummaryDetails({
+  const queryClient = useQueryClient();
+  const queryKey = threadTimelineTurnSummaryDetailsQueryKey(identity);
+  const serializedQueryKey = JSON.stringify(queryKey);
+  const previousActiveFrontierRef = useRef({
+    queryKey: serializedQueryKey,
+    sourceSeqEnd: identity.sourceSeqEnd,
+  });
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam, signal }) => {
+      const base = {
+        beforeCursor: pageParam,
         id: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
@@ -823,7 +833,25 @@ export function useThreadTimelineTurnSummaryDetails(
         sourceSeqEnd: identity.sourceSeqEnd,
         sourceSeqStart: identity.sourceSeqStart,
         turnId: identity.turnId,
-      }),
+      };
+      return identity.detailKind === "delegation-children"
+        ? api.getThreadTimelineTurnSummaryDetails({
+            ...base,
+            detailKind: identity.detailKind,
+            directTurnSourceSeqEnd: identity.directTurnSourceSeqEnd,
+            directTurnSourceSeqStart: identity.directTurnSourceSeqStart,
+            parentToolCallId: identity.parentToolCallId,
+          })
+        : api.getThreadTimelineTurnSummaryDetails({
+            ...base,
+            contextItemIds: [...identity.contextItemIds],
+            detailKind: identity.detailKind,
+            parentToolCallId: identity.parentToolCallId,
+          });
+    },
+    initialPageParam: null as TimelinePaginationCursor | null,
+    getNextPageParam: (lastPage: TimelineTurnSummaryDetailsResponse) =>
+      lastPage.timelinePage.olderCursor ?? undefined,
     enabled:
       (options?.enabled ?? true) &&
       Boolean(identity.threadId) &&
@@ -835,6 +863,35 @@ export function useThreadTimelineTurnSummaryDetails(
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
   });
+
+  useEffect(() => {
+    const previous = previousActiveFrontierRef.current;
+    previousActiveFrontierRef.current = {
+      queryKey: serializedQueryKey,
+      sourceSeqEnd: identity.sourceSeqEnd,
+    };
+    if (
+      !identity.active ||
+      previous.queryKey !== serializedQueryKey ||
+      previous.sourceSeqEnd === identity.sourceSeqEnd
+    ) {
+      return;
+    }
+
+    // Realtime can invalidate the stable active key before the refreshed
+    // timeline supplies its new range end. Invalidate again after that end is
+    // rendered so every loaded page is rebuilt from page one with cursors
+    // signed for the new immutable snapshot.
+    void invalidateActiveTurnSummaryDetails({ identity, queryClient });
+  }, [
+    identity,
+    identity.active,
+    identity.sourceSeqEnd,
+    queryClient,
+    serializedQueryKey,
+  ]);
+
+  return query;
 }
 
 export function getLatestPendingInteraction(

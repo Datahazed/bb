@@ -129,10 +129,11 @@ interface GetThreadTimelineArgs {
   signal?: AbortSignal;
 }
 
-interface GetThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsRequest {
-  id: string;
-  signal?: AbortSignal;
-}
+type GetThreadTimelineTurnSummaryDetailsArgs =
+  TimelineTurnSummaryDetailsRequest & {
+    id: string;
+    signal?: AbortSignal;
+  };
 
 interface GetEnvironmentFilePreviewArgs {
   id: string;
@@ -1650,22 +1651,46 @@ export async function getThreadConversationOutline({
   );
 }
 
-export async function getThreadTimelineTurnSummaryDetails({
-  id,
-  signal,
-  turnId,
-  sourceSeqStart,
-  sourceSeqEnd,
-}: GetThreadTimelineTurnSummaryDetailsArgs): Promise<TimelineTurnSummaryDetailsResponse> {
+export async function getThreadTimelineTurnSummaryDetails(
+  args: GetThreadTimelineTurnSummaryDetailsArgs,
+): Promise<TimelineTurnSummaryDetailsResponse> {
+  const { beforeCursor, id, signal, turnId, sourceSeqStart, sourceSeqEnd } =
+    args;
+  const cursorQuery = beforeCursor
+    ? {
+        beforeAnchorSeq: String(beforeCursor.anchorSeq),
+        beforeAnchorId: beforeCursor.anchorId,
+      }
+    : {};
+  const selectionQuery = {
+    turnId,
+    sourceSeqStart: String(sourceSeqStart),
+    sourceSeqEnd: String(sourceSeqEnd),
+  };
+  const query =
+    args.detailKind === "delegation-children"
+      ? {
+          ...selectionQuery,
+          ...cursorQuery,
+          detailKind: args.detailKind,
+          directTurnSourceSeqEnd: String(args.directTurnSourceSeqEnd),
+          directTurnSourceSeqStart: String(args.directTurnSourceSeqStart),
+          parentToolCallId: args.parentToolCallId,
+        }
+      : {
+          ...selectionQuery,
+          ...cursorQuery,
+          detailKind: args.detailKind,
+          contextItemIds: JSON.stringify(args.contextItemIds),
+          ...(args.parentToolCallId === null
+            ? {}
+            : { parentToolCallId: args.parentToolCallId }),
+        };
   return request<TimelineTurnSummaryDetailsResponse>(
     apiClient.threads[":id"].timeline["turn-summary-details"].$get(
       {
         param: { id },
-        query: {
-          turnId,
-          sourceSeqStart: String(sourceSeqStart),
-          sourceSeqEnd: String(sourceSeqEnd),
-        },
+        query,
       },
       requestOptions(signal),
     ),

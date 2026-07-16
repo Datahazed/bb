@@ -85,6 +85,7 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
+  threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
 import { allPluginContributionsQueryKeyPrefix } from "../queries/plugin-contribution-queries";
 import {
@@ -628,11 +629,24 @@ function dirtyThreadTimelineQueries({
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
-  // Window only: completed turn-summary-details are immutable, so realtime
-  // event batches must not refetch open detail panels (see helper docs).
+  const activeTurnDetailKeys = threadId
+    ? queryClient
+        .getQueryCache()
+        .findAll({
+          queryKey: threadTimelineTurnSummaryDetailsQueryKeyPrefix(threadId),
+        })
+        .flatMap((query) =>
+          query.queryKey[5] === true ? [query.queryKey] : [],
+        )
+    : [];
+  // Completed ranges remain immutable; only pending expansions follow the
+  // active turn and therefore join the window invalidation batch.
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
-    queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+    queryKeys: [
+      ...getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+      ...activeTurnDetailKeys,
+    ],
   });
 }
 

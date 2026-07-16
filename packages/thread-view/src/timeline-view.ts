@@ -900,9 +900,78 @@ function toTimelineViewWorkRow(
   // delegations stay open so the live frontier keeps showing as bundles +
   // leaves.
   const closedScope = row.status !== "pending";
+  const anchoredIntervals =
+    row.childPage?.intervals.filter(
+      (interval): interval is typeof interval & { beforeChildRowId: string } =>
+        interval.beforeChildRowId !== null,
+    ) ?? [];
+  if (anchoredIntervals.length === 0) {
+    return {
+      ...row,
+      childRows: buildTimelineViewRows(row.childRows, { cache, closedScope }),
+    };
+  }
+
+  const childRowIndexById = new Map(
+    row.childRows.map((childRow, index) => [childRow.id, index]),
+  );
+  const anchorIdsByChildRowIndex = new Map<number, string[]>();
+  for (const interval of anchoredIntervals) {
+    const childRowIndex = childRowIndexById.get(interval.beforeChildRowId);
+    if (childRowIndex === undefined) continue;
+    const anchorIds = anchorIdsByChildRowIndex.get(childRowIndex) ?? [];
+    anchorIds.push(interval.beforeChildRowId);
+    anchorIdsByChildRowIndex.set(childRowIndex, anchorIds);
+  }
+  const splitIndexes = [
+    0,
+    ...anchorIdsByChildRowIndex.keys(),
+    row.childRows.length,
+  ]
+    .filter(
+      (value, index, values) =>
+        value >= 0 &&
+        value <= row.childRows.length &&
+        values.indexOf(value) === index,
+    )
+    .sort((left, right) => left - right);
+  const childRows: ThreadTimelineViewRow[] = [];
+  const projectedAnchorIdByRawAnchorId = new Map<string, string>();
+  for (const [index, splitIndex] of splitIndexes.entries()) {
+    const nextSplitIndex = splitIndexes[index + 1];
+    if (nextSplitIndex === undefined || splitIndex === nextSplitIndex) continue;
+    const projectedChunk = buildTimelineViewRows(
+      row.childRows.slice(splitIndex, nextSplitIndex),
+      { cache, closedScope },
+    );
+    const projectedAnchorRow = projectedChunk[0];
+    if (projectedAnchorRow) {
+      for (const rawAnchorId of anchorIdsByChildRowIndex.get(splitIndex) ??
+        []) {
+        projectedAnchorIdByRawAnchorId.set(rawAnchorId, projectedAnchorRow.id);
+      }
+    }
+    childRows.push(...projectedChunk);
+  }
+
   return {
     ...row,
-    childRows: buildTimelineViewRows(row.childRows, { cache, closedScope }),
+    childPage:
+      row.childPage === null
+        ? null
+        : {
+            ...row.childPage,
+            intervals: row.childPage.intervals.map((interval) => ({
+              ...interval,
+              beforeChildRowId:
+                interval.beforeChildRowId === null
+                  ? null
+                  : (projectedAnchorIdByRawAnchorId.get(
+                      interval.beforeChildRowId,
+                    ) ?? interval.beforeChildRowId),
+            })),
+          },
+    childRows,
   };
 }
 

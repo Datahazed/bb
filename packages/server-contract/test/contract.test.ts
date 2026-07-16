@@ -229,6 +229,16 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Turn-summary detail queries omit both cursor fields on the newest page; ordinary turn summaries omit context item ids and parent delegation provenance when they have no separately visible lifecycle or parent delegation.",
+    fields: [
+      "timelineTurnSummaryDetailsQuerySchema.beforeAnchorId",
+      "timelineTurnSummaryDetailsQuerySchema.beforeAnchorSeq",
+      "timelineTurnSummaryDetailsQuerySchema.contextItemIds",
+      "timelineTurnSummaryDetailsQuerySchema.parentToolCallId",
+    ],
+  },
+  {
+    reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
   },
@@ -1019,10 +1029,23 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("Project path must be an absolute path.");
 
     expect(
-      timelineTurnSummaryDetailsResponseSchema.parse({ rows: [] }),
+      timelineTurnSummaryDetailsResponseSchema.parse({
+        rows: [],
+        timelinePage: { hasOlderRows: false, olderCursor: null },
+      }),
     ).toEqual({
       rows: [],
+      timelinePage: { hasOlderRows: false, olderCursor: null },
     });
+    expect(() =>
+      contract.timelineTurnSummaryDetailsQuerySchema.parse({
+        beforeAnchorSeq: "10",
+        detailKind: "turn",
+        sourceSeqEnd: "20",
+        sourceSeqStart: "1",
+        turnId: "turn-1",
+      }),
+    ).toThrow("beforeAnchorId");
   });
 
   it("keeps only intentional optional request fields", () => {
@@ -1415,6 +1438,7 @@ describe("server-contract clients", () => {
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {
+          detailKind: "turn",
           turnId: "turn_123",
           sourceSeqStart: "1",
           sourceSeqEnd: "2",
@@ -1542,6 +1566,137 @@ describe("server-contract clients", () => {
       contract.threadTimelineQuerySchema.parse({
         beforeAnchorSeq: "0",
         beforeAnchorId: "row-1",
+      }),
+    ).toThrow();
+  });
+
+  it("bounds and canonicalizes turn-detail context item ids", () => {
+    const request = {
+      beforeCursor: null,
+      contextItemIds: Array.from(
+        { length: contract.TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_MAX_COUNT },
+        (_, index) => `item-${index}`,
+      ),
+      detailKind: "turn" as const,
+      parentToolCallId: null,
+      sourceSeqEnd: 2,
+      sourceSeqStart: 1,
+      turnId: "turn-1",
+    };
+    const maxLengthId = "x".repeat(
+      contract.TIMELINE_TURN_DETAILS_CONTEXT_ITEM_ID_MAX_LENGTH,
+    );
+
+    const parsedRequest =
+      contract.timelineTurnSummaryDetailsRequestSchema.parse(request);
+    if (parsedRequest.detailKind !== "turn") {
+      throw new Error("Expected turn detail request");
+    }
+    expect(parsedRequest.contextItemIds).toHaveLength(
+      contract.TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_MAX_COUNT,
+    );
+    expect(
+      contract.timelineTurnDetailsContextItemIdsSchema.parse([maxLengthId]),
+    ).toEqual([maxLengthId]);
+    expect(() =>
+      contract.timelineTurnSummaryDetailsRequestSchema.parse({
+        ...request,
+        contextItemIds: [
+          ...request.contextItemIds,
+          `item-${request.contextItemIds.length}`,
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      contract.timelineTurnDetailsContextItemIdsSchema.parse([
+        `${maxLengthId}x`,
+      ]),
+    ).toThrow();
+
+    expect(
+      contract.timelineTurnDetailsContextItemIdsSchema.parse(["b", "a", "a"]),
+    ).toEqual(["a", "b"]);
+    expect(
+      contract.timelineTurnDetailsContextItemIdsSchema.parse([
+        " id ",
+        "é",
+        "e\u0301",
+      ]),
+    ).toEqual([" id ", "e\u0301", "é"]);
+
+    const rawQuery = "x".repeat(
+      contract.TIMELINE_TURN_DETAILS_CONTEXT_ITEM_IDS_QUERY_MAX_LENGTH,
+    );
+    const query = {
+      contextItemIds: rawQuery,
+      detailKind: "turn" as const,
+      sourceSeqEnd: "2",
+      sourceSeqStart: "1",
+      turnId: "turn-1",
+    };
+    const parsedQuery =
+      contract.timelineTurnSummaryDetailsQuerySchema.parse(query);
+    if (parsedQuery.detailKind !== "turn") {
+      throw new Error("Expected turn detail query");
+    }
+    expect(parsedQuery.contextItemIds).toBe(rawQuery);
+    expect(() =>
+      contract.timelineTurnSummaryDetailsQuerySchema.parse({
+        ...query,
+        contextItemIds: `${rawQuery}x`,
+      }),
+    ).toThrow();
+
+    const delegationRequest = {
+      beforeCursor: null,
+      detailKind: "delegation-children" as const,
+      directTurnSourceSeqEnd: 20,
+      directTurnSourceSeqStart: 10,
+      parentToolCallId: "delegation-1",
+      sourceSeqEnd: 30,
+      sourceSeqStart: 1,
+      turnId: "turn-1",
+    };
+    expect(
+      contract.timelineTurnSummaryDetailsRequestSchema.parse(delegationRequest),
+    ).toEqual(delegationRequest);
+    expect(() =>
+      contract.timelineTurnSummaryDetailsRequestSchema.parse({
+        ...delegationRequest,
+        directTurnSourceSeqStart: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      contract.timelineTurnSummaryDetailsRequestSchema.parse({
+        ...request,
+        directTurnSourceSeqEnd: 20,
+        directTurnSourceSeqStart: 10,
+      }),
+    ).toThrow();
+
+    const delegationQuery = {
+      detailKind: "delegation-children" as const,
+      directTurnSourceSeqEnd: "20",
+      directTurnSourceSeqStart: "10",
+      parentToolCallId: "delegation-1",
+      sourceSeqEnd: "30",
+      sourceSeqStart: "1",
+      turnId: "turn-1",
+    };
+    expect(
+      contract.timelineTurnSummaryDetailsQuerySchema.parse(delegationQuery),
+    ).toEqual(delegationQuery);
+    expect(() =>
+      contract.timelineTurnSummaryDetailsQuerySchema.parse({
+        ...delegationQuery,
+        directTurnSourceSeqEnd: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      contract.timelineTurnSummaryDetailsQuerySchema.parse({
+        ...query,
+        directTurnSourceSeqEnd: "20",
+        directTurnSourceSeqStart: "10",
       }),
     ).toThrow();
   });

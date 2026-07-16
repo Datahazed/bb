@@ -225,11 +225,10 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface NonOperationSystemRowArgs
-  extends Omit<
-    SystemRowArgs,
-    "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
-  > {
+export interface NonOperationSystemRowArgs extends Omit<
+  SystemRowArgs,
+  "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
+> {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
 
@@ -258,6 +257,7 @@ export interface DelegationRowArgs extends RowBaseOverrideArgs {
 
 export interface TurnRowArgs extends RowBaseOverrideArgs {
   children?: TimelineRow[] | null;
+  detailContextItemIds?: string[];
   durationMs?: number | null;
   id?: string;
   seq?: number;
@@ -1073,12 +1073,14 @@ export function delegationRow({
     description,
     output,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    childPage: null,
     childRows,
   };
 }
 
 export function turnRow({
   children = null,
+  detailContextItemIds = [],
   createdAt,
   durationMs = 4_000,
   id = DEFAULT_TURN_ROW_ID,
@@ -1105,6 +1107,8 @@ export function turnRow({
     ...base,
     kind: "turn",
     turnId,
+    detailContextItemIds,
+    detailParentToolCallId: null,
     status,
     summaryCount,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),

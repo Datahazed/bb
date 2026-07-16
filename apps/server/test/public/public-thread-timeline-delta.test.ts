@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
+import { insertEvents } from "@bb/db";
 import {
   applyTimelineDelta,
   threadTimelineResponseSchema,
@@ -9,6 +14,7 @@ import { readJson } from "../helpers/json.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "../../src/services/threads/timeline-output-truncation.js";
 
 async function getTimeline(
   harness: TestAppHarness,
@@ -29,6 +35,168 @@ async function getTimeline(
 }
 
 describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
+  it("keeps a long active turn bounded and sends only cached row changes", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const clientRequestId = encodeClientTurnRequestIdNumber({ value: 1 });
+      const outputCount = 840;
+      insertEvents(harness.deps.db, harness.hub, [
+        {
+          threadId: thread.id,
+          sequence: 1,
+          type: "client/turn/requested",
+          scope: threadScope(),
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({
+            direction: "outbound",
+            execution: {
+              model: "gpt-5",
+              permissionMode: "full",
+              reasoningLevel: "medium",
+              serviceTier: "default",
+              source: "client/turn/requested",
+            },
+            initiator: "user",
+            input: [
+              {
+                type: "text",
+                text: "Run for several hours.",
+                mentions: [],
+              },
+            ],
+            request: { method: "thread/start", params: {} },
+            requestId: clientRequestId,
+            senderThreadId: null,
+            source: "spawn",
+            target: { kind: "thread-start" },
+          }),
+        },
+        {
+          threadId: thread.id,
+          sequence: 2,
+          type: "turn/started",
+          scope: turnScope("long-active-turn"),
+          providerThreadId: "provider-thread",
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({}),
+        },
+        {
+          threadId: thread.id,
+          sequence: 3,
+          type: "turn/input/accepted",
+          scope: turnScope("long-active-turn"),
+          providerThreadId: "provider-thread",
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ clientRequestId }),
+        },
+        {
+          threadId: thread.id,
+          sequence: 4,
+          type: "item/started",
+          scope: turnScope("long-active-turn"),
+          providerThreadId: "provider-thread",
+          itemId: "long-active-command",
+          itemKind: "commandExecution",
+          data: JSON.stringify({
+            item: {
+              type: "commandExecution",
+              id: "long-active-command",
+              command: "long-running-command",
+              cwd: "/repo",
+              status: "pending",
+              approvalStatus: null,
+            },
+          }),
+        },
+        ...Array.from({ length: outputCount }, (_, index) => ({
+          threadId: thread.id,
+          sequence: index + 5,
+          type: "item/commandExecution/outputDelta" as const,
+          scope: turnScope("long-active-turn"),
+          providerThreadId: "provider-thread",
+          itemId: "long-active-command",
+          itemKind: "commandExecution" as const,
+          data: JSON.stringify({
+            itemId: "long-active-command",
+            delta: `cached chunk ${index} ${"x".repeat(256)}\n`,
+          }),
+        })),
+      ]);
+
+      const before = await getTimeline(harness, thread.id);
+      const prompt = before.rows.find(
+        (row) => row.kind === "conversation" && row.role === "user",
+      );
+      const pendingCommand = before.rows.find(
+        (row) =>
+          row.kind === "work" &&
+          row.workKind === "command" &&
+          row.callId === "long-active-command",
+      );
+      const beforeSummary = before.rows.find((row) => row.kind === "turn");
+      expect(prompt).toBeDefined();
+      expect(pendingCommand).toMatchObject({ status: "pending" });
+      expect(beforeSummary).toBeDefined();
+      expect(before.rows.length).toBeLessThan(20);
+      if (
+        !pendingCommand ||
+        pendingCommand.kind !== "work" ||
+        pendingCommand.workKind !== "command"
+      ) {
+        throw new Error("Expected pending command");
+      }
+      expect(pendingCommand.output.length).toBeGreaterThanOrEqual(
+        DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      );
+      expect(pendingCommand.output.length).toBeLessThan(
+        DEFAULT_MAX_INLINE_OUTPUT_CHARS + 200,
+      );
+      expect(JSON.stringify(before).length).toBeLessThan(50_000);
+
+      insertEvents(harness.deps.db, harness.hub, [
+        {
+          threadId: thread.id,
+          sequence: outputCount + 5,
+          type: "item/commandExecution/outputDelta",
+          scope: turnScope("long-active-turn"),
+          providerThreadId: "provider-thread",
+          itemId: "long-active-command",
+          itemKind: "commandExecution",
+          data: JSON.stringify({
+            itemId: "long-active-command",
+            delta: "one cached update\n",
+          }),
+        },
+      ]);
+
+      const delta = await getTimeline(harness, thread.id, before.maxSeq);
+      expect(delta.rows).toHaveLength(0);
+      expect(delta.delta).toBeDefined();
+      expect(delta.delta?.upsertRows.length).toBeGreaterThan(0);
+      expect(delta.delta?.upsertRows.map((row) => row.id)).not.toContain(
+        prompt?.id,
+      );
+
+      const merged = applyTimelineDelta(before.rows, delta.delta!);
+      const fresh = await getTimeline(harness, thread.id);
+      expect(merged).toEqual(fresh.rows);
+      const afterSummary = merged?.find((row) => row.kind === "turn");
+      expect(afterSummary?.id).toBe(beforeSummary?.id);
+      expect(afterSummary?.sourceSeqEnd).toBeGreaterThan(
+        beforeSummary?.sourceSeqEnd ?? 0,
+      );
+      expect(JSON.stringify(delta).length).toBeLessThan(50_000);
+      expect(JSON.stringify(delta).length).toBeLessThan(
+        JSON.stringify(fresh).length,
+      );
+    });
+  });
+
   it("a full fetch carries no delta and echoes maxSeq", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

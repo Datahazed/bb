@@ -147,6 +147,7 @@ export function ThreadTimelinePanelContent({
       onOpenLocalFileLink={onOpenLocalFileLink}
       onOpenPluginPanel={onOpenPluginPanel}
       onTitleAction={onTitleAction}
+      paginationSurfaceKey={resolvedTimeline.paginationSurfaceKey}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       showOngoingIndicator={showOngoingIndicator}

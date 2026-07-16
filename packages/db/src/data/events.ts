@@ -1,5 +1,6 @@
 import {
   and,
+  count,
   desc,
   eq,
   gt,
@@ -9,6 +10,8 @@ import {
   lt,
   lte,
   max,
+  min,
+  ne,
   notExists,
   notInArray,
   or,
@@ -700,10 +703,465 @@ const storedEventRowFields = {
   type: events.type,
 };
 
+const timelineDeltaEventTypes = [
+  "item/agentMessage/delta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+  "item/plan/delta",
+] satisfies readonly ThreadEventType[];
+
+/**
+ * Keep event-window queries from materializing an arbitrarily large JSON
+ * payload in the server. Oversized deltas retain a bounded prefix and an
+ * explicit marker. Oversized background-task snapshots retain the lifecycle
+ * fields needed by live task cards while dropping the potentially large
+ * workflow tree. Other oversized event kinds become a visible error row at
+ * the same stored identity/sequence, so pagination advances without silently
+ * skipping the event.
+ */
+function boundedStoredEventRowFields(maxDataBytes: number) {
+  const oversized = sql`(
+    length(CAST(${events.data} AS BLOB))
+    + length(CAST(${events.id} AS BLOB))
+    + length(CAST(COALESCE(${events.itemId}, '') AS BLOB))
+    + length(CAST(COALESCE(${events.itemKind}, '') AS BLOB))
+    + length(CAST(COALESCE(${events.providerThreadId}, '') AS BLOB))
+    + length(CAST(${events.scopeKind} AS BLOB))
+    + length(CAST(${events.threadId} AS BLOB))
+    + length(CAST(COALESCE(${events.turnId}, '') AS BLOB))
+    + length(CAST(${events.type} AS BLOB))
+  ) > ${maxDataBytes}`;
+  const compactDeltaChars = Math.max(
+    1,
+    Math.min(32_000, Math.floor(maxDataBytes / 12)),
+  );
+  const compactItemIdMaxBytes = Math.max(1, Math.floor(maxDataBytes / 24));
+  const compactableDelta = and(
+    inArray(events.type, timelineDeltaEventTypes),
+    sql`json_type(${events.data}, '$.delta') = 'text'`,
+    sql`length(CAST(COALESCE(${events.itemId}, json_extract(${events.data}, '$.itemId'), '') AS BLOB)) <= ${compactItemIdMaxBytes}`,
+  );
+  const compactableBackgroundTask = and(
+    eq(events.itemKind, "backgroundTask"),
+    sql`json_type(${events.data}, '$.item') = 'object'`,
+  );
+  const compactableToolCall = and(
+    eq(events.itemKind, "toolCall"),
+    inArray(events.type, ["item/started", "item/completed"]),
+    sql`json_type(${events.data}, '$.item') = 'object'`,
+    sql`length(CAST(COALESCE(${events.itemId}, json_extract(${events.data}, '$.item.id'), '') AS BLOB)) <= ${compactItemIdMaxBytes}`,
+  );
+  const compactableCommandExecution = and(
+    eq(events.itemKind, "commandExecution"),
+    inArray(events.type, ["item/started", "item/completed"]),
+    sql`json_type(${events.data}, '$.item') = 'object'`,
+    sql`length(CAST(COALESCE(${events.itemId}, json_extract(${events.data}, '$.item.id'), '') AS BLOB)) <= ${compactItemIdMaxBytes}`,
+  );
+  const compactableTurnStarted = and(
+    eq(events.type, "turn/started"),
+    sql`length(CAST(COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') AS BLOB)) <= 256`,
+  );
+  const compactableGoalUpdate = and(
+    eq(events.type, "thread/goal/updated"),
+    sql`json_type(${events.data}, '$.status') = 'text'`,
+  );
+  const compactableAcceptedInput = and(
+    eq(events.type, "turn/input/accepted"),
+    sql`json_type(${events.data}, '$.clientRequestId') = 'text'`,
+    sql`length(CAST(json_extract(${events.data}, '$.clientRequestId') AS BLOB)) <= 64`,
+  );
+  const compactDeltaData = sql<string>`CASE
+    WHEN ${events.type} = 'item/commandExecution/outputDelta'
+      AND json_extract(${events.data}, '$.reset') = 1
+    THEN json_object(
+      'itemId', COALESCE(${events.itemId}, json_extract(${events.data}, '$.itemId'), 'oversized-item'),
+      'delta', substr(json_extract(${events.data}, '$.delta'), 1, ${compactDeltaChars}) || '\n…[oversized event truncated for timeline rendering]\n',
+      'reset', json('true')
+    )
+    ELSE json_object(
+      'itemId', COALESCE(${events.itemId}, json_extract(${events.data}, '$.itemId'), 'oversized-item'),
+      'delta', substr(json_extract(${events.data}, '$.delta'), 1, ${compactDeltaChars}) || '\n…[oversized event truncated for timeline rendering]\n'
+    )
+  END`;
+  const compactBackgroundTaskData = sql<string>`json_patch(
+    json_patch(
+      json_object(
+        'item', json_object(
+          'type', 'backgroundTask',
+          'id', substr(COALESCE(json_extract(${events.data}, '$.item.id'), ${events.itemId}, 'oversized-task'), 1, 256),
+          'taskType', substr(COALESCE(json_extract(${events.data}, '$.item.taskType'), 'unknown'), 1, 256),
+          'description', substr(COALESCE(json_extract(${events.data}, '$.item.description'), 'Background task'), 1, 256) || ' …[large task details omitted]',
+          'status', COALESCE(json_extract(${events.data}, '$.item.status'), 'pending'),
+          'taskStatus', COALESCE(json_extract(${events.data}, '$.item.taskStatus'), 'running'),
+          'skipTranscript', CASE
+            WHEN json_extract(${events.data}, '$.item.skipTranscript') = 1 THEN json('true')
+            ELSE json('false')
+          END
+        )
+      ),
+      CASE
+        WHEN json_type(${events.data}, '$.item.workflowName') = 'text'
+        THEN json_object('item', json_object('workflowName', substr(json_extract(${events.data}, '$.item.workflowName'), 1, 256)))
+        ELSE '{}'
+      END
+    ),
+    CASE
+      WHEN json_type(${events.data}, '$.item.parentToolCallId') = 'text'
+      THEN json_object('item', json_object('parentToolCallId', substr(json_extract(${events.data}, '$.item.parentToolCallId'), 1, 256)))
+      ELSE '{}'
+    END
+  )`;
+  const compactToolCallData = sql<string>`json_patch(
+    json_patch(
+      json_object(
+        'item', json_object(
+          'type', 'toolCall',
+          'id', COALESCE(${events.itemId}, json_extract(${events.data}, '$.item.id'), 'oversized-tool'),
+          'tool', substr(COALESCE(json_extract(${events.data}, '$.item.tool'), 'unknown'), 1, 256),
+          'status', COALESCE(json_extract(${events.data}, '$.item.status'), 'failed')
+        )
+      ),
+      CASE
+        WHEN json_type(${events.data}, '$.item.server') = 'text'
+        THEN json_object('item', json_object('server', substr(json_extract(${events.data}, '$.item.server'), 1, 256)))
+        ELSE '{}'
+      END
+    ),
+    CASE
+      WHEN json_type(${events.data}, '$.item.parentToolCallId') = 'text'
+      THEN json_object('item', json_object('parentToolCallId', substr(json_extract(${events.data}, '$.item.parentToolCallId'), 1, 256)))
+      ELSE '{}'
+    END
+  )`;
+  const compactCommandExecutionData = sql<string>`json_patch(
+    json_object(
+      'item', json_object(
+        'type', 'commandExecution',
+        'id', COALESCE(${events.itemId}, json_extract(${events.data}, '$.item.id'), 'oversized-command'),
+        'command', substr(COALESCE(json_extract(${events.data}, '$.item.command'), 'oversized command'), 1, 512) || ' …[large command details omitted]',
+        'cwd', substr(COALESCE(json_extract(${events.data}, '$.item.cwd'), '.'), 1, 256),
+        'status', COALESCE(json_extract(${events.data}, '$.item.status'), 'failed'),
+        'approvalStatus', json_extract(${events.data}, '$.item.approvalStatus')
+      )
+    ),
+    CASE
+      WHEN json_type(${events.data}, '$.item.parentToolCallId') = 'text'
+      THEN json_object('item', json_object('parentToolCallId', substr(json_extract(${events.data}, '$.item.parentToolCallId'), 1, 256)))
+      ELSE '{}'
+    END
+  )`;
+  const compactTurnStartedData = sql<string>`CASE
+    WHEN json_type(${events.data}, '$.parentToolCallId') = 'text'
+    THEN json_object('parentToolCallId', json_extract(${events.data}, '$.parentToolCallId'))
+    ELSE '{}'
+  END`;
+  const compactGoalUpdateData = sql<string>`json_object(
+    'objective', substr(COALESCE(json_extract(${events.data}, '$.objective'), ''), 1, 512) || ' …[large goal details omitted]',
+    'status', json_extract(${events.data}, '$.status'),
+    'tokenBudget', json_extract(${events.data}, '$.tokenBudget'),
+    'tokensUsed', COALESCE(json_extract(${events.data}, '$.tokensUsed'), 0),
+    'timeUsedSeconds', COALESCE(json_extract(${events.data}, '$.timeUsedSeconds'), 0)
+  )`;
+  const compactAcceptedInputData = sql<string>`json_object(
+    'clientRequestId', json_extract(${events.data}, '$.clientRequestId')
+  )`;
+  const placeholderData = sql<string>`json_object(
+    'code', 'timeline_event_payload_too_large',
+    'message', 'A ' || ${events.type} || ' event (' || length(CAST(${events.data} AS BLOB)) || ' bytes) was too large to render inline. The stored event was retained.'
+  )`;
+  const canKeepType = or(
+    compactableDelta,
+    compactableBackgroundTask,
+    compactableToolCall,
+    compactableCommandExecution,
+    compactableTurnStarted,
+    compactableGoalUpdate,
+    compactableAcceptedInput,
+  );
+
+  return {
+    ...storedEventRowFields,
+    data: sql<string>`CASE
+      WHEN NOT ${oversized} THEN ${events.data}
+      WHEN ${compactableDelta} THEN ${compactDeltaData}
+      WHEN ${compactableBackgroundTask} THEN ${compactBackgroundTaskData}
+      WHEN ${compactableToolCall} THEN ${compactToolCallData}
+      WHEN ${compactableCommandExecution} THEN ${compactCommandExecutionData}
+      WHEN ${compactableTurnStarted} THEN ${compactTurnStartedData}
+      WHEN ${compactableGoalUpdate} THEN ${compactGoalUpdateData}
+      WHEN ${compactableAcceptedInput} THEN ${compactAcceptedInputData}
+      ELSE ${placeholderData}
+    END`,
+    itemId: sql<string | null>`CASE
+      WHEN ${oversized} AND NOT ${canKeepType} THEN NULL
+      ELSE ${events.itemId}
+    END`,
+    itemKind: sql<ThreadEventItemType | null>`CASE
+      WHEN ${oversized} AND NOT ${canKeepType} THEN NULL
+      ELSE ${events.itemKind}
+    END`,
+    type: sql<ThreadEventType>`CASE
+      WHEN ${oversized} AND NOT ${canKeepType} THEN 'system/error'
+      ELSE ${events.type}
+    END`,
+  };
+}
+
 export type StoredEventRow = Pick<
   typeof events.$inferSelect,
   keyof typeof storedEventRowFields
 >;
+
+/**
+ * Payload rows selected under both a row ceiling and a cumulative UTF-8 byte
+ * ceiling inside SQLite. `dataBytes` retains its historical name, but measures
+ * every variable-width text column returned in `rows`, not only `data`.
+ */
+export interface BoundedStoredEventRowsResult {
+  dataBytes: number;
+  hasMore: boolean;
+  rows: StoredEventRow[];
+}
+
+interface ListBoundedStoredEventRowsArgs {
+  condition: SQL | undefined;
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
+  maxDataBytes?: number;
+}
+
+interface RawBoundedStoredEventRow {
+  createdAt: number | null;
+  cumulativeBytes: number;
+  data: string | null;
+  dataBytes: number;
+  hasMore: number;
+  id: string | null;
+  isMetadata: number;
+  itemId: string | null;
+  itemKind: ThreadEventItemType | null;
+  providerThreadId: string | null;
+  scopeKind: ThreadEventScopeKind | null;
+  sequence: number | null;
+  threadId: string | null;
+  turnId: string | null;
+  type: ThreadEventType | null;
+}
+
+/**
+ * Select a contiguous newest-first prefix without allowing rejected payloads
+ * to cross the SQLite boundary. The extra candidate used to distinguish row
+ * cutoff from exhaustion remains inside the CTE; JavaScript receives only the
+ * selected rows and one metadata sentinel.
+ */
+function listBoundedStoredEventRows(
+  db: DbConnection,
+  args: ListBoundedStoredEventRowsArgs,
+): BoundedStoredEventRowsResult {
+  const limit = Math.max(0, Math.floor(args.limit));
+  const maxBytes = Math.max(0, Math.floor(args.maxBytes));
+  if (limit === 0 || maxBytes === 0) {
+    return { dataBytes: 0, hasMore: false, rows: [] };
+  }
+
+  const excludedRowIds = [...new Set(args.excludedRowIds ?? [])];
+  const condition = and(
+    args.condition,
+    excludedRowIds.length > 0
+      ? notInArray(events.id, excludedRowIds)
+      : undefined,
+  );
+  const fields = boundedStoredEventRowFields(
+    Math.min(maxBytes, args.maxDataBytes ?? maxBytes),
+  );
+  // If compacted data still cannot fit because auxiliary identity metadata is
+  // oversized, replace the whole renderable projection instead of truncating
+  // an ownership id into a plausible-but-wrong value. Cursor identity remains
+  // the stored id/thread/sequence/createdAt tuple.
+  const rawRows = db.all<RawBoundedStoredEventRow>(sql`
+    WITH
+      compacted_raw AS MATERIALIZED (
+        SELECT
+          ${fields.createdAt} AS createdAt,
+          ${fields.data} AS data,
+          ${fields.id} AS id,
+          ${fields.itemId} AS itemId,
+          ${fields.itemKind} AS itemKind,
+          ${fields.providerThreadId} AS providerThreadId,
+          ${fields.scopeKind} AS scopeKind,
+          ${fields.sequence} AS sequence,
+          ${fields.threadId} AS threadId,
+          ${fields.turnId} AS turnId,
+          ${fields.type} AS type
+        FROM ${events}
+        WHERE ${condition ?? sql`1`}
+        ORDER BY ${events.sequence} DESC
+        LIMIT ${limit + 1}
+      ),
+      compacted_measured AS MATERIALIZED (
+        SELECT
+          compacted_raw.*,
+          (
+            length(CAST(data AS BLOB))
+            + length(CAST(id AS BLOB))
+            + length(CAST(COALESCE(itemId, '') AS BLOB))
+            + length(CAST(COALESCE(itemKind, '') AS BLOB))
+            + length(CAST(COALESCE(providerThreadId, '') AS BLOB))
+            + length(CAST(scopeKind AS BLOB))
+            + length(CAST(threadId AS BLOB))
+            + length(CAST(COALESCE(turnId, '') AS BLOB))
+            + length(CAST(type AS BLOB))
+          ) AS compactedRowBytes
+        FROM compacted_raw
+      ),
+      compacted AS MATERIALIZED (
+        SELECT
+          createdAt,
+          CASE
+            WHEN compactedRowBytes > ${maxBytes}
+            THEN json_object(
+              'code', 'timeline_event_identity_too_large',
+              'message', 'An event contained identity metadata too large to render inline. The stored event was retained.'
+            )
+            ELSE data
+          END AS data,
+          id,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN NULL ELSE itemId END AS itemId,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN NULL ELSE itemKind END AS itemKind,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN NULL ELSE providerThreadId END AS providerThreadId,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN 'thread' ELSE scopeKind END AS scopeKind,
+          sequence,
+          threadId,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN NULL ELSE turnId END AS turnId,
+          CASE WHEN compactedRowBytes > ${maxBytes} THEN 'system/error' ELSE type END AS type
+        FROM compacted_measured
+      ),
+      measured AS MATERIALIZED (
+        SELECT
+          compacted.*,
+          (
+            length(CAST(data AS BLOB))
+            + length(CAST(id AS BLOB))
+            + length(CAST(COALESCE(itemId, '') AS BLOB))
+            + length(CAST(COALESCE(itemKind, '') AS BLOB))
+            + length(CAST(COALESCE(providerThreadId, '') AS BLOB))
+            + length(CAST(scopeKind AS BLOB))
+            + length(CAST(threadId AS BLOB))
+            + length(CAST(COALESCE(turnId, '') AS BLOB))
+            + length(CAST(type AS BLOB))
+          ) AS rowBytes,
+          SUM(
+            length(CAST(data AS BLOB))
+            + length(CAST(id AS BLOB))
+            + length(CAST(COALESCE(itemId, '') AS BLOB))
+            + length(CAST(COALESCE(itemKind, '') AS BLOB))
+            + length(CAST(COALESCE(providerThreadId, '') AS BLOB))
+            + length(CAST(scopeKind AS BLOB))
+            + length(CAST(threadId AS BLOB))
+            + length(CAST(COALESCE(turnId, '') AS BLOB))
+            + length(CAST(type AS BLOB))
+          ) OVER (
+            ORDER BY sequence DESC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+          ) AS cumulativeBytes,
+          ROW_NUMBER() OVER (ORDER BY sequence DESC) AS selectionRank
+        FROM compacted
+      ),
+      selected AS MATERIALIZED (
+        SELECT *
+        FROM measured
+        WHERE selectionRank <= ${limit}
+          AND cumulativeBytes <= ${maxBytes}
+      ),
+      metadata AS (
+        SELECT
+          COALESCE(SUM(rowBytes), 0) AS dataBytes,
+          CASE
+            WHEN (SELECT COUNT(*) FROM measured) > COUNT(*) THEN 1
+            ELSE 0
+          END AS hasMore
+        FROM selected
+      )
+    SELECT
+      createdAt,
+      cumulativeBytes,
+      data,
+      0 AS dataBytes,
+      0 AS hasMore,
+      id,
+      0 AS isMetadata,
+      itemId,
+      itemKind,
+      providerThreadId,
+      scopeKind,
+      sequence,
+      threadId,
+      turnId,
+      type
+    FROM selected
+    UNION ALL
+    SELECT
+      NULL AS createdAt,
+      0 AS cumulativeBytes,
+      NULL AS data,
+      dataBytes,
+      hasMore,
+      NULL AS id,
+      1 AS isMetadata,
+      NULL AS itemId,
+      NULL AS itemKind,
+      NULL AS providerThreadId,
+      NULL AS scopeKind,
+      NULL AS sequence,
+      NULL AS threadId,
+      NULL AS turnId,
+      NULL AS type
+    FROM metadata
+    ORDER BY isMetadata, sequence DESC
+  `);
+
+  const metadata = rawRows.at(-1);
+  if (!metadata || metadata.isMetadata !== 1) {
+    throw new Error("Bounded stored event query did not return metadata");
+  }
+  const rows = rawRows.slice(0, -1).map((row): StoredEventRow => {
+    if (
+      row.createdAt === null ||
+      row.data === null ||
+      row.id === null ||
+      row.scopeKind === null ||
+      row.sequence === null ||
+      row.threadId === null ||
+      row.type === null
+    ) {
+      throw new Error("Bounded stored event query returned an invalid row");
+    }
+    return {
+      createdAt: row.createdAt,
+      data: row.data,
+      id: row.id,
+      itemId: row.itemId,
+      itemKind: row.itemKind,
+      providerThreadId: row.providerThreadId,
+      scopeKind: row.scopeKind,
+      sequence: row.sequence,
+      threadId: row.threadId,
+      turnId: row.turnId,
+      type: row.type,
+    };
+  });
+  if (rows.length > limit || metadata.dataBytes > maxBytes) {
+    throw new Error("Bounded stored event query exceeded its requested budget");
+  }
+  return {
+    dataBytes: metadata.dataBytes,
+    hasMore: metadata.hasMore === 1,
+    rows,
+  };
+}
 
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
@@ -723,11 +1181,139 @@ export interface ListStoredEventRowsInRangeArgs {
   threadId: string;
 }
 
-export interface ListStoredEventRowsByParentToolCallIdsArgs {
-  excludedTypes?: readonly ThreadEventType[];
-  parentToolCallIds: readonly string[];
+export interface GetStoredEventIdentityAtSequenceArgs {
+  sequence: number;
   threadId: string;
 }
+
+export interface StoredEventIdentity {
+  id: string;
+  sequence: number;
+}
+
+export interface HasStoredTurnEventInRangeArgs {
+  seqEnd: number;
+  seqStart: number;
+  threadId: string;
+  turnId: string;
+}
+
+export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  excludedRowIds?: readonly string[];
+  excludedTypes?: readonly ThreadEventType[];
+  /** Return at most this many newest matching rows. */
+  limit: number;
+  maxBytes: number;
+  parentToolCallIds: readonly string[];
+  sequenceEnd?: number;
+  sequenceStart?: number;
+  threadId: string;
+}
+
+export interface ListStoredParentedTurnRangesArgs {
+  excludedTypes?: readonly ThreadEventType[];
+  parentToolCallIds: readonly string[];
+  sequenceEnd?: number;
+  sequenceStart?: number;
+  threadId: string;
+}
+
+export interface ListStoredDelegationChildTurnRangesArgs {
+  /** Return only child turns whose first direct event is before this sequence. */
+  beforeSequence?: number;
+  directTurnSourceSeqEnd: number;
+  directTurnSourceSeqStart: number;
+  excludedTypes?: readonly ThreadEventType[];
+  limit: number;
+  ownerTurnId: string;
+  parentToolCallId: string;
+  sequenceEnd: number;
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface ListStoredNonemptyDelegationChildTurnBucketIndexesArgs {
+  buckets: readonly {
+    directTurnSourceSeqEnd: number;
+    directTurnSourceSeqStart: number;
+  }[];
+  excludedTypes?: readonly ThreadEventType[];
+  ownerTurnId: string;
+  parentToolCallId: string;
+  sequenceEnd: number;
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface ListStoredDelegationDescendantRangesArgs {
+  roots: readonly {
+    ownerTurnId: string;
+    parentToolCallId: string;
+  }[];
+  sequenceEnd: number;
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface ListStoredTurnDescendantRangesArgs {
+  roots: readonly {
+    sourceSeqEnd: number;
+    sourceSeqStart: number;
+    turnId: string;
+  }[];
+  sequenceEnd: number;
+  threadId: string;
+}
+
+export interface ListStoredDelegatedTurnDescendantRangesArgs {
+  roots: readonly {
+    parentToolCallId: string;
+    turnId: string;
+  }[];
+  sequenceEnd: number;
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface ListStoredParentedToolCallsArgs {
+  parentToolCallIds: readonly string[];
+  sequenceEnd?: number;
+  sequenceStart?: number;
+  threadId: string;
+}
+
+export interface StoredParentedToolCall {
+  itemId: string;
+  turnId: string;
+}
+
+export interface StoredParentedTurnRange {
+  completedAt: number | null;
+  createdAt: number;
+  eventCount: number;
+  parentToolCallId: string;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+  startedAt: number;
+  turnId: string;
+}
+
+export interface StoredDelegationDescendantRange {
+  eventCount: number;
+  parentToolCallId: string;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+}
+
+export interface StoredTurnDescendantRange {
+  descendantSourceSeqEnd: number;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
+  turnId: string;
+}
+
+export interface StoredDelegatedTurnDescendantRange
+  extends StoredParentedTurnRange {}
 
 export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
   threadIds: readonly string[];
@@ -736,6 +1322,13 @@ export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
 
 export interface ListLatestGoalEventRowsByThreadIdsArgs {
   threadIds: readonly string[];
+}
+
+export interface ListLatestGoalEventRowsForThreadArgs {
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
+  threadId: string;
 }
 
 export interface ListOpenTurnInputAcceptedRowsByThreadIdsArgs {
@@ -752,13 +1345,42 @@ export interface ListStoredClientTurnRequestRowsByKeysArgs {
 }
 
 export interface ListStoredToolCallRowsByItemIdsArgs {
+  excludedRowIds?: readonly string[];
   itemIds: readonly string[];
+  limit: number;
+  maxBytes: number;
+  sequenceEnd?: number;
   threadId: string;
+}
+
+export interface ListStoredItemStartedRowsByItemIdsArgs {
+  excludedRowIds?: readonly string[];
+  itemIds: readonly string[];
+  limit: number;
+  maxBytes: number;
+  sequenceCutoff?: number;
+  threadId: string;
+}
+
+export interface ListStoredItemLifecycleOwnerSequencesArgs {
+  itemIds: readonly string[];
+  seqEnd: number;
+  seqStart: number;
+  threadId: string;
+}
+
+export interface StoredItemLifecycleOwnerSequence {
+  itemId: string;
+  sequence: number;
 }
 
 export interface ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs {
   afterSequence: number;
+  beforeOrAtSequence?: number;
   clientRequestIds: readonly ClientTurnRequestId[];
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
   threadId: string;
 }
 
@@ -788,6 +1410,9 @@ export interface GetLatestThreadInterruptedReasonArgs {
 }
 
 export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
   sequenceCutoff: number;
   threadId: string;
   turnIds: readonly string[];
@@ -812,6 +1437,10 @@ export interface ListRecentStoredEventRowsArgs {
   threadId: string;
 }
 
+export interface ListStoredConversationOutlineEventRowsArgs {
+  threadId: string;
+}
+
 export interface ListStoredTimelineWindowEventRowsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
@@ -819,7 +1448,17 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   threadId: string;
 }
 
+export interface ListStoredTimelineWindowEventRowsDescendingArgs
+  extends ListStoredTimelineWindowEventRowsArgs {
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
+}
+
 export interface ListContextWindowUsageRowsArgs {
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
   threadId: string;
 }
 
@@ -969,6 +1608,31 @@ export function listLatestGoalEventRowsByThreadIds(
     .all();
 }
 
+export function listLatestGoalEventRowsForThread(
+  db: DbConnection,
+  args: ListLatestGoalEventRowsForThreadArgs,
+): BoundedStoredEventRowsResult {
+  const goalTypes = [
+    "thread/goal/updated",
+    "thread/goal/cleared",
+  ] satisfies ThreadEventType[];
+  return listBoundedStoredEventRows(db, {
+    condition: and(
+      eq(events.threadId, args.threadId),
+      inArray(events.type, goalTypes),
+      sql`${events.sequence} = (
+        SELECT MAX(latest.sequence)
+        FROM events latest
+        WHERE latest.thread_id = ${events.threadId}
+          AND latest.type IN (${goalTypes[0]}, ${goalTypes[1]})
+      )`,
+    ),
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+}
+
 export function listOpenTurnInputAcceptedRowsByThreadIds(
   db: DbQueryConnection,
   args: ListOpenTurnInputAcceptedRowsByThreadIdsArgs,
@@ -1084,15 +1748,55 @@ export function listStoredEventRowsInRange(
     .all();
 }
 
+export function getStoredEventIdentityAtSequence(
+  db: DbConnection,
+  args: GetStoredEventIdentityAtSequenceArgs,
+): StoredEventIdentity | null {
+  return (
+    db
+      .select({ id: events.id, sequence: events.sequence })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.sequence, args.sequence),
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function hasStoredTurnEventInRange(
+  db: DbConnection,
+  args: HasStoredTurnEventInRangeArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          gte(events.sequence, args.seqStart),
+          lte(events.sequence, args.seqEnd),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function listStoredEventRowsByParentToolCallIds(
   db: DbConnection,
   args: ListStoredEventRowsByParentToolCallIdsArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
     (parentToolCallId) => parentToolCallId.length > 0,
   );
   if (parentToolCallIds.length === 0) {
-    return [];
+    return { dataBytes: 0, hasMore: false, rows: [] };
   }
 
   const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
@@ -1107,39 +1811,777 @@ export function listStoredEventRowsByParentToolCallIds(
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
+  if (args.sequenceStart !== undefined) {
+    conditions.push(gte(events.sequence, args.sequenceStart));
+  }
+  if (args.sequenceEnd !== undefined) {
+    conditions.push(lte(events.sequence, args.sequenceEnd));
+  }
+
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(...conditions),
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
+}
+
+export function listStoredParentedTurnRanges(
+  db: DbConnection,
+  args: ListStoredParentedTurnRangesArgs,
+): StoredParentedTurnRange[] {
+  const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
+    (parentToolCallId) => parentToolCallId.length > 0,
+  );
+  if (parentToolCallIds.length === 0) {
+    return [];
+  }
+
+  const parentToolCallId = sql<string>`COALESCE(
+    json_extract(${events.data}, '$.item.parentToolCallId'),
+    json_extract(${events.data}, '$.parentToolCallId')
+  )`;
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    isNotNull(events.turnId),
+    inArray(parentToolCallId, parentToolCallIds),
+  ];
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+  if (args.sequenceStart !== undefined) {
+    conditions.push(gte(events.sequence, args.sequenceStart));
+  }
+  if (args.sequenceEnd !== undefined) {
+    conditions.push(lte(events.sequence, args.sequenceEnd));
+  }
 
   return db
-    .select(storedEventRowFields)
+    .select({
+      completedAt: sql<number | null>`MAX(CASE WHEN ${events.type} = 'turn/completed' THEN ${events.createdAt} END)`,
+      createdAt: max(events.createdAt),
+      eventCount: count(),
+      parentToolCallId,
+      sourceSeqEnd: max(events.sequence),
+      sourceSeqStart: min(events.sequence),
+      startedAt: min(events.createdAt),
+      turnId: events.turnId,
+    })
     .from(events)
     .where(and(...conditions))
-    .orderBy(events.sequence)
+    .groupBy(parentToolCallId, events.turnId)
+    .all()
+    .flatMap((row) =>
+      row.turnId === null ||
+      row.sourceSeqStart === null ||
+      row.sourceSeqEnd === null ||
+      row.startedAt === null ||
+      row.createdAt === null
+        ? []
+        : [
+            {
+              ...row,
+              turnId: row.turnId,
+              sourceSeqStart: row.sourceSeqStart,
+              sourceSeqEnd: row.sourceSeqEnd,
+              startedAt: row.startedAt,
+              createdAt: row.createdAt,
+            },
+          ],
+    );
+}
+
+/**
+ * Page direct child-turn identities for one delegation. The grouped result is
+ * bounded before it leaves SQLite; descendant work is deliberately excluded
+ * and becomes reachable through the child's own delegation boundaries.
+ */
+export function listStoredDelegationChildTurnRanges(
+  db: DbConnection,
+  args: ListStoredDelegationChildTurnRangesArgs,
+): StoredParentedTurnRange[] {
+  if (
+    args.parentToolCallId.length === 0 ||
+    args.limit <= 0 ||
+    args.sequenceStart > args.sequenceEnd ||
+    args.directTurnSourceSeqStart > args.directTurnSourceSeqEnd
+  ) {
+    return [];
+  }
+
+  const parentToolCallId = sql<string>`COALESCE(
+    json_extract(${events.data}, '$.item.parentToolCallId'),
+    json_extract(${events.data}, '$.parentToolCallId')
+  )`;
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    isNotNull(events.turnId),
+    ne(events.turnId, args.ownerTurnId),
+    eq(parentToolCallId, args.parentToolCallId),
+    gte(events.sequence, args.sequenceStart),
+    lte(events.sequence, args.sequenceEnd),
+  ];
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+
+  const completeSnapshotRanges = db
+    .select({
+      completedAt:
+        sql<number | null>`MAX(CASE WHEN ${events.type} = 'turn/completed' THEN ${events.createdAt} END)`.as(
+          "completed_at",
+        ),
+      createdAt: max(events.createdAt).as("created_at"),
+      eventCount: count().as("event_count"),
+      parentToolCallId: parentToolCallId.as("parent_tool_call_id"),
+      sourceSeqEnd: max(events.sequence).as("source_seq_end"),
+      sourceSeqStart: min(events.sequence).as("source_seq_start"),
+      startedAt: min(events.createdAt).as("started_at"),
+      turnId: events.turnId,
+    })
+    .from(events)
+    .where(and(...conditions))
+    .groupBy(parentToolCallId, events.turnId)
+    .as("complete_delegation_child_turn_ranges");
+  const intervalConditions: SQL[] = [
+    gte(
+      completeSnapshotRanges.sourceSeqStart,
+      args.directTurnSourceSeqStart,
+    ),
+    lte(completeSnapshotRanges.sourceSeqStart, args.directTurnSourceSeqEnd),
+  ];
+  if (args.beforeSequence !== undefined) {
+    intervalConditions.push(
+      lt(completeSnapshotRanges.sourceSeqStart, args.beforeSequence),
+    );
+  }
+  const rows = db
+    .select()
+    .from(completeSnapshotRanges)
+    .where(and(...intervalConditions))
+    .orderBy(
+      desc(completeSnapshotRanges.sourceSeqStart),
+      desc(completeSnapshotRanges.turnId),
+    )
+    .limit(args.limit)
     .all();
+
+  return rows.flatMap((row) =>
+    row.turnId === null ||
+    row.sourceSeqStart === null ||
+    row.sourceSeqEnd === null ||
+    row.startedAt === null ||
+    row.createdAt === null
+      ? []
+      : [
+          {
+            ...row,
+            turnId: row.turnId,
+            sourceSeqStart: row.sourceSeqStart,
+            sourceSeqEnd: row.sourceSeqEnd,
+            startedAt: row.startedAt,
+            createdAt: row.createdAt,
+          },
+        ],
+  );
+}
+
+/**
+ * Return only candidate bucket indexes that contain a direct delegated turn.
+ * Direct turns are grouped once across the complete immutable snapshot before
+ * their MIN(sequence) anchors are joined to the supplied buckets. The result
+ * is therefore bounded by bucket count and never exposes child identities.
+ */
+export function listStoredNonemptyDelegationChildTurnBucketIndexes(
+  db: DbConnection,
+  args: ListStoredNonemptyDelegationChildTurnBucketIndexesArgs,
+): number[] {
+  const buckets = args.buckets.flatMap((bucket, bucketIndex) =>
+    bucket.directTurnSourceSeqStart <= bucket.directTurnSourceSeqEnd
+      ? [{ ...bucket, bucketIndex }]
+      : [],
+  );
+  if (
+    buckets.length === 0 ||
+    args.parentToolCallId.length === 0 ||
+    args.sequenceStart > args.sequenceEnd
+  ) {
+    return [];
+  }
+  const excludedTypes = JSON.stringify(args.excludedTypes ?? []);
+  const rows = db.all<{ bucketIndex: number }>(sql`
+    WITH
+      buckets(
+        bucket_index,
+        direct_turn_source_seq_start,
+        direct_turn_source_seq_end
+      ) AS (
+        SELECT
+          CAST(json_extract(value, '$.bucketIndex') AS INTEGER),
+          CAST(json_extract(value, '$.directTurnSourceSeqStart') AS INTEGER),
+          CAST(json_extract(value, '$.directTurnSourceSeqEnd') AS INTEGER)
+        FROM json_each(${JSON.stringify(buckets)})
+      ),
+      complete_child_turns(source_seq_start) AS MATERIALIZED (
+        SELECT MIN(child.sequence)
+        FROM events AS child
+        WHERE child.thread_id = ${args.threadId}
+          AND child.turn_id IS NOT NULL
+          AND child.turn_id <> ${args.ownerTurnId}
+          AND child.sequence >= ${args.sequenceStart}
+          AND child.sequence <= ${args.sequenceEnd}
+          AND COALESCE(
+            json_extract(child.data, '$.item.parentToolCallId'),
+            json_extract(child.data, '$.parentToolCallId')
+          ) = ${args.parentToolCallId}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM json_each(${excludedTypes}) AS excluded
+            WHERE excluded.value = child.type
+          )
+        GROUP BY child.turn_id
+      )
+    SELECT bucket.bucket_index AS bucketIndex
+    FROM buckets AS bucket
+    JOIN complete_child_turns AS child
+      ON child.source_seq_start >= bucket.direct_turn_source_seq_start
+     AND child.source_seq_start <= bucket.direct_turn_source_seq_end
+    GROUP BY bucket.bucket_index
+    ORDER BY bucket.bucket_index
+    LIMIT ${buckets.length}
+  `);
+  return rows.map((row) => row.bucketIndex);
+}
+
+/**
+ * Resolve the complete descendant extent for bounded visible delegation
+ * roots. SQLite performs the graph walk and returns one scalar row per input
+ * root, so neither event payloads nor descendant identities enter JS memory.
+ * UNION (rather than UNION ALL) makes malformed cycles terminate.
+ */
+export function listStoredDelegationDescendantRanges(
+  db: DbConnection,
+  args: ListStoredDelegationDescendantRangesArgs,
+): StoredDelegationDescendantRange[] {
+  const roots = [
+    ...new Map(
+      args.roots
+        .filter(
+          (root) =>
+            root.ownerTurnId.length > 0 && root.parentToolCallId.length > 0,
+        )
+        .map((root) => [
+          `${root.ownerTurnId}\0${root.parentToolCallId}`,
+          root,
+        ]),
+    ).values(),
+  ];
+  if (roots.length === 0) {
+    return [];
+  }
+
+  const rows = db.all<{
+    eventCount: number;
+    parentToolCallId: string;
+    sourceSeqEnd: number;
+    sourceSeqStart: number;
+  }>(sql`
+    WITH RECURSIVE
+      roots(owner_turn_id, parent_tool_call_id) AS (
+        SELECT
+          CAST(json_extract(value, '$.ownerTurnId') AS TEXT),
+          CAST(json_extract(value, '$.parentToolCallId') AS TEXT)
+        FROM json_each(${JSON.stringify(roots)})
+      ),
+      reachable_parent_ids(
+        root_parent_tool_call_id,
+        owner_turn_id,
+        parent_tool_call_id
+      ) AS (
+        SELECT parent_tool_call_id, owner_turn_id, parent_tool_call_id
+        FROM roots
+        UNION
+        SELECT
+          reachable.root_parent_tool_call_id,
+          reachable.owner_turn_id,
+          child.item_id
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+         ON child.thread_id = ${args.threadId}
+         AND child.item_kind = 'toolCall'
+         AND child.item_id IS NOT NULL
+         AND child.turn_id <> reachable.owner_turn_id
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.item_id <> reachable.root_parent_tool_call_id
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+      ),
+      reachable_turn_ids(root_parent_tool_call_id, turn_id) AS (
+        SELECT DISTINCT
+          reachable.root_parent_tool_call_id,
+          child.turn_id
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence >= ${args.sequenceStart}
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.turn_id IS NOT NULL
+         AND child.turn_id <> reachable.owner_turn_id
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+      ),
+      descendant_events(root_parent_tool_call_id, id, sequence) AS (
+        SELECT
+          reachable.root_parent_tool_call_id,
+          child.id,
+          child.sequence
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence >= ${args.sequenceStart}
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.turn_id <> reachable.owner_turn_id
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+        UNION
+        SELECT
+          reachable_turn.root_parent_tool_call_id,
+          lifecycle.id,
+          lifecycle.sequence
+        FROM reachable_turn_ids AS reachable_turn
+        JOIN events AS lifecycle
+          ON lifecycle.thread_id = ${args.threadId}
+         AND lifecycle.turn_id = reachable_turn.turn_id
+         AND lifecycle.type IN ('turn/started', 'turn/completed')
+         AND lifecycle.sequence >= ${args.sequenceStart}
+         AND lifecycle.sequence <= ${args.sequenceEnd}
+      )
+    SELECT
+      descendant.root_parent_tool_call_id AS parentToolCallId,
+      COUNT(descendant.id) AS eventCount,
+      MAX(descendant.sequence) AS sourceSeqEnd,
+      MIN(descendant.sequence) AS sourceSeqStart
+    FROM descendant_events AS descendant
+    GROUP BY descendant.root_parent_tool_call_id
+  `);
+  return rows;
+}
+
+/**
+ * Resolve the maximum descendant extent of each visible turn range without
+ * returning one row per delegation or child turn.
+ */
+export function listStoredTurnDescendantRanges(
+  db: DbConnection,
+  args: ListStoredTurnDescendantRangesArgs,
+): StoredTurnDescendantRange[] {
+  const roots = [
+    ...new Map(
+      args.roots
+        .filter(
+          (root) =>
+            root.turnId.length > 0 && root.sourceSeqStart <= root.sourceSeqEnd,
+        )
+        .map((root) => [
+          `${root.turnId}\0${root.sourceSeqStart}\0${root.sourceSeqEnd}`,
+          root,
+        ]),
+    ).values(),
+  ];
+  if (roots.length === 0) {
+    return [];
+  }
+
+  return db.all<StoredTurnDescendantRange>(sql`
+    WITH RECURSIVE
+      roots(turn_id, source_seq_start, source_seq_end) AS (
+        SELECT
+          CAST(json_extract(value, '$.turnId') AS TEXT),
+          CAST(json_extract(value, '$.sourceSeqStart') AS INTEGER),
+          CAST(json_extract(value, '$.sourceSeqEnd') AS INTEGER)
+        FROM json_each(${JSON.stringify(roots)})
+      ),
+      reachable_parent_ids(
+        root_turn_id,
+        root_source_seq_start,
+        root_source_seq_end,
+        parent_tool_call_id
+      ) AS (
+        SELECT
+          roots.turn_id,
+          roots.source_seq_start,
+          roots.source_seq_end,
+          direct.item_id
+        FROM roots
+        JOIN events AS direct
+          ON direct.thread_id = ${args.threadId}
+         AND direct.turn_id = roots.turn_id
+         AND direct.sequence >= roots.source_seq_start
+         AND direct.sequence <= roots.source_seq_end
+         AND direct.item_kind = 'toolCall'
+         AND direct.item_id IS NOT NULL
+        UNION
+        SELECT
+          reachable.root_turn_id,
+          reachable.root_source_seq_start,
+          reachable.root_source_seq_end,
+          child.item_id
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.item_kind = 'toolCall'
+         AND child.item_id IS NOT NULL
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+      ),
+      reachable_turn_ids(
+        root_turn_id,
+        root_source_seq_start,
+        root_source_seq_end,
+        turn_id
+      ) AS (
+        SELECT DISTINCT
+          reachable.root_turn_id,
+          reachable.root_source_seq_start,
+          reachable.root_source_seq_end,
+          child.turn_id
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence >= reachable.root_source_seq_start
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.turn_id IS NOT NULL
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+      ),
+      descendant_events(
+        root_turn_id,
+        root_source_seq_start,
+        root_source_seq_end,
+        id,
+        sequence
+      ) AS (
+        SELECT
+          reachable.root_turn_id,
+          reachable.root_source_seq_start,
+          reachable.root_source_seq_end,
+          child.id,
+          child.sequence
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence >= reachable.root_source_seq_start
+         AND child.sequence <= ${args.sequenceEnd}
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.parent_tool_call_id
+        UNION
+        SELECT
+          reachable_turn.root_turn_id,
+          reachable_turn.root_source_seq_start,
+          reachable_turn.root_source_seq_end,
+          lifecycle.id,
+          lifecycle.sequence
+        FROM reachable_turn_ids AS reachable_turn
+        JOIN events AS lifecycle
+          ON lifecycle.thread_id = ${args.threadId}
+         AND lifecycle.turn_id = reachable_turn.turn_id
+         AND lifecycle.type IN ('turn/started', 'turn/completed')
+         AND lifecycle.sequence >= reachable_turn.root_source_seq_start
+         AND lifecycle.sequence <= ${args.sequenceEnd}
+      )
+    SELECT
+      descendant.root_turn_id AS turnId,
+      descendant.root_source_seq_start AS sourceSeqStart,
+      descendant.root_source_seq_end AS sourceSeqEnd,
+      MAX(descendant.sequence) AS descendantSourceSeqEnd
+    FROM descendant_events AS descendant
+    GROUP BY
+      descendant.root_turn_id,
+      descendant.root_source_seq_start,
+      descendant.root_source_seq_end
+  `);
+}
+
+/**
+ * Resolve direct child-turn metadata plus the maximum extent of each selected
+ * turn's nested delegation graph. The number of returned rows is exactly
+ * bounded by the supplied root batch.
+ */
+export function listStoredDelegatedTurnDescendantRanges(
+  db: DbConnection,
+  args: ListStoredDelegatedTurnDescendantRangesArgs,
+): StoredDelegatedTurnDescendantRange[] {
+  const roots = [
+    ...new Map(
+      args.roots
+        .filter(
+          (root) =>
+            root.parentToolCallId.length > 0 && root.turnId.length > 0,
+        )
+        .map((root) => [
+          `${root.parentToolCallId}\0${root.turnId}`,
+          root,
+        ]),
+    ).values(),
+  ];
+  if (roots.length === 0) {
+    return [];
+  }
+
+  const rows = db.all<{
+    completedAt: number | null;
+    createdAt: number;
+    eventCount: number;
+    parentToolCallId: string;
+    sourceSeqEnd: number;
+    sourceSeqStart: number;
+    startedAt: number;
+    turnId: string;
+  }>(sql`
+    WITH RECURSIVE
+      roots(parent_tool_call_id, turn_id) AS (
+        SELECT
+          CAST(json_extract(value, '$.parentToolCallId') AS TEXT),
+          CAST(json_extract(value, '$.turnId') AS TEXT)
+        FROM json_each(${JSON.stringify(roots)})
+      ),
+      direct_events_for_ancestry AS (
+        SELECT
+          roots.parent_tool_call_id,
+          roots.turn_id,
+          child.id,
+          child.item_id,
+          child.item_kind,
+          child.type,
+          child.sequence,
+          child.created_at
+        FROM roots
+        JOIN events AS child
+         ON child.thread_id = ${args.threadId}
+         AND child.turn_id = roots.turn_id
+         AND child.sequence <= ${args.sequenceEnd}
+         AND (
+           child.type IN ('turn/started', 'turn/completed')
+           OR COALESCE(
+             json_extract(child.data, '$.item.parentToolCallId'),
+             json_extract(child.data, '$.parentToolCallId')
+           ) = roots.parent_tool_call_id
+         )
+      ),
+      direct_events AS (
+        SELECT *
+        FROM direct_events_for_ancestry
+        WHERE sequence >= ${args.sequenceStart}
+      ),
+      reachable_parent_ids(parent_tool_call_id, turn_id, nested_parent_tool_call_id) AS (
+        SELECT parent_tool_call_id, turn_id, item_id
+        FROM direct_events_for_ancestry
+        WHERE item_kind = 'toolCall'
+          AND item_id IS NOT NULL
+          AND item_id <> parent_tool_call_id
+        UNION
+        SELECT
+          reachable.parent_tool_call_id,
+          reachable.turn_id,
+          child.item_id
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+         ON child.thread_id = ${args.threadId}
+         AND child.item_kind = 'toolCall'
+         AND child.item_id IS NOT NULL
+         AND child.sequence <= ${args.sequenceEnd}
+         AND child.item_id <> reachable.parent_tool_call_id
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.nested_parent_tool_call_id
+      ),
+      descendant_extents AS (
+        SELECT
+          reachable.parent_tool_call_id,
+          reachable.turn_id,
+          COUNT(child.id) AS descendant_event_count,
+          MAX(child.sequence) AS descendant_source_seq_end
+        FROM reachable_parent_ids AS reachable
+        JOIN events AS child
+          ON child.thread_id = ${args.threadId}
+         AND child.sequence >= ${args.sequenceStart}
+         AND child.sequence <= ${args.sequenceEnd}
+         AND COALESCE(
+           json_extract(child.data, '$.item.parentToolCallId'),
+           json_extract(child.data, '$.parentToolCallId')
+         ) = reachable.nested_parent_tool_call_id
+        GROUP BY reachable.parent_tool_call_id, reachable.turn_id
+      )
+    SELECT
+      direct.parent_tool_call_id AS parentToolCallId,
+      direct.turn_id AS turnId,
+      MIN(direct.sequence) AS sourceSeqStart,
+      MAX(
+        MAX(direct.sequence),
+        COALESCE(extent.descendant_source_seq_end, MAX(direct.sequence))
+      ) AS sourceSeqEnd,
+      COUNT(direct.id) + COALESCE(extent.descendant_event_count, 0) AS eventCount,
+      MIN(direct.created_at) AS startedAt,
+      MAX(direct.created_at) AS createdAt,
+      MAX(CASE WHEN direct.type = 'turn/completed' THEN direct.created_at END) AS completedAt
+    FROM direct_events AS direct
+    LEFT JOIN descendant_extents AS extent
+      ON extent.parent_tool_call_id = direct.parent_tool_call_id
+     AND extent.turn_id = direct.turn_id
+    GROUP BY direct.parent_tool_call_id, direct.turn_id
+  `);
+  return rows;
+}
+
+/**
+ * Discover nested delegation identities without loading their event payloads.
+ * Recursive timeline range discovery must not depend on whether a tool-call
+ * row fits inside the separate projection enrichment budget.
+ */
+export function listStoredParentedToolCalls(
+  db: DbConnection,
+  args: ListStoredParentedToolCallsArgs,
+): StoredParentedToolCall[] {
+  const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
+    (parentToolCallId) => parentToolCallId.length > 0,
+  );
+  if (parentToolCallIds.length === 0) {
+    return [];
+  }
+
+  const parentToolCallId = sql<string>`COALESCE(
+    json_extract(${events.data}, '$.item.parentToolCallId'),
+    json_extract(${events.data}, '$.parentToolCallId')
+  )`;
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    eq(events.itemKind, "toolCall"),
+    isNotNull(events.itemId),
+    isNotNull(events.turnId),
+    inArray(parentToolCallId, parentToolCallIds),
+  ];
+  if (args.sequenceStart !== undefined) {
+    conditions.push(gte(events.sequence, args.sequenceStart));
+  }
+  if (args.sequenceEnd !== undefined) {
+    conditions.push(lte(events.sequence, args.sequenceEnd));
+  }
+
+  return db
+    .select({ itemId: events.itemId, turnId: events.turnId })
+    .from(events)
+    .where(and(...conditions))
+    .groupBy(events.itemId, events.turnId)
+    .all()
+    .flatMap((row) =>
+      row.itemId === null || row.turnId === null
+        ? []
+        : [{ itemId: row.itemId, turnId: row.turnId }],
+    );
 }
 
 export function listStoredToolCallRowsByItemIds(
   db: DbConnection,
   args: ListStoredToolCallRowsByItemIdsArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   const itemIds = [...new Set(args.itemIds)].filter(
     (itemId) => itemId.length > 0,
   );
   if (itemIds.length === 0) {
-    return [];
+    return { dataBytes: 0, hasMore: false, rows: [] };
   }
 
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    inArray(events.itemId, itemIds),
+    eq(events.itemKind, "toolCall"),
+    inArray(events.type, ["item/started", "item/completed"]),
+  ];
+  if (args.sequenceEnd !== undefined) {
+    conditions.push(lte(events.sequence, args.sequenceEnd));
+  }
+
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(...conditions),
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
+}
+
+export function listStoredItemStartedRowsByItemIds(
+  db: DbConnection,
+  args: ListStoredItemStartedRowsByItemIdsArgs,
+): BoundedStoredEventRowsResult {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0) {
+    return { dataBytes: 0, hasMore: false, rows: [] };
+  }
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    eq(events.type, "item/started"),
+    inArray(events.itemId, itemIds),
+  ];
+  if (args.sequenceCutoff !== undefined) {
+    conditions.push(lte(events.sequence, args.sequenceCutoff));
+  }
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(...conditions),
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
+}
+
+export function listStoredItemLifecycleOwnerSequences(
+  db: DbConnection,
+  args: ListStoredItemLifecycleOwnerSequencesArgs,
+): StoredItemLifecycleOwnerSequence[] {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0 || args.seqStart > args.seqEnd) {
+    return [];
+  }
   return db
-    .select(storedEventRowFields)
+    .select({ itemId: events.itemId, sequence: max(events.sequence) })
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
+        isNotNull(events.itemId),
         inArray(events.itemId, itemIds),
-        eq(events.itemKind, "toolCall"),
         inArray(events.type, ["item/started", "item/completed"]),
+        gte(events.sequence, args.seqStart),
+        lte(events.sequence, args.seqEnd),
       ),
     )
-    .orderBy(events.sequence)
-    .all();
+    .groupBy(events.itemId)
+    .all()
+    .flatMap((row) =>
+      row.itemId === null || row.sequence === null
+        ? []
+        : [{ itemId: row.itemId, sequence: row.sequence }],
+    );
 }
 
 export function listStoredClientTurnRequestIdsInRange(
@@ -1238,9 +2680,9 @@ export function getStoredTurnRequestEventForTurn(
 export function listStoredTurnInputAcceptedRowsByClientRequestIds(
   db: DbConnection,
   args: ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   if (args.clientRequestIds.length === 0) {
-    return [];
+    return { dataBytes: 0, hasMore: false, rows: [] };
   }
 
   const clientRequestIdConditions = args.clientRequestIds.map(
@@ -1248,19 +2690,21 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
       sql`json_extract(${events.data}, '$.clientRequestId') = ${clientRequestId}`,
   );
 
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/input/accepted"),
         gt(events.sequence, args.afterSequence),
+        ...(args.beforeOrAtSequence === undefined
+          ? []
+          : [lte(events.sequence, args.beforeOrAtSequence)]),
         or(...clientRequestIdConditions),
       ),
-    )
-    .orderBy(events.sequence)
-    .all();
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
 }
 
 export function listStoredThreadProvisioningRowsByProvisioningId(
@@ -1308,32 +2752,40 @@ export function getLatestThreadInterruptedReason(
 export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
   db: DbConnection,
   args: ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   if (args.turnIds.length === 0) {
-    return [];
+    return { dataBytes: 0, hasMore: false, rows: [] };
   }
 
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/started"),
         inArray(events.turnId, [...args.turnIds]),
         lte(events.sequence, args.sequenceCutoff),
       ),
-    )
-    .orderBy(events.sequence)
-    .all();
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
 }
 
 export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
+  excludedRowIds?: readonly string[];
   itemIds: readonly string[];
+  limit: number;
+  maxBytes: number;
+  maxDataBytes?: number;
+  sequenceCutoff?: number;
   threadId: string;
 }
 
 export interface ListLatestOpenBackgroundTaskStateRowsForThreadArgs {
+  excludedRowIds?: readonly string[];
+  limit: number;
+  maxBytes: number;
+  maxDataBytes?: number;
   threadId: string;
 }
 
@@ -1349,17 +2801,16 @@ export interface ActiveBackgroundTaskCountRow {
 }
 
 /**
- * Latest thread-scoped lifecycle row per backgroundTask item, regardless of
- * sequence. Timeline windows backfill these for in-window items so a page
- * containing only the spawning turn still renders the task's current/terminal
- * state (which may live many sequences past the window's end).
+ * Latest thread-scoped lifecycle row per backgroundTask item, optionally
+ * bounded by a captured timeline range. Live windows omit the cutoff and see
+ * current state; immutable completed-detail ranges supply it.
  */
 export function listLatestBackgroundTaskStateRowsByItemIds(
   db: DbConnection,
   args: ListLatestBackgroundTaskStateRowsByItemIdsArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   if (args.itemIds.length === 0) {
-    return [];
+    return { dataBytes: 0, hasMore: false, rows: [] };
   }
 
   const stateTypes = [
@@ -1371,11 +2822,8 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
   // (threadId, sequence) is unique, so matching the per-item MAX(sequence)
   // set selects exactly one row per item in SQL instead of loading every
   // snapshot row and folding in JS.
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(
         eq(events.threadId, args.threadId),
         inArray(
           events.sequence,
@@ -1387,14 +2835,20 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
                 eq(latest.threadId, args.threadId),
                 inArray(latest.itemId, [...args.itemIds]),
                 inArray(latest.type, stateTypes),
+                ...(args.sequenceCutoff === undefined
+                  ? []
+                  : [lte(latest.sequence, args.sequenceCutoff)]),
               ),
             )
             .groupBy(latest.itemId),
         ),
       ),
-    )
-    .orderBy(events.sequence)
-    .all();
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+    maxDataBytes: args.maxDataBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
 }
 
 /**
@@ -1406,7 +2860,7 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
 export function listLatestOpenBackgroundTaskStateRowsForThread(
   db: DbConnection,
   args: ListLatestOpenBackgroundTaskStateRowsForThreadArgs,
-): StoredEventRow[] {
+): BoundedStoredEventRowsResult {
   const startedType = "item/started" satisfies ThreadEventType;
   const progressType =
     "item/backgroundTask/progress" satisfies ThreadEventType;
@@ -1414,11 +2868,8 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const completed = alias(events, "completed_background_task_state");
 
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
+  const result = listBoundedStoredEventRows(db, {
+    condition: and(
         eq(events.threadId, args.threadId),
         eq(events.itemKind, "backgroundTask"),
         inArray(events.type, [startedType, progressType]),
@@ -1444,9 +2895,12 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
             AND latest.type IN (${startedType}, ${progressType})
         )`,
       ),
-    )
-    .orderBy(events.sequence)
-    .all();
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+    maxDataBytes: args.maxDataBytes,
+  });
+  return { ...result, rows: result.rows.reverse() };
 }
 
 /**
@@ -1654,6 +3108,50 @@ export function listRecentStoredEventRows(
     .all();
 }
 
+/**
+ * The conversation outline renders only user/assistant messages. Selecting
+ * command, tool, diff, goal, and usage events made its cost scale with all work
+ * performed in a thread even though none of those rows can reach the result.
+ */
+export function listStoredConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+): StoredEventRow[] {
+  const directConversationTypes = [
+    "client/turn/requested",
+    "turn/input/accepted",
+    "turn/started",
+    "turn/completed",
+    "item/agentMessage/delta",
+    "system/manager/user_message",
+  ] satisfies ThreadEventType[];
+  const agentItemTypes = [
+    "item/started",
+    "item/completed",
+  ] satisfies ThreadEventType[];
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        or(
+          inArray(events.type, directConversationTypes),
+          and(
+            inArray(events.type, agentItemTypes),
+            or(
+              eq(events.itemKind, "agentMessage"),
+              sql`json_extract(${events.data}, '$.item.type') = 'agentMessage'`,
+            ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export interface StandardTimelineSegmentAnchorRow {
   rowId: string;
   sequence: number;
@@ -1787,65 +3285,85 @@ export function listStoredTimelineWindowEventRows(
     .all();
 }
 
-function listLatestRowsForContextWindowUsage(
+/**
+ * Reads only the newest part of a timeline sequence range. Callers use the
+ * descending order to enforce a byte budget before decoding event JSON.
+ */
+export function listStoredTimelineWindowEventRowsDescending(
   db: DbConnection,
-  args: {
-    contextWindowJsonPath: string;
-    eventType:
-      | "thread/contextWindowUsage/updated"
-      | "thread/tokenUsage/updated";
-    threadId: string;
-  },
-): StoredEventRow[] {
-  const latestRow = db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, args.eventType),
-        isNotNestedTurnUsageEvent,
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-
-  if (!latestRow) {
-    return [];
+  args: ListStoredTimelineWindowEventRowsDescendingArgs,
+): BoundedStoredEventRowsResult {
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    gte(events.sequence, args.sequenceStart),
+  ];
+  if (args.beforeSequence !== undefined) {
+    conditions.push(lt(events.sequence, args.beforeSequence));
+  }
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
 
-  const latestContextRow = db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, args.eventType),
-        isNotNestedTurnUsageEvent,
-        sql`json_extract(${events.data}, ${args.contextWindowJsonPath}) IS NOT NULL`,
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-
-  if (!latestContextRow || latestContextRow.id === latestRow.id) {
-    return [latestRow];
-  }
-
-  return [latestContextRow, latestRow];
+  return listBoundedStoredEventRows(db, {
+    condition: and(...conditions),
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
+  });
 }
 
 export function listContextWindowUsageRows(
   db: DbConnection,
   args: ListContextWindowUsageRowsArgs,
-): StoredEventRow[] {
-  return listLatestRowsForContextWindowUsage(db, {
-    threadId: args.threadId,
-    eventType: "thread/contextWindowUsage/updated",
-    contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
+): BoundedStoredEventRowsResult {
+  const eventType =
+    "thread/contextWindowUsage/updated" satisfies ThreadEventType;
+  const condition = and(
+    eq(events.threadId, args.threadId),
+    eq(events.type, eventType),
+    isNotNestedTurnUsageEvent,
+    or(
+      sql`${events.sequence} = (
+        SELECT MAX(latest.sequence)
+        FROM events latest
+        WHERE latest.thread_id = ${args.threadId}
+          AND latest.type = ${eventType}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM events AS nested_turn_started
+            WHERE nested_turn_started.thread_id = latest.thread_id
+              AND nested_turn_started.turn_id = latest.turn_id
+              AND nested_turn_started.type = 'turn/started'
+              AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+          )
+      )`,
+      sql`${events.sequence} = (
+        SELECT MAX(latest.sequence)
+        FROM events latest
+        WHERE latest.thread_id = ${args.threadId}
+          AND latest.type = ${eventType}
+          AND json_extract(
+            latest.data,
+            '$.contextWindowUsage.modelContextWindow'
+          ) IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM events AS nested_turn_started
+            WHERE nested_turn_started.thread_id = latest.thread_id
+              AND nested_turn_started.turn_id = latest.turn_id
+              AND nested_turn_started.type = 'turn/started'
+              AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+          )
+      )`,
+    ),
+  );
+  const result = listBoundedStoredEventRows(db, {
+    condition,
+    excludedRowIds: args.excludedRowIds,
+    limit: args.limit,
+    maxBytes: args.maxBytes,
   });
+  return { ...result, rows: result.rows.reverse() };
 }
 
 export function getLatestThreadOutputEventRow(

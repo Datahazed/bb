@@ -462,6 +462,8 @@ describe("timeline CLI rendering snapshots", () => {
           startedAt: 1,
           createdAt: 1,
           kind: "turn",
+          detailContextItemIds: [],
+          detailParentToolCallId: null,
           status: "completed",
           summaryCount: 0,
           completedAt: null,
@@ -507,6 +509,7 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.turnRows).toHaveLength(1);
     expect(timeline.turnRows[0]).toMatchObject({
       kind: "turn",
+      detailContextItemIds: [],
       status: "completed",
     });
     expect(
@@ -517,10 +520,7 @@ describe("timeline CLI rendering snapshots", () => {
     const pendingSteerRow = timeline.rows.find(
       (
         row,
-      ): row is Extract<
-        TimelineRow,
-        { kind: "conversation"; role: "user" }
-      > =>
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
         row.kind === "conversation" &&
         row.role === "user" &&
         row.turnRequest.status === "pending",
@@ -1012,9 +1012,9 @@ describe("timeline CLI rendering snapshots", () => {
     // Delegation children render flat — no synthetic turn wrapper. Each
     // child row carries the delegation's scoped id prefix so it does not
     // collide with rows from the root turn.
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThan(0);
     for (const childRow of delegation?.childRows ?? []) {
       expect(childRow.id.startsWith(`${delegation?.id}:child:`)).toBe(true);
@@ -1191,9 +1191,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1777,9 +1777,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1841,9 +1841,9 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(delegation).toBeDefined();
     expect(delegation?.status).toBe("pending");
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThanOrEqual(3);
     // A regression that re-introduces a synthetic turn wrapper would
     // produce a "Worked for X" or "Working for X" label inside the

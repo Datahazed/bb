@@ -13,6 +13,7 @@ import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
   publicApiRoutes,
+  timelineTurnDetailsContextItemIdsSchema,
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
@@ -46,6 +47,7 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import {
   buildThreadConversationOutline,
   buildThreadTimeline,
+  buildTimelineDelegationChildrenDetails,
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
@@ -56,6 +58,7 @@ import {
   buildThreadTimelineCacheKey,
   buildThreadTimelineParamsKey,
   createThreadTimelineCache,
+  isThreadTimelineResponseCacheable,
 } from "../../services/threads/timeline-cache.js";
 import { createTimelineLatestRowsCache } from "../../services/threads/timeline-latest-rows-cache.js";
 import { truncateTimelineResponseOutputs } from "../../services/threads/timeline-output-truncation.js";
@@ -400,6 +403,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             summaryOnly,
           }),
         ),
+      { cacheable: isThreadTimelineResponseCacheable(thread.status) },
     );
 
     // Delta: when the client tells us the revision it currently holds and our
@@ -458,19 +462,71 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const beforeCursor =
+      query.beforeAnchorSeq === undefined || query.beforeAnchorId === undefined
+        ? null
+        : {
+            anchorSeq: parseInteger(query.beforeAnchorSeq, "beforeAnchorSeq"),
+            anchorId: query.beforeAnchorId,
+          };
+    const selection = {
+      beforeCursor,
+      turnId: query.turnId,
+      sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+      sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+    };
+    if (query.detailKind === "delegation-children") {
+      return context.json(
+        buildTimelineDelegationChildrenDetails(deps.db, thread, {
+          ...selection,
+          directTurnSourceSeqEnd: parseInteger(
+            query.directTurnSourceSeqEnd,
+            "directTurnSourceSeqEnd",
+          ),
+          directTurnSourceSeqStart: parseInteger(
+            query.directTurnSourceSeqStart,
+            "directTurnSourceSeqStart",
+          ),
+          parentToolCallId: query.parentToolCallId,
+        }),
+      );
+    }
+    let contextItemIds: string[] = [];
+    if (query.contextItemIds !== undefined) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(query.contextItemIds);
+      } catch {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "contextItemIds must be a JSON string array",
+        );
+      }
+      const parsedContextItemIds =
+        timelineTurnDetailsContextItemIdsSchema.safeParse(parsed);
+      if (!parsedContextItemIds.success) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "contextItemIds must be a JSON string array",
+        );
+      }
+      contextItemIds = parsedContextItemIds.data;
+    }
     const includeProviderUnhandledOperations =
       deps.config.isDevelopment ||
       getAppSettings(deps.db).showUnhandledProviderEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
+        ...selection,
+        contextItemIds,
         includeProviderUnhandledOperations,
+        parentToolCallId: query.parentToolCallId ?? null,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,
         ),
-        turnId: query.turnId,
-        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
       }),
     );
   });

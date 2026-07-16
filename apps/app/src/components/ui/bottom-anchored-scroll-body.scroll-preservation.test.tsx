@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { useRef, useState } from "react";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BottomAnchoredScrollBody,
+  type CapturedScrollAnchor,
   useBottomAnchoredScroll,
 } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
@@ -28,6 +30,8 @@ interface RowRect {
 const SCROLL_AREA_CLASS = "scroll-area";
 const SCROLL_AREA_TOP = 0;
 const SCROLL_AREA_HEIGHT = 100;
+let nextAnimationFrameId = 1;
+let animationFrameCallbacks = new Map<number, FrameRequestCallback>();
 
 class ResizeObserverMock implements ResizeObserver {
   static instances: ResizeObserverMock[] = [];
@@ -51,14 +55,30 @@ function getLatestResizeObserver(): ResizeObserverMock {
 }
 
 function installAnimationFrameMocks() {
-  // rAF is only used by the bottom-restore settle tail; run callbacks
-  // synchronously so it never leaks across tests, but it is irrelevant to the
-  // row-anchored restore paths under test.
   vi.stubGlobal(
     "requestAnimationFrame",
-    vi.fn(() => 1),
+    vi.fn((callback: FrameRequestCallback) => {
+      const frameId = nextAnimationFrameId++;
+      animationFrameCallbacks.set(frameId, callback);
+      return frameId;
+    }),
   );
-  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  vi.stubGlobal(
+    "cancelAnimationFrame",
+    vi.fn((frameId: number) => {
+      animationFrameCallbacks.delete(frameId);
+    }),
+  );
+}
+
+function flushAnimationFrames() {
+  while (animationFrameCallbacks.size > 0) {
+    const callbacks = [...animationFrameCallbacks.values()];
+    animationFrameCallbacks.clear();
+    for (const callback of callbacks) {
+      callback(window.performance.now());
+    }
+  }
 }
 
 function setScrollMetrics(element: HTMLElement, metrics: ScrollMetrics) {
@@ -95,6 +115,9 @@ function requireHTMLElement(element: Element | null) {
 interface RenderArgs {
   threadId: string;
   rowIds: string[];
+  nestedRowIdsByParent?: Readonly<Record<string, readonly string[]>>;
+  revealClampedRowId?: string;
+  showPrependAnchorControl?: boolean;
   showScrollToBottomControl?: boolean;
 }
 
@@ -107,9 +130,61 @@ function ScrollToBottomControl() {
   );
 }
 
+function PrependAnchorControl() {
+  const bottomAnchor = useBottomAnchoredScroll();
+  const anchorRef = useRef<CapturedScrollAnchor | null>(null);
+  const [, setRenderCount] = useState(0);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          anchorRef.current = bottomAnchor?.captureScrollAnchor() ?? null;
+        }}
+      >
+        Arm prepend
+      </button>
+      <button type="button" onClick={() => anchorRef.current?.cancel()}>
+        Cancel prepend
+      </button>
+      <button type="button" onClick={() => anchorRef.current?.restore()}>
+        Restore prepend
+      </button>
+      <button
+        type="button"
+        onClick={() => setRenderCount((count) => count + 1)}
+      >
+        Rerender
+      </button>
+    </>
+  );
+}
+
+function RevealClampedControl({ rowId }: { rowId: string }) {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const element = document.querySelector<HTMLElement>(
+          `[data-timeline-row-id="${rowId}"]`,
+        );
+        if (element) {
+          bottomAnchor?.scrollElementIntoViewClampedToMaxScroll({ element });
+        }
+      }}
+    >
+      Reveal clamped
+    </button>
+  );
+}
+
 function renderTimeline({
   threadId,
   rowIds,
+  nestedRowIdsByParent = {},
+  revealClampedRowId,
+  showPrependAnchorControl = false,
   showScrollToBottomControl = false,
 }: RenderArgs) {
   const view = render(
@@ -120,9 +195,18 @@ function renderTimeline({
       scrollAnchorThreadId={threadId}
     >
       {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
+      {showPrependAnchorControl ? <PrependAnchorControl /> : null}
+      {revealClampedRowId ? (
+        <RevealClampedControl rowId={revealClampedRowId} />
+      ) : null}
       {rowIds.map((rowId) => (
         <div key={rowId} data-timeline-row-id={rowId}>
           {rowId}
+          {(nestedRowIdsByParent[rowId] ?? []).map((nestedRowId) => (
+            <div key={nestedRowId} data-timeline-row-id={nestedRowId}>
+              {nestedRowId}
+            </div>
+          ))}
         </div>
       ))}
     </BottomAnchoredScrollBody>,
@@ -132,7 +216,11 @@ function renderTimeline({
     view.container.querySelector(`.${SCROLL_AREA_CLASS}`),
   );
   const rowElements = new Map<string, HTMLElement>();
-  for (const rowId of rowIds) {
+  const allRowIds = [
+    ...rowIds,
+    ...rowIds.flatMap((rowId) => nestedRowIdsByParent[rowId] ?? []),
+  ];
+  for (const rowId of allRowIds) {
     rowElements.set(
       rowId,
       requireHTMLElement(
@@ -155,6 +243,8 @@ function readAnchor(threadId: string) {
 
 beforeEach(() => {
   ResizeObserverMock.instances = [];
+  nextAnimationFrameId = 1;
+  animationFrameCallbacks = new Map();
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   installAnimationFrameMocks();
 });
@@ -171,6 +261,235 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
+  it("does not apply a cancelled prepend anchor to unrelated later growth", () => {
+    const { getByRole, scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      showPrependAnchorControl: true,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+    fireEvent.click(getByRole("button", { name: "Cancel prepend" }));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 450,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+    fireEvent.click(getByRole("button", { name: "Rerender" }));
+
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
+  it("restores the captured row only when the matching prepend commits", () => {
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showPrependAnchorControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    const rowB = requireHTMLElement(rowElements.get("row-b")!);
+    const rowBRect = vi
+      .spyOn(rowB, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, -20, 100, 100));
+    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
+      top: 80,
+      bottom: 180,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+
+    // Realtime growth below the viewport does not consume or apply the anchor.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 450,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+    fireEvent.click(getByRole("button", { name: "Rerender" }));
+    expect(scrollArea.scrollTop).toBe(150);
+
+    // The requested prepend moves the captured row down by 100px. Explicitly
+    // restoring that request preserves the row's prior viewport position.
+    rowBRect.mockReturnValue(new DOMRect(0, 80, 100, 100));
+    fireEvent.click(getByRole("button", { name: "Restore prepend" }));
+    expect(scrollArea.scrollTop).toBe(250);
+  });
+
+  it("anchors a visible nested row and suppresses later sticky-bottom restoration", () => {
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["turn-row"],
+      nestedRowIdsByParent: {
+        "turn-row": ["nested-older", "nested-visible"],
+      },
+      revealClampedRowId: "nested-visible",
+      showPrependAnchorControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    const turnRow = requireHTMLElement(rowElements.get("turn-row")!);
+    mockRowRect(turnRow, { top: -200, bottom: 200 });
+    mockRowRect(requireHTMLElement(rowElements.get("nested-older")!), {
+      top: -120,
+      bottom: -20,
+    });
+    const visibleNestedRow = requireHTMLElement(
+      rowElements.get("nested-visible")!,
+    );
+    const visibleNestedRect = vi
+      .spyOn(visibleNestedRow, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, -20, 100, 100));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+
+    // Prepending inside the expanded turn leaves the outer wrapper's top
+    // unchanged but moves the first visible child down by 100px.
+    visibleNestedRect.mockReturnValue(new DOMRect(0, 80, 100, 100));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.click(getByRole("button", { name: "Restore prepend" }));
+    expect(scrollArea.scrollTop).toBe(400);
+    // Browsers emit scroll for the programmatic correction. Even though the
+    // corrected geometry is exactly at bottom, the request remains detached.
+    fireEvent.scroll(scrollArea);
+    flushAnimationFrames();
+    expect(scrollArea.scrollTop).toBe(400);
+
+    // Later realtime growth and its ResizeObserver pass must not re-arm the
+    // pre-request sticky-bottom state and pull the viewport to the new bottom.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 650,
+      clientHeight: 100,
+      scrollTop: 400,
+    });
+    getLatestResizeObserver().trigger();
+    flushAnimationFrames();
+    expect(scrollArea.scrollTop).toBe(400);
+
+    // An explicit clamped reveal that lands at max opts back into following.
+    visibleNestedRect.mockReturnValue(new DOMRect(0, 200, 100, 100));
+    fireEvent.click(getByRole("button", { name: "Reveal clamped" }));
+    fireEvent.scroll(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 750,
+      clientHeight: 100,
+      scrollTop: 550,
+    });
+    getLatestResizeObserver().trigger();
+    flushAnimationFrames();
+    expect(scrollArea.scrollTop).toBe(650);
+  });
+
+  it("keeps the visible ancestor when a nested row is only a bottom sliver", () => {
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["turn-row"],
+      nestedRowIdsByParent: { "turn-row": ["nested-sliver"] },
+      showPrependAnchorControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    const turnRow = requireHTMLElement(rowElements.get("turn-row")!);
+    mockRowRect(turnRow, { top: -20, bottom: 110 });
+    const nestedSliver = requireHTMLElement(rowElements.get("nested-sliver")!);
+    const nestedRect = vi
+      .spyOn(nestedSliver, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 90, 100, 20));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+    nestedRect.mockReturnValue(new DOMRect(0, 140, 100, 20));
+    fireEvent.click(getByRole("button", { name: "Restore prepend" }));
+
+    // The outer content is what occupied the viewport; preserving a 10px child
+    // sliver would have shifted scrollTop by 50px.
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
+  it("does not restore a visible nested row after user scroll intent", () => {
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["turn-row"],
+      nestedRowIdsByParent: { "turn-row": ["nested-visible"] },
+      showPrependAnchorControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("turn-row")!), {
+      top: -200,
+      bottom: 200,
+    });
+    const visibleNestedRow = requireHTMLElement(
+      rowElements.get("nested-visible")!,
+    );
+    const visibleNestedRect = vi
+      .spyOn(visibleNestedRow, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, -20, 100, 100));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+    fireEvent.wheel(scrollArea, { deltaY: -20 });
+    visibleNestedRect.mockReturnValue(new DOMRect(0, 80, 100, 100));
+    fireEvent.click(getByRole("button", { name: "Restore prepend" }));
+
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
+  it("does not restore a prepend anchor after user scroll intent", () => {
+    const { getByRole, scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      showPrependAnchorControl: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    const rowB = requireHTMLElement(rowElements.get("row-b")!);
+    const rowBRect = vi
+      .spyOn(rowB, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, -20, 100, 100));
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Arm prepend" }));
+    fireEvent.wheel(scrollArea, { deltaY: -20 });
+    rowBRect.mockReturnValue(new DOMRect(0, 80, 100, 100));
+    fireEvent.click(getByRole("button", { name: "Restore prepend" }));
+
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
   it("captures the top-most visible row when scrolled mid-timeline", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",

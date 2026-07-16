@@ -198,9 +198,8 @@ export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
   threadId: string;
 }
 
-export interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
-  threadId: string;
-}
+export type ThreadTimelineTurnSummaryDetailsArgs =
+  TimelineTurnSummaryDetailsQuery & { threadId: string };
 
 export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
   threadId: string;
@@ -901,14 +900,43 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async timelineTurnSummaryDetails(input) {
+      const cursorQuery = {
+        ...(input.beforeAnchorSeq !== undefined
+          ? { beforeAnchorSeq: input.beforeAnchorSeq }
+          : {}),
+        ...(input.beforeAnchorId !== undefined
+          ? { beforeAnchorId: input.beforeAnchorId }
+          : {}),
+      };
+      const selectionQuery = {
+        turnId: input.turnId,
+        sourceSeqStart: input.sourceSeqStart,
+        sourceSeqEnd: input.sourceSeqEnd,
+      };
       return transport.readJson(
         transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get({
           param: { id: input.threadId },
-          query: {
-            turnId: input.turnId,
-            sourceSeqStart: input.sourceSeqStart,
-            sourceSeqEnd: input.sourceSeqEnd,
-          },
+          query:
+            input.detailKind === "delegation-children"
+              ? {
+                  detailKind: input.detailKind,
+                  ...selectionQuery,
+                  directTurnSourceSeqEnd: input.directTurnSourceSeqEnd,
+                  directTurnSourceSeqStart: input.directTurnSourceSeqStart,
+                  parentToolCallId: input.parentToolCallId,
+                  ...cursorQuery,
+                }
+              : {
+                  detailKind: input.detailKind,
+                  ...selectionQuery,
+                  ...(input.contextItemIds !== undefined
+                    ? { contextItemIds: input.contextItemIds }
+                    : {}),
+                  ...(input.parentToolCallId !== undefined
+                    ? { parentToolCallId: input.parentToolCallId }
+                    : {}),
+                  ...cursorQuery,
+                },
         }),
       );
     },

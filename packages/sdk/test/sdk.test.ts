@@ -103,6 +103,76 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("serializes paired turn-detail pagination cursor fields", async () => {
+    const body = {
+      rows: [],
+      timelinePage: { hasOlderRows: false, olderCursor: null },
+    };
+    const queue = createFetchQueue([{ body }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.timelineTurnSummaryDetails({
+        beforeAnchorId: "timeline-event-window:evt_123",
+        beforeAnchorSeq: "40",
+        contextItemIds: '["pending-command"]',
+        detailKind: "turn",
+        sourceSeqEnd: "100",
+        sourceSeqStart: "2",
+        threadId: "thr_test",
+        turnId: "turn_test",
+      }),
+    ).resolves.toEqual(body);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/timeline/turn-summary-details?detailKind=turn&turnId=turn_test&sourceSeqStart=2&sourceSeqEnd=100&contextItemIds=%5B%22pending-command%22%5D&beforeAnchorSeq=40&beforeAnchorId=timeline-event-window%3Aevt_123",
+      },
+    ]);
+  });
+
+  it("serializes required delegation child interval bounds", async () => {
+    const body = {
+      rows: [],
+      timelinePage: { hasOlderRows: false, olderCursor: null },
+    };
+    const queue = createFetchQueue([{ body }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.timelineTurnSummaryDetails({
+        detailKind: "delegation-children",
+        directTurnSourceSeqEnd: "80",
+        directTurnSourceSeqStart: "40",
+        parentToolCallId: "delegation-1",
+        sourceSeqEnd: "100",
+        sourceSeqStart: "2",
+        threadId: "thr_test",
+        turnId: "turn_test",
+      }),
+    ).resolves.toEqual(body);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/timeline/turn-summary-details?detailKind=delegation-children&turnId=turn_test&sourceSeqStart=2&sourceSeqEnd=100&directTurnSourceSeqEnd=80&directTurnSourceSeqStart=40&parentToolCallId=delegation-1",
+      },
+    ]);
+  });
+
   it("keeps realtime subscriptions distinct under subscribe", () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({

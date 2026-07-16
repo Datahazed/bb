@@ -77,6 +77,10 @@ describe("general settings mutation", () => {
     const configKey = systemConfigQueryKey();
     const timelineKey = threadTimelineQueryKey("thread-1");
     const summaryKey = threadTimelineTurnSummaryDetailsQueryKey({
+      active: false,
+      contextItemIds: [],
+      detailKind: "turn",
+      parentToolCallId: null,
       threadId: "thread-1",
       turnId: "turn-1",
       sourceSeqStart: 1,

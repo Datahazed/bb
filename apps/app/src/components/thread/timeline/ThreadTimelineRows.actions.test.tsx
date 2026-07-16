@@ -118,6 +118,7 @@ function SearchOlderRowsHarness({
       onLoadOlderRows={() => {
         onLoadOlderRows();
         setLoadedOlderRows(true);
+        return true;
       }}
       threadRuntimeDisplayStatus="idle"
       workspaceRootPath={undefined}

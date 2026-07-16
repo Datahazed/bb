@@ -102,6 +102,8 @@ describe("resolveSideChatReplyReference", () => {
           startedAt: 1,
           createdAt: 1,
           kind: "turn",
+          detailContextItemIds: [],
+          detailParentToolCallId: null,
           status: "completed",
           summaryCount: 0,
           completedAt: 9,
@@ -315,7 +317,9 @@ describe("buildSideChatMessageInput", () => {
     const input = buildSideChatMessageInput({
       includeReplyReference: true,
       replyReference: "An earlier message worth discussing.",
-      visibleInput: [{ type: "text", text: "Why this approach?", mentions: [] }],
+      visibleInput: [
+        { type: "text", text: "Why this approach?", mentions: [] },
+      ],
     });
 
     expect(input).toHaveLength(2);

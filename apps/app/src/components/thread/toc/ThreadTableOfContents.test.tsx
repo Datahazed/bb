@@ -67,12 +67,12 @@ function userConversationRow(index = 1): TimelineRow {
 
 function TocHost({
   hasOlderTimelineRows = false,
-  loadOlderTimelineRows = () => {},
+  loadOlderTimelineRows = () => false,
   threadId = "thr_toc_test",
   timelineRows,
 }: {
   hasOlderTimelineRows?: boolean;
-  loadOlderTimelineRows?: () => void | Promise<void>;
+  loadOlderTimelineRows?: () => boolean | Promise<boolean>;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -372,6 +372,7 @@ describe("ThreadTableOfContents", () => {
     // in, mirroring the real controller prepending older rows to the DOM.
     const loadOlder = vi.fn(() => {
       scrollElement.appendChild(timelineRowElement("u_old"));
+      return true;
     });
     setOutline([
       {
