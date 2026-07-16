@@ -37,6 +37,8 @@ export interface DetailViewProps {
 }
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
+/** Poll cadence for PR state while any attached PR is still open or draft. */
+const ACTIVE_PULL_REQUEST_REFRESH_MS = 60_000;
 
 function SubTaskDonut({
   subtasks,
@@ -263,6 +265,34 @@ function TaskDetail({ task }: { task: Task }) {
     async (query) => (await query.call("listPresets")).presets,
     ["projects:changed"],
   );
+  // Quiet by design: while loading (or if the lookup errors) thread cards
+  // simply render without PR pills.
+  const pullRequests = useTasksQuery(
+    async (query) => query.call("listTaskPullRequests", { taskId: task.id }),
+    ["threads:changed"],
+    [task.id],
+  );
+  // GitHub-side transitions (draft→open→merged) never emit a Tasks realtime
+  // event, so revalidate the way the main app's PR query does: always on
+  // window focus, plus a slow poll while any PR is still active. The poll
+  // stays bounded — each round costs one gh lookup per distinct environment.
+  const refreshPullRequests = pullRequests.refresh;
+  const hasActivePullRequest = (pullRequests.data?.pullRequests ?? []).some(
+    (pullRequest) =>
+      pullRequest.state === "open" || pullRequest.state === "draft",
+  );
+  useEffect(() => {
+    window.addEventListener("focus", refreshPullRequests);
+    return () => window.removeEventListener("focus", refreshPullRequests);
+  }, [refreshPullRequests]);
+  useEffect(() => {
+    if (!hasActivePullRequest) return;
+    const timer = window.setInterval(
+      refreshPullRequests,
+      ACTIVE_PULL_REQUEST_REFRESH_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [hasActivePullRequest, refreshPullRequests]);
 
   const updateTask = async (
     input: TaskPropertyUpdate & { title?: string; description?: string },
@@ -432,7 +462,13 @@ function TaskDetail({ task }: { task: Task }) {
               rail's Dispatch button is the entry point. */}
           {(threads.data ?? []).length > 0 ? (
             <div className="mt-6">
-              <ThreadsSection threads={threads.data ?? []} />
+              <ThreadsSection
+                threads={threads.data ?? []}
+                pullRequests={pullRequests.data?.pullRequests}
+                unavailableThreadIds={
+                  pullRequests.data?.unavailableThreadIds ?? []
+                }
+              />
             </div>
           ) : null}
 
