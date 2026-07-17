@@ -61,9 +61,15 @@ interface WorkflowPhaseGroup {
 const ACTIVE_PHASE_SCROLL_OFFSET = 12;
 const PROMPT_STACK_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const PROMPT_STACK_ACTIVE_ICON_CLASS = "text-foreground";
-// Inside the phase tree the shine shimmer is reserved for the card's top-level
-// header; running rows already carry a spinner, so their text stays static.
+// Inside the phase tree only the active phase title shimmers; running worker
+// rows already carry a spinner, so their text stays static.
 const PROMPT_STACK_ACTIVE_TEXT_CLASS = "font-medium text-foreground";
+// The collapsible tree indents one step per level so the hierarchy reads
+// spatially: phase header flush, worker rows inset beneath it, and a
+// declared-but-empty phase (an upcoming pipeline stage) inset a further step
+// so it reads as pending work nested under the workers above it.
+const PHASE_TREE_WORKER_INDENT_CLASS = "pl-5";
+const PHASE_TREE_STAGE_INDENT_CLASS = "pl-16";
 
 function isSettledAgentState(state: WorkflowProgressAgentState): boolean {
   return (
@@ -567,7 +573,10 @@ function CollapsiblePhaseSection({
   ));
   if (!group.phase) {
     return (
-      <div ref={ref} className="flex min-w-0 flex-col">
+      <div
+        ref={ref}
+        className={cn("flex min-w-0 flex-col", PHASE_TREE_WORKER_INDENT_CLASS)}
+      >
         {agentLines}
       </div>
     );
@@ -584,12 +593,11 @@ function CollapsiblePhaseSection({
     return (
       <div
         ref={ref}
-        className={cn(
-          "flex items-center gap-1.5",
-          promptStackActivityRowClass(activityState),
+        className={promptStackActivityRowClass(
+          activityState,
+          cn("flex items-center gap-1.5", PHASE_TREE_STAGE_INDENT_CLASS),
         )}
       >
-        <span className="size-3 shrink-0" aria-hidden="true" />
         <span
           className={promptStackActivityTextClass(
             activityState,
@@ -632,7 +640,7 @@ function CollapsiblePhaseSection({
           aria-hidden="true"
         />
         <span
-          className={promptStackActivityTextClass(
+          className={activityTextClass(
             activityState,
             "text-xs font-medium no-underline",
           )}
@@ -650,7 +658,14 @@ function CollapsiblePhaseSection({
         <PhaseCompletedBadge visible={activityState === "completed"} />
       </button>
       {expanded ? (
-        <div className="mt-1 flex min-w-0 flex-col">{agentLines}</div>
+        <div
+          className={cn(
+            "mt-1 flex min-w-0 flex-col",
+            PHASE_TREE_WORKER_INDENT_CLASS,
+          )}
+        >
+          {agentLines}
+        </div>
       ) : null}
     </div>
   );

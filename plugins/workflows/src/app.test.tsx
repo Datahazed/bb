@@ -73,6 +73,11 @@ const run: WorkflowRunView = {
         },
       ],
     },
+    {
+      title: "Verify",
+      detail: "Verify the integrated result.",
+      calls: [],
+    },
   ],
   unphasedCalls: [],
   resultAvailable: false,
@@ -138,9 +143,11 @@ describe("workflow-preview directive", () => {
     expect(slot.getByText("Discover")).toBeTruthy();
     expect(slot.getAllByText("Review")).toHaveLength(1);
     expect(slot.getByText("Adversarial review")).toBeTruthy();
+    expect(slot.getByText("Verify")).toBeTruthy();
     expect(slot.getByText("claude · opus-4-6 · high")).toBeTruthy();
-    // A live run has no "Running" pill, and only the top-level header
-    // shimmers — phase and agent rows stay static (agents have spinners).
+    // A live run has no "Running" pill. The top-level header and the active
+    // phase title carry the calm shimmer; settled phase titles and worker
+    // rows stay static (running workers already have spinners).
     expect(slot.queryByText("Running")).toBeNull();
     expect(
       slot.getByText("Review the release").className.includes("animate-shine"),
@@ -149,10 +156,18 @@ describe("workflow-preview directive", () => {
       slot.getByText("Adversarial review").className.includes("animate-shine"),
     ).toBe(false);
     expect(
-      slot
-        .getAllByText("Review")[0]!
-        .className.includes("animate-shine"),
-    ).toBe(false);
+      slot.getAllByText("Review")[0]!.className.includes("animate-shine"),
+    ).toBe(true);
+    expect(slot.getByText("Discover").className.includes("animate-shine")).toBe(
+      false,
+    );
+    // Worker rows indent one step beneath their phase header so the
+    // phase → worker hierarchy reads spatially.
+    expect(slot.getByText("Adversarial review").closest(".pl-5")).toBeTruthy();
+    expect(slot.getByText("Verify").closest(".pl-16")).toBeTruthy();
+    expect(slot.getByText("Verify").className.includes("animate-shine")).toBe(
+      false,
+    );
 
     const workflowToggle = slot.getByRole("button", {
       name: "Workflow: Review the release",
@@ -434,6 +449,17 @@ describe("workflow thread panel", () => {
     // The settled Discover phase starts collapsed; the active phase is open.
     expect(slot.queryByText("Inspect implementation")).toBeNull();
     expect(slot.getByText("Adversarial review")).toBeTruthy();
+    // The panel consumes the same shared tree and must preserve the exact
+    // phase → worker → stage hierarchy and active-only shimmer.
+    expect(slot.getAllByText("Review")[0]!.className).toContain(
+      "animate-shine",
+    );
+    expect(slot.getByText("Adversarial review").className).not.toContain(
+      "animate-shine",
+    );
+    expect(slot.getByText("Adversarial review").closest(".pl-5")).toBeTruthy();
+    expect(slot.getByText("Verify").className).not.toContain("animate-shine");
+    expect(slot.getByText("Verify").closest(".pl-16")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: /Discover1\/1/ }));
     expect(slot.getByText("Inspect implementation")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: /adversarial review/i }));

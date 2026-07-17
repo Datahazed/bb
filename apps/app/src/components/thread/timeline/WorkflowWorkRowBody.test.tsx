@@ -57,6 +57,17 @@ describe("WorkflowWorkRowBody", () => {
     fireEvent.click(screen.getByRole("button", { name: /Discover1\/1/ }));
     expect(screen.getByText("Inspect implementation")).toBeTruthy();
     expect(screen.getByText("Adversarial review")).toBeTruthy();
+
+    // The active phase title carries the calm shimmer; settled phase titles
+    // and worker rows stay static, and worker rows indent under their phase.
+    expect(screen.getByText("Review").className).toContain("animate-shine");
+    expect(screen.getByText("Discover").className).not.toContain(
+      "animate-shine",
+    );
+    expect(screen.getByText("Adversarial review").className).not.toContain(
+      "animate-shine",
+    );
+    expect(screen.getByText("Adversarial review").closest(".pl-5")).toBeTruthy();
   });
 
   it("auto-collapses completed phases live while manual toggles survive", () => {
@@ -90,6 +101,14 @@ describe("WorkflowWorkRowBody", () => {
     expect(screen.getByText("Straggler scan")).toBeTruthy();
     expect(screen.getByText("Adversarial review")).toBeTruthy();
     expect(screen.getByText("not started")).toBeTruthy();
+
+    // A declared-but-empty phase renders as an upcoming stage row: inset a
+    // step beyond the worker rows and static (no shimmer).
+    const stageRow = screen.getByText("Verify").closest(".pl-16");
+    expect(stageRow).toBeTruthy();
+    expect(screen.getByText("Verify").className).not.toContain(
+      "animate-shine",
+    );
 
     // Manually collapse the running Review phase to prove overrides survive
     // later default flips.
