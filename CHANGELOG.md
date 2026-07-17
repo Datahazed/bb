@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.0.31
+
+This release brings split views to everyone and redesigns queued messages in the composer.
+
+### Features
+
+- Split views are now available: arrange up to eight chats side by side, drag threads in from the sidebar, and move between panes with keyboard shortcuts.
+- Queued messages in the composer got a redesign: a compact drawer that scales to long queues, with fullscreen editing.
+
+### Improvements
+
+- New compact composer on mobile.
+- Sidebar sections are unified and drag-reorderable, with drag-to-pin; archived threads moved into Settings.
+- Usage limits now show which account email each provider is signed in with, and Cursor usage limits are now supported.
+
+### Experiments
+
+- New Tasks plugin: Linear-style task tracking with agent dispatch — assign agents to tasks, follow their progress in comments, and attach files and GitHub PRs.
+- Official plugins are now bundled with the app and update alongside it.
+- New Workflows plugin renders live multi-agent workflow runs in chat, across providers.
+- Docs gained table editing, easier file management, and a pull/push-based CLI.
+
+### Fixes and polish
+
+- Fixed Claude model fallbacks not being surfaced immediately.
+- Fixed `bb secret request` destinations in multi-machine setups.
+- Fixed desktop light/dark switching when following the system theme.
+- Fixed scrolling of long agent questions and sidebar safe-area coverage on mobile.
+- Fixed a performance issue with animations.
+- Improved bb Connect reliability.
+- Worktree setup now runs with your resolved shell PATH.
+
 ## 0.0.30
 
 This release introduces multi-machine workflows and bb Connect, adds more ways to customize how bb works, and gives you clearer visibility into what agents are doing.
