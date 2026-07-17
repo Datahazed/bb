@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Label, Task } from "../../shared/contract.js";
+import type { Label, Task, TaskThread } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useLabels, useListTasks, useTaskListMeta, type TaskRowMeta } from "./data.js";
+import { useLabels, useListTasks, useTaskListMeta } from "./data.js";
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -26,10 +26,11 @@ import {
   useListScrollRestoration,
 } from "./scroll-restoration.js";
 import {
+  activeWorkLabel,
   formatDueDate,
   groupTasksByStatus,
   labelFilterOptions,
-  presetShortName,
+  partitionLabels,
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
@@ -41,24 +42,77 @@ export interface ListViewProps {
   activeOnly?: boolean;
 }
 
-function WorkingAgentsChip({ meta }: { meta: TaskRowMeta }) {
-  const threads = meta.activeThreads;
+/**
+ * Every trailing-rail element shares this pill treatment (Linear-style), so
+ * the rail reads as one aligned system rather than mixed chips and bare text.
+ */
+const RAIL_CHIP_CLASS =
+  "flex items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground";
+
+/**
+ * Live-activity chip: a green dot plus an "Active" pill, styled like the
+ * label chips so the rail stays uniform. Renders only while an agent is
+ * actively starting/working; historical attachments show nothing. The pill
+ * text stays constant; the tooltip carries the specific state (starting vs
+ * working, agent count).
+ */
+function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
   if (threads.length === 0) return null;
-  const text =
-    threads.length === 1 && threads[0] !== undefined
-      ? presetShortName(threads[0].presetName)
-      : `${threads.length} agents`;
   return (
-    <span className="flex items-center gap-1.5 font-medium text-success">
+    <span title={activeWorkLabel(threads)} className={RAIL_CHIP_CLASS}>
       <span
         aria-hidden
         className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
       />
-      {text}
+      Active
     </span>
   );
 }
 
+function LabelChip({ label }: { label: Label }) {
+  return (
+    <span className={`${RAIL_CHIP_CLASS} max-w-32`}>
+      <span
+        aria-hidden
+        className="size-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: label.color }}
+      />
+      <span className="truncate">{label.name}</span>
+    </span>
+  );
+}
+
+function LabelChipRow({
+  labels,
+  maxVisible,
+}: {
+  labels: readonly Label[];
+  maxVisible: number;
+}) {
+  const { visible, hidden } = partitionLabels(labels, maxVisible);
+  return (
+    <>
+      {visible.map((label) => (
+        <LabelChip key={label.id} label={label} />
+      ))}
+      {hidden.length > 0 ? (
+        <span
+          title={hidden.map((label) => label.name).join(", ")}
+          className={`${RAIL_CHIP_CLASS} tabular-nums`}
+        >
+          +{hidden.length}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Row label chips, capped so rows keep a bounded metadata width: two chips in
+ * regular containers, one in narrow ones (both variants render; container
+ * queries on the list body pick which is displayed). Overflow collapses into
+ * a "+N" chip whose tooltip lists the hidden names.
+ */
 function LabelChips({
   task,
   labelsById,
@@ -67,21 +121,15 @@ function LabelChips({
   labelsById: Map<string, Label>;
 }) {
   const labels = task.labelIds.flatMap((id) => labelsById.get(id) ?? []);
+  if (labels.length === 0) return null;
   return (
     <>
-      {labels.map((label) => (
-        <span
-          key={label.id}
-          className="flex items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground"
-        >
-          <span
-            aria-hidden
-            className="size-1.5 rounded-full"
-            style={{ backgroundColor: label.color }}
-          />
-          {label.name}
-        </span>
-      ))}
+      <span className="hidden items-center gap-1.5 @xl:flex">
+        <LabelChipRow labels={labels} maxVisible={2} />
+      </span>
+      <span className="flex items-center gap-1.5 @xl:hidden">
+        <LabelChipRow labels={labels} maxVisible={1} />
+      </span>
     </>
   );
 }
@@ -305,23 +353,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               <span className="min-w-0 flex-1 truncate text-sm">
                 {task.title}
               </span>
-              <span className="flex shrink-0 items-center gap-2 text-xs text-subtle-foreground">
-                {taskMeta ? <WorkingAgentsChip meta={taskMeta} /> : null}
+              <span className="flex shrink-0 items-center gap-1.5 text-xs text-subtle-foreground">
+                {taskMeta ? (
+                  <ActiveChip threads={taskMeta.activeThreads} />
+                ) : null}
                 <LabelChips task={task} labelsById={labelsById} />
-                {taskMeta !== undefined && taskMeta.attachmentCount > 0 ? (
-                  <span className="flex items-center gap-0.5" title="Attachments">
-                    <Icon name="Paperclip" className="size-3" />
-                    {taskMeta.attachmentCount}
-                  </span>
-                ) : null}
-                {taskMeta !== undefined && taskMeta.commentCount > 0 ? (
-                  <span className="flex items-center gap-0.5" title="Comments">
-                    <Icon name="MessageSquare" className="size-3" />
-                    {taskMeta.commentCount}
-                  </span>
-                ) : null}
                 {task.dueDate !== null ? (
-                  <span>{formatDueDate(task.dueDate)}</span>
+                  <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>
+                    <Icon name="Clock" className="size-3 shrink-0" />
+                    {formatDueDate(task.dueDate)}
+                  </span>
                 ) : null}
                 {showProject && project !== undefined ? (
                   <span
@@ -349,7 +390,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         labelOptions={labelOptions}
         taskCount={tasksQuery.data?.length}
       />
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto @container"
+      >
         {body}
       </div>
       <NewTaskDialog
