@@ -550,6 +550,7 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "thread.next": "thread.next";
         "pane.focus.previous": "pane.focus.previous";
         "pane.focus.next": "pane.focus.next";
+        "pane.maximize.toggle": "pane.maximize.toggle";
         "pane.close": "pane.close";
         "window.new": "window.new";
         "settings.open": "settings.open";
@@ -3101,8 +3102,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -3133,8 +3134,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -5307,13 +5308,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5357,13 +5358,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5419,13 +5420,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5467,13 +5468,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6294,6 +6295,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -6379,6 +6381,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -6464,6 +6467,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -8726,6 +8730,18 @@ declare const threadOpenResponseSchema: z$1.ZodObject<{
     delivered: z$1.ZodNumber;
 }, z$1.core.$strip>;
 type ThreadOpenResponse = z$1.infer<typeof threadOpenResponseSchema>;
+/** Presentation action for one thread pane in each connected app window. */
+declare const threadPaneActionSchema: z$1.ZodEnum<{
+    maximize: "maximize";
+    restore: "restore";
+    toggle: "toggle";
+}>;
+type ThreadPaneAction = z$1.infer<typeof threadPaneActionSchema>;
+/** Number of connected app clients that received the pane action. */
+declare const threadPaneActionResponseSchema: z$1.ZodObject<{
+    delivered: z$1.ZodNumber;
+}, z$1.core.$strip>;
+type ThreadPaneActionResponse = z$1.infer<typeof threadPaneActionResponseSchema>;
 declare const threadArchiveAllResponseSchema: z$1.ZodObject<{
     ok: z$1.ZodLiteral<true>;
     archivedThreadIds: z$1.ZodArray<z$1.ZodString>;
@@ -10066,6 +10082,7 @@ type ThreadEventWaitResult = ThreadEventRow | null;
 type ThreadTimelineResult = ThreadTimelineResponse;
 type ThreadArchiveResult = ThreadArchiveAllResponse;
 type ThreadOpenResult = ThreadOpenResponse;
+type ThreadPaneActionResult = ThreadPaneActionResponse;
 type ThreadDeleteResult = {
     ok: true;
 };
@@ -10174,6 +10191,10 @@ interface ThreadOpenArgs {
     split?: ThreadOpenSplit;
     file: ThreadOpenFile | null;
 }
+interface ThreadPaneActionArgs {
+    action: ThreadPaneAction;
+    threadId: string;
+}
 interface ThreadEventsListArgs {
     afterSeq?: string;
     limit?: string;
@@ -10280,6 +10301,7 @@ interface ThreadsArea {
     markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
     markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
     open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
+    paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
     output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
     pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
     promptHistory(args: ThreadPromptHistoryArgs): Promise<ThreadPromptHistoryResult>;
