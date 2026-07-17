@@ -6,6 +6,7 @@ import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceRow,
   ResourceRowDetailChevron,
+  ResourceState,
 } from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -16,19 +17,15 @@ import {
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal } from "./plugin-update-signals";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
-import {
-  ATTENTION_TINT_STYLE,
-  PluginLogo,
-  UPDATE_TINT_STYLE,
-} from "./plugin-ui";
+import { PluginLogo, UPDATE_TINT_STYLE } from "./plugin-ui";
 
 /**
  * Layer 1 (sketch v2 A): rows at rest are logo, name, description, switch —
- * no versions, no source strings, no menus. A row earns at most one pill,
- * only when it needs the user: the "Update x.y.z" pill IS the action (opens
- * the confirmation directly), "Needs attention" flags a rollback or load
- * failure. Newer-incompatible and pinned never badge. Hover reveals the
- * chevron; the row navigates to the plugin's detail page where depth lives.
+ * no versions, no source strings, no menus. A row earns at most one signal:
+ * the "Update x.y.z" pill IS the action (opens the confirmation directly),
+ * while passive health is specific inline status. Newer-incompatible and
+ * pinned never badge. Hover reveals the chevron; the row navigates to the
+ * plugin's detail page where depth lives.
  */
 export function InstalledPluginsTab({
   plugins,
@@ -122,14 +119,18 @@ export function InstalledPluginRow({
             >
               Update {signal.version}
             </button>
-          ) : signal?.kind === "attention" ? (
-            <span
-              className="pointer-events-none shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
-              style={ATTENTION_TINT_STYLE}
-              data-testid={`plugin-attention-pill-${plugin.id}`}
+          ) : signal?.kind === "status" ? (
+            <ResourceState
+              tone={signal.tone}
+              tooltip={signal.detail}
+              accessibleLabel={
+                signal.detail === null
+                  ? signal.label
+                  : `${signal.label}: ${signal.detail}`
+              }
             >
-              Needs attention
-            </span>
+              {signal.label}
+            </ResourceState>
           ) : undefined
         }
         persistentActions={

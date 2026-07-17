@@ -99,7 +99,7 @@ describe("UpdatePluginDialog", () => {
     ).toBe(true);
   });
 
-  it("renders a rolled-back outcome in place, pointing at Needs attention", async () => {
+  it("renders a rolled-back outcome in place, pointing at Update failed", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -127,7 +127,11 @@ describe("UpdatePluginDialog", () => {
 
     expect(await screen.findByText("Update failed — rolled back")).toBeTruthy();
     expect(screen.getByText("factory threw during activation")).toBeTruthy();
-    expect(screen.getByText(/Needs attention/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The plugin is marked “Update failed” in the installed list until an update succeeds.",
+      ),
+    ).toBeTruthy();
   });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {

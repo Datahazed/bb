@@ -24,14 +24,6 @@ export const UPDATE_TINT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
-/** Destructive "Needs attention" tint (sketch v2 `.pill.bad`). */
-export const ATTENTION_TINT_STYLE = {
-  background: "color-mix(in oklab, var(--destructive-text) 9%, var(--canvas))",
-  borderColor:
-    "color-mix(in oklab, var(--destructive-text) 28%, var(--canvas))",
-  color: "var(--destructive-text)",
-} as const;
-
 /** Success verdict banner tint (sketch v2 `.banner`). */
 export const SUCCESS_BANNER_STYLE = {
   background: "color-mix(in oklab, var(--success) 9%, var(--canvas))",

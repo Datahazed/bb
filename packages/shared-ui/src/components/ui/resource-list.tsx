@@ -35,15 +35,22 @@ export function ResourceState({
   tone,
   showLabel = true,
   showIndicator = true,
+  tooltip,
+  accessibleLabel,
   children,
 }: {
   tone: ResourceStatusTone;
   showLabel?: boolean;
   showIndicator?: boolean;
+  tooltip?: ReactNode;
+  accessibleLabel?: string;
   children: ReactNode;
 }) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+  const status = (
+    <span
+      aria-label={accessibleLabel}
+      className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+    >
       {showIndicator ? (
         <span
           aria-hidden
@@ -58,6 +65,15 @@ export function ResourceState({
       ) : null}
       {showLabel ? <span className="truncate">{children}</span> : null}
     </span>
+  );
+  if (tooltip === undefined || tooltip === null) return status;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{status}</TooltipTrigger>
+        <TooltipContent className="max-w-sm">{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

@@ -38,7 +38,7 @@ function plugin(
   };
 }
 
-describe("pluginRowSignal (the one-pill rule)", () => {
+describe("pluginRowSignal (the one-signal rule)", () => {
   it("badges an available compatible update", () => {
     expect(pluginRowSignal(plugin({ availableVersion: "1.7.0" }))).toEqual({
       kind: "update",
@@ -61,7 +61,7 @@ describe("pluginRowSignal (the one-pill rule)", () => {
     expect(pluginRowSignal(plugin())).toBeNull();
   });
 
-  it("shows Needs attention after a rolled-back update, outranking an update", () => {
+  it("names a rolled-back update and lets it outrank an available update", () => {
     expect(
       pluginRowSignal(
         plugin({
@@ -69,12 +69,51 @@ describe("pluginRowSignal (the one-pill rule)", () => {
           lastFailure: { version: "1.7.0", at: 1, detail: "boom" },
         }),
       ),
-    ).toEqual({ kind: "attention" });
+    ).toEqual({
+      kind: "status",
+      label: "Update failed",
+      tone: "error",
+      detail: "boom",
+    });
   });
 
-  it("shows Needs attention for a plugin that failed to load", () => {
-    expect(pluginRowSignal(plugin({}, { status: "error" }))).toEqual({
-      kind: "attention",
+  it.each([
+    ["error", "Failed to load", "error"],
+    ["incompatible", "Incompatible", "error"],
+    ["missing", "Missing", "error"],
+    ["needs-configuration", "Setup required", "warning"],
+    ["degraded", "Degraded", "warning"],
+  ] as const)(
+    "names the %s runtime status instead of collapsing it into attention",
+    (status, label, tone) => {
+      expect(
+        pluginRowSignal(
+          plugin(
+            {},
+            { status, statusDetail: `${status} detail from the server` },
+          ),
+        ),
+      ).toEqual({
+        kind: "status",
+        label,
+        tone,
+        detail: `${status} detail from the server`,
+      });
+    },
+  );
+
+  it("provides a useful rollback explanation when the server has no detail", () => {
+    expect(
+      pluginRowSignal(
+        plugin({
+          lastFailure: { version: "1.7.0", at: 1, detail: "" },
+        }),
+      ),
+    ).toEqual({
+      kind: "status",
+      label: "Update failed",
+      tone: "error",
+      detail: "Update to 1.7.0 failed and was rolled back.",
     });
   });
 });

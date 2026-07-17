@@ -65,6 +65,7 @@ const AUTOMATIONS_PLUGIN = {
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
+  pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
