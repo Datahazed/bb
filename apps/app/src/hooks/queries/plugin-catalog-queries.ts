@@ -183,6 +183,7 @@ export function usePluginCatalogStatus(options: { enabled: boolean }) {
 
 export interface PluginCatalogSearchEntry {
   entryId: string;
+  pluginId: string;
   displayName: string;
   description: string;
   icon: string | null;
@@ -198,6 +199,7 @@ function toPluginCatalogSearchEntry(
 ): PluginCatalogSearchEntry {
   return {
     entryId: data.entryId,
+    pluginId: data.pluginId,
     displayName: data.displayName,
     description: data.description,
     icon: data.icon,

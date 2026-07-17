@@ -712,7 +712,7 @@ describe("SkillDetailView registry states", () => {
       name: "Uninstall find-skills from bb",
     });
     expect(uninstallButton.className).toContain("group/install");
-    expect(uninstallButton.className).toContain("border-success/25");
+    expect(uninstallButton.className).toContain("border-success/40");
     expect(uninstallButton.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(uninstallButton.innerHTML).toContain("group-hover/install:opacity");
     fireEvent.click(uninstallButton);

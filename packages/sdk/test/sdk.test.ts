@@ -1063,6 +1063,7 @@ describe("@bb/sdk", () => {
           results: [
             {
               entryId: "notes",
+              pluginId: "notes",
               displayName: "Notes",
               description: "Notes",
               icon: null,
@@ -1109,7 +1110,9 @@ describe("@bb/sdk", () => {
     await expect(sdk.plugins.catalog.status()).resolves.toEqual(catalog);
     await expect(
       sdk.plugins.catalog.search({ query: "notes" }),
-    ).resolves.toMatchObject([{ entryId: "notes", compatible: true }]);
+    ).resolves.toMatchObject([
+      { entryId: "notes", pluginId: "notes", compatible: true },
+    ]);
 
     expect(queue.requests).toEqual([
       {

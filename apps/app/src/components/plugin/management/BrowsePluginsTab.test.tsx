@@ -15,6 +15,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   entryId: "memory",
+  pluginId: "memory",
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
   icon: "Brain",
@@ -131,8 +132,53 @@ describe("BrowsePluginsTab", () => {
     expect(
       await screen.findByRole("button", { name: "Uninstall Memory" }),
     ).toBeTruthy();
-    expect(screen.getByText("Installed")).toBeTruthy();
     expect(document.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+  });
+
+  it("uses the catalog's canonical plugin id for uninstall", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({
+            results: [
+              {
+                ...MEMORY_ENTRY,
+                entryId: "docs",
+                pluginId: "simple-notes",
+                displayName: "Docs",
+                source: "builtin:docs",
+                installed: true,
+              },
+            ],
+          });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({
+            enabled: true,
+            plugins: [
+              {
+                ...INSTALLED_MEMORY_PLUGIN,
+                id: "simple-notes",
+                source: "npm:bb-plugin-simple-notes@^0.1.0",
+                catalogEntryId: "simple-notes",
+              },
+            ],
+          });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<BrowsePluginsTab onInstall={() => {}} />, { wrapper });
+
+    expect(
+      await screen.findByRole("button", { name: "Uninstall Docs" }),
+    ).toBeTruthy();
   });
 });

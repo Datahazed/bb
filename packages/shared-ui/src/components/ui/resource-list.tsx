@@ -1091,7 +1091,7 @@ export function ResourceInstalledControl({
     return (
       <span
         aria-label={accessibleLabel}
-        className="inline-flex h-7 min-w-20 shrink-0 items-center justify-center rounded-md border border-success/25 bg-success/5 px-2 text-xs font-medium text-[color:color-mix(in_oklch,var(--success)_58%,var(--ink))]"
+        className="inline-flex h-7 min-w-20 shrink-0 items-center justify-center rounded-md border border-success/40 bg-transparent px-2 text-xs font-medium text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
       >
         {installedContent}
       </span>
@@ -1103,7 +1103,7 @@ export function ResourceInstalledControl({
       type="button"
       variant="outline"
       size="sm"
-      className="group/install h-7 min-w-20 shrink-0 justify-center border-success/25 bg-success/5 px-2 text-xs text-[color:color-mix(in_oklch,var(--success)_58%,var(--ink))] hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/30 focus-visible:bg-destructive/10 focus-visible:text-destructive-text"
+      className="group/install h-7 min-w-20 shrink-0 justify-center border-success/40 bg-transparent px-2 text-xs text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/40 focus-visible:bg-destructive/10 focus-visible:text-destructive-text"
       disabled={pending}
       aria-label={accessibleLabel}
       onClick={onAction}

@@ -28,7 +28,6 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import {
   removePlugin,
-  usePluginList,
 } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PlaceholderBadge } from "./plugin-ui";
@@ -43,16 +42,8 @@ export function BrowsePluginsTab({
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const statusQuery = usePluginCatalogStatus({ enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  const pluginListQuery = usePluginList({ enabled: true });
   const status = statusQuery.data;
   const entries = searchQuery.data ?? [];
-  const installedPluginIdByEntry = new Map(
-    (pluginListQuery.data?.plugins ?? []).flatMap((plugin) =>
-      plugin.catalogEntryId === null
-        ? []
-        : [[plugin.catalogEntryId, plugin.id] as const],
-    ),
-  );
   const pagination = useResourcePagination(entries, {
     pageSize: RESOURCE_GRID_PAGE_SIZE,
     resetKey: debouncedQuery.toLowerCase(),
@@ -132,7 +123,7 @@ export function BrowsePluginsTab({
                     key={entry.entryId}
                     entry={entry}
                     installedPluginId={
-                      installedPluginIdByEntry.get(entry.entryId) ?? null
+                      entry.installed ? entry.pluginId : null
                     }
                     onInstall={onInstall}
                   />
