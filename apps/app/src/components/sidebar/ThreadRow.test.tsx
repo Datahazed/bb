@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -33,7 +34,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -76,11 +77,17 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 };
 
 function ThreadRowTestHarness({
+  accessibleTitle,
+  displayTitle,
+  hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread,
 }: {
+  accessibleTitle?: string;
+  displayTitle?: string;
+  hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
   shortcutKey?: string;
@@ -102,8 +109,10 @@ function ThreadRowTestHarness({
           projectId={thread.projectId}
           thread={thread}
           isActive={isActive}
-          hasComposerDraft={false}
+          hasComposerDraft={hasComposerDraft}
           options={options}
+          displayTitle={displayTitle}
+          accessibleTitle={accessibleTitle}
         />
       </SidebarThreadShortcutKeysContext.Provider>
     </MemoryRouter>
@@ -111,11 +120,13 @@ function ThreadRowTestHarness({
 }
 
 function renderThreadRow({
+  hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread = createThread(),
 }: {
+  hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
   shortcutKey?: string;
@@ -123,6 +134,7 @@ function renderThreadRow({
 }) {
   const result = render(
     <ThreadRowTestHarness
+      hasComposerDraft={hasComposerDraft}
       isActive={isActive}
       options={options}
       shortcutKey={shortcutKey}
@@ -134,6 +146,7 @@ function renderThreadRow({
     rerenderThreadRow(nextThread: ThreadListEntry) {
       result.rerender(
         <ThreadRowTestHarness
+          hasComposerDraft={hasComposerDraft}
           isActive={isActive}
           options={options}
           shortcutKey={shortcutKey}
@@ -147,6 +160,254 @@ function renderThreadRow({
 afterEach(cleanup);
 
 describe("ThreadRow", () => {
+  it("puts the draft icon in the trailing status slot", () => {
+    const { container } = renderThreadRow({ hasComposerDraft: true });
+
+    const draftIcon = container.querySelector('[data-icon="Edit"]');
+    expect(draftIcon).not.toBeNull();
+    expect(
+      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
+
+  it("replaces the active working spinner with a shimmering draft icon", () => {
+    renderThreadRow({
+      hasComposerDraft: true,
+      isActive: true,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("keeps the draft icon shimmering when a working thread is not selected", () => {
+    renderThreadRow({
+      hasComposerDraft: true,
+      isActive: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+  });
+
+  it("replaces a running workflow with the same shimmering draft icon", () => {
+    renderThreadRow({
+      hasComposerDraft: true,
+      isActive: false,
+      thread: createThread({
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    });
+
+    const draftIcon = screen.getByLabelText(
+      "Thread working with unsubmitted draft",
+    );
+    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(draftIcon.classList)).toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+  });
+
+  it("renders serialized title mentions as non-interactive pills", () => {
+    const mentionedThread = createThread({
+      id: "thr_mentioned",
+      projectId: "proj_mentioned",
+      title: "Mention target",
+      titleFallback: "Mention target",
+    });
+
+    render(
+      <SidebarThreadTitleMentionResourcesProvider
+        sectionNamesById={
+          new Map([
+            ["sec_mentioned", "Mention section"],
+            ["sec_legacy", "Legacy section"],
+          ])
+        }
+        projectNamesById={new Map([["proj_mentioned", "Mention project"]])}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <ThreadRowTestHarness
+          thread={createThread({
+            title:
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
+            titleFallback:
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
+          })}
+        />
+      </SidebarThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(screen.getByText("Mention target").closest("a")).toBeNull();
+    expect(screen.getByText("Mention project").closest("a")).toBeNull();
+    expect(screen.getByText("Mention section").closest("a")).toBeNull();
+    expect(screen.getByText("Legacy section").closest("a")).toBeNull();
+    expect(screen.getByTitle("apps/app/src/ThreadRow.tsx")).not.toBeNull();
+    expect(screen.queryByText("@thread:thr_mentioned")).toBeNull();
+    const resolvedTitle =
+      "Compare Mention target in Mention project, Mention section, legacy Legacy section, and ThreadRow.tsx";
+    expect(
+      screen.getByRole("link", { name: `Open ${resolvedTitle}` }),
+    ).not.toBeNull();
+    expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
+  });
+
+  it("keeps an explicit accessible title while resolving its mentions", () => {
+    const mentionedThread = createThread({
+      id: "thr_visible",
+      title: "Visible target",
+      titleFallback: "Visible target",
+    });
+    const onToggleCollapsed = vi.fn();
+
+    render(
+      <SidebarThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map([["sec_accessible", "Accessible section"]])}
+        projectNamesById={new Map()}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <ThreadRowTestHarness
+          accessibleTitle="Full path in @section:sec_accessible"
+          displayTitle="Leaf @thread:thr_visible"
+          thread={createThread({ title: "Fallback raw title" })}
+          options={{
+            kind: "parent",
+            depth: 1,
+            isCompact: false,
+            isCollapsed: false,
+            childCount: 1,
+            childActivity: {
+              pending: false,
+              working: false,
+              runtimeWorking: false,
+              workflow: false,
+              backgroundAgent: false,
+              backgroundCommand: false,
+              planMode: false,
+              goal: false,
+              unread: false,
+              unreadError: false,
+            },
+            onToggleCollapsed,
+          }}
+        />
+      </SidebarThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(screen.getByText("Visible target")).not.toBeNull();
+    expect(
+      screen.getByRole("link", {
+        name: "Open Full path in Accessible section",
+      }),
+    ).not.toBeNull();
+    expect(screen.getByTitle("Full path in Accessible section")).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Collapse Full path in Accessible section threads",
+      }),
+    ).not.toBeNull();
+  });
+
+  it("renders a complete Unicode path mention instead of an ASCII prefix", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Review @src/café.ts",
+        titleFallback: "Review @src/café.ts",
+      }),
+    });
+
+    expect(screen.getByTitle("src/café.ts")).not.toBeNull();
+    expect(
+      container.querySelectorAll('[data-prompt-mention="true"]'),
+    ).toHaveLength(1);
+    expect(screen.queryByText("é.ts")).toBeNull();
+  });
+
+  it.each([
+    "Review @docs/My File.md",
+    "Review @docs/My Project File.md",
+    "Review @docs/My Cool Project/",
+    "Review @thread-storage:Release Notes/todo.md",
+    "Ask @Release Notes",
+    "Ask @owner/repo",
+  ])("leaves an ambiguous flattened mention literal: %s", (title) => {
+    const { container } = renderThreadRow({
+      thread: createThread({ title, titleFallback: title }),
+    });
+
+    expect(screen.getByText(title)).not.toBeNull();
+    expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
+  });
+
+  it("renders an entity mention before terminal punctuation", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Ask @thread:thr_worker. Next",
+        titleFallback: "Ask @thread:thr_worker. Next",
+      }),
+    });
+
+    expect(screen.getByText("thr_worker")).not.toBeNull();
+    expect(
+      container.querySelectorAll('[data-prompt-mention="true"]'),
+    ).toHaveLength(1);
+    expect(screen.queryByText("@thread:thr_worker")).toBeNull();
+  });
+
+  it("keeps sentence punctuation outside a multi-segment path mention", () => {
+    const { container } = renderThreadRow({
+      thread: createThread({
+        title: "Review @docs/foo.test.ts.",
+        titleFallback: "Review @docs/foo.test.ts.",
+      }),
+    });
+
+    expect(screen.getByTitle("docs/foo.test.ts")).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-prompt-mention="true"]')
+        ?.getAttribute("data-prompt-mention-serialized-text"),
+    ).toBe("@docs/foo.test.ts");
+    expect(container.textContent).toBe("Review foo.test.ts.");
+  });
+
   it("uses the circle-question glyph when the thread needs user input", () => {
     renderThreadRow({
       thread: createThread({ hasPendingInteraction: true }),
@@ -197,7 +458,9 @@ describe("ThreadRow", () => {
       thread: createThread({ hasPendingInteraction: true }),
     });
 
-    expect(screen.getByText("⌘3")).not.toBeNull();
+    const shortcut = screen.getByText("⌘3");
+    expect(shortcut.className).toContain("p-1.5");
+    expect(shortcut.className).toContain("opacity-60");
     expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
     expect(
       screen
@@ -208,6 +471,7 @@ describe("ThreadRow", () => {
 
   it("shows an unread error before pending or active work", () => {
     renderThreadRow({
+      hasComposerDraft: true,
       thread: createThread({
         status: "error",
         hasPendingInteraction: true,
@@ -233,6 +497,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Background agent running")).toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
+    expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
   it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {

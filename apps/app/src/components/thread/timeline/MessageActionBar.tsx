@@ -165,12 +165,11 @@ export function findMessageActionTooltipCollisionBoundary(
 }
 
 /**
- * Hover-revealed footer of per-message actions (copy, and — when wired —
- * fork / side chat). Renders an action only when it is meaningful: copy when
- * there is text to copy, fork/side chat only when their handlers are supplied.
- * S3/S4 supply `onFork` / `onSideChat`; until then the agent footer shows copy
- * alone. `disabled` greys the fork/side-chat buttons (e.g. at the depth cap)
- * while leaving copy usable.
+ * Hover-revealed footer of per-message actions. Renders an action only when it
+ * is meaningful: copy when there is text, add-to-chat when a composer owns the
+ * draft, and fork/side-chat when their handlers are supplied. `disabled` greys
+ * the fork/side-chat buttons (e.g. at the depth cap) while leaving copy and
+ * add-to-chat usable.
  */
 export function MessageActionBar({
   messageText,
@@ -235,13 +234,12 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onFork
+    ...(onSendToMain
       ? [
           {
-            icon: "Fork" as const,
-            label: "Fork into new thread",
-            onSelect: onFork,
-            disabled,
+            icon: "ArrowTurnBackward" as const,
+            label: "Send to main thread",
+            onSelect: onSendToMain,
           },
         ]
       : []),
@@ -255,12 +253,13 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onSendToMain
+    ...(onFork
       ? [
           {
-            icon: "ArrowTurnBackward" as const,
-            label: "Send to main thread",
-            onSelect: onSendToMain,
+            icon: "Fork" as const,
+            label: "Fork into new thread",
+            onSelect: onFork,
+            disabled,
           },
         ]
       : []),
@@ -321,7 +320,7 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        {onFork ? (
+        {onSendToMain ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -331,18 +330,17 @@ export function MessageActionBar({
                   HOVER_REVEAL_CLASS,
                   mobileDirectActionClass,
                 )}
-                onClick={onFork}
-                disabled={disabled}
-                aria-label="Fork into new thread"
+                onClick={onSendToMain}
+                aria-label="Send to main thread"
               >
-                <Icon name="Fork" className="size-3" />
+                <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side={ACTION_TOOLTIP_SIDE}
               collisionBoundary={collisionBoundary}
             >
-              Fork into new thread
+              Send to main thread
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -371,7 +369,7 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        {onSendToMain ? (
+        {onFork ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -381,17 +379,18 @@ export function MessageActionBar({
                   HOVER_REVEAL_CLASS,
                   mobileDirectActionClass,
                 )}
-                onClick={onSendToMain}
-                aria-label="Send to main thread"
+                onClick={onFork}
+                disabled={disabled}
+                aria-label="Fork into new thread"
               >
-                <Icon name="ArrowTurnBackward" className="size-3" />
+                <Icon name="Fork" className="size-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side={ACTION_TOOLTIP_SIDE}
               collisionBoundary={collisionBoundary}
             >
-              Send to main thread
+              Fork into new thread
             </TooltipContent>
           </Tooltip>
         ) : null}

@@ -95,6 +95,7 @@ type PluginMentionSectionKind = `plugin:${string}`;
 type MentionSectionKind =
   | "threads"
   | "projects"
+  | "sections"
   | PathMentionSectionKind
   | PluginMentionSectionKind;
 type PathMentionSuggestion = Extract<PromptMentionSuggestion, { kind: "path" }>;
@@ -132,6 +133,9 @@ function getMentionSectionKind(
   if (item.kind === "project") {
     return "projects";
   }
+  if (item.kind === "section") {
+    return "sections";
+  }
   if (item.kind === "plugin") {
     return getPluginSectionKind(item);
   }
@@ -154,6 +158,9 @@ function getMentionSectionLabel(
   if (kind === "projects") {
     return "Projects";
   }
+  if (kind === "sections") {
+    return "Sections";
+  }
   if (kind === "workspace" || kind === "thread-storage") {
     return getPathSectionLabel(kind);
   }
@@ -169,7 +176,7 @@ function getPathSectionLabel(kind: PathMentionSectionKind): string {
   return "Workspace";
 }
 
-function getMentionIconName(item: PromptMentionSuggestion): IconName {
+function getMentionIconName(item: PromptMentionSuggestion): IconName | null {
   return promptMentionIconName(promptMentionResourceFromSuggestion(item));
 }
 
@@ -181,6 +188,10 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
 
   if (item.kind === "project") {
     return `Project: ${item.name}`;
+  }
+
+  if (item.kind === "section") {
+    return `Section: ${item.name}`;
   }
 
   if (item.kind === "plugin") {
@@ -255,12 +266,12 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
       />
     );
   }
+  const iconName = getMentionIconName(item);
+  if (iconName === null) {
+    return null;
+  }
   return (
-    <Icon
-      name={getMentionIconName(item)}
-      className={ROW_ICON_CLASS}
-      aria-hidden
-    />
+    <Icon name={iconName} className={ROW_ICON_CLASS} aria-hidden />
   );
 }
 
@@ -387,6 +398,8 @@ function MentionResults({
                 secondaryContextKind =
                   item.projectName === undefined ? null : "project";
               } else if (item.kind === "project") {
+                primary = item.name;
+              } else if (item.kind === "section") {
                 primary = item.name;
               } else if (item.kind === "plugin") {
                 primary = item.title;

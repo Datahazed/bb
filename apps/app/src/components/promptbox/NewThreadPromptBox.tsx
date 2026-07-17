@@ -190,7 +190,7 @@ function getBranchPickerMenuKind({
 function getNewThreadPromptPlaceholder(isProjectless: boolean): string {
   return isProjectless
     ? "Ask anything."
-    : "Ask anything. @ to mention files or folders";
+    : "Ask anything. @ to mention files, folders, or sections";
 }
 
 /**
@@ -565,10 +565,7 @@ function ConnectedThreadModeBranch({
       : primaryHost;
   const isLocalHost = selectedHost ? isLocalDaemonHost(selectedHost.id) : false;
   const machines = useMemo<EnvironmentPickerMachines | null>(
-    () =>
-      hosts
-        ? { hosts, localDaemonHostId, primaryHostId }
-        : null,
+    () => (hosts ? { hosts, localDaemonHostId, primaryHostId } : null),
     [hosts, localDaemonHostId, primaryHostId],
   );
 

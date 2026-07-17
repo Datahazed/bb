@@ -60,7 +60,7 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 export interface ThreadListArgs {
   archived?: boolean;
   excludeSideChats?: boolean;
-  folderId?: string;
+  sectionId?: string;
   hasParent?: boolean;
   limit?: number;
   offset?: number;
@@ -69,7 +69,7 @@ export interface ThreadListArgs {
   projectId?: string;
   signal?: AbortSignal;
   sourceThreadId?: string;
-  unfiled?: boolean;
+  unsectioned?: boolean;
 }
 
 export interface ThreadSearchArgs extends ThreadSearchQuery {
@@ -432,14 +432,14 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
     ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
-    ...(args?.folderId ? { folderId: args.folderId } : {}),
+    ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),
-    ...(args?.unfiled === undefined
+    ...(args?.unsectioned === undefined
       ? {}
-      : { unfiled: args.unfiled ? "true" : "false" }),
+      : { unsectioned: args.unsectioned ? "true" : "false" }),
     ...(args?.excludeSideChats === undefined
       ? {}
       : { excludeSideChats: args.excludeSideChats ? "true" : "false" }),
@@ -454,7 +454,7 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     title: args.title,
-    folderId: args.folderId,
+    sectionId: args.sectionId,
     parentThreadId: args.parentThreadId,
     model: args.model,
     reasoningLevel: args.reasoningLevel,

@@ -79,14 +79,14 @@ message agents, or inspect projects, providers, and environments.
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--folder <id>` to file the new thread immediately. These
+  attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention or native parent notifications. Hidden threads otherwise retain
-  ordinary list, search, prompt-history, folder, lifecycle, parent-operation,
+  ordinary list, search, prompt-history, section, lifecycle, parent-operation,
   and direct-open behavior. Visible is the default.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
@@ -216,7 +216,7 @@ or artifacts, validation performed, and blockers.
 
 ## Inspecting Results
 
-- Use `bb thread search`, `history`, `read|unread`, and `folder` for the same
+- Use `bb thread search`, `history`, `read|unread`, and `section` for the same
   organization and recall features as the sidebar. `bb thread queue` exposes
   queued-message list/create/update/send/reorder/group/delete operations. Queue
   updates use the listed message version to prevent overwriting a concurrent
@@ -537,7 +537,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
     entry plus a typecheck-only `tsconfig.json`; scaffold sets
-    `engines.bbPluginSdk` to `^0.3.1`); `bb plugin build [path]` —
+    `engines.bbPluginSdk` to `^0.4.0`); `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +

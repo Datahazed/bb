@@ -6,9 +6,12 @@ import {
 } from "./ProjectList";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
+  type ProjectThreadNode,
   type ProjectThreadItem,
   type ThreadComparator,
 } from "./projectThreadGroups";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import type { ThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
 
 function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return {
@@ -18,7 +21,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -54,12 +57,62 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   };
 }
 
-// The item comparator only reads node.thread for thread-kind items.
-function threadItem(entry: ThreadListEntry): ProjectThreadItem {
+function threadNode(entry: ThreadListEntry): ProjectThreadNode {
   return {
-    kind: "thread",
-    node: { thread: entry },
-  } as unknown as ProjectThreadItem;
+    thread: entry,
+    children: [],
+    depth: 0,
+    stats: {
+      childCount: 0,
+      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+    },
+  };
+}
+
+function threadItem(entry: ThreadListEntry): ProjectThreadItem {
+  return { kind: "thread", node: threadNode(entry) };
+}
+
+function environmentItem(
+  representative: ThreadListEntry,
+  sibling: ThreadListEntry,
+): ProjectThreadItem {
+  return {
+    kind: "environment",
+    group: {
+      environmentId: representative.environmentId ?? "env_test",
+      nodes: [threadNode(representative), threadNode(sibling)],
+      stats: {
+        childCount: 0,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+      },
+    },
+  };
+}
+
+function sectionItem(name: string): ProjectThreadItem {
+  return {
+    kind: "section",
+    group: {
+      id: "sec_literal",
+      key: "section:sec_literal",
+      name,
+      items: [],
+      threadCount: 0,
+      activity: NO_COLLAPSED_CHILD_ACTIVITY,
+    },
+  };
+}
+
+function itemRepresentativeId(item: ProjectThreadItem): string {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread.id;
+    case "environment":
+      return item.group.nodes[0].thread.id;
+    case "section":
+      return item.group.id;
+  }
 }
 
 const apple = thread({
@@ -104,7 +157,132 @@ describe("getSidebarThreadComparator", () => {
     ).toEqual(["thr_a", "thr_b", "thr_c"]);
   });
 
-  // Regression: leaf threads and mixed folder/thread items must both sort A→Z.
+  it("alphabetizes resolved section, project, and thread mention labels", () => {
+    const alphaTarget = thread({
+      id: "thr_target_z",
+      title: "Alpha target",
+      titleFallback: "Alpha target",
+    });
+    const zuluTarget = thread({
+      id: "thr_target_a",
+      title: "Zulu target",
+      titleFallback: "Zulu target",
+    });
+    const resources: ThreadTitleMentionResources = {
+      sectionNamesById: new Map([
+        ["sec_z", "Alpha section"],
+        ["sec_a", "Zulu section"],
+      ]),
+      projectNamesById: new Map([
+        ["proj_z", "Alpha project"],
+        ["proj_a", "Zulu project"],
+      ]),
+      threadById: new Map([
+        [alphaTarget.id, alphaTarget],
+        [zuluTarget.id, zuluTarget],
+      ]),
+    };
+    const resolvedFirst = thread({
+      id: "thr_sort_z",
+      title: "@section:sec_z @project:proj_z @thread:thr_target_z",
+    });
+    const resolvedLast = thread({
+      id: "thr_sort_a",
+      title: "@section:sec_a @project:proj_a @thread:thr_target_a",
+    });
+
+    expect(
+      "@section:sec_z @project:proj_z @thread:thr_target_z".localeCompare(
+        "@section:sec_a @project:proj_a @thread:thr_target_a",
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      order(getSidebarThreadComparator("alpha", resources), [
+        resolvedLast,
+        resolvedFirst,
+      ]),
+    ).toEqual(["thr_sort_z", "thr_sort_a"]);
+  });
+
+  it("uses resolved representative labels for environment items", () => {
+    const zuluTarget = thread({
+      id: "thr_target",
+      title: "Zulu environment",
+      titleFallback: "Zulu environment",
+    });
+    const environmentRepresentative = thread({
+      id: "thr_env_a",
+      environmentId: "env_a",
+      title: "@thread:thr_target",
+    });
+    const plainThread = thread({ id: "thr_plain", title: "Apple thread" });
+    const comparator = getSidebarThreadComparator("alpha", {
+      sectionNamesById: new Map(),
+      projectNamesById: new Map(),
+      threadById: new Map([[zuluTarget.id, zuluTarget]]),
+    });
+
+    expect(comparator.compareItems).toBeDefined();
+    expect(
+      [
+        environmentItem(
+          environmentRepresentative,
+          thread({ id: "thr_env_b", environmentId: "env_a" }),
+        ),
+        threadItem(plainThread),
+      ]
+        .sort(comparator.compareItems)
+        .map(itemRepresentativeId),
+    ).toEqual(["thr_plain", "thr_env_a"]);
+  });
+
+  it("sorts mention-shaped section names as literal text", () => {
+    const target = thread({
+      id: "thr_target",
+      title: "Zulu resolved label",
+      titleFallback: "Zulu resolved label",
+    });
+    const comparator = getSidebarThreadComparator("alpha", {
+      sectionNamesById: new Map(),
+      projectNamesById: new Map(),
+      threadById: new Map([[target.id, target]]),
+    });
+
+    expect(
+      [
+        threadItem(thread({ id: "thr_plain", title: "Apple thread" })),
+        sectionItem("@thread:thr_target"),
+      ]
+        .sort(comparator.compareItems)
+        .map(itemRepresentativeId),
+    ).toEqual(["sec_literal", "thr_plain"]);
+  });
+
+  it("breaks equal resolved titles by thread id", () => {
+    const sameTarget = thread({
+      id: "thr_target",
+      title: "Same label",
+      titleFallback: "Same label",
+    });
+    const comparator = getSidebarThreadComparator("alpha", {
+      sectionNamesById: new Map(),
+      projectNamesById: new Map(),
+      threadById: new Map([[sameTarget.id, sameTarget]]),
+    });
+    const laterId = thread({ id: "thr_z", title: "@thread:thr_target" });
+    const earlierId = thread({ id: "thr_a", title: "@thread:thr_target" });
+
+    expect(order(comparator, [laterId, earlierId])).toEqual(["thr_a", "thr_z"]);
+    expect(
+      [threadItem(laterId), threadItem(earlierId)]
+        .sort(comparator.compareItems)
+        .map((item) =>
+          item.kind === "thread" ? item.node.thread.id : "unexpected",
+        ),
+    ).toEqual(["thr_a", "thr_z"]);
+  });
+
+  // Regression: leaf threads and mixed section/thread items must both sort A→Z.
   it("alphabetical leaf and item comparators agree", () => {
     const comparator = getSidebarThreadComparator("alpha");
     expect(comparator.compareItems).toBeDefined();
@@ -137,25 +315,28 @@ describe("getSelectedThreadSidebarExpansion", () => {
     ).toEqual({ projectId: "proj_app" });
   });
 
-  it("expands the threads section for unfiled project threads in folders mode", () => {
+  it("expands the threads section for unsectioned project threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
-        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
   });
 
-  it("expands the containing folder for foldered threads in folders mode", () => {
+  it("expands the containing section for sectioned threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
-        selectedThread: thread({ folderId: "fld_work", projectId: "proj_app" }),
+        selectedThread: thread({
+          sectionId: "sec_work",
+          projectId: "proj_app",
+        }),
       }),
     ).toEqual({
-      folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work`,
+      sectionKey: `${CHRONOLOGICAL_CONTAINER_ID}::sec_work`,
     });
   });
 
@@ -184,7 +365,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: true,
-        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "pinned" });
   });

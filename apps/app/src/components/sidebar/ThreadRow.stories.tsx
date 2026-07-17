@@ -445,7 +445,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="draft"
-        hint="unsubmitted follow-up draft — pencil sits beside the title while the trailing slot stays available"
+        hint="unsubmitted follow-up draft — pencil sits flush right in the reserved status slot"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -461,8 +461,52 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="active working + draft"
+        hint="the selected thread has prompt content, so its shimmering pencil replaces the working spinner"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              title: "Editing while the agent works",
+              titleFallback: "Editing while the agent works",
+              status: "active",
+              runtime: {
+                displayStatus: "active",
+                hostReconnectGraceExpiresAt: null,
+              },
+            })}
+            hasComposerDraft
+            isActive
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="inactive working + draft"
+        hint="the draft pencil keeps the same working shimmer even when the thread is not selected"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              title: "Background thread with a saved draft",
+              titleFallback: "Background thread with a saved draft",
+              status: "active",
+              runtime: {
+                displayStatus: "active",
+                hostReconnectGraceExpiresAt: null,
+              },
+            })}
+            hasComposerDraft
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="draft + unread"
-        hint="draft indicator remains visible next to title; unread status still owns the status slot"
+        hint="the persistent draft pencil owns the trailing slot instead of the unread dot"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -498,7 +542,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="long title + draft"
-        hint="title truncates before the draft icon, so the indicator does not get pushed offscreen"
+        hint="title truncates before the right-aligned draft icon"
       >
         <SidebarStage>
           <StoryThreadRow

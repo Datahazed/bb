@@ -33,7 +33,7 @@ function makeThreadWithRuntime(
     providerId: "codex",
     title: null,
     titleFallback: null,
-    folderId: null,
+    sectionId: null,
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,
@@ -92,7 +92,7 @@ function makeSidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
   return {
-    folders: [],
+    sections: [],
     projects: [
       {
         id: "project-1",
@@ -196,16 +196,16 @@ describe("thread state mutations", () => {
     });
   });
 
-  it("optimistically moves a thread between folders while the update request is pending", async () => {
+  it("optimistically moves a thread between sections while the update request is pending", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const threadId = "thread-1";
     const thread = makeThreadWithRuntime({
       id: threadId,
-      folderId: "fld_work",
+      sectionId: "sec_work",
     });
     const listEntry = makeThreadListEntry({
       id: threadId,
-      folderId: "fld_work",
+      sectionId: "sec_work",
     });
     const threadListKey = threadListQueryKey({
       archived: false,
@@ -229,33 +229,34 @@ describe("thread state mutations", () => {
     const { result } = renderHook(() => useUpdateThread(), { wrapper });
 
     act(() => {
-      result.current.mutate({ id: threadId, folderId: "fld_personal" });
+      result.current.mutate({ id: threadId, sectionId: "sec_personal" });
     });
 
     await waitFor(() => {
       expect(
         queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-          ?.folderId,
-      ).toBe("fld_personal");
+          ?.sectionId,
+      ).toBe("sec_personal");
     });
     expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.folderId,
-    ).toBe("fld_personal");
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
+        ?.sectionId,
+    ).toBe("sec_personal");
     expect(
       queryClient.getQueryData<SidebarBootstrapResponse>(
         sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.folderId,
-    ).toBe("fld_personal");
+      )?.projects[0]?.threads[0]?.sectionId,
+    ).toBe("sec_personal");
     expect(sdk.threads.update).toHaveBeenCalledWith({
       threadId,
-      folderId: "fld_personal",
+      sectionId: "sec_personal",
     });
 
     act(() => {
       resolveUpdate(
         makeThreadResponse({
           id: threadId,
-          folderId: "fld_personal",
+          sectionId: "sec_personal",
           updatedAt: 2,
         }),
       );
@@ -266,18 +267,18 @@ describe("thread state mutations", () => {
     });
   });
 
-  it("serializes unpin before folder move while optimistically applying both fields", async () => {
+  it("serializes unpin before section move while optimistically applying both fields", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const threadId = "thread-1";
-    const destinationFolderId = "fld_personal";
+    const destinationSectionId = "sec_personal";
     const thread = makeThreadWithRuntime({
       id: threadId,
-      folderId: null,
+      sectionId: null,
       pinnedAt: 10,
     });
     const listEntry = makeThreadListEntry({
       id: threadId,
-      folderId: null,
+      sectionId: null,
       pinnedAt: 10,
       pinSortKey: "a0",
     });
@@ -310,14 +311,14 @@ describe("thread state mutations", () => {
     const { result } = renderHook(() => useUnpinAndMoveThread(), { wrapper });
 
     act(() => {
-      result.current.mutate({ id: threadId, folderId: destinationFolderId });
+      result.current.mutate({ id: threadId, sectionId: destinationSectionId });
     });
 
     await waitFor(() => {
       expect(
         queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
       ).toMatchObject({
-        folderId: destinationFolderId,
+        sectionId: destinationSectionId,
         pinnedAt: null,
         pinSortKey: null,
       });
@@ -325,7 +326,7 @@ describe("thread state mutations", () => {
     expect(
       queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)),
     ).toMatchObject({
-      folderId: destinationFolderId,
+      sectionId: destinationSectionId,
       pinnedAt: null,
     });
     expect(sdk.threads.unpin).toHaveBeenCalledWith({ threadId });
@@ -335,7 +336,7 @@ describe("thread state mutations", () => {
       resolveUnpin(
         makeThreadResponse({
           id: threadId,
-          folderId: null,
+          sectionId: null,
           pinnedAt: null,
           updatedAt: 2,
         }),
@@ -345,7 +346,7 @@ describe("thread state mutations", () => {
     await waitFor(() => {
       expect(sdk.threads.update).toHaveBeenCalledWith({
         threadId,
-        folderId: destinationFolderId,
+        sectionId: destinationSectionId,
       });
     });
 
@@ -353,7 +354,7 @@ describe("thread state mutations", () => {
       resolveUpdate(
         makeThreadResponse({
           id: threadId,
-          folderId: destinationFolderId,
+          sectionId: destinationSectionId,
           pinnedAt: null,
           updatedAt: 3,
         }),
@@ -366,7 +367,7 @@ describe("thread state mutations", () => {
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
     ).toMatchObject({
-      folderId: destinationFolderId,
+      sectionId: destinationSectionId,
       pinnedAt: null,
       pinSortKey: null,
     });

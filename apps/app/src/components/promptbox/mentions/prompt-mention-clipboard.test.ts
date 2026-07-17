@@ -18,6 +18,16 @@ describe("serializedTextForPromptMentionResource", () => {
     ).toBe("@project:proj_abc");
   });
 
+  it("serializes a section mention as an @section token", () => {
+    expect(
+      serializedTextForPromptMentionResource({
+        kind: "section",
+        sectionId: "sec_abc",
+        label: "Release work",
+      }),
+    ).toBe("@section:sec_abc");
+  });
+
   it("serializes a thread mention as an @thread token", () => {
     expect(
       serializedTextForPromptMentionResource({

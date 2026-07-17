@@ -60,10 +60,13 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
+import { SidebarThreadTitle } from "./SidebarThreadTitleMentions";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
+import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -114,12 +117,20 @@ interface ThreadRowContainerArgs {
   style: CSSProperties;
 }
 
-function ThreadDraftIndicator() {
+function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
   return (
     <Icon
       name="Edit"
-      className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
-      aria-hidden="true"
+      className={cn(
+        "pointer-events-none shrink-0",
+        COARSE_POINTER_ICON_SIZE_CLASS,
+        isWorking
+          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
+          : "text-muted-foreground",
+      )}
+      {...(isWorking
+        ? { "aria-label": "Thread working with unsubmitted draft" }
+        : { "aria-hidden": true })}
     />
   );
 }
@@ -139,7 +150,7 @@ function renderThreadRowContainer({
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  // Never show a grab cursor on thread rows. Folder DnD still works after the
+  // Never show a grab cursor on thread rows. Section DnD still works after the
   // activation distance; the link still selects on click.
   if (stickyLevel !== undefined) {
     return (
@@ -366,9 +377,48 @@ function getThreadUnreadBadgeLabel({
   return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
 }
 
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
+  hasComposerDraft: boolean;
+};
+
+function isThreadWorkingGlyphVisible({
+  hasPendingInteraction,
+  isBackgroundAgentActive,
+  isBackgroundCommandActive,
+  isForegroundAgentWorking,
+  isGoalActive,
+  isPlanModeActive,
+  isBusy,
+  isWorkflowActive,
+  showUnreadBadge,
+  unreadBadgeTone,
+}: ThreadStatusGlyphProps): boolean {
+  if (
+    (showUnreadBadge && unreadBadgeTone === "error") ||
+    hasPendingInteraction
+  ) {
+    return false;
+  }
+  if (isForegroundAgentWorking) {
+    return true;
+  }
+  if (
+    isWorkflowActive ||
+    isBackgroundAgentActive ||
+    isBackgroundCommandActive ||
+    isPlanModeActive ||
+    isGoalActive
+  ) {
+    return true;
+  }
+  if (showUnreadBadge) {
+    return false;
+  }
+  return isBusy;
+}
 
 function ThreadTrailingIndicator({
+  hasComposerDraft,
   hasPendingInteraction,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
@@ -380,6 +430,18 @@ function ThreadTrailingIndicator({
   showUnreadBadge,
   unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
+  const statusProps: ThreadStatusGlyphProps = {
+    hasPendingInteraction,
+    isBackgroundAgentActive,
+    isBackgroundCommandActive,
+    isForegroundAgentWorking,
+    isGoalActive,
+    isPlanModeActive,
+    isBusy,
+    isWorkflowActive,
+    showUnreadBadge,
+    unreadBadgeTone,
+  };
   const showStatusGlyph =
     hasPendingInteraction ||
     isBackgroundAgentActive ||
@@ -390,30 +452,29 @@ function ThreadTrailingIndicator({
     isBusy ||
     isWorkflowActive ||
     showUnreadBadge;
+  const draftIsWorking =
+    hasComposerDraft && isThreadWorkingGlyphVisible(statusProps);
+  const hasCriticalStatus =
+    (showUnreadBadge && unreadBadgeTone === "error") || hasPendingInteraction;
+  const showDraftIndicator = hasComposerDraft && !hasCriticalStatus;
 
-  if (!showStatusGlyph) {
+  if (!showStatusGlyph && !showDraftIndicator) {
     return null;
   }
 
   return (
     <span
+      data-sidebar-thread-trailing-indicator=""
       className={cn(
         SIDEBAR_ROW_GLYPH_SLOT_CLASS,
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
-      <ThreadStatusGlyph
-        hasPendingInteraction={hasPendingInteraction}
-        isBackgroundAgentActive={isBackgroundAgentActive}
-        isBackgroundCommandActive={isBackgroundCommandActive}
-        isForegroundAgentWorking={isForegroundAgentWorking}
-        isGoalActive={isGoalActive}
-        isPlanModeActive={isPlanModeActive}
-        isBusy={isBusy}
-        isWorkflowActive={isWorkflowActive}
-        showUnreadBadge={showUnreadBadge}
-        unreadBadgeTone={unreadBadgeTone}
-      />
+      {showDraftIndicator ? (
+        <ThreadDraftIndicator isWorking={draftIsWorking} />
+      ) : (
+        <ThreadStatusGlyph {...statusProps} />
+      )}
     </span>
   );
 }
@@ -458,9 +519,9 @@ function ThreadRowComponent({
     ? "error"
     : "default";
   const threadTitle = getThreadDisplayTitle(thread);
-  // Inside a folder the row shows the leaf but keeps the full path for a11y.
+  // Inside a section the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
-  const labelTitle = accessibleTitle ?? threadTitle;
+  const labelTitle = useThreadTitleDisplayText(accessibleTitle ?? threadTitle);
   const threadSplitsEnabled = useThreadSplitsEnabled();
   const splitIndicator = usePaneContentSplitIndicator(
     { kind: "thread", projectId, threadId: thread.id },
@@ -470,7 +531,7 @@ function ThreadRowComponent({
     useThreadRowSplitDrag({
       projectId,
       threadId: thread.id,
-      title: threadTitle,
+      title: labelTitle,
     });
   // Splits are disabled on compact viewports; the drag hook signals that by
   // withholding its pointer handler, so gate the click/menu entry points on it.
@@ -577,18 +638,17 @@ function ThreadRowComponent({
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate" title={labelTitle}>
-          {visibleTitle}
+          <SidebarThreadTitle title={visibleTitle} />
         </span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${threadTitle} threads`}
-            collapseLabel={`Collapse ${threadTitle} threads`}
+            expandLabel={`Expand ${labelTitle} threads`}
+            collapseLabel={`Collapse ${labelTitle} threads`}
             onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
             revealOnHover
           />
         ) : null}
-        {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
         {splitIndicator.miniMap ? (
@@ -598,10 +658,7 @@ function ThreadRowComponent({
           />
         ) : null}
         {shortcut ? (
-          <kbd
-            aria-hidden="true"
-            className="pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent px-1 text-xs font-medium tabular-nums text-muted-foreground shadow-[inset_0_0_0_1px_var(--sidebar-border)]"
-          >
+          <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
             {shortcut.label}
           </kbd>
         ) : (
@@ -627,6 +684,7 @@ function ThreadRowComponent({
                 )}
               >
                 <ThreadTrailingIndicator
+                  hasComposerDraft={hasComposerDraft}
                   hasPendingInteraction={trailingHasPendingInteraction}
                   isBackgroundAgentActive={trailingBackgroundAgentActive}
                   isBackgroundCommandActive={trailingBackgroundCommandActive}

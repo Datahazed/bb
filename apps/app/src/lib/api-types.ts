@@ -16,10 +16,10 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
-  /** Restrict to threads filed directly under this folder. */
-  folderId?: string;
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled?: boolean;
+  /** Restrict to threads filed directly under this section. */
+  sectionId?: string;
+  /** Restrict to loose threads — those not filed under any section. */
+  unsectioned?: boolean;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;

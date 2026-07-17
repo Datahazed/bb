@@ -17,6 +17,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
@@ -481,8 +482,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     isSettingsView,
     isRootView,
   } = useRouteState();
-  const archivedFolderId = isArchivedView
-    ? new URLSearchParams(location.search).get("folderId")
+  const archivedSectionId = isArchivedView
+    ? new URLSearchParams(location.search).get("sectionId")
     : null;
   // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
@@ -516,6 +517,27 @@ export function AppLayout({ children }: AppLayoutProps) {
       ...sidebarNavigation.personalProject.threads,
     ];
   }, [sidebarNavigationQuery.data]);
+  const titleMentionResources = useMemo(() => {
+    const sectionNamesById = new Map<string, string>();
+    const projectNamesById = new Map<string, string>();
+    const threadById = new Map(
+      sidebarThreads.map((entry) => [entry.id, entry]),
+    );
+    const navigation = sidebarNavigationQuery.data;
+    if (navigation) {
+      for (const section of navigation.sections) {
+        sectionNamesById.set(section.id, section.name);
+      }
+      for (const projectEntry of navigation.projects) {
+        projectNamesById.set(projectEntry.id, projectEntry.name);
+      }
+      projectNamesById.set(
+        navigation.personalProject.id,
+        navigation.personalProject.name,
+      );
+    }
+    return { sectionNamesById, projectNamesById, threadById };
+  }, [sidebarNavigationQuery.data, sidebarThreads]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     enabled: isThreadView && Boolean(threadId),
     timelinePrefetch: isThreadView && Boolean(threadId),
@@ -547,10 +569,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const project = projectId
     ? projects?.find((candidate) => candidate.id === projectId)
     : undefined;
-  const archivedFolderName = archivedFolderId
-    ? (sidebarNavigationQuery.data?.folders.find(
-        (folder) => folder.id === archivedFolderId,
-      )?.name ?? archivedFolderId)
+  const archivedSectionName = archivedSectionId
+    ? (sidebarNavigationQuery.data?.sections.find(
+        (section) => section.id === archivedSectionId,
+      )?.name ?? archivedSectionId)
     : null;
   const projectName = projectId ? project?.name : undefined;
   const projectLabel = projectName ?? (projectId ? projectId : undefined);
@@ -577,7 +599,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             subtitle: undefined,
             breadcrumbs: [
               { label: "Threads", to: getRootComposeRoutePath() },
-              ...(archivedFolderName ? [{ label: archivedFolderName }] : []),
+              ...(archivedSectionName ? [{ label: archivedSectionName }] : []),
               { label: "Archived" },
             ],
           }
@@ -620,8 +642,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {
-        return archivedFolderName
-          ? `${archivedFolderName} · Archived`
+        return archivedSectionName
+          ? `${archivedSectionName} · Archived`
           : "Threads · Archived";
       }
       return `${projectLabel ?? projectId} · Archived`;
@@ -740,67 +762,69 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <ProjectActionsProvider>
-      <ThreadActionsProvider>
-        <IframeDragGuardOverlay active={isSidebarResizing} />
-        <SidebarStateBridge
-          providerRef={providerRef}
-          style={sidebarProviderStyle}
-        >
-          {isGlobalSettingsView ? (
-            <SettingsSidebar
-              onResizeMouseDown={handleResizeMouseDown}
-              isResizing={isSidebarResizing}
-              showTopReserve={true}
-              appRoutePath={appRoutePath}
+      <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+        <ThreadActionsProvider>
+          <IframeDragGuardOverlay active={isSidebarResizing} />
+          <SidebarStateBridge
+            providerRef={providerRef}
+            style={sidebarProviderStyle}
+          >
+            {isGlobalSettingsView ? (
+              <SettingsSidebar
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                showTopReserve={true}
+                appRoutePath={appRoutePath}
+              />
+            ) : (
+              <AppSidebar
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                showTopReserve={true}
+                settingsRoutePath={settingsRoutePath}
+              />
+            )}
+            <SidebarInset>
+              <div
+                ref={contentShellRef}
+                data-testid="app-layout-content-shell"
+                className="relative flex h-[100dvh] min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
+              >
+                {showHeader ? (
+                  <AppHeader
+                    usesDesktopChrome={usesDesktopChrome}
+                    usesProjectChromeStyle={
+                      isRootView || isArchivedView || isSettingsView
+                    }
+                    isSettingsView={isSettingsView}
+                    projectId={projectId}
+                    project={project}
+                    pluginPanel={pluginPanel}
+                    pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
+                    meta={meta}
+                  />
+                ) : null}
+                <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                  {children}
+                </main>
+              </div>
+            </SidebarInset>
+            <SidebarTriggerOverlay
+              reserveMacosTrafficLights={reserveMacosTrafficLights}
+              usesDesktopChrome={usesDesktopChrome}
             />
-          ) : (
-            <AppSidebar
-              onResizeMouseDown={handleResizeMouseDown}
-              isResizing={isSidebarResizing}
-              showTopReserve={true}
-              settingsRoutePath={settingsRoutePath}
-            />
-          )}
-          <SidebarInset>
-            <div
-              ref={contentShellRef}
-              data-testid="app-layout-content-shell"
-              className="relative flex h-[100dvh] min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
-            >
-              {showHeader ? (
-                <AppHeader
-                  usesDesktopChrome={usesDesktopChrome}
-                  usesProjectChromeStyle={
-                    isRootView || isArchivedView || isSettingsView
-                  }
-                  isSettingsView={isSettingsView}
-                  projectId={projectId}
-                  project={project}
-                  pluginPanel={pluginPanel}
-                  pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
-                  meta={meta}
-                />
-              ) : null}
-              <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                {children}
-              </main>
-            </div>
-          </SidebarInset>
-          <SidebarTriggerOverlay
-            reserveMacosTrafficLights={reserveMacosTrafficLights}
-            usesDesktopChrome={usesDesktopChrome}
+          </SidebarStateBridge>
+          <ProjectPathDialog
+            target={quickCreateProject.projectPathDialog.target}
+            pending={quickCreateProject.isCreating}
+            platform={quickCreateProject.platform}
+            hostId={quickCreateProject.hostId}
+            hostName={quickCreateProject.hostName}
+            onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+            onSubmit={quickCreateProject.submitProjectPath}
           />
-        </SidebarStateBridge>
-        <ProjectPathDialog
-          target={quickCreateProject.projectPathDialog.target}
-          pending={quickCreateProject.isCreating}
-          platform={quickCreateProject.platform}
-          hostId={quickCreateProject.hostId}
-          hostName={quickCreateProject.hostName}
-          onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
-          onSubmit={quickCreateProject.submitProjectPath}
-        />
-      </ThreadActionsProvider>
+        </ThreadActionsProvider>
+      </ThreadTitleMentionResourcesProvider>
     </ProjectActionsProvider>
   );
 }

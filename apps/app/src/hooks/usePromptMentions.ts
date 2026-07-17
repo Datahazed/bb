@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { useDebounceValue } from "usehooks-ts";
+import {
+  buildSectionMentionSuggestions,
+  type SectionMentionCandidate,
+} from "./sectionMentionSuggestions";
 import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
 import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
 import {
@@ -49,6 +53,7 @@ interface BuildPromptMentionSuggestionsArgs {
   pathSuggestions: readonly PromptMentionSuggestion[];
   threadSuggestions: readonly PromptMentionSuggestion[];
   projectSuggestions: readonly PromptMentionSuggestion[];
+  sectionSuggestions: readonly PromptMentionSuggestion[];
   pluginSuggestions: readonly PromptMentionSuggestion[];
   trimmedQuery: string;
 }
@@ -65,11 +70,13 @@ function buildPromptMentionSuggestions(
         ...args.pathSuggestions,
         ...args.threadSuggestions,
         ...args.projectSuggestions,
+        ...args.sectionSuggestions,
         ...args.pluginSuggestions,
       ]
     : [
         ...args.threadSuggestions,
         ...args.projectSuggestions,
+        ...args.sectionSuggestions,
         ...args.pathSuggestions,
         ...args.pluginSuggestions,
       ];
@@ -100,6 +107,17 @@ function buildProjectMentionCandidates(
 
   return [...sidebarNavigation.projects, sidebarNavigation.personalProject].map(
     (project) => ({ id: project.id, name: project.name }),
+  );
+}
+
+function buildSectionMentionCandidates(
+  sidebarNavigation: SidebarBootstrapResponse | undefined,
+): SectionMentionCandidate[] {
+  return (
+    sidebarNavigation?.sections.map((section) => ({
+      id: section.id,
+      name: section.name,
+    })) ?? []
   );
 }
 
@@ -203,6 +221,10 @@ export function usePromptMentions(
     () => buildProjectMentionCandidates(projectNamesQuery.data),
     [projectNamesQuery.data],
   );
+  const sectionCandidates = useMemo(
+    () => buildSectionMentionCandidates(projectNamesQuery.data),
+    [projectNamesQuery.data],
+  );
 
   const currentThreadId = options.currentThreadId;
   const pathSuggestions = useMemo(
@@ -240,6 +262,14 @@ export function usePromptMentions(
       limit: PROMPT_MENTION_SOURCE_LIMIT,
     });
   }, [includeBuiltInSources, projectCandidates, trimmedQuery]);
+  const sectionSuggestions = useMemo(() => {
+    if (!includeBuiltInSources) return [];
+    return buildSectionMentionSuggestions({
+      sections: sectionCandidates,
+      query: trimmedQuery,
+      limit: PROMPT_MENTION_SOURCE_LIMIT,
+    });
+  }, [sectionCandidates, includeBuiltInSources, trimmedQuery]);
   const pluginSuggestions = useMemo(
     () =>
       hasMentionProviders && pluginSearchMatchesInput
@@ -254,6 +284,7 @@ export function usePromptMentions(
             pathSuggestions,
             threadSuggestions,
             projectSuggestions,
+            sectionSuggestions,
             pluginSuggestions,
             trimmedQuery,
           })
@@ -263,6 +294,7 @@ export function usePromptMentions(
       pathSuggestions,
       threadSuggestions,
       projectSuggestions,
+      sectionSuggestions,
       pluginSuggestions,
       trimmedQuery,
     ],

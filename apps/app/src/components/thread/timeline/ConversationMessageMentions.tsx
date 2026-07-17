@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
@@ -16,6 +16,8 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 
 interface PromptMentionPillProps {
+  /** Render visual mention styling without allowing navigation or activation. */
+  interactive?: boolean;
   resource: PromptMentionResource;
   resolveMentionLink?: PromptMentionLinkResolver;
   serializedText: string;
@@ -26,6 +28,8 @@ interface PromptMentionPillProps {
    * `resource.projectId` react-router link; a non-thread mention ignores this.
    */
   linkHref?: string;
+  /** Activates a mention that opens an in-place surface instead of a route. */
+  onActivate?: () => void;
 }
 
 interface NormalizeMentionsArgs {
@@ -122,10 +126,12 @@ function mentionPillClassName(interactive: boolean): string {
 }
 
 export function PromptMentionPill({
+  interactive = true,
   resource,
   resolveMentionLink,
   serializedText,
   linkHref,
+  onActivate,
 }: PromptMentionPillProps) {
   const title = promptMentionTooltipLabel(resource);
   const clipboardAttributes = promptMentionClipboardDataAttributes({
@@ -141,6 +147,43 @@ export function PromptMentionPill({
       <span className="truncate">{resource.label}</span>
     </>
   );
+
+  if (!interactive) {
+    return (
+      <span
+        className={mentionPillClassName(false)}
+        {...clipboardAttributes}
+        title={title}
+      >
+        {labelNode}
+      </span>
+    );
+  }
+
+  if (onActivate) {
+    return (
+      <span
+        role="link"
+        tabIndex={0}
+        className={mentionPillClassName(true)}
+        {...clipboardAttributes}
+        onClick={(event: MouseEvent<HTMLSpanElement>) => {
+          event.stopPropagation();
+          onActivate();
+        }}
+        onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            onActivate();
+          }
+        }}
+        title={title}
+      >
+        {labelNode}
+      </span>
+    );
+  }
 
   // Markdown bodies route thread mentions through `resolveSegmentLinkHref`
   // (same resolver the title links use); the plain-text path passes no

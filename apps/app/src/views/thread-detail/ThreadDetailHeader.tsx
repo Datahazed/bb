@@ -23,6 +23,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { usePaneContext } from "./PaneContext";
 
@@ -118,7 +119,7 @@ export function ThreadDetailHeader({
           )}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          {threadTitle}
+          <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>
       {childPillLabel ? (

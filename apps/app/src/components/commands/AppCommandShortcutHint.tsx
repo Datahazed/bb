@@ -7,6 +7,9 @@ interface AppCommandShortcutHintProps {
   className?: string;
 }
 
+export const APP_COMMAND_SHORTCUT_HINT_CLASS =
+  "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover p-1.5 text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60 [word-spacing:-0.15em]";
+
 export function AppCommandShortcutHint({
   shortcut,
   className,
@@ -17,10 +20,7 @@ export function AppCommandShortcutHint({
   return (
     <kbd
       aria-hidden="true"
-      className={cn(
-        "pointer-events-none inline-flex h-5 min-w-7 shrink-0 items-center justify-center whitespace-nowrap rounded-md bg-surface-raised px-1 text-xs font-medium tabular-nums text-muted-foreground [word-spacing:-0.15em] shadow-[inset_0_0_0_1px_var(--border)]",
-        className,
-      )}
+      className={cn(APP_COMMAND_SHORTCUT_HINT_CLASS, className)}
     >
       {shortcut.label}
     </kbd>

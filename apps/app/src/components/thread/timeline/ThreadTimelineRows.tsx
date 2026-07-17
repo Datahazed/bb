@@ -12,20 +12,10 @@ import {
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  notifyManager,
-  QueryClientContext,
-  type QueryCacheNotifyEvent,
-  type QueryClient,
-} from "@tanstack/react-query";
-import {
   isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
 } from "@bb/domain";
-import type {
-  ThreadChildOrigin,
-  ThreadRuntimeDisplayStatus,
-  ThreadWithRuntime,
-} from "@bb/domain";
+import type { ThreadChildOrigin, ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineParentChange,
@@ -56,10 +46,10 @@ import {
 } from "./timeline-auto-expand.js";
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import type {
+  ThreadTimelineAddToChatHandler,
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
-  ThreadTimelineSelectionAddToChatHandler,
   ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -102,17 +92,11 @@ import {
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
+import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
-  allThreadQueryKeyPrefix,
-  THREAD_QUERY_KEY,
-  THREADS_QUERY_KEY,
-  threadsQueryKey,
-  type ThreadTimelineTurnSummaryDetailsQueryIdentity,
-} from "@/hooks/queries/query-keys";
-import {
-  getCachedThreadLists,
-  iterateThreadListCacheEntries,
-} from "@/hooks/cache-owners/thread-list-cache-data";
+  useSenderThreadMetadataById,
+  type SenderThreadMetadata,
+} from "@/hooks/useSenderThreadMetadataById";
 import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
   getPluginSlotSnapshot,
@@ -144,6 +128,8 @@ export interface ThreadTimelineRowsProps {
   threadChildOrigin?: ThreadChildOrigin | null;
   /** Fork the rendered thread from a specific agent message. */
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  /** Add a complete agent message to the composer draft. */
+  onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   /** Open a side chat anchored on a specific agent message. */
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   /** Hand a specific side-chat agent message back to the main thread. */
@@ -153,7 +139,7 @@ export interface ThreadTimelineRowsProps {
    * omitted the floating selection menu's "Add to chat" action is unavailable
    * (so no menu is shown).
    */
-  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   /**
    * Open a side chat anchored on the active text selection. When omitted the
    * floating selection menu's "Reply in side chat" action is unavailable.
@@ -196,9 +182,10 @@ interface TimelineRendererStaticContextValue {
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
-  onSelectionAddToChat: ThreadTimelineSelectionAddToChatHandler | undefined;
+  onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   /**
    * Reports an assistant message's text selection to the timeline-level
    * controller. `undefined` when no selection action is wired (Add to chat /
@@ -222,29 +209,6 @@ interface TimelineRendererStaticContextValue {
   themeType: ThreadTimelineTheme;
   threadId: string | undefined;
   workspaceRootPath: string | undefined;
-}
-
-interface SenderThreadMetadata {
-  title: string | null;
-  childOrigin: ThreadChildOrigin | null;
-}
-
-interface BuildSenderThreadMetadataByIdArgs {
-  queryClient: QueryClient | null;
-}
-
-interface UseSenderThreadMetadataByIdArgs {
-  queryClient: QueryClient | null;
-}
-
-interface SenderThreadTitleSource {
-  title: string | null;
-  titleFallback: string | null;
-}
-
-interface SenderThreadMetadataSource extends SenderThreadTitleSource {
-  id: string;
-  childOrigin: ThreadChildOrigin | null;
 }
 
 /**
@@ -609,118 +573,6 @@ function timelineRowsOwnerKey({
   return ownerThreadId;
 }
 
-function senderThreadTitle(source: SenderThreadTitleSource): string | null {
-  const title = source.title?.trim();
-  if (title && title.length > 0) {
-    return title;
-  }
-  const titleFallback = source.titleFallback?.trim();
-  if (titleFallback && titleFallback.length > 0) {
-    return titleFallback;
-  }
-  return null;
-}
-
-function addSenderThreadMetadata(
-  metadataById: Map<string, SenderThreadMetadata>,
-  thread: SenderThreadMetadataSource,
-): void {
-  const title = senderThreadTitle(thread);
-  const existing = metadataById.get(thread.id);
-  if (existing && (existing.title !== null || title === null)) {
-    return;
-  }
-  metadataById.set(thread.id, { title, childOrigin: thread.childOrigin });
-}
-
-function buildSenderThreadMetadataById({
-  queryClient,
-}: BuildSenderThreadMetadataByIdArgs): ReadonlyMap<
-  string,
-  SenderThreadMetadata
-> {
-  const metadataById = new Map<string, SenderThreadMetadata>();
-  if (queryClient === null) {
-    return metadataById;
-  }
-
-  for (const cachedList of getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  })) {
-    for (const thread of iterateThreadListCacheEntries(cachedList.data)) {
-      addSenderThreadMetadata(metadataById, thread);
-    }
-  }
-
-  for (const [, thread] of queryClient.getQueriesData<ThreadWithRuntime>({
-    queryKey: allThreadQueryKeyPrefix(),
-  })) {
-    if (thread) {
-      addSenderThreadMetadata(metadataById, thread);
-    }
-  }
-
-  return metadataById;
-}
-
-function shouldSyncSenderThreadMetadata(event: QueryCacheNotifyEvent): boolean {
-  if (event.type !== "updated") {
-    return false;
-  }
-
-  return (
-    event.query.queryKey[0] === THREADS_QUERY_KEY ||
-    event.query.queryKey[0] === THREAD_QUERY_KEY
-  );
-}
-
-function useSenderThreadMetadataById({
-  queryClient,
-}: UseSenderThreadMetadataByIdArgs): ReadonlyMap<string, SenderThreadMetadata> {
-  const [metadataById, setMetadataById] = useState(() =>
-    buildSenderThreadMetadataById({ queryClient }),
-  );
-  const queryClientRef = useRef(queryClient);
-
-  useEffect(() => {
-    if (queryClientRef.current !== queryClient) {
-      queryClientRef.current = queryClient;
-      setMetadataById(buildSenderThreadMetadataById({ queryClient }));
-    }
-
-    if (queryClient === null) {
-      return;
-    }
-
-    let subscribed = true;
-    const syncMetadataById = () => {
-      if (!subscribed) {
-        return;
-      }
-      setMetadataById(buildSenderThreadMetadataById({ queryClient }));
-    };
-
-    // Sender titles are derived from React Query caches. Subscribe to thread
-    // list and detail updates so title changes still refresh rows without
-    // rebuilding a fresh Map every render. QueryCache subscribers run
-    // synchronously, including when React Query creates observers during another
-    // component's render, so schedule the React state update through TanStack's
-    // notifier like React Query's own hooks do.
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (shouldSyncSenderThreadMetadata(event)) {
-        notifyManager.schedule(syncMetadataById);
-      }
-    });
-
-    return () => {
-      subscribed = false;
-      unsubscribe();
-    };
-  }, [queryClient]);
-
-  return metadataById;
-}
-
 function useTimelineViewRowsCache(): GetTimelineViewRows {
   // Each `rawRows` reference is consumed under exactly one scope: the
   // top-level prop ("open" — pending work may still arrive) or a lazily
@@ -925,6 +777,7 @@ function ConversationRow({
   const {
     canSpawnChild,
     onForkMessage,
+    onMessageAddToChat,
     onSideChatMessage,
     onSendToMainMessage,
     onSelectionAddToChat,
@@ -1015,6 +868,7 @@ function ConversationRow({
     <ConversationMessageContent
       attachments={row.attachments}
       id={row.id}
+      onAddToChat={onMessageAddToChat}
       onFork={onFork}
       onSideChat={onSideChat}
       onSendToMain={onSendToMain}
@@ -1864,7 +1718,6 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
 }
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
-  const queryClient = useContext(QueryClientContext) ?? null;
   const getViewRows = useTimelineViewRowsCache();
   const rows = useMemo(
     () => getViewRows(props.timelineRows),
@@ -1900,9 +1753,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     props.initialExpanded ?? EMPTY_ROW_ID_SET,
   );
   const projectId = props.projectId;
-  const senderThreadMetadataById = useSenderThreadMetadataById({
-    queryClient,
-  });
+  const senderThreadMetadataById = useSenderThreadMetadataById();
   // Single plugin-slot subscription for the whole timeline; messages read the
   // stable registry from context instead of each opening a store subscription.
   // Provide getServerSnapshot so renderToStaticMarkup / SSR tests work.
@@ -1964,7 +1815,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const handleSelectionAddToChat = useCallback(
     (
       text: string,
-      attachments?: Parameters<ThreadTimelineSelectionAddToChatHandler>[1],
+      attachments?: Parameters<ThreadTimelineAddToChatHandler>[1],
     ) => {
       if (attachments === undefined) {
         onSelectionAddToChat?.(text);
@@ -1992,6 +1843,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
       onForkMessage: props.onForkMessage,
+      onMessageAddToChat: props.onMessageAddToChat,
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
@@ -2015,6 +1867,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.canSpawnChild,
       getViewRows,
       props.onForkMessage,
+      props.onMessageAddToChat,
       props.onSideChatMessage,
       props.onSendToMainMessage,
       selectionAddToChatHandler,
