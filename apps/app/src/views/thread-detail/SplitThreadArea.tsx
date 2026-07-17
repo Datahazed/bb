@@ -344,6 +344,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           content={firstPane.content}
           paneId={firstPane.paneId}
           isFocused
+          isSplitPane={false}
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
           onRequestClose={null}
@@ -479,6 +480,7 @@ function SplitTree(props: SplitTreeProps) {
           content={node.content}
           paneId={node.paneId}
           isFocused={isFocused}
+          isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
           reservesWindowPanelToggle={isTopRow && isRightEdge}
           onRequestClose={() => props.onClosePane(node.paneId)}
@@ -544,6 +546,7 @@ interface WorkspacePaneContentProps {
   content: PaneContent;
   paneId: string;
   isFocused: boolean;
+  isSplitPane: boolean;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry | null;
   reservesWindowPanelToggle: boolean;
   onRequestClose: (() => void) | null;
@@ -560,6 +563,7 @@ function WorkspacePaneContent({
   content,
   paneId,
   isFocused,
+  isSplitPane,
   secondaryPanelRegistry,
   reservesWindowPanelToggle,
   onRequestClose,
@@ -594,6 +598,7 @@ function WorkspacePaneContent({
     () => ({
       paneId,
       isFocused,
+      isSplitPane,
       secondaryPanelHost,
       reservesWindowPanelToggle,
       onRequestClose,
@@ -606,6 +611,7 @@ function WorkspacePaneContent({
       beginPaneDrag,
       isBoundedPane,
       isFocused,
+      isSplitPane,
       isTopRow,
       navigateInPane,
       onRequestClose,
