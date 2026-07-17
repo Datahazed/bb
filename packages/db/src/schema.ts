@@ -148,9 +148,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
     mode: "boolean",
   }).notNull(),
-  threadSplits: integer("thread_splits", { mode: "boolean" })
-    .notNull()
-    .default(false),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -473,7 +470,7 @@ export const threads = sqliteTable(
     ).$type<ReasoningLevel>(),
     title: text("title"),
     titleFallback: text("title_fallback"),
-    folderId: text("folder_id").references(() => threadFolders.id, {
+    sectionId: text("section_id").references(() => threadSections.id, {
       onDelete: "set null",
     }),
     status: text("status", { enum: threadStatusValues })
@@ -527,8 +524,8 @@ export const threads = sqliteTable(
       table.sourceThreadId,
       table.originKind,
     ),
-    index("threads_folder_archived_deleted_idx").on(
-      table.folderId,
+    index("threads_section_archived_deleted_idx").on(
+      table.sectionId,
       table.archivedAt,
       table.deletedAt,
       table.id,
@@ -557,15 +554,15 @@ export const threadTabs = sqliteTable("thread_tabs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
-export const threadFolders = sqliteTable(
-  "thread_folders",
+export const threadSections = sqliteTable(
+  "thread_sections",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [uniqueIndex("thread_folders_name_idx").on(table.name)],
+  (table) => [uniqueIndex("thread_sections_name_idx").on(table.name)],
 );
 
 export const threadSearchSegments = sqliteTable(

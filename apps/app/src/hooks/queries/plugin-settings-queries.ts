@@ -122,12 +122,8 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
 export async function fetchPluginList(
   fetchImpl: FetchLike,
 ): Promise<PluginListResult> {
-  try {
-    const result = await createPluginsClient(fetchImpl).list();
-    return { plugins: result.plugins.map(toPluginListItem) };
-  } catch {
-    return { plugins: [] };
-  }
+  const result = await createPluginsClient(fetchImpl).list();
+  return { plugins: result.plugins.map(toPluginListItem) };
 }
 
 export type PluginSettingFieldDescriptor = PluginSettingDescriptor;

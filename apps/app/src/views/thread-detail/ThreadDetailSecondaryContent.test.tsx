@@ -222,6 +222,8 @@ function ThreadDetailTestPaneProvider({
     secondaryPanelHost: hostedPaneRegistration,
     reservesWindowPanelToggle: false,
     onRequestClose: noop,
+    isMaximized: false,
+    onToggleMaximize: noop,
     isBoundedPane: true,
     isTopRow: true,
     navigateInPane: noop,
@@ -295,7 +297,7 @@ function makeThread(
     stopRequestedAt: null,
     title: null,
     titleFallback: "Test thread",
-    folderId: null,
+    sectionId: null,
     updatedAt: 0,
   } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }

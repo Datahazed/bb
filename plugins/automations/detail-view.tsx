@@ -20,7 +20,8 @@ import {
   formatAutomationTrigger,
   formatScheduleRunTime,
   formatScheduleStatusLabel,
-  isCompletedOneShotAutomation,
+  getOneShotLifecycle,
+  oneShotLifecycleAllowsToggle,
 } from "./lib/format-schedule";
 
 export interface AutomationRunsViewState {
@@ -30,6 +31,7 @@ export interface AutomationRunsViewState {
   loadingMore: boolean;
   error: string | null;
   loadMore: () => void;
+  retry: () => void;
 }
 
 export interface AutomationDetailViewProps {
@@ -59,6 +61,7 @@ export function automationScheduleLabel(
     nextRunAt: automation.nextRunAt,
     trigger: automation.trigger,
     runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
   });
 }
 
@@ -245,11 +248,13 @@ export function AutomationDetailView({
   onOpenThread,
   footer,
 }: AutomationDetailViewProps) {
-  const completedOneShot = isCompletedOneShotAutomation({
+  const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
     trigger: automation.trigger,
     runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
   });
+  const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
 
@@ -274,9 +279,15 @@ export function AutomationDetailView({
       lifecycleControl={
         <Switch
           checked={automation.enabled}
-          disabled={actionPending || completedOneShot}
+          disabled={actionPending || lifecycleLocked}
           aria-label={
-            automation.enabled ? "Pause automation" : "Resume automation"
+            oneShotLifecycle === "expired"
+              ? "Expired automation; edit to reschedule"
+              : lifecycleLocked
+                ? `${automationScheduleLabel(automation)} automation`
+                : automation.enabled
+                  ? "Pause automation"
+                  : "Resume automation"
           }
           onCheckedChange={onToggle}
         />
@@ -312,7 +323,15 @@ export function AutomationDetailView({
           >
             {bodyLabel}
           </h2>
-          <ResourceDetailPanel surface="recessed" className="px-3 py-2">
+          <ResourceDetailPanel
+            surface="recessed"
+            className={cn(
+              "px-3 py-2",
+              execution.mode === "script" &&
+                execution.script &&
+                "max-h-[42dvh] overflow-auto",
+            )}
+          >
             {execution.mode === "agent" ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">
                 {execution.prompt}
@@ -364,9 +383,19 @@ export function AutomationDetailView({
           {runsState.error !== null ? (
             <ResourceDetailPanel
               surface="recessed"
-              className="px-3 py-6 text-center text-sm text-destructive"
+              className="px-3 py-5 text-center text-sm text-destructive"
             >
-              Failed to load runs.
+              <div className="flex flex-col items-center gap-2">
+                <span>Failed to load runs.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={runsState.retry}
+                >
+                  Retry
+                </Button>
+              </div>
             </ResourceDetailPanel>
           ) : runsState.loading ? (
             <ResourceDetailPanel

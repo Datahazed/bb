@@ -65,7 +65,8 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
-  isCompletedOneShotAutomation,
+  getOneShotLifecycle,
+  oneShotLifecycleAllowsToggle,
 } from "@/lib/format-schedule";
 
 const PANEL_PATH = "automations";
@@ -308,7 +309,9 @@ interface RunsState {
   error: string | null;
 }
 
-function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
+function useRuns(
+  route: DetailRoute,
+): RunsState & { loadMore: () => void; retry: () => void } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<RunsState>({
@@ -402,7 +405,7 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
       loadFirstPage();
     }
   });
-  return { ...state, loadMore };
+  return { ...state, loadMore, retry: loadFirstPage };
 }
 
 // ---------------------------------------------------------------------------
@@ -572,12 +575,15 @@ function OverviewRow({
   const { automation } = entry;
   const [togglePending, setTogglePending] = useState(false);
   const route = routeOf(automation);
-  const completedOneShot = isCompletedOneShotAutomation({
+  const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
     trigger: automation.trigger,
     runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
   });
+  const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
   const triggerLabel = formatAutomationTrigger(automation.trigger);
+  const lifecycleLabel = automationScheduleLabel(automation);
   const projectLabel = automationProjectLabel(entry.project);
 
   return (
@@ -586,15 +592,19 @@ function OverviewRow({
       title={automation.name}
       description={
         <ResourceMeta
-          items={[triggerLabel, <ResourceLocationMeta label={projectLabel} />]}
+          items={[
+            triggerLabel,
+            ...(lifecycleLocked ? [lifecycleLabel] : []),
+            <ResourceLocationMeta label={projectLabel} />,
+          ]}
         />
       }
-      muted={completedOneShot}
+      muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
       persistentActions={
         <Switch
-          checked={automation.enabled && !completedOneShot}
-          disabled={completedOneShot || togglePending}
+          checked={automation.enabled && !lifecycleLocked}
+          disabled={lifecycleLocked || togglePending}
           onCheckedChange={(enabled) => {
             setTogglePending(true);
             void onEnabledChange(enabled, route).finally(() =>
@@ -882,7 +892,7 @@ function DetailView({
   );
 
   const editViaThread = useCallback(
-    (target: AutomationResponse) => {
+    (target: AutomationResponse, replace = false) => {
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: buildAutomationEditThreadPrompt({
@@ -891,6 +901,7 @@ function DetailView({
           automationId: route.automationId,
         }),
         replaceInitialPrompt: true,
+        replace,
       });
     },
     [navigate, route],
@@ -898,7 +909,7 @@ function DetailView({
 
   useEffect(() => {
     if (!initialEditing || automation === null) return;
-    editViaThread(automation);
+    editViaThread(automation, true);
   }, [automation, editViaThread, initialEditing]);
 
   const runAction = useCallback(

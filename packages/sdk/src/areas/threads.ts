@@ -21,6 +21,8 @@ import type {
   ThreadConversationOutlineResponse,
   ThreadListResponse,
   ThreadOpenResponse,
+  ThreadPaneAction,
+  ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -50,6 +52,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
+  UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -59,7 +62,7 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 export interface ThreadListArgs {
   archived?: boolean;
   excludeSideChats?: boolean;
-  folderId?: string;
+  sectionId?: string;
   hasParent?: boolean;
   limit?: number;
   offset?: number;
@@ -68,7 +71,7 @@ export interface ThreadListArgs {
   projectId?: string;
   signal?: AbortSignal;
   sourceThreadId?: string;
-  unfiled?: boolean;
+  unsectioned?: boolean;
 }
 
 export interface ThreadSearchArgs extends ThreadSearchQuery {
@@ -99,6 +102,7 @@ export type ThreadEventWaitResult = ThreadEventRow | null;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
+export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
 export type ThreadStopResult = { ok: true };
@@ -109,6 +113,7 @@ export type ThreadPinOrderResult = ThreadListResponse;
 export type ThreadPromptHistoryResult = PromptHistoryResponse;
 export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
+export type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageDeleteResult = { ok: true };
 export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
@@ -185,6 +190,9 @@ export interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageReques
   threadId: string;
 }
 
+export interface ThreadQueuedMessageUpdateArgs
+  extends ThreadQueuedMessageTargetArgs, UpdateQueuedMessageRequest {}
+
 export interface ThreadQueuedMessageTargetArgs {
   queuedMessageId: string;
   threadId: string;
@@ -223,6 +231,11 @@ export interface ThreadOpenArgs {
   threadId: string;
   split?: ThreadOpenSplit;
   file: ThreadOpenFile | null;
+}
+
+export interface ThreadPaneActionArgs {
+  action: ThreadPaneAction;
+  threadId: string;
 }
 
 export interface ThreadEventsListArgs {
@@ -264,13 +277,11 @@ export interface ThreadInteractionGetArgs extends ThreadInteractionTargetArgs {
   signal?: AbortSignal;
 }
 
-export interface ThreadInteractionResolveArgs
-  extends ThreadInteractionTargetArgs {
+export interface ThreadInteractionResolveArgs extends ThreadInteractionTargetArgs {
   resolution: PendingInteractionResolution;
 }
 
-export interface ThreadInteractionRespondArgs
-  extends ThreadInteractionTargetArgs {
+export interface ThreadInteractionRespondArgs extends ThreadInteractionTargetArgs {
   value: JsonValue;
 }
 
@@ -370,6 +381,9 @@ export interface ThreadQueuedMessagesArea {
   setGroupBoundary(
     args: ThreadQueuedMessageGroupBoundaryArgs,
   ): Promise<ThreadQueuedMessageGroupBoundaryResult>;
+  update(
+    args: ThreadQueuedMessageUpdateArgs,
+  ): Promise<ThreadQueuedMessageUpdateResult>;
 }
 
 export interface ThreadTabsArea {
@@ -395,6 +409,7 @@ export interface ThreadsArea {
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
+  paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
   promptHistory(
@@ -424,14 +439,14 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
     ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
-    ...(args?.folderId ? { folderId: args.folderId } : {}),
+    ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),
-    ...(args?.unfiled === undefined
+    ...(args?.unsectioned === undefined
       ? {}
-      : { unfiled: args.unfiled ? "true" : "false" }),
+      : { unsectioned: args.unsectioned ? "true" : "false" }),
     ...(args?.excludeSideChats === undefined
       ? {}
       : { excludeSideChats: args.excludeSideChats ? "true" : "false" }),
@@ -446,7 +461,7 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     title: args.title,
-    folderId: args.folderId,
+    sectionId: args.sectionId,
     parentThreadId: args.parentThreadId,
     model: args.model,
     reasoningLevel: args.reasoningLevel,
@@ -776,6 +791,17 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }),
       );
     },
+    async update(input) {
+      const { queuedMessageId, threadId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].$patch({
+          param: { id: threadId, queuedMessageId },
+          json,
+        }),
+      );
+    },
   };
   const tabs: ThreadTabsArea = {
     async get(input) {
@@ -893,6 +919,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             ...(input.split === undefined ? {} : { split: input.split }),
             file: input.file,
           },
+        }),
+      );
+    },
+    async paneAction(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["pane-action"].$post({
+          param: { id: input.threadId },
+          json: { action: input.action },
         }),
       );
     },

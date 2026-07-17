@@ -7,7 +7,12 @@ import type {
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
+import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
+import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
+import { PROMPT_MENTION_PILL_CLASS } from "@/components/promptbox/mentions/prompt-mention-display";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { parseAgentMessageEnvelope } from "@bb/thread-view";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
 export interface TocItem {
   id: string;
@@ -44,7 +49,6 @@ const TOC_MAX_RAIL_TICKS = 20;
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
 const TOC_JUMP_RENDER_FRAMES = 6;
-
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -159,6 +163,57 @@ function TocPanelTab({
     >
       {label}
     </button>
+  );
+}
+
+function TocThreadMention({
+  threadId,
+  threadTitle,
+}: {
+  threadId: string;
+  threadTitle: string | null;
+}) {
+  const label = useThreadTitleDisplayText(threadTitle ?? "Agent");
+  return (
+    <span
+      className={cn(
+        PROMPT_MENTION_PILL_CLASS,
+        "max-w-32 shrink-0 bg-surface-raised/50 text-foreground",
+      )}
+      title={`Thread: ${label}`}
+    >
+      <PromptMentionIcon
+        resource={{ kind: "thread", threadId, label }}
+        className="size-3 shrink-0 self-center text-muted-foreground"
+      />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function TocItemPreview({
+  item,
+  senderThreadMetadataById,
+}: {
+  item: TocItem;
+  senderThreadMetadataById: ReadonlyMap<string, { title: string | null }>;
+}) {
+  const source = parseAgentMessageEnvelope(item.label);
+  if (source === null) {
+    return <span className="line-clamp-2">{item.label}</span>;
+  }
+
+  const body = item.label.slice(source.bodyStart);
+  return (
+    <span className="flex min-w-0 items-start gap-1">
+      <TocThreadMention
+        threadId={source.senderThreadId}
+        threadTitle={
+          senderThreadMetadataById.get(source.senderThreadId)?.title ?? null
+        }
+      />
+      <span className="line-clamp-2 min-w-0">{body || "Message"}</span>
+    </span>
   );
 }
 
@@ -361,6 +416,7 @@ export function ThreadTableOfContents({
   // query on visibility would then deadlock a short loaded window that the full
   // thread would otherwise fill.
   const outlineQuery = useThreadConversationOutline(threadId);
+  const senderThreadMetadataById = useSenderThreadMetadataById();
   const { agentItems, userItems } = useConversationTocItems({
     outlineItems: outlineQuery.data?.items,
     timelineRows,
@@ -660,14 +716,19 @@ export function ThreadTableOfContents({
                           >
                             <span
                               className={cn(
-                                "line-clamp-2 text-xs leading-snug",
+                                "text-xs leading-snug",
                                 active
                                   ? "text-foreground"
                                   : "text-muted-foreground",
                                 pending && "animate-pulse",
                               )}
                             >
-                              {item.label}
+                              <TocItemPreview
+                                item={item}
+                                senderThreadMetadataById={
+                                  senderThreadMetadataById
+                                }
+                              />
                             </span>
                           </button>
                         </li>

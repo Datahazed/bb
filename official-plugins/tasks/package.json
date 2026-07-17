@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-tasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Plan and track work in BB, delegate tasks to agents, and keep task context connected to worker threads.",
   "private": true,
   "license": "MIT",
@@ -25,7 +25,7 @@
   ],
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.3.1"
+    "bbPluginSdk": "^0.4.0"
   },
   "bb": {
     "name": "Tasks",

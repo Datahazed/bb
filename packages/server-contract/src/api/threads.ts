@@ -123,7 +123,7 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
-    folderId: z.string().min(1).nullable().optional(),
+    sectionId: z.string().min(1).nullable().optional(),
     sourceThreadId: z.string().min(1).optional(),
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
@@ -197,6 +197,14 @@ export const createQueuedMessageRequestSchema = z.object({
 });
 export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
+>;
+
+export const updateQueuedMessageRequestSchema = z.object({
+  expectedUpdatedAt: z.number().int().nonnegative(),
+  input: z.array(promptInputSchema).min(1),
+});
+export type UpdateQueuedMessageRequest = z.infer<
+  typeof updateQueuedMessageRequestSchema
 >;
 
 export const sendQueuedMessageRequestSchema = z.object({
@@ -363,7 +371,7 @@ export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
 export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
-    folderId: z.string().min(1).nullable(),
+    sectionId: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
@@ -375,7 +383,7 @@ export const updateThreadRequestSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
-      value.folderId !== undefined ||
+      value.sectionId !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined,
@@ -457,9 +465,8 @@ export const threadOpenSignalLenientSchema = z.object({
 /** Request body for POST /threads/:id/open (threadId comes from the path). */
 export const threadOpenRequestSchema = z
   .object({
-    // Omission is semantically distinct from an explicit placement: ordinary
-    // thread/file opens remain available while the Thread splits experiment is
-    // off, while any supplied split request is server-gated.
+    // Omission preserves ordinary thread/file-open behavior, while an explicit
+    // placement lets callers choose how the pane should open.
     split: threadOpenSplitSchema.optional(),
     file: threadOpenFileSchema.nullable(),
   })
@@ -471,6 +478,47 @@ export const threadOpenResponseSchema = z.object({
   delivered: z.number().int().nonnegative(),
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
+
+/** Presentation action for one thread pane in each connected app window. */
+export const threadPaneActionSchema = z.enum(["maximize", "restore", "toggle"]);
+export type ThreadPaneAction = z.infer<typeof threadPaneActionSchema>;
+
+/** Request body for POST /threads/:id/pane-action. */
+export const threadPaneActionRequestSchema = z
+  .object({ action: threadPaneActionSchema })
+  .strict();
+export type ThreadPaneActionRequest = z.infer<
+  typeof threadPaneActionRequestSchema
+>;
+
+/** Ephemeral server→client request to change an already-open thread pane. */
+export const threadPaneActionSignalSchema = z
+  .object({
+    type: z.literal("thread-pane-action"),
+    projectId: z.string().min(1),
+    threadId: z.string().min(1),
+    action: threadPaneActionSchema,
+  })
+  .strict();
+export type ThreadPaneActionSignal = z.infer<
+  typeof threadPaneActionSignalSchema
+>;
+
+/** Lenient inbound parser for clients connected to a newer server. */
+export const threadPaneActionSignalLenientSchema = z.object({
+  type: z.literal("thread-pane-action"),
+  projectId: z.string(),
+  threadId: z.string(),
+  action: threadPaneActionSchema,
+});
+
+/** Number of connected app clients that received the pane action. */
+export const threadPaneActionResponseSchema = z.object({
+  delivered: z.number().int().nonnegative(),
+});
+export type ThreadPaneActionResponse = z.infer<
+  typeof threadPaneActionResponseSchema
+>;
 
 /** @deprecated Compatibility shape for clients that still call composer bootstrap. */
 export const threadComposerBootstrapResponseSchema = z.object({
@@ -497,10 +545,10 @@ export const threadListQuerySchema = z.object({
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
-  /** Restrict to threads filed directly under this folder. */
-  folderId: z.string().min(1).optional(),
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled: z.enum(["true", "false"]).optional(),
+  /** Restrict to threads filed directly under this section. */
+  sectionId: z.string().min(1).optional(),
+  /** Restrict to loose threads — those not filed under any section. */
+  unsectioned: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
   /** Restrict to threads spawned with this origin (fork or side-chat). */

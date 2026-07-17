@@ -27,7 +27,7 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
-    --folder <id>                  Create the thread in a folder
+    --section <id>                 Create the thread in a section
     --visibility <visibility>      visible (default) or hidden
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
@@ -41,7 +41,7 @@ Spawning:
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization, unread/pending favicon
   attention, and native parent notifications. Ordinary list, search, history,
-  folder, lifecycle, parent-operation, and direct-open behavior is unchanged.
+  section, lifecycle, parent-operation, and direct-open behavior is unchanged.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -54,18 +54,18 @@ Listing:
     --project <id>                         Filter by project
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
-    --folder <id>                          Filter by folder
-    --unfiled                              Show only threads outside folders
+    --section <id>                         Filter by section
+    --unsectioned                          Show only threads outside sections
 
   bb thread search <query>                 Search threads and messages
   bb thread history <id>                   List prompt history
 
-Folders:
+Sections:
 
-  bb thread folder list
-  bb thread folder create <name>
-  bb thread folder rename <id> <name>
-  bb thread folder delete <id> [--yes]
+  bb thread section list
+  bb thread section create <name>
+  bb thread section rename <id> <name>
+  bb thread section delete <id> [--yes]
 
 Inspecting:
 
@@ -100,7 +100,8 @@ Opening threads and files in the app:
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
-    --split <placement>                    right, down, left, top, or replace (requires Thread splits)
+    --split <placement>                    right, down, left, top, or replace
+  bb thread pane <action> [thread-id]      Maximize, restore, or toggle an open thread pane
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
@@ -108,8 +109,8 @@ Opening threads and files in the app:
   as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
-  Enable the "Thread splits" experiment in Settings → Experiments before using
-  --split; ordinary thread/file opens without --split remain available while off.
+  Pane actions broadcast to connected BB app windows and affect the matching
+  already-open pane without changing its split tree.
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML
@@ -139,8 +140,8 @@ Ownership:
     --title <title>                        Set title
     --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment
-    --folder <id>                          Move into a folder
-    --clear-folder                         Remove folder assignment
+    --section <id>                         Move into a section
+    --clear-section                        Remove section assignment
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
@@ -150,6 +151,7 @@ Queued messages:
 
   bb thread queue list <thread-id>
   bb thread queue create <thread-id> <message>
+  bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>

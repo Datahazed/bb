@@ -303,7 +303,7 @@ describe("automation service", () => {
           },
           list: async () => [],
         },
-        threadFolders: {
+        threadSections: {
           list: async () => [],
         },
         threads: {

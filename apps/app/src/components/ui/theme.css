@@ -55,6 +55,7 @@
   --color-surface-recessed-solid: var(--surface-recessed-solid);
   --color-surface-recessed-soft-solid: var(--surface-recessed-soft-solid);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
@@ -406,6 +407,7 @@
     var(--canvas)
   );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -457,8 +459,16 @@
      tracks custom palettes instead of stranding a fixed swatch. Mix in oklab, not
      oklch: in the polar space the achromatic canvas drags the manilla hue toward
      0° and the result comes out salmon — oklab carries the hue through. */
-  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 76%);
-  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 60%);
+  --sidebar-search-match: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 76%
+  );
+  --sidebar-search-match-border: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 60%
+  );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
@@ -631,6 +641,7 @@
     var(--canvas)
   );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -679,8 +690,16 @@
   --sidebar-border: color-mix(in oklch, var(--ink) 18.1%, var(--canvas));
   /* Search-match highlight: see the light block (oklab mix, same hue caveat).
      Mixed with the (dark) canvas so the manilla reads as a muted tan. */
-  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 80%);
-  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 67%);
+  --sidebar-search-match: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 80%
+  );
+  --sidebar-search-match-border: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 67%
+  );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
@@ -786,6 +805,17 @@ body.sidebar-resizing [data-sidebar="panel"] {
   transition-duration: 0ms !important;
 }
 
+/*
+ * Radix portals paint outside the pane tree, but Electron resolves native
+ * window-drag regions separately from ordinary CSS stacking. Explicitly carve
+ * every interactive portaled surface out of an underlying drag strip so a
+ * menu/select/dialog that crosses split chrome keeps its visible hit target.
+ */
+[data-bb-portaled-overlay] {
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
 @layer utilities {
   .animate-shine {
     display: inline-block;
@@ -834,6 +864,22 @@ body.sidebar-resizing [data-sidebar="panel"] {
     -webkit-mask: url(/bb-mark.svg) center / contain no-repeat;
     mask: url(/bb-mark.svg) center / contain no-repeat;
     background-color: var(--foreground);
+  }
+
+  /* Reduced motion: drop the shimmer sweep and render the active cue as plain
+     full-strength foreground text/glyph instead of a frozen gradient/mask. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-shine {
+      animation: none;
+      background: none;
+      -webkit-text-fill-color: currentColor;
+    }
+
+    .animate-shine-icon {
+      animation: none;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
   }
 }
 

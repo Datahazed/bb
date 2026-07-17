@@ -120,12 +120,12 @@ describe("fetchPluginList envelope", () => {
   });
 
   it("rejects an envelope missing enabled or plugins instead of half-parsing it", async () => {
-    expect(await fetchPluginList(fetchReturning({ plugins: [ROW] }))).toEqual({
-      plugins: [],
-    });
-    expect(await fetchPluginList(fetchReturning({ enabled: true }))).toEqual({
-      plugins: [],
-    });
+    await expect(
+      fetchPluginList(fetchReturning({ plugins: [ROW] })),
+    ).rejects.toThrow();
+    await expect(
+      fetchPluginList(fetchReturning({ enabled: true })),
+    ).rejects.toThrow();
   });
 
   it("rejects a list containing rows missing server-mandated fields", async () => {
@@ -133,19 +133,20 @@ describe("fetchPluginList envelope", () => {
     const { provenance, ...noProvenance } = ROW;
     const { sourceDisplay, ...noSourceDisplay } = ROW;
     const { isOrphanedBuiltin, ...noOrphanedBuiltin } = ROW;
-    const result = await fetchPluginList(
-      fetchReturning({
-        enabled: true,
-        plugins: [
-          noUpdateState,
-          noProvenance,
-          noSourceDisplay,
-          noOrphanedBuiltin,
-          ROW,
-        ],
-      }),
-    );
-    expect(result.plugins).toEqual([]);
+    await expect(
+      fetchPluginList(
+        fetchReturning({
+          enabled: true,
+          plugins: [
+            noUpdateState,
+            noProvenance,
+            noSourceDisplay,
+            noOrphanedBuiltin,
+            ROW,
+          ],
+        }),
+      ),
+    ).rejects.toThrow();
   });
 
   it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
@@ -155,19 +156,27 @@ describe("fetchPluginList envelope", () => {
       ...ROW,
       updateState: { lastFailure: { version: "1.7.0" } },
     };
-    const result = await fetchPluginList(
-      fetchReturning({ enabled: true, plugins: [partialFailure] }),
-    );
-    expect(result.plugins).toEqual([]);
+    await expect(
+      fetchPluginList(
+        fetchReturning({ enabled: true, plugins: [partialFailure] }),
+      ),
+    ).rejects.toThrow();
   });
 
-  it("returns the quiet empty state on a malformed envelope or error", async () => {
-    expect(await fetchPluginList(fetchReturning(null))).toEqual({
-      plugins: [],
-    });
-    expect(await fetchPluginList(fetchReturning({}, 404))).toEqual({
-      plugins: [],
-    });
+  it("returns an empty list only for a successful empty response", async () => {
+    await expect(
+      fetchPluginList(fetchReturning({ enabled: true, plugins: [] })),
+    ).resolves.toEqual({ plugins: [] });
+  });
+
+  it("rejects malformed, HTTP, and network failures", async () => {
+    await expect(fetchPluginList(fetchReturning(null))).rejects.toThrow();
+    await expect(fetchPluginList(fetchReturning({}, 404))).rejects.toThrow();
+    await expect(
+      fetchPluginList(async () => {
+        throw new TypeError("network unavailable");
+      }),
+    ).rejects.toThrow("network unavailable");
   });
 });
 

@@ -16,6 +16,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
+  runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
 
@@ -269,5 +270,52 @@ describe("findPluginCliCommand", () => {
     expect(findPluginCliCommand(contributions, "linear")?.pluginId).toBe(
       "linear",
     );
+  });
+});
+
+describe("runPluginCliCommand", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("waits for output larger than 64 KiB to flush before returning", async () => {
+    const stdout = "x".repeat(1024 * 1024);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ exitCode: 0, stdout, stderr: "warning" }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const writes: Array<{ channel: "stdout" | "stderr"; value: string }> = [];
+    let pendingWrites = 0;
+    const outputStream = (channel: "stdout" | "stderr") => ({
+      write(value: string, callback: (error?: Error | null) => void) {
+        pendingWrites += 1;
+        setTimeout(() => {
+          writes.push({ channel, value });
+          pendingWrites -= 1;
+          callback();
+        }, 0);
+        return false;
+      },
+    });
+
+    const exitCode = await runPluginCliCommand(
+      "http://localhost",
+      "fixture",
+      [],
+      { stdout: outputStream("stdout"), stderr: outputStream("stderr") },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(pendingWrites).toBe(0);
+    expect(writes).toEqual([
+      { channel: "stdout", value: `${stdout}\n` },
+      { channel: "stderr", value: "warning\n" },
+    ]);
   });
 });

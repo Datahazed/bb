@@ -2,7 +2,6 @@ import {
   createQueuedThreadMessage,
   deleteQueuedThreadMessage,
   getEnvironment,
-  getExperiments,
   getQueuedThreadMessage,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
@@ -11,6 +10,7 @@ import {
   setQueuedThreadMessageGroupBoundary,
   unarchiveThread,
   unpinThread,
+  updateQueuedThreadMessage,
   updateThread,
   type ReorderPinnedThreadResult,
   type ReorderQueuedThreadMessageResult,
@@ -343,6 +343,40 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
+  patch(routes.updateQueuedMessage, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    ensureThreadIsWritable(thread);
+    await validatePromptAttachmentReferences({
+      dataDir: deps.config.dataDir,
+      input: payload.input,
+      projectId: thread.projectId,
+    });
+    const result = updateQueuedThreadMessage(deps.db, deps.hub, {
+      content: payload.input,
+      expectedUpdatedAt: payload.expectedUpdatedAt,
+      id: context.req.param("queuedMessageId"),
+      threadId: thread.id,
+    });
+    if (result.kind === "not_found") {
+      throw new ApiError(404, "invalid_request", "Queued message not found");
+    }
+    if (result.kind === "claimed") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Queued message is already being sent",
+      );
+    }
+    if (result.kind === "stale") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Queued message changed since editing began",
+      );
+    }
+    return context.json(toThreadQueuedMessage(result.queuedMessage));
+  });
+
   del(routes.deleteQueuedMessage, (context) => {
     const queuedMessage = getQueuedThreadMessage(
       deps.db,
@@ -377,19 +411,21 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.split !== undefined && !getExperiments(deps.db).threadSplits) {
-      throw new ApiError(
-        403,
-        "experiment_disabled",
-        'Thread splits are disabled — enable the "Thread splits" experiment in Settings → Experiments.',
-      );
-    }
     if (payload.file !== null) {
       parseSafeRelativeRoutePath(payload.file.path);
     }
     const delivered = deps.hub.notifyThreadOpen(
       { projectId: publicThread.projectId, threadId: publicThread.id },
       { split: payload.split ?? "replace", file: payload.file },
+    );
+    return context.json({ delivered });
+  });
+
+  post(routes.paneAction, (context, payload) => {
+    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    const delivered = deps.hub.notifyThreadPaneAction(
+      { projectId: publicThread.projectId, threadId: publicThread.id },
+      payload.action,
     );
     return context.json({ delivered });
   });

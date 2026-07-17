@@ -21,23 +21,23 @@ export type {
 } from "./projects.js";
 
 export {
-  createThreadFolder,
-  deleteThreadFolder,
-  getThreadFolderById,
-  getThreadFolderByName,
-  listThreadFolders,
-  normalizeThreadFolderName,
-  renameThreadFolder,
-} from "./thread-folders.js";
+  createThreadSection,
+  deleteThreadSection,
+  getThreadSectionById,
+  getThreadSectionByName,
+  listThreadSections,
+  normalizeThreadSectionName,
+  renameThreadSection,
+} from "./thread-sections.js";
 export type {
-  CreateThreadFolderResult,
-  CreateThreadFolderInput,
-  DeleteThreadFolderInput,
-  RenameThreadFolderResult,
-  RenameThreadFolderInput,
-  ThreadFolderMutationResult,
-  ThreadFolderRow,
-} from "./thread-folders.js";
+  CreateThreadSectionResult,
+  CreateThreadSectionInput,
+  DeleteThreadSectionInput,
+  RenameThreadSectionResult,
+  RenameThreadSectionInput,
+  ThreadSectionMutationResult,
+  ThreadSectionRow,
+} from "./thread-sections.js";
 
 export {
   createPromptHistoryEntry,
@@ -495,6 +495,7 @@ export {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
@@ -511,6 +512,8 @@ export type {
   ReorderQueuedThreadMessageResult,
   SetQueuedThreadMessageGroupBoundaryArgs,
   SetQueuedThreadMessageGroupBoundaryResult,
+  UpdateQueuedThreadMessageInput,
+  UpdateQueuedThreadMessageResult,
 } from "./queued-thread-messages.js";
 
 export {

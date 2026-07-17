@@ -352,10 +352,12 @@ export function useBbNavigate(): BbNavigate {
       initialPrompt?: string;
       focusPrompt?: boolean;
       replaceInitialPrompt?: boolean;
+      replace?: boolean;
     }) => {
       // RootComposeView reads `focusPrompt`/`initialPrompt` off the location
       // state to seed and focus the composer (single-use, cleared after read).
       void navigate(getRootComposeRoutePath(), {
+        ...(options?.replace ? { replace: true } : {}),
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",

@@ -406,6 +406,7 @@ function skillDescription(skill: SkillSummary): string {
 }
 
 function providerPluginNameForSkill(skill: SkillSummary): string {
+  if (skill.pluginId !== null) return skill.pluginId;
   const separatorIndex = skill.name.indexOf(":");
   return separatorIndex > 0 ? skill.name.slice(0, separatorIndex) : skill.name;
 }
@@ -1173,13 +1174,11 @@ function SkillDetailPage({
 export function SkillsLibrary() {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    skillId: routeSkillId,
-    registrySkillId: routeRegistrySkillId,
-  } = useParams<{
-    skillId?: string;
-    registrySkillId?: string;
-  }>();
+  const { skillId: routeSkillId, registrySkillId: routeRegistrySkillId } =
+    useParams<{
+      skillId?: string;
+      registrySkillId?: string;
+    }>();
   const [installedQuery, setInstalledQuery] = useState("");
   const [registrySearch, setRegistrySearch] = useState("");
   const [registryPage, setRegistryPage] = useState(0);
@@ -1436,17 +1435,26 @@ export function SkillsLibrary() {
     registryInstall.isPending && registryInstall.variables
       ? registryInstall.variables.skill.id
       : null;
-  const pendingRegistryUninstallSkillId =
-    deleteSkill.isPending
-      ? ((registryQuery.data?.skills ?? []).find(
-          (skill) =>
-            findVerifiedInstalledRegistrySkill(skill)?.id ===
-            deleteSkill.variables?.skillId,
-        )?.id ?? null)
-      : null;
+  const pendingRegistryUninstallSkillId = deleteSkill.isPending
+    ? ((registryQuery.data?.skills ?? []).find(
+        (skill) =>
+          findVerifiedInstalledRegistrySkill(skill)?.id ===
+          deleteSkill.variables?.skillId,
+      )?.id ?? null)
+    : null;
   return (
     <>
-      {selectedSkill ? (
+      {routeSkillId !== undefined && hasError ? (
+        <ResourceListState
+          state="error"
+          message="Couldn't load skill."
+          onRetry={() => void skillsQuery.refetch()}
+        />
+      ) : routeSkillId !== undefined && isLoading ? (
+        <ResourceListState state="loading" message="Loading skill" />
+      ) : routeSkillId !== undefined && selectedSkill === null ? (
+        <ResourceListState state="empty" message="Skill not found." />
+      ) : selectedSkill ? (
         <SkillDetailPage
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}

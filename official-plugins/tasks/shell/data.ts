@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@bb/plugin-sdk/app";
 import type { TasksRpcContract } from "../shared/contract.js";
+import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
+import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
 import { useTasksRefresh } from "./refresh.js";
 
@@ -10,6 +12,36 @@ export function useTasksRpc() {
 }
 
 export type TasksRpc = ReturnType<typeof useTasksRpc>;
+
+export interface TaskListQuery {
+  projectId?: string;
+  statuses?: TaskStatus[];
+  priorities?: TaskPriority[];
+  labelIds?: string[];
+  activeOnly?: boolean;
+  parentTaskId?: string | null;
+  search?: string;
+  sort?: TaskSort;
+}
+
+/** Traverse stable keyset pages while preserving the UI's complete-list views. */
+export async function listAllTasks(
+  rpc: TasksRpc,
+  input: TaskListQuery = {},
+): Promise<Task[]> {
+  const tasks: Task[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await rpc.call("listTasks", {
+      ...input,
+      limit: TASKS_PAGE_MAX_LIMIT,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    tasks.push(...page.tasks);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return tasks;
+}
 
 export const INVALIDATION_CHANNELS = [
   "tasks:changed",
@@ -51,6 +83,10 @@ export interface TasksQuery<T> {
  * Fetch-and-subscribe primitive: runs `fetcher` on mount and again whenever
  * one of `channels` fires or `deps` change. Stale responses (superseded by a
  * newer refresh) are dropped.
+ *
+ * Generation bumps (manual refresh / reconnect) report begin/end to the shared
+ * refresh provider so the header control can single-flight without a timer.
+ * Invalidation- and deps-driven refetches do not mark the shared in-flight bit.
  */
 export function useTasksQuery<T>(
   fetcher: (rpc: TasksRpc) => Promise<T>,
@@ -58,7 +94,8 @@ export function useTasksQuery<T>(
   deps: readonly unknown[] = [],
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
-  const { generation } = useTasksRefresh();
+  const { generation, beginGenerationWork, endGenerationWork } =
+    useTasksRefresh();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
   const [state, setState] = useState<{
@@ -67,10 +104,11 @@ export function useTasksQuery<T>(
     isLoading: boolean;
   }>({ data: undefined, error: null, isLoading: true });
   const seqRef = useRef(0);
+  const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
   const refresh = useCallback(() => {
     const seq = ++seqRef.current;
-    fetcherRef.current(rpc).then(
+    return fetcherRef.current(rpc).then(
       (data) => {
         if (seq !== seqRef.current) return;
         setState({ data, error: null, isLoading: false });
@@ -86,9 +124,21 @@ export function useTasksQuery<T>(
     );
   }, [rpc, depsKey]);
   useEffect(() => {
+    const generationBumped = previousGenerationRef.current !== generation;
+    previousGenerationRef.current = generation;
     setState((current) => ({ ...current, isLoading: true }));
-    refresh();
-  }, [refresh, generation]);
+    if (generationBumped) beginGenerationWork();
+    let settled = false;
+    const finish = () => {
+      if (!generationBumped || settled) return;
+      settled = true;
+      endGenerationWork();
+    };
+    void refresh().finally(finish);
+    return () => {
+      finish();
+    };
+  }, [refresh, generation, beginGenerationWork, endGenerationWork]);
   useInvalidation(channels, refresh);
   return { ...state, refresh };
 }
@@ -133,7 +183,10 @@ export function useMentionItems() {
     async (query: string): Promise<MentionItem[]> => {
       const trimmed = query.trim();
       const [taskResult, threadResult] = await Promise.all([
-        rpc.call("listTasks", trimmed ? { search: trimmed } : {}),
+        rpc.call("listTasks", {
+          ...(trimmed ? { search: trimmed } : {}),
+          limit: 8,
+        }),
         rpc
           .call("searchThreads", { query: trimmed, limit: 5 })
           .catch(() => ({ threads: [] })),
@@ -159,7 +212,7 @@ export function useMentionItems() {
 /** Tasks with agents currently working, for the Active view count. */
 export function useActiveTasks() {
   return useTasksQuery(
-    async (rpc) => (await rpc.call("listTasks", { activeOnly: true })).tasks,
+    async (rpc) => listAllTasks(rpc, { activeOnly: true }),
     ["tasks:changed", "threads:changed"],
   );
 }

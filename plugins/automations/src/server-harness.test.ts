@@ -18,7 +18,7 @@ const PROJECT_ID = "proj_test";
 const MISSING_PROJECT_ID = "proj_missing";
 const DELETED_PROJECT_ID = "proj_deleted";
 const THREAD_ID = "thr_target";
-const FOLDER_ID = "fld_reviews";
+const SECTION_ID = "sec_reviews";
 
 const rpcMethods = [
   "automations_overview",
@@ -50,11 +50,11 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
           return [project()];
         },
       },
-      threadFolders: {
+      threadSections: {
         async list() {
           return [
             {
-              id: FOLDER_ID,
+              id: SECTION_ID,
               name: "Reviews",
               createdAt: 1,
               updatedAt: 1,
@@ -73,7 +73,7 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
             id: threadId,
             archivedAt: null,
             deletedAt: null,
-            folderId: threadId === THREAD_ID ? FOLDER_ID : null,
+            sectionId: threadId === THREAD_ID ? SECTION_ID : null,
             status: "idle",
           };
         },

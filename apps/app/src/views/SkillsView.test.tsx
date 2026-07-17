@@ -8,9 +8,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { sdk } from "@/lib/sdk";
 import { SkillDetailView } from "../components/tools/SkillDetailView";
 import {
   fetchRegistrySkills,
@@ -19,12 +22,14 @@ import {
   RegistrySkillsBrowsePage,
   resolveInstalledRegistrySkill,
   SkillDetailDialogView,
+  SkillsLibrary,
   SkillsOverview,
   type RegistrySkill,
 } from "./SkillsView";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -35,6 +40,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     description: "Review the current diff.",
     provider: "claude-code",
     scope: "claude-user",
+    pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
     manageable: true,
     ...overrides,
@@ -57,6 +63,38 @@ function makeRegistrySkill(
     summary: "A useful skill.",
     ...overrides,
   };
+}
+
+function renderInstalledSkillRoute() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            skills: [],
+            pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    ),
+  );
+  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+  renderDom(
+    <MemoryRouter initialEntries={["/tools/skills/installed/skill_missing"]}>
+      <QueryClientWrapper>
+        <Routes>
+          <Route
+            path="/tools/skills/installed/:skillId"
+            element={<SkillsLibrary />}
+          />
+        </Routes>
+      </QueryClientWrapper>
+    </MemoryRouter>,
+  );
 }
 
 function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
@@ -322,6 +360,40 @@ describe("SkillsOverview", () => {
   });
 });
 
+describe("SkillsLibrary installed detail routing", () => {
+  it("keeps a detail loading state while the installed skill list resolves", () => {
+    vi.spyOn(sdk.skills, "list").mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    renderInstalledSkillRoute();
+
+    expect(screen.getByText("Loading skill")).toBeTruthy();
+    expect(screen.queryByText("New bb skill")).toBeNull();
+  });
+
+  it("shows a retryable detail error when installed skills fail to load", async () => {
+    vi.spyOn(sdk.skills, "list").mockRejectedValue(
+      new Error("skills unavailable"),
+    );
+
+    renderInstalledSkillRoute();
+
+    expect(await screen.findByText("Couldn't load skill.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("New bb skill")).toBeNull();
+  });
+
+  it("shows not found on an unknown installed skill detail route", async () => {
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+
+    renderInstalledSkillRoute();
+
+    expect(await screen.findByText("Skill not found.")).toBeTruthy();
+    expect(screen.queryByText("New bb skill")).toBeNull();
+  });
+});
+
 describe("RegistrySkillsBrowsePage", () => {
   it("renders the authoritative page order, exposes social proof, and pages forward", () => {
     const onPageChange = vi.fn();
@@ -435,6 +507,7 @@ describe("SkillDetailDialogView", () => {
       name: "documents",
       provider: "codex",
       scope: "plugin",
+      pluginId: "documents",
       manageable: false,
     });
     renderDom(
@@ -475,6 +548,42 @@ describe("SkillDetailDialogView", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Bundled with documents",
     );
+  });
+
+  it("identifies a bundled bb plugin skill without provider provenance", () => {
+    const skill = makeSkill({
+      name: "plugin-notes",
+      provider: null,
+      scope: "plugin",
+      pluginId: "skill-catalog-fixture",
+      manageable: false,
+    });
+    renderDom(
+      <SkillDetailDialogView
+        skill={skill}
+        files={["SKILL.md"]}
+        selectedPath="SKILL.md"
+        onSelectPath={() => {}}
+        content="# Plugin notes"
+        isLoadingContent={false}
+        isRefreshingContent={false}
+        isContentError={false}
+        canEdit={false}
+        canDelete={false}
+        canOpenInEditor={false}
+        isDeleting={false}
+        onEdit={() => {}}
+        onRetry={() => {}}
+        onDelete={() => {}}
+        onOpenInEditor={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText("Bundled with Skill catalog fixture (bb plugin)")
+        .textContent,
+    ).toBe("Bundled with Skill catalog fixture (bb plugin)");
+    expect(screen.queryByText("Imported", { exact: true })).toBeNull();
   });
 
   it("labels externally discovered provider skills as imported", async () => {

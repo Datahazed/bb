@@ -16,25 +16,31 @@ pass `{ baseUrl: "http://host:38886" }` to select a server explicitly.
 Most CLI commands accept `--json` for machine-readable output. The tables below
 omit that flag unless it changes the command's behavior.
 
-## Threads and folders
+## Threads and sections
 
-| Capability           | SDK                                                                     | CLI                                                                                   |
-| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Manage folders       | `bb.threadFolders.list/create/update/delete`                            | `bb thread folder list`, `create <name>`, `rename <id> <name>`, `delete <id> [--yes]` |
-| Filter by folder     | `bb.threads.list({ folderId })` or `bb.threads.list({ unfiled: true })` | `bb thread list --folder <id>` or `--unfiled`                                         |
-| Move a thread        | `bb.threads.update({ threadId, folderId })`                             | `bb thread update <id> --folder <id>` or `--clear-folder`                             |
-| Search               | `bb.threads.search({ query, limit })`                                   | `bb thread search <query> [--limit <count>]`                                          |
-| Prompt history       | `bb.threads.promptHistory({ threadId, limit })`                         | `bb thread history <id> [--limit <count>]`                                            |
-| Read state           | `bb.threads.markRead/markUnread({ threadId })`                          | `bb thread read [id]`, `bb thread unread [id]`; both support `--self`                 |
-| Pinned order         | `bb.threads.reorderPinned(...)`                                         | `bb thread reorder-pinned <id> [--after <id>] [--before <id>]`                        |
-| Queued messages      | `bb.threads.queuedMessages.*`                                           | `bb thread queue ...`                                                                 |
-| Persisted panel tabs | `bb.threads.tabs.get/update`                                            | `bb thread tabs show/set ...`                                                         |
+| Capability           | SDK                                                                          | CLI                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Manage sections      | `bb.threadSections.list/create/update/delete`                                | `bb thread section list`, `create <name>`, `rename <id> <name>`, `delete <id> [--yes]` |
+| Filter by section    | `bb.threads.list({ sectionId })` or `bb.threads.list({ unsectioned: true })` | `bb thread list --section <id>` or `--unsectioned`                                     |
+| Move a thread        | `bb.threads.update({ threadId, sectionId })`                                 | `bb thread update <id> --section <id>` or `--clear-section`                            |
+| Search               | `bb.threads.search({ query, limit })`                                        | `bb thread search <query> [--limit <count>]`                                           |
+| Prompt history       | `bb.threads.promptHistory({ threadId, limit })`                              | `bb thread history <id> [--limit <count>]`                                             |
+| Read state           | `bb.threads.markRead/markUnread({ threadId })`                               | `bb thread read [id]`, `bb thread unread [id]`; both support `--self`                  |
+| Pinned order         | `bb.threads.reorderPinned(...)`                                              | `bb thread reorder-pinned <id> [--after <id>] [--before <id>]`                         |
+| Queued messages      | `bb.threads.queuedMessages.*`                                                | `bb thread queue ...`                                                                  |
+| Persisted panel tabs | `bb.threads.tabs.get/update`                                                 | `bb thread tabs show/set ...`                                                          |
 
 Queued-message SDK methods are:
 
 ```ts
 await bb.threads.queuedMessages.list({ threadId });
 await bb.threads.queuedMessages.create({ threadId, input, model });
+await bb.threads.queuedMessages.update({
+  threadId,
+  queuedMessageId,
+  expectedUpdatedAt,
+  input,
+});
 await bb.threads.queuedMessages.send({
   threadId,
   queuedMessageId,
@@ -60,6 +66,7 @@ Equivalent CLI commands:
 ```text
 bb thread queue list <thread-id>
 bb thread queue create <thread-id> <message> [--model <model>]
+bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
 bb thread queue send <thread-id> <message-id> [--mode auto|steer]
 bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>] [--group-boundary <id>]
 bb thread queue group <thread-id> <boundary-message-id> --prefix <comma-separated-ids>
@@ -99,12 +106,12 @@ bb thread tell <id> <message> --file <path> --image <path>
 ```
 
 Both attachment flags are repeatable. `thread spawn` additionally supports
-`--folder <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
+`--section <id>`, `--origin-kind fork|side-chat`, `--source-thread <id>`, and
 `--source-seq-end <seq>`. It also accepts `--visibility visible|hidden`; hidden
 threads stay out of sidebar organization and do not contribute unread/pending
 attention to the favicon or native parent notifications. They otherwise retain
-ordinary list, search, history, folder, lifecycle, and direct-open behavior.
-The SDK accepts the equivalent `input`, `folderId`, `originKind`,
+ordinary list, search, history, section, lifecycle, and direct-open behavior.
+The SDK accepts the equivalent `input`, `sectionId`, `originKind`,
 `sourceThreadId`, `sourceSeqEnd`, and `visibility` fields.
 
 `--file` and `--image` do not read paths on the CLI machine. Absolute paths are

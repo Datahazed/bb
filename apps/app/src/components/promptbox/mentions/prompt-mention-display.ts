@@ -26,6 +26,9 @@ export function promptMentionIconLabel(
   if (resource.kind === "project") {
     return "Project";
   }
+  if (resource.kind === "section") {
+    return "Section";
+  }
   if (resource.kind === "command") {
     return resource.source === "skill" ? "Skill" : "Command";
   }
@@ -44,12 +47,15 @@ export function promptMentionIconLabel(
  */
 export function promptMentionIconName(
   resource: PromptMentionResource,
-): IconName {
+): IconName | null {
   if (resource.kind === "thread") {
     return "MessageSquare";
   }
   if (resource.kind === "project") {
-    return "FolderGit";
+    return "Folder";
+  }
+  if (resource.kind === "section") {
+    return null;
   }
   if (resource.kind === "command") {
     return promptCommandIconName(resource);

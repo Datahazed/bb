@@ -103,6 +103,31 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("sends thread pane presentation actions through the typed transport", async () => {
+    const queue = createFetchQueue([{ body: { delivered: 3 } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.paneAction({
+        threadId: "thr_test",
+        action: "restore",
+      }),
+    ).resolves.toEqual({ delivered: 3 });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({ action: "restore" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_test/pane-action",
+      },
+    ]);
+  });
+
   it("keeps realtime subscriptions distinct under subscribe", () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({
@@ -952,11 +977,11 @@ describe("@bb/sdk", () => {
     });
   });
 
-  it("preserves folder assignment in thread updates", async () => {
+  it("preserves section assignment in thread updates", async () => {
     const queue = createFetchQueue([
       {
         body: {
-          id: "thr_folder",
+          id: "thr_section",
           projectId: "proj_123",
           status: "idle",
           title: null,
@@ -972,22 +997,49 @@ describe("@bb/sdk", () => {
     });
 
     await sdk.threads.update({
-      threadId: "thr_folder",
-      folderId: "folder_123",
+      threadId: "thr_section",
+      sectionId: "sec_123",
     });
 
     expect(queue.requests[0]).toEqual({
-      bodyText: JSON.stringify({ folderId: "folder_123" }),
+      bodyText: JSON.stringify({ sectionId: "sec_123" }),
       method: "PATCH",
-      url: "http://bb.test/api/v1/threads/thr_folder",
+      url: "http://bb.test/api/v1/threads/thr_section",
     });
   });
 
-  it("exposes thread folder mutations", async () => {
+  it("sends the queued message version when updating its content", async () => {
+    const queue = createFetchQueue([{ body: { id: "qmsg_123" } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.queuedMessages.update({
+      threadId: "thr_123",
+      queuedMessageId: "qmsg_123",
+      expectedUpdatedAt: 42,
+      input: [{ type: "text", text: "Edited", mentions: [] }],
+    });
+
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({
+        expectedUpdatedAt: 42,
+        input: [{ type: "text", text: "Edited", mentions: [] }],
+      }),
+      method: "PATCH",
+      url: "http://bb.test/api/v1/threads/thr_123/queued-messages/qmsg_123",
+    });
+  });
+
+  it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {
         body: {
-          id: "folder_123",
+          id: "sec_123",
           name: "Review",
           createdAt: 1,
           updatedAt: 1,
@@ -1004,12 +1056,12 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.threadFolders.create({ name: "Review" }),
-    ).resolves.toMatchObject({ id: "folder_123", name: "Review" });
+      sdk.threadSections.create({ name: "Review" }),
+    ).resolves.toMatchObject({ id: "sec_123", name: "Review" });
     expect(queue.requests[0]).toEqual({
       bodyText: JSON.stringify({ name: "Review" }),
       method: "POST",
-      url: "http://bb.test/api/v1/thread-folders",
+      url: "http://bb.test/api/v1/thread-sections",
     });
   });
 
@@ -1330,6 +1382,7 @@ describe("@bb/sdk", () => {
               description: null,
               provider: null,
               scope: "bb-user",
+              pluginId: null,
               filePath: "/skills/local-skill/SKILL.md",
               manageable: true,
             },

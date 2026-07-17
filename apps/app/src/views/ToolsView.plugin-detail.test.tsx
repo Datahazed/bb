@@ -77,4 +77,46 @@ describe("PluginDetail official catalog lifecycle", () => {
       await screen.findByRole("menuitem", { name: "Uninstall" }),
     ).toBeTruthy();
   });
+
+  it("keeps Reload actionable for built-in plugins without exposing ownership actions", async () => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              id: "automations",
+              name: "Automations",
+              source: "builtin:automations",
+              provenance: "builtin",
+              catalogEntryId: null,
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onReload={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Automations actions" }),
+      { button: 0 },
+    );
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Reload" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open source" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: /Remove|Uninstall/ }),
+    ).toBeNull();
+  });
 });

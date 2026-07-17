@@ -63,8 +63,6 @@ async function listSkills(
     roots: await resolveSkillScanRoots({
       providerId,
       cwd,
-      builtinSkillsRootPath: fixture.builtinSkillsRootPath,
-      dataDir: fixture.dataDir,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     }),
@@ -87,7 +85,7 @@ afterEach(async () => {
 });
 
 describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
-  it("classifies each bb / provider root and emits filePath", async () => {
+  it("classifies host-owned project and provider roots only", async () => {
     const fixture = await makeWorkspaceFixture();
     const files = {
       "proj-bb": path.join(fixture.cwd, ".bb", "skills", "proj-bb", "SKILL.md"),
@@ -125,8 +123,8 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
       filePath: files["proj-bb"],
       rootKind: "bb-project",
     });
-    expect(byName(skills, "data-bb")?.rootKind).toBe("bb-data-dir");
-    expect(byName(skills, "builtin-bb")?.rootKind).toBe("bb-builtin");
+    expect(byName(skills, "data-bb")).toBeUndefined();
+    expect(byName(skills, "builtin-bb")).toBeUndefined();
     expect(byName(skills, "proj-claude")?.rootKind).toBe("provider-project");
     expect(byName(skills, "user-claude")?.rootKind).toBe("provider-user");
     // Every record carries its absolute SKILL.md path.
@@ -183,7 +181,7 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
     const skills = await listSkills(fixture, "claude-code", null);
 
     expect(byName(skills, "proj-bb")).toBeUndefined();
-    expect(byName(skills, "data-bb")?.rootKind).toBe("bb-data-dir");
+    expect(byName(skills, "data-bb")).toBeUndefined();
   });
 });
 

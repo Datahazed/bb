@@ -53,9 +53,9 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
-  CreateThreadFolderRequest,
+  CreateThreadSectionRequest,
   CreateThreadRequest,
-  DeleteThreadFolderRequest,
+  DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
@@ -158,8 +158,8 @@ import type {
   ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
-  ThreadFolderMutationResponse,
-  ThreadFolderResponse,
+  ThreadSectionMutationResponse,
+  ThreadSectionResponse,
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
@@ -168,6 +168,8 @@ import type {
   ThreadConversationOutlineResponse,
   ThreadOpenRequest,
   ThreadOpenResponse,
+  ThreadPaneActionRequest,
+  ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -184,12 +186,13 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
-  UpdateThreadFolderRequest,
+  UpdateThreadSectionRequest,
   UpdateTerminalRequest,
   UpdateHostRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
+  UpdateQueuedMessageRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
@@ -203,13 +206,14 @@ import {
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
   createFilePreviewRequestSchema,
-  createThreadFolderRequestSchema,
-  deleteThreadFolderRequestSchema,
+  createThreadSectionRequestSchema,
+  deleteThreadSectionRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
+  updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -264,6 +268,7 @@ import {
   threadHostFileContentQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
+  threadPaneActionRequestSchema,
   threadSearchQuerySchema,
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
@@ -276,7 +281,7 @@ import {
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
-  updateThreadFolderRequestSchema,
+  updateThreadSectionRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
@@ -811,38 +816,38 @@ export const publicApiRoutes = {
     }),
   },
 
-  threadFolders: {
+  threadSections: {
     create: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "post",
-      request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
-        createThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, CreateThreadSectionRequest>(
+        createThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderResponse>({ status: 201 }),
+        jsonResponse<ThreadSectionResponse>({ status: 201 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
     }),
     update: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "patch",
-      request: jsonRequest<EmptyInput, UpdateThreadFolderRequest>(
-        updateThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, UpdateThreadSectionRequest>(
+        updateThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ThreadSectionMutationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
     }),
     delete: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "delete",
-      request: jsonRequest<EmptyInput, DeleteThreadFolderRequest>(
-        deleteThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, DeleteThreadSectionRequest>(
+        deleteThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ThreadSectionMutationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
       ],
     }),
@@ -943,6 +948,15 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
     }),
+    updateQueuedMessage: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId",
+      method: "patch",
+      request: jsonRequest<
+        PathThreadAndQueuedMessage,
+        UpdateQueuedMessageRequest
+      >(updateQueuedMessageRequestSchema),
+      response: jsonResponse<ThreadQueuedMessage>(),
+    }),
     /**
      * Send a previously queued message in the requested mode, then delete the
      * queued message.
@@ -998,6 +1012,14 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<PathId, ThreadOpenRequest>(threadOpenRequestSchema),
       response: jsonResponse<ThreadOpenResponse>(),
+    }),
+    paneAction: defineRoute({
+      path: "/threads/:id/pane-action",
+      method: "post",
+      request: jsonRequest<PathId, ThreadPaneActionRequest>(
+        threadPaneActionRequestSchema,
+      ),
+      response: jsonResponse<ThreadPaneActionResponse>(),
     }),
     tabs: defineRoute({
       path: "/threads/:id/tabs",

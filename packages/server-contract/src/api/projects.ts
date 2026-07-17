@@ -65,7 +65,7 @@ export const createProjectRequestSchema = z.object({
 });
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 
-export const threadFolderSchema = z
+export const threadSectionSchema = z
   .object({
     id: z.string(),
     name: z.string().min(1),
@@ -73,45 +73,45 @@ export const threadFolderSchema = z
     updatedAt: z.number(),
   })
   .strict();
-export type ThreadFolderResponse = z.infer<typeof threadFolderSchema>;
+export type ThreadSectionResponse = z.infer<typeof threadSectionSchema>;
 
-export const createThreadFolderRequestSchema = z
+export const createThreadSectionRequestSchema = z
   .object({
     name: z.string().min(1),
   })
   .strict();
-export type CreateThreadFolderRequest = z.infer<
-  typeof createThreadFolderRequestSchema
+export type CreateThreadSectionRequest = z.infer<
+  typeof createThreadSectionRequestSchema
 >;
 
-export const updateThreadFolderRequestSchema = z
+export const updateThreadSectionRequestSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
   })
   .strict();
-export type UpdateThreadFolderRequest = z.infer<
-  typeof updateThreadFolderRequestSchema
+export type UpdateThreadSectionRequest = z.infer<
+  typeof updateThreadSectionRequestSchema
 >;
 
-export const deleteThreadFolderRequestSchema = z
+export const deleteThreadSectionRequestSchema = z
   .object({
     id: z.string().min(1),
   })
   .strict();
-export type DeleteThreadFolderRequest = z.infer<
-  typeof deleteThreadFolderRequestSchema
+export type DeleteThreadSectionRequest = z.infer<
+  typeof deleteThreadSectionRequestSchema
 >;
 
-export const threadFolderMutationResponseSchema = z
+export const threadSectionMutationResponseSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
     updatedThreadCount: z.number().int().nonnegative(),
   })
   .strict();
-export type ThreadFolderMutationResponse = z.infer<
-  typeof threadFolderMutationResponseSchema
+export type ThreadSectionMutationResponse = z.infer<
+  typeof threadSectionMutationResponseSchema
 >;
 
 export const reorderProjectRequestSchema = z.object({
@@ -369,7 +369,8 @@ export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
  * Product scope of a discovered skill, derived server-side from the daemon's raw
  * `(provider, rootKind)`. bb scopes are provider-agnostic; provider-owned
  * skills retain project/user scope as presentation metadata; `plugin` covers
- * bundled provider plugin skills. The opaque `SkillSummary.id` is the only
+ * skills bundled by either a bb plugin or a provider plugin. The opaque
+ * `SkillSummary.id` is the only
  * server-resolvable identity.
  */
 export const skillScopeSchema = z.enum([
@@ -407,6 +408,8 @@ export const skillSummarySchema = z.object({
    */
   provider: skillProviderSchema.nullable(),
   scope: skillScopeSchema,
+  /** Owning plugin id for bundled skills; `null` for every other scope. */
+  pluginId: z.string().min(1).nullable(),
   /** Absolute path to the SKILL.md. */
   filePath: z.string(),
   /** `true` when the skill is user-owned and its full lifecycle is manageable. */
@@ -525,7 +528,7 @@ export type ProjectWithThreadsResponse = z.infer<
 >;
 
 export const sidebarBootstrapResponseSchema = z.object({
-  folders: z.array(threadFolderSchema),
+  sections: z.array(threadSectionSchema),
   projects: z.array(projectWithThreadsResponseSchema),
   personalProject: projectWithThreadsResponseSchema,
 });

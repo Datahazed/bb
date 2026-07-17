@@ -3,6 +3,11 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import {
   skillContentResponseSchema,
   skillFilesResponseSchema,
@@ -19,6 +24,11 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+
+const installServerRegistrySkillMock = vi.hoisted(() => vi.fn());
+vi.mock("../../src/services/skills/registry-skill-install.js", () => ({
+  installServerRegistrySkill: installServerRegistrySkillMock,
+}));
 
 interface SkillRpcStub {
   requests: HostDaemonOnlineRpcRequestMessage[];
@@ -58,7 +68,6 @@ function registerSkillRpc(
     sessionId: string;
     skillsByProvider?: Record<string, DiscoveredSkill[]>;
     deletedPath?: string;
-    installedFilePath?: string;
     listedFiles?: string[];
     fileContents?: Record<string, string>;
     fileContentsByRoot?: Record<string, string>;
@@ -82,15 +91,6 @@ function registerSkillRpc(
         return {
           ok: true,
           result: { deletedPath: args.deletedPath ?? "/deleted" },
-        };
-      }
-      if (request.command.type === "host.install_registry_skill") {
-        return {
-          ok: true,
-          result: {
-            filePath:
-              args.installedFilePath ?? "/data/skills/imported-skill/SKILL.md",
-          },
         };
       }
       if (request.command.type === "host.list_files") {
@@ -180,8 +180,56 @@ function skillId(filePath: string): string {
   return `skill_${createHash("sha256").update(filePath).digest("hex")}`;
 }
 
+async function writePluginSkillFixture(rootPath: string): Promise<{
+  pluginRootPath: string;
+  skillFilePath: string;
+}> {
+  const pluginRootPath = join(rootPath, "bb-plugin-skill-catalog-fixture");
+  const skillRootPath = join(pluginRootPath, "skills", "plugin-notes");
+  await mkdir(skillRootPath, { recursive: true });
+  await writeFile(
+    join(pluginRootPath, "package.json"),
+    JSON.stringify({
+      name: "bb-plugin-skill-catalog-fixture",
+      version: "0.1.0",
+      bb: {
+        name: "Skill catalog fixture",
+        description: "Contributes one readable skill.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
+    }),
+    "utf8",
+  );
+  await writeFile(
+    join(pluginRootPath, "server.ts"),
+    "export default function plugin() {}\n",
+    "utf8",
+  );
+  const skillFilePath = join(skillRootPath, "SKILL.md");
+  await writeFile(
+    skillFilePath,
+    [
+      "---",
+      "name: plugin-notes",
+      "description: Read notes contributed by the fixture plugin.",
+      "---",
+      "",
+      "# Plugin notes",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(skillRootPath, "reference.md"),
+    "# Plugin reference\n",
+    "utf8",
+  );
+  return { pluginRootPath, skillFilePath };
+}
+
 describe("public project skills route", () => {
-  it("imports a registry package as one host-local bb user skill", async () => {
+  it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-registry-install",
@@ -190,10 +238,12 @@ describe("public project skills route", () => {
         hostId: host.id,
         path: "/tmp/registry-install-project",
       });
-      const stub = registerSkillRpc(harness, {
+      registerSkillRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
-        installedFilePath: "/data/skills/find-skills/SKILL.md",
+      });
+      installServerRegistrySkillMock.mockResolvedValueOnce({
+        filePath: "/data/skills/find-skills/SKILL.md",
       });
       vi.stubGlobal(
         "fetch",
@@ -226,8 +276,8 @@ describe("public project skills route", () => {
         ok: true,
         filePath: "/data/skills/find-skills/SKILL.md",
       });
-      expect(stub.requests.map((request) => request.command)).toContainEqual({
-        type: "host.install_registry_skill",
+      expect(installServerRegistrySkillMock).toHaveBeenCalledWith({
+        dataDir: harness.deps.config.dataDir,
         packageRef: "vercel-labs/skills",
         skillId: "find-skills",
       });
@@ -349,6 +399,7 @@ describe("public project skills route", () => {
           description: "bb-helper skill",
           provider: null,
           scope: "bb-user",
+          pluginId: null,
           filePath: "/data/skills/bb-helper/SKILL.md",
           manageable: true,
         },
@@ -358,6 +409,7 @@ describe("public project skills route", () => {
           description: "cp skill",
           provider: "claude-code",
           scope: "claude-project",
+          pluginId: null,
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
           manageable: true,
         },
@@ -367,6 +419,7 @@ describe("public project skills route", () => {
           description: "cu skill",
           provider: "claude-code",
           scope: "claude-user",
+          pluginId: null,
           filePath: "/home/.claude/skills/cu/SKILL.md",
           manageable: true,
         },
@@ -376,6 +429,7 @@ describe("public project skills route", () => {
           description: "cx skill",
           provider: "codex",
           scope: "codex-user",
+          pluginId: null,
           filePath: "/home/.codex/skills/cx/SKILL.md",
           manageable: true,
         },
@@ -392,6 +446,76 @@ describe("public project skills route", () => {
         expect(command).toMatchObject({ cwd: "/tmp/skills-env" });
       }
     });
+  });
+
+  it("lists and reads a bb plugin skill from the authoritative runtime catalog", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-skill-route-"));
+    try {
+      await withTestHarness(async (harness) => {
+        setExperiments(harness.db, {
+          ...defaultExperiments,
+          plugins: true,
+        });
+        const { pluginRootPath, skillFilePath } =
+          await writePluginSkillFixture(workDir);
+        const installed =
+          await harness.pluginService.installPath(pluginRootPath);
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-plugin-skill",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/plugin-skill-project",
+        });
+        const stub = registerSkillRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const listResponse = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills?environmentId=`,
+        );
+        expect(listResponse.status).toBe(200);
+        const listed = skillListResponseSchema.parse(
+          await readJson(listResponse),
+        );
+        const matches = listed.skills.filter(
+          (skill) => skill.name === "plugin-notes",
+        );
+        expect(matches).toHaveLength(1);
+        expect(matches[0]).toMatchObject({
+          name: "plugin-notes",
+          description: "Read notes contributed by the fixture plugin.",
+          provider: null,
+          scope: "plugin",
+          pluginId: installed.id,
+          filePath: skillFilePath,
+          manageable: false,
+        });
+
+        const skill = matches[0];
+        if (skill === undefined) throw new Error("Expected plugin skill");
+        const query = new URLSearchParams({
+          skillId: skill.id,
+          environmentId: "",
+          path: "reference.md",
+        });
+        const contentResponse = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content?${query}`,
+        );
+        expect(contentResponse.status).toBe(200);
+        expect(
+          skillContentResponseSchema.parse(await readJson(contentResponse)),
+        ).toMatchObject({ content: "# Plugin reference\n" });
+        expect(
+          stub.requests.some(
+            (request) => request.command.type === "host.read_file_relative",
+          ),
+        ).toBe(false);
+      });
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
   });
 
   it("deletes a bb skill via the confined daemon primitive", async () => {

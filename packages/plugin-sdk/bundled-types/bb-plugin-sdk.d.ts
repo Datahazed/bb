@@ -482,12 +482,14 @@ interface BbNavigate {
      * composer on arrival — the pairing behind "Create via chat" style entry
      * points that drop the user into chat with a prefilled prompt. Set
      * `replaceInitialPrompt` for an explicit resource action whose context must
-     * replace any stale root-composer draft.
+     * replace any stale root-composer draft. Set `replace` for redirects so the
+     * intermediary route does not trap browser Back navigation.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
         replaceInitialPrompt?: boolean;
+        replace?: boolean;
     }): void;
 }
 /**
@@ -562,6 +564,7 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "thread.next": "thread.next";
         "pane.focus.previous": "pane.focus.previous";
         "pane.focus.next": "pane.focus.next";
+        "pane.maximize.toggle": "pane.maximize.toggle";
         "pane.close": "pane.close";
         "window.new": "window.new";
         "settings.open": "settings.open";
@@ -739,7 +742,6 @@ type Environment = z$1.infer<typeof environmentSchema>;
  */
 declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
-    threadSplits: z$1.ZodBoolean;
     plugins: z$1.ZodBoolean;
 }, z$1.core.$strip>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
@@ -1940,7 +1942,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -1948,6 +1950,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -1984,7 +1990,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2017,7 +2023,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2025,6 +2031,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2061,7 +2071,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2429,7 +2439,7 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2437,6 +2447,10 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2473,7 +2487,7 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2566,32 +2580,32 @@ declare const createProjectRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strict>;
 }, z$1.core.$strip>;
 type CreateProjectRequest = z$1.infer<typeof createProjectRequestSchema>;
-declare const threadFolderSchema: z$1.ZodObject<{
+declare const threadSectionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
     createdAt: z$1.ZodNumber;
     updatedAt: z$1.ZodNumber;
 }, z$1.core.$strict>;
-type ThreadFolderResponse = z$1.infer<typeof threadFolderSchema>;
-declare const createThreadFolderRequestSchema: z$1.ZodObject<{
+type ThreadSectionResponse = z$1.infer<typeof threadSectionSchema>;
+declare const createThreadSectionRequestSchema: z$1.ZodObject<{
     name: z$1.ZodString;
 }, z$1.core.$strict>;
-type CreateThreadFolderRequest = z$1.infer<typeof createThreadFolderRequestSchema>;
-declare const updateThreadFolderRequestSchema: z$1.ZodObject<{
+type CreateThreadSectionRequest = z$1.infer<typeof createThreadSectionRequestSchema>;
+declare const updateThreadSectionRequestSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
 }, z$1.core.$strict>;
-type UpdateThreadFolderRequest = z$1.infer<typeof updateThreadFolderRequestSchema>;
-declare const deleteThreadFolderRequestSchema: z$1.ZodObject<{
+type UpdateThreadSectionRequest = z$1.infer<typeof updateThreadSectionRequestSchema>;
+declare const deleteThreadSectionRequestSchema: z$1.ZodObject<{
     id: z$1.ZodString;
 }, z$1.core.$strict>;
-type DeleteThreadFolderRequest = z$1.infer<typeof deleteThreadFolderRequestSchema>;
-declare const threadFolderMutationResponseSchema: z$1.ZodObject<{
+type DeleteThreadSectionRequest = z$1.infer<typeof deleteThreadSectionRequestSchema>;
+declare const threadSectionMutationResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
     updatedThreadCount: z$1.ZodNumber;
 }, z$1.core.$strict>;
-type ThreadFolderMutationResponse = z$1.infer<typeof threadFolderMutationResponseSchema>;
+type ThreadSectionMutationResponse = z$1.infer<typeof threadSectionMutationResponseSchema>;
 declare const reorderProjectRequestSchema: z$1.ZodObject<{
     previousProjectId: z$1.ZodNullable<z$1.ZodString>;
     nextProjectId: z$1.ZodNullable<z$1.ZodString>;
@@ -2715,7 +2729,7 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2723,6 +2737,10 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2759,7 +2777,7 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2839,6 +2857,7 @@ declare const skillListResponseSchema: z$1.ZodObject<{
             "codex-user": "codex-user";
             "codex-project": "codex-project";
         }>;
+        pluginId: z$1.ZodNullable<z$1.ZodString>;
         filePath: z$1.ZodString;
         manageable: z$1.ZodBoolean;
     }, z$1.core.$strip>>;
@@ -2903,7 +2922,7 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
         providerId: z$1.ZodString;
         title: z$1.ZodNullable<z$1.ZodString>;
         titleFallback: z$1.ZodNullable<z$1.ZodString>;
-        folderId: z$1.ZodNullable<z$1.ZodString>;
+        sectionId: z$1.ZodNullable<z$1.ZodString>;
         status: z$1.ZodEnum<{
             error: "error";
             stopping: "stopping";
@@ -3832,7 +3851,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -3840,6 +3859,10 @@ declare const hostDaemonCommandRegistry: {
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"project">;
                     projectId: z$1.ZodString;
+                    label: z$1.ZodString;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -3876,7 +3899,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -3909,7 +3932,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -3917,6 +3940,10 @@ declare const hostDaemonCommandRegistry: {
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"project">;
                     projectId: z$1.ZodString;
+                    label: z$1.ZodString;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -3953,7 +3980,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -3998,7 +4025,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -4006,6 +4033,10 @@ declare const hostDaemonCommandRegistry: {
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"project">;
                     projectId: z$1.ZodString;
+                    label: z$1.ZodString;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -4042,7 +4073,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -4075,7 +4106,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -4083,6 +4114,10 @@ declare const hostDaemonCommandRegistry: {
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"project">;
                     projectId: z$1.ZodString;
+                    label: z$1.ZodString;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -4119,7 +4154,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -4816,7 +4851,6 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"host.list_skills">;
         providerId: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
-        builtinSkillsRootPath: z$1.ZodString;
     }, z$1.core.$strip>, z$1.ZodObject<{
         skills: z$1.ZodArray<z$1.ZodObject<{
             id: z$1.ZodString;
@@ -4861,10 +4895,6 @@ declare const hostDaemonCommandRegistry: {
         scope: z$1.ZodEnum<{
             "bb-project": "bb-project";
             "bb-user": "bb-user";
-            "claude-user": "claude-user";
-            "claude-project": "claude-project";
-            "codex-user": "codex-user";
-            "codex-project": "codex-project";
         }>;
         name: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
@@ -6426,6 +6456,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -6511,6 +6542,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -6596,6 +6628,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "pane.focus.6": "pane.focus.6";
             "pane.focus.7": "pane.focus.7";
             "pane.focus.8": "pane.focus.8";
+            "pane.maximize.toggle": "pane.maximize.toggle";
             "pane.close": "pane.close";
             "window.new": "window.new";
             "settings.open": "settings.open";
@@ -6633,7 +6666,6 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strict>>;
     experiments: z$1.ZodObject<{
         claudeCodeMockCliTraffic: z$1.ZodBoolean;
-        threadSplits: z$1.ZodBoolean;
         plugins: z$1.ZodBoolean;
     }, z$1.core.$strip>;
     appearance: z$1.ZodObject<{
@@ -6731,9 +6763,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6762,9 +6794,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6908,7 +6940,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
     mentions: z$1.ZodArray<z$1.ZodObject<{
         start: z$1.ZodNumber;
         end: z$1.ZodNumber;
-        resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             kind: z$1.ZodLiteral<"thread">;
             threadId: z$1.ZodString;
             projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -6916,6 +6948,10 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
         }, z$1.core.$strip>, z$1.ZodObject<{
             kind: z$1.ZodLiteral<"project">;
             projectId: z$1.ZodString;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"section">;
+            sectionId: z$1.ZodString;
             label: z$1.ZodString;
         }, z$1.core.$strip>, z$1.ZodObject<{
             kind: z$1.ZodLiteral<"path">;
@@ -6952,7 +6988,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             label: z$1.ZodString;
-        }, z$1.core.$strip>], "kind">;
+        }, z$1.core.$strip>], "kind">>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     id: z$1.ZodString;
@@ -7489,7 +7525,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7497,6 +7533,10 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7533,7 +7573,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7630,7 +7670,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         type: z$1.ZodLiteral<"project-default">;
     }, z$1.core.$strip>], "type">;
     parentThreadId: z$1.ZodOptional<z$1.ZodString>;
-    folderId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+    sectionId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     sourceThreadId: z$1.ZodOptional<z$1.ZodString>;
     sourceSeqEnd: z$1.ZodOptional<z$1.ZodNumber>;
     startedOnBehalfOf: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodObject<{
@@ -7660,7 +7700,7 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7668,6 +7708,10 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7704,7 +7748,7 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7786,7 +7830,7 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7794,6 +7838,10 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7830,7 +7878,7 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7895,6 +7943,91 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
     senderThreadId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type CreateQueuedMessageRequest = z$1.infer<typeof createQueuedMessageRequestSchema>;
+declare const updateQueuedMessageRequestSchema: z$1.ZodObject<{
+    expectedUpdatedAt: z$1.ZodNumber;
+    input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"text">;
+        text: z$1.ZodString;
+        mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
+            start: z$1.ZodNumber;
+            end: z$1.ZodNumber;
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"thread">;
+                threadId: z$1.ZodString;
+                projectId: z$1.ZodOptional<z$1.ZodString>;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"project">;
+                projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"path">;
+                source: z$1.ZodEnum<{
+                    workspace: "workspace";
+                    "thread-storage": "thread-storage";
+                }>;
+                entryKind: z$1.ZodEnum<{
+                    file: "file";
+                    directory: "directory";
+                }>;
+                path: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"command">;
+                trigger: z$1.ZodEnum<{
+                    "/": "/";
+                }>;
+                name: z$1.ZodString;
+                source: z$1.ZodEnum<{
+                    command: "command";
+                    skill: "skill";
+                }>;
+                origin: z$1.ZodEnum<{
+                    user: "user";
+                    project: "project";
+                    builtin: "builtin";
+                }>;
+                label: z$1.ZodString;
+                argumentHint: z$1.ZodNullable<z$1.ZodString>;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"plugin">;
+                pluginId: z$1.ZodString;
+                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+                itemId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>], "kind">>;
+        }, z$1.core.$strip>>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"image">;
+        url: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"localImage">;
+        path: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        visibility: z$1.ZodOptional<z$1.ZodEnum<{
+            "agent-only": "agent-only";
+        }>>;
+        type: z$1.ZodLiteral<"localFile">;
+        path: z$1.ZodString;
+        name: z$1.ZodOptional<z$1.ZodString>;
+        sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
+        mimeType: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strip>], "type">>;
+}, z$1.core.$strip>;
+type UpdateQueuedMessageRequest = z$1.infer<typeof updateQueuedMessageRequestSchema>;
 declare const sendQueuedMessageRequestSchema: z$1.ZodObject<{
     mode: z$1.ZodEnum<{
         steer: "steer";
@@ -7926,7 +8059,7 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7934,6 +8067,10 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"project">;
                     projectId: z$1.ZodString;
+                    label: z$1.ZodString;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -7970,7 +8107,7 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -8027,7 +8164,7 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -8100,7 +8237,7 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 providerId: z$1.ZodString;
                 title: z$1.ZodNullable<z$1.ZodString>;
                 titleFallback: z$1.ZodNullable<z$1.ZodString>;
-                folderId: z$1.ZodNullable<z$1.ZodString>;
+                sectionId: z$1.ZodNullable<z$1.ZodString>;
                 status: z$1.ZodEnum<{
                     error: "error";
                     stopping: "stopping";
@@ -8188,7 +8325,7 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 providerId: z$1.ZodString;
                 title: z$1.ZodNullable<z$1.ZodString>;
                 titleFallback: z$1.ZodNullable<z$1.ZodString>;
-                folderId: z$1.ZodNullable<z$1.ZodString>;
+                sectionId: z$1.ZodNullable<z$1.ZodString>;
                 status: z$1.ZodEnum<{
                     error: "error";
                     stopping: "stopping";
@@ -8275,7 +8412,7 @@ declare const threadResponseSchema: z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -8332,7 +8469,7 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -8598,7 +8735,7 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -8606,6 +8743,10 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"project">;
                 projectId: z$1.ZodString;
+                label: z$1.ZodString;
+            }, z$1.core.$strip>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -8642,7 +8783,7 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -8701,7 +8842,7 @@ declare const deleteThreadRequestSchema: z$1.ZodObject<{
 type DeleteThreadRequest = z$1.infer<typeof deleteThreadRequestSchema>;
 declare const updateThreadRequestSchema: z$1.ZodObject<{
     title: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
-    folderId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+    sectionId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     parentThreadId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     model: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     reasoningLevel: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodEnum<{
@@ -8749,6 +8890,18 @@ declare const threadOpenResponseSchema: z$1.ZodObject<{
     delivered: z$1.ZodNumber;
 }, z$1.core.$strip>;
 type ThreadOpenResponse = z$1.infer<typeof threadOpenResponseSchema>;
+/** Presentation action for one thread pane in each connected app window. */
+declare const threadPaneActionSchema: z$1.ZodEnum<{
+    maximize: "maximize";
+    restore: "restore";
+    toggle: "toggle";
+}>;
+type ThreadPaneAction = z$1.infer<typeof threadPaneActionSchema>;
+/** Number of connected app clients that received the pane action. */
+declare const threadPaneActionResponseSchema: z$1.ZodObject<{
+    delivered: z$1.ZodNumber;
+}, z$1.core.$strip>;
+type ThreadPaneActionResponse = z$1.infer<typeof threadPaneActionResponseSchema>;
 declare const threadArchiveAllResponseSchema: z$1.ZodObject<{
     ok: z$1.ZodLiteral<true>;
     archivedThreadIds: z$1.ZodArray<z$1.ZodString>;
@@ -8762,8 +8915,8 @@ declare const threadListQuerySchema: z$1.ZodObject<{
         true: "true";
         false: "false";
     }>>;
-    folderId: z$1.ZodOptional<z$1.ZodString>;
-    unfiled: z$1.ZodOptional<z$1.ZodEnum<{
+    sectionId: z$1.ZodOptional<z$1.ZodString>;
+    unsectioned: z$1.ZodOptional<z$1.ZodEnum<{
         true: "true";
         false: "false";
     }>>;
@@ -9017,8 +9170,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -10108,7 +10261,7 @@ interface TerminalsArea {
 interface ThreadListArgs {
     archived?: boolean;
     excludeSideChats?: boolean;
-    folderId?: string;
+    sectionId?: string;
     hasParent?: boolean;
     limit?: number;
     offset?: number;
@@ -10117,7 +10270,7 @@ interface ThreadListArgs {
     projectId?: string;
     signal?: AbortSignal;
     sourceThreadId?: string;
-    unfiled?: boolean;
+    unsectioned?: boolean;
 }
 interface ThreadSearchArgs extends ThreadSearchQuery {
     signal?: AbortSignal;
@@ -10145,6 +10298,7 @@ type ThreadEventWaitResult = ThreadEventRow | null;
 type ThreadTimelineResult = ThreadTimelineResponse;
 type ThreadArchiveResult = ThreadArchiveAllResponse;
 type ThreadOpenResult = ThreadOpenResponse;
+type ThreadPaneActionResult = ThreadPaneActionResponse;
 type ThreadDeleteResult = {
     ok: true;
 };
@@ -10163,6 +10317,7 @@ type ThreadPinOrderResult = ThreadListResponse;
 type ThreadPromptHistoryResult = PromptHistoryResponse;
 type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
+type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
 type ThreadQueuedMessageDeleteResult = {
     ok: true;
 };
@@ -10219,6 +10374,8 @@ interface ThreadQueuedMessageArgs {
 interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
     threadId: string;
 }
+interface ThreadQueuedMessageUpdateArgs extends ThreadQueuedMessageTargetArgs, UpdateQueuedMessageRequest {
+}
 interface ThreadQueuedMessageTargetArgs {
     queuedMessageId: string;
     threadId: string;
@@ -10249,6 +10406,10 @@ interface ThreadOpenArgs {
     threadId: string;
     split?: ThreadOpenSplit;
     file: ThreadOpenFile | null;
+}
+interface ThreadPaneActionArgs {
+    action: ThreadPaneAction;
+    threadId: string;
 }
 interface ThreadEventsListArgs {
     afterSeq?: string;
@@ -10336,6 +10497,7 @@ interface ThreadQueuedMessagesArea {
     reorder(args: ThreadQueuedMessageReorderArgs): Promise<ThreadQueuedMessageReorderResult>;
     send(args: ThreadQueuedMessageSendArgs): Promise<ThreadQueuedMessageSendResult>;
     setGroupBoundary(args: ThreadQueuedMessageGroupBoundaryArgs): Promise<ThreadQueuedMessageGroupBoundaryResult>;
+    update(args: ThreadQueuedMessageUpdateArgs): Promise<ThreadQueuedMessageUpdateResult>;
 }
 interface ThreadTabsArea {
     get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
@@ -10355,6 +10517,7 @@ interface ThreadsArea {
     markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
     markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
     open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
+    paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
     output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
     pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
     promptHistory(args: ThreadPromptHistoryArgs): Promise<ThreadPromptHistoryResult>;
@@ -10375,18 +10538,18 @@ interface ThreadsArea {
     wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
 
-type ThreadFolderCreateResult = ThreadFolderResponse;
-type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
-type ThreadFolderDeleteResult = ThreadFolderMutationResponse;
-type ThreadFolderListResult = ThreadFolderResponse[];
-interface ThreadFolderListArgs {
+type ThreadSectionCreateResult = ThreadSectionResponse;
+type ThreadSectionUpdateResult = ThreadSectionMutationResponse;
+type ThreadSectionDeleteResult = ThreadSectionMutationResponse;
+type ThreadSectionListResult = ThreadSectionResponse[];
+interface ThreadSectionListArgs {
     signal?: AbortSignal;
 }
-interface ThreadFoldersArea {
-    create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
-    delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
-    list(args?: ThreadFolderListArgs): Promise<ThreadFolderListResult>;
-    update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
+interface ThreadSectionsArea {
+    create(args: CreateThreadSectionRequest): Promise<ThreadSectionCreateResult>;
+    delete(args: DeleteThreadSectionRequest): Promise<ThreadSectionDeleteResult>;
+    list(args?: ThreadSectionListArgs): Promise<ThreadSectionListResult>;
+    update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
 
 interface BbSdk extends BbRealtime {
@@ -10402,7 +10565,7 @@ interface BbSdk extends BbRealtime {
     system: SystemArea;
     terminals: TerminalsArea;
     theme: ThemeArea;
-    threadFolders: ThreadFoldersArea;
+    threadSections: ThreadSectionsArea;
     threads: ThreadsArea;
 }
 
@@ -10620,6 +10783,26 @@ interface PluginCliResult {
     exitCode: number;
     stdout?: string;
     stderr?: string;
+}
+/**
+ * Maximum combined UTF-8 bytes accepted from plugin CLI stdout and stderr.
+ * This is the shared source of truth for production and the testing harness.
+ */
+declare const PLUGIN_CLI_OUTPUT_MAX_BYTES: number;
+interface PluginCliOutputLimitError {
+    code: "plugin_cli_output_too_large";
+    message: string;
+    maxBytes: number;
+    stdoutBytes: number;
+    stderrBytes: number;
+    totalBytes: number;
+}
+/** Normalized host result returned by the plugin CLI HTTP/testing boundary. */
+interface PluginCliExecutionResult {
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    error?: PluginCliOutputLimitError;
 }
 interface PluginCliRegistration {
     /** Top-level command name (`bb <name> …`): lowercase [a-z0-9-]+, and not
@@ -10984,5 +11167,5 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export { defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
+export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
+export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };

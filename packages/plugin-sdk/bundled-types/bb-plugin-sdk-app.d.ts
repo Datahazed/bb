@@ -476,12 +476,14 @@ interface BbNavigate {
      * composer on arrival — the pairing behind "Create via chat" style entry
      * points that drop the user into chat with a prefilled prompt. Set
      * `replaceInitialPrompt` for an explicit resource action whose context must
-     * replace any stale root-composer draft.
+     * replace any stale root-composer draft. Set `replace` for redirects so the
+     * intermediary route does not trap browser Back navigation.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
         replaceInitialPrompt?: boolean;
+        replace?: boolean;
     }): void;
 }
 /**

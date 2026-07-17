@@ -1683,7 +1683,9 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("parses thread.start with workspacePath", () => {
+  it("parses section mentions in thread.start", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(57);
+
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -1696,7 +1698,23 @@ describe("host-daemon command schemas", () => {
         projectId: "proj_123",
         providerId: "codex",
         requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
+        input: [
+          {
+            type: "text",
+            text: "@release",
+            mentions: [
+              {
+                start: 0,
+                end: 8,
+                resource: {
+                  kind: "section",
+                  sectionId: "sec_release",
+                  label: "Release QA",
+                },
+              },
+            ],
+          },
+        ],
         options: {
           model: "gpt-5",
           serviceTier: "default",
@@ -1718,10 +1736,88 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "thread.start",
+      input: [
+        {
+          mentions: [
+            {
+              resource: {
+                kind: "section",
+                sectionId: "sec_release",
+                label: "Release QA",
+              },
+            },
+          ],
+        },
+      ],
       workspaceContext: {
         workspacePath: "/tmp/workspace",
         workspaceProvisionType: "unmanaged",
       },
+    });
+  });
+
+  it("parses section mentions in turn.submit follow-ups", () => {
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "turn.submit",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        requestId: CLIENT_REQUEST_ID,
+        input: [
+          {
+            type: "text",
+            text: "Review @release",
+            mentions: [
+              {
+                start: 7,
+                end: 15,
+                resource: {
+                  kind: "section",
+                  sectionId: "sec_release",
+                  label: "Release QA",
+                },
+              },
+            ],
+          },
+        ],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp/workspace",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "proj_123",
+          providerId: "codex",
+          providerThreadId: "provider_123",
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "start" },
+      }),
+    ).toMatchObject({
+      type: "turn.submit",
+      input: [
+        {
+          mentions: [
+            {
+              resource: {
+                kind: "section",
+                sectionId: "sec_release",
+                label: "Release QA",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
@@ -2267,6 +2363,28 @@ describe("host-daemon command schemas", () => {
         },
         targetBranch: "main lock",
         commitMessage: "Merge branch",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("limits host.write_skill to daemon-derived bb roots", () => {
+    const base = {
+      type: "host.write_skill",
+      name: "review",
+      cwd: null,
+      content: "# Review",
+      expectedSha256: "a".repeat(64),
+    } as const;
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...base,
+        scope: "bb-user",
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...base,
+        scope: "claude-user",
       }).success,
     ).toBe(false);
   });

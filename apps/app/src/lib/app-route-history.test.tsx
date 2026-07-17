@@ -124,6 +124,17 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
+          pluginNavigate.toCompose({
+            initialPrompt: "Edit this automation",
+            replace: true,
+          })
+        }
+      >
+        Redirect edit to compose
+      </button>
+      <button
+        type="button"
+        onClick={() =>
           pluginNavigate.exitPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: detailSubPath,
           })
@@ -273,9 +284,11 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Exit edit", detailPath);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
 
+    await clickAndExpectPath("Open detail", detailPath);
     await clickAndExpectPath("Open direct edit", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
-    await clickAndExpectPath("Exit edit", detailPath);
+    await clickAndExpectPath("Redirect edit to compose", "/");
+    await clickAndExpectPath("Native back", detailPath);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 });

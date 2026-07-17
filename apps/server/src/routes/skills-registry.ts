@@ -2,8 +2,7 @@ import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
-import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
-import { resolveProjectCommandWorkspace } from "../services/projects/project-workspace.js";
+import { installServerRegistrySkill } from "../services/skills/registry-skill-install.js";
 
 const SKILLS_BASE_URL = "https://www.skills.sh";
 const DEFAULT_PAGE_SIZE = 24;
@@ -15,7 +14,6 @@ const GITHUB_STARS_PREVIEW_LIMIT = 48;
 const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 const REGISTRY_FETCH_CONCURRENCY = 6;
-const REGISTRY_INSTALL_RPC_TIMEOUT_MS = 130_000;
 const REGISTRY_DETAIL_FILE_LIMIT = 200;
 const REGISTRY_DETAIL_FILE_SIZE_LIMIT = 1_000_000;
 const REGISTRY_DETAIL_TOTAL_SIZE_LIMIT = 5_000_000;
@@ -722,17 +720,10 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     }
     requirePublicProject(deps.db, body.projectId);
     const registrySkill = await resolveRegistrySkillById(body.registrySkillId);
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId: body.projectId,
-    });
-    const result = await callHostOnlineRpc(deps, {
-      hostId: workspace.hostId,
-      timeoutMs: REGISTRY_INSTALL_RPC_TIMEOUT_MS,
-      command: {
-        type: "host.install_registry_skill",
-        packageRef: packageRefForSource(registrySkill.source),
-        skillId: registrySkill.skillId,
-      },
+    const result = await installServerRegistrySkill({
+      dataDir: deps.config.dataDir,
+      packageRef: packageRefForSource(registrySkill.source),
+      skillId: registrySkill.skillId,
     });
     return context.json({ ok: true, filePath: result.filePath });
   });

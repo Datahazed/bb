@@ -711,7 +711,6 @@ const hostListSkillsCommandSchema = z.object({
   type: z.literal("host.list_skills"),
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
-  builtinSkillsRootPath: z.string().min(1),
 });
 
 const registrySkillNamePattern =
@@ -790,10 +789,12 @@ const hostDeleteSkillCommandSchema = z
  * `<bb-root>/<name>/SKILL.md` of an already-existing skill. Edits only — it
  * never creates new skills (creation is via prompt).
  */
+const writableBbSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+
 const hostWriteSkillCommandSchema = z
   .object({
     type: z.literal("host.write_skill"),
-    scope: deletableSkillScopeSchema,
+    scope: writableBbSkillScopeSchema,
     name: z.string().min(1),
     cwd: z.string().min(1).nullable(),
     content: z.string().min(1).max(1_000_000),

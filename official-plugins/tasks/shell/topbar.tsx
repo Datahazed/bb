@@ -1,12 +1,21 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
-import { useTasksQuery } from "./data.js";
+import { listAllTasks, useTasksQuery } from "./data.js";
 import type { TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { useTasksRefresh } from "./refresh.js";
+
+/** Accessible name + tooltip for the header refresh control. */
+export const REFRESH_TASKS_LABEL = "Refresh tasks";
 
 export interface PagerPosition {
   /** 1-based position of the task within its sibling list. */
@@ -53,12 +62,10 @@ function TaskPager({
   // steps through the full sibling list.
   const siblings = useTasksQuery(
     async (rpc) =>
-      (
-        await rpc.call("listTasks", {
-          ...(projectId === null ? {} : { projectId }),
-          parentTaskId: null,
-        })
-      ).tasks,
+      listAllTasks(rpc, {
+        ...(projectId === null ? {} : { projectId }),
+        parentTaskId: null,
+      }),
     ["tasks:changed"],
     [projectId],
   );
@@ -71,14 +78,19 @@ function TaskPager({
     if (key !== null) onNavigate({ kind: "task", taskKey: key });
   };
   return (
-    <div className="flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground">
-      <span className="px-1">
+    // The pager yields entirely below @sm so the task key — the row's
+    // identity — keeps the width; the in-page task content carries its own
+    // navigation on the smallest phones.
+    <div className="hidden shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground @sm:flex">
+      {/* The position readout yields to the task key in narrow containers;
+          the step buttons remain. */}
+      <span className="hidden px-1 @md:inline">
         {position.index} / {position.total}
       </span>
       <Button
         variant="ghost"
         size="icon"
-        className="size-6"
+        className="size-6 max-md:pointer-coarse:size-9"
         aria-label="Previous task"
         disabled={position.prevKey === null}
         onClick={() => step(position.prevKey)}
@@ -88,7 +100,7 @@ function TaskPager({
       <Button
         variant="ghost"
         size="icon"
-        className="size-6"
+        className="size-6 max-md:pointer-coarse:size-9"
         aria-label="Next task"
         disabled={position.nextKey === null}
         onClick={() => step(position.nextKey)}
@@ -112,7 +124,7 @@ function ViewToggle({
       onClick={() => onChange(mode)}
       aria-pressed={view === mode}
       className={cn(
-        "rounded-sm px-2.5 py-0.5 text-xs",
+        "rounded-sm px-2.5 py-0.5 text-xs max-md:pointer-coarse:py-1.5",
         view === mode
           ? "bg-background text-foreground shadow-2xs"
           : "text-muted-foreground hover:text-foreground",
@@ -126,6 +138,46 @@ function ViewToggle({
       {segment("list", "List")}
       {segment("board", "Board")}
     </div>
+  );
+}
+
+/**
+ * Subtle icon-only refresh control. Shares the BB-19 generation channel; does
+ * not add listeners or alternate refresh paths. In-flight state tracks real
+ * generation-driven query work (spin + disabled) with fixed geometry so the
+ * header does not shift.
+ */
+function RefreshTasksButton() {
+  const { refresh, isRefreshing } = useTasksRefresh();
+
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    refresh();
+  }, [isRefreshing, refresh]);
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground active:bg-state-active active:text-foreground max-md:pointer-coarse:size-9"
+            aria-label={REFRESH_TASKS_LABEL}
+            aria-busy={isRefreshing}
+            disabled={isRefreshing}
+            onClick={handleRefresh}
+          >
+            <Icon
+              name="RotateCcw"
+              className={cn("size-3.5", isRefreshing && "animate-spin")}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{REFRESH_TASKS_LABEL}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -155,7 +207,6 @@ export function TasksTopbar({
   onNewTask,
   onBack,
 }: TasksTopbarProps) {
-  const { refresh } = useTasksRefresh();
   const project = useMemo(() => {
     if (route.kind === "project") {
       return (projects ?? []).find((p) => p.id === route.projectId) ?? null;
@@ -171,12 +222,14 @@ export function TasksTopbar({
   const breadcrumb = (() => {
     switch (route.kind) {
       case "all":
-        return <span className="font-semibold">All tasks</span>;
+        return (
+          <span className="whitespace-nowrap font-semibold">All tasks</span>
+        );
       case "active":
         return (
           <span className="flex items-center gap-2">
-            <span className="font-semibold">Active</span>
-            <span className="text-xs font-normal text-muted-foreground">
+            <span className="whitespace-nowrap font-semibold">Active</span>
+            <span className="hidden text-xs font-normal text-muted-foreground @md:inline">
               agents working now
             </span>
           </span>
@@ -184,8 +237,8 @@ export function TasksTopbar({
       case "manage":
         return (
           <span className="flex items-center gap-2">
-            <span className="font-semibold">Manage</span>
-            <span className="text-xs font-normal text-muted-foreground">
+            <span className="whitespace-nowrap font-semibold">Manage</span>
+            <span className="hidden text-xs font-normal text-muted-foreground @md:inline">
               labels, presets, folders
             </span>
           </span>
@@ -211,16 +264,18 @@ export function TasksTopbar({
             <Button
               variant="ghost"
               size="icon"
-              className="size-6 shrink-0"
+              className="size-6 shrink-0 max-md:pointer-coarse:size-9"
               aria-label="Back (Esc)"
               onClick={onBack}
             >
               <Icon name="ChevronLeft" className="size-4" />
             </Button>
+            {/* In narrow containers the project crumb yields the row to the
+                task key — the back button already returns to the project. */}
             {project ? (
               <button
                 type="button"
-                className="flex min-w-0 items-center gap-2 text-muted-foreground hover:text-foreground"
+                className="hidden min-w-0 items-center gap-2 text-muted-foreground hover:text-foreground @md:flex"
                 onClick={() =>
                   onNavigate({
                     kind: "project",
@@ -240,10 +295,10 @@ export function TasksTopbar({
             {project ? (
               <Icon
                 name="ChevronRight"
-                className="size-3 shrink-0 text-muted-foreground"
+                className="hidden size-3 shrink-0 text-muted-foreground @md:block"
               />
             ) : null}
-            <span className="shrink-0 font-medium text-muted-foreground">
+            <span className="min-w-0 truncate font-medium text-muted-foreground">
               {route.taskKey}
             </span>
           </span>
@@ -252,42 +307,57 @@ export function TasksTopbar({
   })();
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border-hairline bg-background px-3.5 text-sm">
-      <div className="min-w-0 flex-1">{breadcrumb}</div>
-      {route.kind === "task" && (pagerScope !== null || projects !== undefined) ? (
+    // On compact viewports the host renders no pane header above this bar, so
+    // the host's fixed sidebar toggle (pinned at the window's top-left, see the
+    // app's SidebarTriggerOverlay) shares this row. Reserve its footprint as
+    // left padding — 12px inset + 28px trigger + 8px gap (36px touch trigger on
+    // coarse pointers) — and match the 48px chrome-row height so the toggle and
+    // this bar's controls sit on one axis. The reserve keys off the viewport
+    // (`max-md:`), not the container, because the toggle is viewport-fixed and
+    // wide windows always place a host pane header above this bar instead.
+    <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border-hairline bg-background px-3.5 text-sm max-md:h-12 max-md:pl-12 max-md:pointer-coarse:pl-14">
+      <div className="min-w-0 flex-1 overflow-hidden">{breadcrumb}</div>
+      {route.kind === "task" &&
+      (pagerScope !== null || projects !== undefined) ? (
         <TaskPager
           taskKey={route.taskKey}
           // No browse context (deep link): step through the task's own
           // project in list order; All tasks only if its project is unknown.
-          projectId={pagerScope !== null ? pagerScope.projectId : (project?.id ?? null)}
+          projectId={
+            pagerScope !== null ? pagerScope.projectId : (project?.id ?? null)
+          }
           onNavigate={onNavigate}
         />
       ) : null}
       {route.kind === "project" ? (
-        <ViewToggle
-          view={route.view}
-          onChange={(view) => onNavigate({ ...route, view })}
-        />
+        // Hidden in phone-width containers, where the board is unusable and
+        // the shell renders the list regardless (see BOARD_MIN_WIDTH).
+        <span className="hidden @md:block">
+          <ViewToggle
+            view={route.view}
+            onChange={(view) => onNavigate({ ...route, view })}
+          />
+        </span>
       ) : null}
+      {/* Refresh sits immediately left of the primary New task action. */}
+      <RefreshTasksButton />
       {route.kind !== "task" && route.kind !== "manage" ? (
-        <Button size="sm" className="h-7 gap-1.5" onClick={onNewTask}>
+        <Button
+          size="sm"
+          className="h-7 gap-1.5 max-md:pointer-coarse:h-9"
+          aria-label="New task"
+          onClick={onNewTask}
+        >
           <Icon name="Plus" className="size-3.5" />
-          New task
+          {/* Icon-only in narrow containers so the breadcrumb (project name,
+              view toggle) keeps readable width. */}
+          <span className="hidden @lg:inline">New task</span>
         </Button>
       ) : null}
       <Button
         variant="ghost"
-        size="sm"
-        className="h-7 gap-1.5"
-        onClick={refresh}
-      >
-        <Icon name="RotateCcw" className="size-3.5" />
-        Refresh
-      </Button>
-      <Button
-        variant="ghost"
         size="icon"
-        className="size-7"
+        className="size-7 max-md:pointer-coarse:size-9"
         aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-expanded={!sidebarCollapsed}
         onClick={onToggleSidebar}

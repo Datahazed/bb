@@ -528,49 +528,45 @@ export function PluginDetail({
       enabled={plugin.enabled}
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
-      overflowItems={
-        plugin.provenance === "builtin"
-          ? undefined
-          : [
-              ...(canEditSource
-                ? [
-                    {
-                      label: "Edit",
-                      icon: "Edit" as const,
-                      disabled: pending,
-                      onSelect: () => onEdit(plugin),
-                    },
-                    {
-                      label: "Open source",
-                      icon: "ExternalLink" as const,
-                      disabled: pending || openSourceDisabled,
-                      disabledReason: openSourceDisabled
-                        ? "No editor configured"
-                        : undefined,
-                      onSelect: () => onOpenSource(plugin),
-                    },
-                  ]
-                : []),
+      overflowItems={[
+        ...(canEditSource
+          ? [
               {
-                label: "Reload",
-                icon: "ArrowReloadHorizontal" as const,
+                label: "Edit",
+                icon: "Edit" as const,
                 disabled: pending,
-                onSelect: () => onReload(plugin),
+                onSelect: () => onEdit(plugin),
               },
-              ...(canRemove
-                ? [
-                    { kind: "separator" as const },
-                    {
-                      label: pluginRemovalLabel(plugin),
-                      icon: "Trash2" as const,
-                      tone: "destructive" as const,
-                      disabled: pending,
-                      onSelect: () => onDelete(plugin),
-                    },
-                  ]
-                : []),
+              {
+                label: "Open source",
+                icon: "ExternalLink" as const,
+                disabled: pending || openSourceDisabled,
+                disabledReason: openSourceDisabled
+                  ? "No editor configured"
+                  : undefined,
+                onSelect: () => onOpenSource(plugin),
+              },
             ]
-      }
+          : []),
+        {
+          label: "Reload",
+          icon: "ArrowReloadHorizontal" as const,
+          disabled: pending,
+          onSelect: () => onReload(plugin),
+        },
+        ...(canRemove
+          ? [
+              { kind: "separator" as const },
+              {
+                label: pluginRemovalLabel(plugin),
+                icon: "Trash2" as const,
+                tone: "destructive" as const,
+                disabled: pending,
+                onSelect: () => onDelete(plugin),
+              },
+            ]
+          : []),
+      ]}
       definitionSections={[
         {
           label: "Release",

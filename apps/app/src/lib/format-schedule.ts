@@ -16,13 +16,26 @@ export interface FormatScheduleStatusLabelArgs {
   nextRunAt: number | null;
   trigger?: AutomationTrigger;
   runCount?: number;
+  lastRunStatus?: "running" | "succeeded" | "failed" | "skipped" | null;
+  now?: number;
 }
 
-export interface CompletedOneShotAutomationArgs {
+export interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
   runCount: number;
+  lastRunStatus: "running" | "succeeded" | "failed" | "skipped" | null;
+  now?: number;
 }
+
+export type OneShotLifecycle =
+  | "scheduled"
+  | "paused"
+  | "expired"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
 
 const DAY_ABBREVIATION: Record<string, string> = {
   Sunday: "Sun",
@@ -68,12 +81,30 @@ export function formatAutomationTrigger(trigger: AutomationTrigger): string {
   return `${formatCronCadence(trigger.cron)} · ${trigger.timezone}`;
 }
 
-export function isCompletedOneShotAutomation({
+export function getOneShotLifecycle({
   enabled,
   trigger,
   runCount,
-}: CompletedOneShotAutomationArgs): boolean {
-  return trigger.triggerType === "once" && !enabled && runCount > 0;
+  lastRunStatus,
+  now = Date.now(),
+}: OneShotLifecycleArgs): OneShotLifecycle | null {
+  if (trigger.triggerType !== "once") return null;
+  if (enabled) return "scheduled";
+  if (runCount > 0) {
+    if (lastRunStatus === "running") return "running";
+    if (lastRunStatus === "failed") return "failed";
+    if (lastRunStatus === "skipped") return "skipped";
+    return "completed";
+  }
+  return trigger.runAt <= now ? "expired" : "paused";
+}
+
+export function oneShotLifecycleAllowsToggle(
+  lifecycle: OneShotLifecycle | null,
+): boolean {
+  return (
+    lifecycle === null || lifecycle === "scheduled" || lifecycle === "paused"
+  );
 }
 
 export function formatScheduleRunTime(timestamp: number): string {
@@ -85,12 +116,22 @@ export function formatScheduleStatusLabel({
   nextRunAt,
   trigger,
   runCount = 0,
+  lastRunStatus = null,
+  now = Date.now(),
 }: FormatScheduleStatusLabelArgs): string {
-  if (
-    trigger !== undefined &&
-    isCompletedOneShotAutomation({ enabled, trigger, runCount })
-  ) {
-    return "Completed";
+  if (trigger !== undefined) {
+    const oneShotLifecycle = getOneShotLifecycle({
+      enabled,
+      trigger,
+      runCount,
+      lastRunStatus,
+      now,
+    });
+    if (oneShotLifecycle === "running") return "Running";
+    if (oneShotLifecycle === "failed") return "Failed";
+    if (oneShotLifecycle === "skipped") return "Skipped";
+    if (oneShotLifecycle === "completed") return "Completed";
+    if (oneShotLifecycle === "expired") return "Expired — edit to reschedule";
   }
   if (!enabled) return "Paused";
   if (nextRunAt === null) return "Not scheduled";

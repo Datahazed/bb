@@ -166,7 +166,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     return map;
   }, [labels.data]);
   const projectsById = useMemo(
-    () => new Map((projects.data ?? []).map((project) => [project.id, project])),
+    () =>
+      new Map((projects.data ?? []).map((project) => [project.id, project])),
     [projects.data],
   );
 
@@ -177,7 +178,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
     return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
-      matchesFilters(task, filters.statuses, filters.priorities, labelIds ?? []),
+      matchesFilters(
+        task,
+        filters.statuses,
+        filters.priorities,
+        labelIds ?? [],
+      ),
     );
   }, [
     tasksQuery.data,
@@ -217,11 +223,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   let body: React.ReactNode;
   if (tasksQuery.data === undefined || displayTasks === undefined) {
-    body = tasksQuery.error !== null ? (
-      <EmptyState icon="AlertCircle" title="Couldn't load tasks" description={tasksQuery.error} />
-    ) : (
-      <LoadingRows />
-    );
+    body =
+      tasksQuery.error !== null ? (
+        <EmptyState
+          icon="AlertCircle"
+          title="Couldn't load tasks"
+          description={tasksQuery.error}
+        />
+      ) : (
+        <LoadingRows />
+      );
   } else if (displayTasks.length === 0) {
     if (filtered) {
       body = (
@@ -265,7 +276,21 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   } else {
     body = groups.map((group) => (
       <section key={group.status}>
-        <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold">
+        {/*
+          Opaque canvas fill + stacking above row chrome: task rows keep
+          relative z-10 property editors so they stay clickable above the
+          stretched open overlay. The stuck status header must sit higher
+          (z-20) with an opaque theme canvas token or those controls and
+          titles paint on top while scrolling and read as a transparent bar.
+          bg-background maps to --canvas via the host theme (same family as
+          card); do not use surface-scrim or hardcoded colors here.
+          Hairline bottom border separates the pin band from scrolling rows
+          (same token family as the filter bar and row dividers).
+        */}
+        <div
+          data-status-group-header={group.status}
+          className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+        >
           <StatusIcon status={group.status} />
           {STATUS_LABELS[group.status]}
           <span className="text-xs font-normal tabular-nums text-subtle-foreground">

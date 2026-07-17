@@ -25,12 +25,7 @@ import { writeHostFile } from "./file-write.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 
-interface SkillRootResolution extends CommandRootResolution {
-  /** Built-in bb skills bundled with the server. */
-  builtinSkillsRootPath: string;
-  /** bb data directory containing user-installed bb skills. */
-  dataDir: string;
-}
+type SkillRootResolution = CommandRootResolution;
 
 function createBbSkillScanRoot(
   rootPath: string,
@@ -48,10 +43,9 @@ function createBbSkillScanRoot(
 }
 
 /**
- * Resolve the bb-managed roots owned by the Skills management surface. These
- * deliberately do not live in the provider command resolver: autocomplete now
- * receives the canonical bb catalog from the server instead of scanning it in
- * the daemon.
+ * Resolve the project-local bb root owned by this host. Global bb-user and
+ * bb-builtin skills remain server-owned so remote hosts never interpret server
+ * filesystem paths or create a second, divergent user catalog.
  */
 function resolveBbSkillScanRoots(
   resolution: SkillRootResolution,
@@ -65,13 +59,6 @@ function resolveBbSkillScanRoots(
       ),
     );
   }
-  roots.push(
-    createBbSkillScanRoot(
-      resolveDataDirSkillsRootPath(resolution.dataDir),
-      "bb-data-dir",
-    ),
-    createBbSkillScanRoot(resolution.builtinSkillsRootPath, "bb-builtin"),
-  );
   return roots;
 }
 
@@ -153,22 +140,14 @@ export async function resolveSkillScanRoots(
 
 export async function listHostSkills(
   command: CommandOf<"host.list_skills">,
-  options: { dataDir: string },
+  _options: { dataDir: string },
 ): Promise<HostDaemonOnlineRpcResult<"host.list_skills">> {
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
   }
-  if (!path.isAbsolute(command.builtinSkillsRootPath)) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "builtinSkillsRootPath must be absolute",
-    );
-  }
   const homeDir = os.homedir();
   const roots = await resolveSkillScanRoots({
     cwd: command.cwd,
-    builtinSkillsRootPath: command.builtinSkillsRootPath,
-    dataDir: options.dataDir,
     homeDir,
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
