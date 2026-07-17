@@ -25,8 +25,6 @@ import {
   ResourceDetailList,
   ResourceDetailListItem,
   ResourceListState,
-  ResourceProperty,
-  ResourcePropertyList,
 } from "@bb/shared-ui/resource-list";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -290,7 +288,10 @@ function pluginIncludes(plugin: PluginListItem): ReactNode[] {
         key={`service:${service.name}`}
         leading={<Icon name="Workflow" className="size-4" aria-hidden />}
       >
-        {service.name}
+        <span className="block">{service.name}</span>
+        <span className="block text-xs text-muted-foreground">
+          Background service
+        </span>
       </ResourceDetailListItem>
     )),
     ...plugin.schedules.map((schedule) => (
@@ -325,7 +326,10 @@ function PluginActivity({
     return null;
   }
   return (
-    <ResourceDetailList surface="flat" className="p-0">
+    <ResourceDetailList
+      surface="recessed"
+      className="divide-y divide-border/80 p-1"
+    >
       {showOverallState && runtimeStatus !== null ? (
         <ResourceDetailListItem
           leading={
@@ -573,19 +577,22 @@ export function PluginDetail({
               {hasUpdateManagement ? (
                 <PluginUpdateBanner plugin={plugin} />
               ) : null}
-              <ResourcePropertyList
-                surface="flat"
-                className="divide-y divide-border"
-              >
-                <ResourceProperty label="Version">
-                  <span className="font-mono">{plugin.version}</span>
-                </ResourceProperty>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                <span className="text-muted-foreground">Version</span>
+                <span className="font-mono text-foreground">
+                  {plugin.version}
+                </span>
                 {!hasUpdateManagement ? (
-                  <ResourceProperty label="Updates">
-                    Included with bb releases
-                  </ResourceProperty>
+                  <>
+                    <span className="text-subtle-foreground" aria-hidden>
+                      ·
+                    </span>
+                    <span className="text-muted-foreground">
+                      Included with bb releases
+                    </span>
+                  </>
                 ) : null}
-              </ResourcePropertyList>
+              </div>
               {hasUpdateManagement ? (
                 <PluginUpdatesSourceCard
                   plugin={plugin}
@@ -609,7 +616,10 @@ export function PluginDetail({
               {
                 label: "Includes",
                 content: (
-                  <ResourceDetailList surface="flat" className="p-0">
+                  <ResourceDetailList
+                    surface="recessed"
+                    className="divide-y divide-border/80 p-1"
+                  >
                     {includes}
                   </ResourceDetailList>
                 ),
