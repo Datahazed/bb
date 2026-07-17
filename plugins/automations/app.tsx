@@ -4,10 +4,11 @@
 // views. The panel root lists every automation across projects (rpc
 // automations.overview); the detail subPath (/:projectId/:automationId)
 // shows one automation's full config plus its cursor-paginated run history.
-// Realtime "automations" signals refetch in place. Creation starts from chat;
-// detail editing uses the plugin's update RPC for the supported editable fields.
+// Realtime "automations" signals refetch in place. Creation and editing start
+// from chat with enough resource context for the agent to do the work.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { buildAutomationEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import {
   definePluginApp,
   useBbNavigate,
@@ -18,16 +19,13 @@ import {
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
-  AutomationExecution,
   AutomationResponse,
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
-  UpdateAutomationInput,
 } from "@/src/rpc-types";
 import {
   AutomationDetailView,
-  automationEditBodyValue,
   automationIconName,
   automationScheduleLabel,
 } from "./detail-view";
@@ -81,24 +79,28 @@ const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 const AUTOMATION_CREATE_TEMPLATES = [
   {
     label: "CI failure triage",
+    icon: "AlertCircle",
     description:
       "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
     prompt: `${CREATE_AUTOMATION_PROMPT}runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures.`,
   },
   {
     label: "Dependency drift",
+    icon: "ElectricPlugs",
     description:
       "checks weekly for stale dependencies and opens an update thread when risk is low",
     prompt: `${CREATE_AUTOMATION_PROMPT}checks weekly for stale dependencies and opens an update thread when risk is low.`,
   },
   {
     label: "Release readiness",
+    icon: "Target",
     description:
       "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
     prompt: `${CREATE_AUTOMATION_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
   },
   {
     label: "Stale worktrees",
+    icon: "FolderGit",
     description:
       "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
     prompt: `${CREATE_AUTOMATION_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
@@ -416,8 +418,6 @@ function useMutations() {
     resume: (route: DetailRoute) => call("automations_resume", route),
     run: (route: DetailRoute) => call("automations_run", route),
     delete: (route: DetailRoute) => call("automations_delete", route),
-    update: (input: UpdateAutomationInput) =>
-      rpc.call("automations_update", input),
   };
 }
 
@@ -438,7 +438,10 @@ function AutomationRowLeading({
     return (
       <Icon
         name="CircleX"
-        className="size-6 shrink-0 text-destructive"
+        className={cn(
+          "text-destructive",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
         aria-label="Failed"
       />
     );
@@ -448,7 +451,7 @@ function AutomationRowLeading({
       <Icon
         name="Loading"
         className={cn(
-          "size-6 animate-spin text-muted-foreground/50",
+          "animate-spin text-muted-foreground/50",
           COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
         )}
         aria-label="Running"
@@ -458,7 +461,10 @@ function AutomationRowLeading({
   return (
     <Icon
       name={automationIconName(automation)}
-      className="size-6 shrink-0 text-muted-foreground"
+      className={cn(
+        "text-muted-foreground",
+        COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+      )}
       aria-hidden
     />
   );
@@ -859,28 +865,33 @@ function DetailView({
   const runsState = useRuns(route);
   const mutations = useMutations();
   const [actionPending, setActionPending] = useState(false);
-  const editing = initialEditing;
-  const [saving, setSaving] = useState(false);
-  const [draftName, setDraftName] = useState("");
-  const [draftExecution, setDraftExecution] =
-    useState<AutomationExecution | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const draftAutomationIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (automation === null) return;
-    const automationChanged = draftAutomationIdRef.current !== automation.id;
-    if (editing && !automationChanged) return;
-    draftAutomationIdRef.current = automation.id;
-    setDraftName(automation.name);
-    setDraftExecution(automation.execution);
-  }, [automation, editing]);
 
   const openThread = useCallback(
     (threadId: string) => navigate.toThread(threadId),
     [navigate],
   );
+
+  const editViaThread = useCallback(
+    (target: AutomationResponse) => {
+      navigate.toCompose({
+        focusPrompt: true,
+        initialPrompt: buildAutomationEditThreadPrompt({
+          name: target.name,
+          projectId: route.projectId,
+          automationId: route.automationId,
+        }),
+        replaceInitialPrompt: true,
+      });
+    },
+    [navigate, route],
+  );
+
+  useEffect(() => {
+    if (!initialEditing || automation === null) return;
+    editViaThread(automation);
+  }, [automation, editViaThread, initialEditing]);
 
   const runAction = useCallback(
     (method: "pause" | "resume" | "run") => {
@@ -900,68 +911,10 @@ function DetailView({
     [mutations, route],
   );
 
-  const closeEdit = useCallback(() => {
-    if (automation !== null) {
-      setDraftName(automation.name);
-      setDraftExecution(automation.execution);
-    }
-    navigate.exitPluginPanel(PANEL_PATH, {
-      subPath: `${route.projectId}/${route.automationId}`,
-    });
-  }, [automation, navigate, route]);
-
   const openEdit = useCallback(() => {
-    navigate.toPluginPanel(PANEL_PATH, {
-      subPath: `${route.projectId}/${route.automationId}/edit`,
-      returnOnExit: true,
-    });
-  }, [navigate, route]);
-
-  const saveEdit = useCallback(() => {
     if (automation === null) return;
-    const nextName = draftName.trim();
-    const nextExecution = draftExecution ?? automation.execution;
-    const nextBody = automationEditBodyValue(nextExecution);
-    if (nextName.length === 0 || nextBody.trim().length === 0) {
-      toast.error("Automation name and editable body are required");
-      return;
-    }
-    if (
-      nextExecution.mode === "script" &&
-      (nextExecution.timeoutMs <= 0 || nextExecution.timeoutMs > 900_000)
-    ) {
-      toast.error("Script timeout must be between 1 and 900 seconds");
-      return;
-    }
-
-    const input: UpdateAutomationInput = {
-      projectId: route.projectId,
-      automationId: route.automationId,
-    };
-    if (nextName !== automation.name) input.name = nextName;
-    if (
-      JSON.stringify(nextExecution) !== JSON.stringify(automation.execution)
-    ) {
-      input.execution = nextExecution;
-    }
-    if (input.name === undefined && input.execution === undefined) {
-      closeEdit();
-      return;
-    }
-
-    setSaving(true);
-    mutations
-      .update(input)
-      .then(
-        () => {
-          toast.success("Automation updated");
-          closeEdit();
-        },
-        (rpcError: unknown) =>
-          toast.error(`Failed to update automation: ${errorText(rpcError)}`),
-      )
-      .finally(() => setSaving(false));
-  }, [automation, closeEdit, draftExecution, draftName, mutations, route]);
+    editViaThread(automation);
+  }, [automation, editViaThread]);
 
   const confirmDelete = useCallback(() => {
     setDeleting(true);
@@ -1007,6 +960,14 @@ function DetailView({
     );
   }
 
+  if (initialEditing) {
+    return (
+      <div className="mx-auto w-full max-w-3xl">
+        <p className="text-sm text-muted-foreground">Opening composer…</p>
+      </div>
+    );
+  }
+
   const overviewEntry = overviewState.entries?.find(
     (entry) =>
       entry.automation.projectId === route.projectId &&
@@ -1024,20 +985,12 @@ function DetailView({
       automation={automation}
       projectLabel={projectLabel}
       runsState={runsState}
-      editing={editing}
-      draftName={draftName}
-      draftExecution={draftExecution ?? automation.execution}
       actionPending={actionPending}
-      saving={saving}
       onBack={onBack}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
-      onCancelEdit={closeEdit}
-      onSave={saveEdit}
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
-      onDraftNameChange={setDraftName}
-      onDraftExecutionChange={setDraftExecution}
       onOpenThread={openThread}
       footer={
         <DeleteAutomationDialog

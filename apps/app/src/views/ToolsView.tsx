@@ -13,6 +13,7 @@ import {
 } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation } from "@tanstack/react-query";
+import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -61,6 +62,7 @@ import {
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   getAutomationsRoutePath,
   getPluginsRoutePath,
+  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
@@ -470,20 +472,22 @@ export function PluginDetail({
   isLoading,
   plugin,
   pending,
-  editDisabled,
+  openSourceDisabled,
   onToggle,
   onReload,
   onEdit,
+  onOpenSource,
   onDelete,
   onBack,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
   pending: boolean;
-  editDisabled: boolean;
+  openSourceDisabled: boolean;
   onToggle: (plugin: PluginListItem) => void;
   onReload: (plugin: PluginListItem) => void;
   onEdit: (plugin: PluginListItem) => void;
+  onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
   onBack: () => void;
 }) {
@@ -539,8 +543,17 @@ export function PluginDetail({
                     {
                       label: "Edit",
                       icon: "Edit" as const,
-                      disabled: pending || editDisabled,
+                      disabled: pending,
                       onSelect: () => onEdit(plugin),
+                    },
+                    {
+                      label: "Open source",
+                      icon: "ExternalLink" as const,
+                      disabled: pending || openSourceDisabled,
+                      disabledReason: openSourceDisabled
+                        ? "No editor configured"
+                        : undefined,
+                      onSelect: () => onOpenSource(plugin),
                     },
                   ]
                 : []),
@@ -729,7 +742,22 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   }, [navigate]);
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
-      if (plugin.rootDir === null || !canOpenPreferredDirectoryTarget) return;
+      navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: true,
+          initialPrompt: buildPluginEditThreadPrompt({
+            name: plugin.name ?? plugin.id,
+            path: plugin.rootDir,
+          }),
+          replaceInitialPrompt: true,
+        },
+      });
+    },
+    [navigate],
+  );
+  const handleOpenPluginSource = useCallback(
+    (plugin: PluginListItem) => {
+      if (!canOpenPreferredDirectoryTarget) return;
       void openPathInPreferredDirectoryTarget({
         path: plugin.rootDir,
         lineNumber: null,
@@ -753,12 +781,11 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           pending={
             selectedPlugin !== null && pendingPluginId === selectedPlugin.id
           }
-          editDisabled={
-            selectedPlugin?.rootDir == null || !canOpenPreferredDirectoryTarget
-          }
+          openSourceDisabled={!canOpenPreferredDirectoryTarget}
           onToggle={(target) => pluginToggle.mutate(target)}
           onReload={(target) => pluginReload.mutate(target)}
           onEdit={handleEditPlugin}
+          onOpenSource={handleOpenPluginSource}
           onDelete={setDeleteTarget}
           onBack={backToPlugins}
         />

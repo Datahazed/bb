@@ -10,7 +10,6 @@ import {
   ResourceInstallControl,
   ResourceInstalledControl,
   ResourceLifecycleStatus,
-  ResourceMeta,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { AutomationRunStatusIndicator } from "bb-plugin-automations/detail-view";
@@ -18,7 +17,11 @@ import {
   automationRunModeSchema,
   automationRunStatusSchema,
 } from "bb-plugin-automations/rpc-types";
-import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import {
+  StoryCard,
+  StoryRow as BaseStoryRow,
+  type StoryRowProps,
+} from "../../../.ladle/story-card";
 import { PluginRowSignalView } from "@/components/plugin/management/PluginRowSignal";
 import {
   pluginRuntimeStatusDefinition,
@@ -26,12 +29,33 @@ import {
 } from "@/components/plugin/management/plugin-status";
 import { SkillBundledPluginMetadata } from "@/components/tools/SkillDetailView";
 import { SKILL_SCOPE_DEFINITIONS } from "@/components/tools/skill-taxonomy";
+import {
+  formatAutomationTrigger,
+  formatScheduleStatusLabel,
+  type AutomationTrigger,
+} from "@/lib/format-schedule";
 
 export default {
   title: "Tools/State galleries",
 };
 
 const noop = () => {};
+
+function StoryRow({ className, ...props }: StoryRowProps) {
+  return (
+    <BaseStoryRow
+      {...props}
+      className={[
+        "items-stretch gap-x-0 px-0 py-0",
+        "[&>div:first-child]:border-r [&>div:first-child]:border-border [&>div:first-child]:bg-surface-recessed/55 [&>div:first-child]:px-4 [&>div:first-child]:py-3",
+        "[&>div:last-child]:px-4 [&>div:last-child]:py-3",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    />
+  );
+}
 
 function Gallery({
   title,
@@ -71,6 +95,24 @@ function StateSection({
         <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
       </div>
       <StoryCard className="m-0 divide-y divide-border border border-border bg-card">
+        <div className="grid grid-cols-[var(--story-label-width,210px)_minmax(0,1fr)]">
+          <span className="flex flex-col border-r border-border bg-surface-recessed px-4 py-2">
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Documentation
+            </span>
+            <span className="text-2xs text-subtle-foreground">
+              State and meaning
+            </span>
+          </span>
+          <span className="flex flex-col bg-card px-4 py-2">
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Rendered UI
+            </span>
+            <span className="text-2xs text-subtle-foreground">
+              Actual component
+            </span>
+          </span>
+        </div>
         {children}
       </StoryCard>
     </section>
@@ -80,6 +122,14 @@ function StateSection({
 function SurfaceRule({ children }: { children: ReactNode }) {
   return (
     <span className="text-xs italic text-subtle-foreground">{children}</span>
+  );
+}
+
+function AbsentPreview({ label }: { label: string }) {
+  return (
+    <span aria-label={label} className="text-sm text-subtle-foreground">
+      —
+    </span>
   );
 }
 
@@ -151,17 +201,28 @@ function InstallStates() {
 
 function pluginRuntimeSignal(
   status: (typeof pluginRuntimeStatusSchema.options)[number],
-): PluginRowSignal | null {
+): Extract<PluginRowSignal, { kind: "status" }> | null {
   const definition = pluginRuntimeStatusDefinition(status);
   return definition === null
     ? null
     : {
         kind: "status",
+        icon: definition.icon,
         label: definition.label,
         tone: definition.tone,
         detail: null,
       };
 }
+
+const PLUGIN_RUNTIME_STATUS_HINTS = {
+  running: "Healthy · Represented by the lifecycle toggle",
+  error: "Cannot run · Startup or execution failed",
+  incompatible: "Cannot run · Not compatible with this bb version",
+  missing: "Cannot run · Installed source is unavailable",
+  disabled: "Disabled · Represented by the lifecycle toggle",
+  "needs-configuration": "Needs attention · Required settings are incomplete",
+  degraded: "Needs attention · Running with reduced functionality",
+} satisfies Record<(typeof pluginRuntimeStatusSchema.options)[number], string>;
 
 export function Plugins() {
   return (
@@ -199,7 +260,7 @@ export function Plugins() {
 
       <StateSection
         title="Runtime health"
-        description="Only actionable abnormal states earn the row's single status slot."
+        description="Five abnormal contract states use two visual severities: red means the plugin cannot run; amber means it needs attention. Healthy and disabled stay quiet."
       >
         {pluginRuntimeStatusSchema.options.map((status) => {
           const signal = pluginRuntimeSignal(status);
@@ -207,16 +268,16 @@ export function Plugins() {
             <StoryRow
               key={status}
               label={status}
-              hint={
-                signal === null
-                  ? "Represented by the lifecycle toggle"
-                  : "Passive health status; details appear on hover and in Activity"
-              }
+              hint={PLUGIN_RUNTIME_STATUS_HINTS[status]}
             >
               {signal === null ? (
-                <SurfaceRule>No health label</SurfaceRule>
+                <SurfaceRule>No health icon</SurfaceRule>
               ) : (
-                <PluginRowSignalView signal={signal} onUpdateClick={noop} />
+                <PluginRowSignalView
+                  signal={signal}
+                  onUpdateClick={noop}
+                  onStatusClick={noop}
+                />
               )}
             </StoryRow>
           );
@@ -233,6 +294,7 @@ export function Plugins() {
               <PluginRowSignalView
                 signal={{ kind: "update", version: "{version}" }}
                 onUpdateClick={noop}
+                onStatusClick={noop}
               />
             ) : (
               <SurfaceRule>Release section only · no row signal</SurfaceRule>
@@ -246,11 +308,13 @@ export function Plugins() {
           <PluginRowSignalView
             signal={{
               kind: "status",
+              icon: "RotateCcw",
               label: "Update failed",
               tone: "error",
               detail: null,
             }}
             onUpdateClick={noop}
+            onStatusClick={noop}
           />
         </StoryRow>
       </StateSection>
@@ -258,21 +322,17 @@ export function Plugins() {
   );
 }
 
-function SkillScopeTreatment({
+function SkillProvenanceTreatment({
   scope,
 }: {
   scope: (typeof skillScopeSchema.options)[number];
 }) {
-  const definition = SKILL_SCOPE_DEFINITIONS[scope];
   if (scope === "plugin") {
     return (
-      <>
-        <SkillBundledPluginMetadata
-          pluginName="Documents"
-          providerLabel="Codex"
-        />
-        <SurfaceRule>Read-only</SurfaceRule>
-      </>
+      <SkillBundledPluginMetadata
+        pluginName="Documents"
+        providerLabel="Codex"
+      />
     );
   }
   if (scope === "bb-builtin") {
@@ -283,29 +343,22 @@ function SkillScopeTreatment({
       />
     );
   }
-  if (definition.editability === "always") {
+  if (scope.startsWith("claude") || scope.startsWith("codex")) {
     return (
-      <Button type="button" variant="outline" size="sm" onClick={noop}>
-        Edit
-      </Button>
+      <ResourceLifecycleStatus
+        label="Imported"
+        tooltip={`Discovered from ${scope.startsWith("claude") ? "Claude Code" : "Codex"}`}
+      />
     );
   }
+  return <AbsentPreview label="No provenance label is rendered" />;
+}
+
+function SkillEditAction() {
   return (
-    <>
-      <span className="inline-flex items-center gap-1.5">
-        <SurfaceRule>manageable</SurfaceRule>
-        <Button type="button" variant="outline" size="sm" onClick={noop}>
-          Edit
-        </Button>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <SurfaceRule>read-only</SurfaceRule>
-        <ResourceLifecycleStatus
-          label="Imported"
-          tooltip={`Discovered from ${scope.startsWith("claude") ? "Claude Code" : "Codex"}`}
-        />
-      </span>
-    </>
+    <Button type="button" variant="outline" size="sm" onClick={noop}>
+      Edit
+    </Button>
   );
 }
 
@@ -313,7 +366,7 @@ export function Skills() {
   return (
     <Gallery
       title="Skill states"
-      description="Skill scope determines provenance; the server's manageable flag determines whether externally discovered user/project skills can be edited."
+      description="Provenance and editability are independent: provider skills remain imported even when their source is writable and bb can edit them."
     >
       <StateSection
         title="Installation"
@@ -323,8 +376,8 @@ export function Skills() {
       </StateSection>
 
       <StateSection
-        title="Provenance and editability"
-        description="All eight skill scopes from the server contract, with their supported ownership treatment."
+        title="Provenance"
+        description="Each server scope maps to one provenance treatment. Editability never changes this label."
       >
         {skillScopeSchema.options.map((scope) => {
           const definition = SKILL_SCOPE_DEFINITIONS[scope];
@@ -334,10 +387,40 @@ export function Skills() {
               label={scope}
               hint={`${definition.label} · ${definition.ownership}`}
             >
-              <SkillScopeTreatment scope={scope} />
+              <SkillProvenanceTreatment scope={scope} />
             </StoryRow>
           );
         })}
+      </StateSection>
+
+      <StateSection
+        title="Editability"
+        description="The Edit action is present only when bb can write the skill source. Read-only resources render no edit control."
+      >
+        <StoryRow
+          label="bb-owned"
+          hint="bb-user or bb-project · Always editable"
+        >
+          <SkillEditAction />
+        </StoryRow>
+        <StoryRow
+          label="provider-owned · writable"
+          hint="Claude or Codex user/project skill · Editable"
+        >
+          <SkillEditAction />
+        </StoryRow>
+        <StoryRow
+          label="provider-owned · read-only"
+          hint="Claude or Codex user/project skill · Source is not writable"
+        >
+          <AbsentPreview label="No Edit action is rendered" />
+        </StoryRow>
+        <StoryRow
+          label="system-owned"
+          hint="bb-builtin or plugin scope · Always read-only"
+        >
+          <AbsentPreview label="No Edit action is rendered" />
+        </StoryRow>
       </StateSection>
 
       <StateSection
@@ -382,6 +465,27 @@ function AutomationMode({
   );
 }
 
+const RECURRING_TRIGGER = {
+  triggerType: "schedule",
+  cron: "0 9 * * 1-5",
+  timezone: "America/Los_Angeles",
+} satisfies AutomationTrigger;
+
+const ONE_TIME_TRIGGER = {
+  triggerType: "once",
+  runAt: new Date(2027, 0, 16, 14, 30).getTime(),
+} satisfies AutomationTrigger;
+
+const NEXT_RUN_AT = new Date(2027, 0, 15, 9).getTime();
+
+function AutomationTriggerPreview({ trigger }: { trigger: AutomationTrigger }) {
+  return (
+    <span className="text-xs leading-snug text-muted-foreground">
+      {formatAutomationTrigger(trigger)}
+    </span>
+  );
+}
+
 export function Automations() {
   return (
     <Gallery
@@ -389,37 +493,79 @@ export function Automations() {
       description="Lifecycle, execution definition, schedule, and run history remain separate so a simple automation and a complex script automation use the same system."
     >
       <StateSection
-        title="Lifecycle"
-        description="Automation enablement uses the same compact control size as plugins."
+        title="Enablement control"
+        description="The compact switch is the only pause/resume control. It is separate from read-only schedule summaries."
       >
-        <StoryRow label="enabled" hint="Eligible for its next scheduled run">
+        <StoryRow label="enabled" hint="The automation may be scheduled">
           <StatefulSwitch initialChecked label="Pause automation" />
-          <ResourceLifecycleStatus label="Next scheduled run" />
         </StoryRow>
-        <StoryRow label="paused" hint="Retained but not scheduled">
+        <StoryRow label="paused" hint="Retained, but disabled">
           <StatefulSwitch initialChecked={false} label="Resume automation" />
-          <ResourceLifecycleStatus label="Paused" />
-        </StoryRow>
-        <StoryRow label="not scheduled" hint="Enabled without a next run">
-          <StatefulSwitch initialChecked label="Pause automation" />
-          <ResourceLifecycleStatus label="Not scheduled" />
         </StoryRow>
         <StoryRow
-          label="completed"
-          hint="A one-shot automation that has already run"
+          label="completed one-time"
+          hint="A completed one-time automation cannot be resumed"
         >
           <StatefulSwitch
             initialChecked={false}
             disabled
             label="Completed automation"
           />
-          <ResourceLifecycleStatus label="Completed" />
         </StoryRow>
         <StoryRow label="changing" hint="Pause/resume mutation is pending">
           <StatefulSwitch
             initialChecked
             disabled
             label="Changing automation state"
+          />
+        </StoryRow>
+      </StateSection>
+
+      <StateSection
+        title="Schedule summary"
+        description="Read-only overview text derived from enablement, trigger, run history, and the next run timestamp. These are summaries, not separate workflow states or controls."
+      >
+        <StoryRow label="next run" hint="Enabled with a future run">
+          <ResourceLifecycleStatus
+            label={formatScheduleStatusLabel({
+              enabled: true,
+              nextRunAt: NEXT_RUN_AT,
+              trigger: RECURRING_TRIGGER,
+            })}
+          />
+        </StoryRow>
+        <StoryRow label="paused" hint="Disabled before completion">
+          <ResourceLifecycleStatus
+            label={formatScheduleStatusLabel({
+              enabled: false,
+              nextRunAt: NEXT_RUN_AT,
+              trigger: RECURRING_TRIGGER,
+            })}
+          />
+        </StoryRow>
+        <StoryRow
+          label="not scheduled"
+          hint="Enabled, but no future run is available"
+        >
+          <ResourceLifecycleStatus
+            label={formatScheduleStatusLabel({
+              enabled: true,
+              nextRunAt: null,
+              trigger: RECURRING_TRIGGER,
+            })}
+          />
+        </StoryRow>
+        <StoryRow
+          label="completed"
+          hint="A one-time automation has already run"
+        >
+          <ResourceLifecycleStatus
+            label={formatScheduleStatusLabel({
+              enabled: false,
+              nextRunAt: null,
+              trigger: ONE_TIME_TRIGGER,
+              runCount: 1,
+            })}
           />
         </StoryRow>
       </StateSection>
@@ -445,13 +591,13 @@ export function Automations() {
 
       <StateSection
         title="Trigger"
-        description="Schedule shape is definition metadata, not runtime health."
+        description="Compact definition metadata says when the automation runs. It is neither a lifecycle state nor runtime health."
       >
-        <StoryRow label="schedule" hint="Recurring cron schedule">
-          <ResourceMeta items={["Recurring", "Timezone"]} />
+        <StoryRow label="recurring" hint="Cron cadence and timezone">
+          <AutomationTriggerPreview trigger={RECURRING_TRIGGER} />
         </StoryRow>
-        <StoryRow label="once" hint="A single scheduled run">
-          <ResourceMeta items={["One-time", "Scheduled time"]} />
+        <StoryRow label="one-time" hint="A single scheduled timestamp">
+          <AutomationTriggerPreview trigger={ONE_TIME_TRIGGER} />
         </StoryRow>
       </StateSection>
 

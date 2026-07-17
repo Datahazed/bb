@@ -14,6 +14,7 @@ import { fetchPluginList } from "@/hooks/queries/plugin-settings-queries";
 import { sdk } from "@/lib/sdk";
 import {
   AUTOMATIONS_ROUTE_PATH,
+  ROOT_COMPOSE_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
@@ -33,7 +34,11 @@ import {
   getSkillDetailRoutePath,
   getSkillsRoutePath,
 } from "@/lib/route-paths";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { fetchRegistrySkills } from "@/views/SkillsView";
+import { RootComposeRoute } from "@/views/RootComposeView";
 import { ToolsView } from "@/views/ToolsView";
 
 export default {
@@ -111,9 +116,28 @@ function LiveToolsPage({ target }: { target: LivePath }) {
     );
   }
 
+  const isComposePath = location.pathname === ROOT_COMPOSE_ROUTE_PATH;
   return (
-    <div className="flex h-screen min-w-0 flex-col p-4 md:p-5">
+    <div
+      className={
+        isComposePath
+          ? "h-screen min-w-0"
+          : "flex h-screen min-w-0 flex-col p-4 md:p-5"
+      }
+    >
       <Routes>
+        <Route
+          path={ROOT_COMPOSE_ROUTE_PATH}
+          element={
+            <QuickCreateProjectProvider>
+              <AppCommandProvider>
+                <RouteNavigationProvider>
+                  <RootComposeRoute />
+                </RouteNavigationProvider>
+              </AppCommandProvider>
+            </QuickCreateProjectProvider>
+          }
+        />
         <Route
           path={TOOLS_ROUTE_PATH}
           element={<Navigate to={TOOLS_SKILLS_ROUTE_PATH} replace />}

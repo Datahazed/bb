@@ -8,7 +8,6 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Input } from "@bb/shared-ui/input";
 import {
   ResourceActivitySection,
   ResourceDefinitionSection,
@@ -18,19 +17,10 @@ import {
   ResourceDetailPanel,
   ResourceDetailStack,
   ResourceOverflowMenu,
-  ResourcePromptEditor,
   ResourceProperty,
   ResourcePropertyList,
 } from "@bb/shared-ui/resource-list";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@bb/shared-ui/select";
 import { Switch } from "@bb/shared-ui/switch";
-import { Textarea } from "@bb/shared-ui/textarea";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
@@ -52,20 +42,12 @@ export interface AutomationDetailViewProps {
   automation: AutomationResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
-  editing: boolean;
-  draftName: string;
-  draftExecution: AutomationExecution;
   actionPending: boolean;
-  saving: boolean;
   onBack: () => void;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
-  onCancelEdit: () => void;
-  onSave: () => void;
   onRunNow: () => void;
   onDelete: () => void;
-  onDraftNameChange: (name: string) => void;
-  onDraftExecutionChange: (execution: AutomationExecution) => void;
   onOpenThread: (threadId: string) => void;
   footer?: ReactNode;
 }
@@ -97,32 +79,12 @@ function describeExecution(execution: AutomationExecution): string {
   return `Script · ${interpreter} ${target} · ${timeoutSeconds}s timeout`;
 }
 
-function automationEditBodyLabel(execution: AutomationExecution): string {
+function automationBodyLabel(execution: AutomationExecution): string {
   if (execution.mode === "agent") return "Prompt";
   return execution.scriptFile !== undefined && execution.script === undefined
     ? "Script file"
     : "Script";
 }
-
-export function automationEditBodyValue(
-  execution: AutomationExecution,
-): string {
-  if (execution.mode === "agent") return execution.prompt;
-  return execution.script ?? execution.scriptFile ?? "";
-}
-
-type ScriptExecution = Extract<AutomationExecution, { mode: "script" }>;
-type ScriptInterpreter = NonNullable<ScriptExecution["interpreter"]>;
-
-const SCRIPT_INTERPRETERS: readonly {
-  value: ScriptInterpreter;
-  label: string;
-}[] = [
-  { value: "bash", label: "Bash" },
-  { value: "sh", label: "Shell (sh)" },
-  { value: "node", label: "Node.js" },
-  { value: "python3", label: "Python 3" },
-];
 
 function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (execution.mode !== "agent") return "Host";
@@ -266,20 +228,12 @@ export function AutomationDetailView({
   automation,
   projectLabel,
   runsState,
-  editing,
-  draftName,
-  draftExecution,
   actionPending,
-  saving,
   onBack,
   onToggle,
   onEdit,
-  onCancelEdit,
-  onSave,
   onRunNow,
   onDelete,
-  onDraftNameChange,
-  onDraftExecutionChange,
   onOpenThread,
   footer,
 }: AutomationDetailViewProps) {
@@ -288,174 +242,7 @@ export function AutomationDetailView({
     trigger: automation.trigger,
     runCount: automation.runCount,
   });
-  const editableBodyLabel = automationEditBodyLabel(automation.execution);
-  const draftBody = automationEditBodyValue(draftExecution);
-  const canSave =
-    draftName.trim().length > 0 &&
-    draftBody.trim().length > 0 &&
-    (draftExecution.mode !== "script" ||
-      (draftExecution.timeoutMs > 0 && draftExecution.timeoutMs <= 900_000)) &&
-    !saving &&
-    !actionPending;
-
-  if (editing) {
-    return (
-      <ResourceDetailPage
-        back={
-          <ResourceDetailBackButton
-            label="Back to automation"
-            onClick={onCancelEdit}
-          />
-        }
-        leading={
-          <Icon
-            name="Edit"
-            className="size-4 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-        }
-        title={`Edit ${automation.name}`}
-        titleMeta={projectLabel}
-        actions={
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={saving}
-              onClick={onCancelEdit}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!canSave}
-              aria-busy={saving}
-              onClick={onSave}
-            >
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </>
-        }
-      >
-        <ResourceDetailStack>
-          <ResourceDefinitionSection label="Details" layout="inline">
-            <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
-              <span>Name</span>
-              <Input
-                value={draftName}
-                onChange={(event) => onDraftNameChange(event.target.value)}
-                aria-label="Automation name"
-                className="h-8"
-              />
-            </label>
-          </ResourceDefinitionSection>
-
-          {draftExecution.mode === "agent" ? (
-            <ResourceDefinitionSection label="Prompt" layout="inline">
-              <ResourcePromptEditor
-                value={draftExecution.prompt}
-                ariaLabel="Automation prompt"
-                placeholder="What should the agent do when this automation runs?"
-                onChange={(prompt) =>
-                  onDraftExecutionChange({ ...draftExecution, prompt })
-                }
-              />
-            </ResourceDefinitionSection>
-          ) : (
-            <>
-              <ResourceDefinitionSection label="Execution" layout="inline">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
-                    <span>Interpreter</span>
-                    <Select
-                      value={draftExecution.interpreter ?? "bash"}
-                      onValueChange={(value) => {
-                        const interpreter = SCRIPT_INTERPRETERS.find(
-                          (option) => option.value === value,
-                        )?.value;
-                        if (interpreter === undefined) return;
-                        onDraftExecutionChange({
-                          ...draftExecution,
-                          interpreter,
-                        });
-                      }}
-                    >
-                      <SelectTrigger
-                        className="h-8 text-xs"
-                        aria-label="Script interpreter"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SCRIPT_INTERPRETERS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </label>
-                  <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">
-                    <span>Timeout</span>
-                    <span className="relative block">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={900}
-                        value={Math.round(draftExecution.timeoutMs / 1000)}
-                        onChange={(event) =>
-                          onDraftExecutionChange({
-                            ...draftExecution,
-                            timeoutMs:
-                              Number.parseInt(event.target.value, 10) * 1000 ||
-                              0,
-                          })
-                        }
-                        aria-label="Script timeout in seconds"
-                        className="h-8 pr-16 text-xs"
-                      />
-                      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">
-                        seconds
-                      </span>
-                    </span>
-                  </label>
-                </div>
-              </ResourceDefinitionSection>
-              <ResourceDefinitionSection
-                label={editableBodyLabel}
-                layout="inline"
-              >
-                {draftExecution.scriptFile !== undefined &&
-                draftExecution.script === undefined ? (
-                  <Input
-                    value={draftExecution.scriptFile}
-                    readOnly
-                    aria-readonly="true"
-                    aria-label="Automation script file"
-                    className="h-8 cursor-default bg-surface-recessed font-mono text-xs text-muted-foreground"
-                  />
-                ) : (
-                  <Textarea
-                    value={draftExecution.script ?? ""}
-                    onChange={(event) =>
-                      onDraftExecutionChange({
-                        ...draftExecution,
-                        script: event.target.value,
-                      })
-                    }
-                    aria-label="Automation script"
-                    className="min-h-64 resize-y font-mono text-xs leading-relaxed"
-                  />
-                )}
-              </ResourceDefinitionSection>
-            </>
-          )}
-        </ResourceDetailStack>
-      </ResourceDetailPage>
-    );
-  }
+  const bodyLabel = automationBodyLabel(automation.execution);
 
   return (
     <ResourceDetailPage
@@ -477,7 +264,7 @@ export function AutomationDetailView({
       lifecycleControl={
         <Switch
           checked={automation.enabled}
-          disabled={actionPending || saving || completedOneShot}
+          disabled={actionPending || completedOneShot}
           aria-label={
             automation.enabled ? "Pause automation" : "Resume automation"
           }
@@ -487,7 +274,7 @@ export function AutomationDetailView({
       overflowMenu={
         <ResourceOverflowMenu
           label={`${automation.name} actions`}
-          disabled={actionPending || saving}
+          disabled={actionPending}
           items={[
             {
               label: "Edit",
@@ -529,7 +316,7 @@ export function AutomationDetailView({
           </ResourcePropertyList>
         </ResourceDefinitionSection>
 
-        <ResourceDefinitionSection label={editableBodyLabel} layout="inline">
+        <ResourceDefinitionSection label={bodyLabel} layout="inline">
           <ResourceDetailPanel surface="recessed" className="px-3 py-2">
             {automation.execution.mode === "agent" ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">

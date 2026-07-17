@@ -35,8 +35,10 @@ import { PlaceholderBadge } from "./plugin-ui";
 /** Browse BB's official plugins, bundled with the app. */
 export function BrowsePluginsTab({
   onInstall,
+  onOpenInstalled,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
+  onOpenInstalled: (pluginId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
@@ -124,6 +126,7 @@ export function BrowsePluginsTab({
                     entry={entry}
                     installedPluginId={entry.installed ? entry.pluginId : null}
                     onInstall={onInstall}
+                    onOpenInstalled={onOpenInstalled}
                   />
                 ))}
               </div>
@@ -147,10 +150,12 @@ function BrowseCard({
   entry,
   installedPluginId,
   onInstall,
+  onOpenInstalled,
 }: {
   entry: PluginCatalogSearchEntry;
   installedPluginId: string | null;
   onInstall: (initial: AddPluginInitial) => void;
+  onOpenInstalled: (pluginId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
@@ -174,38 +179,57 @@ function BrowseCard({
     },
   });
 
+  const identity = (
+    <>
+      <PlaceholderBadge
+        className="size-6"
+        iconName={pluginIconName(entry.icon)}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">
+          {entry.displayName}
+        </p>
+        {entry.description.length > 0 ? (
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+            {entry.description}
+          </p>
+        ) : null}
+        <p
+          className="mt-1.5 truncate text-2xs text-subtle-foreground"
+          title={entry.source}
+          data-testid={`browse-source-${entry.entryId}`}
+        >
+          {entry.source}
+        </p>
+        {!entry.compatible && entry.incompatibleReason !== null ? (
+          <p className="text-2xs text-warning-text">
+            {entry.incompatibleReason}
+          </p>
+        ) : null}
+      </div>
+    </>
+  );
+
   return (
     <>
       <div
         className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
         data-testid={`browse-card-${entry.entryId}`}
       >
-        <PlaceholderBadge
-          className="size-6"
-          iconName={pluginIconName(entry.icon)}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {entry.displayName}
-          </p>
-          {entry.description.length > 0 ? (
-            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-              {entry.description}
-            </p>
-          ) : null}
-          <p
-            className="mt-1.5 truncate text-2xs text-subtle-foreground"
-            title={entry.source}
-            data-testid={`browse-source-${entry.entryId}`}
+        {installedPluginId === null ? (
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            {identity}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="-m-1 flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-md p-1 text-left outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-focus-ring"
+            aria-label={`Open ${entry.displayName} details`}
+            onClick={() => onOpenInstalled(installedPluginId)}
           >
-            {entry.source}
-          </p>
-          {!entry.compatible && entry.incompatibleReason !== null ? (
-            <p className="text-2xs text-warning-text">
-              {entry.incompatibleReason}
-            </p>
-          ) : null}
-        </div>
+            {identity}
+          </button>
+        )}
         {entry.installed ? (
           <span className="mt-0.5">
             <ResourceInstalledControl

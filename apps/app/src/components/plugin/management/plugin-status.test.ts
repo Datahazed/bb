@@ -74,6 +74,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       ),
     ).toEqual({
       kind: "status",
+      icon: "RotateCcw",
       label: "Update failed",
       tone: "error",
       detail: "boom",
@@ -81,14 +82,14 @@ describe("pluginRowSignal (the one-signal rule)", () => {
   });
 
   it.each([
-    ["error", "Error", "error"],
-    ["incompatible", "Incompatible", "error"],
-    ["missing", "Missing", "error"],
-    ["needs-configuration", "Setup required", "warning"],
-    ["degraded", "Degraded", "warning"],
+    ["error", "CircleX", "Error", "error"],
+    ["incompatible", "AlertCircle", "Incompatible", "error"],
+    ["missing", "FileQuestion", "Missing", "error"],
+    ["needs-configuration", "Settings", "Setup required", "warning"],
+    ["degraded", "AlertTriangle", "Degraded", "warning"],
   ] as const)(
     "names the %s runtime status instead of collapsing it into attention",
-    (status, label, tone) => {
+    (status, icon, label, tone) => {
       expect(
         pluginRowSignal(
           plugin(
@@ -98,6 +99,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
         ),
       ).toEqual({
         kind: "status",
+        icon,
         label,
         tone,
         detail: `${status} detail from the server`,
@@ -114,6 +116,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       ),
     ).toEqual({
       kind: "status",
+      icon: "RotateCcw",
       label: "Update failed",
       tone: "error",
       detail: "Update to 1.7.0 failed and was rolled back.",

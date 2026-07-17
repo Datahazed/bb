@@ -24,7 +24,10 @@ import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTa
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getPluginDetailRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse";
 
@@ -156,6 +159,9 @@ export function PluginsOverview() {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
+        onOpenInstalled={(pluginId) =>
+          navigate(getPluginDetailRoutePath({ pluginId }))
+        }
       />
     );
   } else {
@@ -232,6 +238,9 @@ export function PluginsOverview() {
         initial={addDialog.initial}
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
+        }
+        onInstalled={(plugin) =>
+          navigate(getPluginDetailRoutePath({ pluginId: plugin.id }))
         }
       />
     </ResourceCollectionPage>

@@ -1,4 +1,5 @@
 import type {
+  InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginCatalogStatus as SdkPluginCatalogStatus,
@@ -78,15 +79,15 @@ export function usePluginSource(
 export async function installPlugin(
   fetchImpl: FetchLike,
   source: string,
-): Promise<void> {
-  await createPluginsClient(fetchImpl).install({ source });
+): Promise<InstalledPlugin> {
+  return createPluginsClient(fetchImpl).install({ source });
 }
 
 export async function installCatalogPlugin(
   fetchImpl: FetchLike,
   args: { entryId: string },
-): Promise<void> {
-  await createPluginsClient(fetchImpl).catalog.install(args);
+): Promise<InstalledPlugin> {
+  return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
 export interface PluginResolvedVersion {

@@ -48,10 +48,11 @@ describe("PluginDetail official catalog lifecycle", () => {
             isLoading={false}
             plugin={GITHUB_PLUGIN}
             pending={false}
-            editDisabled
+            openSourceDisabled
             onToggle={() => {}}
             onReload={() => {}}
             onEdit={() => {}}
+            onOpenSource={() => {}}
             onDelete={() => {}}
             onBack={() => {}}
           />

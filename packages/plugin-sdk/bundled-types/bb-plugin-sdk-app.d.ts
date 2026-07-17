@@ -474,11 +474,14 @@ interface BbNavigate {
      * Navigate to the root compose surface (the new-thread screen). Pass
      * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
      * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
+     * points that drop the user into chat with a prefilled prompt. Set
+     * `replaceInitialPrompt` for an explicit resource action whose context must
+     * replace any stale root-composer draft.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
     }): void;
 }
 /**

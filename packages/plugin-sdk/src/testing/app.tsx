@@ -89,7 +89,11 @@ export type NavigateCall =
     }
   | {
       method: "toCompose";
-      options?: { initialPrompt?: string; focusPrompt?: boolean };
+      options?: {
+        initialPrompt?: string;
+        focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
+      };
     };
 
 export interface ComposerLog {

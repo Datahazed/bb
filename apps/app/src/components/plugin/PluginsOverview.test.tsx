@@ -105,6 +105,23 @@ function installFetch(
       if (url.pathname === "/api/v1/plugin-catalog/search") {
         return responseJson({ results: [GITHUB_CATALOG_ENTRY] });
       }
+      if (url.pathname === "/api/v1/plugin-catalog/install") {
+        return responseJson({
+          ok: true,
+          plugin: {
+            ...AUTOMATIONS_PLUGIN,
+            id: "github",
+            source: GITHUB_CATALOG_ENTRY.source,
+            rootDir: "/official-plugins/github",
+            name: GITHUB_CATALOG_ENTRY.displayName,
+            description: GITHUB_CATALOG_ENTRY.description,
+            icon: GITHUB_CATALOG_ENTRY.icon,
+            provenance: "catalog",
+            catalogEntryId: GITHUB_CATALOG_ENTRY.entryId,
+            sourceDisplay: "BB Official · GitHub",
+          },
+        });
+      }
       return responseJson({ error: "not found" }, 404);
     }),
   );
@@ -171,6 +188,33 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/tools/plugins/automations",
     );
+  });
+
+  it("opens the canonical detail returned by a Browse install", async () => {
+    installFetch();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/plugins" element={<PluginsOverview />} />
+            <Route path="*" element={<LocationPath />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Install GitHub" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Install GitHub?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+
+    expect(
+      (await screen.findByTestId("location-path")).textContent,
+    ).toBe("/tools/plugins/github");
   });
 
   it("paginates the installed plugin projection", async () => {

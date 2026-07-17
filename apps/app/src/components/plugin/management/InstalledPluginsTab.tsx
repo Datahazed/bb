@@ -23,9 +23,9 @@ import { PluginLogo } from "./plugin-ui";
  * Layer 1 (sketch v2 A): rows at rest are logo, name, description, switch —
  * no versions, no source strings, no menus. A row earns at most one signal:
  * the "Update x.y.z" pill IS the action (opens the confirmation directly),
- * while passive health is specific inline status. Newer-incompatible and
- * pinned never badge. Hover reveals the chevron; the row navigates to the
- * plugin's detail page where depth lives.
+ * while abnormal runtime health is an icon action that opens plugin details.
+ * Newer-incompatible and pinned never badge. Hover reveals the chevron; the
+ * row navigates to the plugin's detail page where depth lives.
  */
 export function InstalledPluginsTab({
   plugins,
@@ -110,10 +110,11 @@ export function InstalledPluginRow({
         onOpen={openDetail}
         trailingMeta={
           signal !== null ? (
-            <span data-testid={`plugin-${signal.kind}-pill-${plugin.id}`}>
+            <span data-testid={`plugin-${signal.kind}-signal-${plugin.id}`}>
               <PluginRowSignalView
                 signal={signal}
                 onUpdateClick={onUpdateClick}
+                onStatusClick={openDetail}
               />
             </span>
           ) : undefined

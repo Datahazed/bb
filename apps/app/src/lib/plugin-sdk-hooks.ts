@@ -276,7 +276,8 @@ export function useBbNavigate(): BbNavigate {
       // The canonical thread path carries the owning project, which the
       // plugin does not know — resolve it, falling back to the projectless
       // path when the lookup fails.
-      void sdk.threads.get({ threadId })
+      void sdk.threads
+        .get({ threadId })
         .then((thread) =>
           navigate(
             getThreadRoutePath({ projectId: thread.projectId, threadId }),
@@ -347,13 +348,18 @@ export function useBbNavigate(): BbNavigate {
     [location.state, navigate, toPluginPanel],
   );
   const toCompose = useCallback(
-    (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
+    (options?: {
+      initialPrompt?: string;
+      focusPrompt?: boolean;
+      replaceInitialPrompt?: boolean;
+    }) => {
       // RootComposeView reads `focusPrompt`/`initialPrompt` off the location
       // state to seed and focus the composer (single-use, cleared after read).
       void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",
+          replaceInitialPrompt: options?.replaceInitialPrompt ?? false,
         },
       });
     },

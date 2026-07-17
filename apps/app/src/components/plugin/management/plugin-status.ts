@@ -1,7 +1,9 @@
 import type { PluginRuntimeStatus } from "@bb/server-contract";
+import type { IconName } from "@bb/shared-ui/icon";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 export interface PluginRuntimeStatusPresentation {
+  icon: IconName;
   label: string;
   tone: "error" | "warning";
   recovery: string;
@@ -22,12 +24,20 @@ export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   PluginRuntimeStatusDefinition | null
 > = {
   running: null,
-  error: { label: "Error", tone: "error" },
-  incompatible: { label: "Incompatible", tone: "error" },
-  missing: { label: "Missing", tone: "error" },
+  error: { icon: "CircleX", label: "Error", tone: "error" },
+  incompatible: {
+    icon: "AlertCircle",
+    label: "Incompatible",
+    tone: "error",
+  },
+  missing: { icon: "FileQuestion", label: "Missing", tone: "error" },
   disabled: null,
-  "needs-configuration": { label: "Setup required", tone: "warning" },
-  degraded: { label: "Degraded", tone: "warning" },
+  "needs-configuration": {
+    icon: "Settings",
+    label: "Setup required",
+    tone: "warning",
+  },
+  degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
 };
 
 export function pluginRuntimeStatusDefinition(
@@ -72,16 +82,18 @@ export function pluginRuntimeStatusPresentation(
 }
 
 /**
- * A plugin row earns at most one signal. Actions use a pill; passive runtime
- * health uses a specific inline status. A failed update that rolled back
- * outranks an available update — the user should know a rollback happened
- * before applying anything else. Newer-but-incompatible releases and pinned
- * sources never signal the list; they surface on the detail page.
+ * A plugin row earns at most one signal. Updates use a pill; abnormal runtime
+ * health uses a specific icon action that opens plugin details. A failed update
+ * that rolled back outranks an available update — the user should know a
+ * rollback happened before applying anything else. Newer-but-incompatible
+ * releases and pinned sources never signal the list; they surface on the detail
+ * page.
  */
 export type PluginRowSignal =
   | { kind: "update"; version: string }
   | {
       kind: "status";
+      icon: IconName;
       label: string;
       tone: "error" | "warning";
       detail: string | null;
@@ -96,6 +108,7 @@ export function pluginRowSignal(
   if (state.lastFailure !== null) {
     return {
       kind: "status",
+      icon: "RotateCcw",
       label: "Update failed",
       tone: "error",
       detail:
@@ -108,6 +121,7 @@ export function pluginRowSignal(
   if (runtimeStatus !== null) {
     return {
       kind: "status",
+      icon: runtimeStatus.icon,
       label: runtimeStatus.label,
       tone: runtimeStatus.tone,
       detail: plugin.statusDetail,

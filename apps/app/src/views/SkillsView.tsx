@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type {
   EditableSkillScope,
   SkillProvider,
@@ -26,7 +27,6 @@ import {
   SKILL_SCOPE_LABELS,
 } from "@/components/tools/skill-taxonomy";
 import {
-  ResourceActionButton,
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCardStat,
@@ -65,7 +65,6 @@ import {
   useProjectSkills,
   useSkillContent,
   useSkillFiles,
-  useUpdateSkill,
 } from "@/hooks/queries/skills-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
@@ -311,6 +310,24 @@ export function normalizeSkillName(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-");
+}
+
+export function resolveInstalledRegistrySkill(
+  registrySkill: RegistrySkill,
+  installedSkills: readonly SkillSummary[],
+): SkillSummary | null {
+  const names = new Set([
+    normalizeSkillName(registrySkill.skillId),
+    normalizeSkillName(registrySkill.name),
+  ]);
+  return (
+    installedSkills.find(
+      (installedSkill) =>
+        installedSkill.scope === "bb-user" &&
+        installedSkill.provider === null &&
+        names.has(normalizeSkillName(installedSkill.name)),
+    ) ?? null
+  );
 }
 
 export function formatRegistrySource(source: string): string {
@@ -955,7 +972,7 @@ function RegistrySkillDetailView({
             label={`${skill.name} actions`}
             items={[
               {
-                label: "Edit SKILL.md",
+                label: "Edit",
                 icon: "Edit",
                 disabled: installedSkill === null,
                 disabledReason:
@@ -967,7 +984,7 @@ function RegistrySkillDetailView({
                 },
               },
               {
-                label: "Open in editor",
+                label: "Open source",
                 icon: "ExternalLink",
                 disabled: installedPath === null || !canOpenPreferredFileTarget,
                 disabledReason:
@@ -1025,16 +1042,8 @@ export interface SkillDetailDialogViewProps {
   canEdit: boolean;
   canDelete: boolean;
   canOpenInEditor: boolean;
-  initiallyEditing?: boolean;
-  isSaving: boolean;
   isDeleting: boolean;
-  /** Clears one-shot route state after overview-row Edit enters edit mode. */
-  onInitialEditStarted?: () => void;
-  /**
-   * Persist edited content. Resolves `true` when the save succeeded so the view
-   * leaves edit mode; `false` keeps the draft for retry.
-   */
-  onSave: (content: string) => Promise<boolean>;
+  onEdit: () => void;
   onBack: () => void;
   onRetry: () => void;
   onDelete: () => void;
@@ -1042,10 +1051,9 @@ export interface SkillDetailDialogViewProps {
 }
 
 /**
- * Presentational skill detail page: renders the SKILL.md (read) or an inline
- * editor, with Edit / Delete / Open-in-editor affordances. Owns only local UI
- * state (editing, draft, delete confirmation); all data + persistence arrive as
- * props so it renders in stories/tests without queries. The connected
+ * Presentational skill detail page: renders the SKILL.md with Edit / Delete /
+ * Open-source affordances. Editing starts a resource-scoped thread; direct
+ * source opening remains a separate action. The connected
  * {@link SkillDetailPage} wires it to the content/update/delete queries.
  */
 export function SkillDetailDialogView({
@@ -1060,169 +1068,56 @@ export function SkillDetailDialogView({
   canEdit,
   canDelete,
   canOpenInEditor,
-  initiallyEditing = false,
-  isSaving,
   isDeleting,
-  onInitialEditStarted = () => {},
-  onSave,
+  onEdit,
   onBack,
   onRetry,
   onDelete,
   onOpenInEditor,
 }: SkillDetailDialogViewProps) {
-  const [editing, setEditing] = useState(false);
-  const [editRequested, setEditRequested] = useState(false);
-  const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const initialEditConsumedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setEditing(false);
-    setEditRequested(false);
     setConfirmingDelete(false);
-    initialEditConsumedRef.current = null;
   }, [skill?.scope, skill?.name, skill?.provider]);
-
-  useEffect(() => {
-    if (
-      !initiallyEditing ||
-      !canEdit ||
-      skill === null ||
-      isLoadingContent ||
-      isRefreshingContent ||
-      isContentError
-    ) {
-      return;
-    }
-    const editKey = `${skill.scope}:${skill.provider ?? "bb"}:${skill.name}`;
-    if (initialEditConsumedRef.current === editKey) return;
-    initialEditConsumedRef.current = editKey;
-    setConfirmingDelete(false);
-    setDraft(content);
-    setEditing(true);
-    onInitialEditStarted();
-  }, [
-    canEdit,
-    content,
-    initiallyEditing,
-    isContentError,
-    isLoadingContent,
-    isRefreshingContent,
-    onInitialEditStarted,
-    skill,
-  ]);
-
-  useEffect(() => {
-    if (
-      !editRequested ||
-      selectedPath !== "SKILL.md" ||
-      isLoadingContent ||
-      isRefreshingContent ||
-      isContentError
-    ) {
-      return;
-    }
-    setDraft(content);
-    setEditing(true);
-    setEditRequested(false);
-  }, [
-    content,
-    editRequested,
-    isContentError,
-    isLoadingContent,
-    isRefreshingContent,
-    selectedPath,
-  ]);
-
-  async function handleSave() {
-    if (await onSave(draft)) {
-      setEditing(false);
-    }
-  }
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Focus the editor the moment editing starts, so it's truly edit-in-place.
-  useEffect(() => {
-    if (editing) {
-      textareaRef.current?.focus();
-    }
-  }, [editing]);
-
-  function startEditing() {
-    setConfirmingDelete(false);
-    setEditRequested(true);
-    onSelectPath("SKILL.md");
-  }
-
-  const sectionActions = editing ? (
-    <>
-      <ResourceActionButton
-        label="Cancel editing"
-        icon="X"
-        disabled={isSaving}
-        onClick={() => setEditing(false)}
-      />
-      <ResourceActionButton
-        label="Save skill"
-        icon="Check"
-        disabled={isSaving || isLoadingContent || isContentError}
-        onClick={handleSave}
-      />
-    </>
-  ) : undefined;
 
   if (skill === null) return null;
   const bundledPluginName =
     skill.scope === "plugin" ? providerPluginNameForSkill(skill) : null;
   const editDisabledReason = skillEditDisabledReason(skill);
   const deleteDisabledReason = skillDeleteDisabledReason(skill);
-  const headerActions =
-    !editing && !confirmingDelete ? (
-      <ResourceOverflowMenu
-        label={`${skill.name} actions`}
-        items={[
-          {
-            label: "Edit SKILL.md",
-            icon: "Edit" as const,
-            disabled:
-              !canEdit ||
-              isLoadingContent ||
-              isRefreshingContent ||
-              isContentError,
-            disabledReason: !canEdit ? editDisabledReason : undefined,
-            onSelect: startEditing,
-          },
-          ...(canOpenInEditor
-            ? [
-                {
-                  label: "Open in editor",
-                  icon: "ExternalLink" as const,
-                  onSelect: onOpenInEditor,
-                },
-              ]
-            : []),
-          { kind: "separator" as const },
-          {
-            label: "Delete",
-            icon: "Trash2" as const,
-            tone: "destructive" as const,
-            disabled: !canDelete,
-            disabledReason: !canDelete ? deleteDisabledReason : undefined,
-            onSelect: () => setConfirmingDelete(true),
-          },
-        ]}
-      />
-    ) : null;
-  const editor = editing ? (
-    <textarea
-      ref={textareaRef}
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      aria-label="SKILL.md"
-      className="h-[60dvh] w-full resize-none rounded-md border border-border bg-surface-raised p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+  const headerActions = !confirmingDelete ? (
+    <ResourceOverflowMenu
+      label={`${skill.name} actions`}
+      items={[
+        {
+          label: "Edit",
+          icon: "Edit" as const,
+          disabled: !canEdit,
+          disabledReason: !canEdit ? editDisabledReason : undefined,
+          onSelect: onEdit,
+        },
+        ...(canOpenInEditor
+          ? [
+              {
+                label: "Open source",
+                icon: "ExternalLink" as const,
+                onSelect: onOpenInEditor,
+              },
+            ]
+          : []),
+        { kind: "separator" as const },
+        {
+          label: "Delete",
+          icon: "Trash2" as const,
+          tone: "destructive" as const,
+          disabled: !canDelete,
+          disabledReason: !canDelete ? deleteDisabledReason : undefined,
+          onSelect: () => setConfirmingDelete(true),
+        },
+      ]}
     />
-  ) : undefined;
-
+  ) : null;
   return (
     <SkillDetailView
       back={
@@ -1264,51 +1159,42 @@ export function SkillDetailDialogView({
             : { kind: "ready", content }
       }
       overflowMenu={headerActions}
-      contentActions={sectionActions}
-      editor={editor}
       footer={
-        <>
-          {editing ? (
-            <span className="sr-only">Skill edit mode is active.</span>
-          ) : null}
-          <ConfirmDeleteDialog
-            open={confirmingDelete}
-            onOpenChange={(open) => {
-              if (!isDeleting) setConfirmingDelete(open);
-            }}
-          >
-            <ConfirmDeleteDialogContent
-              title="Delete skill?"
-              description={`Delete "${skill.name}" from its current location? This cannot be undone.`}
-              confirmLabel="Delete skill"
-              pending={isDeleting}
-              onConfirm={onDelete}
-              onCancel={() => setConfirmingDelete(false)}
-            />
-          </ConfirmDeleteDialog>
-        </>
+        <ConfirmDeleteDialog
+          open={confirmingDelete}
+          onOpenChange={(open) => {
+            if (!isDeleting) setConfirmingDelete(open);
+          }}
+        >
+          <ConfirmDeleteDialogContent
+            title="Delete skill?"
+            description={`Delete "${skill.name}" from its current location? This cannot be undone.`}
+            confirmLabel="Delete skill"
+            pending={isDeleting}
+            onConfirm={onDelete}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        </ConfirmDeleteDialog>
       }
     />
   );
 }
 
 /**
- * View a skill's SKILL.md. Writable user-owned local skills can be edited and
- * deleted inline. Connected — owns the
- * content/update/delete queries and renders {@link SkillDetailDialogView}.
+ * View a skill's SKILL.md. Writable user-owned local skills can start an edit
+ * thread or be deleted. Connected — owns the content/delete queries and renders
+ * {@link SkillDetailDialogView}.
  */
 function SkillDetailPage({
   projectId,
   skill,
   onClose,
-  initiallyEditing = false,
-  onInitialEditStarted,
+  onEdit,
 }: {
   projectId: string;
   skill: SkillSummary | null;
   onClose: () => void;
-  initiallyEditing?: boolean;
-  onInitialEditStarted?: () => void;
+  onEdit: () => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => {
@@ -1316,7 +1202,6 @@ function SkillDetailPage({
   }, [skill?.scope, skill?.name, skill?.provider]);
   const filesQuery = useSkillFiles(projectId, skill);
   const contentQuery = useSkillContent(projectId, skill, selectedPath);
-  const updateSkill = useUpdateSkill(projectId);
   const deleteSkill = useDeleteSkill(projectId);
   // Skills live on the local host (personal project), so the SKILL.md is a real
   // local file we can hand to the user's editor.
@@ -1341,29 +1226,12 @@ function SkillDetailPage({
       canEdit={editableScope !== null}
       canDelete={deletableScope !== null}
       canOpenInEditor={editableScope !== null && canOpenPreferredFileTarget}
-      initiallyEditing={initiallyEditing}
-      isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
-      onInitialEditStarted={onInitialEditStarted}
+      onEdit={onEdit}
       onBack={onClose}
       onRetry={() => {
         void filesQuery.refetch();
         void contentQuery.refetch();
-      }}
-      onSave={async (content) => {
-        if (!skill || editableScope === null) return false;
-        try {
-          await updateSkill.mutateAsync({
-            scope: editableScope,
-            name: skill.name,
-            environmentId: null,
-            content,
-          });
-          return true;
-        } catch {
-          // Errors surface via the global handler; keep the edits for retry.
-          return false;
-        }
       }}
       onDelete={() => {
         if (!skill || deletableScope === null) return;
@@ -1490,20 +1358,8 @@ export function SkillsLibrary() {
     staleTime: 5 * 60_000,
   });
   const findInstalledRegistrySkill = useCallback(
-    (skill: RegistrySkill): SkillSummary | null => {
-      const names = new Set([
-        normalizeSkillName(skill.skillId),
-        normalizeSkillName(skill.name),
-      ]);
-      return (
-        skills.find(
-          (installedSkill) =>
-            installedSkill.scope === "bb-user" &&
-            installedSkill.provider === null &&
-            names.has(normalizeSkillName(installedSkill.name)),
-        ) ?? null
-      );
-    },
+    (skill: RegistrySkill): SkillSummary | null =>
+      resolveInstalledRegistrySkill(skill, skills),
     [skills],
   );
   const findVerifiedInstalledRegistrySkill = useCallback(
@@ -1521,6 +1377,33 @@ export function SkillsLibrary() {
     },
     [confirmedRegistryInstalls, skills],
   );
+  const installedRegistryDetailSkill = useMemo(() => {
+    if (selectedRegistrySkill === null) return null;
+    return (
+      findVerifiedInstalledRegistrySkill(selectedRegistrySkill) ??
+      findInstalledRegistrySkill(selectedRegistrySkill)
+    );
+  }, [
+    findInstalledRegistrySkill,
+    findVerifiedInstalledRegistrySkill,
+    selectedRegistrySkill,
+  ]);
+  useEffect(() => {
+    if (
+      routeRegistrySkillId === undefined ||
+      installedRegistryDetailSkill === null
+    ) {
+      return;
+    }
+    navigate(
+      getSkillDetailRoutePath({
+        scope: installedRegistryDetailSkill.scope,
+        providerId: installedRegistryDetailSkill.provider,
+        skillName: installedRegistryDetailSkill.name,
+      }),
+      { replace: true },
+    );
+  }, [installedRegistryDetailSkill, navigate, routeRegistrySkillId]);
   const isRegistrySkillInstalled = useCallback(
     (skill: RegistrySkill): boolean => {
       if (confirmedRegistryInstalls.has(skill.id)) {
@@ -1577,24 +1460,49 @@ export function SkillsLibrary() {
     ],
   );
   const openSkill = useCallback(
-    (skill: SkillSummary, options?: { editing?: boolean }) => {
+    (skill: SkillSummary) => {
       navigate(
         getSkillDetailRoutePath({
           scope: skill.scope,
           providerId: skill.provider,
           skillName: skill.name,
         }),
-        options?.editing ? { state: { editSkill: true } } : undefined,
       );
+    },
+    [navigate],
+  );
+  const editSkillViaThread = useCallback(
+    (skill: SkillSummary) => {
+      navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: true,
+          initialPrompt: buildSkillEditThreadPrompt({
+            name: skill.name,
+            path: skill.filePath,
+          }),
+          replaceInitialPrompt: true,
+        },
+      });
     },
     [navigate],
   );
   const openRegistrySkill = useCallback(
     (skill: RegistrySkill) => {
+      const installedSkill = findInstalledRegistrySkill(skill);
+      if (installedSkill !== null) {
+        navigate(
+          getSkillDetailRoutePath({
+            scope: installedSkill.scope,
+            providerId: installedSkill.provider,
+            skillName: installedSkill.name,
+          }),
+        );
+        return;
+      }
       if (!isRegistryBrowseRoute) setRegistryPage(0);
       navigate(getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }));
     },
-    [isRegistryBrowseRoute, navigate],
+    [findInstalledRegistrySkill, isRegistryBrowseRoute, navigate],
   );
   const handleRegistryQueryChange = useCallback((nextQuery: string) => {
     setRegistrySearch(nextQuery);
@@ -1644,14 +1552,6 @@ export function SkillsLibrary() {
             deleteSkill.variables?.name,
         )?.id ?? null)
       : null;
-  const initiallyEditingSelectedSkill =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "editSkill" in location.state &&
-    location.state.editSkill === true;
-  const clearInitialEditState = useCallback(() => {
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, navigate]);
   return (
     <>
       {selectedSkill ? (
@@ -1659,8 +1559,15 @@ export function SkillsLibrary() {
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}
           onClose={closeSkillDetail}
-          initiallyEditing={initiallyEditingSelectedSkill}
-          onInitialEditStarted={clearInitialEditState}
+          onEdit={() => editSkillViaThread(selectedSkill)}
+        />
+      ) : selectedRegistrySkill !== null &&
+        installedRegistryDetailSkill !== null ? (
+        <SkillDetailPage
+          projectId={PERSONAL_PROJECT_ID}
+          skill={installedRegistryDetailSkill}
+          onClose={closeSkillDetail}
+          onEdit={() => editSkillViaThread(installedRegistryDetailSkill)}
         />
       ) : routeRegistrySkillId !== undefined &&
         selectedRegistrySkill === null ? (
@@ -1700,7 +1607,7 @@ export function SkillsLibrary() {
               ? uninstallRegistry
               : undefined
           }
-          onEditInstalledSkill={(skill) => openSkill(skill, { editing: true })}
+          onEditInstalledSkill={editSkillViaThread}
           onBack={closeRegistrySkillDetail}
         />
       ) : (

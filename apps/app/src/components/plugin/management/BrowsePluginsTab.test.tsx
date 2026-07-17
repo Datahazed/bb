@@ -81,8 +81,15 @@ describe("BrowsePluginsTab", () => {
     );
 
     const onInstall = vi.fn();
+    const onOpenInstalled = vi.fn();
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={onInstall} />, { wrapper });
+    render(
+      <BrowsePluginsTab
+        onInstall={onInstall}
+        onOpenInstalled={onOpenInstalled}
+      />,
+      { wrapper },
+    );
 
     expect(await screen.findByText("BB Official plugins")).toBeTruthy();
     const card = await screen.findByTestId("browse-card-memory");
@@ -127,13 +134,25 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} />, { wrapper });
+    const onOpenInstalled = vi.fn();
+    render(
+      <BrowsePluginsTab
+        onInstall={() => {}}
+        onOpenInstalled={onOpenInstalled}
+      />,
+      { wrapper },
+    );
 
     expect(
       await screen.findByRole("button", { name: "Uninstall Memory" }),
     ).toBeTruthy();
     expect(document.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    );
+    expect(onOpenInstalled).toHaveBeenCalledWith("memory");
   });
 
   it("uses the catalog's canonical plugin id for uninstall", async () => {
@@ -175,10 +194,20 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} />, { wrapper });
+    const onOpenInstalled = vi.fn();
+    render(
+      <BrowsePluginsTab
+        onInstall={() => {}}
+        onOpenInstalled={onOpenInstalled}
+      />,
+      { wrapper },
+    );
 
     expect(
       await screen.findByRole("button", { name: "Uninstall Docs" }),
     ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Docs details" }));
+    expect(onOpenInstalled).toHaveBeenCalledWith("simple-notes");
   });
 });

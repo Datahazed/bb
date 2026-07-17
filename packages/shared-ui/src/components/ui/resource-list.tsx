@@ -436,6 +436,7 @@ export interface ResourceCreateTemplate {
   label: string;
   description: string;
   prompt: string;
+  icon?: IconName;
 }
 
 export interface ResourceCreateMenuAction {
@@ -447,7 +448,7 @@ export interface ResourceCreateMenuAction {
 export function ResourceCreateButton({
   label,
   templates,
-  templateMenuLabel = "Start from an example",
+  templateMenuLabel = "Examples",
   menuActions = [],
   onCreate,
 }: {
@@ -481,7 +482,7 @@ export function ResourceCreateButton({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-72"
+          className="min-w-40 w-max"
           mobileTitle={templateMenuLabel}
         >
           {menuActions.map((action) => (
@@ -497,16 +498,20 @@ export function ResourceCreateButton({
           {templates.map((template) => (
             <DropdownMenuItem
               key={template.label}
+              className="py-2"
               onSelect={() => onCreate(template.prompt)}
             >
-              <div className="flex min-w-0 flex-col">
-                <span className="text-sm text-foreground">
-                  {template.label}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {template.description}
-                </span>
-              </div>
+              {template.icon ? (
+                <Icon
+                  name={template.icon}
+                  className="size-4 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="min-w-0 truncate text-sm text-foreground">
+                {template.label}
+              </span>
+              <span className="sr-only">: {template.description}</span>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -985,14 +990,14 @@ export function ResourceDetailSection({
     <section
       className={cn(
         layout === "stacked" && "space-y-2",
-        layout === "inline" && "grid sm:grid-cols-[9rem_minmax(0,1fr)]",
+        layout === "inline" && "grid sm:grid-cols-[8rem_minmax(0,1fr)]",
       )}
     >
       <div
         className={cn(
           "flex min-h-6 items-center justify-between gap-3",
           layout === "inline" &&
-            "bg-surface-recessed/55 px-4 py-3.5 sm:items-start sm:border-r sm:border-border",
+            "bg-surface-recessed/55 px-5 py-5 sm:items-start sm:border-r sm:border-border",
         )}
       >
         <h2 className="text-xs font-medium uppercase text-muted-foreground">
@@ -1003,7 +1008,7 @@ export function ResourceDetailSection({
         ) : null}
       </div>
       {layout === "inline" ? (
-        <div className="min-w-0 px-4 py-3.5">{children}</div>
+        <div className="min-w-0 px-5 py-5">{children}</div>
       ) : (
         children
       )}
@@ -1102,7 +1107,14 @@ export function ResourceInstallControl({
       aria-label={accessibleLabel}
       onClick={onAction}
     >
-      {pending ? pendingLabel : label}
+      {pending ? (
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
+          {pendingLabel}
+        </span>
+      ) : (
+        label
+      )}
     </Button>
   );
 }
@@ -1157,7 +1169,10 @@ export function ResourceInstalledControl({
       onClick={onAction}
     >
       {pending ? (
-        pendingLabel
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
+          {pendingLabel}
+        </span>
       ) : (
         <span className="grid place-items-center">
           <span className="col-start-1 row-start-1 inline-flex items-center justify-center transition-opacity group-hover/install:opacity-0 group-focus-visible/install:opacity-0">
@@ -1181,7 +1196,7 @@ export function ResourceProperty({
   children: ReactNode;
 }) {
   return (
-    <div className="grid gap-1 px-3 py-2 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
+    <div className="grid gap-2 px-3 py-3 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
       <div className="font-medium text-muted-foreground">{label}</div>
       <div className="min-w-0 break-words text-foreground">{children}</div>
     </div>

@@ -17,6 +17,7 @@ import {
   fetchRegistrySkillEntry,
   installRegistrySkill,
   RegistrySkillsBrowsePage,
+  resolveInstalledRegistrySkill,
   SkillDetailDialogView,
   SkillsOverview,
   type RegistrySkill,
@@ -364,9 +365,7 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByText("powered by")).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(
-      screen.getByLabelText("Installed Alpha as a bb skill"),
-    ).toBeTruthy();
+    expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
     expect(await screen.findByRole("menuitem", { name: "Stars" })).toBeTruthy();
@@ -412,9 +411,8 @@ describe("SkillDetailDialogView", () => {
         canEdit={false}
         canDelete={false}
         canOpenInEditor={false}
-        isSaving={false}
         isDeleting={false}
-        onSave={async () => true}
+        onEdit={() => {}}
         onBack={onBack}
         onRetry={() => {}}
         onDelete={() => {}}
@@ -430,7 +428,7 @@ describe("SkillDetailDialogView", () => {
     );
     expect(
       screen
-        .getByRole("menuitem", { name: /Edit SKILL\.md/ })
+        .getByRole("menuitem", { name: /Edit/ })
         .getAttribute("aria-disabled"),
     ).toBe("true");
     expect(
@@ -439,9 +437,7 @@ describe("SkillDetailDialogView", () => {
         .getAttribute("aria-disabled"),
     ).toBe("true");
     expect(screen.queryByText("Built-in skill")).toBeNull();
-    fireEvent.pointerMove(
-      screen.getByRole("menuitem", { name: "Edit SKILL.md" }),
-    );
+    fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Edit" }));
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Built-in skill",
     );
@@ -467,9 +463,8 @@ describe("SkillDetailDialogView", () => {
         canEdit={false}
         canDelete={false}
         canOpenInEditor={false}
-        isSaving={false}
         isDeleting={false}
-        onSave={async () => true}
+        onEdit={() => {}}
         onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
@@ -490,9 +485,7 @@ describe("SkillDetailDialogView", () => {
       screen.getByRole("button", { name: "documents actions" }),
     );
     expect(screen.queryByText("Bundled with documents")).toBeNull();
-    fireEvent.pointerMove(
-      screen.getByRole("menuitem", { name: "Edit SKILL.md" }),
-    );
+    fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Edit" }));
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Bundled with documents",
     );
@@ -518,9 +511,8 @@ describe("SkillDetailDialogView", () => {
         canEdit
         canDelete
         canOpenInEditor={false}
-        isSaving={false}
         isDeleting={false}
-        onSave={async () => true}
+        onEdit={() => {}}
         onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
@@ -539,7 +531,7 @@ describe("SkillDetailDialogView", () => {
     );
   });
 
-  it("uses a hoverable copy target and section-header icon actions", async () => {
+  it("uses a hoverable copy target and delegates editing to the thread flow", () => {
     const skill = makeSkill({
       name: "bb-skill",
       provider: null,
@@ -547,7 +539,7 @@ describe("SkillDetailDialogView", () => {
       manageable: true,
       filePath: "/home/u/.bb/skills/bb-skill/SKILL.md",
     });
-    const onInitialEditStarted = vi.fn();
+    const onEdit = vi.fn();
     renderDom(
       <SkillDetailDialogView
         skill={skill}
@@ -561,11 +553,8 @@ describe("SkillDetailDialogView", () => {
         canEdit
         canDelete
         canOpenInEditor={false}
-        initiallyEditing
-        isSaving={false}
         isDeleting={false}
-        onInitialEditStarted={onInitialEditStarted}
-        onSave={async () => true}
+        onEdit={onEdit}
         onBack={() => {}}
         onRetry={() => {}}
         onDelete={() => {}}
@@ -579,69 +568,11 @@ describe("SkillDetailDialogView", () => {
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
     expect(pathButton.className).toContain("cursor-pointer");
     expect(pathButton.className).toContain("hover:bg-state-hover");
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Cancel editing" }),
-      ).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Save skill" })).toBeTruthy();
-    });
-    expect(onInitialEditStarted).toHaveBeenCalledOnce();
-  });
-
-  it("waits for a fresh SKILL.md before entering route-requested edit mode", async () => {
-    const skill = makeSkill({
-      name: "bb-skill",
-      provider: null,
-      scope: "bb-user",
-      manageable: true,
-    });
-    const onInitialEditStarted = vi.fn();
-    const props = {
-      skill,
-      files: ["SKILL.md"],
-      selectedPath: "SKILL.md",
-      onSelectPath: () => {},
-      isLoadingContent: false,
-      isContentError: false,
-      canEdit: true,
-      canDelete: true,
-      canOpenInEditor: false,
-      initiallyEditing: true,
-      isSaving: false,
-      isDeleting: false,
-      onInitialEditStarted,
-      onSave: async () => true,
-      onBack: () => {},
-      onRetry: () => {},
-      onDelete: () => {},
-      onOpenInEditor: () => {},
-    };
-    const view = renderDom(
-      <SkillDetailDialogView
-        {...props}
-        content="# stale cache"
-        isRefreshingContent
-      />,
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "bb-skill actions" }),
     );
-
-    expect(screen.queryByRole("button", { name: "Save skill" })).toBeNull();
-    expect(onInitialEditStarted).not.toHaveBeenCalled();
-
-    view.rerender(
-      <SkillDetailDialogView
-        {...props}
-        content="# fresh file"
-        isRefreshingContent={false}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole<HTMLTextAreaElement>("textbox", { name: "SKILL.md" })
-          .value,
-      ).toBe("# fresh file");
-    });
-    expect(onInitialEditStarted).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    expect(onEdit).toHaveBeenCalledOnce();
   });
 });
 
@@ -759,6 +690,33 @@ describe("installRegistrySkill", () => {
       "providers",
     );
     expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty("scope");
+  });
+});
+
+describe("resolveInstalledRegistrySkill", () => {
+  it("resolves a registry entry only to its canonical bb-user detail", () => {
+    const registrySkill = makeRegistrySkill({
+      skillId: "Useful Skill",
+      name: "Useful skill",
+    });
+    const installed = makeSkill({
+      name: "useful-skill",
+      provider: null,
+      scope: "bb-user",
+      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+    });
+
+    expect(
+      resolveInstalledRegistrySkill(registrySkill, [
+        makeSkill({ name: "useful-skill", scope: "bb-builtin" }),
+        installed,
+      ]),
+    ).toBe(installed);
+    expect(
+      resolveInstalledRegistrySkill(registrySkill, [
+        makeSkill({ name: "useful-skill", provider: "codex" }),
+      ]),
+    ).toBeNull();
   });
 });
 

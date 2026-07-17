@@ -160,7 +160,7 @@ export function SkillBundledPluginMetadata({
   providerLabel: string;
 }) {
   return (
-    <span>
+    <span className="text-xs font-normal text-muted-foreground">
       Bundled with {pluginName} ({providerLabel} plugin)
     </span>
   );
@@ -359,7 +359,7 @@ export function SkillDetailView({
               </Button>
             </ResourceDetailPanel>
           ) : (
-            <ResourceDetailPanel className="max-h-[60dvh] overflow-auto bg-transparent">
+            <ResourceDetailPanel className="max-h-[60dvh] overflow-auto border-border/80 bg-transparent shadow-none">
               <FilePreview
                 path={selectedPath}
                 headerMode="none"

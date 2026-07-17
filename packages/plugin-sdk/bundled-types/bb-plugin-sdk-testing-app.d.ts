@@ -62,6 +62,7 @@ type NavigateCall = {
     options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
     };
 };
 interface ComposerLog {
