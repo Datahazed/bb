@@ -977,50 +977,32 @@ export interface ResourceDetailSectionProps {
   label: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
-  layout?: "stacked" | "inline";
 }
 
 export function ResourceDetailSection({
   label,
   actions,
   children,
-  layout = "stacked",
 }: ResourceDetailSectionProps) {
   return (
-    <section
-      className={cn(
-        layout === "stacked" && "space-y-2",
-        layout === "inline" && "grid sm:grid-cols-[8rem_minmax(0,1fr)]",
-      )}
-    >
-      <div
-        className={cn(
-          "flex min-h-6 items-center justify-between gap-3",
-          layout === "inline" &&
-            "bg-surface-recessed/55 px-5 py-5 sm:items-start sm:border-r sm:border-border",
-        )}
-      >
-        <h2 className="text-xs font-medium uppercase text-muted-foreground">
-          {label}
-        </h2>
+    <section className="space-y-3">
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-foreground">{label}</h2>
         {actions ? (
           <div className="flex shrink-0 items-center gap-0.5">{actions}</div>
         ) : null}
       </div>
-      {layout === "inline" ? (
-        <div className="min-w-0 px-5 py-5">{children}</div>
-      ) : (
-        children
-      )}
+      {children}
     </section>
   );
 }
 
 /**
- * One adaptive boundary for a resource's semantic detail sections.
+ * One open hierarchy for a resource's semantic detail sections.
  *
- * A simple resource can render a single compact row. Complex resources add
- * rows to the same surface instead of accumulating disconnected cards.
+ * Sections are separated by whitespace instead of a table or an enclosing
+ * card. Individual content can still use a recessed surface when its shape
+ * benefits from one, such as source code, settings, or an error.
  */
 export function ResourceDetailStack({
   children,
@@ -1029,16 +1011,7 @@ export function ResourceDetailStack({
   children: ReactNode;
   className?: string;
 }) {
-  return (
-    <div
-      className={cn(
-        "divide-y divide-border overflow-hidden rounded-lg border border-border bg-card",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("space-y-8", className)}>{children}</div>;
 }
 
 /** The editable or inspectable content that defines a resource. */

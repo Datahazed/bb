@@ -519,11 +519,9 @@ export function PluginDetail({
       leading={<PluginListLogo plugin={plugin} />}
       title={plugin.name ?? plugin.id}
       titleMeta={sourceLabel}
-      metadata={[
-        <span key="locator" className="font-mono">
-          {plugin.rootDir}
-        </span>,
-      ]}
+      metadata={
+        <span className="block break-all font-mono">{plugin.rootDir}</span>
+      }
       description={plugin.description}
       enabled={plugin.enabled}
       lifecycleDisabled={pending}

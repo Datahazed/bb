@@ -4,7 +4,6 @@ import {
   ResourceDefinitionSection,
   ResourceDetailPage,
   ResourceDetailStack,
-  ResourceMeta,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -39,7 +38,7 @@ export function PluginDetailView({
   leading: ReactNode;
   title: string;
   titleMeta?: ReactNode;
-  metadata: readonly ReactNode[];
+  metadata: ReactNode;
   description?: ReactNode;
   enabled?: boolean;
   lifecycleDisabled?: boolean;
@@ -61,7 +60,7 @@ export function PluginDetailView({
       leading={leading}
       title={title}
       titleMeta={titleMeta}
-      metadata={<ResourceMeta items={metadata} />}
+      metadata={metadata}
       lifecycleControl={
         hasLifecycleControl ? (
           <Switch
@@ -87,16 +86,16 @@ export function PluginDetailView({
       activitySections.length > 0 ? (
         <ResourceDetailStack>
           {hasDescription ? (
-            <ResourceDefinitionSection label="About" layout="inline">
+            <ResourceDefinitionSection label="About">
               <p className="text-sm leading-relaxed text-foreground">
                 {description}
               </p>
             </ResourceDefinitionSection>
           ) : null}
           {properties.length > 0 ? (
-            <ResourceDefinitionSection label="Configuration" layout="inline">
+            <ResourceDefinitionSection label="Configuration">
               <ResourcePropertyList
-                surface="flat"
+                surface="recessed"
                 className="divide-y divide-border"
               >
                 {properties.map((property, index) => (
@@ -108,20 +107,12 @@ export function PluginDetailView({
             </ResourceDefinitionSection>
           ) : null}
           {definitionSections.map((section, index) => (
-            <ResourceDefinitionSection
-              key={index}
-              label={section.label}
-              layout="inline"
-            >
+            <ResourceDefinitionSection key={index} label={section.label}>
               {section.content}
             </ResourceDefinitionSection>
           ))}
           {activitySections.map((section, index) => (
-            <ResourceActivitySection
-              key={index}
-              label={section.label}
-              layout="inline"
-            >
+            <ResourceActivitySection key={index} label={section.label}>
               {section.content}
             </ResourceActivitySection>
           ))}

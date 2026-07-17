@@ -9,9 +9,12 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
+  ResourceActivitySection,
+  ResourceDefinitionSection,
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourceDetailStack,
   ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -355,12 +358,6 @@ export function AutomationDetailView({
           label={`${automation.name} actions`}
           disabled={actionPending}
           items={[
-            {
-              label: "Edit",
-              icon: "Edit",
-              onSelect: onEdit,
-            },
-            { kind: "separator" },
             { label: "Run now", icon: "Play", onSelect: onRunNow },
             { kind: "separator" },
             {
@@ -373,14 +370,22 @@ export function AutomationDetailView({
         />
       }
     >
-      <div className="space-y-8">
-        <section className="space-y-3" aria-labelledby="automation-definition">
-          <h2
-            id="automation-definition"
-            className="text-sm font-medium text-foreground"
-          >
-            {bodyLabel}
-          </h2>
+      <ResourceDetailStack>
+        <ResourceDefinitionSection
+          label={bodyLabel}
+          actions={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground"
+              onClick={onEdit}
+            >
+              <Icon name="MessageCirclePlus" className="size-3.5" aria-hidden />
+              Edit with chat
+            </Button>
+          }
+        >
           <ResourceDetailPanel
             surface="recessed"
             className={cn(
@@ -403,7 +408,7 @@ export function AutomationDetailView({
             ) : null}
           </ResourceDetailPanel>
 
-          <dl className="grid gap-x-8 gap-y-3 border-y border-border py-4 sm:grid-cols-3">
+          <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-3">
             {execution.mode === "agent" ? (
               <>
                 <AutomationFact label="Runs with">
@@ -429,15 +434,9 @@ export function AutomationDetailView({
               </>
             )}
           </dl>
-        </section>
+        </ResourceDefinitionSection>
 
-        <section className="space-y-3" aria-labelledby="automation-run-history">
-          <h2
-            id="automation-run-history"
-            className="text-sm font-medium text-foreground"
-          >
-            Run history
-          </h2>
+        <ResourceActivitySection label="Run history">
           {runsState.error !== null ? (
             <ResourceDetailPanel
               surface="recessed"
@@ -503,8 +502,8 @@ export function AutomationDetailView({
               ) : null}
             </div>
           )}
-        </section>
-      </div>
+        </ResourceActivitySection>
+      </ResourceDetailStack>
       {footer}
     </ResourceDetailPage>
   );
