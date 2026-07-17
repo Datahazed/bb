@@ -195,6 +195,26 @@ async function resolveInstalledSkillDetailPath(): Promise<string> {
   });
 }
 
+async function resolveMultiFileSkillDetailPath(): Promise<string> {
+  const response = await sdk.skills.list({
+    projectId: PERSONAL_PROJECT_ID,
+    environmentId: null,
+  });
+  for (const skill of response.skills) {
+    const files = await sdk.skills.listFiles({
+      projectId: PERSONAL_PROJECT_ID,
+      environmentId: null,
+      skillId: skill.id,
+    });
+    if (files.files.length > 1) {
+      return getSkillDetailRoutePath({ skillId: skill.id });
+    }
+  }
+  throw new Error(
+    "The live server has no installed skill with multiple files.",
+  );
+}
+
 async function resolveRegistrySkillDetailPath(): Promise<string> {
   const response = await fetchRegistrySkills({ query: "", page: 0 });
   const skill = response.skills[0];
@@ -309,6 +329,10 @@ export function SkillsRegistry() {
 
 export function SkillDetail() {
   return <LiveToolsPage target={resolveInstalledSkillDetailPath} />;
+}
+
+export function SkillDetailMultipleFiles() {
+  return <LiveToolsPage target={resolveMultiFileSkillDetailPath} />;
 }
 
 export function RegistrySkillDetail() {

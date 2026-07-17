@@ -938,6 +938,33 @@ export function ResourceDetailList({
   );
 }
 
+/**
+ * A quiet, divided group of peer resources within a detail section.
+ *
+ * Use this for files, capabilities, services, schedules, and historical
+ * events. The section supplies the hierarchy; the collection supplies row
+ * structure without introducing another card.
+ */
+export function ResourceDetailCollection({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <ResourceDetailList
+      surface="flat"
+      className={cn(
+        "divide-y divide-border border-y border-border p-0",
+        className,
+      )}
+    >
+      {children}
+    </ResourceDetailList>
+  );
+}
+
 export function ResourceDetailListItem({
   leading,
   children,
@@ -959,6 +986,37 @@ export function ResourceDetailListItem({
       {leading ? <span className="shrink-0">{leading}</span> : null}
       <div className="min-w-0 flex-1">{children}</div>
       {trailing ? <span className="shrink-0">{trailing}</span> : null}
+    </div>
+  );
+}
+
+export function ResourceDetailActionRow({
+  label,
+  description,
+  action,
+  className,
+}: {
+  label: ReactNode;
+  description?: ReactNode;
+  action: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-start justify-between gap-3 text-sm",
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground">{label}</div>
+        {description ? (
+          <div className="mt-0.5 min-w-0 break-words text-xs leading-snug text-subtle-foreground/75">
+            {description}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center">{action}</div>
     </div>
   );
 }
@@ -1015,9 +1073,10 @@ export function ResourceDetailSection({
 /**
  * One open hierarchy for a resource's semantic detail sections.
  *
- * Sections are separated by whitespace instead of a table or an enclosing
- * card. Individual content can still use a recessed surface when its shape
- * benefits from one, such as source code, settings, or an error.
+ * The page is the panel. Quiet rules and shared padding separate its sections
+ * without turning every section into a card. Individual content can still use
+ * a recessed surface when its shape benefits from one, such as source code,
+ * settings, or an error.
  */
 export function ResourceDetailStack({
   children,
@@ -1026,7 +1085,16 @@ export function ResourceDetailStack({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("space-y-8", className)}>{children}</div>;
+  return (
+    <div
+      className={cn(
+        "divide-y divide-border/80 [&>[data-resource-detail-section]]:py-6 [&>[data-resource-detail-section]:first-child]:pt-0 [&>[data-resource-detail-section]:last-child]:pb-0",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Human-readable purpose and orientation. Keep this open and lightweight. */

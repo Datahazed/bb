@@ -22,9 +22,9 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import {
+  ResourceDetailCollection,
   ResourceDetailFact,
   ResourceDetailFacts,
-  ResourceDetailList,
   ResourceDetailListItem,
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
@@ -351,10 +351,7 @@ function PluginActivity({
     return null;
   }
   return (
-    <ResourceDetailList
-      surface="recessed"
-      className="divide-y divide-border/80 p-1"
-    >
+    <ResourceDetailCollection>
       {showOverallState && runtimeStatus !== null ? (
         <ResourceDetailListItem
           leading={
@@ -438,7 +435,7 @@ function PluginActivity({
           {plugin.handlerStats.errorCount === 1 ? "error" : "errors"}
         </ResourceDetailListItem>
       ) : null}
-    </ResourceDetailList>
+    </ResourceDetailCollection>
   );
 }
 
@@ -647,12 +644,9 @@ export function PluginDetail({
                 label: "Includes",
                 kind: "includes" as const,
                 content: (
-                  <ResourceDetailList
-                    surface="recessed"
-                    className="divide-y divide-border/80 p-1"
-                  >
+                  <ResourceDetailCollection>
                     {includes}
-                  </ResourceDetailList>
+                  </ResourceDetailCollection>
                 ),
               },
             ]

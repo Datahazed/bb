@@ -12,9 +12,9 @@ import {
   ResourceActionButton,
   ResourceActivitySection,
   ResourceDefinitionSection,
+  ResourceDetailCollection,
   ResourceDetailFact,
   ResourceDetailFacts,
-  ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
   ResourceDetailStack,
@@ -470,14 +470,11 @@ export function AutomationDetailView({
             </EmptyStatePanel>
           ) : (
             <div className="space-y-2">
-              <ResourceDetailList
-                surface="flat"
-                className="divide-y divide-border border-y border-border p-0"
-              >
+              <ResourceDetailCollection>
                 {runsState.runs.map((run) => (
                   <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
                 ))}
-              </ResourceDetailList>
+              </ResourceDetailCollection>
               {runsState.nextCursor !== null ? (
                 <div className="flex justify-center pt-1">
                   <Button

@@ -3,10 +3,11 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceDefinitionSection,
-  ResourceDetailList,
+  ResourceDetailCollection,
   ResourceDetailIncludesSection,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourceDetailStack,
   ResourceInstallControl,
   ResourceInstalledControl,
   ResourceLifecycleStatus,
@@ -250,7 +251,7 @@ function SkillFileList({
   onSelectFile: (path: string) => void;
 }) {
   return (
-    <ResourceDetailList className="max-h-48 overflow-auto">
+    <ResourceDetailCollection className="max-h-48 overflow-auto">
       {files.map((path) => (
         <button
           key={path}
@@ -263,7 +264,7 @@ function SkillFileList({
           <span className="min-w-0 truncate">{path}</span>
         </button>
       ))}
-    </ResourceDetailList>
+    </ResourceDetailCollection>
   );
 }
 
@@ -325,57 +326,71 @@ export function SkillDetailView({
       lifecycleControl={lifecycleControl}
       overflowMenu={overflowMenu}
     >
-      {files.length > 1 && editor === undefined ? (
-        <ResourceDetailIncludesSection label="Files">
-          <SkillFileList
-            files={files}
-            selectedPath={selectedPath}
-            onSelectFile={onSelectFile}
-          />
-        </ResourceDetailIncludesSection>
-      ) : null}
+      <ResourceDetailStack>
+        {files.length > 1 && editor === undefined ? (
+          <ResourceDetailIncludesSection label="Files">
+            <SkillFileList
+              files={files}
+              selectedPath={selectedPath}
+              onSelectFile={onSelectFile}
+            />
+          </ResourceDetailIncludesSection>
+        ) : null}
 
-      <ResourceDefinitionSection label={selectedPath} actions={contentActions}>
-        {editor ??
-          (contentState.kind === "loading" ? (
-            <ResourceDetailPanel className="px-3 py-10 text-center text-sm text-muted-foreground">
-              Loading {selectedPath}…
-            </ResourceDetailPanel>
-          ) : contentState.kind === "error" ? (
-            <ResourceDetailPanel className="px-3 py-10 text-center text-sm">
-              <p role="alert" className="text-destructive">
-                {contentState.message}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={contentState.onRetry}
+        <ResourceDefinitionSection
+          label={selectedPath}
+          actions={contentActions}
+        >
+          {editor ??
+            (contentState.kind === "loading" ? (
+              <ResourceDetailPanel
+                surface="recessed"
+                className="px-3 py-10 text-center text-sm text-muted-foreground"
               >
-                Retry
-              </Button>
-            </ResourceDetailPanel>
-          ) : (
-            <ResourceDetailPanel className="max-h-[60dvh] overflow-auto border-border/80 bg-transparent shadow-none">
-              <FilePreview
-                path={selectedPath}
-                headerMode="none"
-                state={{
-                  kind: "ready",
-                  file: {
-                    name: selectedPath.split("/").at(-1) ?? selectedPath,
-                    contents: contentState.content,
-                  },
-                  lineRange: null,
-                  textPreviewKind: selectedPath.endsWith(".md")
-                    ? "markdown"
-                    : null,
-                }}
-              />
-            </ResourceDetailPanel>
-          ))}
-      </ResourceDefinitionSection>
+                Loading {selectedPath}…
+              </ResourceDetailPanel>
+            ) : contentState.kind === "error" ? (
+              <ResourceDetailPanel
+                surface="recessed"
+                className="px-3 py-10 text-center text-sm"
+              >
+                <p role="alert" className="text-destructive">
+                  {contentState.message}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={contentState.onRetry}
+                >
+                  Retry
+                </Button>
+              </ResourceDetailPanel>
+            ) : (
+              <ResourceDetailPanel
+                surface="recessed"
+                className="max-h-[60dvh] overflow-auto shadow-none"
+              >
+                <FilePreview
+                  path={selectedPath}
+                  headerMode="none"
+                  state={{
+                    kind: "ready",
+                    file: {
+                      name: selectedPath.split("/").at(-1) ?? selectedPath,
+                      contents: contentState.content,
+                    },
+                    lineRange: null,
+                    textPreviewKind: selectedPath.endsWith(".md")
+                      ? "markdown"
+                      : null,
+                  }}
+                />
+              </ResourceDetailPanel>
+            ))}
+        </ResourceDefinitionSection>
+      </ResourceDetailStack>
       {footer}
     </ResourceDetailPage>
   );

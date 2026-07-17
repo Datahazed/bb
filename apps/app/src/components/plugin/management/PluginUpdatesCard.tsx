@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { ResourceActionButton } from "@bb/shared-ui/resource-list";
+import {
+  ResourceActionButton,
+  ResourceDetailActionRow,
+} from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   checkPluginUpdates,
@@ -146,18 +148,19 @@ export function PluginUpdatesSourceCard({
       >
         <div className="divide-y divide-border">
           <div className="pb-3">
-            <SettingsWithControl
+            <ResourceDetailActionRow
               label="Source"
               description={plugin.sourceDisplay}
-            >
-              <ResourceActionButton
-                label={
-                  detailsOpen ? "Hide source details" : "Show source details"
-                }
-                icon="Info"
-                onClick={() => setDetailsOpen((current) => !current)}
-              />
-            </SettingsWithControl>
+              action={
+                <ResourceActionButton
+                  label={
+                    detailsOpen ? "Hide source details" : "Show source details"
+                  }
+                  icon="Info"
+                  onClick={() => setDetailsOpen((current) => !current)}
+                />
+              }
+            />
             {detailsOpen ? (
               <div
                 className="mt-2 rounded-md border border-border-seam bg-muted/30 px-3 py-2.5"
@@ -231,7 +234,7 @@ export function PluginUpdatesSourceCard({
           </div>
 
           <div className={blockedVersion !== null ? "py-3" : "pt-3"}>
-            <SettingsWithControl
+            <ResourceDetailActionRow
               label="Last checked"
               description={
                 state.lastCheckAt !== null
@@ -241,16 +244,17 @@ export function PluginUpdatesSourceCard({
                     })
                   : "Never checked"
               }
-            >
-              <ResourceActionButton
-                label="Check for updates now"
-                tooltipLabel="Check now"
-                icon="RotateCcw"
-                loading={checkNow.isPending}
-                disabled={checkNow.isPending}
-                onClick={() => checkNow.mutate()}
-              />
-            </SettingsWithControl>
+              action={
+                <ResourceActionButton
+                  label="Check for updates now"
+                  tooltipLabel="Check now"
+                  icon="RotateCcw"
+                  loading={checkNow.isPending}
+                  disabled={checkNow.isPending}
+                  onClick={() => checkNow.mutate()}
+                />
+              }
+            />
           </div>
 
           {blockedVersion !== null ? (
@@ -258,19 +262,20 @@ export function PluginUpdatesSourceCard({
             // (locked design): nothing is actionable, so no pill and no
             // toast — just the explanation one click away.
             <div className="pt-3">
-              <SettingsWithControl
+              <ResourceDetailActionRow
                 label={`${blockedVersion} isn't compatible with this bb`}
                 description={
                   plugin.updateState.blockedReasons[0] ??
                   `Staying on ${plugin.version}.`
                 }
-              >
-                <ResourceActionButton
-                  label="View compatibility details"
-                  icon="Info"
-                  onClick={() => setBlockedOpen(true)}
-                />
-              </SettingsWithControl>
+                action={
+                  <ResourceActionButton
+                    label="View compatibility details"
+                    icon="Info"
+                    onClick={() => setBlockedOpen(true)}
+                  />
+                }
+              />
             </div>
           ) : null}
         </div>
