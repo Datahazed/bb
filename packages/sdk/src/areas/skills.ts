@@ -16,14 +16,18 @@ import {
   type SkillListResponse,
   type SkillScope,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface SkillWorkspaceArgs {
   projectId: string;
   environmentId: string | null;
 }
 
-export interface SkillIdentityArgs extends SkillWorkspaceArgs {
+export interface SkillListArgs extends SkillWorkspaceArgs {
+  signal?: AbortSignal;
+}
+
+export interface SkillIdentityArgs extends SkillListArgs {
   scope: SkillScope;
   name: string;
 }
@@ -73,7 +77,7 @@ export interface SkillsRegistryArea {
 
 export interface SkillsArea {
   getContent(args: SkillContentArgs): Promise<SkillContentResponse>;
-  list(args: SkillWorkspaceArgs): Promise<SkillListResponse>;
+  list(args: SkillListArgs): Promise<SkillListResponse>;
   listFiles(args: SkillIdentityArgs): Promise<SkillFilesResponse>;
   registry: SkillsRegistryArea;
   remove(args: SkillDeleteArgs): Promise<{ deletedPath: string }>;
@@ -141,35 +145,44 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
   return {
     async getContent(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"].skills.content.$get({
-          param: { id: input.projectId },
-          query: {
-            scope: input.scope,
-            name: input.name,
-            path: input.path,
-            environmentId: input.environmentId ?? "",
+        transport.api.v1.projects[":id"].skills.content.$get(
+          {
+            param: { id: input.projectId },
+            query: {
+              scope: input.scope,
+              name: input.name,
+              path: input.path,
+              environmentId: input.environmentId ?? "",
+            },
           },
-        }),
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"].skills.$get({
-          param: { id: input.projectId },
-          query: { environmentId: input.environmentId ?? "" },
-        }),
+        transport.api.v1.projects[":id"].skills.$get(
+          {
+            param: { id: input.projectId },
+            query: { environmentId: input.environmentId ?? "" },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async listFiles(input) {
       return transport.readJson(
-        transport.api.v1.projects[":id"].skills.files.$get({
-          param: { id: input.projectId },
-          query: {
-            scope: input.scope,
-            name: input.name,
-            environmentId: input.environmentId ?? "",
+        transport.api.v1.projects[":id"].skills.files.$get(
+          {
+            param: { id: input.projectId },
+            query: {
+              scope: input.scope,
+              name: input.name,
+              environmentId: input.environmentId ?? "",
+            },
           },
-        }),
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     registry,

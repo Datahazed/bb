@@ -11,7 +11,7 @@ import {
 } from "react-router-dom";
 import { usePluginFrontendBoot } from "@/hooks/usePluginFrontendBoot";
 import { fetchPluginList } from "@/hooks/queries/plugin-settings-queries";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   AUTOMATIONS_ROUTE_PATH,
   TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
@@ -157,7 +157,7 @@ function LiveToolsPage({ target }: { target: LivePath }) {
 }
 
 async function resolveInstalledSkillDetailPath(): Promise<string> {
-  const response = await api.listProjectSkills({
+  const response = await sdk.skills.list({
     projectId: PERSONAL_PROJECT_ID,
     environmentId: null,
   });

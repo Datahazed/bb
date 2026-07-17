@@ -4,7 +4,7 @@ import type {
   SkillSummary,
   UpdateSkillRequest,
 } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { sdk } from "@/lib/sdk";
 import {
   projectSkillsQueryKey,
   skillContentQueryKey,
@@ -26,7 +26,7 @@ export function useProjectSkills(projectId: string) {
   return useQuery({
     queryKey: projectSkillsQueryKey(projectId),
     queryFn: ({ signal }) =>
-      api.listProjectSkills({ projectId, environmentId: null, signal }),
+      sdk.skills.list({ projectId, environmentId: null, signal }),
     enabled: projectId.length > 0,
     // Skills are on-disk files mutated out-of-band — agents write SKILL.md, and
     // users edit them in their own editor (the detail view's "Open in editor").
@@ -47,7 +47,7 @@ export function useSkillContent(
       ? skillContentQueryKey(projectId, skill.scope, skill.name, path)
       : [SKILL_CONTENT_QUERY_KEY, projectId, "none", path],
     queryFn: ({ signal }) =>
-      api.getSkillContent({
+      sdk.skills.getContent({
         projectId,
         scope: skill!.scope,
         name: skill!.name,
@@ -69,7 +69,7 @@ export function useSkillFiles(projectId: string, skill: SkillSummary | null) {
       ? skillFilesQueryKey(projectId, skill.scope, skill.name)
       : [SKILL_FILES_QUERY_KEY, projectId, "none"],
     queryFn: ({ signal }) =>
-      api.getSkillFiles({
+      sdk.skills.listFiles({
         projectId,
         scope: skill!.scope,
         name: skill!.name,
@@ -87,7 +87,7 @@ export function useUpdateSkill(projectId: string) {
   return useMutation({
     meta: { errorMessage: "Failed to save skill." },
     mutationFn: (body: UpdateSkillRequest) =>
-      api.updateSkillContent(projectId, body),
+      sdk.skills.update({ projectId, ...body }),
     onSuccess: (_data, variables) => {
       invalidateSkillContentMutationQueries({
         projectId,
@@ -104,7 +104,7 @@ export function useDeleteSkill(projectId: string) {
   return useMutation({
     meta: { errorMessage: "Failed to delete skill." },
     mutationFn: (body: DeleteSkillRequest) =>
-      api.deleteProjectSkill(projectId, body),
+      sdk.skills.remove({ projectId, ...body }),
     onSuccess: () => {
       invalidateProjectSkillsMutationQueries({ projectId, queryClient });
     },
