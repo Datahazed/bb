@@ -1075,6 +1075,38 @@ export function ResourceLifecycleStatus({
   );
 }
 
+/** Canonical action for a resource that can be added from a browse surface. */
+export function ResourceInstallControl({
+  accessibleLabel,
+  label = "Install",
+  pendingLabel = "Installing",
+  pending = false,
+  disabled = false,
+  onAction,
+}: {
+  accessibleLabel: string;
+  label?: string;
+  pendingLabel?: string;
+  pending?: boolean;
+  disabled?: boolean;
+  onAction: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-7 min-w-20 shrink-0 justify-center px-2.5 text-xs"
+      disabled={disabled || pending}
+      aria-busy={pending}
+      aria-label={accessibleLabel}
+      onClick={onAction}
+    >
+      {pending ? pendingLabel : label}
+    </Button>
+  );
+}
+
 /**
  * Canonical installed state for browse and detail surfaces.
  *

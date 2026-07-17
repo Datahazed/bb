@@ -21,6 +21,11 @@ import {
   SkillDetailView,
 } from "@/components/tools/SkillDetailView";
 import {
+  isKnownSkillScope,
+  isSkillEditable,
+  SKILL_SCOPE_LABELS,
+} from "@/components/tools/skill-taxonomy";
+import {
   ResourceActionButton,
   ResourceBrowseCard,
   ResourceBrowseGrid,
@@ -69,7 +74,7 @@ const SKILL_PROVIDER_ROUTE_IDS = ["bb", "claude-code", "codex"] as const;
 function isSkillScope(
   value: string | undefined,
 ): value is SkillSummary["scope"] {
-  return value !== undefined && value in SCOPE_LABELS;
+  return isKnownSkillScope(value);
 }
 
 function isSkillProviderRouteId(
@@ -128,17 +133,6 @@ const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
   hasMore: false,
 };
 const SKILLS_SH_URL = "https://www.skills.sh/";
-
-const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
-  "bb-builtin": "Built-in",
-  "bb-user": "bb · user",
-  "bb-project": "bb · project",
-  "claude-user": "Claude · user",
-  "claude-project": "Claude · project",
-  "codex-user": "Codex · user",
-  "codex-project": "Codex · project",
-  plugin: "Plugin",
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -411,20 +405,7 @@ function SkillLeading({ skill }: { skill: SkillSummary }) {
 }
 
 function skillDescription(skill: SkillSummary): string {
-  return skill.description ?? SCOPE_LABELS[skill.scope];
-}
-
-function isSkillEditable(
-  skill: SkillSummary,
-): skill is SkillSummary & { scope: EditableSkillScope } {
-  if (skill.scope === "bb-user" || skill.scope === "bb-project") return true;
-  if (skill.scope === "claude-user" || skill.scope === "claude-project") {
-    return skill.manageable;
-  }
-  if (skill.scope === "codex-user" || skill.scope === "codex-project") {
-    return skill.manageable;
-  }
-  return false;
+  return skill.description ?? SKILL_SCOPE_LABELS[skill.scope];
 }
 
 function providerPluginNameForSkill(skill: SkillSummary): string {
@@ -770,7 +751,7 @@ export function SkillsOverview({
           skill.name,
           skill.description ?? "",
           providerLabel(skill.provider),
-          SCOPE_LABELS[skill.scope],
+          SKILL_SCOPE_LABELS[skill.scope],
         ]
           .join(" ")
           .toLowerCase()

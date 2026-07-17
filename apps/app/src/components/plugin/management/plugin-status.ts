@@ -1,3 +1,4 @@
+import type { PluginRuntimeStatus } from "@bb/server-contract";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 export interface PluginRuntimeStatusPresentation {
@@ -6,7 +7,7 @@ export interface PluginRuntimeStatusPresentation {
   recovery: string;
 }
 
-type RuntimeStatusDefinition = Omit<
+export type PluginRuntimeStatusDefinition = Omit<
   PluginRuntimeStatusPresentation,
   "recovery"
 >;
@@ -16,15 +17,24 @@ type RuntimeStatusDefinition = Omit<
  * remains lifecycle state, while updates remain release state; neither is
  * folded into this health vocabulary.
  */
-const RUNTIME_STATUS_DEFINITIONS: Partial<
-  Record<PluginListItem["status"], RuntimeStatusDefinition>
+export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
+  PluginRuntimeStatus,
+  PluginRuntimeStatusDefinition | null
 > = {
+  running: null,
   error: { label: "Error", tone: "error" },
   incompatible: { label: "Incompatible", tone: "error" },
   missing: { label: "Missing", tone: "error" },
+  disabled: null,
   "needs-configuration": { label: "Setup required", tone: "warning" },
   degraded: { label: "Degraded", tone: "warning" },
 };
+
+export function pluginRuntimeStatusDefinition(
+  status: PluginRuntimeStatus,
+): PluginRuntimeStatusDefinition | null {
+  return PLUGIN_RUNTIME_STATUS_DEFINITIONS[status];
+}
 
 function pluginRuntimeRecovery(plugin: PluginListItem): string {
   switch (plugin.status) {
@@ -56,8 +66,8 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
 export function pluginRuntimeStatusPresentation(
   plugin: PluginListItem,
 ): PluginRuntimeStatusPresentation | null {
-  const definition = RUNTIME_STATUS_DEFINITIONS[plugin.status];
-  if (definition === undefined) return null;
+  const definition = pluginRuntimeStatusDefinition(plugin.status);
+  if (definition === null) return null;
   return { ...definition, recovery: pluginRuntimeRecovery(plugin) };
 }
 

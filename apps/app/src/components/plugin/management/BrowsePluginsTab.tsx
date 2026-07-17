@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
-import { Button } from "@bb/shared-ui/button";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -10,7 +9,10 @@ import {
   ResourcePagination,
   useResourcePagination,
 } from "@bb/shared-ui/resource-pagination";
-import { ResourceInstalledControl } from "@bb/shared-ui/resource-list";
+import {
+  ResourceInstallControl,
+  ResourceInstalledControl,
+} from "@bb/shared-ui/resource-list";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -26,9 +28,7 @@ import {
   usePluginCatalogStatus,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import {
-  removePlugin,
-} from "@/hooks/queries/plugin-settings-queries";
+import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PlaceholderBadge } from "./plugin-ui";
 
@@ -122,9 +122,7 @@ export function BrowsePluginsTab({
                   <BrowseCard
                     key={entry.entryId}
                     entry={entry}
-                    installedPluginId={
-                      entry.installed ? entry.pluginId : null
-                    }
+                    installedPluginId={entry.installed ? entry.pluginId : null}
                     onInstall={onInstall}
                   />
                 ))}
@@ -225,22 +223,19 @@ function BrowseCard({
             />
           </span>
         ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-0.5 h-7 min-w-20 shrink-0 justify-center px-2.5 text-xs"
-            disabled={!entry.compatible}
-            onClick={() =>
-              onInstall({
-                entryId: entry.entryId,
-                displayName: entry.displayName,
-                icon: entry.icon,
-              })
-            }
-          >
-            Install
-          </Button>
+          <span className="mt-0.5">
+            <ResourceInstallControl
+              accessibleLabel={`Install ${entry.displayName}`}
+              disabled={!entry.compatible}
+              onAction={() =>
+                onInstall({
+                  entryId: entry.entryId,
+                  displayName: entry.displayName,
+                  icon: entry.icon,
+                })
+              }
+            />
+          </span>
         )}
       </div>
       <ConfirmDeleteDialog

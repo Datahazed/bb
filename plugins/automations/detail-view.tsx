@@ -3,6 +3,7 @@ import type {
   AutomationExecution,
   AutomationResponse,
   AutomationRunResponse,
+  AutomationRunStatus,
 } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -148,37 +149,58 @@ function isSilentRun(run: AutomationRunResponse): boolean {
   );
 }
 
-function runStatusVisual(run: AutomationRunResponse): {
-  label: string;
-  icon: IconName;
-  className: string;
-} {
-  switch (run.status) {
-    case "running":
-      return {
-        label: "Running",
-        icon: "Loading",
-        className: "animate-spin text-muted-foreground",
-      };
-    case "failed":
-      return {
-        label: "Failed",
-        icon: "CircleX",
-        className: "text-destructive",
-      };
-    case "skipped":
-      return {
-        label: "Skipped",
-        icon: "CircleDashed",
-        className: "text-muted-foreground",
-      };
-    case "succeeded":
-      return {
-        label: "Succeeded",
-        icon: "CircleCheck",
-        className: "text-success",
-      };
+export const AUTOMATION_RUN_STATUS_VISUALS: Record<
+  AutomationRunStatus,
+  {
+    label: string;
+    icon: IconName;
+    className: string;
   }
+> = {
+  running: {
+    label: "Running",
+    icon: "Loading",
+    className: "animate-spin text-muted-foreground",
+  },
+  failed: {
+    label: "Failed",
+    icon: "CircleX",
+    className: "text-destructive",
+  },
+  skipped: {
+    label: "Skipped",
+    icon: "CircleDashed",
+    className: "text-muted-foreground",
+  },
+  succeeded: {
+    label: "Succeeded",
+    icon: "CircleCheck",
+    className: "text-success",
+  },
+};
+
+export function AutomationRunStatusIndicator({
+  status,
+  showLabel = false,
+}: {
+  status: AutomationRunStatus;
+  showLabel?: boolean;
+}) {
+  const visual = AUTOMATION_RUN_STATUS_VISUALS[status];
+  return (
+    <span
+      role="img"
+      aria-label={visual.label}
+      className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <Icon
+        name={visual.icon}
+        className={cn("size-4", visual.className)}
+        aria-hidden
+      />
+      {showLabel ? <span>{visual.label}</span> : null}
+    </span>
+  );
 }
 
 function RunRow({
@@ -188,7 +210,6 @@ function RunRow({
   run: AutomationRunResponse;
   onOpenThread: (threadId: string) => void;
 }) {
-  const status = runStatusVisual(run);
   const duration = formatRunDuration(run);
   const silent = isSilentRun(run);
   const showOutput =
@@ -197,17 +218,7 @@ function RunRow({
   return (
     <div className="overflow-hidden rounded-sm">
       <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-        <span
-          role="img"
-          aria-label={status.label}
-          className="inline-flex shrink-0 items-center"
-        >
-          <Icon
-            name={status.icon}
-            className={cn("size-4", status.className)}
-            aria-hidden
-          />
-        </span>
+        <AutomationRunStatusIndicator status={run.status} />
         <span className="font-medium">
           {formatScheduleRunTime(run.startedAt)}
         </span>

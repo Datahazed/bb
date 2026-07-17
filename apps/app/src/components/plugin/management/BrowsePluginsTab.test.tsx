@@ -96,7 +96,7 @@ describe("BrowsePluginsTab", () => {
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    fireEvent.click(screen.getByRole("button", { name: "Install Memory" }));
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
       displayName: "Memory",

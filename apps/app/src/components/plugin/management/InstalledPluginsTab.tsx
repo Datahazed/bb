@@ -6,7 +6,6 @@ import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceRow,
   ResourceRowDetailChevron,
-  ResourceState,
 } from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -16,8 +15,9 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal } from "./plugin-status";
+import { PluginRowSignalView } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
-import { PluginLogo, UPDATE_TINT_STYLE } from "./plugin-ui";
+import { PluginLogo } from "./plugin-ui";
 
 /**
  * Layer 1 (sketch v2 A): rows at rest are logo, name, description, switch —
@@ -109,28 +109,13 @@ export function InstalledPluginRow({
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
         trailingMeta={
-          signal?.kind === "update" ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
-              style={UPDATE_TINT_STYLE}
-              data-testid={`plugin-update-pill-${plugin.id}`}
-              onClick={onUpdateClick}
-            >
-              Update {signal.version}
-            </button>
-          ) : signal?.kind === "status" ? (
-            <ResourceState
-              tone={signal.tone}
-              tooltip={signal.detail}
-              accessibleLabel={
-                signal.detail === null
-                  ? signal.label
-                  : `${signal.label}: ${signal.detail}`
-              }
-            >
-              {signal.label}
-            </ResourceState>
+          signal !== null ? (
+            <span data-testid={`plugin-${signal.kind}-pill-${plugin.id}`}>
+              <PluginRowSignalView
+                signal={signal}
+                onUpdateClick={onUpdateClick}
+              />
+            </span>
           ) : undefined
         }
         persistentActions={

@@ -6,6 +6,7 @@ import {
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourceInstallControl,
   ResourceInstalledControl,
   ResourceLifecycleStatus,
 } from "@bb/shared-ui/resource-list";
@@ -82,17 +83,11 @@ export function SkillInstallControl({
 
   const label = pending ? "Installing" : "Install";
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="h-7 shrink-0 px-2 text-xs"
-      disabled={pending}
-      aria-label={`${label} ${skillName} as a bb skill`}
-      onClick={onInstall}
-    >
-      {label}
-    </Button>
+    <ResourceInstallControl
+      accessibleLabel={`${label} ${skillName} as a bb skill`}
+      pending={pending}
+      onAction={onInstall}
+    />
   );
 }
 
