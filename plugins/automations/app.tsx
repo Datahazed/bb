@@ -26,6 +26,7 @@ import type {
 } from "@/src/rpc-types";
 import {
   AutomationDetailView,
+  AutomationLifecycleControl,
   automationIconName,
   automationScheduleLabel,
 } from "./detail-view";
@@ -40,7 +41,6 @@ import {
 } from "@bb/shared-ui/dialog";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
-import { Switch } from "@bb/shared-ui/switch";
 import {
   RESOURCE_LIST_PAGE_SIZE,
   ResourcePagination,
@@ -602,16 +602,23 @@ function OverviewRow({
       muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
       persistentActions={
-        <Switch
+        <AutomationLifecycleControl
           checked={automation.enabled && !lifecycleLocked}
           disabled={lifecycleLocked || togglePending}
+          disabledReason={
+            lifecycleLocked
+              ? oneShotLifecycle === "expired"
+                ? "This one-time automation expired. Open it and edit the schedule to run it again."
+                : "This one-time automation has completed. Open it and edit the schedule to run it again."
+              : undefined
+          }
+          label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
           onCheckedChange={(enabled) => {
             setTogglePending(true);
             void onEnabledChange(enabled, route).finally(() =>
               setTogglePending(false),
             );
           }}
-          aria-label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
         />
       }
       trailingVisual={<ResourceRowDetailChevron />}

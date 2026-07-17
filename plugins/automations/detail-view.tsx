@@ -15,6 +15,12 @@ import {
   ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
@@ -45,6 +51,52 @@ export interface AutomationDetailViewProps {
   onDelete: () => void;
   onOpenThread: (threadId: string) => void;
   footer?: ReactNode;
+}
+
+interface AutomationLifecycleControlProps {
+  checked: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}
+
+export function AutomationLifecycleControl({
+  checked,
+  disabled = false,
+  disabledReason,
+  label,
+  onCheckedChange,
+}: AutomationLifecycleControlProps) {
+  const control = (
+    <Switch
+      checked={checked}
+      disabled={disabled}
+      aria-label={label}
+      onCheckedChange={onCheckedChange}
+    />
+  );
+
+  if (!disabled || disabledReason === undefined) return control;
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="inline-flex cursor-not-allowed rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            tabIndex={0}
+            aria-label={`${label}. ${disabledReason}`}
+          >
+            {control}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-64">
+          {disabledReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export function automationIconName(automation: AutomationResponse): IconName {
@@ -255,6 +307,11 @@ export function AutomationDetailView({
     lastRunStatus: automation.lastRunStatus,
   });
   const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+  const lifecycleDisabledReason = lifecycleLocked
+    ? oneShotLifecycle === "expired"
+      ? "This one-time automation expired. Edit it to schedule another run."
+      : "This one-time automation has completed. Edit it to schedule another run."
+    : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
 
@@ -277,10 +334,11 @@ export function AutomationDetailView({
         </span>
       }
       lifecycleControl={
-        <Switch
+        <AutomationLifecycleControl
           checked={automation.enabled}
           disabled={actionPending || lifecycleLocked}
-          aria-label={
+          disabledReason={lifecycleDisabledReason}
+          label={
             oneShotLifecycle === "expired"
               ? "Expired automation; edit to reschedule"
               : lifecycleLocked

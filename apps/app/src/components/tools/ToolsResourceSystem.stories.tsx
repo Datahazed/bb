@@ -30,6 +30,7 @@ import {
   getAutomationEditRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
+  getRegistrySkillsRoutePath,
   getRegistrySkillDetailRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
@@ -235,7 +236,7 @@ function resolveSecretsPluginDetailPath(): Promise<string> {
 }
 
 function resolveUserAuthoredPluginDetailPath(): Promise<string> {
-  return resolvePluginDetailPath("small-ux-pack");
+  return resolvePluginDetailPath("design-loop");
 }
 
 function resolvePatternAtlasPluginDetailPath(): Promise<string> {
@@ -303,7 +304,7 @@ export function SkillsInstalled() {
 }
 
 export function SkillsRegistry() {
-  return <LiveToolsPage target={`${getSkillsRoutePath()}?view=browse`} />;
+  return <LiveToolsPage target={getRegistrySkillsRoutePath()} />;
 }
 
 export function SkillDetail() {

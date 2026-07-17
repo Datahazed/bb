@@ -17,11 +17,7 @@ import {
   automationRunModeSchema,
   automationRunStatusSchema,
 } from "bb-plugin-automations/rpc-types";
-import {
-  StoryCard,
-  StoryRow as BaseStoryRow,
-  type StoryRowProps,
-} from "../../../.ladle/story-card";
+import { StoryCard, type StoryRowProps } from "../../../.ladle/story-card";
 import { PluginRowSignalView } from "@/components/plugin/management/PluginRowSignal";
 import {
   pluginRuntimeStatusDefinition,
@@ -41,19 +37,34 @@ export default {
 
 const noop = () => {};
 
-function StoryRow({ className, ...props }: StoryRowProps) {
+function StoryRow({ label, hint, children, className }: StoryRowProps) {
   return (
-    <BaseStoryRow
-      {...props}
+    <div
       className={[
-        "items-stretch gap-x-0 px-0 py-0",
-        "[&>div:first-child]:border-r [&>div:first-child]:border-border [&>div:first-child]:bg-surface-recessed/55 [&>div:first-child]:px-4 [&>div:first-child]:py-3",
-        "[&>div:last-child]:px-4 [&>div:last-child]:py-3",
+        "grid grid-cols-[var(--story-label-width,210px)_minmax(0,1fr)] items-stretch max-[600px]:grid-cols-1",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
-    />
+    >
+      <div className="flex min-w-0 flex-col gap-0.5 border-r border-border bg-surface-recessed/55 px-4 py-3 max-[600px]:border-r-0 max-[600px]:border-b">
+        <span className="mb-1 hidden text-2xs font-semibold uppercase tracking-wide text-subtle-foreground max-[600px]:block">
+          Documentation
+        </span>
+        <span className="text-sm text-muted-foreground">{label}</span>
+        {hint ? (
+          <span className="text-xs break-words text-muted-foreground">
+            {hint}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3">
+        <span className="hidden basis-full text-2xs font-semibold uppercase tracking-wide text-subtle-foreground max-[600px]:block">
+          Rendered UI
+        </span>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -95,7 +106,7 @@ function StateSection({
         <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
       </div>
       <StoryCard className="m-0 divide-y divide-border border border-border bg-card">
-        <div className="grid grid-cols-[var(--story-label-width,210px)_minmax(0,1fr)]">
+        <div className="grid grid-cols-[var(--story-label-width,210px)_minmax(0,1fr)] max-[600px]:hidden">
           <span className="flex flex-col border-r border-border bg-surface-recessed px-4 py-2">
             <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
               Documentation
