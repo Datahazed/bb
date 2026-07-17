@@ -8,7 +8,10 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginSettingsDetail, PluginSettingsForm } from "./PluginSettings";
-import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 
 interface RecordedRequest {
   url: string;
@@ -124,18 +127,20 @@ describe("PluginSettingsForm", () => {
   });
 });
 
-function rowPlugin(status: string, logoUrl: string | null = null) {
+function rowPlugin(
+  status: PluginListItem["status"],
+  logoUrl: string | null = null,
+): PluginListItem {
   return {
     id: "linear",
     source: "path:/plugins/linear",
-    isBuiltin: false,
     rootDir: "/plugins/linear",
     version: "0.1.0",
     enabled: true,
     status,
     statusDetail: null,
     description: null,
-    displayName: null,
+    name: null,
     icon: null,
     logoUrl,
     logoDarkUrl: null,
@@ -144,9 +149,10 @@ function rowPlugin(status: string, logoUrl: string | null = null) {
     services: [],
     schedules: [],
     cliCommand: null,
-    app: { hasApp: false },
+    app: { hasApp: false, bundle: null },
     provenance: "direct" as const,
-    marketplaceName: null,
+    isOrphanedBuiltin: false,
+    catalogEntryId: null,
     sourceDisplay: "path · /plugins/linear",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
@@ -196,7 +202,7 @@ describe("PluginSettingsDetail settings gating", () => {
         plugin={{
           ...rowPlugin("running"),
           id: "connect",
-          isBuiltin: true,
+          provenance: "builtin",
           hasSettings: false,
         }}
       />,

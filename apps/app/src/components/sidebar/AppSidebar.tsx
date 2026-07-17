@@ -418,6 +418,7 @@ export function AppSidebar({
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
           <ProjectListActionButtons
+            splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
             onOpenSkills={handleOpenSkills}

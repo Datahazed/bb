@@ -9,7 +9,10 @@ import {
   pluginListQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { PluginUpdatesSourceCard } from "./PluginUpdatesCard";
+import {
+  PluginUpdatesSourceCard,
+  pluginHasUpdateSurfaces,
+} from "./PluginUpdatesCard";
 
 interface RecordedRequest {
   url: string;
@@ -17,38 +20,37 @@ interface RecordedRequest {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
     id: "linear",
-    source: "npm:@bb-plugins/linear@1.6.2",
-    isBuiltin: false,
+    source: "npm:@example/linear@^1.6.0",
     rootDir: "/plugins/linear",
     version: "1.6.2",
     enabled: true,
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: "Linear",
+    name: "Linear",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
     provenance: "direct",
-    marketplaceName: null,
+    isOrphanedBuiltin: false,
+    catalogEntryId: null,
     sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
     services: [],
     schedules: [],
     cliCommand: null,
-    app: { hasApp: false },
+    app: { hasApp: false, bundle: null },
     ...overrides,
   };
 }
@@ -57,6 +59,29 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("pluginHasUpdateSurfaces", () => {
+  it("hides update surfaces for bundled plugins regardless of provenance", () => {
+    // A store-installed official: catalog provenance over a bundled source.
+    expect(
+      pluginHasUpdateSurfaces(
+        plugin({ provenance: "catalog", source: "builtin:github" }),
+      ),
+    ).toBe(false);
+    expect(
+      pluginHasUpdateSurfaces(
+        plugin({ provenance: "builtin", source: "builtin:secrets" }),
+      ),
+    ).toBe(false);
+    // Managed direct/catalog installs keep manual update controls.
+    expect(pluginHasUpdateSurfaces(plugin({ provenance: "direct" }))).toBe(
+      true,
+    );
+    expect(pluginHasUpdateSurfaces(plugin({ provenance: "catalog" }))).toBe(
+      true,
+    );
+  });
 });
 
 describe("PluginUpdatesSourceCard check now", () => {

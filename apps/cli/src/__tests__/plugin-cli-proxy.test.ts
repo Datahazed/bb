@@ -7,6 +7,7 @@ import { registerManagerCommands } from "../commands/manager.js";
 import { registerPluginCommands } from "../commands/plugin.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
+import { registerSkillCommands } from "../commands/skill.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
@@ -29,6 +30,7 @@ const RESERVED_BB_CLI_COMMANDS = [
   "plugin",
   "project",
   "provider",
+  "skill",
   "status",
   "theme",
   "thread",
@@ -45,6 +47,7 @@ function buildProgram(): Command {
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
   registerPluginCommands(program, getUrl);
+  registerSkillCommands(program, getUrl, () => ({ serverUrl: getUrl() }));
   registerGuideCommand(program);
   return program;
 }
@@ -61,9 +64,10 @@ describe("reserved bb CLI command names", () => {
     const names = topLevelCommandNames(buildProgram());
     const reserved = new Set(RESERVED_BB_CLI_COMMANDS);
     for (const name of names) {
-      expect(reserved, `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`).toContain(
-        name,
-      );
+      expect(
+        reserved,
+        `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`,
+      ).toContain(name);
     }
   });
 
@@ -71,9 +75,10 @@ describe("reserved bb CLI command names", () => {
     const names = new Set(topLevelCommandNames(buildProgram()));
     names.add("help"); // commander built-in
     for (const reserved of RESERVED_BB_CLI_COMMANDS) {
-      expect(names, `"${reserved}" is reserved but not a core command`).toContain(
-        reserved,
-      );
+      expect(
+        names,
+        `"${reserved}" is reserved but not a core command`,
+      ).toContain(reserved);
     }
   });
 });
@@ -120,7 +125,9 @@ describe("fetchPluginCliContributions", () => {
         throw new Error("ECONNREFUSED");
       }),
     );
-    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
       outcome: "unreachable",
     });
 
@@ -129,7 +136,9 @@ describe("fetchPluginCliContributions", () => {
       "fetch",
       vi.fn(async () => new Response("not found", { status: 404 })),
     );
-    await expect(fetchPluginCliContributions("http://localhost")).resolves.toEqual({
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
       outcome: "invalid",
     });
   });
@@ -142,7 +151,12 @@ describe("fetchPluginCliContributions", () => {
           new Response(
             JSON.stringify({
               cliCommands: [
-                { pluginId: "connect", name: "connect", summary: "s", commands: [] },
+                {
+                  pluginId: "connect",
+                  name: "connect",
+                  summary: "s",
+                  commands: [],
+                },
                 { bogus: true },
               ],
             }),
@@ -198,7 +212,7 @@ describe("findDisabledPluginForCommand", () => {
     ).resolves.toBeNull();
   });
 
-  it("matches an experiment-disabled plugin by runtime status", async () => {
+  it("matches a disabled plugin by runtime status", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -207,10 +221,10 @@ describe("findDisabledPluginForCommand", () => {
             JSON.stringify({
               plugins: [
                 {
-                  id: "connect",
+                  id: "automations",
                   enabled: true,
                   status: "disabled",
-                  statusDetail: 'disabled by the "bb connect" experiment',
+                  statusDetail: 'disabled by the "Plugins" experiment',
                 },
               ],
             }),
@@ -219,12 +233,12 @@ describe("findDisabledPluginForCommand", () => {
       ),
     );
     await expect(
-      findDisabledPluginForCommand("http://localhost", "connect"),
+      findDisabledPluginForCommand("http://localhost", "automations"),
     ).resolves.toEqual({
-      id: "connect",
+      id: "automations",
       enabled: true,
       status: "disabled",
-      statusDetail: 'disabled by the "bb connect" experiment',
+      statusDetail: 'disabled by the "Plugins" experiment',
     });
   });
 

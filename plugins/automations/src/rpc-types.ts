@@ -323,7 +323,6 @@ export const automationsOverviewEntrySchema = z
   .object({
     automation: automationResponseSchema,
     project: z.object({ id: z.string(), name: z.string() }).strict(),
-    folder: z.object({ id: z.string(), name: z.string() }).strict().nullable(),
   })
   .strict();
 export const automationsOverviewResponseSchema = z

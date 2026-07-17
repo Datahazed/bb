@@ -79,15 +79,6 @@ export async function writeInlineAutomationScript(args: {
   return storedName;
 }
 
-export async function readInlineAutomationScript(args: {
-  dataDir: string;
-  automationId: string;
-  scriptFile: string;
-}): Promise<string> {
-  const scriptPath = await resolveAutomationScriptPath(args);
-  return readFile(scriptPath, "utf8");
-}
-
 function ensureContained(
   rootPath: string,
   candidatePath: string,
@@ -127,6 +118,14 @@ export async function resolveAutomationScriptPath(args: {
     throw new Error("Script file path escapes the automation script directory");
   }
   return reContained;
+}
+
+export async function readAutomationScript(args: {
+  dataDir: string;
+  automationId: string;
+  scriptFile: string;
+}): Promise<string> {
+  return readFile(await resolveAutomationScriptPath(args), "utf8");
 }
 
 export async function deleteAutomationScriptDir(args: {

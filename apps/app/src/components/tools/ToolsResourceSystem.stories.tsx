@@ -49,7 +49,7 @@ function storyPath(location: ReturnType<typeof useLocation>): string {
 /**
  * Route-level Ladle harness for the production ToolsView. It intentionally
  * owns no resource fixtures: lists, detail identifiers, file contents,
- * marketplace results, settings, and automation history all come from this
+ * catalog results, settings, and automation history all come from this
  * checkout's running dev server through Ladle's Vite proxy. The target seeds
  * only the initial route so production links and controls can navigate freely.
  */
@@ -131,7 +131,9 @@ function LiveToolsPage({ target }: { target: LivePath }) {
         <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
         <Route
           path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-          element={<Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />}
+          element={
+            <Navigate to={`${TOOLS_PLUGINS_ROUTE_PATH}?view=browse`} replace />
+          }
         />
         <Route path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH} element={<ToolsView />} />
         <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
@@ -227,7 +229,7 @@ async function resolveAutomationRoute(mode?: "agent" | "script"): Promise<{
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(null),
     },
   );
   if (!response.ok) {
@@ -259,11 +261,11 @@ async function resolveAutomationRoute(mode?: "agent" | "script"): Promise<{
 }
 
 async function resolveAutomationDetailPath(): Promise<string> {
-  return getAutomationDetailRoutePath(await resolveAutomationRoute());
+  return getAutomationDetailRoutePath(await resolveAutomationRoute("agent"));
 }
 
 async function resolveAutomationEditPath(): Promise<string> {
-  return getAutomationEditRoutePath(await resolveAutomationRoute());
+  return getAutomationEditRoutePath(await resolveAutomationRoute("agent"));
 }
 
 async function resolveScriptAutomationDetailPath(): Promise<string> {
@@ -296,12 +298,6 @@ export function PluginsInstalled() {
 
 export function PluginsBrowse() {
   return <LiveToolsPage target={`${getPluginsRoutePath()}?view=browse`} />;
-}
-
-export function PluginsMarketplaces() {
-  return (
-    <LiveToolsPage target={`${getPluginsRoutePath()}?view=marketplaces`} />
-  );
 }
 
 export function PluginDetailAutomations() {

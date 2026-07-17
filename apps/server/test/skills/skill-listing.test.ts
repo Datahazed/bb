@@ -60,14 +60,14 @@ describe("mapSkillScope", () => {
     {
       provider: "codex",
       rootKind: "provider-project",
-      scope: "codex",
+      scope: "codex-project",
       listedProvider: "codex",
       manageable: true,
     },
     {
       provider: "codex",
       rootKind: "provider-user",
-      scope: "codex",
+      scope: "codex-user",
       listedProvider: "codex",
       manageable: true,
     },
@@ -110,7 +110,7 @@ describe("mapSkillScope", () => {
         "provider-user",
         "/home/user/.codex/skills/.system/imagegen/SKILL.md",
       ),
-    ).toEqual({ scope: "codex", provider: "codex", manageable: false });
+    ).toEqual({ scope: "codex-user", provider: "codex", manageable: false });
   });
 });
 
@@ -165,12 +165,12 @@ describe("assembleSkillList", () => {
         ],
       },
     ]);
-    // bb-project sorts before claude-user before codex; the two `zed` skills are
+    // bb-project sorts before claude-user before codex-user; the two `zed` skills are
     // distinct files under different providers.
     expect(result.map((skill) => [skill.scope, skill.name])).toEqual([
       ["bb-project", "alpha"],
       ["claude-user", "zed"],
-      ["codex", "zed"],
+      ["codex-user", "zed"],
     ]);
   });
 });

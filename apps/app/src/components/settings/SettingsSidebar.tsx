@@ -90,7 +90,7 @@ function SettingsSidebarSectionLabel({ children }: { children: ReactNode }) {
 
 /**
  * Replaces the app sidebar while a /settings route is active: "Back to app"
- * on top, then the settings buckets. Shares the app sidebar's shell
+ * on top, then the settings buckets and provider entries. Shares the app sidebar's shell
  * (top chrome reserve, resize handle) and its row/label class tokens so the
  * two sidebar modes line up exactly.
  */
@@ -149,21 +149,23 @@ export function SettingsSidebar({
         <div className="min-w-0 px-2 group-data-[collapsible=icon]:hidden">
           <SettingsSidebarSectionLabel>Settings</SettingsSidebarSectionLabel>
           <div className="mt-1 space-y-0.5">
-            {sections.map((section) => (
-              <SettingsSidebarRow
-                key={section.id}
-                active={activeSection === section.id}
-                label={section.label}
-                onNavigate={closeOnMobile}
-                to={
-                  section.id === "general"
-                    ? SETTINGS_ROUTE_PATH
-                    : getSettingsRoutePath(section.id)
-                }
-              >
-                {sectionIcon(section.icon)}
-              </SettingsSidebarRow>
-            ))}
+            {sections
+              .filter((section) => section.id !== "archived")
+              .map((section) => (
+                <SettingsSidebarRow
+                  key={section.id}
+                  active={activeSection === section.id}
+                  label={section.label}
+                  onNavigate={closeOnMobile}
+                  to={
+                    section.id === "general"
+                      ? SETTINGS_ROUTE_PATH
+                      : getSettingsRoutePath(section.id)
+                  }
+                >
+                  {sectionIcon(section.icon)}
+                </SettingsSidebarRow>
+              ))}
           </div>
           <div className="mt-4">
             <SettingsSidebarSectionLabel>Providers</SettingsSidebarSectionLabel>
@@ -188,6 +190,30 @@ export function SettingsSidebar({
               );
             })}
           </div>
+          {sections.some((section) => section.id === "archived") ? (
+            <>
+              <div className="mt-4">
+                <SettingsSidebarSectionLabel>
+                  Archived
+                </SettingsSidebarSectionLabel>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {sections
+                  .filter((section) => section.id === "archived")
+                  .map((section) => (
+                    <SettingsSidebarRow
+                      key={section.id}
+                      active={activeSection === section.id}
+                      label={section.label}
+                      onNavigate={closeOnMobile}
+                      to={getSettingsRoutePath(section.id)}
+                    >
+                      {sectionIcon(section.icon)}
+                    </SettingsSidebarRow>
+                  ))}
+              </div>
+            </>
+          ) : null}
         </div>
       </SidebarContent>
       <div

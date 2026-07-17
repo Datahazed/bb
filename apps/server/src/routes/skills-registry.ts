@@ -3,7 +3,7 @@ import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
-import { resolveCommandWorkspace } from "../services/threads/provider-command-typeahead.js";
+import { resolveProjectCommandWorkspace } from "../services/projects/project-workspace.js";
 
 const SKILLS_BASE_URL = "https://www.skills.sh";
 const DEFAULT_PAGE_SIZE = 24;
@@ -13,6 +13,8 @@ const MAX_SEARCH_RESULTS = 200;
 const DETAIL_PREVIEW_LIMIT = 10;
 const GITHUB_STARS_PREVIEW_LIMIT = 48;
 const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
+const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+const REGISTRY_FETCH_CONCURRENCY = 6;
 const REGISTRY_INSTALL_RPC_TIMEOUT_MS = 130_000;
 const REGISTRY_DETAIL_FILE_LIMIT = 200;
 const REGISTRY_DETAIL_FILE_SIZE_LIMIT = 1_000_000;
@@ -30,9 +32,8 @@ interface RegistrySkill {
   stars: number | null;
   installUrl: string | null;
   url: string;
-  topic: string;
+  topic: string | null;
   summary: string | null;
-  worksWith: string[];
 }
 
 interface RegistryPagination {
@@ -76,50 +77,6 @@ interface RegistrySkillDetail {
   files: RegistrySkillFile[] | null;
 }
 
-const FALLBACK_REGISTRY_SKILLS: readonly RegistrySkill[] = [
-  {
-    id: "vercel-labs/skills/find-skills",
-    source: "vercel-labs/skills",
-    skillId: "find-skills",
-    name: "find-skills",
-    installs: 2_384_417,
-    stars: null,
-    installUrl: "https://github.com/vercel-labs/skills",
-    url: "https://www.skills.sh/vercel-labs/skills/find-skills",
-    topic: "Agent workflows",
-    summary:
-      "Discover and install specialized agent skills from the open ecosystem.",
-    worksWith: ["Claude Code", "Codex"],
-  },
-  {
-    id: "anthropics/skills/frontend-design",
-    source: "anthropics/skills",
-    skillId: "frontend-design",
-    name: "frontend-design",
-    installs: 635_858,
-    stars: null,
-    installUrl: "https://github.com/anthropics/skills",
-    url: "https://www.skills.sh/anthropics/skills/frontend-design",
-    topic: "Design & UI",
-    summary: "Build distinctive, production-grade frontend interfaces.",
-    worksWith: ["Claude Code", "Codex"],
-  },
-  {
-    id: "vercel-labs/agent-skills/vercel-react-best-practices",
-    source: "vercel-labs/agent-skills",
-    skillId: "vercel-react-best-practices",
-    name: "vercel-react-best-practices",
-    installs: 532_556,
-    stars: null,
-    installUrl: "https://github.com/vercel-labs/agent-skills",
-    url: "https://www.skills.sh/vercel-labs/agent-skills/vercel-react-best-practices",
-    topic: "React",
-    summary: "Apply React and Next.js implementation conventions.",
-    worksWith: ["Claude Code", "Codex"],
-  },
-];
-
-let lastRegistrySkills: RegistrySkill[] | null = null;
 const githubStarsCache = new Map<
   string,
   { stars: number | null; expiresAt: number }
@@ -152,6 +109,16 @@ function registrySkillUrl(id: string): string {
     .join("/")}`;
 }
 
+function registryFetch(
+  input: string | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+  });
+}
+
 function parsePublicHomepageSkills(html: string): RegistrySkill[] {
   const byId = new Map<string, RegistrySkill>();
   const pattern =
@@ -175,9 +142,8 @@ function parsePublicHomepageSkills(html: string): RegistrySkill[] {
         ? `https://${source}`
         : `https://github.com/${source}`,
       url: registrySkillUrl(id),
-      topic: "Agent workflows",
+      topic: null,
       summary: null,
-      worksWith: ["Claude Code", "Codex"],
     });
   }
   return [...byId.values()];
@@ -186,8 +152,7 @@ function parsePublicHomepageSkills(html: string): RegistrySkill[] {
 function parsePublicDetail(
   html: string,
 ): Pick<RegistrySkill, "topic" | "summary"> {
-  const topic =
-    html.match(/href="\/topic\/[^"]+">([^<]+)</u)?.[1] ?? "Agent workflows";
+  const topic = html.match(/href="\/topic\/[^"]+">([^<]+)</u)?.[1] ?? null;
   const summarySection = html.match(
     /Summary<\/div>(?<summary>[\s\S]*?)SKILL\.md/u,
   )?.groups?.summary;
@@ -198,9 +163,50 @@ function parsePublicDetail(
           .replace(/\bShow more\b$/u, "")
           .trim();
   return {
-    topic: decodeHtml(topic),
+    topic: topic === null ? null : decodeHtml(topic),
     summary: summary && summary.length > 0 ? summary.slice(0, 280) : null,
   };
+}
+
+function parsePublicDetailSkill(
+  html: string,
+  id: string,
+  source: string,
+  skillId: string,
+): RegistrySkill | null {
+  const scripts = html.matchAll(
+    /<script type="application\/ld\+json">(?<json>[\s\S]*?)<\/script>/gu,
+  );
+  for (const match of scripts) {
+    const body: unknown = JSON.parse(match.groups?.json ?? "null");
+    if (
+      !isRecord(body) ||
+      body["@type"] !== "SoftwareApplication" ||
+      body.url !== registrySkillUrl(id) ||
+      typeof body.name !== "string" ||
+      !isRecord(body.interactionStatistic) ||
+      typeof body.interactionStatistic.userInteractionCount !== "number"
+    ) {
+      continue;
+    }
+    const detail = parsePublicDetail(html);
+    return {
+      id,
+      source,
+      skillId,
+      name: body.name,
+      installs: body.interactionStatistic.userInteractionCount,
+      stars: null,
+      installUrl: null,
+      url: registrySkillUrl(id),
+      topic: detail.topic,
+      summary:
+        typeof body.description === "string"
+          ? body.description.slice(0, 280)
+          : detail.summary,
+    };
+  }
+  return null;
 }
 
 function isApiSkill(value: unknown): value is SkillsApiSkill {
@@ -220,7 +226,7 @@ function isApiSkill(value: unknown): value is SkillsApiSkill {
 async function fetchRegistryJson(url: URL): Promise<SkillsApiPage | null> {
   const token = process.env.VERCEL_OIDC_TOKEN;
   if (!token) return null;
-  const response = await fetch(url, {
+  const response = await registryFetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return null;
@@ -282,7 +288,7 @@ async function fetchAuthenticatedRegistryDetail(
       .join("/")}`,
     SKILLS_BASE_URL,
   );
-  const response = await fetch(url, {
+  const response = await registryFetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return null;
@@ -318,7 +324,7 @@ async function fetchGithubSkillMarkdown(
       .map((segment) => encodeURIComponent(segment))
       .join("/")}`;
     try {
-      const response = await fetch(url, {
+      const response = await registryFetch(url, {
         headers: { "user-agent": "bb-skills-registry" },
       });
       if (!response.ok) continue;
@@ -352,7 +358,7 @@ async function fetchPublicDirectorySkills(
   page: number,
   perPage: number,
 ): Promise<RegistrySkillsPage> {
-  const response = await fetch(`${SKILLS_BASE_URL}/`);
+  const response = await registryFetch(`${SKILLS_BASE_URL}/`);
   if (!response.ok) {
     throw new ApiError(
       503,
@@ -392,7 +398,7 @@ async function hydrateDetails(
   const hydrated = await Promise.all(
     skills.slice(0, DETAIL_PREVIEW_LIMIT).map(async (skill) => {
       try {
-        const response = await fetch(skill.url);
+        const response = await registryFetch(skill.url);
         if (!response.ok) return skill;
         return { ...skill, ...parsePublicDetail(await response.text()) };
       } catch {
@@ -433,7 +439,7 @@ async function fetchGithubStars(source: string): Promise<number | null> {
     const separatorIndex = repo.indexOf("/");
     const owner = repo.slice(0, separatorIndex);
     const repoName = repo.slice(separatorIndex + 1);
-    const response = await fetch(
+    const response = await registryFetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
       {
         headers: {
@@ -459,6 +465,25 @@ async function fetchGithubStars(source: string): Promise<number | null> {
   return stars;
 }
 
+async function mapWithConcurrency<T>(
+  values: readonly T[],
+  concurrency: number,
+  task: (value: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    async () => {
+      while (nextIndex < values.length) {
+        const value = values[nextIndex];
+        nextIndex += 1;
+        if (value !== undefined) await task(value);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+
 async function hydrateGithubStars(
   skills: RegistrySkill[],
 ): Promise<RegistrySkill[]> {
@@ -468,10 +493,12 @@ async function hydrateGithubStars(
     ),
   ];
   const starsBySource = new Map<string, number | null>();
-  await Promise.all(
-    sources.map(async (source) => {
+  await mapWithConcurrency(
+    sources,
+    REGISTRY_FETCH_CONCURRENCY,
+    async (source) => {
       starsBySource.set(source, await fetchGithubStars(source));
-    }),
+    },
   );
   return skills.map((skill) =>
     starsBySource.has(skill.source)
@@ -512,9 +539,8 @@ async function listRegistrySkills(
       stars: null,
       installUrl: skill.installUrl,
       url: skill.url,
-      topic: "Agent workflows",
+      topic: null,
       summary: null,
-      worksWith: ["Claude Code", "Codex"],
     })) ?? null;
   const start = page * perPage;
   const skills =
@@ -535,34 +561,50 @@ async function listRegistrySkills(
           : (apiPage?.hasMore ?? false),
     } satisfies RegistryPagination);
   const hydrated = await hydrateGithubStars(await hydrateDetails(skills));
-  lastRegistrySkills = hydrated;
   return { skills: hydrated, pagination };
 }
 
-function filterRegistryFallback(
-  query: string,
-  page: number,
-  perPage: number,
-): RegistrySkillsPage {
-  const normalizedQuery = query.trim().toLowerCase();
-  const fallback = lastRegistrySkills ?? [...FALLBACK_REGISTRY_SKILLS];
-  const filtered =
-    normalizedQuery.length === 0
-      ? fallback
-      : fallback.filter(
-          (skill) =>
-            skill.name.toLowerCase().includes(normalizedQuery) ||
-            skill.source.toLowerCase().includes(normalizedQuery),
-        );
-  return {
-    skills: filtered,
-    pagination: {
-      page,
-      perPage,
-      total: page * perPage + filtered.length,
-      hasMore: false,
-    },
-  };
+function parseRegistrySkillId(id: string): { source: string; skillId: string } {
+  const separatorIndex = id.lastIndexOf("/");
+  const source = id.slice(0, separatorIndex);
+  const skillId = id.slice(separatorIndex + 1);
+  if (
+    id.length === 0 ||
+    id.length > 2_048 ||
+    separatorIndex < 1 ||
+    source.length > 2_048 ||
+    !REGISTRY_SOURCE_PATTERN.test(source) ||
+    !REGISTRY_SKILL_NAME_PATTERN.test(skillId)
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Expected a valid registry skill ID",
+    );
+  }
+  return { source, skillId };
+}
+
+async function resolveRegistrySkillById(id: string): Promise<RegistrySkill> {
+  const { source, skillId } = parseRegistrySkillId(id);
+  const response = await registryFetch(registrySkillUrl(id));
+  if (!response.ok) {
+    throw new ApiError(
+      404,
+      "registry_skill_not_found",
+      "Registry skill not found",
+    );
+  }
+  const html = await response.text();
+  const skill = parsePublicDetailSkill(html, id, source, skillId);
+  if (!skill) {
+    throw new ApiError(
+      404,
+      "registry_skill_not_found",
+      "Registry skill not found",
+    );
+  }
+  return { ...skill, ...parsePublicDetail(html) };
 }
 
 function packageRefForSource(source: string): string {
@@ -621,10 +663,26 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         {
           error: error instanceof Error ? error.message : String(error),
         },
-        "skills.sh registry fetch failed; using fallback data",
+        "skills.sh registry fetch failed",
       );
-      return context.json(filterRegistryFallback(query, page, perPage));
+      throw new ApiError(
+        503,
+        "skills_registry_unavailable",
+        "skills.sh is unavailable",
+      );
     }
+  });
+
+  app.get("/skills-registry/entry", async (context) => {
+    const id = context.req.query("id");
+    if (id === undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Expected a registry skill ID",
+      );
+    }
+    return context.json(await resolveRegistrySkillById(id));
   });
 
   app.get("/skills-registry/detail", async (context) => {
@@ -649,36 +707,31 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
 
   app.post("/skills-registry/install", async (context) => {
     const body: unknown = await context.req.json().catch(() => null);
-    const allowedKeys = new Set(["source", "skillId", "projectId"]);
+    const allowedKeys = new Set(["registrySkillId", "projectId"]);
     if (
       !isRecord(body) ||
       Object.keys(body).some((key) => !allowedKeys.has(key)) ||
-      typeof body.source !== "string" ||
-      body.source.length === 0 ||
-      body.source.length > 2_048 ||
-      !REGISTRY_SOURCE_PATTERN.test(body.source) ||
-      typeof body.skillId !== "string" ||
-      !REGISTRY_SKILL_NAME_PATTERN.test(body.skillId) ||
+      typeof body.registrySkillId !== "string" ||
       typeof body.projectId !== "string"
     ) {
       throw new ApiError(
         400,
         "invalid_request",
-        "Expected source, skillId, and projectId",
+        "Expected registrySkillId and projectId",
       );
     }
     requirePublicProject(deps.db, body.projectId);
-    const workspace = resolveCommandWorkspace(deps, {
+    const registrySkill = await resolveRegistrySkillById(body.registrySkillId);
+    const workspace = resolveProjectCommandWorkspace(deps, {
       projectId: body.projectId,
-      environmentId: null,
     });
     const result = await callHostOnlineRpc(deps, {
       hostId: workspace.hostId,
       timeoutMs: REGISTRY_INSTALL_RPC_TIMEOUT_MS,
       command: {
         type: "host.install_registry_skill",
-        packageRef: packageRefForSource(body.source),
-        skillId: body.skillId,
+        packageRef: packageRefForSource(registrySkill.source),
+        skillId: registrySkill.skillId,
       },
     });
     return context.json({ ok: true, filePath: result.filePath });

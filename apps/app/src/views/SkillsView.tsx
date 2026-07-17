@@ -90,9 +90,8 @@ export interface RegistrySkill {
   stars: number | null;
   installUrl: string | null;
   url: string;
-  topic: string;
+  topic: string | null;
   summary: string | null;
-  worksWith: string[];
 }
 
 export interface RegistryPagination {
@@ -120,7 +119,6 @@ export interface RegistrySkillDetail {
   files: RegistrySkillFile[] | null;
 }
 
-export type RegistryProvider = "claude-code" | "codex";
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
 const REGISTRY_PAGE_SIZE = 24;
 const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
@@ -131,21 +129,14 @@ const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
 };
 const SKILLS_SH_URL = "https://www.skills.sh/";
 
-const REGISTRY_PROVIDERS = [
-  { id: "claude-code", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-] as const satisfies readonly {
-  id: RegistryProvider;
-  label: string;
-}[];
-
 const SCOPE_LABELS: Record<SkillSummary["scope"], string> = {
   "bb-builtin": "Built-in",
   "bb-user": "bb · user",
   "bb-project": "bb · project",
   "claude-user": "Claude · user",
   "claude-project": "Claude · project",
-  codex: "Codex",
+  "codex-user": "Codex · user",
+  "codex-project": "Codex · project",
   plugin: "Plugin",
 };
 
@@ -153,55 +144,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function parseRegistrySkill(value: unknown): RegistrySkill | null {
+  if (!isRecord(value)) return null;
+  const {
+    id,
+    source,
+    skillId,
+    name,
+    installs,
+    stars,
+    installUrl,
+    url,
+    topic,
+    summary,
+  } = value;
+  if (
+    typeof id !== "string" ||
+    typeof source !== "string" ||
+    typeof skillId !== "string" ||
+    typeof name !== "string" ||
+    typeof installs !== "number" ||
+    (stars !== undefined && stars !== null && typeof stars !== "number") ||
+    (installUrl !== null && typeof installUrl !== "string") ||
+    typeof url !== "string" ||
+    (topic !== null && typeof topic !== "string") ||
+    (summary !== null && typeof summary !== "string")
+  ) {
+    return null;
+  }
+  return {
+    id,
+    source,
+    skillId,
+    name,
+    installs,
+    stars: typeof stars === "number" ? stars : null,
+    installUrl,
+    url,
+    topic,
+    summary,
+  };
+}
+
 function parseRegistrySkills(value: unknown): RegistrySkill[] {
   if (!isRecord(value) || !Array.isArray(value.skills)) return [];
   const parsed: RegistrySkill[] = [];
   for (const skill of value.skills) {
-    if (!isRecord(skill)) continue;
-    const {
-      id,
-      source,
-      skillId,
-      name,
-      installs,
-      stars,
-      installUrl,
-      url,
-      topic,
-      summary,
-      worksWith,
-    } = skill;
-    if (
-      typeof id !== "string" ||
-      typeof source !== "string" ||
-      typeof skillId !== "string" ||
-      typeof name !== "string" ||
-      typeof installs !== "number" ||
-      (stars !== undefined && stars !== null && typeof stars !== "number") ||
-      (installUrl !== null && typeof installUrl !== "string") ||
-      typeof url !== "string" ||
-      typeof topic !== "string" ||
-      (summary !== null && typeof summary !== "string") ||
-      !Array.isArray(worksWith) ||
-      !worksWith.every(
-        (provider): provider is string => typeof provider === "string",
-      )
-    ) {
-      continue;
-    }
-    parsed.push({
-      id,
-      source,
-      skillId,
-      name,
-      installs,
-      stars: typeof stars === "number" ? stars : null,
-      installUrl,
-      url,
-      topic,
-      summary,
-      worksWith,
-    });
+    const parsedSkill = parseRegistrySkill(skill);
+    if (parsedSkill !== null) parsed.push(parsedSkill);
   }
   return parsed;
 }
@@ -287,13 +277,25 @@ export async function fetchRegistrySkillDetail(args: {
   };
 }
 
+export async function fetchRegistrySkillEntry(
+  id: string,
+): Promise<RegistrySkill> {
+  const params = new URLSearchParams({ id });
+  const response = await fetch(
+    `/api/v1/skills-registry/entry?${params.toString()}`,
+  );
+  if (!response.ok) throw new Error("Failed to load registry skill");
+  const skill = parseRegistrySkill(await response.json());
+  if (skill === null) throw new Error("Invalid registry skill response");
+  return skill;
+}
+
 export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   const response = await fetch("/api/v1/skills-registry/install", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      source: args.skill.source,
-      skillId: args.skill.skillId,
+      registrySkillId: args.skill.id,
       projectId: PERSONAL_PROJECT_ID,
     }),
   });
@@ -417,12 +419,12 @@ function isSkillEditable(
 ): skill is SkillSummary & { scope: EditableSkillScope } {
   if (skill.scope === "bb-user" || skill.scope === "bb-project") return true;
   if (skill.scope === "claude-user" || skill.scope === "claude-project") {
-    return true;
+    return skill.manageable;
   }
-  return (
-    skill.scope === "codex" &&
-    !/(^|[\\/])\.system([\\/]|$)/u.test(skill.filePath)
-  );
+  if (skill.scope === "codex-user" || skill.scope === "codex-project") {
+    return skill.manageable;
+  }
+  return false;
 }
 
 function providerPluginNameForSkill(skill: SkillSummary): string {
@@ -497,6 +499,7 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
 function RegistrySkillSourceItem({
   skill,
   installed,
+  canUninstall,
   onInstall,
   onUninstall,
   onSelect,
@@ -504,6 +507,7 @@ function RegistrySkillSourceItem({
 }: {
   skill: RegistrySkill;
   installed: boolean;
+  canUninstall: boolean;
   onInstall: (skill: RegistrySkill) => void;
   onUninstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
@@ -513,7 +517,7 @@ function RegistrySkillSourceItem({
     <ResourceBrowseCard
       title={skill.name}
       byline={`by ${formatRegistrySource(skill.source)}`}
-      description={skill.summary ?? `Works with ${skill.worksWith.join(", ")}.`}
+      description={skill.summary ?? undefined}
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
@@ -522,22 +526,11 @@ function RegistrySkillSourceItem({
           installed={installed}
           pending={pending}
           onInstall={() => onInstall(skill)}
-          onUninstall={() => onUninstall(skill)}
+          onUninstall={canUninstall ? () => onUninstall(skill) : undefined}
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
     />
-  );
-}
-
-function RegistrySkillLeading({ skill }: { skill: RegistrySkill }) {
-  const provider = REGISTRY_PROVIDERS.find((candidate) =>
-    skill.worksWith.includes(candidate.id),
-  )?.id;
-  return provider ? (
-    <ProviderLogo providerId={provider} className="size-6" />
-  ) : (
-    <BbLogo className="size-6" />
   );
 }
 
@@ -569,6 +562,7 @@ export function RegistrySkillsBrowsePage({
   onUninstall,
   onSelect,
   isInstalled,
+  canUninstall = () => false,
 }: {
   skills: readonly RegistrySkill[];
   pagination: RegistryPagination;
@@ -583,6 +577,7 @@ export function RegistrySkillsBrowsePage({
   onUninstall: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   isInstalled: (skill: RegistrySkill) => boolean;
+  canUninstall?: (skill: RegistrySkill) => boolean;
 }) {
   const [sortMode, setSortMode] = useState<RegistrySkillSortMode>("installs");
   const [sortDirection, setSortDirection] =
@@ -668,6 +663,7 @@ export function RegistrySkillsBrowsePage({
               key={skill.id}
               skill={skill}
               installed={isInstalled(skill)}
+              canUninstall={canUninstall(skill)}
               pending={pendingSkillId === skill.id}
               onInstall={onInstall}
               onUninstall={onUninstall}
@@ -940,7 +936,7 @@ function RegistrySkillDetailView({
   uninstallPending: boolean;
   onRetry: () => void;
   onInstall: (skill: RegistrySkill) => void;
-  onUninstall: (skill: RegistrySkill) => void;
+  onUninstall?: (skill: RegistrySkill) => void;
   onEditInstalledSkill: (skill: SkillSummary) => void;
   onBack: () => void;
 }) {
@@ -951,9 +947,7 @@ function RegistrySkillDetailView({
   const files = detail?.files ?? [];
   const selectedFile =
     files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
-  const path = installed
-    ? (installedPath ?? `~/.bb/skills/${skill.skillId}/SKILL.md`)
-    : `skills.sh/${skill.source}/${skill.skillId}`;
+  const path = installedPath ?? `skills.sh/${skill.source}/${skill.skillId}`;
   return (
     <SkillDetailView
       back={
@@ -962,20 +956,20 @@ function RegistrySkillDetailView({
           onClick={onBack}
         />
       }
-      leading={installed ? <BbLogo /> : <RegistrySkillLeading skill={skill} />}
+      leading={<BbLogo />}
       title={skill.name}
       path={path}
-      pathHref={installed ? undefined : skill.url}
+      pathHref={installedPath === null ? skill.url : undefined}
       headerControl={{
         kind: "install",
         skillName: skill.name,
         installed,
         pending: pending || uninstallPending,
         onInstall: () => onInstall(skill),
-        onUninstall: () => onUninstall(skill),
+        onUninstall: onUninstall ? () => onUninstall(skill) : undefined,
       }}
       overflowMenu={
-        installed ? (
+        installedSkill !== null && installedPath !== null ? (
           <ResourceOverflowMenu
             label={`${skill.name} actions`}
             items={[
@@ -1096,12 +1090,14 @@ export function SkillDetailDialogView({
   onOpenInEditor,
 }: SkillDetailDialogViewProps) {
   const [editing, setEditing] = useState(false);
+  const [editRequested, setEditRequested] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const initialEditConsumedRef = useRef<string | null>(null);
 
   useEffect(() => {
     setEditing(false);
+    setEditRequested(false);
     setConfirmingDelete(false);
     initialEditConsumedRef.current = null;
   }, [skill?.scope, skill?.name, skill?.provider]);
@@ -1135,6 +1131,28 @@ export function SkillDetailDialogView({
     skill,
   ]);
 
+  useEffect(() => {
+    if (
+      !editRequested ||
+      selectedPath !== "SKILL.md" ||
+      isLoadingContent ||
+      isRefreshingContent ||
+      isContentError
+    ) {
+      return;
+    }
+    setDraft(content);
+    setEditing(true);
+    setEditRequested(false);
+  }, [
+    content,
+    editRequested,
+    isContentError,
+    isLoadingContent,
+    isRefreshingContent,
+    selectedPath,
+  ]);
+
   async function handleSave() {
     if (await onSave(draft)) {
       setEditing(false);
@@ -1151,9 +1169,8 @@ export function SkillDetailDialogView({
 
   function startEditing() {
     setConfirmingDelete(false);
+    setEditRequested(true);
     onSelectPath("SKILL.md");
-    setDraft(content);
-    setEditing(true);
   }
 
   const sectionActions = editing ? (
@@ -1167,7 +1184,7 @@ export function SkillDetailDialogView({
       <ResourceActionButton
         label="Save skill"
         icon="Check"
-        disabled={isSaving || isLoadingContent}
+        disabled={isSaving || isLoadingContent || isContentError}
         onClick={handleSave}
       />
     </>
@@ -1186,7 +1203,11 @@ export function SkillDetailDialogView({
           {
             label: "Edit SKILL.md",
             icon: "Edit" as const,
-            disabled: !canEdit || isLoadingContent || isRefreshingContent,
+            disabled:
+              !canEdit ||
+              isLoadingContent ||
+              isRefreshingContent ||
+              isContentError,
             disabledReason: !canEdit ? editDisabledReason : undefined,
             onSelect: startEditing,
           },
@@ -1338,7 +1359,7 @@ function SkillDetailPage({
       isContentError={contentQuery.isError}
       canEdit={editableScope !== null}
       canDelete={deletableScope !== null}
-      canOpenInEditor={skill !== null && canOpenPreferredFileTarget}
+      canOpenInEditor={editableScope !== null && canOpenPreferredFileTarget}
       initiallyEditing={initiallyEditing}
       isSaving={updateSkill.isPending}
       isDeleting={deleteSkill.isPending}
@@ -1457,7 +1478,7 @@ export function SkillsLibrary() {
       ) ?? null
     );
   }, [routeProviderId, routeScope, routeSkillName, skills]);
-  const selectedRegistrySkill = useMemo(() => {
+  const registrySkillOnPage = useMemo(() => {
     if (routeRegistrySkillId === undefined) {
       return null;
     }
@@ -1469,6 +1490,14 @@ export function SkillsLibrary() {
       ) ?? null
     );
   }, [registryQuery.data, routeRegistrySkillId]);
+  const registryEntryQuery = useQuery({
+    queryKey: ["skills-registry-entry", routeRegistrySkillId ?? "none"],
+    queryFn: () => fetchRegistrySkillEntry(routeRegistrySkillId!),
+    enabled: routeRegistrySkillId !== undefined && registrySkillOnPage === null,
+    staleTime: 5 * 60_000,
+  });
+  const selectedRegistrySkill =
+    registrySkillOnPage ?? registryEntryQuery.data ?? null;
   const registryDetailQuery = useQuery({
     queryKey: ["skills-registry-detail", selectedRegistrySkill?.id ?? "none"],
     queryFn: () =>
@@ -1496,6 +1525,21 @@ export function SkillsLibrary() {
     },
     [skills],
   );
+  const findVerifiedInstalledRegistrySkill = useCallback(
+    (skill: RegistrySkill): SkillSummary | null => {
+      const installedPath = confirmedRegistryInstalls.get(skill.id);
+      if (typeof installedPath !== "string") return null;
+      return (
+        skills.find(
+          (installedSkill) =>
+            installedSkill.scope === "bb-user" &&
+            installedSkill.provider === null &&
+            installedSkill.filePath === installedPath,
+        ) ?? null
+      );
+    },
+    [confirmedRegistryInstalls, skills],
+  );
   const isRegistrySkillInstalled = useCallback(
     (skill: RegistrySkill): boolean => {
       if (confirmedRegistryInstalls.has(skill.id)) {
@@ -1511,12 +1555,19 @@ export function SkillsLibrary() {
     },
     [registryInstall],
   );
+  const canUninstallRegistrySkill = useCallback(
+    (skill: RegistrySkill) =>
+      findVerifiedInstalledRegistrySkill(skill) !== null,
+    [findVerifiedInstalledRegistrySkill],
+  );
   const uninstallRegistry = useCallback(
     (skill: RegistrySkill) => {
+      const installedSkill = findVerifiedInstalledRegistrySkill(skill);
+      if (installedSkill === null) return;
       deleteSkill.mutate(
         {
           scope: "bb-user",
-          name: skill.skillId,
+          name: installedSkill.name,
           environmentId: null,
         },
         {
@@ -1537,7 +1588,12 @@ export function SkillsLibrary() {
         },
       );
     },
-    [deleteSkill, registryInstall, skillsQuery],
+    [
+      deleteSkill,
+      findVerifiedInstalledRegistrySkill,
+      registryInstall,
+      skillsQuery,
+    ],
   );
   const openSkill = useCallback(
     (skill: SkillSummary, options?: { editing?: boolean }) => {
@@ -1602,7 +1658,9 @@ export function SkillsLibrary() {
   const pendingRegistryUninstallSkillId =
     deleteSkill.isPending && deleteSkill.variables?.scope === "bb-user"
       ? ((registryQuery.data?.skills ?? []).find(
-          (skill) => skill.skillId === deleteSkill.variables?.name,
+          (skill) =>
+            findVerifiedInstalledRegistrySkill(skill)?.name ===
+            deleteSkill.variables?.name,
         )?.id ?? null)
       : null;
   const initiallyEditingSelectedSkill =
@@ -1623,6 +1681,17 @@ export function SkillsLibrary() {
           initiallyEditing={initiallyEditingSelectedSkill}
           onInitialEditStarted={clearInitialEditState}
         />
+      ) : routeRegistrySkillId !== undefined &&
+        selectedRegistrySkill === null ? (
+        <ResourceListState
+          state={registryEntryQuery.isError ? "error" : "loading"}
+          message={
+            registryEntryQuery.isError
+              ? "This registry skill could not be loaded."
+              : "Loading registry skill"
+          }
+          onRetry={() => void registryEntryQuery.refetch()}
+        />
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
@@ -1630,13 +1699,12 @@ export function SkillsLibrary() {
           isLoadingDetail={registryDetailQuery.isLoading}
           isDetailError={registryDetailQuery.isError}
           installed={isRegistrySkillInstalled(selectedRegistrySkill)}
-          installedSkill={findInstalledRegistrySkill(selectedRegistrySkill)}
+          installedSkill={findVerifiedInstalledRegistrySkill(
+            selectedRegistrySkill,
+          )}
           installedPath={
-            confirmedRegistryInstalls.has(selectedRegistrySkill.id)
-              ? (confirmedRegistryInstalls.get(selectedRegistrySkill.id) ??
-                null)
-              : (findInstalledRegistrySkill(selectedRegistrySkill)?.filePath ??
-                null)
+            findVerifiedInstalledRegistrySkill(selectedRegistrySkill)
+              ?.filePath ?? null
           }
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
           uninstallPending={
@@ -1646,7 +1714,11 @@ export function SkillsLibrary() {
           }
           onRetry={() => void registryDetailQuery.refetch()}
           onInstall={installRegistry}
-          onUninstall={uninstallRegistry}
+          onUninstall={
+            canUninstallRegistrySkill(selectedRegistrySkill)
+              ? uninstallRegistry
+              : undefined
+          }
           onEditInstalledSkill={(skill) => openSkill(skill, { editing: true })}
           onBack={closeRegistrySkillDetail}
         />
@@ -1682,6 +1754,7 @@ export function SkillsLibrary() {
               onUninstall={uninstallRegistry}
               onSelect={openRegistrySkill}
               isInstalled={isRegistrySkillInstalled}
+              canUninstall={canUninstallRegistrySkill}
             />
           }
           onCreateSkill={handleCreateSkill}

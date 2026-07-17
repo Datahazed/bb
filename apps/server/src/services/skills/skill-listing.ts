@@ -14,7 +14,7 @@ import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
 } from "../hosts/online-rpc.js";
-import type { CommandWorkspace } from "../threads/provider-command-typeahead.js";
+import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/project-workspace.js";
 
 /**
  * Providers with a skill surface. A bb skill is discovered under each, so the
@@ -32,7 +32,8 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "bb-builtin",
   "claude-project",
   "claude-user",
-  "codex",
+  "codex-project",
+  "codex-user",
   "plugin",
 ];
 
@@ -61,9 +62,9 @@ interface MappedScope {
 
 /**
  * Product policy: map the daemon's raw `(provider, rootKind)` to a user-facing
- * scope. bb scopes are provider-agnostic (`provider: null`); `claude-*` split by
- * project/user; Codex collapses to one scope. User-owned provider roots are
- * manageable; bundled provider and plugin roots remain protected.
+ * scope. bb scopes are provider-agnostic (`provider: null`); provider roots
+ * retain project/user identity. User-owned provider roots are manageable;
+ * bundled provider and plugin roots remain protected.
  */
 export function mapSkillScope(
   provider: SkillProvider,
@@ -80,16 +81,16 @@ export function mapSkillScope(
     case "provider-project":
       return provider === "claude-code"
         ? { scope: "claude-project", provider, manageable: true }
-        : { scope: "codex", provider, manageable: true };
+        : { scope: "codex-project", provider, manageable: true };
     case "provider-user":
       if (isBundledProviderSkill(filePath)) {
         return provider === "claude-code"
           ? { scope: "claude-user", provider, manageable: false }
-          : { scope: "codex", provider, manageable: false };
+          : { scope: "codex-user", provider, manageable: false };
       }
       return provider === "claude-code"
         ? { scope: "claude-user", provider, manageable: true }
-        : { scope: "codex", provider, manageable: true };
+        : { scope: "codex-user", provider, manageable: true };
     case "plugin":
       return { scope: "plugin", provider, manageable: false };
   }

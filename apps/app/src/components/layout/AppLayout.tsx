@@ -59,7 +59,6 @@ import {
   getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
   getPluginsRoutePath,
-  getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getSkillsRoutePath,
@@ -259,7 +258,7 @@ function SidebarTriggerOverlay({
     <div
       data-testid="app-sidebar-trigger-overlay"
       className={cn(
-        "fixed left-0 top-0 z-50",
+        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] z-50",
         CHROME_ROW_CLASS,
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}
@@ -287,7 +286,8 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
 function resolveRouteTitle(
   pathname: string,
 ): { title: string; subtitle?: string } | undefined {
-  // The global settings page owns its /settings/:section subtree.
+  // The global settings page owns a subtree (/settings/:section,
+  // /settings/plugins/:id); every sub-route keeps the "Settings" title.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
@@ -306,12 +306,11 @@ interface AppHeaderProps {
    */
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
-  isArchivedView: boolean;
   isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   /** Registered navPanel when this is a plugin panel route (design §5.2):
-   * the shared header shows plugin logo + title, plus the registration's
+   * the shared header shows plugin icon + title, plus the registration's
    * `headerContent` as the actions. */
   pluginPanel?: PluginNavPanelSlot;
   /** The panel route's splat remainder ("" at the panel root). */
@@ -326,7 +325,6 @@ interface AppHeaderProps {
 function AppHeader({
   usesProjectChromeStyle,
   usesDesktopChrome,
-  isArchivedView,
   isSettingsView,
   projectId,
   project,
@@ -419,20 +417,6 @@ function AppHeader({
       >
         <Icon name="Settings" />
       </Link>
-      <Link
-        to={getProjectArchivedRoutePath(projectId)}
-        className={cn(
-          HEADER_ICON_BUTTON_CLASS,
-          "inline-flex items-center justify-center transition-colors",
-          isArchivedView
-            ? "bg-state-active text-foreground"
-            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-        )}
-        aria-label="Archived threads"
-        aria-current={isArchivedView ? "page" : undefined}
-      >
-        <Icon name="Archive" />
-      </Link>
       {project ? (
         <ProjectActionsMenu
           project={project}
@@ -519,7 +503,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedFolderId = isArchivedView
     ? new URLSearchParams(location.search).get("folderId")
     : null;
-  // Plugin panel routes ride the shared header (design §5.2): logo + panel
+  // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
   // Global settings routes swap the app sidebar for the settings sidebar.
@@ -648,28 +632,26 @@ export function AppLayout({ children }: AppLayoutProps) {
         { label: toolsPluginDetailMatch.params.pluginId ?? "Plugin" },
       ];
     }
-    if (toolsAutomationEditMatch ?? toolsAutomationDetailMatch) {
-      const automationMatch =
-        toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
+    const automationMatch =
+      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
+    if (automationMatch) {
       return [
         automationsCrumb,
-        {
-          label: automationMatch?.params.automationId ?? "Automation",
-        },
+        { label: automationMatch.params.automationId ?? "Automation" },
       ];
     }
-    if (location.pathname === "/tools/plugins") {
+    if (location.pathname === getPluginsRoutePath()) {
       return [{ label: "Plugins" }];
     }
     if (
-      location.pathname === "/tools/automations" ||
+      location.pathname === getAutomationsRoutePath() ||
       location.pathname === "/automations"
     ) {
       return [{ label: "Automations" }];
     }
     if (
       location.pathname === "/tools" ||
-      location.pathname === "/tools/skills" ||
+      location.pathname === getSkillsRoutePath() ||
       location.pathname === "/skills"
     ) {
       return [{ label: "Skills" }];
@@ -750,8 +732,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return `${automationDetailMatch.params.automationId ?? "Automation"} · Automations`;
     }
     if (toolsBreadcrumbs) {
-      const currentTool = toolsBreadcrumbs[toolsBreadcrumbs.length - 1]?.label;
-      return currentTool ?? "bb";
+      return toolsBreadcrumbs.at(-1)?.label ?? "bb";
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {
@@ -900,7 +881,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div
               ref={contentShellRef}
               data-testid="app-layout-content-shell"
-              className="relative flex h-[100dvh] min-w-0 w-full flex-col"
+              className="relative flex h-[100dvh] min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
             >
               {showHeader ? (
                 <AppHeader
@@ -908,7 +889,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   usesProjectChromeStyle={
                     isRootView || isArchivedView || isSettingsView
                   }
-                  isArchivedView={isArchivedView}
                   isSettingsView={isSettingsView}
                   projectId={projectId}
                   project={project}

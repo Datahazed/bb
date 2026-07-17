@@ -1,24 +1,16 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import {
-  POPOUT_ROUTE_PATH,
-  getDesktopPopoutThreadRoutePath,
-  type BbDesktopPopoutThreadRef,
-} from "@bb/desktop-contract";
 import { matchPath } from "react-router-dom";
-
-export { POPOUT_ROUTE_PATH };
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
-export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
-  "/popout/threads/:threadId";
-export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
-  "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
+// Settings buckets (general, files, …) and per-plugin settings pages. The
+// static "plugins" segment wins over :section, so /settings/plugins is the
+// plugin management bucket and /settings/plugins/:id a plugin's own page.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
-// Legacy Settings URLs redirect into the canonical Plugins resource surface.
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
+export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
@@ -35,16 +27,15 @@ export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
 export const TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId/edit";
+export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
-export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
 export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
 export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
-export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -59,12 +50,6 @@ export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
 export interface ThreadRoutePathArgs {
   projectId: string;
   threadId: string;
-}
-
-export type ThreadRouteSurface = "page" | "popout";
-
-export interface SurfaceAwareThreadRoutePathArgs extends ThreadRoutePathArgs {
-  surface: ThreadRouteSurface;
 }
 
 export interface IsRoutePathArgs {
@@ -90,8 +75,34 @@ export function getRootComposeRoutePath(): string {
   return ROOT_COMPOSE_ROUTE_PATH;
 }
 
-export function getAutomationsRoutePath(): string {
-  return AUTOMATIONS_ROUTE_PATH;
+export function getLegacyProjectComposeRoutePath(projectId: string): string {
+  return `/projects/${projectId}`;
+}
+
+// Opens a project's compose view. The personal project has no `/projects/:id`
+// surface — its compose view is the app root — so it routes there instead.
+export function getProjectComposeRoutePath(projectId: string): string {
+  return isProjectlessProjectId(projectId)
+    ? getRootComposeRoutePath()
+    : getLegacyProjectComposeRoutePath(projectId);
+}
+
+export function getSettingsRoutePath(section?: string): string {
+  return section === undefined
+    ? SETTINGS_ROUTE_PATH
+    : `/settings/${encodeURIComponent(section)}`;
+}
+
+export function getSettingsPluginRoutePath(pluginId: string): string {
+  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
+}
+
+export function getSettingsProviderRoutePath(providerId: string): string {
+  return `/settings/providers/${encodeURIComponent(providerId)}`;
+}
+
+export function getToolsRoutePath(): string {
+  return TOOLS_ROUTE_PATH;
 }
 
 export function getSkillsRoutePath(): string {
@@ -132,10 +143,6 @@ export function getRegistrySkillDetailRoutePath({
   )}`;
 }
 
-export function getToolsRoutePath(): string {
-  return TOOLS_ROUTE_PATH;
-}
-
 export function getPluginsRoutePath(): string {
   return TOOLS_PLUGINS_ROUTE_PATH;
 }
@@ -150,6 +157,10 @@ export function getPluginDetailRoutePath({
   return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
 }
 
+export function getAutomationsRoutePath(): string {
+  return AUTOMATIONS_ROUTE_PATH;
+}
+
 export interface AutomationDetailRoutePathArgs {
   projectId: string;
   automationId: string;
@@ -159,73 +170,19 @@ export function getAutomationDetailRoutePath({
   projectId,
   automationId,
 }: AutomationDetailRoutePathArgs): string {
-  return `/tools/automations/${encodeURIComponent(
+  return `${TOOLS_AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
     projectId,
   )}/${encodeURIComponent(automationId)}`;
 }
 
-export function getAutomationEditRoutePath({
-  projectId,
-  automationId,
-}: AutomationDetailRoutePathArgs): string {
-  return `${getAutomationDetailRoutePath({ projectId, automationId })}/edit`;
-}
-
-export function getPopoutRoutePath(): string {
-  return POPOUT_ROUTE_PATH;
-}
-
-export function getPopoutThreadRoutePath(args: ThreadRoutePathArgs): string {
-  const thread: BbDesktopPopoutThreadRef = {
-    projectId: args.projectId,
-    threadId: args.threadId,
-  };
-  return getDesktopPopoutThreadRoutePath(thread);
-}
-
-export function getLegacyProjectComposeRoutePath(projectId: string): string {
-  return `/projects/${projectId}`;
-}
-
-// Opens a project's compose view. The personal project has no `/projects/:id`
-// surface — its compose view is the app root — so it routes there instead.
-export function getProjectComposeRoutePath(projectId: string): string {
-  return isProjectlessProjectId(projectId)
-    ? getRootComposeRoutePath()
-    : getLegacyProjectComposeRoutePath(projectId);
-}
-
-export function getSettingsRoutePath(section?: string): string {
-  return section === undefined
-    ? SETTINGS_ROUTE_PATH
-    : `/settings/${encodeURIComponent(section)}`;
-}
-
-export function getSettingsProviderRoutePath(providerId: string): string {
-  return `/settings/providers/${encodeURIComponent(providerId)}`;
+export function getAutomationEditRoutePath(
+  args: AutomationDetailRoutePathArgs,
+): string {
+  return `${getAutomationDetailRoutePath(args)}/edit`;
 }
 
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
-}
-
-export function getProjectlessArchivedRoutePath(): string {
-  return PROJECTLESS_ARCHIVED_ROUTE_PATH;
-}
-
-export function getProjectArchivedRoutePath(projectId: string): string {
-  if (isProjectlessProjectId(projectId)) {
-    return getProjectlessArchivedRoutePath();
-  }
-  return `/projects/${projectId}/archived`;
-}
-
-// Folders live in the personal/projectless section, so a folder's archived
-// list reuses the projectless archived route, scoped by a `folderId` query param.
-export function getFolderArchivedRoutePath(folderId: string): string {
-  return `${PROJECTLESS_ARCHIVED_ROUTE_PATH}?folderId=${encodeURIComponent(
-    folderId,
-  )}`;
 }
 
 export interface PluginPanelRoutePathArgs {
@@ -259,34 +216,18 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
-export function getSurfaceAwareThreadRoutePath(
-  args: SurfaceAwareThreadRoutePathArgs,
-): string {
-  return args.surface === "popout"
-    ? getPopoutThreadRoutePath(args)
-    : getThreadRoutePath(args);
-}
-
 const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  POPOUT_ROUTE_PATH,
-  POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
-  POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
-  LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
-  PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
-  PROJECT_ARCHIVED_ROUTE_PATH,
-  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
-  THREAD_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
@@ -298,6 +239,12 @@ const baseRoutePatterns: readonly string[] = [
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PROJECTLESS_ARCHIVED_ROUTE_PATH,
+  PROJECT_SETTINGS_ROUTE_PATH,
+  PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
+  THREAD_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 ];
 

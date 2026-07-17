@@ -49,19 +49,17 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
         async list() {
           return [project()];
         },
-        async sidebarBootstrap() {
-          return {
-            folders: [
-              {
-                id: FOLDER_ID,
-                name: "Reviews",
-                createdAt: 1,
-                updatedAt: 1,
-              },
-            ],
-            projects: [project()],
-            personalProject: project("proj_personal"),
-          };
+      },
+      threadFolders: {
+        async list() {
+          return [
+            {
+              id: FOLDER_ID,
+              name: "Reviews",
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ];
         },
       },
       hosts: {
@@ -193,7 +191,6 @@ describe("automations server plugin harness", () => {
       expect.objectContaining({
         automation: expect.objectContaining({ id: created.id }),
         project: { id: PROJECT_ID, name: "Test Project" },
-        folder: { id: FOLDER_ID, name: "Reviews" },
       }),
     );
 
@@ -291,6 +288,17 @@ describe("automations server plugin harness", () => {
         await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
       )[0]?.id,
     ).toBe(created.id);
+    const editable = automationResponseSchema.parse(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    );
+    expect(editable.execution).toMatchObject({
+      mode: "script",
+      script: "echo ok",
+    });
+    expect(editable.execution).not.toHaveProperty("scriptFile");
 
     const errorResult = await harness.runCli([
       "create",

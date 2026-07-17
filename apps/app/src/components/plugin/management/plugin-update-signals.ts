@@ -1,8 +1,7 @@
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 /**
- * The Layer 1 rule (plugin marketplaces design, "UI design (locked)"): a row
- * earns at most one pill, and only when actionable. A failed update that
+ * A plugin row earns at most one pill, and only when actionable. A failed update that
  * rolled back outranks an available update — the user should know a rollback
  * happened before applying anything else. Newer-but-incompatible releases
  * and pinned sources never badge the list; they surface on the detail page.

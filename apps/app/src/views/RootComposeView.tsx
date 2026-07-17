@@ -24,6 +24,7 @@ import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
   ProjectBranchesResponse,
   SidebarBootstrapResponse,
+  SystemProvidersQuery,
   TerminalSession,
 } from "@bb/server-contract";
 import {
@@ -103,8 +104,8 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { copyPromptAttachments } from "@/lib/api";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -134,15 +135,12 @@ import {
   getThreadRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
-  getSurfaceAwareThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
-  type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
-  getBbDesktopInfo,
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
 } from "@/lib/bb-desktop";
@@ -172,7 +170,6 @@ import {
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import {
-  ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS,
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
@@ -225,6 +222,8 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
+import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -277,6 +276,23 @@ export function mergeMissingPromptDraftAttachments(
     return null;
   }
   return [...currentAttachments, ...missingAttachments];
+}
+
+export function getProjectStoredPromptAttachmentPaths(
+  attachments: readonly PromptDraftAttachment[],
+): string[] {
+  return [
+    ...new Set(
+      attachments.flatMap((attachment) => {
+        const path = attachment.path;
+        const isRuntimeReadable =
+          /^[\\/]/u.test(path) ||
+          /^[a-zA-Z]:[\\/]/u.test(path) ||
+          /^[a-zA-Z][a-zA-Z0-9+.-]*:/u.test(path);
+        return isRuntimeReadable ? [] : [path];
+      }),
+    ),
+  ];
 }
 
 export function restorePromptDraftAfterOptionChange({
@@ -392,17 +408,6 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
   return "focusPrompt" in state && state.focusPrompt === true;
 }
 
-type RootComposeViewProps =
-  | {
-      isBoundedPane: boolean;
-      surface: "page";
-    }
-  | {
-      onThreadCreated(args: ThreadRoutePathArgs): void;
-      onEscapeEmptyPrompt(): void;
-      surface: "popout";
-    };
-
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
 }
@@ -410,10 +415,8 @@ interface BuildMobileRecentThreadsArgs {
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
   isProjectless: boolean;
-  /** Ids of all hosts known to the server. A persisted selection may only
-   * keep a non-primary host (multiMachine experiment) when it's still here. */
+  /** Ids of all hosts known to the server. */
   knownHostIds: ReadonlySet<string>;
-  multiMachineEnabled: boolean;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
@@ -619,7 +622,7 @@ function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
 function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
   /** Host id → machine name, provided only when worktree rows should carry a
-   * machine hint (multiMachine experiment with more than one host). */
+   * machine hint when more than one host exists. */
   hostNameById: ReadonlyMap<string, string> | null = null,
 ): ReuseThreadOption[] {
   // One option per worktree env. Threads within each env are sorted
@@ -688,7 +691,6 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
   isProjectless,
   knownHostIds,
-  multiMachineEnabled,
   primaryHostId,
   projectSources,
   reuseThreadOptions,
@@ -700,11 +702,9 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
 
-  // With the multiMachine experiment on, a host selection survives as long as
-  // that machine still exists and has this project. Otherwise it falls through
-  // to the primary-host rewrite below, exactly as before the experiment.
+  // A host selection survives as long as that machine still exists and has
+  // this project. Otherwise it falls through to the primary-host rewrite.
   if (
-    multiMachineEnabled &&
     parsedSelection?.type === "host" &&
     knownHostIds.has(parsedSelection.hostId)
   ) {
@@ -776,6 +776,34 @@ export function resolveComposeHostId(
   return parsedEnvironment?.type === "host"
     ? parsedEnvironment.hostId
     : primaryHostId;
+}
+
+export function resolveRootComposeProjectRouting(
+  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
+  primaryHostId: string | null,
+): { environmentId?: string; hostId?: string } {
+  if (parsedEnvironment?.type === "reuse") {
+    return parsedEnvironment.environmentId === null
+      ? {}
+      : { environmentId: parsedEnvironment.environmentId };
+  }
+  const hostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
+  return hostId === null ? {} : { hostId };
+}
+
+export function resolveRootComposeProviderRouting(
+  args: ResolveRootComposeEffectiveEnvironmentValueArgs,
+): SystemProvidersQuery {
+  const parsed = parseEnvironmentValue(
+    resolveRootComposeEffectiveEnvironmentValue(args),
+  );
+  if (parsed?.type === "host") {
+    return { hostId: parsed.hostId };
+  }
+  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
+    return { environmentId: parsed.environmentId };
+  }
+  return {};
 }
 
 export function buildMobileRecentThreads({
@@ -935,12 +963,14 @@ export function RootComposeRoute() {
       poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
       highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
     >
-      <RootComposeView isBoundedPane={false} surface="page" />
+      <RootComposeView />
     </WorkerPoolContextProvider>
   );
 }
 
-export function RootComposeView(props: RootComposeViewProps) {
+export function RootComposeView() {
+  const paneContext = useOptionalPaneContext();
+  const isFocusedPane = paneContext?.isFocused ?? true;
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
@@ -1006,19 +1036,17 @@ export function RootComposeView(props: RootComposeViewProps) {
     [hostsQuery.data, serverPrimaryHostId],
   );
   const primaryHostId = primaryHost?.id ?? null;
-  const multiMachineEnabled =
-    systemConfigQuery.data?.experiments.multiMachine === true;
   const knownHostIds = useMemo(
     () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
     [hostsQuery.data],
   );
   // Worktree rows only carry a machine hint once there's more than one
-  // machine to tell apart (multiMachine experiment).
+  // machine to tell apart.
   const worktreeHostNameById = useMemo(() => {
     const hosts = hostsQuery.data ?? [];
-    if (!multiMachineEnabled || hosts.length <= 1) return null;
+    if (hosts.length <= 1) return null;
     return new Map(hosts.map((host) => [host.id, host.name]));
-  }, [hostsQuery.data, multiMachineEnabled]);
+  }, [hostsQuery.data]);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
   // Plugin useComposer() writes (from nav panels / homepage sections) target
@@ -1047,6 +1075,8 @@ export function RootComposeView(props: RootComposeViewProps) {
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isCopyingPromptAttachments, setIsCopyingPromptAttachments] =
+    useState(false);
   const prompt = promptDraft.text;
   const promptInput = useMemo(
     () =>
@@ -1077,6 +1107,38 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
+  // Worktree picker options come from the project's unarchived threads.
+  // Threads on managed or unmanaged worktrees with a non-null environmentId
+  // contribute; envs with only archived threads disappear naturally.
+  const threadsQuery = useThreads(
+    { projectId, archived: false },
+    { enabled: Boolean(projectId) },
+  );
+  const reuseThreadOptions = useMemo(
+    () =>
+      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
+    [threadsQuery.data, worktreeHostNameById],
+  );
+  const resolveProviderRouting = useCallback(
+    (environmentSelectionValue: string) =>
+      resolveRootComposeProviderRouting({
+        environmentSelectionValue,
+        isProjectless,
+        knownHostIds,
+        primaryHostId,
+        projectSources,
+        reuseThreadOptions,
+        reuseThreadOptionsLoading: threadsQuery.isLoading,
+      }),
+    [
+      isProjectless,
+      knownHostIds,
+      primaryHostId,
+      projectSources,
+      reuseThreadOptions,
+      threadsQuery.isLoading,
+    ],
+  );
   // Seed the picker from the server-resolved project defaults so the visible
   // default matches what create-thread will use when the user submits without
   // touching execution controls. Values normally ride along with sidebar
@@ -1097,6 +1159,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
+    resolveProviderRouting,
     initialProviderId: projectDefaultExecutionOptions?.providerId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
@@ -1104,6 +1167,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
   const {
+    executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
     providerOptions,
@@ -1327,17 +1391,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     seedInitialPrompt,
   ]);
 
-  // Worktree picker options come from the project's unarchived threads.
-  // Threads on managed or unmanaged worktrees with a non-null environmentId
-  // contribute; envs with only archived threads disappear naturally.
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
-  const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
-    [threadsQuery.data, worktreeHostNameById],
-  );
   const mobileRecentThreads = useMemo(
     () =>
       buildMobileRecentThreads({
@@ -1354,7 +1407,6 @@ export function RootComposeView(props: RootComposeViewProps) {
         environmentSelectionValue,
         isProjectless,
         knownHostIds,
-        multiMachineEnabled,
         primaryHostId,
         projectSources,
         reuseThreadOptions,
@@ -1364,7 +1416,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       environmentSelectionValue,
       isProjectless,
       knownHostIds,
-      multiMachineEnabled,
       primaryHostId,
       projectSources,
       reuseThreadOptions,
@@ -1376,8 +1427,8 @@ export function RootComposeView(props: RootComposeViewProps) {
     [effectiveEnvironmentValue],
   );
   // Provider-CLI eligibility follows the machine the thread will actually run
-  // on — the selected host when the (already primary-collapsed, multiMachine
-  // aware) effective selection names one, otherwise the primary. An outdated
+  // on — the selected host when the effective selection names one, otherwise
+  // the primary. An outdated
   // CLI on the primary must not block submission to a healthy remote machine,
   // nor the other way around.
   const composeHostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
@@ -1686,14 +1737,51 @@ export function RootComposeView(props: RootComposeViewProps) {
 
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const handleProjectChange = useCallback<ProjectSelectionChangeHandler>(
-    (nextProjectId) => {
+    async (nextProjectId) => {
       const nextRootComposeProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
-      if (nextRootComposeProjectId === projectId) return;
+      if (
+        nextRootComposeProjectId === projectId ||
+        isCopyingPromptAttachments
+      ) {
+        return;
+      }
+
+      const attachmentPaths = getProjectStoredPromptAttachmentPaths(
+        promptDraft.getCurrent().attachments,
+      );
+      if (attachmentPaths.length > 0) {
+        setAttachmentError(null);
+        setIsCopyingPromptAttachments(true);
+        try {
+          await copyPromptAttachments(nextRootComposeProjectId, {
+            sourceProjectId: projectId,
+            paths: attachmentPaths,
+          });
+        } catch (error) {
+          setAttachmentError(
+            getMutationErrorMessage({
+              error,
+              fallbackMessage:
+                "Attachments could not be moved to the selected project",
+            }),
+          );
+          return;
+        } finally {
+          setIsCopyingPromptAttachments(false);
+        }
+      }
+
       snapshotPromptDraftBeforeOptionChange();
       setForkSeed(null);
       setRootComposeProjectId(nextRootComposeProjectId);
     },
-    [projectId, setRootComposeProjectId, snapshotPromptDraftBeforeOptionChange],
+    [
+      isCopyingPromptAttachments,
+      projectId,
+      promptDraft,
+      setRootComposeProjectId,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   const shouldFocusPrompt =
     typeof location.state === "object" &&
@@ -1814,12 +1902,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         if (submittedDraft !== null) {
           promptDraft.clearIfCurrentMatches(submittedDraft);
         }
-        if (props.surface === "popout") {
-          props.onThreadCreated({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          });
-        } else if (shouldNavigateToCreatedThread) {
+        if (shouldNavigateToCreatedThread) {
           navigate(
             getThreadRoutePath({
               projectId: thread.projectId,
@@ -1843,7 +1926,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       navigateToThreadAfterCreate,
       permissionMode,
       projectId,
-      props,
       promptDraft,
       reasoningLevel,
       rootComposeFolderId,
@@ -1868,6 +1950,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
+    isCopyingPromptAttachments ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
     managedWorktreeAvailabilityPending ||
@@ -1875,21 +1958,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     (branchEnvironmentMode === "local" &&
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
-
-  const isPromptEmpty = useCallback(
-    () => promptInput.length === 0,
-    [promptInput.length],
-  );
-  const onEscapeEmptyPrompt =
-    props.surface === "popout" ? props.onEscapeEmptyPrompt : undefined;
-  const hideEmptyPopoutPrompt = useCallback(() => {
-    onEscapeEmptyPrompt?.();
-  }, [onEscapeEmptyPrompt]);
-  useEscapeToHide({
-    enabled: props.surface === "popout",
-    isEmpty: isPromptEmpty,
-    onHide: hideEmptyPopoutPrompt,
-  });
 
   const currentPromptDraft = useMemo(
     () => ({
@@ -1929,12 +1997,18 @@ export function RootComposeView(props: RootComposeViewProps) {
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const rootProjectRouting = resolveRootComposeProjectRouting(
+    parsedEnvironment,
+    primaryHostId,
+  );
+  const rootProjectHostId = rootProjectRouting.hostId ?? null;
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
+    hostId: rootProjectHostId,
     query: commandQuery,
   });
   const rootPanelEnvironmentId = reuseEnvironmentId;
@@ -1949,6 +2023,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     {
       currentThreadId: rootPanelThreadId ?? undefined,
       environmentId: rootPanelEnvironmentId,
+      hostId: rootProjectHostId,
     },
   );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
@@ -1956,8 +2031,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
   );
-  const isPersistedSecondaryPanelOpen =
-    props.surface === "page" && fixedPanelTabsState.secondary.isOpen;
+  const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -2000,16 +2074,11 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const setRootSecondaryPanelForSurface =
     useCallback<NullableSecondaryPanelChangeHandler>(
-      (panel) => {
-        if (props.surface !== "page") {
-          return;
-        }
-        setRootSecondaryPanel(panel);
-      },
-      [props.surface, setRootSecondaryPanel],
+      (panel) => setRootSecondaryPanel(panel),
+      [setRootSecondaryPanel],
     );
   const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
-    enabled: props.surface === "page" && rootPanelEnvironmentId !== null,
+    enabled: rootPanelEnvironmentId !== null,
     staleTime: 5_000,
   });
   const rootPanelEnvironment = rootPanelEnvironmentQuery.data;
@@ -2059,7 +2128,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     threadStorageRootPath: rootThreadStorageRootPath,
   } = useThreadStorageViewer({
     activePath: null,
-    fileListEnabled: props.surface === "page" && rootPanelThreadId !== null,
+    fileListEnabled: rootPanelThreadId !== null,
     filePreviewEnabled: false,
     threadId: rootPanelThreadId ?? undefined,
   });
@@ -2070,7 +2139,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     useThreadStorageViewer({
       activePath: null,
       fileListEnabled:
-        props.surface === "page" &&
         rawActiveRootStorageFileThreadId !== null &&
         !shouldUseRootStorageViewerForActiveTab,
       filePreviewEnabled: false,
@@ -2086,9 +2154,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
-      enabled:
-        props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "environment",
+      enabled: rootPanelTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
@@ -2102,9 +2168,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         }
       : null,
     {
-      enabled:
-        props.surface === "page" &&
-        rootPanelTerminalTarget?.kind === "host_path",
+      enabled: rootPanelTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
@@ -2158,8 +2222,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
-    panelStateId:
-      props.surface === "page" ? ROOT_COMPOSE_FIXED_PANEL_STATE_ID : null,
+    panelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     syncThreadId: null,
     environmentId: rootPanelEnvironmentId,
     fileOwnerThreadId: rootPanelThreadId,
@@ -2269,7 +2332,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     openPersistedPanel: openRootSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    surface: props.surface,
     threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
@@ -2281,9 +2343,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       if (resource.kind === "thread") {
         return () =>
           navigate(
-            getSurfaceAwareThreadRoutePath({
+            getThreadRoutePath({
               projectId: resource.projectId ?? projectId,
-              surface: props.surface,
               threadId: resource.threadId,
             }),
           );
@@ -2321,7 +2382,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       openStorageFile,
       openWorkspaceFile,
       projectId,
-      props.surface,
       rootPanelThreadId,
     ],
   );
@@ -2363,7 +2423,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     ],
   );
   useEffect(() => {
-    if (props.surface !== "page" || !isSecondaryPanelOpen) {
+    if (!isSecondaryPanelOpen) {
       return;
     }
     if (
@@ -2374,7 +2434,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       return;
     }
     openTab({ kind: "new-tab" });
-  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab, props.surface]);
+  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab]);
   const openBrowserTab = useCallback(
     (url?: string) => {
       const browserUrl = url ?? "";
@@ -2485,12 +2545,12 @@ export function RootComposeView(props: RootComposeViewProps) {
     setNewTabFocusRequest((current) => current + 1);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
-    if (props.surface !== "page") return false;
+    if (!isFocusedPane) return false;
     handleOpenNewTab();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
-    if (props.surface !== "page") return false;
+    if (!isFocusedPane) return false;
     handleOpenNewTab();
     return true;
   });
@@ -2555,7 +2615,7 @@ export function RootComposeView(props: RootComposeViewProps) {
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
-      props.surface !== "page" ||
+      !isFocusedPane ||
       !canCreateRootTerminal ||
       rootPanelTerminalTarget === null ||
       createEnvironmentTerminalMutation.isPending ||
@@ -2647,28 +2707,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  useAppCommandHandler("panel.toggle", () => {
-    if (props.surface !== "page") return false;
-    handleToggleSecondaryPanel();
-    return true;
-  });
-  useAppCommandHandler("panel.close", () => {
-    if (props.surface !== "page") return false;
-    return handleCloseWindowRequest();
-  });
-  useEffect(() => {
-    if (props.surface !== "page") {
-      return;
-    }
-    const desktopInfo = getBbDesktopInfo();
-    if (
-      desktopInfo === null ||
-      desktopInfo.onCloseWindowRequest === undefined
-    ) {
-      return;
-    }
-    return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
-  }, [handleCloseWindowRequest, props.surface]);
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -2808,7 +2846,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeWorkspaceFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeWorkspaceFileEnvironmentId !== null &&
         activeWorkspaceFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2822,7 +2859,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeRootHostFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeRootHostFileEnvironmentId !== null &&
         activeRootHostFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2836,7 +2872,6 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeRootStorageFileEnvironmentId,
     {
       enabled:
-        props.surface === "page" &&
         activeRootStorageFileEnvironmentId !== null &&
         activeRootStorageFileEnvironmentId !== rootPanelEnvironmentId,
       staleTime: 5_000,
@@ -2879,14 +2914,23 @@ export function RootComposeView(props: RootComposeViewProps) {
           )?.sources ?? []);
   const projectSourcePreviewRootPath =
     activeWorkspaceFileEnvironmentId === null &&
-    activeWorkspaceFileProjectPreviewId !== null &&
-    primaryHostId !== null
-      ? (findLocalPathProjectSourceForHost(activeProjectSources, primaryHostId)
-          ?.path ?? null)
+    activeWorkspaceFileProjectPreviewId !== null
+      ? rootPanelEnvironmentId !== null
+        ? (rootPanelEnvironment?.path ?? null)
+        : rootProjectHostId !== null
+          ? (findLocalPathProjectSourceForHost(
+              activeProjectSources,
+              rootProjectHostId,
+            )?.path ?? null)
+          : null
       : null;
+  const projectSourcePreviewHostId =
+    projectSourcePreviewRootPath === null
+      ? null
+      : (rootPanelEnvironment?.hostId ?? rootProjectHostId);
   const projectSourceOpenContext = resolveHostOpenContext({
-    hostId: projectSourcePreviewRootPath === null ? null : primaryHostId,
-    isLocal: isLocalDaemonHost(primaryHostId),
+    hostId: projectSourcePreviewHostId,
+    isLocal: isLocalDaemonHost(projectSourcePreviewHostId),
     serverOrigin,
   });
   const activeHostOpenContext = resolveEnvironmentOpenContext({
@@ -2967,7 +3011,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       }
     : undefined;
   useAppCommandHandler("workspace.openPreferred", () => {
-    if (props.surface !== "page") return false;
+    if (!isFocusedPane) return false;
     if (
       activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null &&
@@ -3053,6 +3097,7 @@ export function RootComposeView(props: RootComposeViewProps) {
       <NewTabPage
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         currentThreadId={rootPanelThreadId ?? ""}
         focusRequest={newTabFocusRequest}
         onSelect={handleSelectFileSearchResult}
@@ -3081,6 +3126,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       <ProjectFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={projectFileCopyPath}
+        environmentId={rootPanelEnvironmentId}
+        hostId={rootProjectHostId}
         lineRange={activeWorkspaceFileLineRange}
         onOpenInEditor={handleOpenProjectFileInEditor}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -3151,24 +3198,18 @@ export function RootComposeView(props: RootComposeViewProps) {
     },
     [openWorkspaceFile],
   );
-  // Keep the panel toggle pinned to the viewport corner on the full page and to
-  // the pane corner in a split. A bounded pane shifts it left by one action slot
-  // so its close button can own the outermost position. The panel reserves a
-  // matching slot via inlinePanelToggle="reserved". The drawer layout has no
-  // pinned slot, so there the toggle only opens the drawer and its close control
-  // lives inside the drawer.
+  // Standalone compose keeps its panel toggle pinned to the viewport corner.
+  // Multi-pane compose publishes its panel model to SplitThreadArea instead,
+  // which owns the one stable window-level toggle.
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
-  const isBoundedPage = props.surface === "page" && props.isBoundedPane;
-  const panelTogglePositionClassName = isBoundedPage
-    ? ROOT_COMPOSE_BOUNDED_PANEL_TOGGLE_POSITION_CLASS
-    : ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
+  const panelTogglePositionClassName =
+    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
   const rootPanelToggle =
-    !renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen ? (
-      <div
-        className={`${isBoundedPage ? "absolute" : "fixed"} z-40 ${panelTogglePositionClassName}`}
-      >
+    (paneContext?.secondaryPanelHost ?? null) === null &&
+    (!renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen) ? (
+      <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
         <RootComposeRightPanelToggle
           isOpen={isSecondaryPanelOpen}
           onToggle={handleToggleSecondaryPanel}
@@ -3181,7 +3222,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId: projectId ?? "",
       onAttachFiles: handleAttachFiles,
       onRemove: promptDraft.removeAttachment,
-      isAttaching: uploadPromptAttachment.isPending,
+      isAttaching:
+        uploadPromptAttachment.isPending || isCopyingPromptAttachments,
       error: attachmentError,
     }),
     [
@@ -3190,11 +3232,13 @@ export function RootComposeView(props: RootComposeViewProps) {
       projectId,
       promptDraft.attachments,
       promptDraft.removeAttachment,
+      isCopyingPromptAttachments,
       uploadPromptAttachment.isPending,
     ],
   );
   const executionConfig = useMemo(
     () => ({
+      providerRouting: executionOptionsRouting,
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -3226,6 +3270,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     }),
     [
       activeModel,
+      executionOptionsRouting,
       forkSeed,
       hasMultipleProviders,
       handleSelectedProviderIdChange,
@@ -3249,7 +3294,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   );
   const isForkDraft = forkSeed !== null;
   const showEmptyWelcome =
-    props.surface === "page" &&
     !isForkDraft &&
     !startedComposing &&
     projects !== undefined &&
@@ -3541,24 +3585,19 @@ export function RootComposeView(props: RootComposeViewProps) {
             !quickCreateProject.isAvailable || quickCreateProject.isCreating,
           isCreating: quickCreateProject.isCreating,
         },
-        disabled: isForkDraft,
+        disabled: isForkDraft || isCopyingPromptAttachments,
       }}
       execution={executionConfig}
     />
   );
 
-  if (props.surface === "popout") {
-    return (
-      <>
-        <div className="w-full">{promptBox}</div>
-        {providerCliInstallLogDialog}
-        {machineSetupDialog}
-      </>
-    );
-  }
-
   return (
     <>
+      <RootComposePanelCommandHandlers
+        isFocused={isFocusedPane}
+        onClose={handleCloseWindowRequest}
+        onToggle={handleToggleSecondaryPanel}
+      />
       {providerCliInstallLogDialog}
       {machineSetupDialog}
       {rootPanelToggle}
@@ -3569,6 +3608,7 @@ export function RootComposeView(props: RootComposeViewProps) {
             : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
         }
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        onToggleSecondaryPanel={handleToggleSecondaryPanel}
         panelTogglePositionClassName={panelTogglePositionClassName}
         secondaryPanel={{
           activeTab: activeFixedSecondaryTab,

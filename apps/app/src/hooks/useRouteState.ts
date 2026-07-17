@@ -12,7 +12,7 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
-  /** On the Tools hub, legacy tool routes, or a built-in tool plugin panel. */
+  /** On the Tools hub, legacy tool routes, or the Automations plugin panel. */
   isToolsView: boolean;
   /** On the Skills surface. */
   isSkillsView: boolean;
@@ -37,10 +37,6 @@ export function useRouteState(): RouteState {
     "/projects/:projectId/threads/:threadId/*",
   );
   const projectlessThreadMatch = useMatch("/threads/:threadId/*");
-  const popoutProjectThreadMatch = useMatch(
-    "/popout/projects/:projectId/threads/:threadId/*",
-  );
-  const popoutProjectlessThreadMatch = useMatch("/popout/threads/:threadId/*");
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
@@ -51,20 +47,14 @@ export function useRouteState(): RouteState {
     location.pathname === "/tools" || location.pathname.startsWith("/tools/");
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
-    projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID ||
-    popoutProjectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
-  const projectlessThreadId =
-    projectlessThreadMatch?.params.threadId ??
-    popoutProjectlessThreadMatch?.params.threadId;
+    projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
+  const projectlessThreadId = projectlessThreadMatch?.params.threadId;
   const threadId =
     projectlessThreadId ??
     (isUnsupportedPersonalProjectThread
       ? undefined
-      : (projectThreadMatch?.params.threadId ??
-        popoutProjectThreadMatch?.params.threadId));
-  const projectRouteProjectId =
-    projectMatch?.params.projectId ??
-    popoutProjectThreadMatch?.params.projectId;
+      : projectThreadMatch?.params.threadId);
+  const projectRouteProjectId = projectMatch?.params.projectId;
   const projectId =
     projectlessThreadId !== undefined || Boolean(projectlessArchivedMatch)
       ? PERSONAL_PROJECT_ID
@@ -77,9 +67,7 @@ export function useRouteState(): RouteState {
     threadId,
     isThreadView:
       Boolean(projectlessThreadMatch) ||
-      Boolean(popoutProjectlessThreadMatch) ||
-      ((Boolean(projectThreadMatch) || Boolean(popoutProjectThreadMatch)) &&
-        !isUnsupportedPersonalProjectThread),
+      (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),
     isArchivedView:
       Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),

@@ -98,17 +98,14 @@ function pluginStatusTone(
 }
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
-  if (plugin.isBuiltin) return "Built-in";
-  if (plugin.marketplaceName !== null) {
-    return `From ${plugin.marketplaceName}`;
-  }
-  if (plugin.source === null) return null;
+  if (plugin.provenance === "builtin") return "Built-in";
+  if (plugin.provenance === "catalog") return "BB Official";
   if (plugin.source.startsWith("path:")) return "Local plugin";
   return "Direct install";
 }
 
 function pluginIsLocalSource(plugin: PluginListItem): boolean {
-  return plugin.source?.startsWith("path:") === true;
+  return plugin.source.startsWith("path:");
 }
 
 function pluginCanBeRemoved(plugin: PluginListItem): boolean {
@@ -529,11 +526,11 @@ export function PluginDetail({
         <ResourceDetailBackButton label="Back to plugins" onClick={onBack} />
       }
       leading={<PluginListLogo plugin={plugin} />}
-      title={plugin.displayName ?? plugin.id}
+      title={plugin.name ?? plugin.id}
       titleMeta={sourceLabel}
       metadata={[
         <span key="locator" className="font-mono">
-          {plugin.rootDir ?? plugin.source ?? plugin.id}
+          {plugin.rootDir}
         </span>,
       ]}
       description={plugin.description}
@@ -541,7 +538,7 @@ export function PluginDetail({
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
       overflowItems={
-        plugin.isBuiltin
+        plugin.provenance === "builtin"
           ? undefined
           : [
               ...(canEditSource

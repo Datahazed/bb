@@ -13,37 +13,36 @@ import { UpdatePluginDialog } from "./UpdatePluginDialog";
 function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
   return {
     id: "linear",
-    source: "npm:@bb-plugins/linear@1.6.2",
-    isBuiltin: false,
+    source: "npm:@example/linear@^1.6.0",
     rootDir: "/plugins/linear",
     version: "1.6.2",
     enabled: true,
     status: "running",
     statusDetail: null,
     description: null,
-    displayName: "Linear",
+    name: "Linear",
     icon: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
-    provenance: "marketplace",
-    marketplaceName: "bb-official",
+    provenance: "catalog",
+    isOrphanedBuiltin: false,
+    catalogEntryId: "linear",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
     services: [],
     schedules: [],
     cliCommand: null,
-    app: { hasApp: false },
+    app: { hasApp: false, bundle: null },
   };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 afterEach(() => {

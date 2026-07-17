@@ -47,27 +47,23 @@ const AUTOMATIONS_PLUGIN = {
   status: "running",
   statusDetail: null,
   description: "Schedule recurring and one-shot agent or script work.",
-  displayName: "Automations",
+  name: "Automations",
   icon: "Clock",
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
   provenance: "builtin",
-  marketplaceName: null,
+  isOrphanedBuiltin: false,
   sourceDisplay: "builtin · automations",
   updateState: {},
+  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+  services: [],
+  schedules: [],
+  cliCommand: null,
+  app: { hasApp: true, bundle: null },
 };
 
-const BB_OFFICIAL_MARKETPLACE = {
-  id: "bb-official",
-  name: "bb-official",
-  displayName: "BB Official",
-  source: "https://github.com/ymichael/bb.git@main",
-  pluginCount: 3,
-};
-
-const GITHUB_MARKETPLACE_ENTRY = {
-  marketplaceId: "bb-official",
+const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -76,6 +72,7 @@ const GITHUB_MARKETPLACE_ENTRY = {
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
   installed: false,
   compatible: true,
+  incompatibleReason: null,
 };
 
 function installFetch(
@@ -101,11 +98,11 @@ function installFetch(
           plugins,
         });
       }
-      if (url.pathname === "/api/v1/marketplaces") {
-        return responseJson({ marketplaces: [BB_OFFICIAL_MARKETPLACE] });
+      if (url.pathname === "/api/v1/plugin-catalog") {
+        return responseJson({ catalog: { pluginCount: 4 } });
       }
-      if (url.pathname === "/api/v1/marketplaces/search") {
-        return responseJson({ results: [GITHUB_MARKETPLACE_ENTRY] });
+      if (url.pathname === "/api/v1/plugin-catalog/search") {
+        return responseJson({ results: [GITHUB_CATALOG_ENTRY] });
       }
       return responseJson({ error: "not found" }, 404);
     }),
@@ -122,7 +119,7 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
-  it("renders Installed, Browse, and Marketplaces as real collection projections", async () => {
+  it("renders Installed and Browse as real collection projections", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -143,24 +140,12 @@ describe("PluginsOverview", () => {
     expect(
       screen.getByRole("button", { name: "New plugin options" }),
     ).toBeTruthy();
-    const marketplacesTab = await screen.findByRole("tab", {
-      name: "Marketplaces, 1 marketplace",
-    });
+    expect(screen.queryByRole("tab", { name: /Marketplaces/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
-
-    fireEvent.click(marketplacesTab);
-    expect(await screen.findByText("BB Official")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Marketplaces are catalogs, not installed code. Adding or refreshing one never installs or runs a plugin.",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Add marketplace" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "New plugin" })).toBeNull();
+    expect(screen.getByText("BB Official plugins")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 
   it("opens installed resources on the canonical Tools detail route", async () => {
@@ -178,7 +163,7 @@ describe("PluginsOverview", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("link", {
+      await screen.findByRole("button", {
         name: "Automations plugin details",
       }),
     );
@@ -194,7 +179,7 @@ describe("PluginsOverview", () => {
         ...AUTOMATIONS_PLUGIN,
         id: `plugin-${ordinal}`,
         source: `builtin:plugin-${ordinal}`,
-        displayName: `Plugin ${ordinal}`,
+        name: `Plugin ${ordinal}`,
       };
     });
     installFetch(true, plugins);
@@ -228,7 +213,7 @@ describe("PluginsOverview", () => {
     ).toBeNull();
   });
 
-  it("keeps installed plugins visible when marketplace management is off", async () => {
+  it("keeps installed plugins visible when plugin installation is off", async () => {
     installFetch(false);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(

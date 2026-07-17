@@ -1,11 +1,10 @@
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
   defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
-  isValidElectronAccelerator,
   type AppTheme,
   type FaviconColorPreference,
   type PluginThemeMeta,
@@ -45,6 +44,7 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -52,7 +52,7 @@ import {
 } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
-import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   FAVICON_COLOR_VALUES,
   getFaviconGlyphHref,
@@ -134,6 +134,12 @@ export interface RichTextEditingSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface UnhandledProviderEventsSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface FaviconColorSettingsControlProps {
   disabled: boolean;
   faviconColor: FaviconColorPreference;
@@ -169,6 +175,9 @@ export interface GeneralSettingsSectionProps {
   richTextEditing: boolean;
 }
 
+export type DebugSettingsSectionProps =
+  UnhandledProviderEventsSettingsControlProps;
+
 function appPaletteLabel(
   appearance: AppTheme,
   pluginThemes: readonly PluginThemeMeta[],
@@ -184,20 +193,11 @@ function appPaletteLabel(
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
-  bbConnectEnabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
-  desktopShellAvailable: boolean;
-  onBbConnectEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onMultiMachineEnabledChange: (enabled: boolean) => void;
-  onPopoutChatEnabledChange: (enabled: boolean) => void;
-  onPopoutChatHotkeyChange: (hotkey: string) => void;
   onPluginsEnabledChange: (enabled: boolean) => void;
   onThreadSplitsEnabledChange: (enabled: boolean) => void;
   pluginsEnabled: boolean;
-  multiMachineEnabled: boolean;
-  popoutChatEnabled: boolean;
-  popoutChatHotkey: string;
   threadSplitsEnabled: boolean;
 }
 
@@ -468,6 +468,8 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
+const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
+  "Show unhandled provider events";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 
 export function RootComposeBehaviorSettingsControl({
@@ -551,6 +553,26 @@ export function RichTextEditingSettingsControl({
         checked={enabled}
         onCheckedChange={onEnabledChange}
         aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function UnhandledProviderEventsSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: UnhandledProviderEventsSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+      description="Show raw provider events bb does not recognize. Development builds always show these events."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -761,6 +783,22 @@ export function GeneralSettingsSection({
   );
 }
 
+export function DebugSettingsSection({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: DebugSettingsSectionProps) {
+  return (
+    <SettingsSection title="Debug">
+      <UnhandledProviderEventsSettingsControl
+        disabled={disabled}
+        enabled={enabled}
+        onEnabledChange={onEnabledChange}
+      />
+    </SettingsSection>
+  );
+}
+
 interface ProviderSettingsSectionProps {
   memoryEnabled: boolean;
   subagentsDisabled: boolean;
@@ -836,204 +874,16 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const BB_CONNECT_EXPERIMENT_LABEL = "bb connect";
-const MULTI_MACHINE_EXPERIMENT_LABEL = "Multi-machine";
 const THREAD_SPLITS_EXPERIMENT_LABEL = "Thread splits";
-const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
-const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
 const PLUGINS_EXPERIMENT_LABEL = "Plugins";
 
-interface HotkeyRecorderProps {
-  disabled: boolean;
-  hotkey: string;
-  onHotkeyChange: (hotkey: string) => void;
-}
-
-type HotkeyButtonKeyDownEvent = KeyboardEvent<HTMLButtonElement>;
-
-function formatHotkeyForMacos(hotkey: string): string {
-  return hotkey
-    .split("+")
-    .map((part) => {
-      switch (part) {
-        case "Alt":
-        case "Option":
-          return "⌥";
-        case "Command":
-        case "Cmd":
-          return "⌘";
-        case "CommandOrControl":
-        case "CmdOrCtrl":
-          return "⌘/Ctrl";
-        case "Control":
-        case "Ctrl":
-          return "⌃";
-        case "Shift":
-          return "⇧";
-        default:
-          return part;
-      }
-    })
-    .join(" ");
-}
-
-function isModifierKey(key: string): boolean {
-  return (
-    key === "Alt" ||
-    key === "Control" ||
-    key === "Meta" ||
-    key === "OS" ||
-    key === "Shift"
-  );
-}
-
-function normalizeAcceleratorKey(key: string): string | null {
-  if (key === " " || key === "Spacebar") {
-    return "Space";
-  }
-  if (key.length === 1) {
-    if (key === "+") {
-      return "Plus";
-    }
-    return key.toUpperCase();
-  }
-  if (key.startsWith("Arrow")) {
-    return key.slice("Arrow".length);
-  }
-  switch (key) {
-    case "Backspace":
-    case "Delete":
-    case "Down":
-    case "End":
-    case "Enter":
-    case "Home":
-    case "Insert":
-    case "Left":
-    case "PageDown":
-    case "PageUp":
-    case "Right":
-    case "Space":
-    case "Tab":
-    case "Up":
-      return key;
-    default:
-      return /^F(?:[1-9]|1[0-9]|2[0-4])$/.test(key) ? key : null;
-  }
-}
-
-function buildElectronAcceleratorFromKeydown(
-  event: HotkeyButtonKeyDownEvent,
-): string | null {
-  if (isModifierKey(event.key)) {
-    return null;
-  }
-
-  const key = normalizeAcceleratorKey(event.key);
-  if (key === null) {
-    return null;
-  }
-
-  const modifiers: string[] = [];
-  if (event.metaKey) {
-    modifiers.push("Command");
-  }
-  if (event.ctrlKey) {
-    modifiers.push("Control");
-  }
-  if (event.altKey) {
-    modifiers.push("Alt");
-  }
-  if (event.shiftKey) {
-    modifiers.push("Shift");
-  }
-  if (modifiers.length === 0) {
-    return null;
-  }
-  const accelerator = [...modifiers, key].join("+");
-  return isValidElectronAccelerator(accelerator) ? accelerator : null;
-}
-
-function HotkeyRecorder({
-  disabled,
-  hotkey,
-  onHotkeyChange,
-}: HotkeyRecorderProps) {
-  const [recording, setRecording] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function handleClick() {
-    setRecording(true);
-    setError(null);
-  }
-
-  function handleKeyDown(event: HotkeyButtonKeyDownEvent) {
-    if (!recording) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.key === "Escape") {
-      setRecording(false);
-      setError(null);
-      return;
-    }
-
-    const accelerator = buildElectronAcceleratorFromKeydown(event);
-    if (accelerator === null) {
-      setError("Use at least one modifier with a key.");
-      return;
-    }
-
-    onHotkeyChange(accelerator);
-    setRecording(false);
-    setError(null);
-  }
-
-  function handleBlur() {
-    setRecording(false);
-    setError(null);
-  }
-
-  return (
-    <div className="flex flex-col items-start gap-1 sm:items-end">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={cn(
-          "h-7 min-w-24 px-2 font-mono text-xs",
-          recording ? "border-ring text-foreground" : null,
-        )}
-        disabled={disabled}
-        onClick={handleClick}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        aria-label="Record popout chat hotkey"
-      >
-        {recording ? "Press keys" : formatHotkeyForMacos(hotkey)}
-      </Button>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-    </div>
-  );
-}
-
 export function ExperimentsSettingsSection({
-  bbConnectEnabled,
   claudeCodeMockCliTrafficEnabled,
-  desktopShellAvailable,
   disabled,
-  onBbConnectEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
-  onMultiMachineEnabledChange,
   onPluginsEnabledChange,
   onThreadSplitsEnabledChange,
-  onPopoutChatEnabledChange,
-  onPopoutChatHotkeyChange,
   pluginsEnabled,
-  multiMachineEnabled,
-  popoutChatEnabled,
-  popoutChatHotkey,
   threadSplitsEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1056,32 +906,8 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={BB_CONNECT_EXPERIMENT_LABEL}
-          description="Enable remote access for this bb server at getbb.app."
-        >
-          <Switch
-            checked={bbConnectEnabled}
-            disabled={disabled}
-            onCheckedChange={onBbConnectEnabledChange}
-            aria-label={BB_CONNECT_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={MULTI_MACHINE_EXPERIMENT_LABEL}
-          description="Allow explicit execution on other connected machines. Default execution stays on this machine."
-        >
-          <Switch
-            checked={multiMachineEnabled}
-            disabled={disabled}
-            onCheckedChange={onMultiMachineEnabledChange}
-            aria-label={MULTI_MACHINE_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
           label={THREAD_SPLITS_EXPERIMENT_LABEL}
-          description="Split the thread view into up to 4 panes; drag threads from the sidebar to split."
+          description="Split the thread view into up to 8 panes; drag threads from the sidebar to split."
         >
           <Switch
             checked={threadSplitsEnabled}
@@ -1102,40 +928,6 @@ export function ExperimentsSettingsSection({
             aria-label={PLUGINS_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
-
-        <SettingsWithControl
-          label={POPOUT_CHAT_EXPERIMENT_LABEL}
-          description="Open compact desktop chat with a hotkey."
-        >
-          <div className="flex items-center gap-2">
-            {!desktopShellAvailable ? (
-              <span className="text-xs text-muted-foreground">
-                Desktop only
-              </span>
-            ) : null}
-            <Switch
-              checked={popoutChatEnabled}
-              disabled={disabled || !desktopShellAvailable}
-              onCheckedChange={onPopoutChatEnabledChange}
-              aria-label={POPOUT_CHAT_EXPERIMENT_LABEL}
-            />
-          </div>
-        </SettingsWithControl>
-
-        {popoutChatEnabled ? (
-          <div className="border-l border-border pl-3">
-            <SettingsWithControl
-              label={POPOUT_CHAT_HOTKEY_LABEL}
-              description="Record the popout chat shortcut."
-            >
-              <HotkeyRecorder
-                disabled={disabled || !desktopShellAvailable}
-                hotkey={popoutChatHotkey}
-                onHotkeyChange={onPopoutChatHotkeyChange}
-              />
-            </SettingsWithControl>
-          </div>
-        ) : null}
       </div>
     </SettingsSection>
   );
@@ -1162,7 +954,6 @@ export function SettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
-  const [desktopShellAvailable] = useState(() => getBbDesktopInfo() !== null);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
   const generalSettings =
@@ -1234,7 +1025,10 @@ export function SettingsView() {
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
-          updateAppearanceMutation.mutate({ themeId })
+          updateAppearanceMutation.mutate({
+            themeId,
+            faviconColor: appearance.faviconColor,
+          })
         }
         onCreatePalette={() =>
           navigate(getRootComposeRoutePath(), {
@@ -1277,7 +1071,6 @@ export function SettingsView() {
     content = (
       <ExperimentsSettingsSection
         claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
-        desktopShellAvailable={desktopShellAvailable}
         disabled={
           systemConfigQuery.data === undefined ||
           updateExperimentsMutation.isPending
@@ -1286,30 +1079,6 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             claudeCodeMockCliTraffic: enabled,
-          })
-        }
-        onPopoutChatEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            popoutChat: enabled,
-          })
-        }
-        onPopoutChatHotkeyChange={(hotkey) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            popoutChatHotkey: hotkey,
-          })
-        }
-        onBbConnectEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            bbConnect: enabled,
-          })
-        }
-        onMultiMachineEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            multiMachine: enabled,
           })
         }
         onThreadSplitsEnabledChange={(enabled) =>
@@ -1324,16 +1093,14 @@ export function SettingsView() {
             plugins: enabled,
           })
         }
-        bbConnectEnabled={experiments.bbConnect}
-        multiMachineEnabled={experiments.multiMachine}
         threadSplitsEnabled={experiments.threadSplits}
         pluginsEnabled={experiments.plugins}
-        popoutChatEnabled={experiments.popoutChat}
-        popoutChatHotkey={experiments.popoutChatHotkey}
       />
     );
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
+  } else if (activeSection === "archived") {
+    content = <ArchivedThreadsSettingsSection />;
   } else {
     content = (
       <>
@@ -1364,6 +1131,19 @@ export function SettingsView() {
         />
         <VoiceInputSettingsSection />
         <UpdatesSettingsSection />
+        <DebugSettingsSection
+          enabled={generalSettings.showUnhandledProviderEvents}
+          disabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
+          onEnabledChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showUnhandledProviderEvents: enabled,
+            })
+          }
+        />
       </>
     );
   }

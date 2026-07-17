@@ -1,7 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import {
   RESOURCE_LIST_PAGE_SIZE,
   ResourcePagination,
@@ -24,35 +22,23 @@ import {
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
-import { MarketplacesTab } from "@/components/plugin/management/MarketplacesTab";
-import { useMarketplaces } from "@/hooks/queries/plugin-marketplace-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 
-type PluginsCollectionMode = "installed" | "browse" | "marketplaces";
-
-const INSTALLABLE_MODES = new Set<PluginsCollectionMode>([
-  "browse",
-  "marketplaces",
-]);
+type PluginsCollectionMode = "installed" | "browse";
 
 function modeFromSearchParams(
   value: string | null,
-  marketplaceManagementEnabled: boolean,
+  installationEnabled: boolean,
 ): PluginsCollectionMode {
-  if (
-    marketplaceManagementEnabled &&
-    (value === "browse" || value === "marketplaces")
-  ) {
-    return value;
-  }
+  if (installationEnabled && value === "browse") return value;
   return "installed";
 }
 
 /**
  * The canonical Plugins collection: installed resources, discoverable
- * resources, and the marketplace sources that make discovery possible.
+ * resources from BB's official catalog.
  * Modes are URL-backed projections of one collection, not separate settings
  * pages; plugin configuration and lifecycle depth remain on the detail route.
  */
@@ -60,21 +46,17 @@ export function PluginsOverview() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const systemConfig = useSystemConfig();
-  const marketplaceManagementEnabled =
-    systemConfig.data?.experiments.plugins === true;
+  const installationEnabled = systemConfig.data?.experiments.plugins === true;
   // Installed and builtin plugins remain visible even when installing new
   // plugins is disabled by the experiment.
   const listQuery = usePluginList({ enabled: true });
-  const marketplacesQuery = useMarketplaces({
-    enabled: marketplaceManagementEnabled,
-  });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
     [listQuery.data],
   );
   const activeMode = modeFromSearchParams(
     searchParams.get("view"),
-    marketplaceManagementEnabled,
+    installationEnabled,
   );
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedSortDirection, setInstalledSortDirection] = useState<
@@ -84,7 +66,6 @@ export function PluginsOverview() {
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
-  const [marketplaceAddOpen, setMarketplaceAddOpen] = useState(false);
 
   const modes: readonly ResourceCollectionMode<PluginsCollectionMode>[] = [
     {
@@ -95,24 +76,8 @@ export function PluginsOverview() {
         plugins.length === 1 ? "plugin" : "plugins"
       }`,
     },
-    ...(marketplaceManagementEnabled
-      ? [
-          { id: "browse" as const, label: "Browse" },
-          {
-            id: "marketplaces" as const,
-            label: "Marketplaces",
-            ...(marketplacesQuery.data !== undefined
-              ? {
-                  count: marketplacesQuery.data.length,
-                  accessibleLabel: `Marketplaces, ${marketplacesQuery.data.length} ${
-                    marketplacesQuery.data.length === 1
-                      ? "marketplace"
-                      : "marketplaces"
-                  }`,
-                }
-              : {}),
-          },
-        ]
+    ...(installationEnabled
+      ? [{ id: "browse" as const, label: "Browse" }]
       : []),
   ];
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
@@ -123,7 +88,7 @@ export function PluginsOverview() {
           if (normalizedInstalledQuery.length === 0) return true;
           return [
             plugin.id,
-            plugin.displayName ?? "",
+            plugin.name ?? "",
             plugin.description ?? "",
             plugin.version,
             plugin.sourceDisplay,
@@ -133,8 +98,8 @@ export function PluginsOverview() {
             .includes(normalizedInstalledQuery);
         })
         .sort((left, right) => {
-          const result = (left.displayName ?? left.id).localeCompare(
-            right.displayName ?? right.id,
+          const result = (left.name ?? left.id).localeCompare(
+            right.name ?? right.id,
           );
           return installedSortDirection === "asc" ? result : -result;
         }),
@@ -146,7 +111,7 @@ export function PluginsOverview() {
   });
 
   const changeMode = (mode: PluginsCollectionMode) => {
-    if (!marketplaceManagementEnabled && INSTALLABLE_MODES.has(mode)) return;
+    if (!installationEnabled && mode === "browse") return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -167,48 +132,30 @@ export function PluginsOverview() {
       },
     });
 
-  const actions =
-    activeMode === "marketplaces" ? (
-      <Button
-        type="button"
-        size="sm"
-        className="h-7 px-2.5 text-xs"
-        onClick={() => setMarketplaceAddOpen(true)}
-      >
-        <Icon name="Plus" className="size-3.5" />
-        Add marketplace
-      </Button>
-    ) : (
-      <CreateWithTemplatesButton
-        kind="plugin"
-        label="New plugin"
-        menuActions={
-          marketplaceManagementEnabled
-            ? [
-                {
-                  label: "Install from source",
-                  icon: "Download",
-                  onSelect: () => setAddDialog({ open: true, initial: null }),
-                },
-              ]
-            : []
-        }
-        onCreate={startCreatePlugin}
-      />
-    );
+  const actions = (
+    <CreateWithTemplatesButton
+      kind="plugin"
+      label="New plugin"
+      menuActions={
+        installationEnabled
+          ? [
+              {
+                label: "Install from source",
+                icon: "Download",
+                onSelect: () => setAddDialog({ open: true, initial: null }),
+              },
+            ]
+          : []
+      }
+      onCreate={startCreatePlugin}
+    />
+  );
 
   let content: ReactNode;
   if (activeMode === "browse") {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
-      />
-    );
-  } else if (activeMode === "marketplaces") {
-    content = (
-      <MarketplacesTab
-        addOpen={marketplaceAddOpen}
-        onAddOpenChange={setMarketplaceAddOpen}
       />
     );
   } else {
@@ -260,10 +207,10 @@ export function PluginsOverview() {
             scrollTargetId="plugins-installed-results"
           />
         ) : null}
-        {!marketplaceManagementEnabled && systemConfig.data !== undefined ? (
+        {!installationEnabled && systemConfig.data !== undefined ? (
           <p className="px-1 text-2xs text-subtle-foreground">
             Browsing and installation are off. Turn on Plugins in Settings →
-            Experiments to add plugins or marketplaces.
+            Experiments to add plugins.
           </p>
         ) : null}
       </div>

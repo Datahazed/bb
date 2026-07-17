@@ -43,39 +43,25 @@ import {
 } from "./schedule-helpers.js";
 import {
   deleteAutomationScriptDir,
+  readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
 import { executeAgentRun, executeScriptRun } from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
-    projects: {
-      get(
-        args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0],
-      ): Promise<unknown>;
-      list(
-        args?: Parameters<BbPluginApi["sdk"]["projects"]["list"]>[0],
-      ): Promise<unknown>;
-      sidebarBootstrap?: () => Promise<unknown>;
-    };
-    threads: {
-      get(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
-      ): Promise<unknown>;
-      send(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
-      ): Promise<unknown>;
-      spawn(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
-      ): Promise<unknown>;
-    };
+    projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
+    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: { projectId: string }): AutomationResponse[];
-  get(input: { projectId: string; automationId: string }): AutomationResponse;
+  get(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -158,6 +144,31 @@ async function resolveStoredExecution(args: {
   return args.execution;
 }
 
+async function toEditableAutomationResponse(args: {
+  pluginDataDir: string;
+  row: AutomationRow;
+}): Promise<AutomationResponse> {
+  const automation = toAutomationResponse(args.row);
+  if (
+    automation.execution.mode !== "script" ||
+    automation.execution.scriptFile === undefined
+  ) {
+    return automation;
+  }
+  const { scriptFile, ...execution } = automation.execution;
+  return {
+    ...automation,
+    execution: {
+      ...execution,
+      script: await readAutomationScript({
+        dataDir: args.pluginDataDir,
+        automationId: automation.id,
+        scriptFile,
+      }),
+    },
+  };
+}
+
 function encodeRunCursor(startedAt: number, id: string): string {
   return Buffer.from(`${startedAt}:${id}`, "utf8").toString("base64url");
 }
@@ -182,7 +193,7 @@ async function projectNameById(
 ): Promise<Map<string, string>> {
   try {
     const projects = projectSummaryListSchema.parse(
-      await bb.sdk.projects.list(),
+      await bb.sdk.projects.list({ includePersonal: true }),
     );
     return new Map(
       projects
@@ -211,84 +222,6 @@ const projectSummarySchema = z
   })
   .passthrough();
 const projectSummaryListSchema = z.array(projectSummarySchema);
-const folderSummarySchema = z
-  .object({
-    id: z.string(),
-    name: z.string().min(1),
-  })
-  .passthrough();
-const sidebarBootstrapSummarySchema = z
-  .object({
-    folders: z.array(folderSummarySchema),
-    projects: z.array(projectSummarySchema),
-    personalProject: projectSummarySchema,
-  })
-  .passthrough();
-
-async function overviewLookups(
-  bb: Pick<ServiceApi, "sdk" | "log">,
-): Promise<{ folders: Map<string, string>; projects: Map<string, string> }> {
-  const { sidebarBootstrap } = bb.sdk.projects;
-  if (sidebarBootstrap === undefined) {
-    return { folders: new Map(), projects: await projectNameById(bb) };
-  }
-  try {
-    const bootstrap = sidebarBootstrapSummarySchema.parse(
-      await sidebarBootstrap(),
-    );
-    return {
-      folders: new Map(
-        bootstrap.folders.map((folder) => [folder.id, folder.name]),
-      ),
-      projects: new Map(
-        [bootstrap.personalProject, ...bootstrap.projects]
-          .filter(
-            (project) =>
-              project.deletedAt === undefined || project.deletedAt === null,
-          )
-          .map((project) => [project.id, project.name ?? project.id]),
-      ),
-    };
-  } catch (error) {
-    bb.log.warn(
-      `Failed to load sidebar bootstrap for automations overview: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return { folders: new Map(), projects: await projectNameById(bb) };
-  }
-}
-
-const automationTargetThreadSchema = z
-  .object({
-    folderId: z.string().nullable(),
-  })
-  .passthrough();
-
-async function automationFolderForRow(
-  bb: Pick<ServiceApi, "sdk" | "log">,
-  folders: ReadonlyMap<string, string>,
-  row: AutomationRow,
-): Promise<{ id: string; name: string } | null> {
-  if (row.targetThreadId === null) return null;
-  try {
-    const thread = automationTargetThreadSchema.parse(
-      await bb.sdk.threads.get({ threadId: row.targetThreadId }),
-    );
-    if (thread.folderId === null) return null;
-    return {
-      id: thread.folderId,
-      name: folders.get(thread.folderId) ?? thread.folderId,
-    };
-  } catch (error) {
-    bb.log.warn(
-      `Failed to resolve target thread folder for automation ${row.id}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-}
 
 async function requireProjectAvailable(
   bb: Pick<ServiceApi, "sdk">,
@@ -315,7 +248,7 @@ export function createAutomationService(args: {
 
   return {
     async overview() {
-      const { folders, projects } = await overviewLookups(bb);
+      const projects = await projectNameById(bb);
       const rows = listAllAutomations(db);
       const automations = (
         await Promise.all(
@@ -329,7 +262,6 @@ export function createAutomationService(args: {
                   id: row.projectId,
                   name: projectName ?? row.projectId,
                 },
-                folder: await automationFolderForRow(bb, folders, row),
               };
             } catch (error) {
               bb.log.warn(
@@ -352,7 +284,10 @@ export function createAutomationService(args: {
     },
 
     get(input) {
-      return toAutomationResponse(requireProjectAutomation(db, input));
+      return toEditableAutomationResponse({
+        pluginDataDir,
+        row: requireProjectAutomation(db, input),
+      });
     },
 
     async create(payload) {

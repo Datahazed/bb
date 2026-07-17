@@ -11,10 +11,7 @@ import {
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
-import {
-  resetPluginSlotStoreForTest,
-  setPluginSlotRegistrations,
-} from "@/lib/plugin-slots";
+import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSettingsNavState } from "./settings-nav";
 
@@ -30,10 +27,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
 }));
 
-function systemConfig(
-  pluginsEnabled: boolean,
-  multiMachineEnabled = false,
-): SystemConfigResponse {
+function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
@@ -42,7 +36,6 @@ function systemConfig(
     experiments: {
       ...defaultExperiments,
       plugins: pluginsEnabled,
-      multiMachine: multiMachineEnabled,
     },
     appearance: defaultAppTheme,
     customThemes: [],
@@ -54,10 +47,6 @@ function systemConfig(
     voiceTranscriptionEnabled: false,
     dataDir: "/tmp/bb-test",
   };
-}
-
-function Component() {
-  return null;
 }
 
 function wrapperFor(path: string) {
@@ -95,78 +84,45 @@ describe("useSettingsNavState", () => {
     ).toEqual(["codex", "claude-code"]);
   });
 
-  it("shows the Machines section only while the multiMachine experiment is on", async () => {
-    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false, true));
+  it("shows the Machines section", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
 
-    const enabled = renderHook(() => useSettingsNavState(), {
+    const result = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/machines"),
     });
     await waitFor(() => {
       expect(
-        enabled.result.current.sections.map((section) => section.id),
+        result.result.current.sections.map((section) => section.id),
       ).toContain("machines");
     });
-
-    vi.mocked(api.getSystemConfig).mockResolvedValue(
-      systemConfig(false, false),
-    );
-    const disabled = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/general"),
-    });
-    await waitFor(() => {
-      expect(disabled.result.current.activeSection).toBe("general");
-    });
-    expect(
-      disabled.result.current.sections.map((section) => section.id),
-    ).not.toContain("machines");
   });
 
-  it("keeps plugins and plugin-contributed settings out of Settings", async () => {
+  it("resolves archived threads as a settings section", async () => {
     vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(false));
-    setPluginSlotRegistrations("connect", {
-      homepageSections: [],
-      settingsSections: [{ id: "remote", component: Component }],
-      navPanels: [],
-      threadPanelActions: [],
-      composerAccessories: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          enabled: false,
-          plugins: [
-            {
-              id: "connect",
-              version: "0.1.0",
-              enabled: true,
-              status: "running",
-              statusDetail: null,
-              description: null,
-              icon: "EditFile",
-              logoUrl: null,
-              logoDarkUrl: null,
-              hasSettings: false,
-              provenance: "builtin",
-              sourceDisplay: "builtin",
-              updateState: {},
-            },
-          ],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/plugins/connect"),
+      wrapper: wrapperFor("/settings/archived"),
     });
 
-    expect(result.current.sections.map((section) => section.id)).not.toContain(
-      "plugins",
+    await waitFor(() => {
+      expect(result.current.activeSection).toBe("archived");
+    });
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "archived",
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps plugin configuration out of global Settings", async () => {
+    vi.mocked(api.getSystemConfig).mockResolvedValue(systemConfig(true));
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings"),
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.sections.map((section) => section.id),
+      ).not.toContain("plugins");
+    });
   });
 });

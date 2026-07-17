@@ -420,14 +420,10 @@ export function AutomationDetailView({
                 draftExecution.script === undefined ? (
                   <Input
                     value={draftExecution.scriptFile}
-                    onChange={(event) =>
-                      onDraftExecutionChange({
-                        ...draftExecution,
-                        scriptFile: event.target.value,
-                      })
-                    }
+                    readOnly
+                    aria-readonly="true"
                     aria-label="Automation script file"
-                    className="h-8 font-mono text-xs"
+                    className="h-8 cursor-default bg-surface-recessed font-mono text-xs text-muted-foreground"
                   />
                 ) : (
                   <Textarea

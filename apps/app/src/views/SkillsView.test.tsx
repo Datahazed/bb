@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SkillDetailView } from "../components/tools/SkillDetailView";
 import {
   fetchRegistrySkills,
+  fetchRegistrySkillEntry,
   installRegistrySkill,
   RegistrySkillsBrowsePage,
   SkillDetailDialogView,
@@ -52,7 +53,6 @@ function makeRegistrySkill(
     url: "https://skills.sh/owner/repo/useful-skill",
     topic: "Development",
     summary: "A useful skill.",
-    worksWith: ["claude-code", "codex"],
     ...overrides,
   };
 }
@@ -119,6 +119,7 @@ describe("SkillsOverview", () => {
             onUninstall={() => {}}
             onSelect={() => {}}
             isInstalled={() => true}
+            canUninstall={() => true}
           />
         }
         onCreateSkill={() => {}}
@@ -189,6 +190,7 @@ describe("SkillsOverview", () => {
         onUninstall={onUninstall}
         onSelect={() => {}}
         isInstalled={() => true}
+        canUninstall={() => true}
       />,
     );
 
@@ -208,6 +210,36 @@ describe("SkillsOverview", () => {
     expect(onUninstall).toHaveBeenCalledWith(registrySkill);
   });
 
+  it("keeps name-only installed matches passive without proven provenance", () => {
+    const registrySkill = makeRegistrySkill();
+    renderDom(
+      <RegistrySkillsBrowsePage
+        skills={[registrySkill]}
+        pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
+        isLoading={false}
+        hasError={false}
+        query=""
+        pendingSkillId={null}
+        onQueryChange={() => {}}
+        onPageChange={() => {}}
+        onInstall={() => {}}
+        onUninstall={() => {}}
+        onSelect={() => {}}
+        isInstalled={() => true}
+        canUninstall={() => false}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Installed Useful skill as a bb skill"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "Uninstall Useful skill from bb",
+      }),
+    ).toBeNull();
+  });
+
   it("disables provider filters that have no matching skills", async () => {
     renderDom(
       <SkillsOverview
@@ -215,7 +247,7 @@ describe("SkillsOverview", () => {
           makeSkill({
             name: "codex-skill",
             provider: "codex",
-            scope: "codex",
+            scope: "codex-user",
           }),
         ]}
         isLoading={false}
@@ -332,7 +364,9 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByText("powered by")).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(screen.getByLabelText("Uninstall Alpha from bb")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Installed Alpha as a bb skill"),
+    ).toBeTruthy();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
     expect(await screen.findByRole("menuitem", { name: "Stars" })).toBeTruthy();
@@ -678,7 +712,7 @@ describe("SkillDetailView registry states", () => {
       name: "Uninstall find-skills from bb",
     });
     expect(uninstallButton.className).toContain("group/install");
-    expect(uninstallButton.className).toContain("border-success/30");
+    expect(uninstallButton.className).toContain("border-success/25");
     expect(uninstallButton.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(uninstallButton.innerHTML).toContain("group-hover/install:opacity");
     fireEvent.click(uninstallButton);
@@ -718,8 +752,7 @@ describe("installRegistrySkill", () => {
     const request = fetchMock.mock.calls[0];
     expect(request?.[0]).toBe("/api/v1/skills-registry/install");
     expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
-      source: "owner/repo",
-      skillId: "skill",
+      registrySkillId: "owner/repo/skill",
       projectId: PERSONAL_PROJECT_ID,
     });
     expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty(
@@ -753,5 +786,21 @@ describe("fetchRegistrySkills", () => {
       total: 73,
       hasMore: true,
     });
+  });
+});
+
+describe("fetchRegistrySkillEntry", () => {
+  it("loads a canonical entry independently of the current browse page", async () => {
+    const skill = makeRegistrySkill();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => skill,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchRegistrySkillEntry(skill.id)).resolves.toEqual(skill);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
+    );
   });
 });

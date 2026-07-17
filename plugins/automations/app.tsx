@@ -15,6 +15,7 @@ import {
   useRpc,
   type PluginNavPanelProps,
 } from "@bb/plugin-sdk/app";
+import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
   AutomationExecution,
@@ -174,7 +175,7 @@ function useOverview(): {
   error: string | null;
   refetch: () => void;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const [state, setState] = useState<{
     entries: OverviewEntry[] | null;
     error: string | null;
@@ -255,7 +256,7 @@ function useAutomation(route: DetailRoute): {
   missing: boolean;
   refetch: () => void;
 } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
     automation: AutomationResponse | null;
@@ -299,7 +300,7 @@ interface RunsState {
 }
 
 function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<RunsState>({
     runs: [],
@@ -400,9 +401,14 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
 // ---------------------------------------------------------------------------
 
 function useMutations() {
-  const rpc = useRpc();
+  const rpc = useRpc<typeof automationRpcContract>();
+  type MutationMethod =
+    | "automations_pause"
+    | "automations_resume"
+    | "automations_run"
+    | "automations_delete";
   const call = useCallback(
-    (method: string, route: DetailRoute) => rpc.call(method, route),
+    (method: MutationMethod, route: DetailRoute) => rpc.call(method, route),
     [rpc],
   );
   return {
@@ -1056,16 +1062,6 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
   const collectionMode: AutomationCollectionMode =
     subPath === "browse" ? "browse" : "installed";
-  const createViaChat = useCallback(
-    (prompt?: string) => {
-      navigate.toCompose({
-        focusPrompt: true,
-        initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
-      });
-    },
-    [navigate],
-  );
-
   const openDetail = useCallback(
     (next: DetailRoute, options?: { editing?: boolean }) => {
       navigate.toPluginPanel(PANEL_PATH, {

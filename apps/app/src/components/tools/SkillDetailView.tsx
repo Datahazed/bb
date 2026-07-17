@@ -107,7 +107,7 @@ export function SkillBrowseInstallControl({
   installed: boolean;
   pending: boolean;
   onInstall: () => void;
-  onUninstall: () => void;
+  onUninstall?: () => void;
 }) {
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
 
@@ -125,28 +125,34 @@ export function SkillBrowseInstallControl({
   return (
     <>
       <ResourceInstalledControl
-        accessibleLabel={`Uninstall ${skillName} from bb`}
+        accessibleLabel={
+          onUninstall
+            ? `Uninstall ${skillName} from bb`
+            : `Installed ${skillName} as a bb skill`
+        }
         pending={pending}
-        onAction={() => setConfirmingUninstall(true)}
+        onAction={onUninstall ? () => setConfirmingUninstall(true) : undefined}
       />
-      <ConfirmDeleteDialog
-        open={confirmingUninstall}
-        onOpenChange={(open) => {
-          if (!pending) setConfirmingUninstall(open);
-        }}
-      >
-        <ConfirmDeleteDialogContent
-          title="Uninstall skill?"
-          description={`Remove "${skillName}" from your bb skills?`}
-          confirmLabel="Uninstall skill"
-          pending={pending}
-          onConfirm={() => {
-            onUninstall();
-            setConfirmingUninstall(false);
+      {onUninstall ? (
+        <ConfirmDeleteDialog
+          open={confirmingUninstall}
+          onOpenChange={(open) => {
+            if (!pending) setConfirmingUninstall(open);
           }}
-          onCancel={() => setConfirmingUninstall(false)}
-        />
-      </ConfirmDeleteDialog>
+        >
+          <ConfirmDeleteDialogContent
+            title="Uninstall skill?"
+            description={`Remove "${skillName}" from your bb skills?`}
+            confirmLabel="Uninstall skill"
+            pending={pending}
+            onConfirm={() => {
+              onUninstall();
+              setConfirmingUninstall(false);
+            }}
+            onCancel={() => setConfirmingUninstall(false)}
+          />
+        </ConfirmDeleteDialog>
+      ) : null}
     </>
   );
 }

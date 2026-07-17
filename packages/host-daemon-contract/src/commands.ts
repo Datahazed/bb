@@ -736,7 +736,8 @@ export const deletableSkillScopeSchema = z.enum([
   "bb-project",
   "claude-user",
   "claude-project",
-  "codex",
+  "codex-user",
+  "codex-project",
 ]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
@@ -1150,14 +1151,25 @@ const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
     .strict(),
 ]);
 
-// Every failure mode (gh missing / not authed / no remote / no PR / malformed
-// output / unresolvable workspace) collapses to `pullRequest: null`, so there
-// is no available/unavailable discrimination here.
-const workspacePullRequestResultSchema = z
-  .object({
-    pullRequest: gitHostPullRequestSchema.nullable(),
-  })
-  .strict();
+// "absent" is a real answer (gh ran and reported no PR for the branch, or a
+// detached HEAD has no branch); "unavailable" means the lookup itself failed
+// (gh missing / not authed / timeout / malformed output / unresolvable
+// workspace) and must not be treated as "no PR exists".
+const workspacePullRequestResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      pullRequest: gitHostPullRequestSchema,
+    })
+    .strict(),
+  z.object({ outcome: z.literal("absent") }).strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
 
 const fileListResultSchema = z.object({
   files: z.array(z.object({ path: z.string(), name: z.string() })),
@@ -1263,13 +1275,20 @@ const workspacePullRequestActionResultSchema = z.object({}).strict();
 
 /**
  * One usage window for a provider subscription, e.g. the rolling 5h session
- * limit or the weekly limit. `usedPercent` is normalized to 0-100 and
- * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it).
+ * limit or the weekly limit. `usedPercent` is normalized to 0-100,
+ * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it),
+ * and `cost` carries optional Cursor on-demand spend in USD cents.
  */
 export const providerUsageWindowSchema = z.object({
   label: z.string().min(1),
   usedPercent: z.number().min(0).max(100),
   resetsAt: z.string().min(1).nullable(),
+  cost: z
+    .object({
+      usedUsdCents: z.number().int().nonnegative(),
+      limitUsdCents: z.number().int().positive(),
+    })
+    .optional(),
 });
 export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
 
@@ -1279,6 +1298,7 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * without inventing placeholder numbers.
  *
  * - `ok` — usage was read; `windows` may be empty if the plan exposes none.
+ * - `not_installed` — the provider CLI is not installed on this host.
  * - `unauthenticated` — no local credentials (the CLI is not logged in).
  * - `expired` — credentials exist but the token expired; the CLI must refresh
  *   it (we never refresh another tool's tokens here).
@@ -1290,6 +1310,7 @@ export const providerUsageSchema = z.discriminatedUnion("status", [
     planLabel: z.string().min(1).nullable(),
     windows: z.array(providerUsageWindowSchema),
   }),
+  z.object({ status: z.literal("not_installed") }),
   z.object({ status: z.literal("unauthenticated") }),
   z.object({ status: z.literal("expired") }),
   z.object({ status: z.literal("error"), message: z.string().min(1) }),
@@ -1299,6 +1320,7 @@ export type ProviderUsage = z.infer<typeof providerUsageSchema>;
 export const providerUsageResponseSchema = z.object({
   codex: providerUsageSchema,
   claudeCode: providerUsageSchema,
+  cursor: providerUsageSchema,
 });
 export type ProviderUsageResponse = z.infer<typeof providerUsageResponseSchema>;
 

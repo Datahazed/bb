@@ -3,21 +3,23 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginDetail } from "./ToolsView";
 
 const GITHUB_PLUGIN = {
   id: "github",
-  source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
-  isBuiltin: false,
+  source: "builtin:github",
   rootDir: "/managed/plugins/github",
   version: "0.1.0",
   enabled: true,
   status: "running",
   statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
-  displayName: "GitHub",
+  name: "GitHub",
   icon: "Github",
   logoUrl: null,
   logoDarkUrl: null,
@@ -26,17 +28,18 @@ const GITHUB_PLUGIN = {
   services: [],
   schedules: [],
   cliCommand: null,
-  app: { hasApp: true },
-  provenance: "marketplace" as const,
-  marketplaceName: "BB Official",
+  app: { hasApp: true, bundle: null },
+  provenance: "catalog" as const,
+  isOrphanedBuiltin: false,
+  catalogEntryId: "github",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
-};
+} satisfies PluginListItem;
 
 afterEach(cleanup);
 
-describe("PluginDetail marketplace lifecycle", () => {
-  it("keeps marketplace provenance and update management in the unified detail taxonomy", async () => {
+describe("PluginDetail official catalog lifecycle", () => {
+  it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
@@ -56,15 +59,15 @@ describe("PluginDetail marketplace lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("From BB Official")).toBeTruthy();
+    expect(screen.getByText("BB Official")).toBeTruthy();
     expect(screen.getByText("About")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
     expect(screen.getByText("Release")).toBeTruthy();
     expect(screen.getByText("0.1.0")).toBeTruthy();
-    expect(screen.getByText("BB Official · GitHub")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check now" })).toBeTruthy();
+    expect(screen.getByText("Included with bb releases")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "GitHub actions" }),

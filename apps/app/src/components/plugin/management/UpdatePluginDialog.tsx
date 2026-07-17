@@ -11,11 +11,12 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   applyPluginUpdate,
   type PluginUpdateResult,
-} from "@/hooks/queries/plugin-marketplace-queries";
+} from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
@@ -64,7 +65,7 @@ function UpdatePluginDialogContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const displayName = plugin.displayName ?? plugin.id;
+  const name = plugin.name ?? plugin.id;
   const state = plugin.updateState;
   const [rolledBack, setRolledBack] = useState<PluginUpdateResult | null>(null);
 
@@ -77,28 +78,25 @@ function UpdatePluginDialogContent({
         return;
       }
       if (result.applied) {
-        appToast.success(`${displayName} updated`, {
+        appToast.success(`${name} updated`, {
           description:
             result.to !== null
               ? `Now running ${result.to.display}.`
               : undefined,
         });
       } else {
-        appToast.message(`${displayName} is already up to date`);
+        appToast.message(`${name} is already up to date`);
       }
       onOpenChange(false);
     },
     onError: (error) => {
-      appToast.error(`Updating ${displayName} failed`, {
-        description: error instanceof Error ? error.message : String(error),
+      appToast.error(`Updating ${name} failed`, {
+        description: pluginAdminErrorMessage(error),
       });
     },
   });
 
-  const fromLine =
-    plugin.marketplaceName !== null
-      ? `Currently ${plugin.version} · from ${plugin.marketplaceName}`
-      : `Currently ${plugin.version}`;
+  const fromLine = `Currently ${plugin.version}`;
 
   if (rolledBack !== null) {
     return (
@@ -144,7 +142,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {displayName} to {candidate}?
+            Update {name} to {candidate}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -197,7 +195,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {displayName} to {blocked}?
+            Update {name} to {blocked}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -251,7 +249,7 @@ function UpdatePluginDialogContent({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{displayName} is up to date</DialogTitle>
+        <DialogTitle>{name} is up to date</DialogTitle>
         <DialogDescription>{fromLine}</DialogDescription>
       </DialogHeader>
       <DialogFooter>

@@ -671,6 +671,7 @@ export function ResourceRow({
   trailingVisual,
   actionsVisibility = "hover",
   className,
+  openLabel,
   onOpen,
 }: {
   leading?: ReactNode;
@@ -690,6 +691,8 @@ export function ResourceRow({
   trailingVisual?: ReactNode;
   actionsVisibility?: "hover" | "always";
   className?: string;
+  /** Accessible name for the row's primary navigation control. */
+  openLabel?: string;
   onOpen: () => void;
 }) {
   const rowState = state ?? status;
@@ -718,6 +721,7 @@ export function ResourceRow({
       ) : null}
       <button
         type="button"
+        aria-label={openLabel}
         onClick={onOpen}
         className="min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >

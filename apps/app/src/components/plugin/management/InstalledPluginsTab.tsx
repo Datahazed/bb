@@ -1,9 +1,12 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon } from "@bb/shared-ui/icon";
 import { Switch } from "@bb/shared-ui/switch";
+import {
+  ResourceRow,
+  ResourceRowDetailChevron,
+} from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -40,7 +43,7 @@ export function InstalledPluginsTab({
 
   if (plugins.length === 0) {
     return (
-      <EmptyState message="No plugins installed. Use “Add plugin”, browse a marketplace, or run bb plugin install <source>." />
+      <EmptyState message="No plugins installed. Browse BB Official, create a plugin, or run bb plugin install <source>." />
     );
   }
 
@@ -99,79 +102,45 @@ export function InstalledPluginRow({
 
   const openDetail = () =>
     navigate(getPluginDetailRoutePath({ pluginId: plugin.id }));
-  const onRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openDetail();
-    }
-  };
-
   return (
-    <div
-      role="link"
-      tabIndex={0}
-      aria-label={`${plugin.displayName ?? plugin.id} plugin details`}
-      className="group flex cursor-pointer items-center gap-3 py-3 focus-visible:outline-none"
-      data-testid={`plugin-row-${plugin.id}`}
-      onClick={openDetail}
-      onKeyDown={onRowKeyDown}
-    >
-      <PluginLogo plugin={plugin} className="size-6 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <p className="truncate text-sm font-medium text-foreground">
-            {plugin.displayName ?? plugin.id}
-          </p>
-          {plugin.isBuiltin ? (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              Built-in
+    <div data-testid={`plugin-row-${plugin.id}`}>
+      <ResourceRow
+        leading={<PluginLogo plugin={plugin} className="size-6 shrink-0" />}
+        title={plugin.name ?? plugin.id}
+        titleMeta={plugin.provenance === "builtin" ? "Built-in" : undefined}
+        description={plugin.description}
+        openLabel={`${plugin.name ?? plugin.id} plugin details`}
+        onOpen={openDetail}
+        trailingMeta={
+          signal?.kind === "update" ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
+              style={UPDATE_TINT_STYLE}
+              data-testid={`plugin-update-pill-${plugin.id}`}
+              onClick={onUpdateClick}
+            >
+              Update {signal.version}
+            </button>
+          ) : signal?.kind === "attention" ? (
+            <span
+              className="pointer-events-none shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
+              style={ATTENTION_TINT_STYLE}
+              data-testid={`plugin-attention-pill-${plugin.id}`}
+            >
+              Needs attention
             </span>
-          ) : null}
-        </div>
-        {plugin.description !== null && plugin.description.length > 0 ? (
-          <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
-            {plugin.description}
-          </p>
-        ) : null}
-      </div>
-      {signal?.kind === "update" ? (
-        <button
-          type="button"
-          className="shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
-          style={UPDATE_TINT_STYLE}
-          data-testid={`plugin-update-pill-${plugin.id}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onUpdateClick();
-          }}
-        >
-          Update {signal.version}
-        </button>
-      ) : signal?.kind === "attention" ? (
-        <span
-          className="pointer-events-none shrink-0 rounded-full border px-2 py-0.5 text-2xs font-medium"
-          style={ATTENTION_TINT_STYLE}
-          data-testid={`plugin-attention-pill-${plugin.id}`}
-        >
-          Needs attention
-        </span>
-      ) : null}
-      <span
-        className="shrink-0"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <Switch
-          checked={enabled}
-          disabled={toggle.isPending}
-          onCheckedChange={(next) => toggle.mutate(next)}
-          aria-label={`Enable ${plugin.id}`}
-        />
-      </span>
-      <Icon
-        name="ChevronRight"
-        className="size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          ) : undefined
+        }
+        persistentActions={
+          <Switch
+            checked={enabled}
+            disabled={toggle.isPending}
+            onCheckedChange={(next) => toggle.mutate(next)}
+            aria-label={`${enabled ? "Disable" : "Enable"} ${plugin.id}`}
+          />
+        }
+        trailingVisual={<ResourceRowDetailChevron />}
       />
     </div>
   );

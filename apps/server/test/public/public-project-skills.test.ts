@@ -7,7 +7,7 @@ import {
   skillFilesResponseSchema,
   skillListResponseSchema,
 } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -21,6 +21,28 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 interface SkillRpcStub {
   requests: HostDaemonOnlineRpcRequestMessage[];
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function registryHtml(args: {
+  source: string;
+  skillId: string;
+  name?: string;
+  installs?: number;
+}): string {
+  const id = `${args.source}/${args.skillId}`;
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@type": "SoftwareApplication",
+    name: args.name ?? args.skillId,
+    description: `${args.skillId} description`,
+    url: `https://www.skills.sh/${id}`,
+    interactionStatistic: {
+      userInteractionCount: args.installs ?? 100,
+    },
+  })}</script>`;
 }
 
 /**
@@ -64,8 +86,7 @@ function registerSkillRpc(
           ok: true,
           result: {
             filePath:
-              args.installedFilePath ??
-              "/data/skills/imported-skill/SKILL.md",
+              args.installedFilePath ?? "/data/skills/imported-skill/SKILL.md",
           },
         };
       }
@@ -137,6 +158,19 @@ describe("public project skills route", () => {
         sessionId: session.id,
         installedFilePath: "/data/skills/find-skills/SKILL.md",
       });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              registryHtml({
+                source: "github.com/vercel-labs/skills",
+                skillId: "find-skills",
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
 
       const response = await harness.app.request(
         "/api/v1/skills-registry/install",
@@ -144,8 +178,7 @@ describe("public project skills route", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            source: "github.com/vercel-labs/skills",
-            skillId: "find-skills",
+            registrySkillId: "github.com/vercel-labs/skills/find-skills",
             projectId: project.id,
           }),
         },
@@ -180,8 +213,7 @@ describe("public project skills route", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            source: "vercel-labs/skills",
-            skillId: "find-skills",
+            registrySkillId: "vercel-labs/skills/find-skills",
             projectId: project.id,
             providers: ["codex"],
           }),
@@ -208,8 +240,7 @@ describe("public project skills route", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            source: "--help",
-            skillId: "find-skills",
+            registrySkillId: "--help/find-skills",
             projectId: project.id,
           }),
         },
@@ -303,7 +334,7 @@ describe("public project skills route", () => {
           name: "cx",
           description: "cx skill",
           provider: "codex",
-          scope: "codex",
+          scope: "codex-user",
           filePath: "/home/.codex/skills/cx/SKILL.md",
           manageable: true,
         },
@@ -459,7 +490,7 @@ describe("public project skills route", () => {
         fileContents: { "references/layout.md": "# Layout reference" },
       });
       const query = new URLSearchParams({
-        scope: "codex",
+        scope: "codex-user",
         name: "documents",
         environmentId: environment.id,
       });

@@ -30,6 +30,7 @@ import type {
   EventProjectionThreadOperationKind,
   EventProjectionThreadOperationStatus,
 } from "./event-projection-types.js";
+import { getProviderModelFallbackData } from "./model-fallback-extraction.js";
 
 type ParseOperationMessageOptions = Pick<
   BuildEventProjectionMessagesOptions,
@@ -451,6 +452,16 @@ export function parseOperationMessage(
   | EventProjectionUserQuestionLifecycleMessage
   | null {
   const threadName = options?.threadName ?? "";
+  const modelFallback = getProviderModelFallbackData(decoded);
+  if (modelFallback !== null) {
+    return op(decoded, meta, "warning", {
+      opType: "warning",
+      title: `Model fallback: ${modelFallback.originalModel} → ${modelFallback.fallbackModel}`,
+      detail: modelFallback.message,
+      status: "completed",
+    });
+  }
+
   if (decoded.type === "provider/unhandled") {
     if (options?.includeProviderUnhandledOperations !== true) {
       return null;
