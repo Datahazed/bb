@@ -37,7 +37,9 @@ import {
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
+  type QueuedMessageEditRequest,
   type QueuedMessageGroupBoundaryRequest,
+  type QueuedMessageInlineEditor,
   type QueuedMessageProcessingAction,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type {
@@ -53,6 +55,7 @@ import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Icon } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
@@ -82,6 +85,7 @@ import {
   useSendThreadMessage,
   useSetThreadQueuedMessageGroupBoundary,
   useStopThread,
+  useUpdateThreadQueuedMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
@@ -93,6 +97,7 @@ import {
 } from "@/lib/side-chat-create-request";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { BbHttpError } from "@/lib/sdk";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
@@ -102,6 +107,19 @@ import {
 } from "@/views/thread-detail/threadDetailPromptSubmission";
 
 const noop = () => {};
+
+interface InlineQueuedMessageEditState {
+  draft: PromptDraftState;
+  editSessionId: number;
+  expectedUpdatedAt: number;
+  model: ThreadQueuedMessage["model"];
+  ownerThreadId: string;
+  permissionMode: ThreadQueuedMessage["permissionMode"];
+  queuedMessageId: string;
+  queuedMessageIndex: number;
+  reasoningLevel: ThreadQueuedMessage["reasoningLevel"];
+  serviceTier: ThreadQueuedMessage["serviceTier"];
+}
 
 export interface SetSideChatThreadId {
   (args: { tabId: string; threadId: string }): void;
@@ -330,6 +348,7 @@ export function SideChatTabContent({
   const childThreadId = tab.threadId;
   const createThread = useCreateThread();
   const createQueuedMessage = useCreateThreadQueuedMessage();
+  const updateQueuedMessage = useUpdateThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const markThreadRead = useMarkThreadRead();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
@@ -429,6 +448,9 @@ export function SideChatTabContent({
     parentThreadId: sourceThread.id,
     tabId: tab.id,
   });
+  const setStoredPromptDraft = promptDraft.setDraft;
+  const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
+  const removeStoredPromptAttachment = promptDraft.removeAttachment;
   const promptContextEnvironmentId =
     childThreadQuery.data?.environmentId ?? sourceThread.environmentId ?? null;
   const promptContextThreadId = childThreadId ?? sourceThread.id;
@@ -465,11 +487,27 @@ export function SideChatTabContent({
     action: QueuedMessageProcessingAction;
     id: string;
   } | null>(null);
-  const handleChangeMessage = useCallback(
-    (nextValue: string, nextMentions: PromptTextMention[]) => {
-      promptDraft.setTextAndMentions(nextValue, nextMentions);
-    },
-    [promptDraft],
+  const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] =
+    useState<InlineQueuedMessageEditState | null>(null);
+  const inlineEditSessionIdRef = useRef(0);
+  const [inlineComposerTarget, setInlineComposerTarget] =
+    useState<HTMLDivElement | null>(null);
+  const dismissInlineQueuedMessageEditor = useCallback(() => {
+    setInlineComposerTarget(null);
+    setInlineEditingQueuedMessage(null);
+  }, []);
+  const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(
+    () =>
+      inlineEditingQueuedMessage
+        ? {
+            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+            queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
+            ready: true,
+            onComposerTargetChange: setInlineComposerTarget,
+            onDismiss: dismissInlineQueuedMessageEditor,
+          }
+        : undefined,
+    [dismissInlineQueuedMessageEditor, inlineEditingQueuedMessage],
   );
   const currentPromptDraft = useMemo(
     () => ({
@@ -482,6 +520,67 @@ export function SideChatTabContent({
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),
     [currentPromptDraft],
+  );
+  const activeComposerDraft =
+    inlineEditingQueuedMessage?.draft ?? currentPromptDraft;
+  const activeComposerDraftInput = useMemo(
+    () => promptDraftToInput(activeComposerDraft),
+    [activeComposerDraft],
+  );
+  const setActiveComposerDraft = useCallback(
+    (draft: PromptDraftState) => {
+      if (inlineEditingQueuedMessage) {
+        setInlineEditingQueuedMessage((current) =>
+          current ? { ...current, draft } : current,
+        );
+        return;
+      }
+      setStoredPromptDraft(draft);
+    },
+    [inlineEditingQueuedMessage, setStoredPromptDraft],
+  );
+  const handleChangeMessage = useCallback(
+    (nextValue: string, nextMentions: PromptTextMention[]) => {
+      if (inlineEditingQueuedMessage) {
+        setInlineEditingQueuedMessage((current) =>
+          current
+            ? {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  mentions: nextMentions,
+                  text: nextValue,
+                },
+              }
+            : current,
+        );
+        return;
+      }
+      setStoredPromptTextAndMentions(nextValue, nextMentions);
+    },
+    [inlineEditingQueuedMessage, setStoredPromptTextAndMentions],
+  );
+  const removeActiveComposerAttachment = useCallback(
+    (path: string) => {
+      if (inlineEditingQueuedMessage) {
+        setInlineEditingQueuedMessage((current) =>
+          current
+            ? {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  attachments: current.draft.attachments.filter(
+                    (attachment) => attachment.path !== path,
+                  ),
+                },
+              }
+            : current,
+        );
+        return;
+      }
+      removeStoredPromptAttachment(path);
+    },
+    [inlineEditingQueuedMessage, removeStoredPromptAttachment],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
 
@@ -570,6 +669,23 @@ export function SideChatTabContent({
     }
     return next;
   }, [queuedMessages]);
+  useEffect(() => {
+    if (
+      inlineEditingQueuedMessage &&
+      (inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
+        !queuedMessages.some(
+          (message) =>
+            message.id === inlineEditingQueuedMessage.queuedMessageId,
+        ))
+    ) {
+      dismissInlineQueuedMessageEditor();
+    }
+  }, [
+    childThreadId,
+    dismissInlineQueuedMessageEditor,
+    inlineEditingQueuedMessage,
+    queuedMessages,
+  ]);
 
   childThreadIdRef.current = childThreadId;
   if (observedChildThreadIdRef.current !== childThreadId) {
@@ -775,6 +891,17 @@ export function SideChatTabContent({
         return;
       }
 
+      const attachmentOwner = inlineEditingQueuedMessage
+        ? {
+            kind: "queued" as const,
+            editSessionId: inlineEditingQueuedMessage.editSessionId,
+            ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
+            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+          }
+        : {
+            addAttachment: promptDraft.addAttachment,
+            kind: "bottom" as const,
+          };
       setAttachmentError(null);
       const failedFiles: string[] = [];
       for (const file of files) {
@@ -783,7 +910,30 @@ export function SideChatTabContent({
             projectId: sourceThread.projectId,
             file,
           });
-          promptDraft.addAttachment(uploaded);
+          if (attachmentOwner.kind === "bottom") {
+            attachmentOwner.addAttachment(uploaded);
+          } else {
+            setInlineEditingQueuedMessage((current) => {
+              if (
+                !current ||
+                current.editSessionId !== attachmentOwner.editSessionId ||
+                current.ownerThreadId !== attachmentOwner.ownerThreadId ||
+                current.queuedMessageId !== attachmentOwner.queuedMessageId ||
+                current.draft.attachments.some(
+                  (existing) => existing.path === uploaded.path,
+                )
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  attachments: [...current.draft.attachments, uploaded],
+                },
+              };
+            });
+          }
         } catch {
           failedFiles.push(file.name);
         }
@@ -792,7 +942,12 @@ export function SideChatTabContent({
         setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
       }
     },
-    [promptDraft, sourceThread.projectId, uploadPromptAttachment],
+    [
+      inlineEditingQueuedMessage,
+      promptDraft.addAttachment,
+      sourceThread.projectId,
+      uploadPromptAttachment,
+    ],
   );
   const handleSubmit = useCallback(() => {
     const submittedDraft = currentPromptDraft;
@@ -855,7 +1010,8 @@ export function SideChatTabContent({
     deleteQueuedMessage.isPending ||
     reorderQueuedMessage.isPending ||
     setQueuedMessageGroupBoundary.isPending ||
-    sendQueuedMessage.isPending;
+    sendQueuedMessage.isPending ||
+    updateQueuedMessage.isPending;
 
   const handleSendQueuedImmediately = useCallback(
     (queuedMessageId: string) => {
@@ -956,7 +1112,7 @@ export function SideChatTabContent({
   ]);
 
   const handleEditQueuedMessage = useCallback(
-    (queuedMessageId: string) => {
+    ({ queuedMessageId, queuedMessageIndex }: QueuedMessageEditRequest) => {
       if (childThreadId === null) {
         return;
       }
@@ -964,33 +1120,76 @@ export function SideChatTabContent({
       if (!queuedMessage) {
         return;
       }
-      setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
-      void deleteQueuedMessage
-        .mutateAsync({
-          id: childThreadId,
-          queuedMessageId,
-        })
-        .then(() => {
-          const restoredDraft = queuedInputToDraft(queuedMessage.content);
-          promptDraft.setDraft(restoredDraft);
-        })
-        .catch((error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to edit queued message",
-              lifecycleOperation: "queue_message",
-            }),
-          );
-        })
-        .finally(() => {
-          setProcessingQueuedMessage((current) =>
-            current?.id === queuedMessageId ? null : current,
-          );
-        });
+      setInlineEditingQueuedMessage({
+        draft: queuedInputToDraft(queuedMessage.content),
+        editSessionId: (inlineEditSessionIdRef.current += 1),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        model: queuedMessage.model,
+        ownerThreadId: childThreadId,
+        permissionMode: queuedMessage.permissionMode,
+        queuedMessageId,
+        queuedMessageIndex,
+        reasoningLevel: queuedMessage.reasoningLevel,
+        serviceTier: queuedMessage.serviceTier,
+      });
+      setAttachmentError(null);
+      setComposerFocusNonce((nonce) => nonce + 1);
     },
-    [childThreadId, deleteQueuedMessage, promptDraft, queuedMessagesById],
+    [childThreadId, queuedMessagesById],
   );
+
+  const handleSaveInlineQueuedMessage = useCallback(async () => {
+    if (
+      childThreadId === null ||
+      !inlineEditingQueuedMessage ||
+      activeComposerDraftInput.length === 0 ||
+      updateQueuedMessage.isPending
+    ) {
+      return;
+    }
+    if (
+      inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
+      !queuedMessagesById.has(inlineEditingQueuedMessage.queuedMessageId)
+    ) {
+      dismissInlineQueuedMessageEditor();
+      return;
+    }
+    const { expectedUpdatedAt, ownerThreadId, queuedMessageId } =
+      inlineEditingQueuedMessage;
+    setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
+    try {
+      await updateQueuedMessage.mutateAsync({
+        expectedUpdatedAt,
+        id: ownerThreadId,
+        input: activeComposerDraftInput,
+        queuedMessageId,
+      });
+      setAttachmentError(null);
+      dismissInlineQueuedMessageEditor();
+    } catch (error) {
+      if (error instanceof BbHttpError && error.status === 404) {
+        dismissInlineQueuedMessageEditor();
+      }
+      appToast.error(
+        getMutationErrorMessage({
+          error,
+          fallbackMessage: "Failed to update queued message",
+          lifecycleOperation: "update_queued_message",
+        }),
+      );
+    } finally {
+      setProcessingQueuedMessage((current) =>
+        current?.id === queuedMessageId ? null : current,
+      );
+    }
+  }, [
+    activeComposerDraftInput,
+    childThreadId,
+    dismissInlineQueuedMessageEditor,
+    inlineEditingQueuedMessage,
+    queuedMessagesById,
+    updateQueuedMessage,
+  ]);
 
   const handleDeleteQueuedMessage = useCallback(
     (queuedMessageId: string) => {
@@ -1073,6 +1272,7 @@ export function SideChatTabContent({
         <QueuedMessagesList
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
+          inlineEditor={inlineEditor}
           sendDisabled={
             childThreadId === null ||
             isSideChatProvisioning ||
@@ -1096,6 +1296,7 @@ export function SideChatTabContent({
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,
       isSideChatProvisioning,
+      inlineEditor,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
       queuedMessageActionPending,
@@ -1104,62 +1305,84 @@ export function SideChatTabContent({
     ],
   );
 
+  const handleComposerSubmit = useCallback(() => {
+    if (inlineEditingQueuedMessage) {
+      void handleSaveInlineQueuedMessage();
+      return;
+    }
+    handleSubmit();
+  }, [handleSaveInlineQueuedMessage, handleSubmit, inlineEditingQueuedMessage]);
+  const handleComposerModifierSubmit = useCallback(() => {
+    if (inlineEditingQueuedMessage) {
+      void handleSaveInlineQueuedMessage();
+      return;
+    }
+    handleModifierSubmit();
+  }, [
+    handleModifierSubmit,
+    handleSaveInlineQueuedMessage,
+    inlineEditingQueuedMessage,
+  ]);
+
   const composerConfig = useMemo<FollowUpComposerProps>(
     () => ({
       // Side chats have no prompt-history surface in v1. A draft-only history
       // config (current draft, no entries, no-op select) satisfies the required
       // shape without inventing a feature the composer never exercises.
       history: {
-        currentDraft: {
-          text: promptDraft.text,
-          mentions: promptDraft.mentions,
-          attachments: promptDraft.attachments,
-        },
+        currentDraft: activeComposerDraft,
         entries: [],
-        onSelectEntry: noop,
+        onSelectEntry: setActiveComposerDraft,
       } satisfies HistoryConfig,
-      isFollowUpSubmitting: isSideChatTurnSubmitting,
-      message: promptDraft.text,
-      mentionRanges: promptDraft.mentions,
+      isFollowUpSubmitting:
+        isSideChatTurnSubmitting || updateQueuedMessage.isPending,
+      message: activeComposerDraft.text,
+      mentionRanges: activeComposerDraft.mentions,
       onChangeMessage: handleChangeMessage,
-      onModifierSubmit: handleModifierSubmit,
-      onSubmit: handleSubmit,
+      onModifierSubmit: handleComposerModifierSubmit,
+      onSubmit: handleComposerSubmit,
       compactPromptPlaceholder: compactComposerPlaceholder,
       promptPlaceholder: composerPlaceholder,
-      canModifierSubmit: canSubmitModifierShortcut,
-      submitMode: sideChatSubmitMode,
+      canModifierSubmit: inlineEditingQueuedMessage
+        ? activeComposerDraftInput.length > 0 && !updateQueuedMessage.isPending
+        : canSubmitModifierShortcut,
+      submitMode: inlineEditingQueuedMessage
+        ? ({ kind: "ready" } as const)
+        : sideChatSubmitMode,
       threadRuntimeDisplayStatus: sideChatRuntimeDisplayStatus,
     }),
     [
+      activeComposerDraft,
+      activeComposerDraftInput.length,
       canSubmitModifierShortcut,
       composerPlaceholder,
       handleChangeMessage,
-      handleModifierSubmit,
-      handleSubmit,
+      handleComposerModifierSubmit,
+      handleComposerSubmit,
+      inlineEditingQueuedMessage,
       isSideChatTurnSubmitting,
       compactComposerPlaceholder,
-      promptDraft.attachments,
-      promptDraft.mentions,
-      promptDraft.text,
+      setActiveComposerDraft,
       sideChatRuntimeDisplayStatus,
       sideChatSubmitMode,
+      updateQueuedMessage.isPending,
     ],
   );
 
   const attachmentsConfig = useMemo<AttachmentsConfig>(
     () => ({
-      items: promptDraft.attachments,
+      items: activeComposerDraft.attachments,
       projectId: sourceThread.projectId,
       isAttaching: uploadPromptAttachment.isPending,
       error: attachmentError,
       onAttachFiles: handleAttachFiles,
-      onRemove: promptDraft.removeAttachment,
+      onRemove: removeActiveComposerAttachment,
     }),
     [
+      activeComposerDraft.attachments,
       attachmentError,
       handleAttachFiles,
-      promptDraft.attachments,
-      promptDraft.removeAttachment,
+      removeActiveComposerAttachment,
       sourceThread.projectId,
       uploadPromptAttachment.isPending,
     ],
@@ -1217,8 +1440,12 @@ export function SideChatTabContent({
         displayName: selectedProviderDisplayName,
       },
       model: {
-        active: activeModel,
-        selected: selectedModel,
+        active: inlineEditingQueuedMessage
+          ? { model: inlineEditingQueuedMessage.model }
+          : activeModel,
+        selected: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.model
+          : selectedModel,
         options: modelOptions,
         moreOptions: moreModelOptions,
         loadError: modelLoadError,
@@ -1227,13 +1454,17 @@ export function SideChatTabContent({
         onChange: setSelectedModel,
       },
       serviceTier: {
-        value: serviceTier,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.serviceTier
+          : serviceTier,
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
       },
       reasoning: {
-        value: reasoningLevel,
+        value: inlineEditingQueuedMessage
+          ? inlineEditingQueuedMessage.reasoningLevel
+          : reasoningLevel,
         options: reasoningOptions,
         onChange: setReasoningLevel,
       },
@@ -1242,6 +1473,7 @@ export function SideChatTabContent({
       activeModel,
       executionOptionsRouting,
       hasMultipleProviders,
+      inlineEditingQueuedMessage,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -1266,12 +1498,17 @@ export function SideChatTabContent({
     () => ({
       // Pinned to the same constant the create request uses, so the displayed
       // label can't drift from the side chat's actual (always read-only) reach.
-      value: SIDE_CHAT_PERMISSION_MODE,
+      value:
+        inlineEditingQueuedMessage?.permissionMode ?? SIDE_CHAT_PERMISSION_MODE,
       options: permissionModeOptions,
       onChange: noop,
       supported: supportsPermissionModeSelection,
     }),
-    [permissionModeOptions, supportsPermissionModeSelection],
+    [
+      inlineEditingQueuedMessage?.permissionMode,
+      permissionModeOptions,
+      supportsPermissionModeSelection,
+    ],
   );
 
   const environmentSummary = useMemo(() => {
@@ -1325,9 +1562,11 @@ export function SideChatTabContent({
           attachments={attachmentsConfig}
           stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
+          composerTarget={inlineComposerTarget}
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
           execution={executionConfig}
+          executionReadOnly={inlineEditingQueuedMessage !== null}
           permission={permissionConfig}
           permissionReadOnly
           typeahead={typeaheadConfig}
