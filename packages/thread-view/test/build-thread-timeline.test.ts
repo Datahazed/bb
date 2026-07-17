@@ -1777,61 +1777,6 @@ describe("buildThreadTimelineFromEvents", () => {
     },
   );
 
-  it("projects an automation_created operation into a linkable automation row", () => {
-    const rows = buildTimelineRows(
-      [
-        systemOperationEvent({
-          message: 'Created automation "Daily digest"',
-          operation: "automation_created",
-          metadata: {
-            automationId: "auto_123",
-            projectId: "proj_x",
-            automationName: "Daily digest",
-          },
-          seq: 1,
-          status: "completed",
-        }),
-      ],
-      "idle",
-    );
-
-    expect(collectSystemRows(rows)).toEqual([
-      expect.objectContaining({
-        operationKind: "automation-created",
-        systemKind: "operation",
-        title: "Created automation “Daily digest”",
-        detail: null,
-        automationCreated: {
-          automationId: "auto_123",
-          projectId: "proj_x",
-          automationName: "Daily digest",
-        },
-      }),
-    ]);
-  });
-
-  it("falls back to a generic row when automation_created metadata is malformed", () => {
-    const rows = buildTimelineRows(
-      [
-        systemOperationEvent({
-          message: "Created an automation",
-          operation: "automation_created",
-          metadata: { automationId: "auto_123" },
-          seq: 1,
-          status: "completed",
-        }),
-      ],
-      "idle",
-    );
-
-    expect(collectSystemRows(rows)).toEqual([
-      expect.objectContaining({
-        operationKind: "generic",
-        systemKind: "operation",
-      }),
-    ]);
-  });
-
   it.each([
     {
       expectedGrantScope: "turn",

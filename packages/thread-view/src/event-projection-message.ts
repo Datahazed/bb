@@ -1,5 +1,4 @@
 import type {
-  AutomationCreatedOperationMetadata,
   BackgroundTaskStatus,
   BackgroundTaskUsage,
   JsonObject,
@@ -241,7 +240,6 @@ export type EventProjectionOperationType =
 
 export const eventProjectionThreadOperationKindValues = [
   "ownership_change",
-  "automation_created",
   "other",
 ] as const;
 export type EventProjectionThreadOperationKind =
@@ -269,15 +267,6 @@ export interface EventProjectionOwnershipChangeThreadOperationMetadata {
   metadata: OwnershipChangeOperationMetadata | null;
 }
 
-export interface EventProjectionAutomationCreatedThreadOperationMetadata {
-  operation: "automation_created";
-  rawOperation: string;
-  status: EventProjectionThreadOperationStatus;
-  rawStatus: string;
-  operationId: string;
-  metadata: AutomationCreatedOperationMetadata | null;
-}
-
 export interface EventProjectionOtherThreadOperationMetadata {
   operation: "other";
   rawOperation: string;
@@ -289,7 +278,6 @@ export interface EventProjectionOtherThreadOperationMetadata {
 
 export type EventProjectionThreadOperationMetadata =
   | EventProjectionOwnershipChangeThreadOperationMetadata
-  | EventProjectionAutomationCreatedThreadOperationMetadata
   | EventProjectionOtherThreadOperationMetadata;
 
 export interface EventProjectionProvisioningTranscriptEntry {

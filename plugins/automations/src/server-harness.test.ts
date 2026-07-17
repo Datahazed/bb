@@ -300,6 +300,64 @@ describe("automations server plugin harness", () => {
     });
     expect(editable.execution).not.toHaveProperty("scriptFile");
 
+    const agentUpdateResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--prompt",
+      "triage the inbox",
+      "--provider",
+      "codex",
+      "--model",
+      "gpt-5",
+      "--permission-mode",
+      "workspace-write",
+      "--target-thread",
+      THREAD_ID,
+      "--json",
+    ]);
+    expect(agentUpdateResult.exitCode).toBe(0);
+    const agentUpdated = automationResponseSchema.parse(
+      JSON.parse(agentUpdateResult.stdout ?? ""),
+    );
+    expect(agentUpdated.execution).toEqual({
+      mode: "agent",
+      prompt: "triage the inbox",
+      providerId: "codex",
+      model: "gpt-5",
+      permissionMode: "workspace-write",
+      environment: { type: "project-default" },
+      targetThreadId: THREAD_ID,
+    });
+
+    const scriptUpdateResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--script",
+      "echo updated",
+      "--interpreter",
+      "bash",
+      "--timeout",
+      "12000",
+      "--env-json",
+      '{"CHANNEL":"qa"}',
+      "--json",
+    ]);
+    expect(scriptUpdateResult.exitCode).toBe(0);
+    const scriptUpdated = automationResponseSchema.parse(
+      JSON.parse(scriptUpdateResult.stdout ?? ""),
+    );
+    expect(scriptUpdated.execution).toEqual({
+      mode: "script",
+      script: "echo updated",
+      interpreter: "bash",
+      timeoutMs: 12_000,
+      env: { CHANNEL: "qa" },
+    });
+
     const errorResult = await harness.runCli([
       "create",
       "--project",

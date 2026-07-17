@@ -233,6 +233,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "host.list_skills": {
     skills: [
       {
+        id: `skill_${"a".repeat(64)}`,
         name: "review",
         description: "Review the current diff",
         filePath: "/home/user/.bb/skills/review/SKILL.md",
@@ -247,7 +248,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     deletedPath: "/home/user/.bb/skills/review",
   },
   "host.write_skill": {
+    outcome: "written",
     filePath: "/home/user/.bb/skills/review/SKILL.md",
+    sha256: "b".repeat(64),
   },
   "host.caffeinate": {
     enabled: true,

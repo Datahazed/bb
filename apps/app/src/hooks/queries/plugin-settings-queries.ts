@@ -76,7 +76,7 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   lastFailure: null,
 };
 
-function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
+export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
   const state = plugin.updateState;
   return {
     id: plugin.id,

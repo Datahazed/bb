@@ -746,18 +746,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         ? { environmentId: payload.environmentId }
         : {}),
     });
-    // bb-project skills live under `<cwd>/.bb/skills`; without a resolvable
-    // workspace there is nothing to delete (and the daemon would reject it).
-    if (payload.scope === "bb-project" && workspace.cwd === null) {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "No workspace resolved for this project's skills",
-      );
-    }
     const deletedPath = await deleteProjectSkill(deps, {
-      scope: payload.scope,
-      name: payload.name,
+      skillId: payload.skillId,
       workspace,
     });
     return context.json({ deletedPath });
@@ -774,12 +764,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
     });
     const content = await readProjectSkill(deps, {
-      scope: query.scope,
-      name: query.name,
+      skillId: query.skillId,
       path: query.path,
       workspace,
     });
-    return context.json({ content });
+    return context.json(content);
   });
 
   get(routes.skillFiles, async (context, query) => {
@@ -794,8 +783,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     return context.json(
       await listProjectSkillFiles(deps, {
-        scope: query.scope,
-        name: query.name,
+        skillId: query.skillId,
         workspace,
       }),
     );
@@ -811,20 +799,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         ? { environmentId: payload.environmentId }
         : {}),
     });
-    if (payload.scope === "bb-project" && workspace.cwd === null) {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "No workspace resolved for this project's skills",
-      );
-    }
-    const filePath = await writeProjectSkill(deps, {
-      scope: payload.scope,
-      name: payload.name,
+    const result = await writeProjectSkill(deps, {
+      skillId: payload.skillId,
       content: payload.content,
+      revision: payload.revision,
       workspace,
     });
-    return context.json({ filePath });
+    return context.json(result);
   });
 
   get(routes.branches, async (context, query) => {

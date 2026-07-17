@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isExpectedCommandDispatchError } from "../command-dispatch-support.js";
 import {
+  buildRegistrySkillsCliInvocation,
   installHostRegistrySkill,
+  REGISTRY_SKILLS_CLI_VERSION,
   type RunRegistrySkillsCli,
 } from "./install-registry-skill.js";
 
@@ -22,12 +24,7 @@ async function writeExtractedSkill(args: {
   frontmatterName?: string;
   skillId: string;
 }): Promise<string> {
-  const skillPath = path.join(
-    args.cwd,
-    ".agents",
-    "skills",
-    args.skillId,
-  );
+  const skillPath = path.join(args.cwd, ".agents", "skills", args.skillId);
   await fs.mkdir(path.join(skillPath, "scripts"), { recursive: true });
   await fs.writeFile(
     path.join(skillPath, "SKILL.md"),
@@ -51,13 +48,80 @@ async function writeExtractedSkill(args: {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
-      fs.rm(root, { recursive: true, force: true }),
-    ),
+    temporaryRoots
+      .splice(0)
+      .map((root) => fs.rm(root, { recursive: true, force: true })),
   );
 });
 
 describe("installHostRegistrySkill", () => {
+  it("runs a pinned installer with a minimal POSIX environment", () => {
+    const invocation = buildRegistrySkillsCliInvocation({
+      cwd: "/tmp/extract",
+      packageRef: "owner/repo",
+      skillId: "review",
+      platform: "linux",
+      processEnv: {
+        PATH: "/usr/bin",
+        HOME: "/home/user",
+        TMPDIR: "/tmp",
+        AWS_SECRET_ACCESS_KEY: "secret",
+        GITHUB_TOKEN: "secret",
+      },
+    });
+
+    expect(invocation).toEqual({
+      command: "npx",
+      args: [
+        "-y",
+        `skills@${REGISTRY_SKILLS_CLI_VERSION}`,
+        "add",
+        "owner/repo",
+        "--agent",
+        "universal",
+        "--skill",
+        "review",
+        "--copy",
+        "--yes",
+      ],
+      options: {
+        cwd: "/tmp/extract",
+        env: {
+          DISABLE_TELEMETRY: "1",
+          PATH: "/usr/bin",
+          HOME: "/home/user",
+          TMPDIR: "/tmp",
+        },
+      },
+    });
+    expect(invocation.args[1]).not.toContain("latest");
+  });
+
+  it("uses the Windows executable and preserves only launch-critical variables", () => {
+    const invocation = buildRegistrySkillsCliInvocation({
+      cwd: "C:\\extract",
+      packageRef: "owner/repo",
+      skillId: "review",
+      platform: "win32",
+      processEnv: {
+        Path: "C:\\Windows\\System32",
+        SystemRoot: "C:\\Windows",
+        ComSpec: "C:\\Windows\\cmd.exe",
+        USERPROFILE: "C:\\Users\\user",
+        NPM_TOKEN: "secret",
+      },
+    });
+
+    expect(invocation.command).toBe("npx.cmd");
+    expect(invocation.options.env).toEqual({
+      DISABLE_TELEMETRY: "1",
+      Path: "C:\\Windows\\System32",
+      SystemRoot: "C:\\Windows",
+      ComSpec: "C:\\Windows\\cmd.exe",
+      USERPROFILE: "C:\\Users\\user",
+    });
+  });
+
   it("atomically imports a complete package as one bb user skill", async () => {
     const dataDir = await makeDataDir();
     let extractionRoot = "";

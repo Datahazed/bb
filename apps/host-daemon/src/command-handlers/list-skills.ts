@@ -21,6 +21,7 @@ import {
   resolveCodexHome,
   resolveProviderCommandScanRoots,
 } from "./list-commands.js";
+import { writeHostFile } from "./file-write.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 
@@ -41,6 +42,7 @@ function createBbSkillScanRoot(
     namePrefix: "",
     source: "skill",
     origin: rootKind === "bb-project" ? "project" : "user",
+    identitySeed: rootKind,
     rootKind,
   };
 }
@@ -81,15 +83,23 @@ function resolveBbSkillScanRoots(
  * `resolveBbSkillScanRoots`. Returns `null` for legacy command roots or an
  * unrecognized root.
  */
-function classifySkillRootKind(
+function classifySkillRoot(
   root: CommandScanRoot,
   resolution: CommandRootResolution,
-): SkillRootKind | null {
+): Pick<SkillScanRoot, "identitySeed" | "rootKind"> | null {
   if (root.source !== "skill") {
     return null;
   }
   if (root.namePrefix !== "") {
-    return "plugin";
+    const rootPath = "rootPath" in root ? root.rootPath : root.filePath;
+    // Provider plugin discovery currently exposes a display namespace but not
+    // the registry's canonical plugin id. Keep plugin skills unique by their
+    // authoritative root path until that discovery contract grows a stable
+    // plugin identity; native/bb skills below are path-independent.
+    return {
+      identitySeed: `plugin:${resolution.providerId}:${root.namePrefix}:${rootPath}`,
+      rootKind: "plugin",
+    };
   }
   // All non-plugin skill base roots are directory-shaped.
   if (root.shape !== "skill") {
@@ -101,14 +111,22 @@ function classifySkillRootKind(
     (rootPath === path.join(resolution.cwd, ".claude", "skills") ||
       rootPath === path.join(resolution.cwd, ".codex", "skills"))
   ) {
-    return "provider-project";
+    return {
+      identitySeed: `${resolution.providerId}:provider-project`,
+      rootKind: "provider-project",
+    };
   }
   if (
     rootPath === path.join(resolution.homeDir, ".claude", "skills") ||
     rootPath === path.join(resolution.codexHome, "skills") ||
     rootPath === path.join(resolution.codexHome, "skills", ".system")
   ) {
-    return "provider-user";
+    return {
+      identitySeed: `${resolution.providerId}:provider-user:${
+        rootPath.endsWith(`${path.sep}.system`) ? "system" : "user"
+      }`,
+      rootKind: "provider-user",
+    };
   }
   return null;
 }
@@ -124,11 +142,11 @@ export async function resolveSkillScanRoots(
   const skillRoots = resolveBbSkillScanRoots(resolution);
   const providerRoots = await resolveProviderCommandScanRoots(resolution);
   for (const root of providerRoots) {
-    const rootKind = classifySkillRootKind(root, resolution);
-    if (rootKind === null) {
+    const classification = classifySkillRoot(root, resolution);
+    if (classification === null) {
       continue;
     }
-    skillRoots.push({ ...root, rootKind });
+    skillRoots.push({ ...root, ...classification });
   }
   return skillRoots;
 }
@@ -321,6 +339,21 @@ export async function writeHostSkill(
       `Skill "${command.name}" not found`,
     );
   }
-  await fs.writeFile(skillFilePath, command.content, "utf8");
-  return { filePath: skillFilePath };
+  const result = await writeHostFile({
+    type: "host.write_file",
+    path: skillFilePath,
+    rootPath: realTarget,
+    content: command.content,
+    contentEncoding: "utf8",
+    createParents: false,
+    expectedSha256: command.expectedSha256,
+  });
+  if (result.outcome === "conflict") {
+    return result;
+  }
+  return {
+    outcome: "written",
+    filePath: skillFilePath,
+    sha256: result.sha256,
+  };
 }

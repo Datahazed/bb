@@ -4,6 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  pluginListQueryKey,
+  type PluginListResult,
+} from "@/hooks/queries/plugin-settings-queries";
 import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 
@@ -147,13 +151,29 @@ describe("AddPluginDialog", () => {
   it("returns the installed plugin so the caller can open canonical details", async () => {
     stubFetch();
     const onInstalled = vi.fn();
-    renderDialog(
-      {
-        entryId: "linear",
-        displayName: "Linear",
-        icon: "Github",
-      },
-      onInstalled,
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData<PluginListResult>(pluginListQueryKey(true), {
+      plugins: [],
+    });
+    render(
+      <AddPluginDialog
+        open
+        onOpenChange={() => {}}
+        initial={{
+          entryId: "linear",
+          displayName: "Linear",
+          icon: "Github",
+        }}
+        onInstalled={(plugin) => {
+          onInstalled(plugin);
+          expect(
+            queryClient
+              .getQueryData<PluginListResult>(pluginListQueryKey(true))
+              ?.plugins.some((candidate) => candidate.id === plugin.id),
+          ).toBe(true);
+        }}
+      />,
+      { wrapper },
     );
 
     fireEvent.click(screen.getByRole("button", { name: /install linear/i }));

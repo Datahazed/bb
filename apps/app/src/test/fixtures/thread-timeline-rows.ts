@@ -2,7 +2,6 @@ import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
   TimelineApprovalWorkRow,
-  TimelineAutomationCreated,
   TimelineCommandWorkRow,
   TimelineConversationAttachments,
   TimelineConversationRow,
@@ -216,7 +215,6 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   durationMs?: number | null;
   id?: string;
   parentChange?: TimelineParentChange;
-  automationCreated?: TimelineAutomationCreated;
   operationKind?: TimelineSystemOperationKind;
   seq?: number;
   sourceSeqEnd?: number;
@@ -957,7 +955,6 @@ export function systemRow({
   durationMs,
   id = DEFAULT_SYSTEM_ID,
   parentChange,
-  automationCreated,
   operationKind,
   seq,
   sourceSeqEnd,
@@ -992,12 +989,7 @@ export function systemRow({
     };
   }
   const resolvedOperationKind =
-    operationKind ??
-    (parentChange
-      ? "parent-change"
-      : automationCreated
-        ? "automation-created"
-        : "generic");
+    operationKind ?? (parentChange ? "parent-change" : "generic");
   const resolvedCompletedAt =
     completedAt !== undefined
       ? completedAt
@@ -1024,19 +1016,6 @@ export function systemRow({
         previousParentThreadTitle: null,
         nextParentThreadId: null,
         nextParentThreadTitle: null,
-      },
-    };
-  }
-  if (resolvedOperationKind === "automation-created") {
-    return {
-      ...base,
-      systemKind,
-      operationKind: resolvedOperationKind,
-      completedAt: resolvedCompletedAt,
-      automationCreated: automationCreated ?? {
-        automationId: "auto_fixture",
-        projectId: "proj_fixture",
-        automationName: "Fixture automation",
       },
     };
   }

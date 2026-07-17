@@ -14,7 +14,7 @@ export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
-  "/tools/skills/installed/:scope/:providerId/:skillName";
+  "/tools/skills/installed/:skillId";
 export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
 export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
   "/tools/skills/registry/:registrySkillId";
@@ -114,21 +114,13 @@ export function getRegistrySkillsRoutePath(): string {
 }
 
 export interface SkillDetailRoutePathArgs {
-  scope: string;
-  providerId: string | null;
-  skillName: string;
+  skillId: string;
 }
 
 export function getSkillDetailRoutePath({
-  scope,
-  providerId,
-  skillName,
+  skillId,
 }: SkillDetailRoutePathArgs): string {
-  return `${TOOLS_SKILLS_ROUTE_PATH}/installed/${encodeURIComponent(
-    scope,
-  )}/${encodeURIComponent(providerId ?? "bb")}/${encodeURIComponent(
-    skillName,
-  )}`;
+  return `${TOOLS_SKILLS_ROUTE_PATH}/installed/${encodeURIComponent(skillId)}`;
 }
 
 export interface RegistrySkillDetailRoutePathArgs {

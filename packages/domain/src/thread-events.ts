@@ -207,17 +207,6 @@ export type OwnershipChangeOperationMetadata = z.infer<
   typeof ownershipChangeOperationMetadataSchema
 >;
 
-// Metadata for the `automation_created` system operation: the automation a thread's
-// agent just created, carried so the timeline row can link to its detail page.
-export const automationCreatedOperationMetadataSchema = z.object({
-  automationId: z.string(),
-  projectId: z.string(),
-  automationName: z.string(),
-});
-export type AutomationCreatedOperationMetadata = z.infer<
-  typeof automationCreatedOperationMetadataSchema
->;
-
 export const systemOperationEventDataSchema = z.object({
   operation: z.string(),
   status: z.string(),

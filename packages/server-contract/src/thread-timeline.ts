@@ -140,7 +140,6 @@ export const timelineSystemOperationKindValues = [
   "generic",
   "compaction",
   "parent-change",
-  "automation-created",
   "thread-provisioning",
   "thread-interrupted",
   "provider-unhandled",
@@ -215,33 +214,11 @@ export type TimelineParentChangeSystemRow = z.infer<
   typeof timelineParentChangeSystemRowSchema
 >;
 
-// The automation a thread's agent created; the row links its name to the detail.
-export const timelineAutomationCreatedSchema = z.object({
-  automationId: z.string(),
-  projectId: z.string(),
-  automationName: z.string(),
-});
-export type TimelineAutomationCreated = z.infer<
-  typeof timelineAutomationCreatedSchema
->;
-
-export const timelineAutomationCreatedSystemRowSchema =
-  timelineSystemRowBaseSchema.extend({
-    systemKind: z.literal("operation"),
-    operationKind: z.literal("automation-created"),
-    automationCreated: timelineAutomationCreatedSchema,
-    completedAt: z.number().nullable(),
-  });
-export type TimelineAutomationCreatedSystemRow = z.infer<
-  typeof timelineAutomationCreatedSystemRowSchema
->;
-
 export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   "operationKind",
   [
     timelineGenericOperationSystemRowSchema,
     timelineParentChangeSystemRowSchema,
-    timelineAutomationCreatedSystemRowSchema,
   ],
 );
 

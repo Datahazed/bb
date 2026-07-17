@@ -45,8 +45,6 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
   switch (link.kind) {
     case "thread":
       return `/projects/proj_demo/threads/${link.threadId}`;
-    case "automation":
-      return `/tools/automations/${link.projectId}/${link.automationId}`;
   }
 }
 

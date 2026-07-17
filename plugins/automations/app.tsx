@@ -265,11 +265,14 @@ function useAutomation(route: DetailRoute): {
     error: string | null;
     missing: boolean;
   }>({ automation: null, error: null, missing: false });
+  const requestRef = useRef(0);
 
   const refetch = useCallback(() => {
+    const requestId = ++requestRef.current;
     setState((current) => ({ ...current, error: null, missing: false }));
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
+        if (requestRef.current !== requestId) return;
         const automation = result as AutomationResponse | null;
         setState({
           automation: automation ?? null,
@@ -277,14 +280,19 @@ function useAutomation(route: DetailRoute): {
           missing: automation === null,
         });
       },
-      (error: unknown) =>
-        setState({ automation: null, error: errorText(error), missing: false }),
+      (error: unknown) => {
+        if (requestRef.current !== requestId) return;
+        setState({ automation: null, error: errorText(error), missing: false });
+      },
     );
   }, [rpc, projectId, automationId]);
 
   useEffect(() => {
     setState({ automation: null, error: null, missing: false });
     refetch();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [refetch]);
   useRealtime("automations", (payload) => {
     const signal = asSignal(payload);
@@ -639,6 +647,7 @@ function OverviewView({
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
+        replaceInitialPrompt: true,
       });
     },
     [navigate],

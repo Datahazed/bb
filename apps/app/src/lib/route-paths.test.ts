@@ -65,11 +65,9 @@ describe("route path helpers", () => {
     expect(getSkillsRoutePath()).toBe("/tools/skills");
     expect(
       getSkillDetailRoutePath({
-        scope: "bb-user",
-        providerId: null,
-        skillName: "review-loop",
+        skillId: "skill_abc123",
       }),
-    ).toBe("/tools/skills/installed/bb-user/bb/review-loop");
+    ).toBe("/tools/skills/installed/skill_abc123");
     expect(
       getRegistrySkillDetailRoutePath({
         registrySkillId: "moss-skills/moss-notes",
@@ -96,7 +94,7 @@ describe("route path helpers", () => {
     for (const path of [
       "/tools",
       "/tools/skills",
-      "/tools/skills/installed/bb-user/bb/review-loop",
+      "/tools/skills/installed/skill_abc123",
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
       "/tools/plugins",
       "/tools/plugins/browse",

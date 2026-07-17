@@ -612,10 +612,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       to: getAutomationsRoutePath(),
     };
     if (toolsSkillDetailMatch) {
-      return [
-        skillsCrumb,
-        { label: toolsSkillDetailMatch.params.skillName ?? "Skill" },
-      ];
+      return [skillsCrumb, { label: "Skill" }];
     }
     if (toolsRegistrySkillDetailMatch) {
       return [
@@ -718,7 +715,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return pluginPanel.title;
     }
     if (toolsSkillDetailMatch) {
-      return `${toolsSkillDetailMatch.params.skillName ?? "Skill"} · Skills`;
+      return "Skill · Skills";
     }
     if (toolsRegistrySkillDetailMatch) {
       return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills`;

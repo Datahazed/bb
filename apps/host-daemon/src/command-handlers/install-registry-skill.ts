@@ -15,6 +15,7 @@ import {
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILLS_INSTALL_TIMEOUT_MS = 120_000;
 const MAX_INSTALL_OUTPUT_BYTES = 1_000_000;
+export const REGISTRY_SKILLS_CLI_VERSION = "1.5.19";
 
 export interface RegistrySkillsCliResult {
   ok: boolean;
@@ -33,28 +34,71 @@ function appendBounded(current: string, chunk: unknown): string {
   return `${current}${String(chunk)}`.slice(0, MAX_INSTALL_OUTPUT_BYTES);
 }
 
+export function buildRegistrySkillsCliInvocation(args: {
+  cwd: string;
+  packageRef: string;
+  platform?: NodeJS.Platform;
+  processEnv?: NodeJS.ProcessEnv;
+  skillId: string;
+}): {
+  command: string;
+  args: string[];
+  options: { cwd: string; env: NodeJS.ProcessEnv };
+} {
+  const platform = args.platform ?? process.platform;
+  const processEnv = args.processEnv ?? process.env;
+  const allowedKeys =
+    platform === "win32"
+      ? [
+          "PATH",
+          "Path",
+          "PATHEXT",
+          "SYSTEMROOT",
+          "SystemRoot",
+          "COMSPEC",
+          "ComSpec",
+          "TEMP",
+          "TMP",
+          "USERPROFILE",
+          "APPDATA",
+          "LOCALAPPDATA",
+        ]
+      : ["PATH", "HOME", "TMPDIR"];
+  const env: NodeJS.ProcessEnv = { DISABLE_TELEMETRY: "1" };
+  for (const key of allowedKeys) {
+    const value = processEnv[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return {
+    command: platform === "win32" ? "npx.cmd" : "npx",
+    args: [
+      "-y",
+      `skills@${REGISTRY_SKILLS_CLI_VERSION}`,
+      "add",
+      args.packageRef,
+      "--agent",
+      "universal",
+      "--skill",
+      args.skillId,
+      "--copy",
+      "--yes",
+    ],
+    options: { cwd: args.cwd, env },
+  };
+}
+
 function runRegistrySkillsCli(args: {
   cwd: string;
   packageRef: string;
   skillId: string;
 }): Promise<RegistrySkillsCliResult> {
-  const commandArgs = [
-    "-y",
-    "skills@latest",
-    "add",
-    args.packageRef,
-    "--agent",
-    "universal",
-    "--skill",
-    args.skillId,
-    "--copy",
-    "--yes",
-  ];
+  const invocation = buildRegistrySkillsCliInvocation(args);
   return new Promise((resolve) => {
-    const child = spawn("npx", commandArgs, {
-      cwd: args.cwd,
-      env: { ...process.env, DISABLE_TELEMETRY: "1" },
-    });
+    const child = spawn(
+      invocation.command,
+      invocation.args,
+      invocation.options,
+    );
     let stdout = "";
     let stderr = "";
     let timedOut = false;

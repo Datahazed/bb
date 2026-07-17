@@ -296,30 +296,6 @@ const parentChangeTransfer: TimelineRow = systemRow({
   },
 });
 
-// system/operation with operation="automation_created". The projector routes
-// this to the automation-created row variant, which links the automation name to its
-// detail page. Emitted when an agent creates an automation from this thread.
-const automationCreated: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:automation-created:evt_automation",
-  threadId: "thr_wxmxksux4w",
-  turnId: null,
-  sourceSeqStart: 18,
-  sourceSeqEnd: 18,
-  startedAt: 1777890000000,
-  createdAt: 1777890000000,
-  systemKind: "operation",
-  operationKind: "automation-created",
-  title: "Created automation “Disk space watchdog”",
-  detail: null,
-  status: "completed",
-  completedAt: 1777890000000,
-  automationCreated: {
-    automationId: "auto_jujqt6vnjz",
-    projectId: "proj_personal",
-    automationName: "Disk space watchdog",
-  },
-});
-
 // Non-operation system row, systemKind="debug". The projector emits these
 // for raw provider events when debug routing is enabled — title is the
 // rawType, detail is the JSON payload.
@@ -509,17 +485,6 @@ export function Operations() {
           <ThreadTimelineRows
             {...baseProps}
             timelineRows={[parentChangeTransfer]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="automation-created"
-        hint="agent created an automation from this thread; the automation name links to its detail"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            timelineRows={[automationCreated]}
           />
         </TimelineStage>
       </StoryRow>

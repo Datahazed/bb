@@ -22,7 +22,6 @@ import {
   SkillDetailView,
 } from "@/components/tools/SkillDetailView";
 import {
-  isKnownSkillScope,
   isSkillEditable,
   SKILL_SCOPE_LABELS,
 } from "@/components/tools/skill-taxonomy";
@@ -67,23 +66,6 @@ import {
   useSkillFiles,
 } from "@/hooks/queries/skills-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-
-const SKILL_PROVIDER_ROUTE_IDS = ["bb", "claude-code", "codex"] as const;
-
-function isSkillScope(
-  value: string | undefined,
-): value is SkillSummary["scope"] {
-  return isKnownSkillScope(value);
-}
-
-function isSkillProviderRouteId(
-  value: string | undefined,
-): value is (typeof SKILL_PROVIDER_ROUTE_IDS)[number] {
-  return (
-    value !== undefined &&
-    SKILL_PROVIDER_ROUTE_IDS.some((providerId) => providerId === value)
-  );
-}
 
 export interface RegistrySkill {
   id: string;
@@ -352,7 +334,6 @@ function providerLabel(providerId: SkillProvider | null): string {
 
 type ResourceProviderFilter = "bb" | SkillProvider;
 type ResourceSortMode = "provider" | "alpha";
-type RegistrySkillSortMode = "installs" | "stars" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
 const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
@@ -577,59 +558,12 @@ export function RegistrySkillsBrowsePage({
   isInstalled: (skill: RegistrySkill) => boolean;
   canUninstall?: (skill: RegistrySkill) => boolean;
 }) {
-  const [sortMode, setSortMode] = useState<RegistrySkillSortMode>("installs");
-  const [sortDirection, setSortDirection] =
-    useState<ResourceSortDirection>("desc");
-  const sortedSkills = useMemo(() => {
-    return [...skills].sort((left, right) => {
-      const base =
-        sortMode === "installs"
-          ? left.installs - right.installs ||
-            left.name.localeCompare(right.name)
-          : sortMode === "stars"
-            ? (left.stars ?? -1) - (right.stars ?? -1) ||
-              left.name.localeCompare(right.name)
-            : left.name.localeCompare(right.name);
-      return applySortDirection(base, sortDirection);
-    });
-  }, [skills, sortDirection, sortMode]);
-  const handleSortChange = useCallback(
-    (nextSort: string) => {
-      if (
-        nextSort !== "installs" &&
-        nextSort !== "stars" &&
-        nextSort !== "alpha"
-      ) {
-        return;
-      }
-      if (nextSort === sortMode) {
-        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-        return;
-      }
-      setSortMode(nextSort);
-      setSortDirection(nextSort === "alpha" ? "asc" : "desc");
-    },
-    [sortMode],
-  );
-
   return (
     <div id="skills-browse-results" className="space-y-4">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search skills"
         onSearchChange={onQueryChange}
-        controls={
-          <ResourceSortMenu
-            value={sortMode}
-            direction={sortDirection}
-            options={[
-              { id: "installs", label: "Install count" },
-              { id: "stars", label: "Stars" },
-              { id: "alpha", label: "Skill name" },
-            ]}
-            onChange={handleSortChange}
-          />
-        }
       />
       {hasError ? (
         <EmptyStatePanel role="alert" className="py-6">
@@ -656,7 +590,7 @@ export function RegistrySkillsBrowsePage({
         </EmptyStatePanel>
       ) : (
         <ResourceBrowseGrid>
-          {sortedSkills.map((skill) => (
+          {skills.map((skill) => (
             <RegistrySkillSourceItem
               key={skill.id}
               skill={skill}
@@ -1079,7 +1013,7 @@ export function SkillDetailDialogView({
 
   useEffect(() => {
     setConfirmingDelete(false);
-  }, [skill?.scope, skill?.name, skill?.provider]);
+  }, [skill?.id]);
 
   if (skill === null) return null;
   const bundledPluginName =
@@ -1199,7 +1133,7 @@ function SkillDetailPage({
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => {
     setSelectedPath("SKILL.md");
-  }, [skill?.scope, skill?.name, skill?.provider]);
+  }, [skill?.id]);
   const filesQuery = useSkillFiles(projectId, skill);
   const contentQuery = useSkillContent(projectId, skill, selectedPath);
   const deleteSkill = useDeleteSkill(projectId);
@@ -1236,7 +1170,7 @@ function SkillDetailPage({
       onDelete={() => {
         if (!skill || deletableScope === null) return;
         deleteSkill.mutate(
-          { scope: deletableScope, name: skill.name, environmentId: null },
+          { skillId: skill.id, environmentId: null },
           { onSuccess: onClose },
         );
       }}
@@ -1255,14 +1189,10 @@ export function SkillsLibrary() {
   const navigate = useNavigate();
   const location = useLocation();
   const {
-    scope: routeScope,
-    providerId: routeProviderId,
-    skillName: routeSkillName,
+    skillId: routeSkillId,
     registrySkillId: routeRegistrySkillId,
   } = useParams<{
-    scope?: string;
-    providerId?: string;
-    skillName?: string;
+    skillId?: string;
     registrySkillId?: string;
   }>();
   const [installedQuery, setInstalledQuery] = useState("");
@@ -1310,23 +1240,9 @@ export function SkillsLibrary() {
     },
   });
   const selectedSkill = useMemo(() => {
-    if (
-      !isSkillScope(routeScope) ||
-      !isSkillProviderRouteId(routeProviderId) ||
-      routeSkillName === undefined
-    ) {
-      return null;
-    }
-    const provider = routeProviderId === "bb" ? null : routeProviderId;
-    return (
-      skills.find(
-        (skill) =>
-          skill.scope === routeScope &&
-          skill.provider === provider &&
-          skill.name === routeSkillName,
-      ) ?? null
-    );
-  }, [routeProviderId, routeScope, routeSkillName, skills]);
+    if (routeSkillId === undefined) return null;
+    return skills.find((skill) => skill.id === routeSkillId) ?? null;
+  }, [routeSkillId, skills]);
   const registrySkillOnPage = useMemo(() => {
     if (routeRegistrySkillId === undefined) {
       return null;
@@ -1397,9 +1313,7 @@ export function SkillsLibrary() {
     }
     navigate(
       getSkillDetailRoutePath({
-        scope: installedRegistryDetailSkill.scope,
-        providerId: installedRegistryDetailSkill.provider,
-        skillName: installedRegistryDetailSkill.name,
+        skillId: installedRegistryDetailSkill.id,
       }),
       { replace: true },
     );
@@ -1430,8 +1344,7 @@ export function SkillsLibrary() {
       if (installedSkill === null) return;
       deleteSkill.mutate(
         {
-          scope: "bb-user",
-          name: installedSkill.name,
+          skillId: installedSkill.id,
           environmentId: null,
         },
         {
@@ -1463,9 +1376,7 @@ export function SkillsLibrary() {
     (skill: SkillSummary) => {
       navigate(
         getSkillDetailRoutePath({
-          scope: skill.scope,
-          providerId: skill.provider,
-          skillName: skill.name,
+          skillId: skill.id,
         }),
       );
     },
@@ -1477,6 +1388,7 @@ export function SkillsLibrary() {
         state: {
           focusPrompt: true,
           initialPrompt: buildSkillEditThreadPrompt({
+            id: skill.id,
             name: skill.name,
             path: skill.filePath,
           }),
@@ -1492,9 +1404,7 @@ export function SkillsLibrary() {
       if (installedSkill !== null) {
         navigate(
           getSkillDetailRoutePath({
-            scope: installedSkill.scope,
-            providerId: installedSkill.provider,
-            skillName: installedSkill.name,
+            skillId: installedSkill.id,
           }),
         );
         return;
@@ -1545,11 +1455,11 @@ export function SkillsLibrary() {
       ? registryInstall.variables.skill.id
       : null;
   const pendingRegistryUninstallSkillId =
-    deleteSkill.isPending && deleteSkill.variables?.scope === "bb-user"
+    deleteSkill.isPending
       ? ((registryQuery.data?.skills ?? []).find(
           (skill) =>
-            findVerifiedInstalledRegistrySkill(skill)?.name ===
-            deleteSkill.variables?.name,
+            findVerifiedInstalledRegistrySkill(skill)?.id ===
+            deleteSkill.variables?.skillId,
         )?.id ?? null)
       : null;
   return (
@@ -1597,8 +1507,8 @@ export function SkillsLibrary() {
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
           uninstallPending={
             deleteSkill.isPending &&
-            deleteSkill.variables?.scope === "bb-user" &&
-            deleteSkill.variables.name === selectedRegistrySkill.skillId
+            findVerifiedInstalledRegistrySkill(selectedRegistrySkill)?.id ===
+              deleteSkill.variables?.skillId
           }
           onRetry={() => void registryDetailQuery.refetch()}
           onInstall={installRegistry}

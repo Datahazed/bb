@@ -7,8 +7,7 @@ import { invalidateQueryKeys } from "./cache-effect-utils";
 
 interface SkillContentInvalidationArg extends QueryClientArg {
   projectId: string;
-  scope: string;
-  name: string;
+  skillId: string;
 }
 
 /**
@@ -18,14 +17,13 @@ interface SkillContentInvalidationArg extends QueryClientArg {
  */
 export function invalidateSkillContentMutationQueries({
   projectId,
-  scope,
-  name,
+  skillId,
   queryClient,
 }: SkillContentInvalidationArg): void {
   invalidateQueryKeys({
     queryClient,
     queryKeys: [
-      skillContentQueryKeyPrefix(projectId, scope, name),
+      skillContentQueryKeyPrefix(projectId, skillId),
       projectSkillsQueryKey(projectId),
     ],
   });

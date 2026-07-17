@@ -451,7 +451,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathProjectId, UpdateSkillRequest>(
         updateSkillRequestSchema,
       ),
-      response: jsonResponse<{ filePath: string }>(),
+      response: jsonResponse<{ filePath: string; revision: string }>(),
     }),
     branches: defineRoute({
       path: "/projects/:id/branches",

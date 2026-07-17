@@ -1,11 +1,25 @@
-import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { discoverSkills } from "../command-discovery.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";
-import { deleteHostSkill, resolveSkillScanRoots } from "./list-skills.js";
+import {
+  deleteHostSkill,
+  resolveSkillScanRoots,
+  writeHostSkill,
+} from "./list-skills.js";
 
 interface WorkspaceFixture {
   cwd: string;
@@ -105,6 +119,7 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
     const skills = await listSkills(fixture, "claude-code", fixture.cwd);
 
     expect(byName(skills, "proj-bb")).toEqual({
+      id: expect.stringMatching(/^skill_[a-f0-9]{64}$/u),
       name: "proj-bb",
       description: "proj-bb skill",
       filePath: files["proj-bb"],
@@ -116,6 +131,42 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
     expect(byName(skills, "user-claude")?.rootKind).toBe("provider-user");
     // Every record carries its absolute SKILL.md path.
     expect(byName(skills, "user-claude")?.filePath).toBe(files["user-claude"]);
+  });
+
+  it("keeps native skill IDs stable when the workspace root moves", async () => {
+    const firstRoot = path.join(tempRoot, "checkout-a", ".bb", "skills");
+    const secondRoot = path.join(tempRoot, "checkout-b", ".bb", "skills");
+    await writeSkill(path.join(firstRoot, "review", "SKILL.md"), "review");
+    await writeSkill(path.join(secondRoot, "review", "SKILL.md"), "review");
+
+    const [first] = await discoverSkills({
+      roots: [
+        {
+          rootPath: firstRoot,
+          shape: "skill",
+          namePrefix: "",
+          source: "skill",
+          origin: "project",
+          identitySeed: "bb-project",
+          rootKind: "bb-project",
+        },
+      ],
+    });
+    const [second] = await discoverSkills({
+      roots: [
+        {
+          rootPath: secondRoot,
+          shape: "skill",
+          namePrefix: "",
+          source: "skill",
+          origin: "project",
+          identitySeed: "bb-project",
+          rootKind: "bb-project",
+        },
+      ],
+    });
+
+    expect(first?.id).toBe(second?.id);
   });
 
   it("drops project roots when cwd is null", async () => {
@@ -329,5 +380,49 @@ describe("deleteHostSkill", () => {
       ),
     ).rejects.toMatchObject({ code: "not_a_skill" });
     expect(await stat(notSkill).catch(() => null)).not.toBeNull();
+  });
+});
+
+describe("writeHostSkill", () => {
+  it("atomically replaces a bb skill only at the expected revision", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const filePath = path.join(fixture.dataDir, "skills", "review", "SKILL.md");
+    const original = "---\nname: review\ndescription: Review\n---\n";
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, original, "utf8");
+    const revision = createHash("sha256").update(original).digest("hex");
+
+    const written = await writeHostSkill(
+      {
+        type: "host.write_skill",
+        scope: "bb-user",
+        name: "review",
+        cwd: null,
+        content: "# Updated",
+        expectedSha256: revision,
+      },
+      { dataDir: fixture.dataDir },
+    );
+
+    expect(written).toMatchObject({
+      outcome: "written",
+      filePath: await realpath(filePath),
+      sha256: createHash("sha256").update("# Updated").digest("hex"),
+    });
+    expect(await readFile(filePath, "utf8")).toBe("# Updated");
+
+    const stale = await writeHostSkill(
+      {
+        type: "host.write_skill",
+        scope: "bb-user",
+        name: "review",
+        cwd: null,
+        content: "# Stale overwrite",
+        expectedSha256: revision,
+      },
+      { dataDir: fixture.dataDir },
+    );
+    expect(stale).toMatchObject({ outcome: "conflict" });
+    expect(await readFile(filePath, "utf8")).toBe("# Updated");
   });
 });

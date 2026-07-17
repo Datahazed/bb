@@ -1,4 +1,5 @@
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
+import { createHash } from "node:crypto";
 import type { SkillProvider } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -120,7 +121,13 @@ describe("assembleSkillList", () => {
     rootKind: SkillRootKind,
     filePath: string,
   ): DiscoveredSkill {
-    return { name, description: null, rootKind, filePath };
+    return {
+      id: `skill_${createHash("sha256").update(filePath).digest("hex")}`,
+      name,
+      description: null,
+      rootKind,
+      filePath,
+    };
   }
 
   it("de-dupes a bb skill discovered under both providers", () => {

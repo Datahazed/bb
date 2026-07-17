@@ -2,11 +2,11 @@ import { Buffer } from "node:buffer";
 import path from "node:path";
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
 import type {
-  EditableSkillScope,
   SkillProvider,
   SkillScope,
   SkillSummary,
 } from "@bb/server-contract";
+import { editableSkillScopeSchema } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -134,6 +134,7 @@ export function assembleSkillList(
       }
       const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
       byPath.set(skill.filePath, {
+        id: skill.id,
         name: skill.name,
         description: skill.description,
         provider: mapped.provider,
@@ -174,15 +175,12 @@ export async function listProjectSkills(
 async function resolveProjectSkill(
   deps: AppDeps,
   args: {
-    scope: SkillScope;
-    name: string;
+    skillId: string;
     workspace: CommandWorkspace;
   },
 ): Promise<SkillSummary> {
   const skills = await listProjectSkills(deps, { workspace: args.workspace });
-  const match = skills.find(
-    (skill) => skill.scope === args.scope && skill.name === args.name,
-  );
+  const match = skills.find((skill) => skill.id === args.skillId);
   if (!match) {
     throw new ApiError(404, "not_found", "Skill not found");
   }
@@ -192,8 +190,7 @@ async function resolveProjectSkill(
 export async function listProjectSkillFiles(
   deps: AppDeps,
   args: {
-    scope: SkillScope;
-    name: string;
+    skillId: string;
     workspace: CommandWorkspace;
   },
 ): Promise<{ files: string[]; truncated: boolean }> {
@@ -222,12 +219,11 @@ export async function listProjectSkillFiles(
 export async function readProjectSkill(
   deps: AppDeps,
   args: {
-    scope: SkillScope;
-    name: string;
+    skillId: string;
     path: string;
     workspace: CommandWorkspace;
   },
-): Promise<string> {
+): Promise<{ content: string; revision: string }> {
   const skill = await resolveProjectSkill(deps, args);
   const rootPath = hostPathDirname(skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
@@ -240,30 +236,42 @@ export async function readProjectSkill(
       dotfiles: "deny",
     },
   });
-  return result.contentEncoding === "utf8"
-    ? result.content
-    : Buffer.from(result.content, "base64").toString("utf8");
+  return {
+    content:
+      result.contentEncoding === "utf8"
+        ? result.content
+        : Buffer.from(result.content, "base64").toString("utf8"),
+    revision: result.sha256,
+  };
 }
 
 /** Overwrite an editable local SKILL.md through a confined host write. */
 export async function writeProjectSkill(
   deps: AppDeps,
   args: {
-    scope: EditableSkillScope;
-    name: string;
+    skillId: string;
     content: string;
+    revision: string;
     workspace: CommandWorkspace;
   },
-): Promise<string> {
-  if (args.scope !== "bb-user" && args.scope !== "bb-project") {
-    const skill = await resolveProjectSkill(deps, args);
-    if (isBundledProviderSkill(skill.filePath) || skill.scope === "plugin") {
-      throw new ApiError(
-        403,
-        "forbidden",
-        "Bundled skills cannot be edited in bb",
-      );
-    }
+): Promise<{ filePath: string; revision: string }> {
+  const skill = await resolveProjectSkill(deps, args);
+  const editableScope = editableSkillScopeSchema.safeParse(skill.scope);
+  if (!skill.manageable || !editableScope.success) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Bundled skills cannot be edited in bb",
+    );
+  }
+  if (editableScope.data === "bb-project" && args.workspace.cwd === null) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "No workspace resolved for this project's skills",
+    );
+  }
+  if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
     const result = await callHostOnlineRpc(deps, {
       hostId: args.workspace.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -274,25 +282,30 @@ export async function writeProjectSkill(
         content: args.content,
         contentEncoding: "utf8",
         createParents: false,
+        expectedSha256: args.revision,
       },
     });
     if (result.outcome !== "written") {
       throw new ApiError(409, "conflict", "Skill changed before it was saved");
     }
-    return skill.filePath;
+    return { filePath: skill.filePath, revision: result.sha256 };
   }
   const result = await callHostOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.write_skill",
-      scope: args.scope,
-      name: args.name,
+      scope: editableScope.data,
+      name: skill.name,
       cwd: args.workspace.cwd,
       content: args.content,
+      expectedSha256: args.revision,
     },
   });
-  return result.filePath;
+  if (result.outcome === "conflict") {
+    throw new ApiError(409, "conflict", "Skill changed before it was saved");
+  }
+  return { filePath: result.filePath, revision: result.sha256 };
 }
 
 /**
@@ -304,22 +317,29 @@ export async function writeProjectSkill(
 export async function deleteProjectSkill(
   deps: AppDeps,
   args: {
-    scope: EditableSkillScope;
-    name: string;
+    skillId: string;
     workspace: CommandWorkspace;
   },
 ): Promise<string> {
-  let daemonName = args.name;
+  const skill = await resolveProjectSkill(deps, args);
+  const editableScope = editableSkillScopeSchema.safeParse(skill.scope);
+  if (!skill.manageable || !editableScope.success) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Bundled skills cannot be deleted in bb",
+    );
+  }
+  if (editableScope.data === "bb-project" && args.workspace.cwd === null) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "No workspace resolved for this project's skills",
+    );
+  }
+  let daemonName = skill.name;
   let rootPath: string | null = null;
-  if (args.scope !== "bb-user" && args.scope !== "bb-project") {
-    const skill = await resolveProjectSkill(deps, args);
-    if (isBundledProviderSkill(skill.filePath) || skill.scope === "plugin") {
-      throw new ApiError(
-        403,
-        "forbidden",
-        "Bundled skills cannot be deleted in bb",
-      );
-    }
+  if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
     const skillDirPath = hostPathDirname(skill.filePath);
     daemonName = hostPathBasename(skillDirPath);
     rootPath = hostPathDirname(skillDirPath);
@@ -329,7 +349,7 @@ export async function deleteProjectSkill(
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.delete_skill",
-      scope: args.scope,
+      scope: editableScope.data,
       name: daemonName,
       cwd: args.workspace.cwd,
       rootPath,

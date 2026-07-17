@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 56 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 58 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -694,6 +694,7 @@ export type SkillRootKind = z.infer<typeof skillRootKindSchema>;
  * `command`-source entries are not surfaced here.
  */
 export const discoveredSkillSchema = z.object({
+  id: z.string().regex(/^skill_[a-f0-9]{64}$/u),
   name: z.string(),
   description: z.string().nullable(),
   filePath: z.string(),
@@ -796,6 +797,7 @@ const hostWriteSkillCommandSchema = z
     name: z.string().min(1),
     cwd: z.string().min(1).nullable(),
     content: z.string().min(1).max(1_000_000),
+    expectedSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict()
   .superRefine((command, context) => {
@@ -1210,9 +1212,20 @@ const deleteSkillResultSchema = z.object({
   deletedPath: z.string(),
 });
 
-const writeSkillResultSchema = z.object({
-  filePath: z.string(),
-});
+const writeSkillResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("written"),
+    filePath: z.string(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  }),
+  z.object({
+    outcome: z.literal("conflict"),
+    currentSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+  }),
+]);
 
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),

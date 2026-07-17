@@ -16,6 +16,7 @@ import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
+  applyInstalledPlugin,
   invalidatePluginCatalogSearch,
   invalidatePluginList,
 } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -106,6 +107,7 @@ function AddPluginDialogContent({
         ? installCatalogPlugin(fetch, { entryId: body.entryId })
         : installPlugin(fetch, body.source),
     onSuccess: (plugin) => {
+      applyInstalledPlugin({ queryClient, plugin });
       invalidatePluginList({ queryClient });
       // Search rows carry installed flags; a fresh install flips them.
       invalidatePluginCatalogSearch({ queryClient });

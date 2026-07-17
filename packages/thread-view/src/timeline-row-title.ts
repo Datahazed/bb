@@ -56,9 +56,7 @@ export type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
  * navigation (the App) can wrap the segment in a link; CLI renderers ignore
  * the link and render the segment text directly.
  */
-export type TimelineTitleLink =
-  | { kind: "thread"; threadId: string }
-  | { kind: "automation"; projectId: string; automationId: string };
+export type TimelineTitleLink = { kind: "thread"; threadId: string };
 
 /**
  * One slice of the title's text. Renderers walk the segment list and apply
@@ -1410,39 +1408,10 @@ function mapParentChangeSystemTitle(
   });
 }
 
-/**
- * "Created automation {name}" with the automation name linked to its detail page. Built from
- * the row's structured `automationCreated` payload (not the flat title), so the
- * name stays linkable without parsing.
- */
-function mapAutomationCreatedSystemTitle(
-  row: Extract<TimelineSystemViewRow, { operationKind: "automation-created" }>,
-): TimelineTitle {
-  const { automationId, projectId, automationName } = row.automationCreated;
-  const name = automationName.trim();
-  return makeTitle({
-    segments: [
-      segment("Created automation", { accent: "muted" }),
-      segment(name.length > 0 ? name : "automation", {
-        em: true,
-        truncate: true,
-        link: { kind: "automation", projectId, automationId },
-      }),
-    ],
-    decorations: [],
-  });
-}
-
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   const hasError = row.systemKind === "error" || row.status === "error";
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
-  }
-  if (
-    row.systemKind === "operation" &&
-    row.operationKind === "automation-created"
-  ) {
-    return mapAutomationCreatedSystemTitle(row);
   }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";

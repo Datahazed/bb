@@ -1325,6 +1325,7 @@ describe("@bb/sdk", () => {
         body: {
           skills: [
             {
+              id: `skill_${"a".repeat(64)}`,
               name: "local-skill",
               description: null,
               provider: null,
@@ -1385,6 +1386,81 @@ describe("@bb/sdk", () => {
           registrySkillId: registrySkill.id,
           projectId: "proj_123",
         }),
+      },
+    ]);
+  });
+
+  it("uses opaque skill identities and compare-and-swap revisions", async () => {
+    const skillId = `skill_${"a".repeat(64)}`;
+    const revision = "b".repeat(64);
+    const queue = createFetchQueue([
+      { body: { content: "# Review", revision } },
+      { body: { files: ["SKILL.md"], truncated: false } },
+      {
+        body: {
+          filePath: "/skills/review/SKILL.md",
+          revision: "c".repeat(64),
+        },
+      },
+      { body: { deletedPath: "/skills/review" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.skills.getContent({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+      path: "SKILL.md",
+    });
+    await sdk.skills.listFiles({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+    });
+    await sdk.skills.update({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+      content: "# Updated",
+      revision,
+    });
+    await sdk.skills.remove({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        method: "GET",
+        url: `http://bb.test/api/v1/projects/proj_123/skills/content?skillId=${skillId}&path=SKILL.md&environmentId=`,
+        bodyText: undefined,
+      },
+      {
+        method: "GET",
+        url: `http://bb.test/api/v1/projects/proj_123/skills/files?skillId=${skillId}&environmentId=`,
+        bodyText: undefined,
+      },
+      {
+        method: "PATCH",
+        url: "http://bb.test/api/v1/projects/proj_123/skills/content",
+        bodyText: JSON.stringify({
+          skillId,
+          environmentId: null,
+          content: "# Updated",
+          revision,
+        }),
+      },
+      {
+        method: "DELETE",
+        url: "http://bb.test/api/v1/projects/proj_123/skills",
+        bodyText: JSON.stringify({ skillId, environmentId: null }),
       },
     ]);
   });

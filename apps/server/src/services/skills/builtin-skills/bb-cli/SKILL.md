@@ -78,12 +78,15 @@ message agents, or inspect projects, providers, and environments.
 - Use `bb skill list` to inspect installed and discovered skills. It defaults to
   `BB_PROJECT_ID`, then the personal project; pass `--project` or
   `--environment` to select another workspace.
-- Use `bb skill show <scope> <name>` and `bb skill files <scope> <name>` to read
-  server-resolved skill content. Use `bb skill update` or `bb skill delete`
-  only for the editable scopes shown by `bb skill list`.
-- Use `bb skill search [query]` for live skills.sh results and `bb skill install
-<registry-skill-id>` to install the canonical registry identity. Never infer
-  an install source from a display name.
+- Copy the opaque ID from `bb skill list`, then use `bb skill show <skill-id>`
+  or `bb skill files <skill-id>` to read that exact skill.
+- `bb skill show <skill-id> --json` returns the revision. Pass that revision,
+  plus `--file`, to `bb skill update <skill-id>`. Use update or delete only when
+  the list says editable.
+- Use `bb skill search [query]` for live skills.sh results. Inspect metadata and
+  the bounded file preview with `bb skill registry detail <registry-skill-id>`.
+  Install with `bb skill install <registry-skill-id>`; never infer an install
+  source from a display name.
 
 ## Spawning Threads
 
@@ -394,6 +397,11 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
+- Use `bb automation update <id> --project <id>` with `--name` or schedule
+  flags for metadata changes. To change what runs, provide a complete
+  replacement execution: `--prompt` + `--provider` + `--model` for an agent,
+  or `--script`/`--script-file` for a script. Script replacements also accept
+  `--interpreter`, `--timeout`, and `--env-json '{"KEY":"value"}'`.
 - Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
   automations plugin should be installed and running.
 

@@ -190,9 +190,7 @@ async function resolveInstalledSkillDetailPath(): Promise<string> {
     throw new Error("The live server has no installed skill to open.");
   }
   return getSkillDetailRoutePath({
-    scope: skill.scope,
-    providerId: skill.provider,
-    skillName: skill.name,
+    skillId: skill.id,
   });
 }
 

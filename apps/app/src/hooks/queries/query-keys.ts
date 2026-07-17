@@ -1117,25 +1117,19 @@ export function projectSkillsQueryKey(projectId: string) {
 
 export function skillContentQueryKey(
   projectId: string,
-  scope: string,
-  name: string,
+  skillId: string,
   path: string,
 ) {
-  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name, path] as const;
+  return [SKILL_CONTENT_QUERY_KEY, projectId, skillId, path] as const;
 }
 
 export function skillContentQueryKeyPrefix(
   projectId: string,
-  scope: string,
-  name: string,
+  skillId: string,
 ) {
-  return [SKILL_CONTENT_QUERY_KEY, projectId, scope, name] as const;
+  return [SKILL_CONTENT_QUERY_KEY, projectId, skillId] as const;
 }
 
-export function skillFilesQueryKey(
-  projectId: string,
-  scope: string,
-  name: string,
-) {
-  return [SKILL_FILES_QUERY_KEY, projectId, scope, name] as const;
+export function skillFilesQueryKey(projectId: string, skillId: string) {
+  return [SKILL_FILES_QUERY_KEY, projectId, skillId] as const;
 }

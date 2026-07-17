@@ -19,13 +19,18 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
+  getSkillDetailRoutePath,
 } from "./route-paths";
 import { useRouteStateHistoryNavigation } from "./app-route-history";
+
+const TOOL_SKILL_DETAIL_ROUTE = getSkillDetailRoutePath({
+  skillId: "skill_review_loop",
+});
 
 const TOOL_ROUTE_SEQUENCE = [
   "/tools/skills",
   "/tools/skills/registry",
-  "/tools/skills/installed/bb-user/bb/review-loop",
+  TOOL_SKILL_DETAIL_ROUTE,
   "/tools/skills/registry/moss-skills%2Fmoss-notes",
   "/tools/plugins",
   "/tools/plugins/github",
@@ -196,7 +201,7 @@ describe("useRouteStateHistoryNavigation", () => {
     );
     await clickAndExpectPath(
       "Back",
-      "/tools/skills/installed/bb-user/bb/review-loop",
+      TOOL_SKILL_DETAIL_ROUTE,
     );
     await clickAndExpectPath("Back", "/tools/skills/registry");
     await clickAndExpectPath("Back", "/tools/skills");
@@ -209,7 +214,7 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Forward", "/tools/skills/registry");
     await clickAndExpectPath(
       "Forward",
-      "/tools/skills/installed/bb-user/bb/review-loop",
+      TOOL_SKILL_DETAIL_ROUTE,
     );
     await clickAndExpectPath(
       "Forward",
@@ -244,8 +249,8 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go forward", true);
 
     await clickAndExpectPath(
-      "/tools/skills/installed/bb-user/bb/review-loop",
-      "/tools/skills/installed/bb-user/bb/review-loop",
+      TOOL_SKILL_DETAIL_ROUTE,
+      TOOL_SKILL_DETAIL_ROUTE,
     );
     await clickAndExpectPath("Go back", "/tools/skills");
 

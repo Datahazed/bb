@@ -30,6 +30,7 @@ afterEach(() => {
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
   return {
+    id: `skill_${"a".repeat(64)}`,
     name: "code-review",
     description: "Review the current diff.",
     provider: "claude-code",
@@ -322,7 +323,7 @@ describe("SkillsOverview", () => {
 });
 
 describe("RegistrySkillsBrowsePage", () => {
-  it("renders rows, sorts Skill name A-Z, exposes Stars, and pages forward", async () => {
+  it("renders the authoritative page order, exposes social proof, and pages forward", () => {
     const onPageChange = vi.fn();
     const alpha = makeRegistrySkill({
       id: "owner/repo/alpha",
@@ -367,23 +368,13 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
     expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
-    expect(await screen.findByRole("menuitem", { name: "Stars" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Skill name" }));
-
-    await waitFor(() => {
-      const alphaTitle = screen.getByText("Alpha");
-      const zuluTitle = screen.getByText("Zulu");
-      expect(
-        alphaTitle.compareDocumentPosition(zuluTitle) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    });
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menuitem", { name: "Stars" })).toBeNull();
-    });
+    expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
+    const alphaTitle = screen.getByText("Alpha");
+    const zuluTitle = screen.getByText("Zulu");
+    expect(
+      alphaTitle.compareDocumentPosition(zuluTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(onPageChange).toHaveBeenCalledWith(1);
   });

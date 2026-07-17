@@ -44,13 +44,12 @@ export function useSkillContent(
 ) {
   return useQuery({
     queryKey: skill
-      ? skillContentQueryKey(projectId, skill.scope, skill.name, path)
+      ? skillContentQueryKey(projectId, skill.id, path)
       : [SKILL_CONTENT_QUERY_KEY, projectId, "none", path],
     queryFn: ({ signal }) =>
       sdk.skills.getContent({
         projectId,
-        scope: skill!.scope,
-        name: skill!.name,
+        skillId: skill!.id,
         path,
         environmentId: null,
         signal,
@@ -66,13 +65,12 @@ export function useSkillContent(
 export function useSkillFiles(projectId: string, skill: SkillSummary | null) {
   return useQuery({
     queryKey: skill
-      ? skillFilesQueryKey(projectId, skill.scope, skill.name)
+      ? skillFilesQueryKey(projectId, skill.id)
       : [SKILL_FILES_QUERY_KEY, projectId, "none"],
     queryFn: ({ signal }) =>
       sdk.skills.listFiles({
         projectId,
-        scope: skill!.scope,
-        name: skill!.name,
+        skillId: skill!.id,
         environmentId: null,
         signal,
       }),
@@ -91,8 +89,7 @@ export function useUpdateSkill(projectId: string) {
     onSuccess: (_data, variables) => {
       invalidateSkillContentMutationQueries({
         projectId,
-        scope: variables.scope,
-        name: variables.name,
+        skillId: variables.skillId,
         queryClient,
       });
     },

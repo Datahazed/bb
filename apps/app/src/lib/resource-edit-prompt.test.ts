@@ -17,11 +17,12 @@ describe("resource edit thread prompts", () => {
     );
     expect(
       buildSkillEditThreadPrompt({
+        id: "skill_abc123",
         name: "Review PR",
         path: "/Users/me/.bb/skills/review-pr/SKILL.md",
       }),
     ).toBe(
-      'Edit the bb skill "Review PR" at /Users/me/.bb/skills/review-pr/SKILL.md. I want to ',
+      'Edit the bb skill "Review PR" (ID skill_abc123) at /Users/me/.bb/skills/review-pr/SKILL.md. Inspect it with bb skill show skill_abc123 --json and pass that revision to bb skill update when saving. I want to ',
     );
     expect(
       buildAutomationEditThreadPrompt({

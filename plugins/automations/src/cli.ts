@@ -187,6 +187,23 @@ function parseTimeoutMs(value: string | undefined): number | undefined {
   return parsed;
 }
 
+function parseScriptEnv(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    throw new Error("--env-json must be a JSON object of string values.");
+  }
+  const parsed = z.record(z.string(), z.string()).safeParse(decoded);
+  if (!parsed.success) {
+    throw new Error("--env-json must be a JSON object of string values.");
+  }
+  return parsed.data;
+}
+
 function looksLikePath(value: string): boolean {
   return value.includes("/") || value.startsWith(".") || value.startsWith("~");
 }
@@ -241,7 +258,7 @@ async function buildAgentEnvironment(
   return { type: "reuse", environmentId: environment };
 }
 
-async function buildCreateExecution(
+async function buildExecution(
   bb: Pick<BbPluginApi, "sdk">,
   args: ParsedArgs,
 ): Promise<ResolvedCreateAutomationInput["execution"]> {
@@ -253,6 +270,16 @@ async function buildCreateExecution(
   if (hasAgent && hasScript) {
     throw new Error(
       "Provide either agent flags (--prompt) or script flags (--script/--script-file), not both.",
+    );
+  }
+  if (
+    hasAgent &&
+    (args.flags.has("interpreter") ||
+      args.flags.has("timeout") ||
+      args.flags.has("env-json"))
+  ) {
+    throw new Error(
+      "Agent automations do not accept --interpreter, --timeout, or --env-json.",
     );
   }
   if (!hasAgent && !hasScript) {
@@ -281,17 +308,22 @@ async function buildCreateExecution(
     };
   }
   if (
+    args.flags.has("provider") ||
+    args.flags.has("model") ||
+    args.flags.has("permission-mode") ||
+    args.flags.has("target-thread") ||
     args.flags.has("environment") ||
     args.flags.has("new-environment") ||
     args.flags.has("base-branch")
   ) {
-    throw new Error("Script automations do not accept environment flags.");
+    throw new Error("Script automations do not accept agent execution flags.");
   }
   if (script !== undefined && scriptFile !== undefined) {
     throw new Error("Provide exactly one of --script or --script-file.");
   }
   const explicitInterpreter = parseScriptInterpreter(flag(args, "interpreter"));
   const timeoutMs = parseTimeoutMs(flag(args, "timeout"));
+  const env = parseScriptEnv(flag(args, "env-json"));
   const content = scriptFile ? await readFile(scriptFile, "utf8") : script;
   if (!content) throw new Error("Missing script content.");
   const interpreter =
@@ -303,10 +335,30 @@ async function buildCreateExecution(
     ...(scriptFile ? { scriptFile } : {}),
     ...(interpreter ? { interpreter } : {}),
     timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+    ...(env ? { env } : {}),
   };
 }
 
-function buildUpdateRequest(args: ParsedArgs): UpdateAutomationInput {
+const EXECUTION_FLAG_NAMES = [
+  "prompt",
+  "provider",
+  "model",
+  "permission-mode",
+  "environment",
+  "new-environment",
+  "base-branch",
+  "target-thread",
+  "script",
+  "script-file",
+  "interpreter",
+  "timeout",
+  "env-json",
+] as const;
+
+async function buildUpdateRequest(
+  bb: Pick<BbPluginApi, "sdk">,
+  args: ParsedArgs,
+): Promise<UpdateAutomationInput> {
   const projectId = requireFlag(args, "project");
   const automationId = args.positionals[0];
   if (!automationId) throw new Error("Missing automationId.");
@@ -321,9 +373,16 @@ function buildUpdateRequest(args: ParsedArgs): UpdateAutomationInput {
   ) {
     request.trigger = buildTrigger(args);
   }
-  if (request.name === undefined && request.trigger === undefined) {
+  if (EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))) {
+    request.execution = await buildExecution(bb, args);
+  }
+  if (
+    request.name === undefined &&
+    request.trigger === undefined &&
+    request.execution === undefined
+  ) {
     throw new Error(
-      "No changes requested. Provide --name, --cron + --timezone, --at, or --in.",
+      "No changes requested. Provide --name, schedule flags, or a complete agent/script execution.",
     );
   }
   return request;
@@ -404,7 +463,7 @@ function helpText(): string {
 bb automation list --project <id>
 bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>)
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>]
+bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>] [--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
@@ -495,7 +554,7 @@ export function registerAutomationCli(args: {
         }
         if (command === "create") {
           const projectId = requireFlag(parsed, "project");
-          const execution = await buildCreateExecution(bb, parsed);
+          const execution = await buildExecution(bb, parsed);
           const request: ResolvedCreateAutomationInput = {
             projectId,
             name: requireFlag(parsed, "name"),
@@ -525,7 +584,9 @@ export function registerAutomationCli(args: {
           return { exitCode: 0, stdout: json ?? printAutomation(found) };
         }
         if (command === "update") {
-          const updated = await service.update(buildUpdateRequest(parsed));
+          const updated = await service.update(
+            await buildUpdateRequest(bb, parsed),
+          );
           const json = optionalJson(parsed, updated);
           return {
             exitCode: 0,

@@ -368,8 +368,9 @@ export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 /**
  * Product scope of a discovered skill, derived server-side from the daemon's raw
  * `(provider, rootKind)`. bb scopes are provider-agnostic; provider-owned
- * skills retain project/user scope so `(scope, name)` is a unique server-
- * resolvable identity; `plugin` covers bundled provider plugin skills.
+ * skills retain project/user scope as presentation metadata; `plugin` covers
+ * bundled provider plugin skills. The opaque `SkillSummary.id` is the only
+ * server-resolvable identity.
  */
 export const skillScopeSchema = z.enum([
   "bb-builtin",
@@ -387,7 +388,16 @@ export type SkillScope = z.infer<typeof skillScopeSchema>;
 export const skillProviderSchema = z.enum(["claude-code", "codex"]);
 export type SkillProvider = z.infer<typeof skillProviderSchema>;
 
+/** Opaque, deterministic identity issued by authoritative host discovery. */
+export const installedSkillIdSchema = z.string().regex(/^skill_[a-f0-9]{64}$/u);
+export type InstalledSkillId = z.infer<typeof installedSkillIdSchema>;
+
+/** SHA-256 of the exact bytes read from SKILL.md. */
+export const skillRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+export type SkillRevision = z.infer<typeof skillRevisionSchema>;
+
 export const skillSummarySchema = z.object({
+  id: installedSkillIdSchema,
   /** Invocation name (parent dir / frontmatter `name`). */
   name: z.string(),
   description: z.string().nullable(),
@@ -440,8 +450,7 @@ export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
 export const deleteSkillRequestSchema = z
   .object({
-    scope: deletableSkillScopeSchema,
-    name: z.string().min(1),
+    skillId: installedSkillIdSchema,
     /**
      * Workspace used to discover project-local skills; `null` uses the
      * project's default source. The server resolves the authoritative skill
@@ -454,8 +463,7 @@ export type DeleteSkillRequest = z.infer<typeof deleteSkillRequestSchema>;
 
 /** Resolve a skill identity server-side before listing or reading its files. */
 export const projectSkillFilesQuerySchema = z.object({
-  scope: skillScopeSchema,
-  name: z.string().min(1),
+  skillId: installedSkillIdSchema,
   environmentId: z.preprocess(
     (value) => (value === "" ? null : value),
     z.string().min(1).nullable(),
@@ -473,7 +481,10 @@ export type ProjectSkillContentQuery = z.infer<
   typeof projectSkillContentQuerySchema
 >;
 
-export const skillContentResponseSchema = z.object({ content: z.string() });
+export const skillContentResponseSchema = z.object({
+  content: z.string(),
+  revision: skillRevisionSchema,
+});
 export type SkillContentResponse = z.infer<typeof skillContentResponseSchema>;
 
 export const skillFilesResponseSchema = z.object({
@@ -485,10 +496,10 @@ export type SkillFilesResponse = z.infer<typeof skillFilesResponseSchema>;
 /** Edit a writable local skill's SKILL.md. */
 export const updateSkillRequestSchema = z
   .object({
-    scope: editableSkillScopeSchema,
-    name: z.string().min(1),
+    skillId: installedSkillIdSchema,
     environmentId: z.string().min(1).nullable(),
     content: z.string().min(1).max(1_000_000),
+    revision: skillRevisionSchema,
   })
   .strict();
 export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;

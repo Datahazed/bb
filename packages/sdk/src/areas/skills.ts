@@ -5,8 +5,6 @@ import {
   registrySkillSchema,
   registrySkillsPageSchema,
   type DeleteSkillRequest,
-  type DeletableSkillScope,
-  type EditableSkillScope,
   type RegistrySkill,
   type RegistrySkillDetail,
   type RegistrySkillInstallResponse,
@@ -14,7 +12,6 @@ import {
   type SkillContentResponse,
   type SkillFilesResponse,
   type SkillListResponse,
-  type SkillScope,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -28,8 +25,7 @@ export interface SkillListArgs extends SkillWorkspaceArgs {
 }
 
 export interface SkillIdentityArgs extends SkillListArgs {
-  scope: SkillScope;
-  name: string;
+  skillId: string;
 }
 
 export interface SkillContentArgs extends SkillIdentityArgs {
@@ -37,14 +33,13 @@ export interface SkillContentArgs extends SkillIdentityArgs {
 }
 
 export interface SkillUpdateArgs extends SkillWorkspaceArgs {
-  scope: EditableSkillScope;
-  name: string;
+  skillId: string;
   content: string;
+  revision: string;
 }
 
 export interface SkillDeleteArgs extends SkillWorkspaceArgs {
-  scope: DeletableSkillScope;
-  name: string;
+  skillId: string;
 }
 
 export interface RegistrySkillsSearchArgs {
@@ -81,7 +76,9 @@ export interface SkillsArea {
   listFiles(args: SkillIdentityArgs): Promise<SkillFilesResponse>;
   registry: SkillsRegistryArea;
   remove(args: SkillDeleteArgs): Promise<{ deletedPath: string }>;
-  update(args: SkillUpdateArgs): Promise<{ filePath: string }>;
+  update(
+    args: SkillUpdateArgs,
+  ): Promise<{ filePath: string; revision: string }>;
 }
 
 export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
@@ -149,8 +146,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
           {
             param: { id: input.projectId },
             query: {
-              scope: input.scope,
-              name: input.name,
+              skillId: input.skillId,
               path: input.path,
               environmentId: input.environmentId ?? "",
             },
@@ -176,8 +172,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
           {
             param: { id: input.projectId },
             query: {
-              scope: input.scope,
-              name: input.name,
+              skillId: input.skillId,
               environmentId: input.environmentId ?? "",
             },
           },
@@ -188,8 +183,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
     registry,
     async remove(input) {
       const body: DeleteSkillRequest = {
-        scope: input.scope,
-        name: input.name,
+        skillId: input.skillId,
         environmentId: input.environmentId,
       };
       return transport.readJson(
@@ -204,10 +198,10 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         transport.api.v1.projects[":id"].skills.content.$patch({
           param: { id: input.projectId },
           json: {
-            scope: input.scope,
-            name: input.name,
+            skillId: input.skillId,
             environmentId: input.environmentId,
             content: input.content,
+            revision: input.revision,
           },
         }),
       );

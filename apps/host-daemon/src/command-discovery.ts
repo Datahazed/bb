@@ -1,4 +1,5 @@
 import type { Dirent } from "node:fs";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
@@ -457,7 +458,11 @@ export async function discoverProviderCommands(
  * The typeahead path (`discoverProviderCommands`) ignores `rootKind`; only
  * `discoverSkills` consumes it, so the shared scan helpers stay untouched.
  */
-export type SkillScanRoot = CommandScanRoot & { rootKind: SkillRootKind };
+export type SkillScanRoot = CommandScanRoot & {
+  /** Logical root identity used to keep IDs stable when host paths move. */
+  identitySeed: string;
+  rootKind: SkillRootKind;
+};
 
 export interface DiscoverSkillsArgs {
   roots: readonly SkillScanRoot[];
@@ -469,7 +474,16 @@ function buildSkillRecord(
   name: string,
   frontmatter: ParsedFrontmatter,
 ): DiscoveredSkill {
+  const rootPath =
+    "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
+  const logicalPath = path
+    .relative(rootPath, filePath)
+    .split(path.sep)
+    .join("/");
   return {
+    id: `skill_${createHash("sha256")
+      .update(`${root.identitySeed}\0${logicalPath}`)
+      .digest("hex")}`,
     name: `${root.namePrefix}${name}`,
     description: frontmatter.description,
     filePath,

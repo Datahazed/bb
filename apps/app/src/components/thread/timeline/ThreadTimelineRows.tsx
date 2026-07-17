@@ -100,10 +100,7 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import {
-  getAutomationDetailRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
@@ -1506,8 +1503,6 @@ export function systemOperationLeadingIcon(
   switch (operationKind) {
     case "parent-change":
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
-    case "automation-created":
-      return "Repeat";
     case "thread-provisioning":
       return "Terminal";
     case "thread-interrupted":
@@ -1922,14 +1917,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      // Automation links carry their own project + automation id, so they resolve
-      // regardless of the timeline's project context.
-      if (link.kind === "automation") {
-        return getAutomationDetailRoutePath({
-          projectId: link.projectId,
-          automationId: link.automationId,
-        });
-      }
       // Thread routes are project-scoped; without a project context the
       // segment renders as plain text.
       return projectId !== undefined

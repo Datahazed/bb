@@ -13,13 +13,15 @@ export function buildPluginEditThreadPrompt({
 }
 
 export function buildSkillEditThreadPrompt({
+  id,
   name,
   path,
 }: {
+  id: string;
   name: string;
   path: string;
 }): string {
-  return `Edit the bb skill ${quoteResourceName(name)} at ${path}. I want to `;
+  return `Edit the bb skill ${quoteResourceName(name)} (ID ${id}) at ${path}. Inspect it with bb skill show ${id} --json and pass that revision to bb skill update when saving. I want to `;
 }
 
 export function buildAutomationEditThreadPrompt({
