@@ -2,7 +2,11 @@ import type { ReactNode } from "react";
 import {
   ResourceActivitySection,
   ResourceDefinitionSection,
+  ResourceDetailConfigurationSection,
+  ResourceDetailIncludesSection,
+  ResourceDetailOverviewSection,
   ResourceDetailPage,
+  ResourceDetailReleaseSection,
   ResourceDetailStack,
   ResourceOverflowMenu,
   ResourceProperty,
@@ -19,6 +23,25 @@ export interface PluginDetailProperty {
 export interface PluginDetailSection {
   label: ReactNode;
   content: ReactNode;
+  kind?: "definition" | "configuration" | "release" | "includes";
+}
+
+function PluginDefinitionSection({
+  section,
+}: {
+  section: PluginDetailSection;
+}) {
+  const props = { label: section.label, children: section.content };
+  if (section.kind === "configuration") {
+    return <ResourceDetailConfigurationSection {...props} />;
+  }
+  if (section.kind === "release") {
+    return <ResourceDetailReleaseSection {...props} />;
+  }
+  if (section.kind === "includes") {
+    return <ResourceDetailIncludesSection {...props} />;
+  }
+  return <ResourceDefinitionSection {...props} />;
 }
 
 export function PluginDetailView({
@@ -86,14 +109,14 @@ export function PluginDetailView({
       activitySections.length > 0 ? (
         <ResourceDetailStack>
           {hasDescription ? (
-            <ResourceDefinitionSection label="About">
+            <ResourceDetailOverviewSection label="About">
               <p className="text-sm leading-relaxed text-foreground">
                 {description}
               </p>
-            </ResourceDefinitionSection>
+            </ResourceDetailOverviewSection>
           ) : null}
           {properties.length > 0 ? (
-            <ResourceDefinitionSection label="Configuration">
+            <ResourceDetailConfigurationSection label="Configuration">
               <ResourcePropertyList
                 surface="recessed"
                 className="divide-y divide-border"
@@ -104,12 +127,10 @@ export function PluginDetailView({
                   </ResourceProperty>
                 ))}
               </ResourcePropertyList>
-            </ResourceDefinitionSection>
+            </ResourceDetailConfigurationSection>
           ) : null}
           {definitionSections.map((section, index) => (
-            <ResourceDefinitionSection key={index} label={section.label}>
-              {section.content}
-            </ResourceDefinitionSection>
+            <PluginDefinitionSection key={index} section={section} />
           ))}
           {activitySections.map((section, index) => (
             <ResourceActivitySection key={index} label={section.label}>

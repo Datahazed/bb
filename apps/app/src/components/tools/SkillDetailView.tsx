@@ -4,6 +4,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceDefinitionSection,
   ResourceDetailList,
+  ResourceDetailIncludesSection,
   ResourceDetailPage,
   ResourceDetailPanel,
   ResourceInstallControl,
@@ -325,13 +326,13 @@ export function SkillDetailView({
       overflowMenu={overflowMenu}
     >
       {files.length > 1 && editor === undefined ? (
-        <ResourceDefinitionSection label="Files">
+        <ResourceDetailIncludesSection label="Files">
           <SkillFileList
             files={files}
             selectedPath={selectedPath}
             onSelectFile={onSelectFile}
           />
-        </ResourceDefinitionSection>
+        </ResourceDetailIncludesSection>
       ) : null}
 
       <ResourceDefinitionSection label={selectedPath} actions={contentActions}>

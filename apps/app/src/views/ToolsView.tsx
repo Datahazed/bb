@@ -22,11 +22,19 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import {
+  ResourceDetailFact,
+  ResourceDetailFacts,
   ResourceDetailList,
   ResourceDetailListItem,
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
@@ -215,29 +223,33 @@ function pluginActivityIcon(
   state: "running" | "backoff" | "stopped" | "ok" | "error" | null,
 ): { name: IconName; className: string; label: string } {
   if (state === "running" || state === "ok") {
-    return { name: "CircleCheck", className: "text-success", label: state };
+    return {
+      name: "CircleCheck",
+      className: "text-success",
+      label: "Healthy",
+    };
   }
   if (state === "backoff") {
     return {
       name: "AlertTriangle",
       className: "text-warning",
-      label: "retrying",
+      label: "Retrying",
     };
   }
   if (state === "error") {
-    return { name: "CircleX", className: "text-destructive", label: state };
+    return { name: "CircleX", className: "text-destructive", label: "Failed" };
   }
   if (state === null) {
     return {
       name: "Clock",
       className: "text-muted-foreground",
-      label: "no runs yet",
+      label: "No runs yet",
     };
   }
   return {
     name: "Pause",
     className: "text-muted-foreground",
-    label: "stopped",
+    label: "Stopped",
   };
 }
 
@@ -250,11 +262,24 @@ function PluginActivityState({
 }) {
   const icon = pluginActivityIcon(state);
   return (
-    <Icon
-      name={icon.name}
-      className={cn("size-4", icon.className)}
-      aria-label={`${resourceLabel}: ${icon.label}`}
-    />
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={`${resourceLabel}: ${icon.label}`}
+            className="inline-flex"
+          >
+            <Icon
+              name={icon.name}
+              className={cn("size-4", icon.className)}
+              aria-hidden
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="left">{icon.label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -362,6 +387,7 @@ function PluginActivity({
       {plugin.services.map((service) => (
         <ResourceDetailListItem
           key={service.name}
+          leading={<Icon name="Workflow" className="size-4" aria-hidden />}
           trailing={
             <PluginActivityState
               state={service.state}
@@ -369,12 +395,16 @@ function PluginActivity({
             />
           }
         >
-          {service.name}
+          <span className="block">{service.name}</span>
+          <span className="block text-xs text-muted-foreground">
+            Background service
+          </span>
         </ResourceDetailListItem>
       ))}
       {plugin.schedules.map((schedule) => (
         <ResourceDetailListItem
           key={schedule.name}
+          leading={<Icon name="TimeSchedule" className="size-4" aria-hidden />}
           trailing={
             <PluginActivityState
               state={schedule.lastStatus}
@@ -387,7 +417,11 @@ function PluginActivity({
             <span className="block text-xs text-destructive">
               {schedule.lastError}
             </span>
-          ) : null}
+          ) : (
+            <span className="block font-mono text-xs text-muted-foreground">
+              {schedule.cron}
+            </span>
+          )}
         </ResourceDetailListItem>
       ))}
       {hasHandlerErrors ? (
@@ -572,27 +606,22 @@ export function PluginDetail({
       definitionSections={[
         {
           label: "Release",
+          kind: "release",
           content: (
             <div className="space-y-3">
               {hasUpdateManagement ? (
                 <PluginUpdateBanner plugin={plugin} />
               ) : null}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-                <span className="text-muted-foreground">Version</span>
-                <span className="font-mono text-foreground">
+              <ResourceDetailFacts>
+                <ResourceDetailFact label="Version" mono>
                   {plugin.version}
-                </span>
+                </ResourceDetailFact>
                 {!hasUpdateManagement ? (
-                  <>
-                    <span className="text-subtle-foreground" aria-hidden>
-                      ·
-                    </span>
-                    <span className="text-muted-foreground">
-                      Included with bb releases
-                    </span>
-                  </>
+                  <ResourceDetailFact label="Updates">
+                    Included with bb releases
+                  </ResourceDetailFact>
                 ) : null}
-              </div>
+              </ResourceDetailFacts>
               {hasUpdateManagement ? (
                 <PluginUpdatesSourceCard
                   plugin={plugin}
@@ -607,6 +636,7 @@ export function PluginDetail({
           ? [
               {
                 label: "Settings",
+                kind: "configuration" as const,
                 content: <PluginSettingsDetail plugin={plugin} />,
               },
             ]
@@ -615,6 +645,7 @@ export function PluginDetail({
           ? [
               {
                 label: "Includes",
+                kind: "includes" as const,
                 content: (
                   <ResourceDetailList
                     surface="recessed"

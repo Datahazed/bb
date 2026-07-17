@@ -5,7 +5,7 @@ import {
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   ResourceDetailPanel,
-  ResourceDetailSection,
+  ResourceDetailConfigurationSection,
 } from "@bb/shared-ui/resource-list";
 
 /**
@@ -30,7 +30,7 @@ function PluginSettingsSectionList({
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
       {sections.map((section) => (
-        <ResourceDetailSection
+        <ResourceDetailConfigurationSection
           key={`${section.pluginId}/${section.id}/${section.generation}`}
           label={section.title ?? "Plugin settings"}
         >
@@ -48,7 +48,7 @@ function PluginSettingsSectionList({
               <section.component />
             </PluginSlotMount>
           </ResourceDetailPanel>
-        </ResourceDetailSection>
+        </ResourceDetailConfigurationSection>
       ))}
     </div>
   );

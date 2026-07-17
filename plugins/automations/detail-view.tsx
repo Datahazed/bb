@@ -9,12 +9,17 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
+  ResourceActionButton,
   ResourceActivitySection,
   ResourceDefinitionSection,
+  ResourceDetailFact,
+  ResourceDetailFacts,
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
   ResourceDetailStack,
+  ResourceLocationMeta,
+  ResourceMeta,
   ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -146,21 +151,6 @@ function formatPermissionMode(
   if (permissionMode === "readonly") return "Read-only";
   if (permissionMode === "workspace-write") return "Workspace write";
   return "Full access";
-}
-
-function AutomationFact({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm text-foreground">{children}</dd>
-    </div>
-  );
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -317,6 +307,8 @@ export function AutomationDetailView({
     : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
+  const projectContextLabel =
+    projectLabel === "Personal" ? "Personal" : `Project ${projectLabel}`;
 
   return (
     <ResourceDetailPage
@@ -328,13 +320,14 @@ export function AutomationDetailView({
         />
       }
       title={automation.name}
-      titleMeta={projectLabel}
       metadata={
-        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <span>{formatAutomationTrigger(automation.trigger)}</span>
-          <span aria-hidden>·</span>
-          <span>{automationScheduleLabel(automation)}</span>
-        </span>
+        <ResourceMeta
+          items={[
+            formatAutomationTrigger(automation.trigger),
+            automationScheduleLabel(automation),
+            <ResourceLocationMeta label={projectContextLabel} />,
+          ]}
+        />
       }
       lifecycleControl={
         <AutomationLifecycleControl
@@ -374,16 +367,12 @@ export function AutomationDetailView({
         <ResourceDefinitionSection
           label={bodyLabel}
           actions={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground"
+            <ResourceActionButton
+              label="Edit with chat"
+              tooltipLabel="Edit with chat"
+              icon="MessageCirclePlus"
               onClick={onEdit}
-            >
-              <Icon name="MessageCirclePlus" className="size-3.5" aria-hidden />
-              Edit with chat
-            </Button>
+            />
           }
         >
           <ResourceDetailPanel
@@ -408,32 +397,34 @@ export function AutomationDetailView({
             ) : null}
           </ResourceDetailPanel>
 
-          <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-3">
+          <ResourceDetailFacts className="mt-4">
             {execution.mode === "agent" ? (
               <>
-                <AutomationFact label="Runs with">
+                <ResourceDetailFact label="Runs with">
                   {execution.providerId} · {execution.model}
-                </AutomationFact>
-                <AutomationFact label="Environment">
+                </ResourceDetailFact>
+                <ResourceDetailFact label="Environment">
                   {automationEnvironmentLabel(execution)}
-                </AutomationFact>
-                <AutomationFact label="Permissions">
+                </ResourceDetailFact>
+                <ResourceDetailFact label="Permissions">
                   {formatPermissionMode(execution.permissionMode)}
-                </AutomationFact>
+                </ResourceDetailFact>
               </>
             ) : (
               <>
-                <AutomationFact label="Runtime">
+                <ResourceDetailFact label="Runtime">
                   {execution.interpreter ?? "bash"} ·{" "}
                   {Math.round(execution.timeoutMs / 1000)}s timeout
-                </AutomationFact>
-                <AutomationFact label="Environment">Host</AutomationFact>
-                <AutomationFact label="Source">
+                </ResourceDetailFact>
+                <ResourceDetailFact label="Environment">
+                  Host
+                </ResourceDetailFact>
+                <ResourceDetailFact label="Source">
                   {execution.scriptFile ?? "Inline script"}
-                </AutomationFact>
+                </ResourceDetailFact>
               </>
             )}
-          </dl>
+          </ResourceDetailFacts>
         </ResourceDefinitionSection>
 
         <ResourceActivitySection label="Run history">

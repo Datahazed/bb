@@ -621,6 +621,7 @@ export function ResourceActionButton({
   tooltipSide,
   icon,
   tone = "muted",
+  loading = false,
   disabled = false,
   disabledReason,
   className,
@@ -631,6 +632,7 @@ export function ResourceActionButton({
   tooltipSide?: ComponentProps<typeof TooltipContent>["side"];
   icon: IconName;
   tone?: "muted" | "destructive";
+  loading?: boolean;
   disabled?: boolean;
   disabledReason?: ReactNode;
   className?: string;
@@ -653,6 +655,7 @@ export function ResourceActionButton({
               className,
             )}
             aria-label={label}
+            aria-busy={loading}
             aria-disabled={disabled || undefined}
             disabled={disabled && disabledReason === undefined}
             onClick={(event) => {
@@ -664,7 +667,10 @@ export function ResourceActionButton({
               onClick();
             }}
           >
-            <Icon name={icon} className="size-4" />
+            <Icon
+              name={loading ? "Loading" : icon}
+              className={cn("size-4", loading && "animate-spin")}
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent side={tooltipSide}>
@@ -973,6 +979,14 @@ export function ResourcePropertyList({
   );
 }
 
+export type ResourceDetailSectionKind =
+  | "overview"
+  | "definition"
+  | "configuration"
+  | "release"
+  | "includes"
+  | "activity";
+
 export interface ResourceDetailSectionProps {
   label: ReactNode;
   actions?: ReactNode;
@@ -980,12 +994,13 @@ export interface ResourceDetailSectionProps {
 }
 
 export function ResourceDetailSection({
+  kind = "definition",
   label,
   actions,
   children,
-}: ResourceDetailSectionProps) {
+}: ResourceDetailSectionProps & { kind?: ResourceDetailSectionKind }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-resource-detail-section={kind}>
       <div className="flex min-h-6 items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-foreground">{label}</h2>
         {actions ? (
@@ -1014,14 +1029,85 @@ export function ResourceDetailStack({
   return <div className={cn("space-y-8", className)}>{children}</div>;
 }
 
-/** The editable or inspectable content that defines a resource. */
+/** Human-readable purpose and orientation. Keep this open and lightweight. */
+export function ResourceDetailOverviewSection(
+  props: ResourceDetailSectionProps,
+) {
+  return <ResourceDetailSection {...props} kind="overview" />;
+}
+
+/** The editable or inspectable primary content that defines a resource. */
 export function ResourceDefinitionSection(props: ResourceDetailSectionProps) {
-  return <ResourceDetailSection {...props} />;
+  return <ResourceDetailSection {...props} kind="definition" />;
+}
+
+/** Behavior-changing fields and settings. */
+export function ResourceDetailConfigurationSection(
+  props: ResourceDetailSectionProps,
+) {
+  return <ResourceDetailSection {...props} kind="configuration" />;
+}
+
+/** Version, delivery source, compatibility, and update policy. */
+export function ResourceDetailReleaseSection(
+  props: ResourceDetailSectionProps,
+) {
+  return <ResourceDetailSection {...props} kind="release" />;
+}
+
+/** Child resources and capabilities contributed by the resource. */
+export function ResourceDetailIncludesSection(
+  props: ResourceDetailSectionProps,
+) {
+  return <ResourceDetailSection {...props} kind="includes" />;
 }
 
 /** Current state and historical events produced by a resource. */
 export function ResourceActivitySection(props: ResourceDetailSectionProps) {
-  return <ResourceDetailSection {...props} />;
+  return <ResourceDetailSection {...props} kind="activity" />;
+}
+
+export function ResourceDetailFacts({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <dl
+      className={cn(
+        "grid grid-cols-[repeat(auto-fit,minmax(min(11rem,100%),1fr))] gap-x-8 gap-y-3",
+        className,
+      )}
+    >
+      {children}
+    </dl>
+  );
+}
+
+export function ResourceDetailFact({
+  label,
+  children,
+  mono = false,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "min-w-0 break-words text-sm text-foreground",
+          mono && "font-mono text-xs",
+        )}
+      >
+        {children}
+      </dd>
+    </div>
+  );
 }
 
 /** Passive lifecycle text for states that are observed, not changed here. */

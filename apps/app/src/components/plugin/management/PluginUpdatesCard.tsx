@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { ResourceActionButton } from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
@@ -149,16 +150,13 @@ export function PluginUpdatesSourceCard({
               label="Source"
               description={plugin.sourceDisplay}
             >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                aria-expanded={detailsOpen}
+              <ResourceActionButton
+                label={
+                  detailsOpen ? "Hide source details" : "Show source details"
+                }
+                icon="Info"
                 onClick={() => setDetailsOpen((current) => !current)}
-              >
-                Details
-              </Button>
+              />
             </SettingsWithControl>
             {detailsOpen ? (
               <div
@@ -244,20 +242,14 @@ export function PluginUpdatesSourceCard({
                   : "Never checked"
               }
             >
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
+              <ResourceActionButton
+                label="Check for updates now"
+                tooltipLabel="Check now"
+                icon="RotateCcw"
+                loading={checkNow.isPending}
                 disabled={checkNow.isPending}
-                aria-busy={checkNow.isPending}
                 onClick={() => checkNow.mutate()}
-              >
-                {checkNow.isPending ? (
-                  <Icon name="Spinner" className="size-3.5 animate-spin" />
-                ) : null}
-                Check now
-              </Button>
+              />
             </SettingsWithControl>
           </div>
 
@@ -273,15 +265,11 @@ export function PluginUpdatesSourceCard({
                   `Staying on ${plugin.version}.`
                 }
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
+                <ResourceActionButton
+                  label="View compatibility details"
+                  icon="Info"
                   onClick={() => setBlockedOpen(true)}
-                >
-                  Details
-                </Button>
+                />
               </SettingsWithControl>
             </div>
           ) : null}

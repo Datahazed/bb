@@ -487,6 +487,10 @@ function automationProjectLabel(
   return project.id === PERSONAL_PROJECT_ID ? "Personal" : project.name;
 }
 
+function automationProjectContextLabel(projectLabel: string): string {
+  return projectLabel === "Personal" ? "Personal" : `Project ${projectLabel}`;
+}
+
 function automationProjectFilterId(
   entry: OverviewEntry,
 ): AutomationProjectFilter {
@@ -595,7 +599,9 @@ function OverviewRow({
           items={[
             triggerLabel,
             ...(lifecycleLocked ? [lifecycleLabel] : []),
-            <ResourceLocationMeta label={projectLabel} />,
+            <ResourceLocationMeta
+              label={automationProjectContextLabel(projectLabel)}
+            />,
           ]}
         />
       }
