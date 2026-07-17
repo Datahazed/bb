@@ -12,7 +12,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { pluginUpdateAvailableVersion } from "./plugin-update-signals";
+import { pluginUpdateAvailableVersion } from "./plugin-status";
 import {
   KeyValueGrid,
   SUCCESS_BANNER_STYLE,

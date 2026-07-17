@@ -4,7 +4,10 @@ import {
   type PluginListItem,
   type PluginUpdateState,
 } from "@/hooks/queries/plugin-settings-queries";
-import { pluginRowSignal } from "./plugin-update-signals";
+import {
+  pluginRowSignal,
+  pluginRuntimeStatusPresentation,
+} from "./plugin-status";
 
 function plugin(
   updateState: Partial<PluginUpdateState> = {},
@@ -78,7 +81,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
   });
 
   it.each([
-    ["error", "Failed to load", "error"],
+    ["error", "Error", "error"],
     ["incompatible", "Incompatible", "error"],
     ["missing", "Missing", "error"],
     ["needs-configuration", "Setup required", "warning"],
@@ -114,6 +117,46 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       label: "Update failed",
       tone: "error",
       detail: "Update to 1.7.0 failed and was rolled back.",
+    });
+  });
+});
+
+describe("pluginRuntimeStatusPresentation", () => {
+  it("keeps healthy and disabled lifecycle states quiet", () => {
+    expect(pluginRuntimeStatusPresentation(plugin())).toBeNull();
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { enabled: false, status: "disabled" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("gives local and installed plugin errors appropriate recovery", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { status: "error", source: "path:/plugins/linear" }),
+      ),
+    ).toMatchObject({
+      label: "Error",
+      recovery: "Edit the plugin, then reload it.",
+    });
+    expect(
+      pluginRuntimeStatusPresentation(plugin({}, { status: "error" })),
+    ).toMatchObject({
+      label: "Error",
+      recovery: "Reload the plugin. If the error continues, reinstall it.",
+    });
+  });
+
+  it("explains that saved settings automatically retry configuration", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { status: "needs-configuration", hasSettings: true }),
+      ),
+    ).toMatchObject({
+      label: "Setup required",
+      recovery:
+        "Complete the Settings section; bb reloads the plugin after you save.",
     });
   });
 });

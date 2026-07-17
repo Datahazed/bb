@@ -39,6 +39,10 @@ import {
   PluginUpdatesSourceCard,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
+import {
+  pluginRuntimeStatusPresentation,
+  type PluginRuntimeStatusPresentation,
+} from "@/components/plugin/management/plugin-status";
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import {
   usePluginList,
@@ -77,24 +81,6 @@ function getToolsSection(pathname: string): ToolsSectionId {
     return "automations";
   }
   return "skills";
-}
-
-function pluginStatusTone(
-  plugin: PluginListItem,
-): "success" | "warning" | "error" | "muted" {
-  if (!plugin.enabled) return "muted";
-  if (plugin.status === "running") return "success";
-  if (plugin.status === "needs-configuration" || plugin.status === "degraded") {
-    return "warning";
-  }
-  if (
-    plugin.status === "error" ||
-    plugin.status === "incompatible" ||
-    plugin.status === "missing"
-  ) {
-    return "error";
-  }
-  return "muted";
 }
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
@@ -320,8 +306,14 @@ function pluginIncludes(plugin: PluginListItem): ReactNode[] {
   ];
 }
 
-function PluginActivity({ plugin }: { plugin: PluginListItem }) {
-  const showOverallState = plugin.enabled && plugin.status !== "running";
+function PluginActivity({
+  plugin,
+  runtimeStatus,
+}: {
+  plugin: PluginListItem;
+  runtimeStatus: PluginRuntimeStatusPresentation | null;
+}) {
+  const showOverallState = plugin.enabled && runtimeStatus !== null;
   const hasHandlerErrors = plugin.handlerStats.errorCount > 0;
   if (
     !showOverallState &&
@@ -333,18 +325,16 @@ function PluginActivity({ plugin }: { plugin: PluginListItem }) {
   }
   return (
     <ResourceDetailList surface="flat" className="p-0">
-      {showOverallState ? (
+      {showOverallState && runtimeStatus !== null ? (
         <ResourceDetailListItem
           leading={
             <Icon
               name={
-                pluginStatusTone(plugin) === "error"
-                  ? "CircleX"
-                  : "AlertTriangle"
+                runtimeStatus.tone === "error" ? "CircleX" : "AlertTriangle"
               }
               className={cn(
                 "size-4",
-                pluginStatusTone(plugin) === "error"
+                runtimeStatus.tone === "error"
                   ? "text-destructive"
                   : "text-warning",
               )}
@@ -352,14 +342,16 @@ function PluginActivity({ plugin }: { plugin: PluginListItem }) {
             />
           }
         >
-          <span className="block capitalize">
-            {plugin.status.replaceAll("-", " ")}
-          </span>
+          <span className="block">{runtimeStatus.label}</span>
           {plugin.statusDetail ? (
             <span className="block text-xs text-muted-foreground">
               {plugin.statusDetail}
             </span>
           ) : null}
+          <span className="mt-1 block text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Next:</span>{" "}
+            {runtimeStatus.recovery}
+          </span>
         </ResourceDetailListItem>
       ) : null}
       {plugin.services.map((service) => (
@@ -510,10 +502,11 @@ export function PluginDetail({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
+  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
   const includes = pluginIncludes(plugin);
   const hasActivity =
-    (plugin.enabled && plugin.status !== "running") ||
+    (plugin.enabled && runtimeStatus !== null) ||
     plugin.handlerStats.errorCount > 0 ||
     plugin.services.length > 0 ||
     plugin.schedules.length > 0;
@@ -625,7 +618,17 @@ export function PluginDetail({
       ]}
       activitySections={
         hasActivity
-          ? [{ label: "Activity", content: <PluginActivity plugin={plugin} /> }]
+          ? [
+              {
+                label: "Activity",
+                content: (
+                  <PluginActivity
+                    plugin={plugin}
+                    runtimeStatus={runtimeStatus}
+                  />
+                ),
+              },
+            ]
           : []
       }
     />

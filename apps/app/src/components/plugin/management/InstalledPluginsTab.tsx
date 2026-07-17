@@ -15,7 +15,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
-import { pluginRowSignal } from "./plugin-update-signals";
+import { pluginRowSignal } from "./plugin-status";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo, UPDATE_TINT_STYLE } from "./plugin-ui";
 
