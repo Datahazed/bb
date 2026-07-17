@@ -51,7 +51,6 @@ import {
   ResourceBrowseGrid,
   ResourceCollectionPage,
   ResourceCreateButton,
-  ResourceDetailBackButton,
   ResourceListPanel,
   ResourceListState,
   ResourceLocationMeta,
@@ -943,11 +942,7 @@ function DetailView({
 
   if (error !== null || missing) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-3">
-        <ResourceDetailBackButton
-          label="Back to automations"
-          onClick={onBack}
-        />
+      <div className="mx-auto w-full max-w-3xl">
         <ResourceListState
           state="error"
           message={
@@ -995,7 +990,6 @@ function DetailView({
       projectLabel={projectLabel}
       runsState={runsState}
       actionPending={actionPending}
-      onBack={onBack}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
       onRunNow={() => runAction("run")}

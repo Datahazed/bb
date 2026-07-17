@@ -54,7 +54,6 @@ describe("PluginDetail official catalog lifecycle", () => {
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
-            onBack={() => {}}
           />
         </QueryClientWrapper>
       </MemoryRouter>,

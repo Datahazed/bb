@@ -23,7 +23,6 @@ export interface PluginDetailSection {
 }
 
 export function PluginDetailView({
-  back,
   leading,
   title,
   titleMeta,
@@ -37,7 +36,6 @@ export function PluginDetailView({
   definitionSections = [],
   activitySections = [],
 }: {
-  back?: ReactNode;
   leading: ReactNode;
   title: string;
   titleMeta?: ReactNode;
@@ -60,7 +58,6 @@ export function PluginDetailView({
     description !== "";
   return (
     <ResourceDetailPage
-      back={back}
       leading={leading}
       title={title}
       titleMeta={titleMeta}

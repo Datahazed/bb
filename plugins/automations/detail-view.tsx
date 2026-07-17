@@ -9,16 +9,10 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
-  ResourceActivitySection,
-  ResourceDefinitionSection,
-  ResourceDetailBackButton,
   ResourceDetailList,
   ResourceDetailPage,
   ResourceDetailPanel,
-  ResourceDetailStack,
   ResourceOverflowMenu,
-  ResourceProperty,
-  ResourcePropertyList,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -43,7 +37,6 @@ export interface AutomationDetailViewProps {
   projectLabel: string;
   runsState: AutomationRunsViewState;
   actionPending: boolean;
-  onBack: () => void;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
   onRunNow: () => void;
@@ -69,16 +62,6 @@ export function automationScheduleLabel(
   });
 }
 
-function describeExecution(execution: AutomationExecution): string {
-  if (execution.mode === "agent") {
-    return `Agent · ${execution.providerId}/${execution.model} · ${execution.permissionMode}`;
-  }
-  const interpreter = execution.interpreter ?? "bash";
-  const target = execution.scriptFile ?? "inline script";
-  const timeoutSeconds = Math.round(execution.timeoutMs / 1000);
-  return `Script · ${interpreter} ${target} · ${timeoutSeconds}s timeout`;
-}
-
 function automationBodyLabel(execution: AutomationExecution): string {
   if (execution.mode === "agent") return "Prompt";
   return execution.scriptFile !== undefined && execution.script === undefined
@@ -94,6 +77,32 @@ function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (environment.workspace.type === "managed-worktree") return "Worktree";
   if (environment.workspace.type === "personal") return "Personal workspace";
   return environment.workspace.path ?? "Local workspace";
+}
+
+function formatPermissionMode(
+  permissionMode: Extract<
+    AutomationExecution,
+    { mode: "agent" }
+  >["permissionMode"],
+): string {
+  if (permissionMode === "readonly") return "Read-only";
+  if (permissionMode === "workspace-write") return "Workspace write";
+  return "Full access";
+}
+
+function AutomationFact({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="truncate text-sm text-foreground">{children}</dd>
+    </div>
+  );
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -229,7 +238,6 @@ export function AutomationDetailView({
   projectLabel,
   runsState,
   actionPending,
-  onBack,
   onToggle,
   onEdit,
   onRunNow,
@@ -243,15 +251,10 @@ export function AutomationDetailView({
     runCount: automation.runCount,
   });
   const bodyLabel = automationBodyLabel(automation.execution);
+  const execution = automation.execution;
 
   return (
     <ResourceDetailPage
-      back={
-        <ResourceDetailBackButton
-          label="Back to automations"
-          onClick={onBack}
-        />
-      }
       leading={
         <Icon
           name={automationIconName(automation)}
@@ -261,6 +264,13 @@ export function AutomationDetailView({
       }
       title={automation.name}
       titleMeta={projectLabel}
+      metadata={
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span>{formatAutomationTrigger(automation.trigger)}</span>
+          <span aria-hidden>·</span>
+          <span>{automationScheduleLabel(automation)}</span>
+        </span>
+      }
       lifecycleControl={
         <Switch
           checked={automation.enabled}
@@ -294,47 +304,63 @@ export function AutomationDetailView({
         />
       }
     >
-      <ResourceDetailStack>
-        <ResourceDefinitionSection label="Configuration" layout="inline">
-          <ResourcePropertyList
-            surface="flat"
-            className="divide-y divide-border"
+      <div className="space-y-8">
+        <section className="space-y-3" aria-labelledby="automation-definition">
+          <h2
+            id="automation-definition"
+            className="text-sm font-medium text-foreground"
           >
-            <ResourceProperty label="Schedule">
-              {formatAutomationTrigger(automation.trigger)} ·{" "}
-              {automationScheduleLabel(automation)}
-            </ResourceProperty>
-            <ResourceProperty label="Environment">
-              {automationEnvironmentLabel(automation.execution)}
-            </ResourceProperty>
-            <ResourceProperty label="Execution">
-              {describeExecution(automation.execution)}
-            </ResourceProperty>
-            <ResourceProperty label="Created by">
-              <span className="capitalize">{automation.origin}</span>
-            </ResourceProperty>
-          </ResourcePropertyList>
-        </ResourceDefinitionSection>
-
-        <ResourceDefinitionSection label={bodyLabel} layout="inline">
+            {bodyLabel}
+          </h2>
           <ResourceDetailPanel surface="recessed" className="px-3 py-2">
-            {automation.execution.mode === "agent" ? (
+            {execution.mode === "agent" ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {automation.execution.prompt}
+                {execution.prompt}
               </p>
-            ) : automation.execution.script ? (
+            ) : execution.script ? (
               <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {automation.execution.script}
+                {execution.script}
               </pre>
-            ) : automation.execution.scriptFile ? (
-              <span className="font-mono text-xs">
-                {automation.execution.scriptFile}
-              </span>
+            ) : execution.scriptFile ? (
+              <span className="font-mono text-xs">{execution.scriptFile}</span>
             ) : null}
           </ResourceDetailPanel>
-        </ResourceDefinitionSection>
 
-        <ResourceActivitySection label="Run history" layout="inline">
+          <dl className="grid gap-x-8 gap-y-3 border-y border-border py-4 sm:grid-cols-3">
+            {execution.mode === "agent" ? (
+              <>
+                <AutomationFact label="Runs with">
+                  {execution.providerId} · {execution.model}
+                </AutomationFact>
+                <AutomationFact label="Environment">
+                  {automationEnvironmentLabel(execution)}
+                </AutomationFact>
+                <AutomationFact label="Permissions">
+                  {formatPermissionMode(execution.permissionMode)}
+                </AutomationFact>
+              </>
+            ) : (
+              <>
+                <AutomationFact label="Runtime">
+                  {execution.interpreter ?? "bash"} ·{" "}
+                  {Math.round(execution.timeoutMs / 1000)}s timeout
+                </AutomationFact>
+                <AutomationFact label="Environment">Host</AutomationFact>
+                <AutomationFact label="Source">
+                  {execution.scriptFile ?? "Inline script"}
+                </AutomationFact>
+              </>
+            )}
+          </dl>
+        </section>
+
+        <section className="space-y-3" aria-labelledby="automation-run-history">
+          <h2
+            id="automation-run-history"
+            className="text-sm font-medium text-foreground"
+          >
+            Run history
+          </h2>
           {runsState.error !== null ? (
             <ResourceDetailPanel
               surface="recessed"
@@ -350,12 +376,26 @@ export function AutomationDetailView({
               Loading…
             </ResourceDetailPanel>
           ) : runsState.runs.length === 0 ? (
-            <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
+            <EmptyStatePanel className="py-5">
+              <div className="flex flex-col items-center gap-2">
+                <span>No runs yet.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={actionPending}
+                  onClick={onRunNow}
+                >
+                  <Icon name="Play" className="size-3.5" aria-hidden />
+                  Run now
+                </Button>
+              </div>
+            </EmptyStatePanel>
           ) : (
             <div className="space-y-2">
               <ResourceDetailList
                 surface="flat"
-                className="divide-y divide-border p-0"
+                className="divide-y divide-border border-y border-border p-0"
               >
                 {runsState.runs.map((run) => (
                   <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
@@ -376,8 +416,8 @@ export function AutomationDetailView({
               ) : null}
             </div>
           )}
-        </ResourceActivitySection>
-      </ResourceDetailStack>
+        </section>
+      </div>
       {footer}
     </ResourceDetailPage>
   );

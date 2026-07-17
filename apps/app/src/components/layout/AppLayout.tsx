@@ -361,7 +361,7 @@ function AppHeader({
                   <Link
                     to={segment.to}
                     className={cn(
-                      "shrink-0 text-muted-foreground transition-colors hover:text-foreground",
+                      "-mx-2 inline-flex min-h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                       usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                     )}
                   >

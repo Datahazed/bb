@@ -1784,7 +1784,6 @@ export function ResourceTemplateBrowseCard({
 }
 
 export function ResourceDetailPage({
-  back,
   title,
   titleMeta,
   leading,
@@ -1795,7 +1794,6 @@ export function ResourceDetailPage({
   description,
   children,
 }: {
-  back?: ReactNode;
   title: ReactNode;
   /** Passive provenance or ownership shown inline with the resource name. */
   titleMeta?: ReactNode;
@@ -1810,7 +1808,6 @@ export function ResourceDetailPage({
 }) {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
-      {back}
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -1846,26 +1843,5 @@ export function ResourceDetailPage({
       </div>
       {children}
     </div>
-  );
-}
-
-export function ResourceDetailBackButton({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="-ml-[1.125rem] gap-1 [&_svg]:size-3.5"
-      onClick={onClick}
-    >
-      <Icon name="ChevronLeft" aria-hidden />
-      {label}
-    </Button>
   );
 }

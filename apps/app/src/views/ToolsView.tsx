@@ -22,7 +22,6 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import {
-  ResourceDetailBackButton,
   ResourceDetailList,
   ResourceDetailListItem,
   ResourceListState,
@@ -478,7 +477,6 @@ export function PluginDetail({
   onEdit,
   onOpenSource,
   onDelete,
-  onBack,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -489,7 +487,6 @@ export function PluginDetail({
   onEdit: (plugin: PluginListItem) => void;
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
-  onBack: () => void;
 }) {
   const { settingsSections } = usePluginSlots();
   if (isLoading) {
@@ -519,9 +516,6 @@ export function PluginDetail({
 
   return (
     <PluginDetailView
-      back={
-        <ResourceDetailBackButton label="Back to plugins" onClick={onBack} />
-      }
       leading={<PluginListLogo plugin={plugin} />}
       title={plugin.name ?? plugin.id}
       titleMeta={sourceLabel}
@@ -737,9 +731,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         : pluginDelete.isPending && pluginDelete.variables
           ? pluginDelete.variables.id
           : null;
-  const backToPlugins = useCallback(() => {
-    navigate(getPluginsRoutePath());
-  }, [navigate]);
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
       navigate(getRootComposeRoutePath(), {
@@ -787,7 +778,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           onEdit={handleEditPlugin}
           onOpenSource={handleOpenPluginSource}
           onDelete={setDeleteTarget}
-          onBack={backToPlugins}
         />
       )}
       <ConfirmDeleteDialog

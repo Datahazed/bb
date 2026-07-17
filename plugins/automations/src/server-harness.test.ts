@@ -352,6 +352,19 @@ describe("automations server plugin harness", () => {
     );
     expect(scriptUpdated.execution).toEqual({
       mode: "script",
+      scriptFile: "script.sh",
+      interpreter: "bash",
+      timeoutMs: 12_000,
+      env: { CHANNEL: "qa" },
+    });
+    const updatedEditable = automationResponseSchema.parse(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    );
+    expect(updatedEditable.execution).toEqual({
+      mode: "script",
       script: "echo updated",
       interpreter: "bash",
       timeoutMs: 12_000,

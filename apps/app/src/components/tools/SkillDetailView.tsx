@@ -45,7 +45,6 @@ export type SkillDetailContentState =
   | { kind: "ready"; content: string };
 
 export interface SkillDetailViewProps {
-  back?: ReactNode;
   leading: ReactNode;
   title: string;
   path: string;
@@ -268,7 +267,6 @@ function SkillFileList({
 }
 
 export function SkillDetailView({
-  back,
   leading,
   title,
   path,
@@ -312,7 +310,6 @@ export function SkillDetailView({
 
   return (
     <ResourceDetailPage
-      back={back}
       leading={leading}
       title={title}
       titleMeta={
