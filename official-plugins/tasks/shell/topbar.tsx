@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
 import { listAllTasks, useTasksQuery } from "./data.js";
@@ -6,7 +6,16 @@ import type { TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { useTasksRefresh } from "./refresh.js";
+
+/** Accessible name + tooltip for the header refresh control. */
+export const REFRESH_TASKS_LABEL = "Refresh tasks";
 
 export interface PagerPosition {
   /** 1-based position of the task within its sibling list. */
@@ -127,6 +136,46 @@ function ViewToggle({
   );
 }
 
+/**
+ * Subtle icon-only refresh control. Shares the BB-19 generation channel; does
+ * not add listeners or alternate refresh paths. In-flight state tracks real
+ * generation-driven query work (spin + disabled) with fixed geometry so the
+ * header does not shift.
+ */
+function RefreshTasksButton() {
+  const { refresh, isRefreshing } = useTasksRefresh();
+
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    refresh();
+  }, [isRefreshing, refresh]);
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground active:bg-state-active active:text-foreground"
+            aria-label={REFRESH_TASKS_LABEL}
+            aria-busy={isRefreshing}
+            disabled={isRefreshing}
+            onClick={handleRefresh}
+          >
+            <Icon
+              name="RotateCcw"
+              className={cn("size-3.5", isRefreshing && "animate-spin")}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{REFRESH_TASKS_LABEL}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export interface TasksTopbarProps {
   route: TasksRoute;
   projects: Project[] | undefined;
@@ -153,7 +202,6 @@ export function TasksTopbar({
   onNewTask,
   onBack,
 }: TasksTopbarProps) {
-  const { refresh } = useTasksRefresh();
   const project = useMemo(() => {
     if (route.kind === "project") {
       return (projects ?? []).find((p) => p.id === route.projectId) ?? null;
@@ -270,21 +318,14 @@ export function TasksTopbar({
           onChange={(view) => onNavigate({ ...route, view })}
         />
       ) : null}
+      {/* Refresh sits immediately left of the primary New task action. */}
+      <RefreshTasksButton />
       {route.kind !== "task" && route.kind !== "manage" ? (
         <Button size="sm" className="h-7 gap-1.5" onClick={onNewTask}>
           <Icon name="Plus" className="size-3.5" />
           New task
         </Button>
       ) : null}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1.5"
-        onClick={refresh}
-      >
-        <Icon name="RotateCcw" className="size-3.5" />
-        Refresh
-      </Button>
       <Button
         variant="ghost"
         size="icon"
