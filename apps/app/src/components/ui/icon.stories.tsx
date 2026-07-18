@@ -88,7 +88,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   Rows2: "Git diff toolbar “unified view”",
   Search: "Picker search inputs, file tree search, branch picker filter",
   Settings: "Settings link in sidebar, project settings link in header",
-  SkipForward: "Skipped automation run status",
   Spinner: "All loading / pending states",
   Square: "Stop button while running, in-progress and pending todo glyphs",
   TextWrap: "Line-wrap toggle for diff cards and source file previews",

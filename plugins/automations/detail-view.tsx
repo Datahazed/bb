@@ -172,7 +172,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
     label: string;
-    icon: IconName;
+    icon: IconName | null;
     className: string;
   }
 > = {
@@ -188,7 +188,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   },
   skipped: {
     label: "Skipped",
-    icon: "SkipForward",
+    icon: null,
     className: "text-muted-foreground",
   },
   succeeded: {
@@ -206,17 +206,22 @@ export function AutomationRunStatusIndicator({
   showLabel?: boolean;
 }) {
   const visual = AUTOMATION_RUN_STATUS_VISUALS[status];
+  if (visual.icon === null && !showLabel) {
+    return <span className="sr-only">{visual.label}</span>;
+  }
   return (
     <span
       role="img"
       aria-label={visual.label}
       className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
     >
-      <Icon
-        name={visual.icon}
-        className={cn("size-4", visual.className)}
-        aria-hidden
-      />
+      {visual.icon ? (
+        <Icon
+          name={visual.icon}
+          className={cn("size-4", visual.className)}
+          aria-hidden
+        />
+      ) : null}
       {showLabel ? <span>{visual.label}</span> : null}
     </span>
   );
