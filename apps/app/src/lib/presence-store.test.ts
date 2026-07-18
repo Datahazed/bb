@@ -110,6 +110,27 @@ describe("PresenceStore", () => {
     expect(store.getSummaryHandles("thr_1")).toEqual(["carol"]);
   });
 
+  it("drops an older snapshot that resolves after a newer one applied", () => {
+    const store = new PresenceStore();
+    const captureA = store.beginSnapshot();
+    const captureB = store.beginSnapshot();
+
+    // B (the newer request) resolves first and seeds newer state, including
+    // the removal of thr_gone; then A's stale response arrives.
+    store.applySnapshot({ thr_1: [viewer("newer")] }, captureB);
+    store.applySnapshot(
+      { thr_1: [viewer("older")], thr_gone: [viewer("ghost")] },
+      captureA,
+    );
+
+    expect(store.getThreadViewers("thr_1").map((v) => v.handle)).toEqual([
+      "newer",
+    ]);
+    expect(store.getThreadViewers("thr_gone")).toEqual([]);
+    expect(store.getSummaryHandles("thr_1")).toEqual(["newer"]);
+    expect(store.getSummaryHandles("thr_gone")).toEqual([]);
+  });
+
   it("returns a stable reference for an unchanged roster", () => {
     const store = new PresenceStore();
     store.setThreadViewers("thr_1", [viewer("alice")]);

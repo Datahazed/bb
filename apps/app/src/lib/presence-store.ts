@@ -19,6 +19,12 @@ import { wsManager, type WebSocketManager } from "./ws";
 const EMPTY_VIEWERS: readonly PresenceViewer[] = [];
 const EMPTY_HANDLES: readonly string[] = [];
 
+/** Handle returned by beginSnapshot; identifies one snapshot request. */
+export interface SnapshotCapture {
+  snapshotId: number;
+  sinceGeneration: number;
+}
+
 export class PresenceStore {
   private viewersByThreadId = new Map<string, readonly PresenceViewer[]>();
   private summaryHandlesByThreadId = new Map<string, readonly string[]>();
@@ -31,6 +37,10 @@ export class PresenceStore {
   private generation = 0;
   private viewerTouchGeneration = new Map<string, number>();
   private summaryTouchGeneration = new Map<string, number>();
+  // Snapshot requests are ordered too: only the most recently begun snapshot
+  // may apply, so a slow response from an earlier (re)connect can never roll
+  // back the state a later snapshot already seeded.
+  private latestSnapshotId = 0;
 
   attach(manager: WebSocketManager): () => void {
     const unsubscribePresence = manager.onThreadPresence((message) => {
@@ -50,7 +60,7 @@ export class PresenceStore {
   }
 
   private async seedFromSnapshot(): Promise<void> {
-    const sinceGeneration = this.beginSnapshot();
+    const capture = this.beginSnapshot();
     let snapshot: PresenceSnapshotResponse;
     try {
       snapshot = await request<PresenceSnapshotResponse>(
@@ -60,23 +70,33 @@ export class PresenceStore {
       // Presence is cosmetic; a failed seed just waits for live broadcasts.
       return;
     }
-    this.applySnapshot(snapshot.threads, sinceGeneration);
+    this.applySnapshot(snapshot.threads, capture);
   }
 
   /** Capture before requesting a snapshot; pass the result to applySnapshot. */
-  beginSnapshot(): number {
-    return this.generation;
+  beginSnapshot(): SnapshotCapture {
+    this.latestSnapshotId += 1;
+    return {
+      snapshotId: this.latestSnapshotId,
+      sinceGeneration: this.generation,
+    };
   }
 
   /**
    * Apply the HTTP snapshot (complete current rosters): flush entries absent
    * from it and replace the rest — except threads a realtime message touched
-   * after `sinceGeneration`, whose newer live state (including removal) wins.
+   * after the capture, whose newer live state (including removal) wins. A
+   * snapshot that is no longer the most recently begun one is dropped whole:
+   * a newer request supersedes it regardless of response arrival order.
    */
   applySnapshot(
     threads: Record<string, readonly PresenceViewer[]>,
-    sinceGeneration: number,
+    capture: SnapshotCapture,
   ): void {
+    if (capture.snapshotId !== this.latestSnapshotId) {
+      return;
+    }
+    const sinceGeneration = capture.sinceGeneration;
     const untouched = (touches: Map<string, number>, threadId: string) =>
       (touches.get(threadId) ?? 0) <= sinceGeneration;
     for (const threadId of [...this.viewersByThreadId.keys()]) {
