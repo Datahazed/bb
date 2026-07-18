@@ -593,6 +593,7 @@ function buildOptimisticUserMessageRow({
         }
       : null;
   return {
+    actorHandle: null,
     id,
     kind: "conversation",
     role: "user",

@@ -8,7 +8,12 @@ function event(
 ): ThreadEventWithMeta {
   return {
     event: value,
-    meta: { id: `event-${sequence}`, seq: sequence, createdAt: sequence * 10 },
+    meta: {
+      id: `event-${sequence}`,
+      seq: sequence,
+      createdAt: sequence * 10,
+      actorHandle: null,
+    },
   };
 }
 

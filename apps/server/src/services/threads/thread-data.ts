@@ -105,6 +105,7 @@ export function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
     threadId: row.threadId,
     seq: row.sequence,
     createdAt: row.createdAt,
+    actorHandle: row.actorHandle,
     event: parseStoredEvent(row),
   });
 }

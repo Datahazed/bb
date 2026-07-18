@@ -95,6 +95,7 @@ function acceptedClientRequest(
 ): AcceptedClientRequest {
   return {
     meta: {
+      actorHandle: null,
       id: "event-accepted",
       seq: 2,
       createdAt: 2,

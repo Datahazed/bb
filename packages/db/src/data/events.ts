@@ -715,6 +715,7 @@ export interface ListEventsOptions {
 }
 
 const storedEventRowFields = {
+  actorHandle: events.actorHandle,
   createdAt: events.createdAt,
   data: events.data,
   id: events.id,

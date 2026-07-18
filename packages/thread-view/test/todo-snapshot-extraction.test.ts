@@ -58,6 +58,7 @@ function todoWriteEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -89,6 +90,7 @@ function taskToolEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -106,6 +108,7 @@ function turnPlanEvent({ plan, seq }: TurnPlanEventArgs): ThreadEventWithMeta {
       plan,
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -128,7 +131,7 @@ function nonTodoToolCallEvent(seq: number): ThreadEventWithMeta {
         status: "completed",
       },
     },
-    meta: { id: `event-${seq}`, seq, createdAt: seq },
+    meta: { id: `event-${seq}`, seq, createdAt: seq, actorHandle: null },
   };
 }
 

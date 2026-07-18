@@ -259,6 +259,7 @@ function toThreadEventWithMeta(row: StoredEventRow): ThreadEventWithMeta {
       id: row.id,
       seq: row.sequence,
       createdAt: row.createdAt,
+      actorHandle: row.actorHandle,
     },
   };
 }

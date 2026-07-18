@@ -244,6 +244,7 @@ function contextWindowUsageEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -273,6 +274,7 @@ function fileChangeItemEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -305,6 +307,7 @@ function toolCallItemEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -331,6 +334,7 @@ function imageViewItemEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -353,6 +357,7 @@ function planDeltaEvent({
       delta: text,
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -378,6 +383,7 @@ function planItemCompletedEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -394,6 +400,7 @@ function turnStartedEvent({ seq }: TurnStartedEventArgs): ThreadEventWithMeta {
       scope: turnScope("turn-1"),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -416,6 +423,7 @@ function turnCompletedEvent({
       ...(errorMessage ? { error: { message: errorMessage } } : {}),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -449,6 +457,7 @@ function backgroundTaskStartedEvent({
       item,
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -476,6 +485,7 @@ function systemOperationEvent({
       ...(metadata ? { metadata } : {}),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -499,6 +509,7 @@ function systemErrorEvent({
       ...(detail !== undefined ? { detail } : {}),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -537,6 +548,7 @@ function systemProviderTurnWatchdogEvent({
       firedAt: firedAt ?? seq,
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -563,6 +575,7 @@ function providerErrorEvent({
       ...(willRetry !== undefined ? { willRetry } : {}),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -600,6 +613,7 @@ function permissionGrantLifecycleEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,
@@ -644,6 +658,7 @@ function userQuestionLifecycleEvent({
       },
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq,

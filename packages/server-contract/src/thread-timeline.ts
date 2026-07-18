@@ -110,6 +110,9 @@ export const timelineUserConversationRowSchema =
     role: z.literal("user"),
     initiator: threadTurnInitiatorSchema,
     senderThreadId: z.string().nullable(),
+    // Claimed handle of the human author; null = not human-initiated or
+    // pre-multiplayer history. Defaulted for pre-multiplayer servers.
+    actorHandle: z.string().nullable().default(null),
     // Family-B taxonomy fields, required on the read model. `systemMessageKind`
     // is non-nullable (legacy rows project to `unlabeled`); `systemMessageSubject`
     // is nullable (null = no thread subject, e.g. an `unlabeled` legacy row).

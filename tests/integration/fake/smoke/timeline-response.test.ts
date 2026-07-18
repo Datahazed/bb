@@ -35,6 +35,7 @@ const USER_ROW = {
   attachments: null,
   initiator: "user",
   senderThreadId: null,
+  actorHandle: null,
   systemMessageKind: "unlabeled",
   systemMessageSubject: null,
   turnRequest: { kind: "message", status: "accepted" },

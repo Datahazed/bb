@@ -63,6 +63,7 @@ function createProjectionState(): ToolActivityProjectionState {
 
 function eventMeta(seq: number): EventMeta {
   return {
+    actorHandle: null,
     id: `event-${seq}`,
     seq,
     createdAt: seq,

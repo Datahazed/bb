@@ -230,6 +230,7 @@ export function toThreadEventWithMeta(
       id: row.id,
       seq: row.sequence,
       createdAt: row.createdAt,
+      actorHandle: row.actorHandle,
     },
   };
 }

@@ -39,6 +39,7 @@ function conversationRow({
   };
   if (role === "user") {
     return {
+      actorHandle: null,
       ...base,
       role: "user",
       initiator: "user",

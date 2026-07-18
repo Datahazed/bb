@@ -432,6 +432,7 @@ export function conversationRow({
   if (role === "user") {
     const resolvedInitiator: ThreadTurnInitiator = initiator ?? "user";
     return {
+      actorHandle: null,
       ...rowBase,
       kind: "conversation",
       role,

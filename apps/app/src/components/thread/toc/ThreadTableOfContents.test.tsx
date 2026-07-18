@@ -50,6 +50,7 @@ class ResizeObserverMock implements ResizeObserver {
 
 function userConversationRow(index = 1): TimelineRow {
   return {
+    actorHandle: null,
     id: `row_user_${index}`,
     threadId: "thr_toc_test",
     turnId: `turn_${index}`,

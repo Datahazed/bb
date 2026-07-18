@@ -45,6 +45,7 @@ interface UserMessageArgs extends MessageBaseArgs {
 
 function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   return {
+    actorHandle: null,
     ...messageBase(args),
     kind: "user",
     initiator: args.initiator ?? "user",

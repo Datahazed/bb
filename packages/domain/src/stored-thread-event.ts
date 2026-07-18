@@ -31,6 +31,9 @@ interface ThreadEventRowBase {
   threadId: string;
   seq: number;
   createdAt: number;
+  // Claimed handle of the human who initiated the event; null = not
+  // human-initiated or pre-multiplayer history.
+  actorHandle: string | null;
 }
 
 interface ThreadEventRowInput extends ThreadEventRowBase {
@@ -76,6 +79,8 @@ const threadEventRowInputSchema = z.object({
   type: threadEventTypeSchema,
   data: z.record(z.string(), z.unknown()),
   createdAt: z.number(),
+  // Defaulted for rows serialized by pre-multiplayer servers.
+  actorHandle: z.string().nullable().default(null),
 });
 
 const storedTurnRequestTypeSet = new Set<ThreadEventType>([
@@ -179,6 +184,7 @@ function parseThreadEventRowInput(row: ThreadEventRowInput): ThreadEventRow {
     threadId: row.threadId,
     seq: row.seq,
     createdAt: row.createdAt,
+    actorHandle: row.actorHandle,
     event: parseStoredThreadEvent({
       type: row.type,
       data: row.data,

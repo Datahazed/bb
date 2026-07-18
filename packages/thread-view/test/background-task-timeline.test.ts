@@ -17,6 +17,7 @@ function withMeta(event: ThreadEvent, seq: number): ThreadEventWithMeta {
   return {
     event,
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq * 1_000,

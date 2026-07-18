@@ -86,6 +86,9 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
+  // Claimed handle of the human author; null = not human-initiated or
+  // pre-multiplayer history.
+  actorHandle: string | null;
   // Family-B taxonomy fields carried from the decoded `client/turn/requested`
   // event. Legacy events lacking them project as `unlabeled` / `null`.
   systemMessageKind: SystemMessageKind;

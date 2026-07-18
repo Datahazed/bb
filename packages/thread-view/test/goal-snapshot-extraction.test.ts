@@ -23,6 +23,7 @@ function goalUpdatedEvent({
       timeUsedSeconds: 30,
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq * 100,
@@ -39,6 +40,7 @@ function goalClearedEvent(seq: number): ThreadEventWithMeta {
       scope: threadScope(),
     },
     meta: {
+      actorHandle: null,
       id: `event-${seq}`,
       seq,
       createdAt: seq * 100,

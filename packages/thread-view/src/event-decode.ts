@@ -116,6 +116,9 @@ export interface EventMeta {
   id: string;
   seq: number;
   createdAt: number;
+  // Claimed handle of the human who initiated the event; null = not
+  // human-initiated or pre-multiplayer history.
+  actorHandle: string | null;
 }
 
 function buildEventMeta(row: ThreadEventRow): EventMeta {
@@ -123,6 +126,7 @@ function buildEventMeta(row: ThreadEventRow): EventMeta {
     id: row.id,
     seq: row.seq,
     createdAt: row.createdAt,
+    actorHandle: row.actorHandle,
   };
 }
 

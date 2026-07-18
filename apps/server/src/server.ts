@@ -72,6 +72,7 @@ import {
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
+import { CLAIMED_IDENTITY_HEADER } from "@bb/domain";
 import {
   createActorService,
   createLocalOperatorIdentity,
@@ -484,7 +485,14 @@ export function createApp(
   app.get(
     "/ws",
     upgradeWebSocket((context) => {
-      const actor = actorService.resolveRequest(context.req);
+      // Browsers cannot set custom headers on a WebSocket upgrade, so /ws also
+      // accepts the same encoded identity via the `identity` query parameter.
+      const identityParam = context.req.query("identity");
+      const actor = actorService.resolveRequest({
+        header: (name) =>
+          context.req.header(name) ??
+          (name === CLAIMED_IDENTITY_HEADER ? identityParam : undefined),
+      });
       return {
         onOpen: (_event, socket) => {
           registerSocketActor(socket, actor);

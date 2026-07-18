@@ -34,6 +34,7 @@ function userRow(args: {
   createdAt: number;
 }): TimelineRow {
   return {
+    actorHandle: null,
     id: `${THREAD_ID}:user:${args.seq}`,
     threadId: THREAD_ID,
     turnId: `${TURN_PREFIX}${args.seq}`,

@@ -160,6 +160,7 @@ describe("bb thread wait command output", () => {
               threadId: "thread-t0",
               seq: 3,
               createdAt: Date.now(),
+              actorHandle: null,
               event: {
                 type: "turn/completed",
                 threadId: "thread-t0",

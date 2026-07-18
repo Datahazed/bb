@@ -146,6 +146,7 @@ export function appendDebugEvent(
       threadId: decoded.threadId,
       seq: meta.seq,
       createdAt: meta.createdAt,
+      actorHandle: meta.actorHandle,
       event: decoded,
     }),
     reason,

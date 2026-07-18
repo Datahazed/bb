@@ -11,6 +11,7 @@ function userRow(args: {
   text: string;
 }): TimelineUserConversationRow {
   return {
+    actorHandle: null,
     id: args.id,
     kind: "conversation",
     role: "user",

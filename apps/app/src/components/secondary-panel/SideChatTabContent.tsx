@@ -247,6 +247,7 @@ function buildOptimisticSideChatUserRow({
   }
 
   return {
+    actorHandle: null,
     id: `${tabId}:optimistic-first-user-message`,
     threadId,
     turnId: `${tabId}:optimistic-first-user-turn`,
