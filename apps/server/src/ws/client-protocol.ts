@@ -1,6 +1,7 @@
 import { clientMessageSchema } from "@bb/domain";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
+import { releaseSocketActor } from "./socket-actors.js";
 import type { WatchInterestCoordinator } from "./watch-interests.js";
 
 interface ClientSocket {
@@ -69,6 +70,7 @@ export function onClientSocketClose(
   },
   socket: ClientSocket,
 ): void {
+  releaseSocketActor(socket);
   deps.watchInterests.releaseSocket(socket);
   deps.hub.unregisterClient(socket);
 }

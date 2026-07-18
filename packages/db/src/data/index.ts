@@ -562,3 +562,13 @@ export type {
   DropDeferredLegacyTablesResult,
   RunIncrementalVacuumArgs,
 } from "./maintenance.js";
+
+export {
+  getCollaborator,
+  listCollaborators,
+  upsertCollaborator,
+} from "./collaborators.js";
+export type {
+  CollaboratorRow,
+  UpsertCollaboratorInput,
+} from "./collaborators.js";

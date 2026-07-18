@@ -17,6 +17,11 @@ import {
 import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
+import {
+  admitServerMember,
+  handleServerMembers,
+  matchServerMembersRoute,
+} from "./members.js";
 
 export { TunnelDO };
 
@@ -272,6 +277,10 @@ export default {
     if (url.pathname === "/api/connect/machine-label") {
       return handleAssignMachineLabel(request, env);
     }
+    const serverMembersRoute = matchServerMembersRoute(url.pathname);
+    if (serverMembersRoute) {
+      return handleServerMembers(request, env, serverMembersRoute);
+    }
 
     const host = request.headers.get("host") ?? url.host;
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
@@ -421,11 +430,14 @@ export default {
     if (!sessionUserId && !desktopUserId) {
       return signInPage(label, appUrl, url.toString());
     }
-    if (
-      sessionUserId !== resolved.userId &&
-      desktopUserId !== resolved.userId
-    ) {
-      return text("bb connect: not your server\n", 403);
+    const isOwner =
+      sessionUserId === resolved.userId || desktopUserId === resolved.userId;
+    if (!isOwner) {
+      const isMember =
+        resolved.kind === "server" &&
+        sessionUserId !== null &&
+        (await admitServerMember(db, resolved.server.id, sessionUserId, label));
+      if (!isMember) return text("bb connect: not your server\n", 403);
     }
 
     const doRequest = requestForTunnelDo(request, target, "session");

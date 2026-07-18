@@ -122,6 +122,16 @@ vi.mock("./machine-label.js", () => ({
   handleAssignMachineLabel: vi.fn(),
 }));
 
+vi.mock("./members.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("./members.js")>("./members.js");
+  return {
+    ...actual,
+    admitServerMember: vi.fn(async () => false),
+    handleServerMembers: vi.fn(),
+  };
+});
+
 vi.mock("./cache.js", async () => {
   const actual =
     await vi.importActual<typeof import("./cache.js")>("./cache.js");
@@ -158,6 +168,7 @@ import {
   verifyDesktopSessionCookie,
 } from "./servers.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
+import { admitServerMember, handleServerMembers } from "./members.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
@@ -172,6 +183,8 @@ const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
+const mockAdmitServerMember = vi.mocked(admitServerMember);
+const mockHandleServerMembers = vi.mocked(handleServerMembers);
 
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
@@ -349,6 +362,44 @@ describe("POST /api/connect/machine-label", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
     expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(request, env);
+    expect(mockResolveLabel).not.toHaveBeenCalled();
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe("/api/servers/:serverId/members", () => {
+  it("intercepts collection and item routes before host routing", async () => {
+    mockHandleServerMembers
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+
+    const collectionRequest = visitorRequest(
+      "unknown.getbb.app",
+      "/api/servers/srv-1/members",
+    );
+    const collection = await worker.fetch(collectionRequest, env as never, ctx);
+    const itemRequest = visitorRequest(
+      "unknown.getbb.app",
+      "/api/servers/srv-1/members/user-2",
+      { method: "DELETE" },
+    );
+    const item = await worker.fetch(itemRequest, env as never, ctx);
+
+    expect(collection.status).toBe(200);
+    expect(item.status).toBe(204);
+    expect(mockHandleServerMembers).toHaveBeenNthCalledWith(
+      1,
+      collectionRequest,
+      env,
+      { serverId: "srv-1", memberUserId: null },
+    );
+    expect(mockHandleServerMembers).toHaveBeenNthCalledWith(
+      2,
+      itemRequest,
+      env,
+      { serverId: "srv-1", memberUserId: "user-2" },
+    );
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -858,6 +909,45 @@ describe("gate worker share hosts", () => {
     );
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("not your server");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("admits a server member session and records the admission before proxying", async () => {
+    mockVerifySession.mockResolvedValue(OTHER);
+    mockAdmitServerMember.mockResolvedValueOnce(true);
+    const { env, ctx, captured } = makeEnv(() => new Response("member-origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/threads"),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("member-origin");
+    expect(mockAdmitServerMember).toHaveBeenCalledWith(
+      expect.anything(),
+      "srv1",
+      OTHER,
+      "sawyer",
+    );
+    expect(captured).toHaveLength(1);
+  });
+
+  it("does not treat a desktop cookie as member identity", async () => {
+    mockParseCookie.mockImplementation((_header, name) =>
+      name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
+    );
+    mockVerifyDesktopSession.mockResolvedValue(OTHER);
+    mockAdmitServerMember.mockResolvedValueOnce(true);
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(403);
+    expect(mockAdmitServerMember).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
 

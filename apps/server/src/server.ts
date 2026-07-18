@@ -71,6 +71,12 @@ import {
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
+import {
+  createActorService,
+  createLocalOperatorIdentity,
+  setRequestActor,
+} from "./services/actors.js";
+import { registerSocketActor } from "./ws/socket-actors.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -309,6 +315,11 @@ export function createApp(
       dataDir: deps.config.dataDir,
       serverEntryUrl: import.meta.url,
     });
+  const actorService = createActorService({
+    db: deps.db,
+    defaultActor: createLocalOperatorIdentity(),
+    now: Date.now,
+  });
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
@@ -362,6 +373,7 @@ export function createApp(
     });
   });
   app.use("/api/v1/*", async (context, next) => {
+    setRequestActor(context, actorService.resolveRequest(context.req));
     const startedAt = performance.now();
     await next();
     const durationMs = performance.now() - startedAt;
@@ -469,12 +481,18 @@ export function createApp(
 
   app.get(
     "/ws",
-    upgradeWebSocket(() => ({
-      onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
-      onMessage: (event, socket) =>
-        onClientSocketMessage(deps, socket, event.data),
-      onClose: (_event, socket) => onClientSocketClose(deps, socket),
-    })),
+    upgradeWebSocket((context) => {
+      const actor = actorService.resolveRequest(context.req);
+      return {
+        onOpen: (_event, socket) => {
+          registerSocketActor(socket, actor);
+          onClientSocketOpen(deps.hub, socket);
+        },
+        onMessage: (event, socket) =>
+          onClientSocketMessage(deps, socket, event.data),
+        onClose: (_event, socket) => onClientSocketClose(deps, socket),
+      };
+    }),
   );
 
   app.get(
