@@ -20,6 +20,12 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
 }));
 
+// The tab strip reads the sidebar state for its window-left chrome reserve;
+// this harness renders no SidebarProvider.
+vi.mock("@/components/ui/sidebar.js", () => ({
+  useIsSidebarShowing: () => true,
+}));
+
 // The heavy thread view is stubbed to a marker so the test observes only the
 // wrapper DOM SplitThreadArea itself introduces.
 vi.mock("./ThreadDetailView", () => ({
@@ -62,7 +68,13 @@ function content(threadId: string): PaneContent {
 }
 
 function pane(paneId: string, threadId: string): LayoutNode {
-  return { type: "pane", paneId, content: content(threadId) };
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane",
+    paneId,
+    tabs: [{ tabId, content: content(threadId), preview: false }],
+    activeTabId: tabId,
+  };
 }
 
 function renderArea(layout: SplitLayout) {

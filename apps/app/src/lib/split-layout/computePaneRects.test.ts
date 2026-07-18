@@ -7,7 +7,13 @@ function content(threadId: string): PaneContent {
 }
 
 function pane(paneId: string): LayoutNode {
-  return { type: "pane", paneId, content: content(paneId) };
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane",
+    paneId,
+    tabs: [{ tabId, content: content(paneId), preview: false }],
+    activeTabId: tabId,
+  };
 }
 
 function expectRect(actual: PaneRect | undefined, expected: PaneRect): void {

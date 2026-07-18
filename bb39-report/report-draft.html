@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BB-39 · Dockable Panes Experiment — Product Review</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fbfaf8; --surface: #ffffff; --ink: #242326; --muted: #6e6b73;
+      --line: #e7e3df; --soft: #f2efeb; --accent: #5b64d8; --good: #218653;
+      --warn: #9a641c; --bad: #b53c42; --shadow: 0 18px 60px rgb(42 36 32 / 8%);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.65 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 52px 28px 100px; }
+    .hero { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); padding: clamp(28px, 5vw, 58px); margin-bottom: 28px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { max-width: 850px; margin: 8px 0 12px; font-size: clamp(34px, 6vw, 58px); line-height: 1.04; letter-spacing: -.045em; }
+    .lede { max-width: 780px; color: var(--muted); font-size: 18px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .chip { border: 1px solid var(--line); border-radius: 999px; background: var(--soft); padding: 5px 11px; color: var(--muted); font-size: 12px; }
+    .chip strong { color: var(--ink); }
+    .chip.good { color: var(--good); background: #eff8f2; border-color: #cae6d4; }
+    .chip.warn { color: var(--warn); background: #fff8e9; border-color: #edd9ac; }
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 30px; align-items: start; }
+    nav { position: sticky; top: 20px; padding: 16px 2px; }
+    nav h2 { margin: 0 0 8px; border: 0; padding: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    nav a { display: block; padding: 5px 0; color: var(--muted); text-decoration: none; font-size: 13px; }
+    nav a:hover { color: var(--ink); }
+    main { min-width: 0; }
+    section { scroll-margin-top: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: clamp(24px, 4vw, 42px); margin-bottom: 18px; }
+    h2 { margin: 0 0 14px; font-size: 25px; line-height: 1.2; letter-spacing: -.025em; }
+    h3 { margin: 30px 0 8px; font-size: 17px; }
+    p { margin: 0 0 14px; }
+    ul, ol { padding-left: 22px; }
+    li { margin: 5px 0; }
+    code { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--soft); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+    figure { margin: 24px 0 4px; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 13px; background: var(--soft); }
+    figcaption { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .card { border: 1px solid var(--line); border-radius: 12px; padding: 15px; background: #fff; }
+    .card strong { display: block; margin-bottom: 4px; }
+    .card p { margin: 0; color: var(--muted); font-size: 13px; }
+    .callout { margin: 18px 0; border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; background: #f4f4ff; padding: 13px 16px; }
+    .callout.warn { border-left-color: var(--warn); background: #fff8e9; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 650; }
+    .status-pass { color: var(--good); font-weight: 650; }
+    .status-fail { color: var(--bad); font-weight: 650; }
+    .status-na { color: var(--muted); }
+    footer { padding: 20px 0; color: var(--muted); font-size: 12px; text-align: center; }
+    @media (max-width: 820px) { .page { padding: 20px 14px 70px; } .layout { grid-template-columns: 1fr; } nav { position: static; columns: 2; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 14px 18px; } }
+    @media print { .hero, section { box-shadow: none; } nav { display: none; } .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="hero">
+    <div class="eyebrow">Product review · BB-39 / BB-25</div>
+    <h1>Dockable panes: terminals, diffs, and threads in one tab-group workspace</h1>
+    <p class="lede">First working slice of the unified docking model: the split tree's leaves became VS&nbsp;Code-style tab groups, navigation opens preview tabs, and terminals and diffs are first-class draggable panes with thread-header entry points. Built by a four-worker model-routed fan-out, gated by a GPT-5.6 review, and verified live in the dev app for this report.</p>
+    <div class="chips">
+      <span class="chip good"><strong>Verdict</strong> — works end-to-end; 1 P2 found in live QA</span>
+      <span class="chip"><strong>Branch</strong> bb/dockable-terminals-and-views-thr_9nsm45dtne (uncommitted, base 6dbeb8a20)</span>
+      <span class="chip"><strong>Build</strong> dev app @ localhost:12325 · threadSplits flag ON</span>
+      <span class="chip"><strong>Tests</strong> 241 files / 1,624 passing · typecheck clean</span>
+      <span class="chip warn"><strong>Scope</strong> experiment behind flag — phases 2+3 of 6</span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav>
+      <h2>Contents</h2>
+      <a href="#built">What was built</a>
+      <a href="#core">Core workflow</a>
+      <a href="#terminals">Terminals as panes</a>
+      <a href="#diff">Diff panes</a>
+      <a href="#drag">Drag &amp; splits</a>
+      <a href="#lifecycle">Persistence &amp; lifecycle</a>
+      <a href="#parity">Flag-off parity</a>
+      <a href="#arch">Architecture</a>
+      <a href="#process">How it was built</a>
+      <a href="#defects">Defects &amp; limitations</a>
+      <a href="#decide">Decisions requested</a>
+      <a href="#try">Try it</a>
+      <a href="#coverage">Coverage</a>
+    </nav>
+    <main>
+
+    <section id="built">
+      <h2>What was built and why</h2>
+      <p>BB previously ran two separate pane systems: the recursive split tree (threads and plugin panels only) and the per-thread "secondary panel" tab strip (where terminals, diffs, and files actually lived). BB-25's decision record unifies them: <strong>one layout tree whose leaves are tab groups</strong>, every surface a tab, resources (threads, PTYs) distinct from views. This experiment ships the first two implementation phases behind the existing <code>experiments.threadSplits</code> flag:</p>
+      <div class="grid">
+        <div class="card"><strong>Tab-group layout engine</strong><p>Leaves hold ordered tabs with one preview slot; open/close/activate/commit/move ops; localStorage schema v2 (v1 = deliberate fresh start); 8-pane cap, 16-tab sanity bound.</p></div>
+        <div class="card"><strong>Preview tabs</strong><p>Navigation opens an italic preview that the next single-click replaces in place. Commit by double-click (tab or sidebar row) or by dragging. Stateful views (terminals) never preview.</p></div>
+        <div class="card"><strong>Terminal &amp; diff panes</strong><p>New descriptors with canonical routes (<code>/terminals/:id</code>, <code>/threads/:id/diff</code>), explicit context binding, xterm mounted straight off the server-relayed session, diff via the production git-diff panel.</p></div>
+        <div class="card"><strong>Thread-header entry points</strong><p>Diff and Terminal buttons on the thread pane: reveal an open view, else reopen the thread's running terminal, else create one — never a duplicate, never an accidental PTY.</p></div>
+      </div>
+      <p style="margin-top:14px">Deferred by design (later phases): browser panes (BB-40), plugin views API (BB-41), server-side per-project persistence + <code>bb panes</code> agent CLI (BB-42), the registry sidebar and quick switcher (BB-43).</p>
+    </section>
+
+    <section id="core">
+      <h2>The core workflow: click around, commit what matters</h2>
+      <p>The defining loop of the design: <strong>single-click exploration is free</strong> — it never mints permanent tabs — and an explicit gesture locks in what you want to keep.</p>
+      <figure>
+        <img src="{{IMG:qa-001b-direct-thread.jpg}}" alt="QA screenshot: qa-001b-direct-thread.jpg">
+        <figcaption><strong>Navigation opens a preview.</strong> Visiting QA Alpha put it in the tab strip in italics — a preview tab sharing the group with the committed "New thread" view. The thread header keeps its slim chrome; the tab owns the title.</figcaption>
+      </figure>
+      <figure>
+        <img src="{{IMG:qa-002-beta-replaces-preview.jpg}}" alt="QA screenshot: qa-002-beta-replaces-preview.jpg">
+        <figcaption><strong>The next click replaces the preview in place.</strong> Single-clicking QA Beta in the sidebar swapped the preview slot — still exactly two tabs, no pane spam, URL following along.</figcaption>
+      </figure>
+      <figure>
+        <img src="{{IMG:qa-004-gamma-third-preview.jpg}}" alt="QA screenshot: qa-004-gamma-third-preview.jpg">
+        <figcaption><strong>Commit + preview coexist.</strong> Double-clicking QA Beta's sidebar row committed it (upright); QA Gamma then opened as a fresh preview beside it. Three tabs: committed, committed, preview.</figcaption>
+      </figure>
+    </section>
+
+    <section id="terminals">
+      <h2>Terminals as first-class panes</h2>
+      <p>The load-bearing claim of the whole unification — stateful, server-relayed PTYs living in the layout tree — verified live:</p>
+      <figure>
+        <img src="{{IMG:qa-005-terminal-pane.jpg}}" alt="QA screenshot: qa-005-terminal-pane.jpg">
+        <figcaption><strong>One click on the header's Terminal button</strong> created a PTY bound to the thread, opened it as a committed tab (terminals never preview), and the URL became <code>/terminals/term_cr9va6c5vt</code>. The slim context strip shows the binding: <em>Thread thr_5yi7</em>.</figcaption>
+      </figure>
+      <figure>
+        <img src="{{IMG:qa-006-terminal-interactive.jpg}}" alt="QA screenshot: qa-006-terminal-interactive.jpg">
+        <figcaption><strong>Fully interactive over the pane's websocket:</strong> <code>echo dockable-panes-live-$((6*7))</code> → <code>dockable-panes-live-42</code>, executed in the environment's worktree.</figcaption>
+      </figure>
+      <figure>
+        <img src="{{IMG:qa-008-terminal-reopened-same-pty.jpg}}" alt="QA screenshot: qa-008-terminal-reopened-same-pty.jpg">
+        <figcaption><strong>The resource outlives its view.</strong> After closing the Terminal tab and clicking the entry point again, the <em>same</em> terminal id returned with scrollback intact — the PTY survived the close; the button revealed the existing resource instead of spawning a new one.</figcaption>
+      </figure>
+    </section>
+
+    <section id="diff">
+      <h2>Diff panes</h2>
+      <figure>
+        <img src="{{IMG:qa-009-diff-pane.jpg}}" alt="QA screenshot: qa-009-diff-pane.jpg">
+        <figcaption><strong>The Diff entry point</strong> opened a committed tab at <code>/threads/thr_5yi7…/diff</code>, reusing the production git-diff panel. This environment isn't a git repository, so the empty state is the correct render; populated diff content was not exercised in this pass (the component is the same one the secondary panel ships today).</figcaption>
+      </figure>
+    </section>
+
+    <section id="drag">
+      <h2>Drag, tear-out, and splits</h2>
+      <figure>
+        <img src="{{IMG:qa-011-terminal-split-right.jpg}}" alt="QA screenshot: qa-011-terminal-split-right.jpg">
+        <figcaption><strong>Tearing the Terminal tab out to the right edge</strong> created a second group — live PTY on the right with scrollback intact, the left group keeping its four tabs (Gamma still a preview). Note the sidebar: thread rows now carry split-indicator minimaps showing where they're docked. Dragging always commits.</figcaption>
+      </figure>
+    </section>
+
+    <section id="lifecycle">
+      <h2>Persistence and lifecycle</h2>
+      <p><strong>Reload:</strong> after a full page reload, both groups restored from localStorage schema v2, the URL stayed on the focused terminal pane, and the terminal reconnected by id with scrollback (corroborated by DOM query: the earlier command output re-rendered).</p>
+      <figure>
+        <img src="{{IMG:qa-013-archive-spares-terminal.jpg}}" alt="QA screenshot: qa-013-archive-spares-terminal.jpg">
+        <figcaption><strong>Archiving the thread (via CLI, out-of-band) closed its thread tab but the layout and Terminal tab survived</strong> — the exact High-severity review fix, observed live. The PTY itself was ended by server policy (thread archive closes thread-scoped sessions), and the pane degrades honestly to "Terminal ended". The lingering Diff tab in this screenshot is the one defect found — see below.</figcaption>
+      </figure>
+    </section>
+
+    <section id="parity">
+      <h2>Flag-off parity</h2>
+      <figure>
+        <img src="{{IMG:qa-014-flag-off-parity.jpg}}" alt="QA screenshot: qa-014-flag-off-parity.jpg">
+        <figcaption><strong>With <code>threadSplits</code> off</strong> the thread page renders exactly as production today: no tab strip, no header entry points (verified by accessibility query: zero "Open diff/terminal pane" buttons). The single-pane single-tab path is also DOM-parity-guarded by test.</figcaption>
+      </figure>
+    </section>
+
+    <section id="arch">
+      <h2>Architecture at review depth</h2>
+      <ul>
+        <li><strong>Resources vs views</strong> (BB-25 decision record): a tab is a <em>view</em>; threads and terminals are <em>resources</em> that exist unviewed. Per-kind multiplicity: threads reveal-existing (1 view in v1), terminals exactly-one-view (PTY geometry), data views (tasks/diff) cheap multi.</li>
+        <li><strong>URL-first descriptors:</strong> every pane kind has a canonical route and two-way route↔descriptor conversion; the focused pane's active tab owns the address bar. Bare <code>/terminals/:id</code> URLs are reveal-only (they can't carry the context binding) — verified they cannot seed an invalid tab.</li>
+        <li><strong>Preview is view-layer only</strong>, orthogonal to the resource model; one preview slot per group, enforced at open, normalize, and persisted-schema levels for terminals.</li>
+        <li><strong>Explicit context binding:</strong> terminal descriptors carry their target (thread/environment/host-path) fixed at creation, shown in pane chrome.</li>
+        <li><strong>Fresh start on storage:</strong> schema v2; v1 layouts deserialize to null by design (experiment behind flag; old tab state had a 14-day expiry anyway).</li>
+      </ul>
+    </section>
+
+    <section id="process">
+      <h2>How it was built and verified</h2>
+      <p>Manager (Fable) implemented the core model and navigation policy; three parallel workers with non-overlapping file ownership built the renderer (Fable), pane components + entry points (GPT-5.6 Sol high), and sidebar adaptations (Sol medium); a fourth migrated tests (Sol high). A GPT-5.6 Sol review gate returned <strong>REQUEST CHANGES with 6 findings: 5 fixed in one round</strong> (archive sparing terminals, cap-guarded navigation, URL-terminal guard, invariant enforcement, group-drag restoration), <strong>1 declined deliberately</strong> (tab insertion stays after-active so a thread's diff/terminal lands beside it). Every fix carries a regression test.</p>
+      <ul>
+        <li>Typecheck: clean across the app after integration (verified independently by the manager).</li>
+        <li>Test suite: 241 files / 1,624 tests passing, including migrated split-layout coverage and new regression tests.</li>
+        <li>Live QA (this report): 13 workflows exercised in the dev app via browser automation with console-error capture — zero console errors observed in any captured run.</li>
+      </ul>
+    </section>
+
+    <section id="defects">
+      <h2>Defects, limitations, and environment notes</h2>
+      <h3>P2 — Archived thread's diff tab lingers on out-of-band archive</h3>
+      <ol>
+        <li>Open a thread, its Diff pane, and a terminal (any layout).</li>
+        <li>Archive the thread from <em>outside</em> the app (CLI: <code>bb thread archive &lt;id&gt;</code>).</li>
+        <li><em>Expected:</em> the thread tab and its diff tab close (matching the in-app archive path, which routes through <code>closePanesForThreadsAtom</code> and does close both). <em>Actual:</em> only the thread tab is pruned; the stale-thread watcher doesn't cover thread-<em>bound</em> diff tabs, so an orphaned Diff tab remains (evidence: the lifecycle screenshot above).</li>
+      </ol>
+      <p>Suggested fix: extend the per-tab stale watcher to thread-bound descriptor kinds, or have <code>DiffPaneContent</code> render an archived-thread state. Not fixed during QA to keep the finding reproducible.</p>
+      <h3>Product-policy observation (not a defect)</h3>
+      <p>Server policy ends thread-scoped PTYs when their thread is archived, so the spared terminal tab shows "Terminal ended". If terminals should survive archive, that's a server-side lifecycle decision (relevant to the BB-43 registry, where running terminals are sidebar resources).</p>
+      <h3>Not exercised in this pass</h3>
+      <ul>
+        <li>Populated diff rendering (QA env isn't a git repo; component is production code reused).</li>
+        <li>Compact-viewport fallback, dark/custom themes, center-drop tab merge via pointer drag, and strip-background group drag (all unit-tested; drag decide-tables covered by the suite).</li>
+        <li>CLI thread-open-into-split (<code>applyThreadOpenToLayout</code> is unit-tested; the full <code>bb panes</code> agent surface is BB-42).</li>
+      </ul>
+      <h3>Environment / QA residue</h3>
+      <ul>
+        <li>Dev instance data dir: <code>~/.bb-dev/bb-worktrees-env_rp87eqfyeb-bb-c3596b6d3569</code>; fixtures QA Alpha/Beta remain, QA Gamma archived, one ended terminal session, <code>qa-diff-fixture.txt</code> in its env worktree. Left in place for reproduction.</li>
+        <li><code>threadSplits</code> flag left <strong>ON</strong> in the dev instance for hands-on evaluation; dev server left running.</li>
+        <li>One tooling quirk (not product): first automation click from the homepage timed out under Playwright's stability wait; all subsequent targeted clicks behaved.</li>
+      </ul>
+    </section>
+
+    <section id="decide">
+      <h2>Decisions requested</h2>
+      <ul>
+        <li><strong>Ship gate:</strong> is this slice good enough to merge behind the flag (with the P2 filed as a fast-follow), or should the diff-tab pruning land first?</li>
+        <li><strong>Terminal-on-archive policy:</strong> keep server-side PTY teardown on thread archive, or let terminals survive as unbound resources (matters for the BB-43 registry design)?</li>
+        <li><strong>Insertion order:</strong> confirm the declined review finding — committed opens insert after the active tab (keeps a thread's diff/terminal adjacent) rather than appending to the end.</li>
+      </ul>
+    </section>
+
+    <section id="try">
+      <h2>Try it</h2>
+      <pre><code># dev server is already running on this branch
+scripts/bb-dev-app status        # URLs; app at http://localhost:12325
+# flag is already ON; to toggle:
+sqlite3 ~/.bb-dev/bb-worktrees-env_rp87eqfyeb-bb-c3596b6d3569/bb.db \
+  "UPDATE system_experiments SET thread_splits=1 WHERE id='current';"</code></pre>
+      <p>Things to feel: single-click threads (preview, italics) vs double-click (commit); the Diff/Terminal buttons in the thread header; drag a tab to any edge; reload mid-layout; close a terminal tab and reopen it from the button.</p>
+    </section>
+
+    <section id="coverage">
+      <h2>Coverage summary</h2>
+      <table>
+        <tr><th>Workflow</th><th>Status</th><th>Evidence</th></tr>
+        <tr><td>App boot, fixtures visible, console clean</td><td class="status-pass">pass</td><td>qa-000</td></tr>
+        <tr><td>Navigation opens preview tab (italic) in focused group</td><td class="status-pass">pass</td><td>qa-001b</td></tr>
+        <tr><td>Preview replaced in place by next single-click</td><td class="status-pass">pass</td><td>qa-002</td></tr>
+        <tr><td>Sidebar double-click commits; next click adds new preview</td><td class="status-pass">pass</td><td>qa-003/004</td></tr>
+        <tr><td>Terminal entry point creates PTY, committed tab, canonical URL</td><td class="status-pass">pass</td><td>qa-005</td></tr>
+        <tr><td>Terminal interactive I/O through pane websocket</td><td class="status-pass">pass</td><td>qa-006</td></tr>
+        <tr><td>Close tab → PTY survives → reopen reveals same terminal + scrollback</td><td class="status-pass">pass</td><td>qa-007/008 + URL logs</td></tr>
+        <tr><td>Diff entry point → committed tab at /diff, empty state correct</td><td class="status-pass">pass</td><td>qa-009</td></tr>
+        <tr><td>Tab tear-out drag → edge split, two groups, PTY intact</td><td class="status-pass">pass</td><td>qa-010/011</td></tr>
+        <tr><td>Sidebar split-indicator minimaps reflect docked tabs</td><td class="status-pass">pass</td><td>qa-011</td></tr>
+        <tr><td>Reload restores layout (schema v2) + terminal reconnect</td><td class="status-pass">pass</td><td>qa-012 + DOM query</td></tr>
+        <tr><td>External archive prunes thread tab, layout + terminal tab survive</td><td class="status-pass">pass</td><td>qa-013</td></tr>
+        <tr><td>Archived thread's diff tab closes (out-of-band path)</td><td class="status-fail">fail — P2</td><td>qa-013</td></tr>
+        <tr><td>Flag-off parity (no strip, no buttons)</td><td class="status-pass">pass</td><td>qa-014</td></tr>
+        <tr><td>Browser panes, plugin views API, registry sidebar, ⌘K, bb panes CLI</td><td class="status-na">N/A — later phases (BB-40/41/42/43)</td><td>—</td></tr>
+        <tr><td>Populated diff render, compact viewport, themes, center-drop merge</td><td class="status-na">not exercised live; unit-tested where applicable</td><td>—</td></tr>
+      </table>
+      <p>Full evidence archive (14 raw screenshots + review artifacts): thread storage <code>bb39/qa/</code> and <code>bb39/review-report.md</code>.</p>
+    </section>
+
+    </main>
+  </div>
+  <footer>BB-39 dockable-panes experiment · reviewed 2026-07-18 · branch bb/dockable-terminals-and-views-thr_9nsm45dtne (base 6dbeb8a20, uncommitted) · dev app localhost:12325</footer>
+</div>
+</body>
+</html>

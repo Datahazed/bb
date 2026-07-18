@@ -20,6 +20,10 @@ export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
 // Trailing splat: the remainder is the panel's `subPath` (empty at the root).
 export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
+export const TERMINAL_ROUTE_PATH = "/terminals/:terminalId";
+export const PROJECTLESS_THREAD_DIFF_ROUTE_PATH = "/threads/:threadId/diff";
+export const THREAD_DIFF_ROUTE_PATH =
+  "/projects/:projectId/threads/:threadId/diff";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -110,6 +114,14 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
+export function getTerminalRoutePath(terminalId: string): string {
+  return `/terminals/${terminalId}`;
+}
+
+export function getThreadDiffRoutePath(args: ThreadRoutePathArgs): string {
+  return `${getThreadRoutePath(args)}/diff`;
+}
+
 const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
@@ -124,6 +136,9 @@ const baseRoutePatterns: readonly string[] = [
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  TERMINAL_ROUTE_PATH,
+  PROJECTLESS_THREAD_DIFF_ROUTE_PATH,
+  THREAD_DIFF_ROUTE_PATH,
 ];
 
 export const ROUTE_PATTERNS = baseRoutePatterns;

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BB · Dockable Workspace — Tab Bar Treatments</title>
+<style>
+  /* ============================================================
+     Review-board chrome (not part of the mock itself)
+     ============================================================ */
+  :root {
+    --board-canvas: #faf9f7;
+    --board-ink: #1c1a17;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--board-canvas);
+    color: var(--board-ink);
+    padding: 48px 40px 96px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  header.board { margin-bottom: 56px; }
+  header.board h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  header.board p  { font-size: 13px; color: color-mix(in oklch, var(--board-ink) 55%, var(--board-canvas)); margin-top: 8px; max-width: 62ch; line-height: 1.55; }
+  header.board .meta { font-size: 11px; margin-top: 12px; color: color-mix(in oklch, var(--board-ink) 40%, var(--board-canvas)); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  section.variant { margin-bottom: 72px; }
+  section.variant > h2 { font-size: 15px; font-weight: 600; display: flex; align-items: baseline; gap: 10px; }
+  section.variant > h2 .num {
+    font-size: 11px; font-weight: 600; color: color-mix(in oklch, var(--board-ink) 45%, var(--board-canvas));
+    border: 1px solid color-mix(in oklch, var(--board-ink) 14%, var(--board-canvas));
+    border-radius: 6px; padding: 2px 7px;
+  }
+  section.variant > .rationale { font-size: 13px; color: color-mix(in oklch, var(--board-ink) 55%, var(--board-canvas)); margin: 6px 0 20px; line-height: 1.5; }
+  section.variant .annotation {
+    font-size: 13px; line-height: 1.6; margin-top: 16px; max-width: 78ch;
+    color: color-mix(in oklch, var(--board-ink) 62%, var(--board-canvas));
+    border-left: 2px solid color-mix(in oklch, var(--board-ink) 12%, var(--board-canvas));
+    padding-left: 14px;
+  }
+  section.variant .annotation strong { color: color-mix(in oklch, var(--board-ink) 85%, var(--board-canvas)); font-weight: 600; }
+
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 1000px) { .panes { grid-template-columns: 1fr; } }
+  .pane-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; color: color-mix(in oklch, var(--board-ink) 42%, var(--board-canvas)); }
+  .state-label { font-size: 11px; margin: 14px 0 6px; color: color-mix(in oklch, var(--board-ink) 42%, var(--board-canvas)); }
+  .state-label:first-of-type { margin-top: 0; }
+
+  /* ============================================================
+     Mock theme scopes — everything below derives from these anchors
+     ============================================================ */
+  .theme { border-radius: 10px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--board-ink) 10%, var(--board-canvas)); padding: 16px; }
+  .theme.light { --canvas: #fcfbfa; --ink: #21201d; }
+  .theme.dark  { --canvas: #1b1a19; --ink: #ecebe8; }
+  .theme { background: var(--canvas); color: var(--ink); }
+  .theme .state-label { color: color-mix(in oklch, var(--ink) 42%, var(--canvas)); }
+
+  /* Derived tokens (all mixed from --canvas/--ink) */
+  .theme {
+    --t-full:   var(--ink);
+    --t-strong: color-mix(in oklch, var(--ink) 88%, var(--canvas));
+    --t-muted:  color-mix(in oklch, var(--ink) 55%, var(--canvas));
+    --t-faint:  color-mix(in oklch, var(--ink) 38%, var(--canvas));
+    --hairline: color-mix(in oklch, var(--ink) 12%, var(--canvas));
+    --hairline-soft: color-mix(in oklch, var(--ink) 8%, var(--canvas));
+    --elev:     color-mix(in oklch, var(--ink) 4%, var(--canvas));
+    --elev-2:   color-mix(in oklch, var(--ink) 7%, var(--canvas));
+    --wash:     color-mix(in oklab, var(--ink) 5%, transparent);
+    --accent:   color-mix(in oklch, var(--ink) 78%, var(--canvas));
+  }
+
+  /* ============================================================
+     The strip — shared skeleton, exact 48px
+     ============================================================ */
+  .strip {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    background: var(--canvas);
+    border-bottom: 1px solid var(--hairline-soft);
+    padding: 0 8px;              /* ≥8px breathing room = drag region */
+    position: relative;
+    overflow: hidden;
+  }
+  .strip .traffic { display: flex; gap: 8px; margin: 0 12px 0 4px; flex: none; }
+  .strip .traffic i { width: 12px; height: 12px; border-radius: 50%; background: color-mix(in oklch, var(--ink) 14%, var(--canvas)); }
+  .strip .tabs { display: flex; align-items: center; min-width: 0; flex: none; position: relative; }
+  .strip .drag-space { flex: 1; min-width: 8px; }
+  .strip .corner-slot {
+    flex: none; width: 28px; height: 28px; margin-left: 8px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; color: var(--t-faint);
+  }
+  .strip .corner-slot:hover { background: var(--wash); color: var(--t-muted); }
+  .strip .corner-slot svg { width: 15px; height: 15px; }
+
+  /* Tab skeleton */
+  .tab {
+    position: relative;
+    display: flex; align-items: center; gap: 6px;
+    height: 32px;                 /* centered in 48 → 8px above/below */
+    max-width: 180px; min-width: 0;
+    padding: 0 8px 0 10px;
+    font-size: 13px;
+    color: var(--t-muted);
+    cursor: default;
+    white-space: nowrap;
+    flex: none;
+    border-radius: 6px;
+  }
+  .tab .label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .tab .badge {
+    font-size: 11px; color: var(--t-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .tab.active { color: var(--t-full); }
+  .tab.preview .label { font-style: italic; }
+
+  /* Close button — reserved slot so reveal never shifts layout */
+  .tab .close {
+    flex: none; width: 20px; height: 20px; margin-left: -2px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; color: var(--t-faint);
+    opacity: 0; transition: opacity 80ms;
+  }
+  .tab .close svg { width: 9px; height: 9px; }
+  .tab.active .close, .tab:hover .close, .tab.demo-hover .close { opacity: 1; }
+  .tab .close:hover { background: var(--wash); color: var(--t-strong); }
+  .tab.demo-hover { background: var(--wash); }
+
+  /* Kind icons */
+  .tab .kicon { flex: none; width: 14px; height: 14px; color: var(--t-faint); }
+  .tab.active .kicon { color: var(--t-muted); }
+  .tab .kicon svg { width: 14px; height: 14px; display: block; }
+
+  /* Drag-insertion indicator */
+  .drop-ind {
+    flex: none; width: 2px; height: 26px; margin: 0 3px;
+    border-radius: 1px; background: var(--accent);
+    position: relative;
+  }
+  .drop-ind::before {
+    content: ""; position: absolute; top: -3px; left: -2px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  }
+
+  /* Overflow fade */
+  .strip.overflowing .tabs { overflow: hidden; max-width: calc(100% - 140px); }
+  .strip.overflowing .tabs::after {
+    content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 36px;
+    background: linear-gradient(to right, color-mix(in oklab, var(--canvas) 0%, transparent), var(--canvas));
+    pointer-events: none;
+  }
+  .strip.overflowing .of-chip {
+    flex: none; margin-left: 4px; height: 22px; padding: 0 8px;
+    display: flex; align-items: center; font-size: 11px;
+    color: var(--t-muted); border: 1px solid var(--hairline); border-radius: 11px;
+    background: var(--canvas); position: relative; z-index: 1;
+  }
+
+  /* ============================================================
+     Variant 1 — Quiet underline
+     ============================================================ */
+  .v-underline .tab { border-radius: 0; margin: 0 2px; }
+  .v-underline .tab::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px;
+    height: 2px; border-radius: 1px; background: transparent;
+  }
+  .v-underline .tab.active::after { background: var(--accent); }
+  .v-underline .tab.preview::after {
+    height: 0; border-bottom: 2px dotted var(--t-faint); background: none; bottom: 0;
+  }
+  .v-underline .tab:hover:not(.active), .v-underline .tab.demo-hover:not(.active) { color: var(--t-strong); background: none; }
+  .v-underline .tab.demo-hover .close, .v-underline .tab:hover .close { opacity: 1; }
+
+  /* ============================================================
+     Variant 2 — Soft contained
+     ============================================================ */
+  .v-contained .tab { margin: 0 2px; border: 1px solid transparent; }
+  .v-contained .tab.active {
+    background: var(--elev);
+    border-color: var(--hairline);
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 4%, transparent);
+  }
+  .v-contained .tab.preview { border: 1px dashed var(--hairline); }
+  .v-contained .tab.preview .label { font-style: normal; color: var(--t-muted); }
+  .v-contained .tab:hover:not(.active), .v-contained .tab.demo-hover:not(.active) { background: var(--wash); }
+
+  /* ============================================================
+     Variant 3 — Browser cell
+     ============================================================ */
+  .v-cell .strip { padding-bottom: 0; align-items: stretch; }
+  .v-cell .strip .traffic, .v-cell .strip .corner-slot { align-self: center; }
+  .v-cell .tabs { align-items: stretch; align-self: stretch; }
+  .v-cell .tab {
+    height: auto; align-self: stretch; margin: 0; border-radius: 0;
+    padding: 0 10px 0 12px;
+    border-right: 1px solid var(--hairline-soft);
+  }
+  .v-cell .tab:first-child { border-left: 1px solid transparent; }
+  .v-cell .tab.active {
+    background: var(--canvas);
+    border-left: 1px solid var(--hairline);
+    border-right: 1px solid var(--hairline);
+    border-top: 1px solid var(--hairline);
+    border-top-left-radius: 8px; border-top-right-radius: 8px;
+    margin-top: 7px; margin-bottom: -1px;   /* merges with content: covers strip bottom border */
+    position: relative; z-index: 1;
+    background: color-mix(in oklch, var(--ink) 2%, var(--canvas));
+  }
+  .v-cell .tab.active + .tab { border-left: none; }
+  .v-cell .tab:hover:not(.active), .v-cell .tab.demo-hover:not(.active) { background: var(--wash); }
+  .v-cell .drop-ind { align-self: center; }
+  /* content sliver below, to sell the merge */
+  .v-cell .content-sliver { height: 20px; background: color-mix(in oklch, var(--ink) 2%, var(--canvas)); }
+  .v-cell.mock { border: 1px solid var(--hairline-soft); border-radius: 8px; overflow: hidden; }
+  .v-cell.mock .strip { border-bottom: 1px solid var(--hairline); background: var(--elev); }
+
+  /* ============================================================
+     Variant 4 — Icon-forward
+     ============================================================ */
+  .v-icon .tab { margin: 0 1px; }
+  .v-icon .tab.active { background: var(--elev); border: 1px solid var(--hairline); }
+  .v-icon .tab.preview .label { font-style: normal; }
+  .v-icon .tab.preview .kicon, .v-icon .tab.preview .label { color: var(--t-faint); }
+  .v-icon .tab.active .kicon { color: var(--t-strong); }
+  .v-icon .tab:hover:not(.active), .v-icon .tab.demo-hover:not(.active) { background: var(--wash); }
+  .v-icon .tab.icononly { padding: 0 8px; }
+  .v-icon .tab.icononly .kicon { margin: 0 2px; }
+
+  /* ============================================================
+     Variant 5 — Synthesis
+     ============================================================ */
+  .v-synth .tab { margin: 0 2px; }
+  .v-synth .tab.active {
+    background: var(--elev); border: 1px solid var(--hairline);
+    color: var(--t-full);
+  }
+  .v-synth .tab.active .kicon { color: var(--t-strong); }
+  .v-synth .tab.preview { }
+  .v-synth .tab.preview .label { font-style: normal; color: var(--t-faint); }
+  .v-synth .tab.preview .kicon { color: var(--t-faint); }
+  .v-synth .tab.preview::after {
+    content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px;
+    border-bottom: 1px dotted var(--t-faint);
+  }
+  .v-synth .tab:hover:not(.active), .v-synth .tab.demo-hover:not(.active) { background: var(--wash); }
+
+  /* ============================================================
+     Comparison table
+     ============================================================ */
+  table.compare { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 16px; }
+  table.compare th, table.compare td { text-align: left; padding: 10px 14px; border-bottom: 1px solid color-mix(in oklch, var(--board-ink) 10%, var(--board-canvas)); }
+  table.compare th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; color: color-mix(in oklch, var(--board-ink) 45%, var(--board-canvas)); }
+  table.compare td.dots { font-size: 12px; letter-spacing: 2px; color: color-mix(in oklch, var(--board-ink) 75%, var(--board-canvas)); white-space: nowrap; }
+  table.compare td:first-child { font-weight: 600; }
+  table.compare tr.rec td { background: color-mix(in oklch, var(--board-ink) 4%, var(--board-canvas)); }
+</style>
+</head>
+<body>
+
+<header class="board">
+  <h1>Tab bar treatments — dockable workspace</h1>
+  <p>Five treatments of the 48px titlebar tab strip, each rendered light + dark with the same tab set:
+     active thread, terminal, diff, preview thread, truncated plugin tab. Every variant also shows
+     hover close-reveal, a drag-insertion indicator, and an 8-tab overflow. All grays are mixed from
+     <code>--canvas</code>/<code>--ink</code> anchors only.</p>
+  <div class="meta">BB-39 · design review · 2026-07-18</div>
+</header>
+
+<!-- ══════════════════ SVG defs used inline below ══════════════════ -->
+
+<!-- ═══════════════ VARIANT 1 ═══════════════ -->
+<section class="variant v-underline">
+  <h2><span class="num">1</span>Quiet underline</h2>
+  <p class="rationale">Linear-style: no container at all. Active earns a 2px underline and full-strength text; preview is italic with a dotted underline. Most faithful to BB's current airiness.</p>
+  <div class="panes">
+    <div>
+      <div class="pane-label">Light</div>
+      <div class="theme light">
+        <div class="state-label">Default</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on “Terminal” (close reveals; no layout shift)</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab demo-hover"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Dragging “Diff” — insertion point</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="drop-ind"></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow (8 tabs → right fade + count chip)</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pane-label">Dark</div>
+      <div class="theme dark">
+        <div class="state-label">Default</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on “Terminal”</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab demo-hover"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation"><strong>Strengths:</strong> quietest option by far — zero chrome at rest, perfect fit for the titlebar axis. <strong>Risks:</strong> tab boundaries are invisible, so drag targets and the "this is one object" grouping are weak; italic preview carries the whole state burden and reads poorly with truncated labels. Optimizes for calm over manipulability.</p>
+</section>
+
+<!-- ═══════════════ VARIANT 2 ═══════════════ -->
+<section class="variant v-contained">
+  <h2><span class="num">2</span>Soft contained</h2>
+  <p class="rationale">Active tab gets a subtle elevated container (rounded-md, hairline border); inactive is borderless text; preview swaps italics for a dashed hairline border — testing whether shape alone can signal transience.</p>
+  <div class="panes">
+    <div>
+      <div class="pane-label">Light</div>
+      <div class="theme light">
+        <div class="state-label">Default (note: preview = dashed border, upright text)</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on “Diff”</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab demo-hover"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pane-label">Dark</div>
+      <div class="theme dark">
+        <div class="state-label">Default</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on “Diff”</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab demo-hover"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation"><strong>Strengths:</strong> the active container is a strong, calm affordance and matches BB's existing pill language; the dashed preview border successfully replaces italics (labels stay legible when truncated). <strong>Risks:</strong> dashed borders can read as "drop target" in a drag-heavy UI — the two vocabularies collide. Optimizes for active-tab clarity with minimal added chrome.</p>
+</section>
+
+<!-- ═══════════════ VARIANT 3 ═══════════════ -->
+<section class="variant v-cell">
+  <h2><span class="num">3</span>Browser cell</h2>
+  <p class="rationale">Chrome/Arc-style contiguous cells: hairline separators between inactive tabs, and the active cell merges with the content surface below (no bottom border). Strongest "these are siblings you can reorder" semantics.</p>
+  <div class="panes">
+    <div>
+      <div class="pane-label">Light</div>
+      <div class="theme light">
+        <div class="state-label">Default (active cell fuses with the pane below)</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+          <div class="corner-slot" title="Toggle right panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Hover on “Diff”</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab demo-hover"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="mock v-cell">
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pane-label">Dark</div>
+      <div class="theme dark">
+        <div class="state-label">Default</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="label">BB-26 · Design the unified…</span></div>
+          </div>
+          <div class="drag-space"></div>
+          <div class="corner-slot" title="Toggle right panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Hover on “Diff”</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab demo-hover"><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="mock v-cell">
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="mock v-cell">
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_a1</span></div>
+            <div class="tab"><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="label">Terminal</span><span class="badge">thr_b7</span></div>
+            <div class="tab"><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="content-sliver"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation"><strong>Strengths:</strong> unbeatable grouping and drag semantics — cells make reorder targets obvious, and the merged active cell states "you are here" without any accent color. This variant also shows the reserved 28px corner slot (panel toggle). <strong>Risks:</strong> it's the heaviest chrome of the set — the tinted strip and separators fight BB's airy canvas, and the merge trick requires the strip background to differ from the content background, a real cost across custom palettes. Optimizes for manipulability over quietness.</p>
+</section>
+
+<!-- ═══════════════ VARIANT 4 ═══════════════ -->
+<section class="variant v-icon">
+  <h2><span class="num">4</span>Icon-forward</h2>
+  <p class="rationale">Every tab leads with a 14px per-kind glyph; the icon does kind identification, and icon dimming (not italics) marks preview. Terminal and Diff drop their labels entirely when unambiguous — icon-only with a tooltip.</p>
+  <div class="panes">
+    <div>
+      <div class="pane-label">Light</div>
+      <div class="theme light">
+        <div class="state-label">Default (Terminal &amp; Diff icon-only; badge dropped to the pane context strip)</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab icononly" title="Terminal · thr_a1"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab icononly" title="Diff — workspace changes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on icon-only Terminal (close replaces nothing — slot reserved)</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab icononly demo-hover" title="Terminal · thr_a1"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow (icon-only tabs buy real density)</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Retry queue notes</span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pane-label">Dark</div>
+      <div class="theme dark">
+        <div class="state-label">Default</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab icononly" title="Terminal · thr_a1"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab icononly" title="Diff — workspace changes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unified…</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Hover on icon-only Terminal</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab icononly demo-hover"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Retry queue notes</span></div>
+            <div class="tab icononly"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Release checklist</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation"><strong>Strengths:</strong> kind identification becomes instant and pre-attentive; icon-only terminal/diff tabs recover ~100px each and make overflow far less likely. The <code>thr_a1</code> badge is <strong>dropped from the tab</strong> here — the pane's context strip is the right home for it; with two terminals open, the tooltip disambiguates. <strong>Risks:</strong> muted-icon preview is the weakest preview signal of the set (dimmed vs. muted is a two-step gray distinction), and icon-only tabs lose their identity mid-drag. Optimizes for density and scanability.</p>
+</section>
+
+<!-- ═══════════════ VARIANT 5 ═══════════════ -->
+<section class="variant v-synth">
+  <h2><span class="num">5</span>Synthesis (recommended)</h2>
+  <p class="rationale">Soft-contained active (from 2) + per-kind icons (from 4) + dotted-underline preview (from 1). Inactive tabs stay bare text+icon so the strip is quiet at rest; the badge moves to the pane context strip.</p>
+  <div class="panes">
+    <div>
+      <div class="pane-label">Light</div>
+      <div class="theme light">
+        <div class="state-label">Default — preview “QA Beta”: upright text, faint ink, dotted underline</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="Terminal · thr_a1"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span><span class="label">Diff</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unified…</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+          </div>
+          <div class="drag-space"></div>
+          <div class="corner-slot" title="Toggle right panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></div>
+        </div>
+        <div class="state-label">Hover on “Terminal”</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab demo-hover"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pane-label">Dark</div>
+      <div class="theme dark">
+        <div class="state-label">Default</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab" title="Terminal · thr_a1"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab" title="BB-26 · Design the unified workspace panes"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unified…</span></div>
+          </div>
+          <div class="drag-space"></div>
+          <div class="corner-slot" title="Toggle right panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></div>
+        </div>
+        <div class="state-label">Hover on “Terminal”</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab demo-hover"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span><span class="close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Drag insertion</div>
+        <div class="strip">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+            <div class="drop-ind"></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+          </div>
+          <div class="drag-space"></div>
+        </div>
+        <div class="state-label">Overflow</div>
+        <div class="strip overflowing">
+          <div class="traffic"><i></i><i></i><i></i></div>
+          <div class="tabs">
+            <div class="tab active"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Fix flaky test retries</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M4 2.5v5M1.5 5H6.5M4 9.5v2M10 2.5v9M8 9.5h4"/></svg></span><span class="label">Diff</span></div>
+            <div class="tab preview"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">QA Beta</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="2.5"/><path d="M4.8 7l1.6 1.6 3-3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="label">BB-26 · Design the unif…</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 3.5h10v6H6.5L4 11.5V9.5H2z"/></svg></span><span class="label">Retry queue notes</span></div>
+            <div class="tab"><span class="kicon"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3-3 3M7.5 10.5H12"/></svg></span><span class="label">Terminal</span></div>
+          </div>
+          <div class="of-chip">+3</div>
+          <div class="drag-space"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation"><strong>Why this synthesis:</strong> the elevated container is the one affordance the current bare-text strip most lacks, and it doubles as the drag handle silhouette when a tab tears out. Icons carry kind identification so labels can shorten (or drop, later, for terminal/diff) without ambiguity — but every tab keeps a label at v1 to stay learnable. Preview = faint ink + dotted underline: distinct at a glance, upright and legible when truncated, and it never collides with drag vocabulary the way dashed borders do. Badges (<code>thr_a1</code>) move to the pane context strip — the tab names the surface, the pane names the context. Corner keeps the reserved 28px panel-toggle slot; everything else stays drag region.</p>
+</section>
+
+<!-- ═══════════════ COMPARISON ═══════════════ -->
+<section class="variant">
+  <h2><span class="num">Σ</span>Comparison</h2>
+  <table class="compare">
+    <thead><tr>
+      <th>Variant</th><th>Kind identification</th><th>Preview clarity</th><th>Density</th><th>Drag affordance</th><th>Quietness</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>1 · Quiet underline</td><td class="dots">○○○</td><td class="dots">●○○</td><td class="dots">●●○</td><td class="dots">●○○</td><td class="dots">●●●</td></tr>
+      <tr><td>2 · Soft contained</td><td class="dots">○○○</td><td class="dots">●●○</td><td class="dots">●●○</td><td class="dots">●●○</td><td class="dots">●●○</td></tr>
+      <tr><td>3 · Browser cell</td><td class="dots">○○○</td><td class="dots">●○○</td><td class="dots">●○○</td><td class="dots">●●●</td><td class="dots">●○○</td></tr>
+      <tr><td>4 · Icon-forward</td><td class="dots">●●●</td><td class="dots">●○○</td><td class="dots">●●●</td><td class="dots">●●○</td><td class="dots">●●○</td></tr>
+      <tr class="rec"><td>5 · Synthesis ★</td><td class="dots">●●●</td><td class="dots">●●●</td><td class="dots">●●○</td><td class="dots">●●○</td><td class="dots">●●○</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</body>
+</html>

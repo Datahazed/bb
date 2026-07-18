@@ -6,10 +6,18 @@ import {
 } from "./splitPaneCommands";
 
 function pane(paneId: string): PaneNode {
+  const tabId = `${paneId}-t1`;
   return {
     type: "pane",
     paneId,
-    content: { kind: "thread", projectId: "project-1", threadId: paneId },
+    tabs: [
+      {
+        tabId,
+        content: { kind: "thread", projectId: "project-1", threadId: paneId },
+        preview: false,
+      },
+    ],
+    activeTabId: tabId,
   };
 }
 

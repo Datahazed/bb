@@ -4,8 +4,8 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   computePaneRects,
+  contentMatches,
   countPanes,
-  findPaneByContent,
   listPanes,
   type PaneContent,
   type PaneRect,
@@ -53,12 +53,16 @@ export function usePaneContentSplitIndicator(
     ) {
       return NO_INDICATOR;
     }
-    const pane = findPaneByContent(layout.root, content);
-    if (pane === null) {
+    const panes = listPanes(layout.root);
+    if (
+      !panes.some((pane) =>
+        pane.tabs.some((tab) => contentMatches(tab.content, content)),
+      )
+    ) {
       return NO_INDICATOR;
     }
     const rects = computePaneRects(layout.root);
-    const miniMap: MiniMapSlot[] = listPanes(layout.root).flatMap((entry) => {
+    const miniMap: MiniMapSlot[] = panes.flatMap((entry) => {
       const rect = rects.get(entry.paneId);
       return rect === undefined
         ? []
@@ -66,7 +70,9 @@ export function usePaneContentSplitIndicator(
             {
               paneId: entry.paneId,
               rect,
-              isMe: entry.paneId === pane.paneId,
+              isMe: entry.tabs.some((tab) =>
+                contentMatches(tab.content, content),
+              ),
               isFocused: entry.paneId === layout.focusedPaneId,
             },
           ];

@@ -1,0 +1,1942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BB — Dockable Panes Prototype</title>
+<style>
+  :root {
+    --canvas: #101014;
+    --panel: #16161c;
+    --panel-2: #1b1b23;
+    --raise: #21212b;
+    --border: rgba(255,255,255,0.09);
+    --border-soft: rgba(255,255,255,0.06);
+    --ink: #e6e6ee;
+    --ink-2: #a2a2b4;
+    --ink-3: #6b6b7d;
+    --accent: #8b8ce8;
+    --accent-dim: rgba(139,140,232,0.16);
+    --accent-glow: rgba(139,140,232,0.45);
+    --green: #6fc98a;
+    --red: #e0708a;
+    --amber: #d9b06a;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+  }
+  body.dragging { user-select: none; cursor: grabbing; }
+  body.dragging * { cursor: grabbing !important; }
+  svg { display: block; flex: none; }
+
+  /* ============ TOP BAR ============ */
+  #topbar {
+    height: 44px; flex: none;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  #topbar .app-title { font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+  #topbar .app-title .dim { color: var(--ink-3); font-weight: 500; }
+  #addressbar {
+    flex: 1; max-width: 520px; margin: 0 auto;
+    height: 26px; display: flex; align-items: center; gap: 7px;
+    padding: 0 10px;
+    background: var(--canvas);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px; color: var(--ink-2);
+    overflow: hidden; white-space: nowrap;
+    transition: border-color .15s;
+  }
+  #addressbar .lock { color: var(--ink-3); }
+  #addressbar .route { overflow: hidden; text-overflow: ellipsis; }
+  #addressbar .route .seg-hl { color: var(--ink); }
+  #topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .seg-toggle {
+    display: flex; align-items: center;
+    background: var(--canvas);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px; padding: 2px; gap: 2px;
+  }
+  .seg-toggle .st-label { font-size: 11px; color: var(--ink-3); padding: 0 8px 0 8px; }
+  .seg-toggle button {
+    font: inherit; font-size: 11.5px; color: var(--ink-2);
+    background: transparent; border: 0; border-radius: 4px;
+    padding: 3px 10px; cursor: pointer;
+  }
+  .seg-toggle button.on { background: var(--raise); color: var(--ink); box-shadow: inset 0 0 0 1px var(--border); }
+  .seg-toggle button:not(.on):hover { color: var(--ink); }
+  #qk-btn {
+    display: flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 11.5px; color: var(--ink-2);
+    background: var(--canvas); border: 1px solid var(--border-soft);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer; white-space: nowrap;
+  }
+  #qk-btn:hover { color: var(--ink); border-color: var(--accent); }
+  #qk-btn .kbd { font-size: 10px; color: var(--ink-3); background: var(--raise); border: 1px solid var(--border-soft); border-radius: 3px; padding: 0 4px; line-height: 15px; }
+
+  /* ============ SHELL ============ */
+  #shell { flex: 1; display: flex; min-height: 0; }
+
+  /* ============ SIDEBAR ============ */
+  #sidebar {
+    width: 260px; flex: none;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto; overflow-x: hidden;
+    padding-bottom: 12px;
+  }
+  #sidebar::-webkit-scrollbar { width: 8px; }
+  #sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  .project-header {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 14px 10px;
+  }
+  .project-header .proj-badge {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), #5d5eb8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700; color: #fff;
+  }
+  .project-header .proj-name { font-weight: 600; font-size: 13px; }
+  .project-header .proj-sub { font-size: 10.5px; color: var(--ink-3); margin-left: auto; }
+  .side-section { margin-top: 10px; }
+  .side-section h3 {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3);
+    padding: 4px 14px 5px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .side-section h3 .count {
+    font-weight: 500; letter-spacing: 0;
+    background: var(--raise); border-radius: 8px; padding: 0 6px;
+    font-size: 10px; color: var(--ink-2);
+  }
+  .side-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 14px; margin: 0 6px; border-radius: 6px;
+    color: var(--ink-2); cursor: pointer;
+    min-height: 27px;
+  }
+  .side-row:hover { background: var(--panel-2); color: var(--ink); }
+  .side-row.active { background: var(--accent-dim); color: var(--ink); }
+  .side-row .row-icon { color: var(--ink-3); flex: none; }
+  .side-row.active .row-icon { color: var(--accent); }
+  .side-row .row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .side-row .row-badge {
+    flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 10px;
+    color: var(--ink-3); background: var(--raise);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px; padding: 0 5px; line-height: 15px;
+  }
+  .side-row .row-close {
+    flex: none; display: none; width: 16px; height: 16px;
+    align-items: center; justify-content: center;
+    border-radius: 4px; color: var(--ink-3); font-size: 13px; line-height: 1;
+  }
+  .side-row:hover .row-close { display: flex; }
+  .side-row .row-close:hover { background: rgba(255,255,255,0.1); color: var(--ink); }
+  .side-row .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .side-row[data-draggable] { touch-action: none; }
+  .side-empty { padding: 4px 20px; font-size: 11.5px; color: var(--ink-3); font-style: italic; }
+  .catalog-hint { padding: 6px 20px 0; font-size: 10.5px; color: var(--ink-3); }
+
+  /* ============ WORKSPACE ============ */
+  #workspace {
+    flex: 1; min-width: 0; position: relative;
+    padding: 8px; background: var(--canvas);
+  }
+  #ws-root { position: absolute; inset: 8px; }
+  .split { display: flex; width: 100%; height: 100%; }
+  .split.row { flex-direction: row; }
+  .split.col { flex-direction: column; }
+  .split-cell { flex-shrink: 1; flex-basis: 0; min-width: 0; min-height: 0; display: flex; }
+  .split-cell > * { flex: 1; min-width: 0; min-height: 0; }
+  .splitter { flex: none; position: relative; z-index: 5; touch-action: none; }
+  .split.row > .splitter { width: 7px; cursor: col-resize; margin: 0 -1px; }
+  .split.col > .splitter { height: 7px; cursor: row-resize; margin: -1px 0; }
+  .splitter::after {
+    content: ""; position: absolute; background: transparent; border-radius: 2px;
+    transition: background .12s;
+  }
+  .split.row > .splitter::after { left: 2.5px; right: 2.5px; top: 0; bottom: 0; }
+  .split.col > .splitter::after { top: 2.5px; bottom: 2.5px; left: 0; right: 0; }
+  .splitter:hover::after, .splitter.active::after { background: var(--accent-glow); }
+
+  /* ============ GROUP ============ */
+  .group {
+    display: flex; flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+  }
+  .group.focused { border-color: rgba(139,140,232,0.55); box-shadow: 0 0 0 1px rgba(139,140,232,0.35), 0 0 18px -6px var(--accent-glow); }
+  .group.flash { animation: flashring 0.9s ease-out; }
+  @keyframes flashring {
+    0%, 40% { box-shadow: 0 0 0 2px var(--accent), 0 0 24px -2px var(--accent-glow); border-color: var(--accent); }
+    100% { box-shadow: 0 0 0 1px rgba(139,140,232,0.35); }
+  }
+  .tabstrip {
+    flex: none; height: 34px;
+    display: flex; align-items: stretch;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border-soft);
+    overflow: hidden;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 7px;
+    padding: 0 8px 0 11px;
+    font-size: 12px; color: var(--ink-3);
+    border-right: 1px solid var(--border-soft);
+    cursor: pointer; position: relative;
+    max-width: 190px; min-width: 0;
+    touch-action: none;
+    background: transparent;
+  }
+  .tab .tab-icon { color: inherit; opacity: 0.85; }
+  .tab .tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .tab-ctx {
+    font-family: ui-monospace, Menlo, monospace; font-size: 9.5px;
+    color: var(--ink-3); background: var(--raise);
+    border-radius: 3px; padding: 0 4px; line-height: 14px; flex: none;
+  }
+  .tab:hover { color: var(--ink-2); background: rgba(255,255,255,0.02); }
+  .tab.active {
+    color: var(--ink); background: var(--panel);
+  }
+  .tab.active::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: var(--accent); border-radius: 0 0 2px 2px;
+  }
+  .tab.active .tab-icon { color: var(--accent); opacity: 1; }
+  .tab-close {
+    flex: none; width: 16px; height: 16px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: transparent; font-size: 13px; line-height: 1;
+  }
+  .tab:hover .tab-close, .tab.active .tab-close { color: var(--ink-3); }
+  .tab-close:hover { background: rgba(255,255,255,0.12); color: var(--ink) !important; }
+  .tabstrip-spacer { flex: 1; }
+  .group-content {
+    flex: 1; min-height: 0; position: relative;
+    display: flex; flex-direction: column;
+    background: var(--panel);
+  }
+  .group-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--ink-3); font-size: 12px;
+    border: 1px dashed var(--border); border-radius: 6px; margin: 10px;
+  }
+
+  /* ============ PANE CONTENT COMMON ============ */
+  .pane-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  /* slim context/action strip — never repeats the tab title; omitted entirely when empty */
+  .pane-header {
+    flex: none; display: flex; align-items: center; gap: 7px;
+    padding: 3px 10px; border-bottom: 1px solid var(--border-soft);
+    font-size: 11px; color: var(--ink-3);
+    min-height: 28px;
+  }
+  .pane-header .ph-sub { color: var(--ink-3); font-size: 11px; }
+  .scrolly { flex: 1; overflow-y: auto; min-height: 0; }
+  .scrolly::-webkit-scrollbar { width: 8px; }
+  .scrolly::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  .icon-btn {
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    height: 22px; min-width: 22px; padding: 0 4px;
+    background: transparent; border: 1px solid transparent; border-radius: 5px;
+    color: var(--ink-3); cursor: pointer; font: inherit; font-size: 11px;
+  }
+  .icon-btn:hover { background: var(--raise); color: var(--ink); }
+  .icon-btn.on { color: var(--accent); background: var(--accent-dim); border-color: rgba(139,140,232,0.35); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.03em;
+    border-radius: 9px; padding: 1px 8px; line-height: 15px;
+  }
+  .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .pill.todo { color: var(--ink-2); background: rgba(255,255,255,0.06); }
+  .pill.progress { color: var(--accent); background: var(--accent-dim); }
+  .pill.review { color: var(--amber); background: rgba(217,176,106,0.12); }
+  .pill.done { color: var(--green); background: rgba(111,201,138,0.12); }
+
+  /* ---- thread ---- */
+  .chat-scroll { padding: 14px 14px 6px; display: flex; flex-direction: column; gap: 10px; }
+  .bubble { max-width: 82%; padding: 8px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.5; }
+  .bubble.user { align-self: flex-end; background: var(--accent-dim); border: 1px solid rgba(139,140,232,0.25); color: var(--ink); border-bottom-right-radius: 3px; }
+  .bubble.agent { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border-soft); color: var(--ink-2); border-bottom-left-radius: 3px; }
+  .bubble.agent .b-name { font-size: 10px; font-weight: 600; color: var(--accent); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .bubble code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 3px; padding: 0 4px; color: var(--ink); }
+  .bubble .b-tool {
+    margin-top: 6px; display: flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-3);
+    background: var(--canvas); border: 1px solid var(--border-soft); border-radius: 5px; padding: 4px 8px;
+  }
+  .composer { flex: none; margin: 8px 12px 12px; display: flex; gap: 8px; align-items: center;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 6px 6px 12px; }
+  .composer input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 12.5px; }
+  .composer input::placeholder { color: var(--ink-3); }
+  .composer .send-btn {
+    flex: none; background: var(--accent); color: #14141c; border: 0; border-radius: 6px;
+    font: inherit; font-size: 11.5px; font-weight: 600; padding: 4px 12px; cursor: pointer;
+  }
+
+  /* ---- terminal ---- */
+  .term { flex: 1; min-height: 0; background: #0b0b0f; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11.5px; line-height: 1.65; padding: 10px 14px; overflow-y: auto; color: #c8c8d4; }
+  .term .t-prompt { color: var(--accent); }
+  .term .t-dim { color: var(--ink-3); }
+  .term .t-ok { color: var(--green); }
+  .term .t-bold { color: #fff; font-weight: 600; }
+  .term .t-cursor { display: inline-block; width: 7px; height: 14px; background: #c8c8d4; vertical-align: -2px; animation: blink 1.05s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---- browser ---- */
+  .browser-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); background: var(--panel-2); }
+  .browser-bar .b-url {
+    flex: 1; height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 9px;
+    background: var(--canvas); border: 1px solid var(--border-soft); border-radius: 12px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--ink-2);
+  }
+  .browser-page { flex: 1; overflow-y: auto; background: #17171d; padding: 18px; }
+  .bp-nav { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+  .bp-logo { width: 24px; height: 24px; border-radius: 6px; background: var(--accent); opacity: 0.9; }
+  .bp-navitem { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.14); }
+  .bp-hero { height: 64px; border-radius: 8px; background: linear-gradient(135deg, rgba(139,140,232,0.22), rgba(139,140,232,0.06)); border: 1px solid rgba(139,140,232,0.18); margin-bottom: 14px; }
+  .bp-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .bp-card { height: 72px; border-radius: 7px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-soft); padding: 10px; }
+  .bp-card .bp-line { height: 7px; border-radius: 3px; background: rgba(255,255,255,0.12); margin-bottom: 7px; }
+  .browser-placeholder {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    color: var(--ink-2); text-align: center; padding: 20px;
+  }
+  .browser-placeholder .glyph { color: var(--ink-3); }
+  .browser-placeholder .url { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); }
+  .browser-placeholder .msg { font-size: 12px; color: var(--ink-3); max-width: 260px; }
+  .browser-placeholder .open-btn {
+    margin-top: 4px; font: inherit; font-size: 12px; color: var(--ink);
+    background: var(--raise); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 14px; cursor: pointer;
+  }
+  .browser-placeholder .open-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- tasks ---- */
+  .task-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+  }
+  .task-row:hover { background: var(--panel-2); }
+  .task-row .t-key { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-3); flex: none; width: 44px; }
+  .task-row .t-title { flex: 1; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-detail { padding: 16px; }
+  .task-detail h2 { font-size: 15px; font-weight: 600; margin: 10px 0 8px; }
+  .task-detail .td-desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.6; margin-top: 12px; }
+  .task-detail .td-meta { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .task-detail .td-key { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--ink-3); }
+  .td-comment { margin-top: 14px; background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 7px; padding: 9px 11px; font-size: 12px; color: var(--ink-2); }
+  .td-comment .c-who { font-weight: 600; color: var(--ink); font-size: 11px; margin-bottom: 3px; }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font: inherit; font-size: 11.5px; color: var(--ink-2);
+    background: transparent; border: 1px solid var(--border); border-radius: 5px;
+    padding: 3px 9px; cursor: pointer;
+  }
+  .back-btn:hover { color: var(--ink); border-color: var(--accent); }
+
+  /* ---- diff ---- */
+  .diff { flex: 1; overflow: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; line-height: 1.6; }
+  .diff .d-file {
+    position: sticky; top: 0; display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border-soft);
+    font-size: 11px; color: var(--ink);
+  }
+  .diff .d-file .d-stat { margin-left: auto; font-size: 10.5px; }
+  .diff .d-stat .add { color: var(--green); } .diff .d-stat .del { color: var(--red); }
+  .diff .d-hunk { padding: 3px 12px; color: var(--accent); background: rgba(139,140,232,0.07); }
+  .diff .d-line { padding: 0 12px; white-space: pre; color: var(--ink-2); }
+  .diff .d-line.add { background: rgba(111,201,138,0.09); color: #a9dcb9; }
+  .diff .d-line.del { background: rgba(224,112,138,0.09); color: #e8a3b5; }
+  .diff .d-ln { display: inline-block; width: 30px; color: var(--ink-3); opacity: 0.6; user-select: none; }
+
+  /* ---- settings ---- */
+  .settings-form { padding: 16px; max-width: 480px; }
+  .settings-form h2 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .settings-form .s-sub { font-size: 11.5px; color: var(--ink-3); margin-bottom: 16px; }
+  .s-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
+  .s-field .s-label { font-size: 12.5px; }
+  .s-field .s-hint { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+  .s-field select, .s-field input[type=text] {
+    font: inherit; font-size: 12px; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; outline: none;
+  }
+  .s-toggle { position: relative; width: 32px; height: 18px; border-radius: 9px; background: var(--raise); border: 1px solid var(--border); cursor: pointer; flex: none; transition: background .15s; }
+  .s-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink-2); transition: transform .15s, background .15s; }
+  .s-toggle.on { background: var(--accent); border-color: var(--accent); }
+  .s-toggle.on::after { transform: translateX(14px); background: #fff; }
+
+  /* ---- deploys ---- */
+  .deploy-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border-soft); }
+  .deploy-row .d-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .deploy-row .d-env { font-size: 12.5px; color: var(--ink); width: 90px; }
+  .deploy-row .d-sha { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-3); }
+  .deploy-row .d-time { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+
+  /* ============ PREVIEW TABS ============ */
+  .tab, .side-row, .task-row { user-select: none; }
+  .tab.preview .tab-label { font-style: italic; opacity: 0.78; }
+  .side-row.previewed .row-label { font-style: italic; opacity: 0.85; }
+  .tab-plus {
+    flex: none; align-self: center; margin: 0 6px;
+    width: 20px; height: 20px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid transparent; color: var(--ink-3);
+    font: inherit; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .tab-plus:hover { background: var(--raise); color: var(--ink); border-color: var(--border); }
+  #plus-popover {
+    position: fixed; z-index: 800; display: none; width: 200px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.55); padding: 4px; user-select: none;
+  }
+  .pop-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 5px;
+    font-size: 12px; color: var(--ink-2); cursor: pointer;
+  }
+  .pop-item:hover { background: var(--raise); color: var(--ink); }
+  .pop-item .row-icon { color: var(--ink-3); flex: none; }
+  .pop-item .pop-note { margin-left: auto; font-size: 9.5px; color: var(--ink-3); }
+  #plus-popover .pop-hint { font-size: 10px; color: var(--ink-3); padding: 5px 8px 4px; border-top: 1px solid var(--border-soft); margin-top: 3px; }
+
+  /* ============ REGISTRY SIDEBAR ============ */
+  .threads-search { padding: 2px 14px 7px; }
+  .threads-search input {
+    width: 100%; height: 26px; padding: 0 9px;
+    background: var(--canvas); border: 1px solid var(--border-soft); border-radius: 6px;
+    color: var(--ink); font: inherit; font-size: 12px; outline: none;
+  }
+  .threads-search input::placeholder { color: var(--ink-3); }
+  .threads-search input:focus { border-color: var(--accent); }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .live-dot.run {
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(111,201,138,0.45);
+    animation: livepulse 1.8s ease-in-out infinite;
+  }
+  .live-dot.idle { background: transparent; border: 1px solid var(--ink-3); opacity: 0.7; }
+  @keyframes livepulse { 50% { opacity: 0.4; box-shadow: 0 0 2px rgba(111,201,138,0.2); } }
+  .row-status { flex: none; font-size: 9.5px; color: var(--green); opacity: 0.7; letter-spacing: 0.02em; }
+  .row-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+
+  /* ============ CONTEXT MENU ============ */
+  #ctx-menu {
+    position: fixed; z-index: 1000; display: none; min-width: 180px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.55); padding: 4px; user-select: none;
+  }
+  #ctx-menu .ctx-title {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--ink-3);
+    padding: 4px 8px 5px; border-bottom: 1px solid var(--border-soft); margin-bottom: 3px;
+  }
+
+  /* ============ QUICK SWITCHER ============ */
+  #qk-backdrop { position: fixed; inset: 0; z-index: 950; background: rgba(6,6,10,0.55); display: none; }
+  #qk-backdrop.open { display: block; }
+  #qk-modal {
+    position: absolute; left: 50%; top: 13%; transform: translateX(-50%);
+    width: 480px; max-height: 64vh; display: flex; flex-direction: column;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6); overflow: hidden;
+  }
+  #qk-input {
+    flex: none; margin: 10px 10px 6px; height: 32px; padding: 0 12px;
+    background: var(--canvas); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--ink); font: inherit; font-size: 12.5px; outline: none;
+  }
+  #qk-input::placeholder { color: var(--ink-3); }
+  #qk-input:focus { border-color: var(--accent); }
+  #qk-list { overflow-y: auto; padding: 0 6px 8px; }
+  #qk-list::-webkit-scrollbar { width: 8px; }
+  #qk-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  .qk-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); padding: 8px 10px 3px; }
+  .qk-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    font-size: 12.5px; color: var(--ink-2); user-select: none; min-width: 0;
+  }
+  .qk-item:hover { background: var(--raise); color: var(--ink); }
+  .qk-item .row-icon { color: var(--ink-3); flex: none; }
+  .qk-item .qk-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qk-item.preview .qk-title { font-style: italic; opacity: 0.85; }
+  .qk-item .qk-route { margin-left: auto; flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--ink-3); }
+  .qk-empty { font-size: 11.5px; color: var(--ink-3); font-style: italic; padding: 4px 10px 8px; }
+  .qk-hint { flex: none; border-top: 1px solid var(--border-soft); padding: 6px 12px; font-size: 10px; color: var(--ink-3); }
+
+  /* ============ DRAG & DROP ============ */
+  #drag-ghost {
+    position: fixed; z-index: 1000; pointer-events: none;
+    display: none; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 7px;
+    background: var(--raise); border: 1px solid var(--accent);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 3px var(--accent-dim);
+    font-size: 12px; color: var(--ink);
+    transform: translate(12px, 8px);
+  }
+  #drop-overlay {
+    position: fixed; z-index: 900; pointer-events: none; display: none;
+    background: rgba(139,140,232,0.18);
+    border: 1.5px solid var(--accent);
+    border-radius: 6px;
+    box-shadow: inset 0 0 24px rgba(139,140,232,0.12);
+    transition: left .07s ease-out, top .07s ease-out, width .07s ease-out, height .07s ease-out;
+  }
+  #drop-frame {
+    position: fixed; z-index: 899; pointer-events: none; display: none;
+    border: 1px dashed rgba(139,140,232,0.5); border-radius: 8px;
+  }
+
+  /* ============ HELP ============ */
+  #help-btn {
+    position: fixed; right: 16px; bottom: 16px; z-index: 500;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--raise); border: 1px solid var(--border); color: var(--ink-2);
+    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  #help-btn:hover { color: var(--accent); border-color: var(--accent); }
+  #help-overlay {
+    position: fixed; right: 16px; bottom: 56px; z-index: 500; width: 340px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+    padding: 14px 16px; display: none;
+  }
+  #help-overlay.open { display: block; }
+  #help-overlay h3 { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--ink); }
+  #help-overlay ul { list-style: none; }
+  #help-overlay li { font-size: 11.5px; color: var(--ink-2); padding: 4px 0 4px 18px; position: relative; line-height: 1.45; }
+  #help-overlay li::before { content: "→"; position: absolute; left: 0; color: var(--accent); }
+  #help-overlay .kbd-like { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="app-title">BB <span class="dim">— Dockable Panes Prototype</span></div>
+  <div id="addressbar"><span class="lock">▸</span><span class="route" id="address-route">/</span></div>
+  <div id="topbar-right">
+    <button id="qk-btn" title="Quick pane switcher"><span class="kbd">⌘K</span> Panes</button>
+    <div id="surface-toggle" class="seg-toggle">
+      <span class="st-label">Surface</span>
+      <button id="surf-desktop" class="on">Desktop</button>
+      <button id="surf-web">Web</button>
+    </div>
+  </div>
+</div>
+
+<div id="shell">
+  <div id="sidebar">
+    <div class="project-header">
+      <div class="proj-badge">BB</div>
+      <div class="proj-name">BB</div>
+      <div class="proj-sub">main · 3 envs</div>
+    </div>
+    <div class="threads-search"><input id="thread-search" type="text" placeholder="Search threads…" spellcheck="false"></div>
+    <div class="side-section">
+      <h3>Threads</h3>
+      <div id="threads-list"></div>
+    </div>
+    <div class="side-section">
+      <h3>Terminals <span class="count" id="term-count">0</span></h3>
+      <div id="terminals-list"></div>
+      <div class="catalog-hint">Live PTYs — closing a tab keeps the terminal running; click a row to (re)open its view</div>
+    </div>
+  </div>
+  <div id="workspace"><div id="ws-root"></div></div>
+</div>
+
+<div id="drag-ghost"></div>
+<div id="drop-frame"></div>
+<div id="drop-overlay"></div>
+<div id="plus-popover"></div>
+<div id="ctx-menu"></div>
+<div id="qk-backdrop">
+  <div id="qk-modal">
+    <input id="qk-input" type="text" placeholder="Filter panes or open a new view…" spellcheck="false">
+    <div id="qk-list"></div>
+    <div class="qk-hint">Click a live pane to reveal · click a view to preview, double-click to keep · Esc to close</div>
+  </div>
+</div>
+
+<button id="help-btn" title="What to try">?</button>
+<div id="help-overlay">
+  <h3>Things to try</h3>
+  <ul>
+    <li>The sidebar is a <span class="kbd-like">registry of live resources</span> — pulsing dots are running threads/PTYs, hollow dots are idle</li>
+    <li>Click a thread that is <span class="kbd-like">already open</span> — its view is revealed with a flash, never duplicated</li>
+    <li>Unopened thread: <span class="kbd-like">single-click = preview</span> (italic tab, one per group, replaced in place); double-click the row or tab label, or drag the tab, to keep it</li>
+    <li>Close a <span class="kbd-like">Terminal</span> tab — it stays in the registry (PTY keeps running); click its row to reopen the same view. “+” / ⌘K create a new terminal resource</li>
+    <li><span class="kbd-like">Right-click a task row</span> → open in new tab or split right; or <span class="kbd-like">drag a task row</span> into the workspace (five drop zones)</li>
+    <li>Watch <span class="kbd-like">tab titles follow navigation</span> — a Tasks pane retitles to “BB-26 · …” on a task, back restores “Tasks”</li>
+    <li>Open views via <span class="kbd-like">⌘K Panes</span> or each group's <span class="kbd-like">+</span>; drag tabs between groups; edges split; splitters resize</li>
+    <li>Use the thread header's <span class="kbd-like">diff / terminal buttons</span> — they open thread-bound views as tabs in the same group, revealing an existing one instead of duplicating</li>
+    <li>Flip <span class="kbd-like">Desktop / Web</span> — browser panes swap to a web placeholder</li>
+  </ul>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Icons (inline SVG, 14px)
+============================================================ */
+function svg(inner, size) {
+  size = size || 14;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+}
+const ICONS = {
+  thread:   svg('<path d="M13.5 8.7c0 2.7-2.5 4.8-5.5 4.8-.9 0-1.8-.2-2.5-.5L2.5 14l.8-2.4C2.6 10.7 2.5 9.7 2.5 8.7 2.5 6 5 3.9 8 3.9s5.5 2.1 5.5 4.8Z"/>'),
+  terminal: svg('<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="m4.8 6.5 2 1.7-2 1.7M8.5 10.2h2.7"/>'),
+  browser:  svg('<circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c-3.4 3.4-3.4 8.2 0 11.6M8 2.2c3.4 3.4 3.4 8.2 0 11.6"/>'),
+  tasks:    svg('<path d="m2.5 4.5 1.2 1.2 2-2.2M2.5 11l1.2 1.2 2-2.2M8 5h5.5M8 11.5h5.5"/>'),
+  diff:     svg('<path d="M5 2.5v6M2 5.5h6"/><path d="M2 11.5h6"/><path d="M11 4l3 3-3 3" transform="translate(-1,1)"/>'),
+  sidechat: svg('<rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M9.5 2.5v11"/><path d="M11 6h1.5M11 8.5h1.5"/>'),
+  settings: svg('<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/>'),
+  deploys:  svg('<path d="M8 1.8c2.5 1.5 3.5 4.5 3 7.5l1.8 2.2-2.6.4-1 1.8-1.2-2.2-1.2 2.2-1-1.8-2.6-.4L5 9.3c-.5-3 .5-6 3-7.5Z"/><circle cx="8" cy="6.5" r="1.1"/>'),
+  globe32:  '<svg width="34" height="34" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c-3.4 3.4-3.4 8.2 0 11.6M8 2.2c3.4 3.4 3.4 8.2 0 11.6"/></svg>'
+};
+const ARROW = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4 6 8l4 4"/></svg>';
+
+/* ============================================================
+   View kind registry
+============================================================ */
+const KINDS = {
+  thread:   { label: 'Thread',    icon: ICONS.thread },
+  terminal: { label: 'Terminal',  icon: ICONS.terminal, noPreview: true },
+  browser:  { label: 'Browser',   icon: ICONS.browser, noPreview: true },
+  tasks:    { label: 'Tasks',     icon: ICONS.tasks },
+  diff:     { label: 'Diff',      icon: ICONS.diff },
+  sidechat: { label: 'Side chat', icon: ICONS.sidechat },
+  settings: { label: 'Settings',  icon: ICONS.settings, singleton: true },
+  deploys:  { label: 'Deploys',   icon: ICONS.deploys, plugin: true }
+};
+const CATALOG = ['terminal', 'browser', 'tasks', 'diff', 'sidechat', 'settings', 'deploys'];
+
+const THREADS = [
+  { id: 'thr_a1', title: 'Fix flaky test retries', status: 'running' },
+  { id: 'thr_b2', title: 'Dockable panes redesign', status: 'idle' },
+  { id: 'thr_c3', title: 'Migrate settings storage', status: 'idle' },
+  { id: 'thr_d4', title: 'Onboarding checklist copy', status: 'idle' },
+  { id: 'thr_e5', title: 'CI cache warm strategy', status: 'running' }
+];
+
+const TASKS = [
+  { key: 'BB-24', title: 'Unify pane focus model across surfaces', status: 'done',     pill: 'Done' },
+  { key: 'BB-25', title: 'Dockable terminals and views',           status: 'progress', pill: 'In Progress' },
+  { key: 'BB-26', title: 'Preview tab persistence',                status: 'progress', pill: 'In Progress' },
+  { key: 'BB-27', title: 'Plugin views in the dock catalog',       status: 'review',   pill: 'Review' },
+  { key: 'BB-28', title: 'Web surface browser fallback',           status: 'todo',     pill: 'Todo' }
+];
+
+/* ============================================================
+   State
+============================================================ */
+let _uid = 0;
+function nid(p) { _uid += 1; return p + '_' + _uid; }
+
+const panes = new Map();          // instanceId -> pane
+const kindCounters = {};          // kind -> n (for short ids like t1, b2)
+let root = null;                  // layout tree root (group or split node)
+let focusedGroupId = null;
+let surface = 'desktop';          // 'desktop' | 'web'
+let threadFilter = '';
+let flashPaneId = null;
+
+/* terminal RESOURCES: server-side PTYs that exist whether or not a view shows them */
+const terminals = new Map();      // termId -> { id, ctx }
+
+/* single-vs-double click discrimination (shared by pointer-drag click paths and plain rows) */
+let lastClick = { key: null, t: 0 };
+function clickOrDbl(key, single, dbl) {
+  const now = Date.now();
+  if (key && lastClick.key === key && (now - lastClick.t) < 400) {
+    lastClick = { key: null, t: 0 };
+    dbl();
+  } else {
+    lastClick = { key: key, t: now };
+    single();
+  }
+}
+
+function shortIdFor(kind) {
+  const prefix = { terminal: 't', browser: 'b', diff: 'd', sidechat: 'c', tasks: 'k', deploys: 'y', settings: 's', thread: 'thr' }[kind] || 'x';
+  kindCounters[kind] = (kindCounters[kind] || 0) + 1;
+  return prefix + kindCounters[kind];
+}
+
+function createPane(kind, opts) {
+  opts = opts || {};
+  const pane = {
+    id: nid('p'),
+    kind: kind,
+    short: opts.short || shortIdFor(kind),
+    ctx: opts.ctx || null,           // context badge, e.g. bound thread id
+    title: opts.title || KINDS[kind].label,
+    preview: false,                  // preview (transient) vs committed tab
+    state: {}
+  };
+  if (kind === 'tasks') pane.state.route = 'board';
+  panes.set(pane.id, pane);
+  return pane;
+}
+
+function G(paneIds) {
+  return { type: 'group', id: nid('g'), tabs: paneIds.slice(), active: paneIds[0] || null };
+}
+function S(dir, children, sizes) {
+  return { type: 'split', id: nid('s'), dir: dir, children: children, sizes: sizes || children.map(function () { return 1 / children.length; }) };
+}
+
+/* ---- tree helpers ---- */
+function findNodeById(node, id) {
+  if (!node) return null;
+  if (node.id === id) return node;
+  if (node.type === 'split') {
+    for (const c of node.children) { const r = findNodeById(c, id); if (r) return r; }
+  }
+  return null;
+}
+function parentOf(node, id, parent) {
+  if (!node) return null;
+  if (node.id === id) return parent || null;
+  if (node.type === 'split') {
+    for (const c of node.children) { const r = parentOf(c, id, node); if (r) return r; }
+  }
+  return null;
+}
+function walkGroups(node, fn) {
+  if (!node) return;
+  if (node.type === 'group') fn(node);
+  else node.children.forEach(function (c) { walkGroups(c, fn); });
+}
+function firstGroup(node) {
+  let g = null;
+  walkGroups(node, function (x) { if (!g) g = x; });
+  return g;
+}
+function groupOf(paneId) {
+  let found = null;
+  walkGroups(root, function (g) { if (!found && g.tabs.indexOf(paneId) !== -1) found = g; });
+  return found;
+}
+function findVisiblePaneByKind(kind) {
+  let found = null;
+  walkGroups(root, function (g) {
+    if (found) return;
+    for (const pid of g.tabs) {
+      const p = panes.get(pid);
+      if (p && p.kind === kind) { found = p; return; }
+    }
+  });
+  return found;
+}
+
+function normalizeSizes(sizes) {
+  const sum = sizes.reduce(function (a, b) { return a + b; }, 0) || 1;
+  return sizes.map(function (s) { return s / sum; });
+}
+
+function normalize(node) {
+  if (!node || node.type === 'group') return node;
+  node.children = node.children.map(normalize);
+  // flatten same-direction nested splits
+  const kids = [], sizes = [];
+  node.children.forEach(function (c, i) {
+    if (c.type === 'split' && c.dir === node.dir) {
+      c.children.forEach(function (gc, j) {
+        kids.push(gc);
+        sizes.push(node.sizes[i] * c.sizes[j]);
+      });
+    } else {
+      kids.push(c);
+      sizes.push(node.sizes[i]);
+    }
+  });
+  node.children = kids;
+  node.sizes = normalizeSizes(sizes);
+  if (node.children.length === 1) return node.children[0];
+  return node;
+}
+
+function removeNodeById(id) {
+  if (root.id === id) return; // never remove the root outright — keep at least one group
+  const parent = parentOf(root, id);
+  if (!parent) return;
+  const i = parent.children.findIndex(function (c) { return c.id === id; });
+  if (i === -1) return;
+  parent.children.splice(i, 1);
+  parent.sizes.splice(i, 1);
+  parent.sizes = normalizeSizes(parent.sizes);
+  root = normalize(root);
+}
+
+function insertRelative(targetId, side, node, frac) {
+  frac = frac || 0.5;
+  const dir = (side === 'left' || side === 'right') ? 'row' : 'col';
+  const before = (side === 'left' || side === 'top');
+  const target = findNodeById(root, targetId);
+  if (!target) return;
+  const parent = parentOf(root, targetId);
+  if (parent && parent.type === 'split' && parent.dir === dir) {
+    const i = parent.children.indexOf(target);
+    const sz = parent.sizes[i];
+    parent.sizes[i] = sz * (1 - frac);
+    parent.children.splice(before ? i : i + 1, 0, node);
+    parent.sizes.splice(before ? i : i + 1, 0, sz * frac);
+  } else {
+    const wrap = S(dir, before ? [node, target] : [target, node], before ? [frac, 1 - frac] : [1 - frac, frac]);
+    if (parent) {
+      const i = parent.children.indexOf(target);
+      parent.children[i] = wrap;
+    } else {
+      root = wrap;
+    }
+  }
+  root = normalize(root);
+}
+
+/* detach a pane from the tree (does not delete the instance) */
+function detachPane(paneId) {
+  const g = groupOf(paneId);
+  if (!g) return;
+  const i = g.tabs.indexOf(paneId);
+  g.tabs.splice(i, 1);
+  if (g.active === paneId) g.active = g.tabs[Math.min(i, g.tabs.length - 1)] || null;
+  if (g.tabs.length === 0) removeNodeById(g.id);
+}
+
+function syncAfterMutation() {
+  if (!findNodeById(root, focusedGroupId)) {
+    const g = firstGroup(root);
+    focusedGroupId = g ? g.id : null;
+  }
+}
+
+/* ============================================================
+   High-level actions
+============================================================ */
+function setFocusedGroup(gid, opts) {
+  opts = opts || {};
+  if (focusedGroupId === gid && !opts.force) { updateAddressBar(); return; }
+  focusedGroupId = gid;
+  // targeted update (no full re-render, so inputs keep focus mid-click)
+  document.querySelectorAll('#ws-root .group').forEach(function (el) {
+    el.classList.toggle('focused', el.dataset.group === gid);
+  });
+  updateAddressBar();
+}
+
+function activateTab(gid, paneId) {
+  const g = findNodeById(root, gid);
+  if (!g || g.type !== 'group') return;
+  g.active = paneId;
+  focusedGroupId = gid;
+  renderAll();
+}
+
+/* destroy a pane instance — caller handles the tab slot */
+function destroyPaneInstance(pane) {
+  panes.delete(pane.id);
+}
+
+function closePane(paneId) {
+  const pane = panes.get(paneId);
+  if (!pane) return;
+  destroyPaneInstance(pane);
+  detachPane(paneId);
+  syncAfterMutation();
+  renderAll();
+}
+
+/* place a pane into a group; previews occupy the group's single preview slot (replace in place) */
+function openPaneInGroup(pane, g, asPreview) {
+  pane.preview = !!asPreview;
+  if (asPreview) {
+    const idx = g.tabs.findIndex(function (pid) { const p = panes.get(pid); return p && p.preview; });
+    if (idx !== -1) {
+      const old = panes.get(g.tabs[idx]);
+      g.tabs[idx] = pane.id;           // same slot: position preserved, instance swapped
+      if (old) destroyPaneInstance(old);
+    } else {
+      g.tabs.push(pane.id);
+    }
+  } else {
+    g.tabs.push(pane.id);
+  }
+  g.active = pane.id;
+  focusedGroupId = g.id;
+}
+
+function commitPane(paneId) {
+  const p = panes.get(paneId);
+  if (p && p.preview) { p.preview = false; renderAll(); }
+}
+
+function revealPane(paneId, flash) {
+  const g = groupOf(paneId);
+  if (!g) return;
+  g.active = paneId;
+  focusedGroupId = g.id;
+  if (flash) flashPaneId = paneId;
+  renderAll();
+}
+
+/* open a view kind. opts: { commit, targetGid }
+   - default open is a PREVIEW unless the kind never previews (terminal, browser)
+   - commit gesture on an existing preview commits it in place */
+function openView(kind, opts) {
+  opts = opts || {};
+  const k = KINDS[kind];
+  const commit = !!opts.commit;
+  let g = findNodeById(root, opts.targetGid || focusedGroupId);
+  if (!g || g.type !== 'group') g = firstGroup(root);
+
+  if (k.singleton) {
+    const existing = findVisiblePaneByKind(kind);
+    if (existing) {
+      if (commit && existing.preview) existing.preview = false;
+      revealPane(existing.id, true);
+      return existing;
+    }
+  }
+  // reuse the group's current preview when it is already this kind (avoids instance churn;
+  // makes double-click = "commit what the first click previewed")
+  const prevId = g.tabs.find(function (pid) { const p = panes.get(pid); return p && p.preview; });
+  const prevPane = prevId ? panes.get(prevId) : null;
+  if (prevPane && prevPane.kind === kind) {
+    if (commit) prevPane.preview = false;
+    g.active = prevPane.id;
+    focusedGroupId = g.id;
+    renderAll();
+    return prevPane;
+  }
+  const asPreview = !commit && !k.noPreview;
+  const pane = createPaneForKind(kind);
+  openPaneInGroup(pane, g, asPreview);
+  renderAll();
+  return pane;
+}
+
+/* ---- terminal resources: exactly one view per terminal ---- */
+function createTerminal(ctx) {
+  const id = shortIdFor('terminal');
+  const res = { id: id, ctx: ctx || 'env_dev' };
+  terminals.set(id, res);
+  return res;
+}
+function makeTerminalPane(res) {
+  const pane = createPane('terminal', { short: res.id, ctx: res.ctx });
+  pane.termId = res.id;
+  return pane;
+}
+function findVisibleTerminalPane(termId) {
+  let found = null;
+  walkGroups(root, function (g) {
+    if (found) return;
+    for (const pid of g.tabs) {
+      const p = panes.get(pid);
+      if (p && p.kind === 'terminal' && p.termId === termId) { found = p; return; }
+    }
+  });
+  return found;
+}
+/* open (or reveal) the single view for a terminal resource — always committed */
+function openTerminalView(termId, targetGid) {
+  const existing = findVisibleTerminalPane(termId);
+  if (existing) { revealPane(existing.id, true); return existing; }
+  const res = terminals.get(termId);
+  if (!res) return null;
+  const pane = makeTerminalPane(res);
+  let g = findNodeById(root, targetGid || focusedGroupId);
+  if (!g || g.type !== 'group') g = firstGroup(root);
+  openPaneInGroup(pane, g, false);
+  renderAll();
+  return pane;
+}
+
+function createPaneForKind(kind, ctx) {
+  if (kind === 'terminal') return makeTerminalPane(createTerminal(ctx));  // "+"/⌘K create a NEW terminal resource
+  const pane = createPane(kind, { ctx: ctx || null });
+  if (kind === 'browser') pane.title = 'localhost:3000';
+  return pane;
+}
+
+/* live tab titles: a pane's title follows its navigation */
+function paneTitle(p) {
+  if (p.kind === 'tasks') {
+    if (p.state.route === 'board') return 'Tasks';
+    const key = p.state.route.split('/')[1];
+    const t = TASKS.find(function (x) { return x.key === key; });
+    const full = key + ' · ' + (t ? t.title : '');
+    return full.length > 22 ? full.slice(0, 21) + '…' : full;
+  }
+  return p.title;
+}
+
+function openThread(thr, commit) {
+  // focus existing pane for this thread if present (commit gesture pins a preview in place)
+  let existing = null;
+  panes.forEach(function (p) { if (p.kind === 'thread' && p.threadId === thr.id && groupOf(p.id)) existing = p; });
+  if (existing) {
+    if (commit && existing.preview) existing.preview = false;
+    revealPane(existing.id, true);   // reveal-existing: flash ring, never a duplicate view
+    return;
+  }
+  const pane = createPane('thread', { title: thr.title, ctx: thr.id, short: thr.id });
+  pane.threadId = thr.id;
+  let g = findNodeById(root, focusedGroupId);
+  if (!g || g.type !== 'group') g = firstGroup(root);
+  openPaneInGroup(pane, g, !commit);
+  renderAll();
+}
+
+/* task destination affordances: committed detail views in a chosen destination */
+function taskSourceGroup(srcPaneId) {
+  const src = panes.get(srcPaneId);
+  let g = src ? groupOf(src.id) : null;
+  if (!g) g = findNodeById(root, focusedGroupId);
+  if (!g || g.type !== 'group') g = firstGroup(root);
+  return g;
+}
+function makeTaskDetailPane(key) {
+  const pane = createPane('tasks', {});
+  pane.state.route = 'task/' + key;
+  return pane;
+}
+function openTaskInNewTab(key, srcPaneId) {
+  const g = taskSourceGroup(srcPaneId);
+  openPaneInGroup(makeTaskDetailPane(key), g, false);
+  renderAll();
+}
+function openTaskInSplitRight(key, srcPaneId) {
+  const g = taskSourceGroup(srcPaneId);
+  const pane = makeTaskDetailPane(key);
+  const ng = G([pane.id]);
+  insertRelative(g.id, 'right', ng, 0.5);
+  focusedGroupId = ng.id;
+  syncAfterMutation();
+  renderAll();
+}
+
+/* thread header entry points: open thread-bound views as committed tabs in the thread's own group */
+function findVisiblePaneWhere(pred) {
+  let found = null;
+  walkGroups(root, function (g) {
+    if (found) return;
+    for (const pid of g.tabs) {
+      const p = panes.get(pid);
+      if (p && pred(p)) { found = p; return; }
+    }
+  });
+  return found;
+}
+
+function openThreadDiff(threadPaneId) {
+  const tp = panes.get(threadPaneId);
+  if (!tp || tp.kind !== 'thread') return;
+  // one diff view per thread: reveal-existing
+  const existing = findVisiblePaneWhere(function (p) { return p.kind === 'diff' && p.ctx === tp.threadId; });
+  if (existing) { revealPane(existing.id, true); return; }
+  const g = groupOf(tp.id) || firstGroup(root);
+  const d = createPane('diff', { ctx: tp.threadId });
+  openPaneInGroup(d, g, false);
+  renderAll();
+}
+
+function openThreadTerminal(threadPaneId) {
+  const tp = panes.get(threadPaneId);
+  if (!tp || tp.kind !== 'thread') return;
+  // 1) a view for a thread-bound terminal is already open somewhere: reveal it
+  const existing = findVisiblePaneWhere(function (p) { return p.kind === 'terminal' && p.ctx === tp.threadId; });
+  if (existing) { revealPane(existing.id, true); return; }
+  const g = groupOf(tp.id) || firstGroup(root);
+  // 2) the registry has a running thread-bound PTY with no open view: reopen its single view
+  let res = null;
+  terminals.forEach(function (r) { if (!res && r.ctx === tp.threadId) res = r; });
+  // 3) otherwise create a NEW terminal resource bound to this thread
+  if (!res) res = createTerminal(tp.threadId);
+  openPaneInGroup(makeTerminalPane(res), g, false);
+  renderAll();
+}
+
+function performDrop(payload, targetGid, zone) {
+  let pane;
+  if (payload.type === 'task') {
+    pane = makeTaskDetailPane(payload.key);      // task drag-out: always committed
+  } else if (payload.type === 'create') {
+    if (KINDS[payload.view].singleton) {
+      const existing = findVisiblePaneByKind(payload.view);
+      if (existing) { revealPane(existing.id, true); return; }
+    }
+    pane = createPaneForKind(payload.view);
+  } else {
+    pane = panes.get(payload.paneId);
+    if (!pane) return;
+    pane.preview = false;            // dragging always commits (VS Code behavior)
+    const srcG = groupOf(pane.id);
+    if (srcG && srcG.id === targetGid) {
+      if (zone === 'center') { activateTab(srcG.id, pane.id); return; }
+      if (srcG.tabs.length === 1) { renderAll(); return; }   // splitting a group off itself with its only tab is a no-op
+    }
+    detachPane(pane.id);
+  }
+  let target = findNodeById(root, targetGid);
+  if (!target || target.type !== 'group') { target = firstGroup(root); zone = 'center'; }
+  if (zone === 'center') {
+    target.tabs.push(pane.id);
+    target.active = pane.id;
+    focusedGroupId = target.id;
+  } else {
+    const ng = G([pane.id]);
+    insertRelative(target.id, zone, ng, 0.5);
+    focusedGroupId = ng.id;
+  }
+  syncAfterMutation();
+  renderAll();
+}
+
+/* ============================================================
+   Routes / address bar
+============================================================ */
+function routeFor(pane) {
+  switch (pane.kind) {
+    case 'thread':   return '/projects/bb/threads/' + (pane.threadId || pane.short);
+    case 'terminal': return '/terminals/' + pane.short;
+    case 'browser':  return '/browser/' + pane.short;
+    case 'tasks':    return '/plugins/tasks/' + pane.state.route;
+    case 'diff':     return '/diffs/' + pane.short;
+    case 'sidechat': return '/chat/' + pane.short;
+    case 'settings': return '/settings';
+    case 'deploys':  return '/plugins/deploys';
+  }
+  return '/';
+}
+
+function updateAddressBar() {
+  const el = document.getElementById('address-route');
+  const g = findNodeById(root, focusedGroupId);
+  if (!g || g.type !== 'group' || !g.active) { el.textContent = '/'; return; }
+  const pane = panes.get(g.active);
+  if (!pane) { el.textContent = '/'; return; }
+  const r = routeFor(pane);
+  const i = r.lastIndexOf('/');
+  el.innerHTML = escapeHtml(r.slice(0, i + 1)) + '<span class="seg-hl">' + escapeHtml(r.slice(i + 1)) + '</span>';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ============================================================
+   Content renderers (HTML strings; events via delegation)
+============================================================ */
+function renderContent(pane) {
+  switch (pane.kind) {
+    case 'thread':   return contentThread(pane);
+    case 'terminal': return contentTerminal(pane);
+    case 'browser':  return contentBrowser(pane);
+    case 'tasks':    return contentTasks(pane);
+    case 'diff':     return contentDiff(pane);
+    case 'sidechat': return contentSidechat(pane);
+    case 'settings': return contentSettings(pane);
+    case 'deploys':  return contentDeploys(pane);
+  }
+  return '';
+}
+
+function contentThread(pane) {
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="pane-header">' +
+        '<span class="row-badge">' + escapeHtml(pane.threadId || '') + '</span>' +
+        '<span class="ph-sub">fable-5</span>' +
+        '<span style="flex:1"></span>' +
+        '<button class="icon-btn" data-open-diff="' + pane.id + '" title="Open diff for ' + escapeHtml(pane.threadId || '') + '">' + ICONS.diff + '</button>' +
+        '<button class="icon-btn" data-open-term="' + pane.id + '" title="Open terminal for ' + escapeHtml(pane.threadId || '') + '">' + ICONS.terminal + '</button>' +
+      '</div>' +
+      '<div class="scrolly chat-scroll">' +
+        '<div class="bubble user">The retry wrapper in <code>ci/retry.ts</code> is still re-running passing shards. Can you fix it and add a regression test?</div>' +
+        '<div class="bubble agent"><div class="b-name">Agent</div>Found it — <code>shouldRetry</code> checks the suite exit code instead of the per-shard result, so any red shard retries every shard.' +
+          '<div class="b-tool">' + ICONS.terminal + ' Ran <span style="color:var(--ink)">pnpm test ci/retry.test.ts</span> · 14 passed</div>' +
+        '</div>' +
+        '<div class="bubble agent"><div class="b-name">Agent</div>Patched it to key off <code>shard.status</code> and added a regression test covering the mixed pass/fail case. The diff is one click away in the header above — want me to open a PR?</div>' +
+        '<div class="bubble user">Looks right. Run the full suite once more, then PR it.</div>' +
+      '</div>' +
+      '<div class="composer">' +
+        '<input type="text" placeholder="Message the agent…" spellcheck="false">' +
+        '<button class="send-btn">Send</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function contentTerminal(pane) {
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="pane-header">' +
+        '<span class="row-mono" style="color:var(--ink-2)">' + escapeHtml(pane.short) + '</span>' +
+        (pane.ctx ? '<span class="row-badge">' + escapeHtml(pane.ctx) + '</span>' : '') +
+        '<span class="ph-sub" style="margin-left:auto">zsh · 80×24</span>' +
+      '</div>' +
+      '<div class="term">' +
+        '<div><span class="t-prompt">bb ❯</span> pnpm test</div>' +
+        '<div class="t-dim">&gt; bb@0.4.2 test /Users/dev/bb</div>' +
+        '<div class="t-dim">&gt; vitest run</div>' +
+        '<div>&nbsp;</div>' +
+        '<div><span class="t-ok">✓</span> ci/retry.test.ts <span class="t-dim">(14 tests) 231ms</span></div>' +
+        '<div><span class="t-ok">✓</span> layout/tree.test.ts <span class="t-dim">(9 tests) 118ms</span></div>' +
+        '<div><span class="t-ok">✓</span> panes/dock.test.ts <span class="t-dim">(21 tests) 402ms</span></div>' +
+        '<div>&nbsp;</div>' +
+        '<div><span class="t-ok t-bold">PASS</span>&nbsp;&nbsp;<span class="t-bold">44 passed</span> <span class="t-dim">(44)</span>&nbsp;&nbsp;<span class="t-dim">Duration 2.41s</span></div>' +
+        '<div>&nbsp;</div>' +
+        '<div><span class="t-prompt">bb ❯</span> <span class="t-cursor"></span></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function contentBrowser(pane) {
+  if (surface === 'web') {
+    return '' +
+      '<div class="pane-body">' +
+        '<div class="browser-placeholder">' +
+          '<div class="glyph">' + ICONS.globe32 + '</div>' +
+          '<div class="url">localhost:3000</div>' +
+          '<div class="msg">Browser panes are available on the desktop app</div>' +
+          '<button class="open-btn">Open in new tab ↗</button>' +
+        '</div>' +
+      '</div>';
+  }
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="browser-bar">' +
+        '<button class="icon-btn" title="Back">' + ARROW + '</button>' +
+        '<button class="icon-btn" title="Forward" style="transform:scaleX(-1)">' + ARROW + '</button>' +
+        '<button class="icon-btn" title="Reload">' + svg('<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>', 12) + '</button>' +
+        '<div class="b-url">' + svg('<rect x="4" y="7" width="8" height="6" rx="1"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/>', 10) + ' localhost:3000</div>' +
+      '</div>' +
+      '<div class="browser-page">' +
+        '<div class="bp-nav"><div class="bp-logo"></div><div class="bp-navitem" style="width:52px"></div><div class="bp-navitem" style="width:38px"></div><div class="bp-navitem" style="width:44px"></div><div class="bp-navitem" style="width:60px;margin-left:auto;background:var(--accent);opacity:.6"></div></div>' +
+        '<div class="bp-hero"></div>' +
+        '<div class="bp-cards">' +
+          '<div class="bp-card"><div class="bp-line" style="width:70%"></div><div class="bp-line" style="width:90%;opacity:.5"></div><div class="bp-line" style="width:45%;opacity:.5"></div></div>' +
+          '<div class="bp-card"><div class="bp-line" style="width:55%"></div><div class="bp-line" style="width:85%;opacity:.5"></div><div class="bp-line" style="width:60%;opacity:.5"></div></div>' +
+          '<div class="bp-card"><div class="bp-line" style="width:65%"></div><div class="bp-line" style="width:75%;opacity:.5"></div><div class="bp-line" style="width:50%;opacity:.5"></div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function contentTasks(pane) {
+  if (pane.state.route === 'board') {
+    return '' +
+      '<div class="pane-body">' +
+        '<div class="scrolly">' +
+          TASKS.map(function (t) {
+            return '<div class="task-row" data-task="' + t.key + '" data-pane="' + pane.id + '">' +
+              '<span class="t-key">' + t.key + '</span>' +
+              '<span class="t-title">' + escapeHtml(t.title) + '</span>' +
+              '<span class="pill ' + t.status + '">' + t.pill + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+  }
+  const key = pane.state.route.split('/')[1];
+  const task = TASKS.find(function (t) { return t.key === key; }) || TASKS[0];
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="scrolly task-detail">' +
+        '<button class="back-btn" data-back data-pane="' + pane.id + '">' + ARROW + ' Board</button>' +
+        '<h2>' + escapeHtml(task.title) + '</h2>' +
+        '<div class="td-meta"><span class="td-key">' + task.key + '</span><span class="pill ' + task.status + '">' + task.pill + '</span></div>' +
+        '<div class="td-desc">Replace the fixed thread layout with a recursive split tree of tabbed groups. Panes are instances keyed by id; the sidebar, address bar, and workspace all derive from one state tree. Thread-bound diff and terminal views open from the thread header as sibling tabs.</div>' +
+        '<div class="td-comment"><div class="c-who">sawyer · 2h ago</div>Let’s make sure two Tasks panes can sit side by side on different sub-routes — that’s the multi-instance acceptance test.</div>' +
+        '<div class="td-comment"><div class="c-who">agent · 1h ago</div>Done — each instance owns its route; the address bar follows whichever pane holds focus.</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function contentDiff(pane) {
+  function line(cls, ln, text) {
+    return '<div class="d-line ' + cls + '"><span class="d-ln">' + ln + '</span>' + escapeHtml(text) + '</div>';
+  }
+  return '' +
+    '<div class="pane-body"><div class="diff">' +
+      '<div class="d-file">' + ICONS.diff + ' ci/retry.ts' +
+        (pane.ctx ? '<span class="row-badge" style="margin-left:6px">' + escapeHtml(pane.ctx) + '</span>' : '') +
+        '<span class="d-stat"><span class="add">+6</span> <span class="del">−3</span></span>' +
+      '</div>' +
+      '<div class="d-hunk">@@ -41,9 +41,12 @@ export function shouldRetry(run: SuiteRun) {</div>' +
+      line('', '41', '  const attempts = run.attempts ?? 0;') +
+      line('', '42', '  if (attempts >= MAX_RETRIES) return [];') +
+      line('del', '43', '-  if (run.exitCode === 0) return [];') +
+      line('del', '44', '-  // retry everything on failure') +
+      line('del', '45', '-  return run.shards;') +
+      line('add', '43', '+  // only retry shards that actually failed —') +
+      line('add', '44', '+  // a red suite exit code must not re-run green shards') +
+      line('add', '45', '+  const failed = run.shards.filter(') +
+      line('add', '46', '+    (shard) => shard.status === "failed",') +
+      line('add', '47', '+  );') +
+      line('add', '48', '+  return failed;') +
+      line('', '49', '}') +
+      line('', '50', '') +
+      '<div class="d-hunk">@@ -88,6 +91,14 @@ describe("shouldRetry", () => {</div>' +
+      line('', '91', '  it("stops after MAX_RETRIES", () => { …});') +
+      line('add', '92', '+  it("skips passing shards on mixed results", () => {') +
+      line('add', '93', '+    const run = mixedRun(["passed", "failed"]);') +
+      line('add', '94', '+    expect(shouldRetry(run)).toHaveLength(1);') +
+      line('add', '95', '+  });') +
+      line('', '96', '});') +
+    '</div></div>';
+}
+
+function contentSidechat(pane) {
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="scrolly chat-scroll">' +
+        '<div class="bubble user">Quick one — what’s the tailwind class for a 1px ring?</div>' +
+        '<div class="bubble agent"><div class="b-name">Agent</div><code>ring-1</code>, and use <code>ring-inset</code> if it must not overflow the box.</div>' +
+      '</div>' +
+      '<div class="composer">' +
+        '<input type="text" placeholder="Ask anything…" spellcheck="false">' +
+        '<button class="send-btn">Send</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function contentSettings(pane) {
+  return '' +
+    '<div class="pane-body"><div class="scrolly"><div class="settings-form">' +
+      '<div class="s-sub">Workspace preferences · singleton pane</div>' +
+      '<div class="s-field"><div><div class="s-label">Theme</div><div class="s-hint">Applies to all surfaces</div></div>' +
+        '<select><option>Midnight (default)</option><option>Nord</option><option>Dracula</option></select></div>' +
+      '<div class="s-field"><div><div class="s-label">Default provider</div><div class="s-hint">Used for new threads</div></div>' +
+        '<select><option>Fable 5</option><option>GPT-5.6 Sol</option></select></div>' +
+      '<div class="s-field"><div><div class="s-label">Show diff / terminal buttons on threads</div><div class="s-hint">Header entry points for thread-bound views</div></div>' +
+        '<div class="s-toggle on" data-toggle></div></div>' +
+      '<div class="s-field"><div><div class="s-label">Confirm before closing panes</div></div>' +
+        '<div class="s-toggle" data-toggle></div></div>' +
+      '<div class="s-field"><div><div class="s-label">Terminal font size</div></div>' +
+        '<input type="text" value="12" style="width:52px;text-align:center"></div>' +
+    '</div></div></div>';
+}
+
+function contentDeploys(pane) {
+  function row(color, env, sha, time) {
+    return '<div class="deploy-row"><span class="d-dot" style="background:' + color + '"></span>' +
+      '<span class="d-env">' + env + '</span><span class="d-sha">' + sha + '</span><span class="d-time">' + time + '</span></div>';
+  }
+  return '' +
+    '<div class="pane-body">' +
+      '<div class="scrolly">' +
+        row('var(--green)', 'production', '6dbeb8a · v0.4.2', '2h ago') +
+        row('var(--green)', 'staging', '299539f · v0.4.3-rc.1', '38m ago') +
+        row('var(--amber)', 'preview-742', '7761a68 · building…', 'now') +
+        row('var(--green)', 'preview-739', '5ba5cdd · v0.4.3-pr', '1d ago') +
+        row('var(--red)', 'preview-731', '86544d4 · failed: typecheck', '2d ago') +
+      '</div>' +
+    '</div>';
+}
+
+/* ============================================================
+   Workspace rendering
+============================================================ */
+function el(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+
+function renderNode(node) {
+  if (node.type === 'group') return renderGroup(node);
+  const wrap = el('div', 'split ' + node.dir);
+  node.children.forEach(function (c, i) {
+    if (i > 0) {
+      const sp = el('div', 'splitter');
+      sp.dataset.split = node.id;
+      sp.dataset.index = String(i);
+      wrap.appendChild(sp);
+    }
+    const cell = el('div', 'split-cell');
+    cell.style.flexGrow = String(node.sizes[i] * 100);
+    cell.appendChild(renderNode(c));
+    wrap.appendChild(cell);
+  });
+  return wrap;
+}
+
+function renderGroup(g) {
+  const wrap = el('div', 'group' + (g.id === focusedGroupId ? ' focused' : ''));
+  wrap.dataset.group = g.id;
+
+  const strip = el('div', 'tabstrip');
+  g.tabs.forEach(function (pid) {
+    const pane = panes.get(pid);
+    if (!pane) return;
+    const tab = el('div', 'tab' + (g.active === pid ? ' active' : '') + (pane.preview ? ' preview' : ''));
+    tab.dataset.pane = pid;
+    tab.dataset.group = g.id;
+    const label = paneTitle(pane);
+    tab.title = label + (pane.ctx ? ' — ' + pane.ctx : '');
+    tab.innerHTML =
+      '<span class="tab-icon">' + KINDS[pane.kind].icon + '</span>' +
+      '<span class="tab-label">' + escapeHtml(label) + '</span>' +
+      (pane.ctx && pane.kind !== 'thread' ? '<span class="tab-ctx">' + escapeHtml(pane.ctx) + '</span>' : '') +
+      '<span class="tab-close" data-close="' + pid + '" title="Close">×</span>';
+    strip.appendChild(tab);
+  });
+  strip.appendChild(el('div', 'tabstrip-spacer'));
+  const plus = el('button', 'tab-plus');
+  plus.dataset.plus = g.id;
+  plus.title = 'Add a view to this group';
+  plus.textContent = '+';
+  strip.appendChild(plus);
+  wrap.appendChild(strip);
+
+  const content = el('div', 'group-content');
+  if (!g.active || !panes.has(g.active)) {
+    content.innerHTML = '<div class="group-empty">Drop a view here</div>';
+  } else {
+    content.innerHTML = renderContent(panes.get(g.active));
+  }
+  wrap.appendChild(content);
+  return wrap;
+}
+
+function renderWorkspace() {
+  const rootEl = document.getElementById('ws-root');
+  rootEl.innerHTML = '';
+  rootEl.appendChild(renderNode(root));
+  if (flashPaneId) {
+    const g = groupOf(flashPaneId);
+    if (g) {
+      const gel = rootEl.querySelector('[data-group="' + g.id + '"]');
+      if (gel) {
+        gel.classList.add('flash');
+        setTimeout(function () { gel.classList.remove('flash'); }, 950);
+      }
+    }
+    flashPaneId = null;
+  }
+}
+
+/* ============================================================
+   Sidebar rendering
+============================================================ */
+function renderThreads() {
+  const list = document.getElementById('threads-list');
+  list.innerHTML = '';
+  const openThreadIds = new Set();
+  walkGroups(root, function (g) {
+    g.tabs.forEach(function (pid) {
+      const p = panes.get(pid);
+      if (p && p.kind === 'thread') openThreadIds.add(p.threadId);
+    });
+  });
+  const f = threadFilter.trim().toLowerCase();
+  const shown = THREADS.filter(function (t) { return !f || (t.title + ' ' + t.id).toLowerCase().includes(f); });
+  if (shown.length === 0) { list.innerHTML = '<div class="side-empty">No matching threads</div>'; return; }
+  shown.forEach(function (thr) {
+    const running = thr.status === 'running';
+    const row = el('div', 'side-row' + (openThreadIds.has(thr.id) ? ' active' : ''));
+    row.dataset.thread = thr.id;
+    row.title = thr.title + ' — ' + (running ? 'agent running' : 'idle');
+    row.innerHTML =
+      '<span class="live-dot ' + (running ? 'run' : 'idle') + '"></span>' +
+      '<span class="row-icon">' + ICONS.thread + '</span>' +
+      '<span class="row-label">' + escapeHtml(thr.title) + '</span>' +
+      (running ? '<span class="row-status">running</span>' : '') +
+      '<span class="row-badge">' + thr.id + '</span>';
+    row.addEventListener('click', function () {
+      clickOrDbl('thr:' + thr.id,
+        function () { openThread(thr, false); },   // open view is revealed; else single-click previews
+        function () { openThread(thr, true); });   // double-click: commit
+    });
+    list.appendChild(row);
+  });
+}
+
+function renderTerminals() {
+  const list = document.getElementById('terminals-list');
+  list.innerHTML = '';
+  document.getElementById('term-count').textContent = String(terminals.size);
+  if (terminals.size === 0) {
+    list.innerHTML = '<div class="side-empty">No terminals running</div>';
+    return;
+  }
+  terminals.forEach(function (res) {
+    const openPane = findVisibleTerminalPane(res.id);
+    const row = el('div', 'side-row' + (openPane ? ' active' : ''));
+    row.dataset.term = res.id;
+    row.title = 'PTY ' + res.id + ' — running' + (openPane ? ' (view open)' : ' (no view)');
+    row.innerHTML =
+      '<span class="live-dot run"></span>' +
+      '<span class="row-icon">' + ICONS.terminal + '</span>' +
+      '<span class="row-label row-mono">' + res.id + '</span>' +
+      '<span class="row-badge">' + escapeHtml(res.ctx) + '</span>';
+    row.addEventListener('click', function () { openTerminalView(res.id); });
+    list.appendChild(row);
+  });
+}
+
+function renderAll() {
+  syncAfterMutation();
+  renderWorkspace();
+  renderThreads();
+  renderTerminals();
+  updateAddressBar();
+}
+
+/* ============================================================
+   Pointer-based drag & drop
+============================================================ */
+const ghost = document.getElementById('drag-ghost');
+const dropOverlay = document.getElementById('drop-overlay');
+const dropFrame = document.getElementById('drop-frame');
+
+let drag = null; // { payload, label, icon, startX, startY, started, curGroupId, curZone }
+
+function beginPotentialDrag(e, payload, label, icon, clickFn, opts) {
+  if (e.button !== 0) return;
+  opts = opts || {};
+  drag = { payload: payload, label: label, icon: icon, clickFn: clickFn || null,
+           key: opts.key || null, dbl: opts.dbl || null,
+           startX: e.clientX, startY: e.clientY, started: false, curGroupId: null, curZone: null };
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragUp);
+  window.addEventListener('pointercancel', onDragCancel);
+}
+
+function onDragMove(e) {
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 5) return;
+    drag.started = true;
+    document.body.classList.add('dragging');
+    ghost.innerHTML = drag.icon + '<span>' + escapeHtml(drag.label) + '</span>';
+    ghost.style.display = 'flex';
+  }
+  ghost.style.left = e.clientX + 'px';
+  ghost.style.top = e.clientY + 'px';
+
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const groupEl = under ? under.closest('#ws-root .group') : null;
+  if (!groupEl) {
+    drag.curGroupId = null; drag.curZone = null;
+    dropOverlay.style.display = 'none';
+    dropFrame.style.display = 'none';
+    return;
+  }
+  const rect = groupEl.getBoundingClientRect();
+  const rx = (e.clientX - rect.left) / rect.width;
+  const ry = (e.clientY - rect.top) / rect.height;
+  let zone = 'center';
+  if (!(under && under.closest('.tabstrip'))) {
+    // pick the nearest edge if within the 25% band; ties go to the closer axis
+    const bands = [
+      { z: 'left', d: rx }, { z: 'right', d: 1 - rx },
+      { z: 'top', d: ry }, { z: 'bottom', d: 1 - ry }
+    ].filter(function (b) { return b.d < 0.25; });
+    if (bands.length) {
+      bands.sort(function (a, b) { return a.d - b.d; });
+      zone = bands[0].z;
+    }
+  }
+  drag.curGroupId = groupEl.dataset.group;
+  drag.curZone = zone;
+
+  // frame around the hovered group
+  dropFrame.style.display = 'block';
+  dropFrame.style.left = (rect.left - 2) + 'px';
+  dropFrame.style.top = (rect.top - 2) + 'px';
+  dropFrame.style.width = (rect.width + 4) + 'px';
+  dropFrame.style.height = (rect.height + 4) + 'px';
+
+  // highlight the active zone
+  let ox = rect.left, oy = rect.top, ow = rect.width, oh = rect.height;
+  if (zone === 'left') ow = rect.width / 2;
+  if (zone === 'right') { ox = rect.left + rect.width / 2; ow = rect.width / 2; }
+  if (zone === 'top') oh = rect.height / 2;
+  if (zone === 'bottom') { oy = rect.top + rect.height / 2; oh = rect.height / 2; }
+  if (zone === 'center') { ox += 8; oy += 8; ow -= 16; oh -= 16; }
+  dropOverlay.style.display = 'block';
+  dropOverlay.style.left = ox + 'px';
+  dropOverlay.style.top = oy + 'px';
+  dropOverlay.style.width = ow + 'px';
+  dropOverlay.style.height = oh + 'px';
+}
+
+function onDragUp() {
+  const d = drag;
+  endDragChrome();
+  if (!d) return;
+  if (!d.started) {
+    if (d.key && d.dbl) clickOrDbl(d.key, d.clickFn || function () {}, d.dbl);
+    else if (d.clickFn) d.clickFn();
+    return;
+  }
+  if (d.curGroupId && d.curZone) performDrop(d.payload, d.curGroupId, d.curZone);
+}
+
+function onDragCancel() { endDragChrome(); }
+
+function endDragChrome() {
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragUp);
+  window.removeEventListener('pointercancel', onDragCancel);
+  document.body.classList.remove('dragging');
+  ghost.style.display = 'none';
+  dropOverlay.style.display = 'none';
+  dropFrame.style.display = 'none';
+  drag = null;
+}
+
+/* ============================================================
+   Splitter resize
+============================================================ */
+function beginSplitterDrag(e, spEl) {
+  const splitId = spEl.dataset.split;
+  const idx = parseInt(spEl.dataset.index, 10); // splitter sits before child[idx]
+  const node = findNodeById(root, splitId);
+  if (!node) return;
+  const container = spEl.parentElement;
+  const horizontal = node.dir === 'row';
+  const total = horizontal ? container.getBoundingClientRect().width : container.getBoundingClientRect().height;
+  const a = idx - 1, b = idx;
+  const startA = node.sizes[a], startB = node.sizes[b];
+  const startPos = horizontal ? e.clientX : e.clientY;
+  const cells = Array.prototype.filter.call(container.children, function (c) { return c.classList.contains('split-cell'); });
+  spEl.classList.add('active');
+  document.body.classList.add('dragging');
+
+  function move(ev) {
+    const delta = ((horizontal ? ev.clientX : ev.clientY) - startPos) / total;
+    let na = startA + delta, nb = startB - delta;
+    const min = 0.08;
+    if (na < min) { nb += na - min; na = min; }
+    if (nb < min) { na += nb - min; nb = min; }
+    node.sizes[a] = na; node.sizes[b] = nb;
+    cells[a].style.flexGrow = String(na * 100);
+    cells[b].style.flexGrow = String(nb * 100);
+  }
+  function up() {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    spEl.classList.remove('active');
+    document.body.classList.remove('dragging');
+  }
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  e.preventDefault();
+}
+
+/* ============================================================
+   Event wiring (delegation)
+============================================================ */
+const wsRoot = document.getElementById('ws-root');
+
+wsRoot.addEventListener('pointerdown', function (e) {
+  const sp = e.target.closest('.splitter');
+  if (sp) { beginSplitterDrag(e, sp); return; }
+
+  const groupEl = e.target.closest('.group');
+  if (groupEl) setFocusedGroup(groupEl.dataset.group);
+
+  if (e.target.closest('.tab-close')) return; // handled on click
+  if (e.target.closest('.tab-plus')) return;  // handled on click
+  const tab = e.target.closest('.tab');
+  if (tab) {
+    const pid = tab.dataset.pane;
+    const gid = tab.dataset.group;
+    const pane = panes.get(pid);
+    if (!pane) return;
+    e.preventDefault();
+    beginPotentialDrag(e, { type: 'move', paneId: pid }, paneTitle(pane), KINDS[pane.kind].icon,
+      function () { activateTab(gid, pid); },
+      { key: 'tab:' + pid,
+        dbl: function () {                     // double-click tab label: commit the preview
+          const p = panes.get(pid);
+          if (p && p.preview) p.preview = false;
+          activateTab(gid, pid);
+        } });
+    return;
+  }
+  const taskRow = e.target.closest('[data-task]');
+  if (taskRow) {
+    const key = taskRow.dataset.task;
+    const paneId = taskRow.dataset.pane;
+    e.preventDefault();
+    beginPotentialDrag(e, { type: 'task', key: key, srcPaneId: paneId }, key, KINDS.tasks.icon,
+      function () {                            // single-click: navigate this instance in place
+        const pane = panes.get(paneId);
+        if (pane) {
+          pane.state.route = 'task/' + key;
+          const g = groupOf(pane.id);
+          if (g) focusedGroupId = g.id;
+          renderAll();
+        }
+      });
+  }
+});
+
+wsRoot.addEventListener('click', function (e) {
+  const closeBtn = e.target.closest('.tab-close');
+  if (closeBtn) { e.stopPropagation(); closePane(closeBtn.dataset.close); return; }
+
+  const plusBtn = e.target.closest('.tab-plus');
+  if (plusBtn) {
+    if (plusState && plusState.gid === plusBtn.dataset.plus) closePlusPopover();
+    else openPlusPopover(plusBtn.dataset.plus, plusBtn);
+    return;
+  }
+
+  const diffBtn = e.target.closest('[data-open-diff]');
+  if (diffBtn) { openThreadDiff(diffBtn.dataset.openDiff); return; }
+  const termBtn = e.target.closest('[data-open-term]');
+  if (termBtn) { openThreadTerminal(termBtn.dataset.openTerm); return; }
+  const backBtn = e.target.closest('[data-back]');
+  if (backBtn) {
+    const pane = panes.get(backBtn.dataset.pane);
+    if (pane) {
+      pane.state.route = 'board';
+      const g = groupOf(pane.id);
+      if (g) focusedGroupId = g.id;
+      renderAll();
+    }
+    return;
+  }
+  const toggle = e.target.closest('.s-toggle');
+  if (toggle) toggle.classList.toggle('on');
+});
+
+/* ============================================================
+   Task row context menu (right-click destinations)
+============================================================ */
+const ctxMenu = document.getElementById('ctx-menu');
+let ctxState = null; // { key, paneId }
+
+const SPLIT_RIGHT_ICON = svg('<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M9 3v10"/><path d="m5 6.5 2 1.5-2 1.5"/>');
+function openTaskCtxMenu(x, y, key, paneId) {
+  ctxState = { key: key, paneId: paneId };
+  ctxMenu.innerHTML =
+    '<div class="ctx-title">' + escapeHtml(key) + '</div>' +
+    '<div class="pop-item" data-ctx-action="tab"><span class="row-icon">' + ICONS.tasks + '</span><span>Open in new tab</span></div>' +
+    '<div class="pop-item" data-ctx-action="split"><span class="row-icon">' + SPLIT_RIGHT_ICON + '</span><span>Open in split right</span></div>';
+  ctxMenu.style.display = 'block';
+  ctxMenu.style.left = Math.min(x, window.innerWidth - 196) + 'px';
+  ctxMenu.style.top = Math.min(y, window.innerHeight - 90) + 'px';
+}
+function closeCtxMenu() {
+  ctxMenu.style.display = 'none';
+  ctxState = null;
+}
+wsRoot.addEventListener('contextmenu', function (e) {
+  const row = e.target.closest('[data-task]');
+  if (!row) return;
+  e.preventDefault();
+  openTaskCtxMenu(e.clientX, e.clientY, row.dataset.task, row.dataset.pane);
+});
+ctxMenu.addEventListener('click', function (e) {
+  const item = e.target.closest('[data-ctx-action]');
+  if (!item || !ctxState) return;
+  const action = item.dataset.ctxAction;
+  const st = ctxState;
+  closeCtxMenu();
+  if (action === 'tab') openTaskInNewTab(st.key, st.paneId);
+  else if (action === 'split') openTaskInSplitRight(st.key, st.paneId);
+});
+document.addEventListener('pointerdown', function (e) {
+  if (ctxState && !e.target.closest('#ctx-menu')) closeCtxMenu();
+});
+
+/* surface toggle */
+document.getElementById('surf-desktop').addEventListener('click', function () {
+  surface = 'desktop';
+  document.getElementById('surf-desktop').classList.add('on');
+  document.getElementById('surf-web').classList.remove('on');
+  renderAll();
+});
+document.getElementById('surf-web').addEventListener('click', function () {
+  surface = 'web';
+  document.getElementById('surf-web').classList.add('on');
+  document.getElementById('surf-desktop').classList.remove('on');
+  renderAll();
+});
+
+document.getElementById('thread-search').addEventListener('input', function (e) {
+  threadFilter = e.target.value;
+  renderThreads();
+});
+
+/* ============================================================
+   "+" popover picker (per tab strip)
+============================================================ */
+const plusPop = document.getElementById('plus-popover');
+let plusState = null; // { gid }
+
+function openPlusPopover(gid, btn) {
+  plusState = { gid: gid };
+  plusPop.innerHTML = CATALOG.map(function (kind) {
+    const k = KINDS[kind];
+    const note = k.noPreview ? 'always committed' : (k.singleton ? 'singleton' : (k.plugin ? 'plugin' : ''));
+    return '<div class="pop-item" data-pop-view="' + kind + '">' +
+      '<span class="row-icon">' + k.icon + '</span><span>' + k.label + '</span>' +
+      (note ? '<span class="pop-note">' + note + '</span>' : '') +
+      '</div>';
+  }).join('') + '<div class="pop-hint">Click = preview · double-click = keep</div>';
+  const r = btn.getBoundingClientRect();
+  plusPop.style.display = 'block';
+  plusPop.style.left = Math.max(8, Math.min(r.right - 200, window.innerWidth - 208)) + 'px';
+  plusPop.style.top = (r.bottom + 4) + 'px';
+}
+function closePlusPopover() {
+  plusPop.style.display = 'none';
+  plusState = null;
+}
+plusPop.addEventListener('click', function (e) {
+  const item = e.target.closest('[data-pop-view]');
+  if (!item || !plusState) return;
+  const kind = item.dataset.popView;
+  const gid = plusState.gid;
+  if (KINDS[kind].noPreview) { openView(kind, { commit: true, targetGid: gid }); closePlusPopover(); return; }
+  clickOrDbl('pop:' + kind + ':' + gid,
+    function () { openView(kind, { targetGid: gid }); },                          // preview; keep popover for dbl
+    function () { openView(kind, { commit: true, targetGid: gid }); closePlusPopover(); });
+});
+document.addEventListener('pointerdown', function (e) {
+  if (plusState && !e.target.closest('#plus-popover') && !e.target.closest('.tab-plus')) closePlusPopover();
+});
+
+/* ============================================================
+   Quick switcher (⌘K Panes)
+============================================================ */
+const qkBackdrop = document.getElementById('qk-backdrop');
+const qkInput = document.getElementById('qk-input');
+const qkList = document.getElementById('qk-list');
+let qkIsOpen = false;
+let qkPendingNew = null; // { kind, timer }
+
+function openQk() {
+  qkIsOpen = true;
+  qkBackdrop.classList.add('open');
+  qkInput.value = '';
+  renderQk('');
+  setTimeout(function () { qkInput.focus(); }, 0);
+}
+function closeQk() {
+  qkIsOpen = false;
+  qkBackdrop.classList.remove('open');
+  if (qkPendingNew) { clearTimeout(qkPendingNew.timer); qkPendingNew = null; }
+}
+function renderQk(filter) {
+  const f = filter.trim().toLowerCase();
+  const live = [];
+  walkGroups(root, function (g) {
+    g.tabs.forEach(function (pid) { const p = panes.get(pid); if (p) live.push(p); });
+  });
+  const liveRows = live.filter(function (p) {
+    const hay = (paneTitle(p) + ' ' + p.kind + ' ' + (p.ctx || '') + ' ' + routeFor(p)).toLowerCase();
+    return !f || hay.includes(f);
+  }).map(function (p) {
+    return '<div class="qk-item' + (p.preview ? ' preview' : '') + '" data-qk-pane="' + p.id + '">' +
+      '<span class="row-icon">' + KINDS[p.kind].icon + '</span>' +
+      '<span class="qk-title">' + escapeHtml(paneTitle(p)) + '</span>' +
+      (p.ctx && p.kind !== 'thread' ? '<span class="row-badge">' + escapeHtml(p.ctx) + '</span>' : '') +
+      '<span class="qk-route">' + escapeHtml(routeFor(p)) + '</span>' +
+      '</div>';
+  }).join('');
+  const newRows = CATALOG.filter(function (kind) {
+    return !f || KINDS[kind].label.toLowerCase().includes(f) || kind.includes(f);
+  }).map(function (kind) {
+    const k = KINDS[kind];
+    const note = k.noPreview ? 'always committed' : (k.singleton ? 'singleton' : (k.plugin ? 'plugin' : ''));
+    return '<div class="qk-item" data-qk-new="' + kind + '">' +
+      '<span class="row-icon">' + k.icon + '</span>' +
+      '<span class="qk-title">' + k.label + '</span>' +
+      (note ? '<span class="qk-route">' + note + '</span>' : '') +
+      '</div>';
+  }).join('');
+  qkList.innerHTML =
+    '<div class="qk-section-title">Live panes</div>' +
+    (liveRows || '<div class="qk-empty">No matching panes</div>') +
+    '<div class="qk-section-title">Open new</div>' +
+    (newRows || '<div class="qk-empty">No matching views</div>');
+}
+qkInput.addEventListener('input', function () { renderQk(qkInput.value); });
+qkList.addEventListener('click', function (e) {
+  const liveItem = e.target.closest('[data-qk-pane]');
+  if (liveItem) { revealPane(liveItem.dataset.qkPane); closeQk(); return; }
+  const newItem = e.target.closest('[data-qk-new]');
+  if (newItem) {
+    const kind = newItem.dataset.qkNew;
+    if (KINDS[kind].noPreview) { openView(kind, { commit: true }); closeQk(); return; }
+    if (qkPendingNew && qkPendingNew.kind === kind) {
+      clearTimeout(qkPendingNew.timer);          // double-click: committed
+      qkPendingNew = null;
+      openView(kind, { commit: true });
+      closeQk();
+    } else {
+      if (qkPendingNew) clearTimeout(qkPendingNew.timer);
+      qkPendingNew = { kind: kind, timer: setTimeout(function () {
+        qkPendingNew = null;                     // single-click: preview
+        openView(kind, {});
+        closeQk();
+      }, 280) };
+    }
+  }
+});
+qkBackdrop.addEventListener('click', function (e) { if (e.target === qkBackdrop) closeQk(); });
+document.getElementById('qk-btn').addEventListener('click', function () { qkIsOpen ? closeQk() : openQk(); });
+document.addEventListener('keydown', function (e) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); qkIsOpen ? closeQk() : openQk(); return; }
+  if (e.key === 'Escape') { if (qkIsOpen) closeQk(); if (plusState) closePlusPopover(); if (ctxState) closeCtxMenu(); }
+});
+
+/* help */
+document.getElementById('help-btn').addEventListener('click', function () {
+  document.getElementById('help-overlay').classList.toggle('open');
+});
+
+/* ============================================================
+   Initial state
+============================================================ */
+(function init() {
+  const thr = THREADS[0];
+  const threadPane = createPane('thread', { title: thr.title, ctx: thr.id, short: thr.id });
+  threadPane.threadId = thr.id;
+
+  createTerminal('env_dev');   // t1: exists server-side, not open in any pane — registry demo
+  const tasksPane = createPane('tasks', {});
+
+  const threadGroup = G([threadPane.id]);
+  const tasksGroup = G([tasksPane.id]);
+  root = S('row', [threadGroup, tasksGroup], [0.56, 0.44]);
+
+  focusedGroupId = threadGroup.id;
+  renderAll();
+})();
+</script>
+</body>
+</html>

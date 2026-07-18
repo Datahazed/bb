@@ -63,7 +63,10 @@ import {
   getThreadRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
+  PROJECTLESS_THREAD_DIFF_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  TERMINAL_ROUTE_PATH,
+  THREAD_DIFF_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -78,8 +81,11 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { findPaneByThread } from "@/lib/split-layout";
-import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import { findContentTab } from "@/lib/split-layout";
+import {
+  applyThreadOpenToLayout,
+  threadPaneContent,
+} from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 
@@ -443,19 +449,24 @@ export function AppLayout({ children }: AppLayoutProps) {
           return;
         }
         const current = store.get(splitLayoutAtom);
+        const thread = {
+          projectId: signal.projectId,
+          threadId: signal.threadId,
+        };
+        const content = threadPaneContent(thread);
         const alreadyOpen =
-          current !== null &&
-          findPaneByThread(current.root, signal.projectId, signal.threadId) !==
-            null;
+          current !== null && findContentTab(current.root, content) !== null;
         const next = applyThreadOpenToLayout(
           current,
-          { projectId: signal.projectId, threadId: signal.threadId },
+          thread,
           isCompactViewport ? "replace" : signal.split,
         );
         if (next !== current) {
           store.set(splitLayoutAtom, next);
         }
-        void navigate(route, alreadyOpen ? { replace: true } : undefined);
+        if (findContentTab(next.root, content) !== null) {
+          void navigate(route, alreadyOpen ? { replace: true } : undefined);
+        }
       }),
     [isCompactViewport, navigate, store, threadSplitsEnabled],
   );
@@ -554,7 +565,17 @@ export function AppLayout({ children }: AppLayoutProps) {
   const showHeader =
     !isThreadView &&
     !isRootView &&
-    !(threadSplitsEnabled && pluginPanelMatch !== null);
+    // Splittable workspace routes render inside SplitThreadArea, where each
+    // pane's tab strip is the top chrome; the shared AppHeader would sit
+    // above it as an empty 48px band.
+    !(
+      threadSplitsEnabled &&
+      (pluginPanelMatch !== null ||
+        matchPath(TERMINAL_ROUTE_PATH, location.pathname) !== null ||
+        matchPath(PROJECTLESS_THREAD_DIFF_ROUTE_PATH, location.pathname) !==
+          null ||
+        matchPath(THREAD_DIFF_ROUTE_PATH, location.pathname) !== null)
+    );
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);

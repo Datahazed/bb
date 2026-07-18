@@ -18,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  activePaneContent,
+  findPane,
   movePane,
   serializeSplitLayout,
   SPLIT_LAYOUT_STORAGE_KEY,
@@ -205,6 +207,16 @@ function threadContent(threadId: string) {
   };
 }
 
+function pane(paneId: string, content: PaneContent) {
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane" as const,
+    paneId,
+    tabs: [{ tabId, content, preview: false }],
+    activeTabId: tabId,
+  };
+}
+
 function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   return {
     root: {
@@ -212,8 +224,8 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
       dir: "row",
       sizes: [0.5, 0.5],
       children: [
-        { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
-        { type: "pane", paneId: "pane-2", content: threadContent("thr-b") },
+        pane("pane-1", threadContent("thr-a")),
+        pane("pane-2", threadContent("thr-b")),
       ],
     },
     focusedPaneId,
@@ -266,16 +278,8 @@ function fourPanePluginLayout(): SplitLayout {
           dir: "col",
           sizes: [0.5, 0.5],
           children: [
-            {
-              type: "pane",
-              paneId: "pane-top-left",
-              content: pluginContent("top-left"),
-            },
-            {
-              type: "pane",
-              paneId: "pane-bottom-left",
-              content: pluginContent("bottom-left"),
-            },
+            pane("pane-top-left", pluginContent("top-left")),
+            pane("pane-bottom-left", pluginContent("bottom-left")),
           ],
         },
         {
@@ -283,16 +287,8 @@ function fourPanePluginLayout(): SplitLayout {
           dir: "col",
           sizes: [0.5, 0.5],
           children: [
-            {
-              type: "pane",
-              paneId: "pane-top-right",
-              content: pluginContent("top-right"),
-            },
-            {
-              type: "pane",
-              paneId: "pane-bottom-right",
-              content: pluginContent("bottom-right"),
-            },
+            pane("pane-top-right", pluginContent("top-right")),
+            pane("pane-bottom-right", pluginContent("bottom-right")),
           ],
         },
       ],
@@ -308,8 +304,8 @@ function pluginSplitLayout(): SplitLayout {
       dir: "row",
       sizes: [0.5, 0.5],
       children: [
-        { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
-        { type: "pane", paneId: "pane-2", content: docsContent },
+        pane("pane-1", threadContent("thr-a")),
+        pane("pane-2", docsContent),
       ],
     },
     focusedPaneId: "pane-2",
@@ -594,12 +590,12 @@ describe("SplitThreadArea", () => {
           {
             type: "pane",
             paneId: "pane-1",
-            content: { kind: "thread", threadId: "thr-b" },
+            tabs: [{ content: { kind: "thread", threadId: "thr-b" } }],
           },
           {
             type: "pane",
             paneId: "pane-2",
-            content: { kind: "thread", threadId: "thr-a" },
+            tabs: [{ content: { kind: "thread", threadId: "thr-a" } }],
           },
         ],
       });
@@ -915,35 +911,29 @@ describe("SplitThreadArea", () => {
     ).toBe("");
   });
 
-  it("replaces the focused pane's content on external navigation without dismantling the layout", async () => {
-    renderSplitArea({
+  it("adds a focused preview tab on external navigation without dismantling committed tabs", async () => {
+    const store = renderSplitArea({
       path: threadPath("thr-b"),
       layout: twoPaneLayout("pane-2"),
       externalTo: threadPath("thr-c"),
     });
     await screen.findByTestId("pane-thr-b");
 
-    expect(
-      screen
-        .getAllByTestId(/^pane-thr-/)
-        .filter(
-          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
-        ),
-    ).toEqual([screen.getByTestId("pane-thr-a")]);
-
     fireEvent.click(screen.getByTestId("external-nav"));
 
-    // Focused pane (thr-b) now shows thr-c; the unfocused pane (thr-a) survives.
     expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
+    const focused = findPane(store.get(splitLayoutAtom)!.root, "pane-2")!;
+    expect(focused.tabs).toHaveLength(2);
+    expect(focused.tabs[0]).toMatchObject({
+      content: threadContent("thr-b"),
+      preview: false,
+    });
+    expect(activePaneContent(focused)).toEqual(threadContent("thr-c"));
     expect(
-      screen
-        .getAllByTestId(/^pane-thr-/)
-        .filter(
-          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
-        ),
-    ).toEqual([screen.getByTestId("pane-thr-a")]);
+      focused.tabs.find((tab) => tab.tabId === focused.activeTabId)?.preview,
+    ).toBe(true);
   });
 
   it("focuses an already-open pane instead of duplicating on external navigation", async () => {
@@ -1050,14 +1040,16 @@ describe("SplitThreadArea", () => {
       routeContent: docsContent,
     });
 
-    const title = await screen.findByText("Docs");
-    const dragHandle = title.parentElement?.parentElement;
+    const title = (await screen.findAllByText("Docs")).find(
+      (element) => element.tagName === "P",
+    );
+    const dragHandle = title?.parentElement?.parentElement;
     expect(dragHandle?.className).toContain("cursor-grab");
     expect(dragHandle?.className).toContain("[app-region:no-drag]");
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });
 
-  it("makes only top-row split headers desktop window-drag regions", async () => {
+  it("makes only top-row pane tab strips desktop window-drag regions", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
       latestVersion: null,
@@ -1095,18 +1087,22 @@ describe("SplitThreadArea", () => {
     });
 
     for (const path of ["top-left", "top-right"]) {
-      const header = (await screen.findByText(path)).closest("header");
-      expect(header?.className).toContain("[app-region:drag]");
-      expect(header?.className).toContain("[-webkit-app-region:drag]");
+      const tabStrip = (await screen.findByRole("tab", { name: path })).closest(
+        '[role="tablist"]',
+      );
+      expect(tabStrip?.className).toContain("[app-region:drag]");
+      expect(tabStrip?.className).toContain("[-webkit-app-region:drag]");
     }
     for (const path of ["bottom-left", "bottom-right"]) {
-      const header = (await screen.findByText(path)).closest("header");
-      expect(header?.className).not.toContain("[app-region:drag]");
-      expect(header?.className).not.toContain("[-webkit-app-region:drag]");
+      const tabStrip = (await screen.findByRole("tab", { name: path })).closest(
+        '[role="tablist"]',
+      );
+      expect(tabStrip?.className).not.toContain("[app-region:drag]");
+      expect(tabStrip?.className).not.toContain("[-webkit-app-region:drag]");
     }
   });
 
-  it("reserves collapsed window-left chrome only for the structural top-left pane", async () => {
+  it("reserves collapsed window-left chrome only on the structural top-left strip", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
       latestVersion: null,
@@ -1143,39 +1139,43 @@ describe("SplitThreadArea", () => {
       layout: fourPanePluginLayout(),
       routeContent: pluginContent("bottom-right"),
     });
+    await screen.findByText("bottom-right panel");
 
-    const contentRow = async (path: string) =>
-      (await screen.findByText(path))
-        .closest("header")
-        ?.querySelector('[data-testid="app-page-header-content-row"]');
-    expect((await contentRow("top-left"))?.className).toContain("pl-[104px]");
-    for (const path of ["top-right", "bottom-left", "bottom-right"]) {
-      expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
+    // The strip is the titlebar row now, so the traffic-light/sidebar reserve
+    // lives on the top-left pane's strip; in-pane headers below never reserve.
+    const stripFor = (paneId: string) =>
+      document.querySelector(
+        `[data-split-pane-id="${paneId}"] [role="tablist"]`,
+      );
+    expect(stripFor("pane-top-left")?.className).toContain("pl-[104px]");
+    for (const paneId of [
+      "pane-top-right",
+      "pane-bottom-left",
+      "pane-bottom-right",
+    ]) {
+      expect(stripFor(paneId)?.className).not.toContain("pl-[104px]");
     }
+    expect(
+      document.querySelector(
+        '[data-testid="app-page-header-content-row"].pl-\\[104px\\]',
+      ),
+    ).toBeNull();
 
     fireEvent.click(
       screen.getAllByRole("button", { name: /Maximize pane/ })[3]!,
     );
     await waitFor(() =>
-      expect(contentRow("bottom-right")).resolves.toHaveProperty(
-        "className",
-        expect.stringContaining("pl-[104px]"),
-      ),
+      expect(stripFor("pane-bottom-right")?.className).toContain("pl-[104px]"),
     );
-    expect((await contentRow("top-left"))?.className).not.toContain(
-      "pl-[104px]",
-    );
+    expect(stripFor("pane-top-left")?.className).not.toContain("pl-[104px]");
 
     fireEvent.click(screen.getByRole("button", { name: /Restore pane/ }));
     await waitFor(() =>
-      expect(contentRow("top-left")).resolves.toHaveProperty(
-        "className",
-        expect.stringContaining("pl-[104px]"),
-      ),
+      expect(stripFor("pane-top-left")?.className).toContain("pl-[104px]"),
     );
   });
 
-  it("assigns exactly one top-left owner through eight-pane structural changes", async () => {
+  it("assigns exactly one top-left strip owner through eight-pane structural changes", async () => {
     for (const threadId of [
       "thr-c",
       "thr-d",
@@ -1194,26 +1194,28 @@ describe("SplitThreadArea", () => {
     await screen.findByTestId("pane-thr-h");
 
     const owners = () =>
-      screen
-        .getAllByTestId(/^pane-thr-/)
-        .filter(
-          (pane) => pane.getAttribute("data-window-top-left-owner") === "true",
-        );
-    expect(owners()).toHaveLength(1);
-    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-a");
+      Array.from(
+        document.querySelectorAll(
+          '[role="tablist"][data-window-top-left-owner="true"]',
+        ),
+      ).map((strip) =>
+        strip
+          .closest("[data-split-pane-id]")
+          ?.querySelector('[data-testid^="pane-thr-"]')
+          ?.getAttribute("data-testid"),
+      );
+    expect(owners()).toEqual(["pane-thr-a"]);
 
     const moved = movePane(initialLayout, "pane-8", "pane-1", "left");
     store.set(splitLayoutAtom, moved);
-    await waitFor(() => expect(owners()).toHaveLength(1));
-    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-h");
+    await waitFor(() => expect(owners()).toEqual(["pane-thr-h"]));
 
     fireEvent.click(screen.getByTestId("close-thr-h"));
     await waitFor(() => expect(screen.queryByTestId("pane-thr-h")).toBeNull());
-    expect(owners()).toHaveLength(1);
-    expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-a");
+    expect(owners()).toEqual(["pane-thr-a"]);
   });
 
-  it("places plugin header actions before the pane close button", async () => {
+  it("keeps plugin header actions while omitting the bounded pane close button", async () => {
     setPluginSlotRegistrations("docs", {
       homepageSections: [],
       settingsSections: [],
@@ -1243,13 +1245,21 @@ describe("SplitThreadArea", () => {
       routeContent: docsContent,
     });
 
-    const toggle = await screen.findByRole("button", {
-      name: "Toggle docs sidebar",
-    });
-    const close = screen.getByRole("button", { name: "Close pane" });
     expect(
-      toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+      await screen.findByRole("button", {
+        name: "Toggle docs sidebar",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "Close pane",
+      }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Close Docs",
+      }),
+    ).toBeTruthy();
   });
 
   it("falls back to a single pane from the route when persisted state is malformed", async () => {

@@ -464,12 +464,15 @@ function ThreadRowComponent({
     { kind: "thread", projectId, threadId: thread.id },
     threadSplitsEnabled,
   );
-  const { onPointerDown: onSplitDragPointerDown, openInSplit } =
-    useThreadRowSplitDrag({
-      projectId,
-      threadId: thread.id,
-      title: labelTitle,
-    });
+  const {
+    onPointerDown: onSplitDragPointerDown,
+    openInSplit,
+    commitThreadTab,
+  } = useThreadRowSplitDrag({
+    projectId,
+    threadId: thread.id,
+    title: labelTitle,
+  });
   // Splits are disabled on compact viewports; the drag hook signals that by
   // withholding its pointer handler, so gate the click/menu entry points on it.
   const splitAvailable = onSplitDragPointerDown !== undefined;
@@ -571,6 +574,7 @@ function ThreadRowComponent({
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
+        onDoubleClick={commitThreadTab}
         onClick={(event) => {
           // Selecting a thread/agent row restores its conversation without
           // disturbing any other thread's collapsed conversation state.

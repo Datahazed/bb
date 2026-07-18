@@ -29,6 +29,12 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
 }));
 
+// The tab strip reads the sidebar state for its window-left chrome reserve;
+// this harness renders no SidebarProvider.
+vi.mock("@/components/ui/sidebar.js", () => ({
+  useIsSidebarShowing: () => true,
+}));
+
 const ARCHIVED_AT = 1_700_000_000_000;
 
 interface SeedThread {
@@ -134,15 +140,21 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
     projectId: PERSONAL_PROJECT_ID,
     threadId,
   });
+  const pane = (paneId: string, threadId: string) => {
+    const tabId = `${paneId}-t1`;
+    return {
+      type: "pane" as const,
+      paneId,
+      tabs: [{ tabId, content: content(threadId), preview: false }],
+      activeTabId: tabId,
+    };
+  };
   return {
     root: {
       type: "split",
       dir: "row",
       sizes: [0.5, 0.5],
-      children: [
-        { type: "pane", paneId: "pane-1", content: content("thr-a") },
-        { type: "pane", paneId: "pane-2", content: content("thr-b") },
-      ],
+      children: [pane("pane-1", "thr-a"), pane("pane-2", "thr-b")],
     },
     focusedPaneId,
   };

@@ -27,6 +27,8 @@ import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useThreadPaneEntryPoints } from "./useThreadPaneEntryPoints";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -47,7 +49,9 @@ interface ThreadDetailHeaderProps {
   onToggleSecondaryPanel: () => void;
   /** Plugin-contributed thread action buttons (design §4.9); optional. */
   pluginActions?: ReactNode;
+  projectId: string;
   threadHeaderGitActions: ThreadHeaderGitAction[];
+  threadId: string;
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }
@@ -60,12 +64,15 @@ export function ThreadDetailHeader({
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
+  projectId,
   threadHeaderGitActions,
+  threadId,
   threadTitle,
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
+  const threadSplitsEnabled = useThreadSplitsEnabled();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -177,6 +184,12 @@ export function ThreadDetailHeader({
           {primaryAction.label}
         </Button>
       ) : null}
+      {threadSplitsEnabled && !renderAsDrawer ? (
+        <ThreadPaneEntryPointButtons
+          projectId={projectId}
+          threadId={threadId}
+        />
+      ) : null}
       {showRightPanelToggle ? (
         <span className="inline-flex items-center gap-1.5">
           <AppCommandShortcutHint shortcut={panelShortcut} />
@@ -236,5 +249,44 @@ export function ThreadDetailHeader({
         beginPaneDrag && isFocused && "bg-surface-raised",
       )}
     />
+  );
+}
+
+function ThreadPaneEntryPointButtons({
+  projectId,
+  threadId,
+}: {
+  projectId: string;
+  threadId: string;
+}) {
+  const { openDiff, openTerminal, isBusy } = useThreadPaneEntryPoints({
+    projectId,
+    threadId,
+  });
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={HEADER_ICON_BUTTON_CLASS}
+        aria-label="Open diff pane"
+        onClick={openDiff}
+      >
+        <Icon name="FileDiff" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={HEADER_ICON_BUTTON_CLASS}
+        aria-label="Open terminal pane"
+        disabled={isBusy}
+        onClick={openTerminal}
+      >
+        <Icon name="Terminal" />
+      </Button>
+    </>
   );
 }

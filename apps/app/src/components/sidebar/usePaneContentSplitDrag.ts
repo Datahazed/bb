@@ -2,18 +2,15 @@ import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  getPluginPanelRoutePath,
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  activateTab,
+  commitTab,
   countPanes,
-  findPaneByContent,
+  findContentTab,
   listPanes,
   MAX_PANES,
-  replacePaneContent,
+  openTab,
   setFocus,
   splitPane,
   type PaneContent,
@@ -25,19 +22,10 @@ import {
   shouldEngageSidebarSplitDrag,
   type SplitDragFallbackTarget,
 } from "@/lib/split-drag";
+import { paneContentRoute } from "@/views/thread-detail/splitThreadNavigation";
 
 const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
 const MAIN_CONTENT_SELECTOR = "main";
-
-function routeForContent(content: PaneContent): string {
-  if (content.kind === "thread") return getThreadRoutePath(content);
-  if (content.kind === "new-thread") return getRootComposeRoutePath();
-  return getPluginPanelRoutePath({
-    pluginId: content.pluginId,
-    path: content.panelPath,
-    subPath: content.subPath,
-  });
-}
 
 /** Prototype drag/cmd-click source for non-thread pages. */
 export function usePaneContentSplitDrag({
@@ -54,21 +42,27 @@ export function usePaneContentSplitDrag({
   const isCompact = useIsCompactViewport();
 
   const openInSplit = useCallback(() => {
-    const route = routeForContent(content);
+    const route = paneContentRoute(content);
     const layout = store.get(splitLayoutAtom);
     if (!enabled || isCompact || layout === null) {
       navigate(route);
       return;
     }
-    const existing = findPaneByContent(layout.root, content);
-    const next =
+    const existing = findContentTab(layout.root, content);
+    let next =
       existing !== null
-        ? setFocus(layout, existing.paneId)
+        ? activateTab(layout, existing.pane.paneId, existing.tab.tabId)
         : countPanes(layout.root) >= MAX_PANES
-          ? replacePaneContent(layout, layout.focusedPaneId, content)
+          ? openTab(layout, layout.focusedPaneId, content)
           : splitPane(layout, layout.focusedPaneId, "right", content);
+    if (existing !== null) {
+      next = commitTab(next, existing.pane.paneId, existing.tab.tabId);
+      next = setFocus(next, existing.pane.paneId);
+    }
     if (next !== layout) store.set(splitLayoutAtom, next);
-    navigate(route, existing !== null ? { replace: true } : undefined);
+    if (findContentTab(next.root, content) !== null) {
+      navigate(route, existing !== null ? { replace: true } : undefined);
+    }
   }, [content, enabled, isCompact, navigate, store]);
 
   const onPointerDown = useCallback(
@@ -100,23 +94,28 @@ export function usePaneContentSplitDrag({
           if (layout === null) return null;
           return decideThreadDrop({
             zone,
-            threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
+            threadAlreadyOpen: findContentTab(layout.root, content) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
           });
         },
         onDrop: (target) => {
           const layout = store.get(splitLayoutAtom);
           if (layout === null) return;
-          const existing = findPaneByContent(layout.root, content);
-          const next =
+          const existing = findContentTab(layout.root, content);
+          let next =
             existing !== null
-              ? setFocus(layout, existing.paneId)
+              ? activateTab(layout, existing.pane.paneId, existing.tab.tabId)
               : target.zone === "center"
-                ? replacePaneContent(layout, target.paneId, content)
+                ? openTab(layout, target.paneId, content)
                 : splitPane(layout, target.paneId, target.zone, content);
+          if (existing !== null) {
+            next = commitTab(next, existing.pane.paneId, existing.tab.tabId);
+            next = setFocus(next, existing.pane.paneId);
+          }
           if (next !== layout) store.set(splitLayoutAtom, next);
+          if (findContentTab(next.root, content) === null) return;
           navigate(
-            routeForContent(content),
+            paneContentRoute(content),
             existing !== null ? { replace: true } : undefined,
           );
         },

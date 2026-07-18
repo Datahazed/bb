@@ -1,8 +1,10 @@
 import { z } from "zod";
-import { MAX_PANES, countPanes, listPanes } from "./ops";
+import { MAX_PANES, MAX_TABS_PER_PANE, countPanes, listPanes } from "./ops";
 import type { LayoutNode, PaneNode, SplitLayout, SplitNode } from "./types";
 
-export const SPLIT_LAYOUT_SCHEMA_VERSION = 1;
+/** v2: leaves are tab groups. v1 (single-content panes) deserializes to null —
+ * a deliberate fresh start, matching the reader's "seed from the route". */
+export const SPLIT_LAYOUT_SCHEMA_VERSION = 2;
 export const SPLIT_LAYOUT_STORAGE_KEY = "bb.splitLayout";
 
 const paneContentSchema = z.discriminatedUnion("kind", [
@@ -22,15 +24,80 @@ const paneContentSchema = z.discriminatedUnion("kind", [
       subPath: z.string(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("terminal"),
+      terminalId: z.string().min(1),
+      target: z.discriminatedUnion("kind", [
+        z
+          .object({ kind: z.literal("thread"), threadId: z.string().min(1) })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("environment"),
+            environmentId: z.string().min(1),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("host_path"),
+            hostId: z.string().min(1),
+            cwd: z.string().min(1),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("diff"),
+      projectId: z.string().min(1),
+      threadId: z.string().min(1),
+    })
+    .strict(),
 ]);
+
+const paneTabSchema = z
+  .object({
+    tabId: z.string().min(1),
+    content: paneContentSchema,
+    preview: z.boolean(),
+  })
+  .strict()
+  .superRefine((tab, context) => {
+    if (tab.preview && tab.content.kind === "terminal") {
+      context.addIssue({
+        code: "custom",
+        message: "Terminal tabs are never previews",
+        path: ["preview"],
+      });
+    }
+  });
 
 const paneNodeSchema: z.ZodType<PaneNode> = z
   .object({
     type: z.literal("pane"),
     paneId: z.string().min(1),
-    content: paneContentSchema,
+    tabs: z.array(paneTabSchema).min(1).max(MAX_TABS_PER_PANE),
+    activeTabId: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((pane, context) => {
+    if (!pane.tabs.some((tab) => tab.tabId === pane.activeTabId)) {
+      context.addIssue({
+        code: "custom",
+        message: "The active tab must exist in the pane",
+        path: ["activeTabId"],
+      });
+    }
+    if (pane.tabs.filter((tab) => tab.preview).length > 1) {
+      context.addIssue({
+        code: "custom",
+        message: "A pane holds at most one preview tab",
+        path: ["tabs"],
+      });
+    }
+  });
 
 const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
   z.union([paneNodeSchema, splitNodeSchema]),
@@ -88,6 +155,14 @@ const splitLayoutSchema: z.ZodType<SplitLayout> = z
       context.addIssue({
         code: "custom",
         message: "Pane IDs must be unique",
+        path: ["root"],
+      });
+    }
+    const tabIds = panes.flatMap((pane) => pane.tabs.map((tab) => tab.tabId));
+    if (new Set(tabIds).size !== tabIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Tab IDs must be unique",
         path: ["root"],
       });
     }

@@ -2352,7 +2352,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       pluginActions={<PluginThreadActions threadId={thread.id} />}
+      projectId={projectId}
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
+      threadId={threadId}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}
     />

@@ -6,7 +6,13 @@ import {
   type SyncStorage,
 } from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
-import { findPane, listPanes, removePane } from "./ops";
+import {
+  activePaneContent,
+  closeTab,
+  findPane,
+  listPanes,
+  listTabs,
+} from "./ops";
 import {
   deserializeSplitLayout,
   serializeSplitLayout,
@@ -88,20 +94,24 @@ export const closePanesForThreadsAtom = atom(
       return { removedAny: false, focusedRoute: null };
     }
     const targets = new Set(threadIds);
+    // A tab belongs to a targeted thread when it IS the thread view or a view
+    // bound to it (its diff). Terminal tabs survive: the PTY resource outlives
+    // the thread view and closing it is a separate decision.
+    const isTargetedTab = (content: ReturnType<typeof activePaneContent>) =>
+      (content.kind === "thread" || content.kind === "diff") &&
+      targets.has(content.threadId);
     let layout = current;
     let removedAny = false;
     for (;;) {
-      const pane = listPanes(layout.root).find(
-        (candidate) =>
-          candidate.content.kind === "thread" &&
-          targets.has(candidate.content.threadId),
+      const location = listTabs(layout.root).find(({ tab }) =>
+        isTargetedTab(tab.content),
       );
-      if (pane === undefined) {
+      if (location === undefined) {
         break;
       }
-      const next = removePane(layout, pane.paneId);
+      const next = closeTab(layout, location.pane.paneId, location.tab.tabId);
       if (next === layout) {
-        // removePane refuses to remove the last pane.
+        // closeTab refuses to remove the last pane's last tab.
         break;
       }
       layout = next;
@@ -118,26 +128,31 @@ export const closePanesForThreadsAtom = atom(
     ) {
       set(maximizedPaneIdAtom, null);
     }
-    // The surviving focused pane may still be a targeted thread (recursive
-    // archive covering every pane). Treat that as "no valid survivor": clear the
-    // layout so a stale pane isn't left behind, and signal the caller to fall
-    // back to navigating the window away.
-    const focused = findPane(layout.root, layout.focusedPaneId);
-    const survivorRoute =
-      focused !== null &&
-      focused.content.kind === "thread" &&
-      !targets.has(focused.content.threadId)
-        ? {
-            projectId: focused.content.projectId,
-            threadId: focused.content.threadId,
-          }
-        : null;
-    if (survivorRoute === null) {
+    // Clear the layout only when NOTHING valid survives (a recursive archive
+    // covering every view). Non-targeted tabs — a spared terminal, another
+    // thread — keep the layout alive even when the focused view is still a
+    // targeted thread; the null route then tells the caller to run its
+    // pre-split navigate-away while the arrangement persists.
+    const hasValidSurvivor = listTabs(layout.root).some(
+      ({ tab }) => !isTargetedTab(tab.content),
+    );
+    if (!hasValidSurvivor) {
       set(splitLayoutAtom, null);
       set(maximizedPaneIdAtom, null);
       return { removedAny: true, focusedRoute: null };
     }
     set(splitLayoutAtom, layout);
+    const focused = findPane(layout.root, layout.focusedPaneId);
+    const focusedContent = focused === null ? null : activePaneContent(focused);
+    const survivorRoute =
+      focusedContent !== null &&
+      focusedContent.kind === "thread" &&
+      !targets.has(focusedContent.threadId)
+        ? {
+            projectId: focusedContent.projectId,
+            threadId: focusedContent.threadId,
+          }
+        : null;
     return { removedAny: true, focusedRoute: survivorRoute };
   },
 );

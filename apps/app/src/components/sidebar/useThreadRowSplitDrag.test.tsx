@@ -3,17 +3,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import type { ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { countPanes, findPaneByThread, listPanes } from "@/lib/split-layout";
+import {
+  activePaneContent,
+  countPanes,
+  findPane,
+  findPaneByThread,
+  listPanes,
+  openTab,
+} from "@/lib/split-layout";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import type { SplitDragConfig } from "@/lib/split-drag";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
-const { navigateSpy, compactState, experimentState } = vi.hoisted(() => ({
-  navigateSpy: vi.fn(),
-  compactState: { value: false },
-  experimentState: { enabled: true },
-}));
+const { navigateSpy, compactState, experimentState, splitDragState } =
+  vi.hoisted(() => ({
+    navigateSpy: vi.fn(),
+    compactState: { value: false },
+    experimentState: { enabled: true },
+    splitDragState: { config: null as SplitDragConfig | null },
+  }));
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -28,12 +38,27 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
 }));
 
+vi.mock("@/lib/split-drag", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/split-drag")>()),
+  beginSplitDrag: vi.fn(
+    (_startX: number, _startY: number, config: SplitDragConfig) => {
+      splitDragState.config = config;
+    },
+  ),
+}));
+
 function content(threadId: string): PaneContent {
   return { kind: "thread", projectId: "p1", threadId };
 }
 
 function pane(paneId: string, threadId: string): LayoutNode {
-  return { type: "pane", paneId, content: content(threadId) };
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane",
+    paneId,
+    tabs: [{ tabId, content: content(threadId), preview: false }],
+    activeTabId: tabId,
+  };
 }
 
 function singlePane(): SplitLayout {
@@ -66,6 +91,14 @@ function eightPanes(): SplitLayout {
   };
 }
 
+function fullSinglePane(): SplitLayout {
+  let layout = singlePane();
+  for (let index = 2; index <= 16; index += 1) {
+    layout = openTab(layout, "pane-1", content(`t${index}`));
+  }
+  return layout;
+}
+
 function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
@@ -80,14 +113,30 @@ function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
     store,
     getOnPointerDown: () => result.current.onPointerDown,
     openInSplit: () => act(() => result.current.openInSplit()),
+    startDrag: () => {
+      const row = document.createElement("div");
+      const pointerEvent = new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+      });
+      Object.defineProperty(pointerEvent, "currentTarget", { value: row });
+      act(() =>
+        result.current.onPointerDown?.(
+          pointerEvent as unknown as ReactPointerEvent<HTMLElement>,
+        ),
+      );
+      return splitDragState.config;
+    },
   };
 }
 
-describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)", () => {
+describe("useThreadRowSplitDrag", () => {
   beforeEach(() => {
     navigateSpy.mockClear();
     compactState.value = false;
     experimentState.enabled = true;
+    splitDragState.config = null;
   });
 
   it("splits the focused pane to the right by default", () => {
@@ -105,26 +154,53 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
   });
 
-  it("focuses the existing pane instead of duplicating an already-open thread", () => {
-    const { store, openInSplit } = renderOpenInSplit("t2", twoPanes());
+  it("reveals an existing inactive tab without growing the layout", () => {
+    let seeded = openTab(twoPanes(), "pane-2", content("t3"));
+    const beforeTabCount = findPane(seeded.root, "pane-2")!.tabs.length;
+    const { store, openInSplit } = renderOpenInSplit("t2", seeded);
     openInSplit();
     const layout = store.get(splitLayoutAtom);
-    expect(countPanes(layout!.root)).toBe(2); // no new pane
+    const paneTwo = findPane(layout!.root, "pane-2")!;
+    expect(countPanes(layout!.root)).toBe(2);
+    expect(paneTwo.tabs).toHaveLength(beforeTabCount);
     expect(layout!.focusedPaneId).toBe("pane-2");
+    expect(activePaneContent(paneTwo)).toEqual(content("t2"));
+    expect(
+      paneTwo.tabs.find((tab) => tab.tabId === paneTwo.activeTabId)?.preview,
+    ).toBe(false);
     expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t2", {
       replace: true,
     });
   });
 
-  it("coerces to a replace of the focused pane at the eight-pane cap", () => {
+  it("coerces to a committed center tab at the eight-pane cap", () => {
     const { store, openInSplit } = renderOpenInSplit("t9", eightPanes());
     openInSplit();
     const layout = store.get(splitLayoutAtom);
-    expect(countPanes(layout!.root)).toBe(8); // never exceeds the cap
+    expect(countPanes(layout!.root)).toBe(8);
     const opened = findPaneByThread(layout!.root, "p1", "t9");
-    expect(opened?.paneId).toBe("pane-1"); // replaced the focused pane
-    expect(findPaneByThread(layout!.root, "p1", "t1")).toBeNull();
+    const focused = findPane(layout!.root, "pane-1")!;
+    expect(opened?.paneId).toBe("pane-1");
+    expect(focused.tabs).toHaveLength(2);
+    expect(activePaneContent(focused)).toEqual(content("t9"));
+    expect(
+      focused.tabs.find((tab) => tab.tabId === focused.activeTabId)?.preview,
+    ).toBe(false);
+    expect(findPaneByThread(layout!.root, "p1", "t1")?.paneId).toBe("pane-1");
     expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
+  });
+
+  it("does not navigate when a center drop cannot open into a full sixteen-tab group", () => {
+    const seeded = fullSinglePane();
+    const { store, startDrag } = renderOpenInSplit("t17", seeded);
+    const config = startDrag();
+    expect(config).not.toBeNull();
+
+    act(() => config?.onDrop({ paneId: "pane-1", zone: "center" }));
+
+    expect(store.get(splitLayoutAtom)).toBe(seeded);
+    expect(findPaneByThread(seeded.root, "p1", "t17")).toBeNull();
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("plain-navigates without touching the layout on compact viewports", () => {

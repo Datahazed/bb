@@ -8,16 +8,34 @@ import {
   MAXIMIZED_PANE_STORAGE_KEY,
   splitLayoutAtom,
 } from "./atoms";
-import { countPanes, findPaneByThread, splitPane } from "./ops";
-import type { SplitLayout } from "./types";
+import {
+  activateTab,
+  countPanes,
+  findContentTab,
+  findPane,
+  findPaneByThread,
+  openTab,
+  splitPane,
+} from "./ops";
+import type { PaneContent, PaneNode, SplitLayout } from "./types";
+
+function pane(paneId: string, content: PaneContent): PaneNode {
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane",
+    paneId,
+    tabs: [{ tabId, content, preview: false }],
+    activeTabId: tabId,
+  };
+}
 
 function singlePane(threadId: string): SplitLayout {
   return {
-    root: {
-      type: "pane",
-      paneId: "pane-1",
-      content: { kind: "thread", projectId: "project-1", threadId },
-    },
+    root: pane("pane-1", {
+      kind: "thread",
+      projectId: "project-1",
+      threadId,
+    }),
     focusedPaneId: "pane-1",
   };
 }
@@ -110,6 +128,100 @@ describe("closePanesForThreadsAtom", () => {
     expect(result.removedAny).toBe(false);
     expect(result.focusedRoute).toBeNull();
     expect(store.get(splitLayoutAtom)).toEqual(layout);
+  });
+
+  it("closes every targeted thread and diff tab while preserving terminals", () => {
+    const store = createStore();
+    let layout = openTab(singlePane("thread-1"), "pane-1", {
+      kind: "diff",
+      projectId: "project-1",
+      threadId: "thread-1",
+    });
+    layout = openTab(layout, "pane-1", {
+      kind: "terminal",
+      terminalId: "term-1",
+      target: { kind: "thread", threadId: "thread-1" },
+    });
+    layout = openTab(layout, "pane-1", {
+      kind: "thread",
+      projectId: "project-1",
+      threadId: "thread-2",
+    });
+    store.set(splitLayoutAtom, layout);
+
+    const result = store.set(closePanesForThreadsAtom, ["thread-1"]);
+    const next = store.get(splitLayoutAtom)!;
+
+    expect(result).toEqual({
+      removedAny: true,
+      focusedRoute: { projectId: "project-1", threadId: "thread-2" },
+    });
+    expect(
+      findContentTab(next.root, {
+        kind: "thread",
+        projectId: "project-1",
+        threadId: "thread-1",
+      }),
+    ).toBeNull();
+    expect(
+      findContentTab(next.root, {
+        kind: "diff",
+        projectId: "project-1",
+        threadId: "thread-1",
+      }),
+    ).toBeNull();
+    expect(
+      findContentTab(next.root, { kind: "terminal", terminalId: "term-1" }),
+    ).not.toBeNull();
+  });
+
+  it("keeps a spared terminal when archiving its thread and reports no focused thread route", () => {
+    const store = createStore();
+    const terminal: PaneContent = {
+      kind: "terminal",
+      terminalId: "term-1",
+      target: { kind: "thread", threadId: "thread-1" },
+    };
+    const layout = openTab(singlePane("thread-1"), "pane-1", terminal);
+    store.set(splitLayoutAtom, layout);
+
+    const result = store.set(closePanesForThreadsAtom, ["thread-1"]);
+    const next = store.get(splitLayoutAtom);
+
+    expect(result).toEqual({ removedAny: true, focusedRoute: null });
+    expect(next).not.toBeNull();
+    expect(findContentTab(next!.root, terminal)).not.toBeNull();
+    expect(findPaneByThread(next!.root, "project-1", "thread-1")).toBeNull();
+  });
+
+  it("collapses groups emptied by tab closure and derives the route from the focused active tab", () => {
+    const store = createStore();
+    let layout = twoPanes();
+    layout = openTab(layout, "pane-2", {
+      kind: "thread",
+      projectId: "project-2",
+      threadId: "thread-3",
+    });
+    layout = activateTab(
+      layout,
+      "pane-2",
+      findContentTab(layout.root, {
+        kind: "thread",
+        projectId: "project-2",
+        threadId: "thread-3",
+      })!.tab.tabId,
+    );
+    store.set(splitLayoutAtom, layout);
+
+    const result = store.set(closePanesForThreadsAtom, ["thread-1"]);
+    const next = store.get(splitLayoutAtom)!;
+
+    expect(countPanes(next.root)).toBe(1);
+    expect(findPane(next.root, "pane-1")).toBeNull();
+    expect(result.focusedRoute).toEqual({
+      projectId: "project-2",
+      threadId: "thread-3",
+    });
   });
 
   it("does nothing when there is no layout or no target threads", () => {

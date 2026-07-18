@@ -56,6 +56,17 @@ import {
 } from "./PluginPanelActions";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PaneContent } from "@/lib/split-layout";
+
+function pane(paneId: string, content: PaneContent) {
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane" as const,
+    paneId,
+    tabs: [{ tabId, content, preview: false }],
+    activeTabId: tabId,
+  };
+}
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -1379,25 +1390,17 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         dir: "row",
         sizes: [0.5, 0.5],
         children: [
-          {
-            type: "pane",
-            paneId: "pane-plugin",
-            content: {
-              kind: "plugin-panel",
-              pluginId: "demo",
-              panelPath: "board",
-              subPath: "card/1",
-            },
-          },
-          {
-            type: "pane",
-            paneId: "pane-thread",
-            content: {
-              kind: "thread",
-              projectId: "proj_test",
-              threadId: "thr_test",
-            },
-          },
+          pane("pane-plugin", {
+            kind: "plugin-panel",
+            pluginId: "demo",
+            panelPath: "board",
+            subPath: "card/1",
+          }),
+          pane("pane-thread", {
+            kind: "thread",
+            projectId: "proj_test",
+            threadId: "thr_test",
+          }),
         ],
       },
     });

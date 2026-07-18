@@ -6,11 +6,13 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  activateTab,
+  commitTab,
   countPanes,
-  findPaneByThread,
+  findContentTab,
   listPanes,
   MAX_PANES,
-  replacePaneContent,
+  openTab,
   setFocus,
   splitPane,
   type SplitLayout,
@@ -39,9 +41,10 @@ const MAIN_CONTENT_SELECTOR = "main";
  * pointer-driven layer. It engages only once the pointer leaves the sidebar
  * toward the main area (so the existing dnd-kit vertical reorder always wins
  * inside the sidebar — plan §3), then hit-tests panes: an edge splits, the
- * center replaces, and a thread already open focuses its pane instead of
- * duplicating. The layout ops enforce the pane cap and no-duplicate invariants;
- * this only picks targets. Disabled on compact viewports, where splits are off.
+ * center opens a committed tab, and a thread already open reveals and commits
+ * its tab instead of duplicating. The layout ops enforce the pane cap and
+ * no-duplicate invariants; this only picks targets. Disabled on compact
+ * viewports, where splits are off.
  */
 export function useThreadRowSplitDrag({
   projectId,
@@ -52,11 +55,14 @@ export function useThreadRowSplitDrag({
   /**
    * Opens this thread in the split via the second entry point (cmd/ctrl-click,
    * context-menu "Open in split"), using the SAME placement rules as drag:
-   * default to a right split, focus the pane if already open, and coerce to
-   * replace at the pane cap. Falls back to plain navigation on compact
-   * viewports (splits disabled) and non-thread routes (no layout to split).
+   * default to a right split, reveal the tab if already open, and coerce to
+   * opening a tab in the focused pane at the pane cap. Falls back to plain
+   * navigation on compact viewports (splits disabled) and non-thread routes
+   * (no layout to split).
    */
   openInSplit: () => void;
+  /** Commits this thread's preview tab on a sidebar-row double click. */
+  commitThreadTab: () => void;
 } {
   const store = useStore();
   const navigate = useNavigate();
@@ -98,8 +104,7 @@ export function useThreadRowSplitDrag({
           }
           return decideThreadDrop({
             zone,
-            threadAlreadyOpen:
-              findPaneByThread(layout.root, projectId, threadId) !== null,
+            threadAlreadyOpen: findContentTab(layout.root, content) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
           });
         },
@@ -108,19 +113,26 @@ export function useThreadRowSplitDrag({
           if (layout === null) {
             return;
           }
-          const existing = findPaneByThread(layout.root, projectId, threadId);
-          const next =
+          const existing = findContentTab(layout.root, content);
+          let next =
             existing !== null
-              ? setFocus(layout, existing.paneId)
+              ? activateTab(layout, existing.pane.paneId, existing.tab.tabId)
               : target.zone === "center"
-                ? replacePaneContent(layout, target.paneId, content)
+                ? openTab(layout, target.paneId, content)
                 : splitPane(layout, target.paneId, target.zone, content);
+          if (existing !== null) {
+            next = commitTab(next, existing.pane.paneId, existing.tab.tabId);
+            next = setFocus(next, existing.pane.paneId);
+          }
           if (next !== layout) {
             store.set(splitLayoutAtom, next);
           }
+          if (findContentTab(next.root, content) === null) {
+            return;
+          }
           // The dropped thread now owns the focused pane, so the URL follows it.
-          // An already-open focus is a replace (no history entry); a split or
-          // replace pushes like a sidebar click.
+          // An already-open reveal is a replace (no history entry); a split or
+          // new tab pushes like a sidebar click.
           navigate(
             getThreadRoutePath({ projectId, threadId }),
             existing !== null ? { replace: true } : undefined,
@@ -140,13 +152,18 @@ export function useThreadRowSplitDrag({
       navigate(route);
       return;
     }
-    const existing = findPaneByThread(layout.root, projectId, threadId);
+    const content: PaneContent = { kind: "thread", projectId, threadId };
+    const existing = findContentTab(layout.root, content);
     if (existing !== null) {
-      const next = setFocus(layout, existing.paneId);
+      let next = activateTab(layout, existing.pane.paneId, existing.tab.tabId);
+      next = commitTab(next, existing.pane.paneId, existing.tab.tabId);
+      next = setFocus(next, existing.pane.paneId);
       if (next !== layout) {
         store.set(splitLayoutAtom, next);
       }
-      navigate(route, { replace: true });
+      if (findContentTab(next.root, content) !== null) {
+        navigate(route, { replace: true });
+      }
       return;
     }
     // Same decision as a drag with a default right-edge target.
@@ -155,21 +172,41 @@ export function useThreadRowSplitDrag({
       threadAlreadyOpen: false,
       atMaxPanes: countPanes(layout.root) >= MAX_PANES,
     });
-    const content: PaneContent = { kind: "thread", projectId, threadId };
     const next =
       decision.zone === "center"
-        ? replacePaneContent(layout, layout.focusedPaneId, content)
+        ? openTab(layout, layout.focusedPaneId, content)
         : splitPane(layout, layout.focusedPaneId, "right", content);
     if (next !== layout) {
       store.set(splitLayoutAtom, next);
     }
-    navigate(route);
+    if (findContentTab(next.root, content) !== null) {
+      navigate(route);
+    }
   }, [isCompact, navigate, projectId, store, threadId, threadSplitsEnabled]);
+
+  const commitThreadTab = useCallback(() => {
+    const layout = store.get(splitLayoutAtom);
+    if (layout === null) {
+      return;
+    }
+    const content: PaneContent = { kind: "thread", projectId, threadId };
+    const existing = findContentTab(layout.root, content);
+    if (existing === null) {
+      return;
+    }
+    let next = activateTab(layout, existing.pane.paneId, existing.tab.tabId);
+    next = commitTab(next, existing.pane.paneId, existing.tab.tabId);
+    next = setFocus(next, existing.pane.paneId);
+    if (next !== layout) {
+      store.set(splitLayoutAtom, next);
+    }
+  }, [projectId, store, threadId]);
 
   return {
     onPointerDown:
       threadSplitsEnabled && !isCompact ? onPointerDown : undefined,
     openInSplit,
+    commitThreadTab,
   };
 }
 

@@ -2,6 +2,7 @@ import type {
   LayoutNode,
   PaneContent,
   PaneNode,
+  PaneTab,
   SplitLayout,
   SplitNode,
   SplitPath,
@@ -9,6 +10,10 @@ import type {
 } from "./types";
 
 export const MAX_PANES = 8;
+// A sanity bound, not a UX budget: callers must still handle the no-op (and
+// not navigate as if the open succeeded), but the bound is high enough that
+// real usage never hits it.
+export const MAX_TABS_PER_PANE = 16;
 
 const MIN_SIZE = 0.15;
 const MAX_SIZE = 0.85;
@@ -45,48 +50,99 @@ export function findPane(root: LayoutNode, paneId: string): PaneNode | null {
   return null;
 }
 
+/** The tab a pane currently renders. Normalized layouts always have a valid
+ * active tab; the first-tab fallback covers transiently inconsistent input. */
+export function activeTab(pane: PaneNode): PaneTab {
+  const active = pane.tabs.find((tab) => tab.tabId === pane.activeTabId);
+  const fallback = pane.tabs[0];
+  if (active !== undefined) {
+    return active;
+  }
+  if (fallback === undefined) {
+    throw new Error("A pane must hold at least one tab");
+  }
+  return fallback;
+}
+
+export function activePaneContent(pane: PaneNode): PaneContent {
+  return activeTab(pane).content;
+}
+
+export interface TabLocation {
+  pane: PaneNode;
+  tab: PaneTab;
+}
+
+export function listTabs(root: LayoutNode): TabLocation[] {
+  return listPanes(root).flatMap((pane) =>
+    pane.tabs.map((tab) => ({ pane, tab })),
+  );
+}
+
+/**
+ * View identity per content kind: two contents match when opening the second
+ * should reveal the first instead of creating another view. Threads and diffs
+ * are one-view-per-thread, terminals one-view-per-terminal, plugin panels one
+ * view per panel (subpaths are navigation within it), and the compose page is
+ * a singleton.
+ */
+export function contentMatches(a: PaneContent, b: PaneContent): boolean {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  switch (a.kind) {
+    case "new-thread":
+      return true;
+    case "thread":
+      return (
+        b.kind === "thread" &&
+        a.projectId === b.projectId &&
+        a.threadId === b.threadId
+      );
+    case "plugin-panel":
+      return (
+        b.kind === "plugin-panel" &&
+        a.pluginId === b.pluginId &&
+        a.panelPath === b.panelPath
+      );
+    case "terminal":
+      return b.kind === "terminal" && a.terminalId === b.terminalId;
+    case "diff":
+      return (
+        b.kind === "diff" &&
+        a.projectId === b.projectId &&
+        a.threadId === b.threadId
+      );
+  }
+}
+
+/** Finds the tab whose content is the same view as `content`, anywhere in the
+ * tree, for reveal-existing semantics. */
+export function findContentTab(
+  root: LayoutNode,
+  content: PaneContent,
+): TabLocation | null {
+  return (
+    listTabs(root).find(({ tab }) => contentMatches(tab.content, content)) ??
+    null
+  );
+}
+
 export function findPaneByThread(
   root: LayoutNode,
   projectId: string,
   threadId: string,
 ): PaneNode | null {
   return (
-    listPanes(root).find(
-      (pane) =>
-        pane.content.kind === "thread" &&
-        pane.content.projectId === projectId &&
-        pane.content.threadId === threadId,
-    ) ?? null
+    findContentTab(root, { kind: "thread", projectId, threadId })?.pane ?? null
   );
 }
 
-/** Finds the pane representing the same routable page as `content`. Plugin
- * subpaths belong to one panel identity, so navigating within a panel updates
- * that pane instead of opening duplicates. The compose page is a singleton in
- * this prototype, matching its existing shared draft/project state. */
 export function findPaneByContent(
   root: LayoutNode,
   content: PaneContent,
 ): PaneNode | null {
-  return (
-    listPanes(root).find((pane) => {
-      const candidate = pane.content;
-      if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
-      if (content.kind === "thread") {
-        return (
-          candidate.kind === "thread" &&
-          candidate.projectId === content.projectId &&
-          candidate.threadId === content.threadId
-        );
-      }
-      return (
-        candidate.kind === "plugin-panel" &&
-        candidate.pluginId === content.pluginId &&
-        candidate.panelPath === content.panelPath
-      );
-    }) ?? null
-  );
+  return findContentTab(root, content)?.pane ?? null;
 }
 
 function replacePaneNode(
@@ -105,13 +161,40 @@ function replacePaneNode(
   };
 }
 
-function nextPaneId(root: LayoutNode): string {
-  const existingIds = new Set(listPanes(root).map((pane) => pane.paneId));
+function nextSequenceId(existingIds: ReadonlySet<string>, prefix: string) {
   let sequence = 1;
-  while (existingIds.has(`pane-${sequence}`)) {
+  while (existingIds.has(`${prefix}-${sequence}`)) {
     sequence += 1;
   }
-  return `pane-${sequence}`;
+  return `${prefix}-${sequence}`;
+}
+
+function nextPaneId(root: LayoutNode): string {
+  return nextSequenceId(
+    new Set(listPanes(root).map((pane) => pane.paneId)),
+    "pane",
+  );
+}
+
+function nextTabId(root: LayoutNode): string {
+  return nextSequenceId(
+    new Set(listTabs(root).map(({ tab }) => tab.tabId)),
+    "tab",
+  );
+}
+
+export function createPaneNode(
+  paneId: string,
+  tabId: string,
+  content: PaneContent,
+  options?: { preview?: boolean },
+): PaneNode {
+  return {
+    type: "pane",
+    paneId,
+    tabs: [{ tabId, content, preview: options?.preview === true }],
+    activeTabId: tabId,
+  };
 }
 
 function splitDirection(side: SplitSide): SplitNode["dir"] {
@@ -179,17 +262,19 @@ export function splitPane(
   ) {
     return layout;
   }
-  const pane: PaneNode = {
-    type: "pane",
-    paneId: nextPaneId(layout.root),
+  const pane = createPaneNode(
+    nextPaneId(layout.root),
+    nextTabId(layout.root),
     content,
-  };
+  );
   return {
     root: insertPane(layout.root, targetPaneId, side, pane),
     focusedPaneId: pane.paneId,
   };
 }
 
+/** Replaces the pane's ACTIVE tab content in place: navigation within a view
+ * (e.g. a thread pane navigating to another thread) rather than a new tab. */
 export function replacePaneContent(
   layout: SplitLayout,
   paneId: string,
@@ -199,10 +284,309 @@ export function replacePaneContent(
   if (pane === null) {
     return layout;
   }
+  const active = activeTab(pane);
+  const nextPane: PaneNode = {
+    ...pane,
+    tabs: pane.tabs.map((tab) =>
+      tab.tabId === active.tabId ? { ...tab, content } : tab,
+    ),
+    activeTabId: active.tabId,
+  };
   return {
-    root: replacePaneNode(layout.root, paneId, { ...pane, content }),
+    root: replacePaneNode(layout.root, paneId, nextPane),
     focusedPaneId: paneId,
   };
+}
+
+export interface OpenTabOptions {
+  /** Open as the group's preview tab (replacing its current preview). */
+  preview?: boolean;
+}
+
+/**
+ * Opens `content` as a tab in `paneId`. If the same view already exists in the
+ * target pane it is revealed (activated) instead of duplicated — callers
+ * wanting tree-wide reveal check {@link findContentTab} first. A preview open
+ * replaces the group's existing preview tab in its slot; a committed open
+ * appends after the active tab.
+ */
+export function openTab(
+  layout: SplitLayout,
+  paneId: string,
+  content: PaneContent,
+  options?: OpenTabOptions,
+): SplitLayout {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null) {
+    return layout;
+  }
+  // Stateful views never preview: a preview slot is silently destroyed by the
+  // next single-click, which must not tear down a PTY view.
+  const preview = options?.preview === true && content.kind !== "terminal";
+
+  const existing = pane.tabs.find((tab) => contentMatches(tab.content, content));
+  if (existing !== undefined) {
+    const nextPane: PaneNode = {
+      ...pane,
+      // Re-opening a preview tab's view as committed commits it in place.
+      tabs: pane.tabs.map((tab) =>
+        tab.tabId === existing.tabId && !preview && tab.preview
+          ? { ...tab, preview: false }
+          : tab,
+      ),
+      activeTabId: existing.tabId,
+    };
+    return {
+      root: replacePaneNode(layout.root, paneId, nextPane),
+      focusedPaneId: paneId,
+    };
+  }
+
+  if (preview) {
+    const previewIndex = pane.tabs.findIndex((tab) => tab.preview);
+    if (previewIndex !== -1) {
+      const previewTab = pane.tabs[previewIndex];
+      if (previewTab === undefined) {
+        return layout;
+      }
+      const nextPane: PaneNode = {
+        ...pane,
+        tabs: pane.tabs.map((tab, index) =>
+          index === previewIndex ? { ...tab, content } : tab,
+        ),
+        activeTabId: previewTab.tabId,
+      };
+      return {
+        root: replacePaneNode(layout.root, paneId, nextPane),
+        focusedPaneId: paneId,
+      };
+    }
+  }
+
+  if (pane.tabs.length >= MAX_TABS_PER_PANE) {
+    return layout;
+  }
+  const tabId = nextTabId(layout.root);
+  const activeIndex = pane.tabs.findIndex(
+    (tab) => tab.tabId === pane.activeTabId,
+  );
+  const insertionIndex =
+    activeIndex === -1 ? pane.tabs.length : activeIndex + 1;
+  const tabs = [...pane.tabs];
+  tabs.splice(insertionIndex, 0, { tabId, content, preview });
+  const nextPane: PaneNode = { ...pane, tabs, activeTabId: tabId };
+  return {
+    root: replacePaneNode(layout.root, paneId, nextPane),
+    focusedPaneId: paneId,
+  };
+}
+
+export function activateTab(
+  layout: SplitLayout,
+  paneId: string,
+  tabId: string,
+): SplitLayout {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null || !pane.tabs.some((tab) => tab.tabId === tabId)) {
+    return layout;
+  }
+  return {
+    root: replacePaneNode(layout.root, paneId, { ...pane, activeTabId: tabId }),
+    focusedPaneId: paneId,
+  };
+}
+
+/** Commits a preview tab (double-click / drag gestures). */
+export function commitTab(
+  layout: SplitLayout,
+  paneId: string,
+  tabId: string,
+): SplitLayout {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null) {
+    return layout;
+  }
+  const target = pane.tabs.find((tab) => tab.tabId === tabId);
+  if (target === undefined || !target.preview) {
+    return layout;
+  }
+  const nextPane: PaneNode = {
+    ...pane,
+    tabs: pane.tabs.map((tab) =>
+      tab.tabId === tabId ? { ...tab, preview: false } : tab,
+    ),
+  };
+  return { ...layout, root: replacePaneNode(layout.root, paneId, nextPane) };
+}
+
+/**
+ * Closes a tab. Closing a pane's last tab removes the pane (unless it is the
+ * layout's only pane, which is refused like {@link removePane}). The active
+ * tab falls to the neighbor that took the closed tab's index.
+ */
+export function closeTab(
+  layout: SplitLayout,
+  paneId: string,
+  tabId: string,
+): SplitLayout {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null) {
+    return layout;
+  }
+  const tabIndex = pane.tabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) {
+    return layout;
+  }
+  if (pane.tabs.length === 1) {
+    return removePane(layout, paneId);
+  }
+  const tabs = pane.tabs.filter((tab) => tab.tabId !== tabId);
+  const fallbackTab = tabs[Math.min(tabIndex, tabs.length - 1)];
+  const nextPane: PaneNode = {
+    ...pane,
+    tabs,
+    activeTabId:
+      pane.activeTabId === tabId && fallbackTab !== undefined
+        ? fallbackTab.tabId
+        : pane.activeTabId,
+  };
+  return { ...layout, root: replacePaneNode(layout.root, paneId, nextPane) };
+}
+
+/**
+ * Reorders a tab within its own group. Dragging is a commit gesture, so the
+ * moved tab loses any preview state. `toIndex` is clamped to the tab list.
+ */
+export function reorderTab(
+  layout: SplitLayout,
+  paneId: string,
+  tabId: string,
+  toIndex: number,
+): SplitLayout {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null || !Number.isInteger(toIndex)) {
+    return layout;
+  }
+  const fromIndex = pane.tabs.findIndex((tab) => tab.tabId === tabId);
+  if (fromIndex === -1) {
+    return layout;
+  }
+  const clampedIndex = Math.min(Math.max(toIndex, 0), pane.tabs.length - 1);
+  const moved = pane.tabs[fromIndex];
+  if (moved === undefined) {
+    return layout;
+  }
+  if (clampedIndex === fromIndex && !moved.preview) {
+    return layout;
+  }
+  const tabs = pane.tabs.filter((tab) => tab.tabId !== tabId);
+  tabs.splice(clampedIndex, 0, { ...moved, preview: false });
+  return {
+    ...layout,
+    root: replacePaneNode(layout.root, paneId, { ...pane, tabs }),
+  };
+}
+
+export type TabDropTarget =
+  | { type: "center"; targetPaneId: string }
+  | { type: "side"; targetPaneId: string; side: SplitSide };
+
+/**
+ * Moves a tab between groups (center drop) or out into a new split (side
+ * drop). Dragging always commits a preview tab. Moving a pane's last tab to a
+ * side of itself is a no-op; moving it elsewhere dissolves the source pane.
+ */
+export function moveTab(
+  layout: SplitLayout,
+  sourcePaneId: string,
+  tabId: string,
+  target: TabDropTarget,
+): SplitLayout {
+  const sourcePane = findPane(layout.root, sourcePaneId);
+  const tab = sourcePane?.tabs.find((candidate) => candidate.tabId === tabId);
+  if (sourcePane === undefined || sourcePane === null || tab === undefined) {
+    return layout;
+  }
+  const movedTab: PaneTab = { ...tab, preview: false };
+  const sourceEmptiesOut = sourcePane.tabs.length === 1;
+
+  if (target.type === "center") {
+    if (target.targetPaneId === sourcePaneId) {
+      // Same-group center drop just commits (reorder is out of scope for v1).
+      return commitTab(layout, sourcePaneId, tabId);
+    }
+    const targetPane = findPane(layout.root, target.targetPaneId);
+    if (
+      targetPane === null ||
+      targetPane.tabs.length >= MAX_TABS_PER_PANE
+    ) {
+      return layout;
+    }
+    let root = replacePaneNode(layout.root, target.targetPaneId, {
+      ...targetPane,
+      tabs: [...targetPane.tabs, movedTab],
+      activeTabId: movedTab.tabId,
+    });
+    root = withTabRemoved(root, sourcePaneId, tabId);
+    const collapsed = sourceEmptiesOut
+      ? dropEmptyPane(root, sourcePaneId)
+      : root;
+    if (collapsed === null) {
+      return layout;
+    }
+    return { root: collapsed, focusedPaneId: target.targetPaneId };
+  }
+
+  if (target.targetPaneId === sourcePaneId && sourceEmptiesOut) {
+    return layout;
+  }
+  if (!sourceEmptiesOut && countPanes(layout.root) >= MAX_PANES) {
+    return layout;
+  }
+  const newPane: PaneNode = {
+    type: "pane",
+    paneId: nextPaneId(layout.root),
+    tabs: [movedTab],
+    activeTabId: movedTab.tabId,
+  };
+  let root = withTabRemoved(layout.root, sourcePaneId, tabId);
+  const collapsed = sourceEmptiesOut ? dropEmptyPane(root, sourcePaneId) : root;
+  if (collapsed === null) {
+    return layout;
+  }
+  root = insertPane(collapsed, target.targetPaneId, target.side, newPane);
+  return { root, focusedPaneId: newPane.paneId };
+}
+
+function withTabRemoved(
+  root: LayoutNode,
+  paneId: string,
+  tabId: string,
+): LayoutNode {
+  const pane = findPane(root, paneId);
+  if (pane === null) {
+    return root;
+  }
+  const tabIndex = pane.tabs.findIndex((tab) => tab.tabId === tabId);
+  if (tabIndex === -1) {
+    return root;
+  }
+  const tabs = pane.tabs.filter((tab) => tab.tabId !== tabId);
+  const fallbackTab = tabs[Math.min(tabIndex, tabs.length - 1)];
+  return replacePaneNode(root, paneId, {
+    ...pane,
+    tabs,
+    activeTabId:
+      pane.activeTabId === tabId && fallbackTab !== undefined
+        ? fallbackTab.tabId
+        : pane.activeTabId,
+  });
+}
+
+/** Detaches a now-empty pane and collapses the tree; null when it can't. */
+function dropEmptyPane(root: LayoutNode, paneId: string): LayoutNode | null {
+  const result = detachPane(root, paneId);
+  return result.detached === null ? root : result.node;
 }
 
 interface DetachResult {
@@ -315,12 +699,14 @@ export function swapPanes(
   }
   const withFirstSwap = replacePaneNode(layout.root, paneId, {
     ...pane,
-    content: targetPane.content,
+    tabs: targetPane.tabs,
+    activeTabId: targetPane.activeTabId,
   });
   return {
     root: replacePaneNode(withFirstSwap, targetPaneId, {
       ...targetPane,
-      content: pane.content,
+      tabs: pane.tabs,
+      activeTabId: pane.activeTabId,
     }),
     focusedPaneId: targetPaneId,
   };
@@ -464,18 +850,61 @@ export function setFocus(layout: SplitLayout, paneId: string): SplitLayout {
   return { ...layout, focusedPaneId: paneId };
 }
 
-function normalizeNode(node: LayoutNode): LayoutNode {
-  if (node.type === "pane") {
-    return { ...node };
+function normalizePane(pane: PaneNode): PaneNode | null {
+  if (pane.tabs.length === 0) {
+    return null;
   }
-  const children = node.children.map(normalizeNode);
+  // Terminals are never previews; otherwise at most one preview per group
+  // (later duplicates commit).
+  let sawPreview = false;
+  let tabs = pane.tabs.map((tab) => {
+    if (!tab.preview) {
+      return tab;
+    }
+    if (tab.content.kind === "terminal" || sawPreview) {
+      return { ...tab, preview: false };
+    }
+    sawPreview = true;
+    return tab;
+  });
+  if (tabs.length > MAX_TABS_PER_PANE) {
+    // Trim from the end, but never drop the active tab.
+    const activeIndex = tabs.findIndex(
+      (tab) => tab.tabId === pane.activeTabId,
+    );
+    const kept = tabs.slice(0, MAX_TABS_PER_PANE);
+    const active = activeIndex >= MAX_TABS_PER_PANE ? tabs[activeIndex] : null;
+    if (active != null) {
+      kept[MAX_TABS_PER_PANE - 1] = active;
+    }
+    tabs = kept;
+  }
+  const activeTabId = tabs.some((tab) => tab.tabId === pane.activeTabId)
+    ? pane.activeTabId
+    : (tabs[0]?.tabId ?? pane.activeTabId);
+  return { ...pane, tabs, activeTabId };
+}
+
+function normalizeNode(node: LayoutNode): LayoutNode | null {
+  if (node.type === "pane") {
+    return normalizePane(node);
+  }
+  const children = node.children
+    .map(normalizeNode)
+    .filter((child): child is LayoutNode => child !== null);
+  if (children.length === 0) {
+    return null;
+  }
   if (children.length === 1) {
-    return children[0] ?? node;
+    return children[0] ?? null;
   }
   return {
     ...node,
     children,
-    sizes: normalizeSizes(node.sizes, children.length),
+    sizes:
+      children.length === node.children.length
+        ? normalizeSizes(node.sizes, children.length)
+        : equalSizes(children.length),
   };
 }
 
@@ -496,7 +925,11 @@ function trimToPaneLimit(root: LayoutNode): LayoutNode {
 }
 
 export function normalize(layout: SplitLayout): SplitLayout {
-  const root = normalizeNode(trimToPaneLimit(layout.root));
+  const normalizedRoot = normalizeNode(layout.root);
+  if (normalizedRoot === null) {
+    return layout;
+  }
+  const root = trimToPaneLimit(normalizedRoot);
   const panes = listPanes(root);
   const focusedPaneId = panes.some(
     (pane) => pane.paneId === layout.focusedPaneId,

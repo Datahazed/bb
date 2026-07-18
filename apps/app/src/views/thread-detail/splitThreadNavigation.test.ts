@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  activePaneContent,
+  findContentTab,
+  findPane,
   findPaneByContent,
   findPaneByThread,
   listPanes,
   MAX_PANES,
+  setFocus,
   splitPane,
 } from "@/lib/split-layout";
 import type { SplitLayout } from "@/lib/split-layout";
@@ -32,6 +36,14 @@ function twoPaneLayout(): SplitLayout {
   );
 }
 
+function expectLayout(layout: SplitLayout | null): SplitLayout {
+  expect(layout).not.toBeNull();
+  if (layout === null) {
+    throw new Error("Expected a split layout");
+  }
+  return layout;
+}
+
 function eightPaneLayout(): SplitLayout {
   let layout = twoPaneLayout();
   for (let index = 3; index <= MAX_PANES; index += 1) {
@@ -58,7 +70,7 @@ describe("reconcileLayoutForRoute", () => {
     );
   });
 
-  it("replaces only the focused pane's content, preserving the rest of the split", () => {
+  it("adds a preview tab to the focused group, preserving committed tabs", () => {
     const before = twoPaneLayout();
 
     const after = reconcileLayoutForRoute(before, {
@@ -66,18 +78,45 @@ describe("reconcileLayoutForRoute", () => {
       threadId: "thread-3",
     });
 
-    // Layout shape preserved (still two panes); focused pane now shows thread-3.
     expect(listPanes(after.root)).toHaveLength(2);
     expect(after.focusedPaneId).toBe("pane-2");
     expect(findPaneByThread(after.root, "p1", "thread-3")?.paneId).toBe(
       "pane-2",
     );
-    // The other pane is untouched.
     expect(findPaneByThread(after.root, "p1", "thread-1")?.paneId).toBe(
       "pane-1",
     );
-    // thread-2 was displaced from the focused pane.
-    expect(findPaneByThread(after.root, "p1", "thread-2")).toBeNull();
+    const focused = findPane(after.root, "pane-2")!;
+    expect(focused.tabs).toHaveLength(2);
+    expect(focused.tabs[0]?.content).toEqual({
+      kind: "thread",
+      projectId: "p1",
+      threadId: "thread-2",
+    });
+    expect(focused.tabs[0]?.preview).toBe(false);
+    expect(focused.tabs[1]?.preview).toBe(true);
+  });
+
+  it("replaces the focused group's existing preview in place", () => {
+    const first = reconcileLayoutForRoute(twoPaneLayout(), {
+      projectId: "p1",
+      threadId: "thread-3",
+    });
+    const previewId = findPane(first.root, "pane-2")!.activeTabId;
+    const second = reconcileLayoutForRoute(first, {
+      projectId: "p1",
+      threadId: "thread-4",
+    });
+    const focused = findPane(second.root, "pane-2")!;
+
+    expect(focused.tabs).toHaveLength(2);
+    expect(focused.activeTabId).toBe(previewId);
+    expect(activePaneContent(focused)).toEqual({
+      kind: "thread",
+      projectId: "p1",
+      threadId: "thread-4",
+    });
+    expect(findPaneByThread(second.root, "p1", "thread-3")).toBeNull();
   });
 
   it("focuses an existing pane instead of duplicating an already-open thread", () => {
@@ -90,6 +129,30 @@ describe("reconcileLayoutForRoute", () => {
 
     expect(listPanes(after.root)).toHaveLength(2);
     expect(after.focusedPaneId).toBe("pane-1");
+  });
+
+  it("activates an existing inactive tab and focuses its group", () => {
+    const withTab = applyThreadOpenToLayout(
+      twoPaneLayout(),
+      { projectId: "p1", threadId: "thread-3" },
+      "replace",
+    );
+    const movedFocus = reconcileLayoutForRoute(withTab, {
+      projectId: "p1",
+      threadId: "thread-1",
+    });
+
+    const after = reconcileLayoutForRoute(movedFocus, {
+      projectId: "p1",
+      threadId: "thread-3",
+    });
+    expect(after.focusedPaneId).toBe("pane-2");
+    expect(activePaneContent(findPane(after.root, "pane-2")!)).toEqual({
+      kind: "thread",
+      projectId: "p1",
+      threadId: "thread-3",
+    });
+    expect(findPane(after.root, "pane-2")?.tabs).toHaveLength(2);
   });
 
   it("is a no-op when the route already matches the focused pane", () => {
@@ -110,9 +173,9 @@ describe("mixed page navigation", () => {
       kind: "new-thread",
     });
 
-    const after = reconcileLayoutForContent(withCompose, {
-      kind: "new-thread",
-    });
+    const after = expectLayout(
+      reconcileLayoutForContent(withCompose, { kind: "new-thread" }),
+    );
 
     expect(listPanes(after.root)).toHaveLength(3);
     expect(after.focusedPaneId).toBe(
@@ -130,17 +193,61 @@ describe("mixed page navigation", () => {
     } as const;
     const before = splitPane(twoPaneLayout(), "pane-1", "bottom", plugin);
 
-    const after = reconcileLayoutForContent(before, {
-      ...plugin,
-      subPath: "work/today.md",
-    });
+    const after = expectLayout(
+      reconcileLayoutForContent(before, {
+        ...plugin,
+        subPath: "work/today.md",
+      }),
+    );
 
     expect(listPanes(after.root)).toHaveLength(3);
-    expect(findPaneByContent(after.root, plugin)?.content).toEqual({
+    expect(findContentTab(after.root, plugin)?.tab.content).toEqual({
       ...plugin,
       subPath: "work/today.md",
     });
     expect(focusedPaneRoute(after)).toBe("/plugins/notes/notes/work/today.md");
+  });
+
+  it("leaves a null layout null for an unopened URL-derived terminal", () => {
+    expect(
+      reconcileLayoutForContent(null, {
+        kind: "terminal",
+        terminalId: "term-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("treats an unopened URL-derived terminal as a reveal-only no-op for an existing layout", () => {
+    const before = twoPaneLayout();
+    const after = reconcileLayoutForContent(before, {
+      kind: "terminal",
+      terminalId: "term-1",
+    });
+
+    expect(after).toBe(before);
+  });
+
+  it("reveals an existing terminal by id regardless of target", () => {
+    const terminal = {
+      kind: "terminal",
+      terminalId: "term-1",
+      target: { kind: "thread", threadId: "thread-1" },
+    } as const;
+    const before = setFocus(
+      splitPane(twoPaneLayout(), "pane-1", "bottom", terminal),
+      "pane-2",
+    );
+    const after = expectLayout(
+      reconcileLayoutForContent(before, {
+        kind: "terminal",
+        terminalId: "term-1",
+      }),
+    );
+
+    expect(after.focusedPaneId).toBe(
+      findPaneByContent(after.root, terminal)?.paneId,
+    );
+    expect(findContentTab(after.root, terminal)?.tab.preview).toBe(false);
   });
 });
 
@@ -166,6 +273,27 @@ describe("focusedThreadRoute", () => {
 });
 
 describe("applyThreadOpenToLayout", () => {
+  it("adds a committed tab for a replace intent", () => {
+    const before = twoPaneLayout();
+    const after = applyThreadOpenToLayout(
+      before,
+      { projectId: "p2", threadId: "thread-replace" },
+      "replace",
+    );
+    const focused = findPane(after.root, "pane-2")!;
+
+    expect(listPanes(after.root)).toHaveLength(2);
+    expect(focused.tabs).toHaveLength(2);
+    expect(activePaneContent(focused)).toEqual({
+      kind: "thread",
+      projectId: "p2",
+      threadId: "thread-replace",
+    });
+    expect(
+      focused.tabs.find((tab) => tab.tabId === focused.activeTabId)?.preview,
+    ).toBe(false);
+  });
+
   it("splits from the focused pane and focuses the opened thread", () => {
     const before = twoPaneLayout();
     const after = applyThreadOpenToLayout(
@@ -193,7 +321,7 @@ describe("applyThreadOpenToLayout", () => {
     expect(after.focusedPaneId).toBe("pane-1");
   });
 
-  it("creates panes five through eight, then replaces the focused pane for a ninth open", () => {
+  it("creates panes through eight, then coerces a ninth edge open to a committed center tab", () => {
     const eight = eightPaneLayout();
     const focusedPaneId = eight.focusedPaneId;
 
@@ -220,7 +348,14 @@ describe("applyThreadOpenToLayout", () => {
     expect(findPaneByThread(after.root, "p2", "thread-9")?.paneId).toBe(
       focusedPaneId,
     );
-    expect(findPaneByThread(after.root, "p1", "thread-8")).toBeNull();
+    expect(findPaneByThread(after.root, "p1", "thread-8")?.paneId).toBe(
+      focusedPaneId,
+    );
+    const focused = findPane(after.root, focusedPaneId)!;
+    expect(focused.tabs).toHaveLength(2);
+    expect(
+      focused.tabs.find((tab) => tab.tabId === focused.activeTabId)?.preview,
+    ).toBe(false);
   });
 });
 

@@ -17,6 +17,7 @@ import { isThreadSearchKeyboardEventTarget } from "./AppSidebar";
 import { ProjectListActionButtons } from "./ProjectList";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import type { PaneContent } from "@/lib/split-layout";
 import {
   getSidebarThreadSearchOptionId,
   haveSameSidebarThreadSearchNavigationItems,
@@ -30,6 +31,16 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 }));
 
 const mockUseThreadSearch = vi.mocked(useThreadSearch);
+
+function pane(paneId: string, content: PaneContent) {
+  const tabId = `${paneId}-t1`;
+  return {
+    type: "pane" as const,
+    paneId,
+    tabs: [{ tabId, content, preview: false }],
+    activeTabId: tabId,
+  };
+}
 
 function createThreadListEntry({
   sectionId = null,
@@ -424,20 +435,12 @@ describe("ProjectListActionButtons", () => {
         dir: "row",
         sizes: [0.5, 0.5],
         children: [
-          {
-            type: "pane",
-            paneId: "pane-compose",
-            content: { kind: "new-thread" },
-          },
-          {
-            type: "pane",
-            paneId: "pane-thread",
-            content: {
-              kind: "thread",
-              projectId: "proj_test",
-              threadId: "thr_test",
-            },
-          },
+          pane("pane-compose", { kind: "new-thread" }),
+          pane("pane-thread", {
+            kind: "thread",
+            projectId: "proj_test",
+            threadId: "thr_test",
+          }),
         ],
       },
     });

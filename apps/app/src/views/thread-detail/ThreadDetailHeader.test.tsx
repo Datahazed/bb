@@ -26,6 +26,16 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
 }));
 
+// The diff/terminal entry points pull in navigation and mutation machinery
+// that this title-rendering test doesn't exercise.
+vi.mock("./useThreadPaneEntryPoints", () => ({
+  useThreadPaneEntryPoints: () => ({
+    openDiff: vi.fn(),
+    openTerminal: vi.fn(),
+    isBusy: false,
+  }),
+}));
+
 const PANE_CONTEXT: PaneContextValue = {
   paneId: "main",
   isFocused: true,
@@ -53,6 +63,8 @@ describe("ThreadDetailHeader", () => {
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
+          projectId="proj-1"
+          threadId="thr-1"
           threadHeaderGitActions={[]}
           threadTitle="Review @docs/foo.test.ts with @thread:thr_worker"
         />
