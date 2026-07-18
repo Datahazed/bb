@@ -8,6 +8,7 @@ import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { isRemoteAppContext } from "@/lib/claimed-identity-store";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
@@ -21,6 +22,7 @@ import {
  */
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
+  { icon: "UserRound", id: "identity", label: "Identity" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
@@ -121,6 +123,11 @@ export function useSettingsNavState(): SettingsNavState {
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
+    }
+    if (section.id === "identity") {
+      // Claimed identity only applies to remote sessions; desktop/localhost
+      // run as the local operator with no identity to edit.
+      return isRemoteAppContext();
     }
     if (section.id === "plugins") {
       return pluginsEnabled;

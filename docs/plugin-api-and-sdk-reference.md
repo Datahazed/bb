@@ -239,17 +239,17 @@ Commands should still page or otherwise bound naturally growing collections;
 the shared ceiling is the final safety boundary, not a substitute for efficient
 queries. The repository-owned command audit is:
 
-| Plugin command | Potential growth | Bounded contract / remediation |
-| --- | --- | --- |
-| `bb automation` | automation lists, run history, stored script output | `runs` defaults to 50 and accepts `--limit`; stored script output is capped; all remaining responses fail atomically at the shared ceiling. |
-| `bb connect` | servers and shared ports | Account and host share inventories are externally bounded; the shared ceiling remains the final guard. |
-| `bb instructions` | one configured instruction document | Single-record output; an oversized value fails atomically at the shared ceiling. |
-| `bb workflows` | run lists, status payloads, call history | `list` is capped at 50, `history` is cursor-paged at 1–100 records, and status/list fields and inline results have byte caps. |
-| `bb secret` | request metadata | Secret values are never returned; output is fixed-size request/reconciliation metadata. |
-| `bb github` | repositories and cached issues/PRs | Issue/PR output can be narrowed to one `owner/repo`; any still-oversized cache response fails atomically with guidance to narrow the query. |
-| `bb docs` | vault trees, note content, status/diffs | Discovery can be scoped by vault/path and large content should use `pull` to a workspace; oversized inline responses fail atomically with file/streaming guidance. |
-| `bb memory` | catalog/search results, record history, one large record | Catalog/search and history use `--limit` with a 1–100 range; a single oversized record fails atomically. |
-| `bb tasks` | task collections and rich task detail | `list` uses SQL keyset pagination (`--limit` 1–500, opaque `--cursor`); detail/scoped auxiliary lists remain protected by the shared ceiling. |
+| Plugin command    | Potential growth                                         | Bounded contract / remediation                                                                                                                                     |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bb automation`   | automation lists, run history, stored script output      | `runs` defaults to 50 and accepts `--limit`; stored script output is capped; all remaining responses fail atomically at the shared ceiling.                        |
+| `bb connect`      | servers and shared ports                                 | Account and host share inventories are externally bounded; the shared ceiling remains the final guard.                                                             |
+| `bb instructions` | one configured instruction document                      | Single-record output; an oversized value fails atomically at the shared ceiling.                                                                                   |
+| `bb workflows`    | run lists, status payloads, call history                 | `list` is capped at 50, `history` is cursor-paged at 1–100 records, and status/list fields and inline results have byte caps.                                      |
+| `bb secret`       | request metadata                                         | Secret values are never returned; output is fixed-size request/reconciliation metadata.                                                                            |
+| `bb github`       | repositories and cached issues/PRs                       | Issue/PR output can be narrowed to one `owner/repo`; any still-oversized cache response fails atomically with guidance to narrow the query.                        |
+| `bb docs`         | vault trees, note content, status/diffs                  | Discovery can be scoped by vault/path and large content should use `pull` to a workspace; oversized inline responses fail atomically with file/streaming guidance. |
+| `bb memory`       | catalog/search results, record history, one large record | Catalog/search and history use `--limit` with a 1–100 range; a single oversized record fails atomically.                                                           |
+| `bb tasks`        | task collections and rich task detail                    | `list` uses SQL keyset pagination (`--limit` 1–500, opaque `--cursor`); detail/scoped auxiliary lists remain protected by the shared ceiling.                      |
 
 ### `bb.ui.requestInput`
 
@@ -780,6 +780,8 @@ All names below are exported portable aliases (except the generic `TOutput`, con
 - `files`: `read → FileReadResult`, `write → FileWriteResult`, `list → FileListResult`, `listPaths → PathListResult`, `mkdir → FileMkdirResult`, `move → FileMoveResult`, `remove → FileRemoveResult`, `createPreview → FilePreviewResult`.
 - `guide`: `render → GuideRenderResult` synchronously.
 - `hosts`: `createJoinCode → HostCreateJoinCodeResult`, `delete → HostDeleteResult`, `directory → HostDirectoryResult`, `get → HostGetResult`, `cloneDefaultPath → HostCloneDefaultPathResult`, `installProviderCli → HostProviderCliInstallResult`, `list → HostListResult`, `pathsExist → HostPathsExistResult`, `pickFolder → HostPickFolderResult`, `providerCliStatus → HostProviderCliStatusResult`, `update → HostUpdateResult`.
+- `members`: `add → MemberAddResult`, `list → MemberListResult`, `remove → MemberRemoveResult`; the connect worker owns the authoritative member list and mutations are owner-console-only.
+- `presence`: `get → PresenceGetResult`, the complete current per-thread viewer and typing snapshot.
 - `plugins`: `applyUpdate → PluginApplyUpdateResult`, `callRpc → TOutput`, `checkUpdates/listUpdateResults → PluginCheckUpdatesResult`, `disable → PluginDisableResult`, `enable → PluginEnableResult`, `getSettings → PluginGetSettingsResult`, `getSource → PluginGetSourceResult`, `install/catalog.install → PluginInstallResult`, `list → PluginListResult`, `reload → PluginReloadResult`, `remove → PluginRemoveResult`, `token → PluginTokenResult`, `updateSettings → PluginUpdateSettingsResult`; nested catalog methods return the bundled plugin count or search results.
 - `projects`: `branches → ProjectBranchesResult`, `commands → ProjectCommandsResult`, `create → ProjectCreateResult`, `defaultExecutionOptions → ProjectDefaultExecutionOptionsResult`, `delete → ProjectDeleteResult`, `fileContent → ProjectFileContentResult`, `files → ProjectFilesResult`, `get → ProjectGetResult`, `list → ProjectListResult`, `paths → ProjectPathsResult`, `promptHistory → ProjectPromptHistoryResult`, `reorder → ProjectReorderResult`, `update → ProjectUpdateResult`; `attachments.read/upload → ProjectAttachmentReadResult/ProjectAttachmentUploadResult`; `sources.add/delete/update → ProjectSourceAddResult/ProjectSourceDeleteResult/ProjectSourceUpdateResult`.
 - `providers`: `list → ProviderListResult`; `models → ProviderModelsResult`.
@@ -794,18 +796,18 @@ All names below are exported portable aliases (except the generic `TOutput`, con
 
 ### Multi-machine routing classifications and fallbacks
 
-| Classification               | SDK areas                                                                         | Rule                                                                                                                                                                                                                  |
-| ---------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| explicit host resource       | `hosts.*`                                                                         | `hostId` is required; there is no fallback.                                                                                                                                                                           |
-| optional host primitive      | `files.*`                                                                         | optional `hostId`; omission selects the primary/local host. `rootPath` confines mutations and reads where offered.                                                                                                    |
-| environment-owned            | `environments.*`                                                                  | `environmentId` resolves the environment and its owning host/worktree; callers do not add a competing `hostId`.                                                                                                       |
-| project workspace union      | `projects.commands/files/fileContent/paths`                                       | exactly environment, explicit host, or neither; neither means the primary host's project source.                                                                                                                      |
-| project creation/source      | `projects.create`, `projects.sources.*`                                           | local-path sources carry their owning `hostId`; clone/local source DTOs preserve explicit machine ownership.                                                                                                          |
-| client-local transfer        | `projects.attachments.*`, `system.transcribeVoice`                                | bytes originate at the SDK client and are uploaded to the server; they are not paths read by the server or execution host.                                                                                            |
-| provider discovery union     | `providers.list/models`                                                           | exactly environment host, explicit host, or primary-host fallback.                                                                                                                                                    |
-| thread-owned execution       | `threads.*`                                                                       | an existing thread routes through its environment/host; `spawn` may select an existing environment or creation host through its request contract, and plugin origin attribution is filled once by the plugin wrapper. |
-| terminal discriminated scope | `terminals.list/create`                                                           | exactly thread, environment, or host-path; subsequent operations route from the server-owned terminal id.                                                                                                             |
-| server-global/admin          | `plugins`, `system` settings/config, `theme`, `threadSections`, `status`, `guide` | runs against server-owned state; host selection appears only in method-specific DTOs such as usage/execution queries.                                                                                                 |
+| Classification               | SDK areas                                                                                                | Rule                                                                                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| explicit host resource       | `hosts.*`                                                                                                | `hostId` is required; there is no fallback.                                                                                                                                                                           |
+| optional host primitive      | `files.*`                                                                                                | optional `hostId`; omission selects the primary/local host. `rootPath` confines mutations and reads where offered.                                                                                                    |
+| environment-owned            | `environments.*`                                                                                         | `environmentId` resolves the environment and its owning host/worktree; callers do not add a competing `hostId`.                                                                                                       |
+| project workspace union      | `projects.commands/files/fileContent/paths`                                                              | exactly environment, explicit host, or neither; neither means the primary host's project source.                                                                                                                      |
+| project creation/source      | `projects.create`, `projects.sources.*`                                                                  | local-path sources carry their owning `hostId`; clone/local source DTOs preserve explicit machine ownership.                                                                                                          |
+| client-local transfer        | `projects.attachments.*`, `system.transcribeVoice`                                                       | bytes originate at the SDK client and are uploaded to the server; they are not paths read by the server or execution host.                                                                                            |
+| provider discovery union     | `providers.list/models`                                                                                  | exactly environment host, explicit host, or primary-host fallback.                                                                                                                                                    |
+| thread-owned execution       | `threads.*`                                                                                              | an existing thread routes through its environment/host; `spawn` may select an existing environment or creation host through its request contract, and plugin origin attribution is filled once by the plugin wrapper. |
+| terminal discriminated scope | `terminals.list/create`                                                                                  | exactly thread, environment, or host-path; subsequent operations route from the server-owned terminal id.                                                                                                             |
+| server-global/admin          | `members`, `presence`, `plugins`, `system` settings/config, `theme`, `threadSections`, `status`, `guide` | runs against server-owned state; host selection appears only in method-specific DTOs such as usage/execution queries.                                                                                                 |
 
 Fallbacks are contract, not implementation accidents: primary-host fallback applies only where explicitly documented above. Disconnected/unknown explicit hosts fail; they do not silently reroute. An environment always keeps its owning machine. Browser and Node transports preserve the same DTO and routing semantics, while local-host auto-discovery is a Node convenience only.
 
@@ -815,36 +817,36 @@ Plugins normally use the already-bound `bb.sdk`; they do not construct another c
 
 ### Node/root entry
 
-| Export                                     | Contract                                                                                                                      |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `createNodeTransport(args?)`               | creates an HTTP/realtime transport from `baseUrl?`, CLI config, fetch, explicit realtime URL, timeout, and websocket factory. |
-| `createNodeBbSdk(args?)`                   | creates the full `BbSdk`; accepts transport args plus optional context.                                                       |
-| `fetchLocalHostId(args?)`                  | asks the local daemon for its host id; returns `null` on any failure.                                                         |
-| `createBbSdk({ transport, context? })`     | constructs all SDK areas over a supplied transport.                                                                           |
-| `createHttpTransport(args)`                | creates the shared typed HTTP transport.                                                                                      |
-| `createRequestTimeoutFetch({ timeoutMs })` | wraps fetch so request and response-body timeout failures become `BbRequestTimeoutError`.                                     |
-| `createGuideArea()`                        | creates the static guide renderer.                                                                                            |
-| `DEFAULT_BB_REQUEST_TIMEOUT_MS`            | 75,000 ms.                                                                                                                    |
-| `DEFAULT_THREAD_WAIT_TIMEOUT_MS`           | 20 minutes.                                                                                                                   |
-| `DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS`     | 250 ms.                                                                                                                       |
-| `BbHttpError`                              | non-2xx error with `status` and nullable machine-readable `code`.                                                             |
-| `BbRequestTimeoutError`                    | normalized request/body timeout error.                                                                                        |
-| `ThreadWaitTimeoutError`                   | wait timeout with thread id and target.                                                                                       |
-| `ThreadWaitUnreachableError`               | status target cannot be reached by waiting alone.                                                                             |
-| public type exports                        | every area argument/result DTO, routing union, realtime event/subscription type, transport/context type, and `BbSdk`.         |
+| Export                                     | Contract                                                                                                                                                  |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createNodeTransport(args?)`               | creates an HTTP/realtime transport from `baseUrl?`, CLI config, fetch, explicit realtime URL, optional `claimedIdentity`, timeout, and websocket factory. |
+| `createNodeBbSdk(args?)`                   | creates the full `BbSdk`; accepts transport args, optional context, and optional `claimedIdentity`.                                                       |
+| `fetchLocalHostId(args?)`                  | asks the local daemon for its host id; returns `null` on any failure.                                                                                     |
+| `createBbSdk({ transport, context? })`     | constructs all SDK areas over a supplied transport.                                                                                                       |
+| `createHttpTransport(args)`                | creates the shared typed HTTP transport.                                                                                                                  |
+| `createRequestTimeoutFetch({ timeoutMs })` | wraps fetch so request and response-body timeout failures become `BbRequestTimeoutError`.                                                                 |
+| `createGuideArea()`                        | creates the static guide renderer.                                                                                                                        |
+| `DEFAULT_BB_REQUEST_TIMEOUT_MS`            | 75,000 ms.                                                                                                                                                |
+| `DEFAULT_THREAD_WAIT_TIMEOUT_MS`           | 20 minutes.                                                                                                                                               |
+| `DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS`     | 250 ms.                                                                                                                                                   |
+| `BbHttpError`                              | non-2xx error with `status` and nullable machine-readable `code`.                                                                                         |
+| `BbRequestTimeoutError`                    | normalized request/body timeout error.                                                                                                                    |
+| `ThreadWaitTimeoutError`                   | wait timeout with thread id and target.                                                                                                                   |
+| `ThreadWaitUnreachableError`               | status target cannot be reached by waiting alone.                                                                                                         |
+| public type exports                        | every area argument/result DTO, routing union, realtime event/subscription type, transport/context type, and `BbSdk`.                                     |
 
 Transport arguments default to CLI-configured `BB_SERVER_URL`, the standard 75-second timeout fetch, and a Node websocket factory. `timeoutMs` must be finite and non-negative; zero is permitted.
 
 ### Browser entry
 
-| Export                          | Contract                                                                                                    |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `createBrowserTransport(args?)` | creates browser HTTP/realtime transport from optional base URL, fetch, realtime URL, and websocket factory. |
-| `createBrowserBbSdk(args?)`     | creates the full `BbSdk`.                                                                                   |
-| `bb`                            | default singleton created by `createBrowserBbSdk()`.                                                        |
-| `createBbSdk`                   | core constructor.                                                                                           |
-| `createHttpTransport`           | transport constructor.                                                                                      |
-| public type exports             | the same portable area/DTO/realtime inventory as the root entry; only Node runtime helpers are omitted.     |
+| Export                          | Contract                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `createBrowserTransport(args?)` | creates browser HTTP/realtime transport from optional base URL, fetch, realtime URL, `claimedIdentity`, and websocket factory. |
+| `createBrowserBbSdk(args?)`     | creates the full `BbSdk`; a claimed identity is encoded on HTTP and realtime connections.                                      |
+| `bb`                            | default singleton created by `createBrowserBbSdk()`.                                                                           |
+| `createBbSdk`                   | core constructor.                                                                                                              |
+| `createHttpTransport`           | transport constructor.                                                                                                         |
+| public type exports             | the same portable area/DTO/realtime inventory as the root entry; only Node runtime helpers are omitted.                        |
 
 ### `@bb/sdk/core`
 

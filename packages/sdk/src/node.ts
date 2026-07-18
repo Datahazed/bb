@@ -1,4 +1,5 @@
 import { loadCliConfig, type CliConfig } from "@bb/config/cli";
+import type { ClaimedIdentity } from "@bb/domain";
 import {
   createHostDaemonLocalClient,
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
@@ -19,6 +20,7 @@ import type {
 
 export interface CreateNodeTransportArgs {
   baseUrl?: string;
+  claimedIdentity?: ClaimedIdentity;
   cliConfig?: CliConfig;
   fetch?: FetchImplementation;
   realtimeUrl?: string;
@@ -51,6 +53,7 @@ export function createNodeTransport(
     // Only fall back to CLI config when no base URL is given, so explicitly
     // configured SDKs work in environments without BB_SERVER_URL.
     baseUrl: args.baseUrl ?? resolveCliConfig(args.cliConfig).BB_SERVER_URL,
+    ...(args.claimedIdentity ? { claimedIdentity: args.claimedIdentity } : {}),
     fetch:
       args.fetch ??
       createRequestTimeoutFetch({

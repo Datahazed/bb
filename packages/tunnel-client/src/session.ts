@@ -234,6 +234,7 @@ export class TunnelSession {
     const headers = headersForLoopbackRequest(meta.headers, {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
+      markTunnelOrigin: true,
       ...(resolved.host !== undefined ? { host: resolved.host } : {}),
     });
     try {
@@ -304,6 +305,7 @@ export class TunnelSession {
     const headers = headersForLoopbackRequest(frame.headers, {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
+      markTunnelOrigin: true,
       ...(resolved.host !== undefined ? { host: resolved.host } : {}),
     });
     const countsAsRemoteClient = isBareBbRealtimeWs(frame.path, frame.target);

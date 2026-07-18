@@ -72,7 +72,9 @@ function UserMessage({
   return (
     <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
+        actorHandle={null}
         role="user"
+        showAuthor={false}
         initiator="user"
         childOrigin={null}
         senderThreadId={null}

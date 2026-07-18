@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useMemo,
   useState,
   type CSSProperties,
   type MouseEventHandler,
@@ -67,6 +68,9 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
+import { SidebarPresenceDots } from "@/components/thread/presence/SidebarPresenceDots";
+import { useClaimedIdentity } from "@/lib/claimed-identity-store";
+import { useThreadPresenceSummaryHandles } from "@/lib/presence-store";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -495,6 +499,17 @@ function ThreadRowComponent({
     getThreadConversationCollapsedAtom(thread.id),
   );
   const shortcut = useSidebarThreadShortcut(thread.id);
+  // Other collaborators currently viewing this thread (presence summary minus
+  // our own claimed handle); clicking a dot navigates via the row's own link.
+  const presenceHandles = useThreadPresenceSummaryHandles(thread.id);
+  const ownHandle = useClaimedIdentity()?.handle ?? null;
+  const otherPresenceHandles = useMemo(
+    () =>
+      ownHandle === null
+        ? presenceHandles
+        : presenceHandles.filter((handle) => handle !== ownHandle),
+    [presenceHandles, ownHandle],
+  );
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
@@ -651,6 +666,7 @@ function ThreadRowComponent({
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
+        <SidebarPresenceDots handles={otherPresenceHandles} />
         {splitIndicator.miniMap ? (
           <SplitPaneMiniMap
             slots={splitIndicator.miniMap}

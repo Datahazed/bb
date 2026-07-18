@@ -4,6 +4,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
+import { ClaimIdentityDialog } from "./components/dialogs/ClaimIdentityDialog";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
@@ -96,6 +97,7 @@ export function App() {
       <AppCommandProvider>
         <RouteNavigationProvider>
           <ProviderCliHealthToasts />
+          <ClaimIdentityDialog />
           <Routes>
             <Route
               path={AUTH_CALLBACK_ROUTE_PATH}

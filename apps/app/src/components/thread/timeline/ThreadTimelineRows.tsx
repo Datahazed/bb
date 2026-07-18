@@ -206,6 +206,8 @@ interface TimelineRendererStaticContextValue {
   resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>;
+  /** True when 2+ distinct authors are loaded; user rows then show author chips. */
+  showMessageAuthors: boolean;
   themeType: ThreadTimelineTheme;
   threadId: string | undefined;
   workspaceRootPath: string | undefined;
@@ -693,6 +695,40 @@ function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
 }
 
 /**
+ * Whether the loaded timeline shows more than one distinct human author
+ * (2+ distinct non-null `actorHandle`s on user rows). Single-author threads
+ * stay chip-free so the classic solo layout is untouched; the moment a second
+ * collaborator's message loads, every attributed user row gains its author.
+ */
+export function timelineHasMultipleMessageAuthors(
+  rows: readonly ThreadTimelineViewRow[],
+): boolean {
+  const handles = new Set<string>();
+
+  const visitRows = (candidateRows: readonly ThreadTimelineViewRow[]): boolean => {
+    for (const row of candidateRows) {
+      if (row.kind === "conversation") {
+        if (row.role === "user" && row.actorHandle !== null) {
+          handles.add(row.actorHandle);
+          if (handles.size >= 2) {
+            return true;
+          }
+        }
+        continue;
+      }
+      if (row.kind === "turn" && row.children !== null) {
+        if (visitRows(row.children)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  return visitRows(rows);
+}
+
+/**
  * Finds the final assistant row whose action bar is available in the rendered
  * timeline. Completed turn details and delegated-agent output intentionally do
  * not expose message actions, so they cannot claim the mobile inline footer.
@@ -792,6 +828,7 @@ function ConversationRow({
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
+    showMessageAuthors,
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
   if (row.role === "user") {
@@ -805,9 +842,11 @@ function ConversationRow({
     const childOrigin = isForkSeedAnchorRow(row) ? threadChildOrigin : null;
     return (
       <ConversationMessageContent
+        actorHandle={row.actorHandle}
         attachments={row.attachments}
         childOrigin={childOrigin}
         initiator={row.initiator}
+        showAuthor={showMessageAuthors}
         mentions={row.mentions}
         mobileActionDisplay={
           row.id === latestActionableUserMessageId ? "inline" : "overflow"
@@ -1754,6 +1793,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const projectId = props.projectId;
   const senderThreadMetadataById = useSenderThreadMetadataById();
+  const showMessageAuthors = useMemo(
+    () => timelineHasMultipleMessageAuthors(rows),
+    [rows],
+  );
   // Single plugin-slot subscription for the whole timeline; messages read the
   // stable registry from context instead of each opening a store subscription.
   // Provide getServerSnapshot so renderToStaticMarkup / SSR tests work.
@@ -1859,6 +1902,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,
+      showMessageAuthors,
       themeType,
       threadId: props.threadId,
       workspaceRootPath: props.workspaceRootPath,
@@ -1883,6 +1927,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       resolveSegmentLinkHref,
       props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,
+      showMessageAuthors,
       props.threadId,
       props.workspaceRootPath,
       themeType,

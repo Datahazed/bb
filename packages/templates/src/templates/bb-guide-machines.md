@@ -49,3 +49,22 @@ selected connected machine. Omit the selector to keep the existing local CLI
 machine fallback (normally the primary machine). Pass `--clone` to source add
 instead of `--path` to clone the project's Git remote there; `--remote-url` and
 `--target-path` optionally override the clone inputs.
+
+## Multiplayer Members
+
+Owners can invite other Connect accounts to their bb. Members admitted through
+the gate use the full app; their messages and actions are attributed to their
+claimed identity, and presence (who is viewing which thread, who is typing)
+appears in the thread header and sidebar.
+
+  bb members list                 List members admitted through Connect
+  bb members add <handle>         Add a Connect account by handle
+  bb members remove <handle>      Remove a member by handle
+    --json                        Machine-readable output (all subcommands)
+
+Member management is owner-console-only: it works from the machine itself and
+is rejected for sessions arriving through the Connect tunnel. The Connect
+audit log records verified admissions and membership changes. Identity inside
+bb is claimed, not verified — clients self-assert a handle (the app prompts
+remote visitors for a display name); attribution is honor-system by design
+because anyone admitted has full access anyway.

@@ -49,6 +49,7 @@ import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSec
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { IdentitySettingsSection } from "@/components/settings/IdentitySettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1001,6 +1002,8 @@ export function SettingsView() {
         }
       />
     );
+  } else if (activeSection === "identity") {
+    content = <IdentitySettingsSection />;
   } else if (activeSection === "appearance") {
     content = (
       <AppearanceSettingsSection

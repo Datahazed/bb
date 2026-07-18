@@ -1,7 +1,9 @@
 import { createNodeBbSdk, type BbSdk, type BbSdkContext } from "@bb/sdk/node";
+import type { ClaimedIdentity } from "@bb/domain";
 
 export interface CreateCliBbSdkOptions {
   context?: BbSdkContext;
+  claimedIdentity?: ClaimedIdentity;
 }
 
 export function cliFetch(
@@ -18,6 +20,9 @@ export function createCliBbSdk(
   return createNodeBbSdk({
     baseUrl,
     context: options.context,
+    ...(options.claimedIdentity
+      ? { claimedIdentity: options.claimedIdentity }
+      : {}),
     fetch: cliFetch,
   });
 }

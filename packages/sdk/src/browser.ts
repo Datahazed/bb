@@ -1,4 +1,5 @@
 import { createBbSdk, type BbSdk } from "./core.js";
+import type { ClaimedIdentity } from "@bb/domain";
 import { createHttpTransport } from "./transport-http.js";
 import type {
   BbRealtimeSocketFactory,
@@ -8,6 +9,7 @@ import type {
 
 export interface CreateBrowserTransportArgs {
   baseUrl?: string;
+  claimedIdentity?: ClaimedIdentity;
   fetch?: typeof fetch;
   realtimeUrl?: string;
   websocket?: BbRealtimeSocketFactory;
@@ -22,6 +24,7 @@ export function createBrowserTransport(
 ): BbSdkTransport {
   return createHttpTransport({
     baseUrl: args.baseUrl,
+    ...(args.claimedIdentity ? { claimedIdentity: args.claimedIdentity } : {}),
     fetch: args.fetch,
     realtimeUrl: args.realtimeUrl,
     runtime: "browser",

@@ -69,6 +69,13 @@ interface ConversationMessageContentBaseProps {
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
+  /** Claimed handle of the human who sent this row; null = unattributed. */
+  actorHandle: string | null;
+  /**
+   * True when the loaded timeline has 2+ distinct authors. Gates the author
+   * chip so single-author threads render exactly as before multiplayer.
+   */
+  showAuthor: boolean;
   /** Mobile presentation for the regular user message's action footer. */
   mobileActionDisplay?: "inline" | "overflow";
   /**
@@ -169,9 +176,11 @@ export type ConversationMessageContentProps =
   | ConversationMessageContentAssistantProps;
 
 interface UserConversationMessageProps {
+  actorHandle: string | null;
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   childOrigin: ThreadChildOrigin | null;
+  showAuthor: boolean;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
@@ -352,10 +361,12 @@ function buildAddToChatAttachments(
 }
 
 function UserConversationMessage({
+  actorHandle,
   addToChatAttachments,
   attachmentItems,
   childOrigin,
   initiator,
+  showAuthor,
   mentions,
   mobileActionDisplay,
   onAddToChat,
@@ -440,10 +451,26 @@ function UserConversationMessage({
   const mutePrefixLength = computeMutedPrefixLength(initiator, text);
   const messageText = text.trim();
   const requestLabel = turnRequestLabel(turnRequest);
+  // Author chip only in genuinely multi-author threads (2+ distinct handles
+  // loaded) and only for attributed rows — legacy rows carry a null handle.
+  const authorChipHandle = showAuthor && actorHandle !== null ? actorHandle : null;
 
   return (
     <div className="w-full">
       <div className="group/message ml-auto w-fit max-w-[70%]">
+        {authorChipHandle !== null ? (
+          <div className="mb-1 flex items-center justify-end gap-1">
+            <span className="inline-flex size-4 select-none items-center justify-center rounded-full border border-border bg-surface-recessed text-[9px] font-medium uppercase leading-none text-muted-foreground">
+              {authorChipHandle[0] ?? "?"}
+            </span>
+            <span
+              data-testid="user-message-author"
+              className="text-xs text-muted-foreground"
+            >
+              @{authorChipHandle}
+            </span>
+          </div>
+        ) : null}
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
             <TurnRequestLabel
@@ -683,10 +710,12 @@ export function ConversationMessageContent(
   if (props.role === "user") {
     return (
       <UserConversationMessage
+        actorHandle={props.actorHandle}
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         childOrigin={props.childOrigin}
         initiator={props.initiator}
+        showAuthor={props.showAuthor}
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}

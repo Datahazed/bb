@@ -47,6 +47,8 @@ interface ThreadDetailHeaderProps {
   onToggleSecondaryPanel: () => void;
   /** Plugin-contributed thread action buttons (design §4.9); optional. */
   pluginActions?: ReactNode;
+  /** Avatar row of the other collaborators currently viewing this thread. */
+  presenceIndicator?: ReactNode;
   threadHeaderGitActions: ThreadHeaderGitAction[];
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
@@ -60,6 +62,7 @@ export function ThreadDetailHeader({
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
+  presenceIndicator,
   threadHeaderGitActions,
   threadTitle,
   workspaceOpenButton,
@@ -153,6 +156,7 @@ export function ThreadDetailHeader({
 
   const actions = (
     <>
+      {presenceIndicator}
       {pluginActions}
       {workspaceOpenButton}
       {primaryAction && secondaryActions.length > 0 ? (

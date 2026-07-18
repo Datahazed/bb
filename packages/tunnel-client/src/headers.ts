@@ -5,11 +5,16 @@ const SKIP_REQUEST_HEADERS = new Set([
   "content-length",
   "connection",
   "accept-encoding",
+  "x-bb-via-tunnel",
 ]);
+
+export const TUNNEL_ORIGIN_HEADER = "x-bb-via-tunnel";
 
 export interface LoopbackHeaderRewrite {
   publicOrigin: string;
   loopbackOrigin: string;
+  /** Stamp the trusted marker when this header set is re-issued by a tunnel. */
+  markTunnelOrigin?: boolean;
   /**
    * When set, inject a Host header (share streams). When omitted, Host is
    * dropped — bare-handle behavior, byte-identical to pre-share.
@@ -32,6 +37,9 @@ export function headersForLoopbackRequest(
   }
   if (rewrite.host !== undefined) {
     forwarded.Host = rewrite.host;
+  }
+  if (rewrite.markTunnelOrigin) {
+    forwarded[TUNNEL_ORIGIN_HEADER] = "1";
   }
   return forwarded;
 }

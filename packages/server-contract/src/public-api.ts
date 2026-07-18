@@ -101,6 +101,10 @@ import type {
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
+  AddMemberRequest,
+  Member,
+  MemberListResponse,
+  RemoveMemberRequest,
   ProjectAttachmentContentQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
@@ -228,6 +232,8 @@ import {
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
+  addMemberRequestSchema,
+  removeMemberRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
@@ -1182,6 +1188,31 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<PresenceSnapshotResponse>(),
+    }),
+  },
+
+  members: {
+    list: defineRoute({
+      path: "/members",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<MemberListResponse>(),
+    }),
+    add: defineRoute({
+      path: "/members",
+      method: "post",
+      request: jsonRequest<EmptyInput, AddMemberRequest>(
+        addMemberRequestSchema,
+      ),
+      response: jsonResponse<Member>({ status: 201 }),
+    }),
+    remove: defineRoute({
+      path: "/members",
+      method: "delete",
+      request: jsonRequest<EmptyInput, RemoveMemberRequest>(
+        removeMemberRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
   },
 

@@ -1,14 +1,13 @@
 import type { ApiClient } from "@bb/server-contract";
-import type {
-  FetchImplementation,
-  JsonBodyOf,
-} from "./response.js";
+import type { ClaimedIdentity } from "@bb/domain";
+import type { FetchImplementation, JsonBodyOf } from "./response.js";
 
 export type BbSdkRuntime = "node" | "browser";
 
 export interface BbSdkTransport {
   api: ApiClient["api"];
   baseUrl: string;
+  claimedIdentityHeader?: string;
   fetch: FetchImplementation;
   realtimeUrl?: string;
   runtime: BbSdkRuntime;
@@ -54,6 +53,7 @@ export interface BbSdkContext {}
 
 export interface CreateHttpTransportArgs {
   baseUrl?: string;
+  claimedIdentity?: ClaimedIdentity;
   fetch?: FetchImplementation;
   realtimeUrl?: string;
   runtime: BbSdkRuntime;

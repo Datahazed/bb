@@ -2,25 +2,32 @@ import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
+  presenceSummaryMessageLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
+  threadPresenceMessageLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
   PluginSignal,
+  PresenceSummaryMessage,
   RealtimeSubscriptionTarget,
   ThreadOpenFile,
   ThreadOpenSignal,
   ThreadPaneActionSignal,
+  ThreadPresenceMessage,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
+import { getClaimedIdentityHeaderValue } from "./claimed-identity-store";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
+type ThreadPresenceCallback = (message: ThreadPresenceMessage) => void;
+type PresenceSummaryCallback = (message: PresenceSummaryMessage) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
 export type WebSocketConnectionState =
@@ -40,6 +47,8 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private threadPresenceCallbacks = new Set<ThreadPresenceCallback>();
+  private presenceSummaryCallbacks = new Set<PresenceSummaryCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
   // viewed opens the file when it is next viewed. Last write wins per thread.
@@ -55,11 +64,19 @@ export class WebSocketManager {
     // In dev mode, connect directly to the server to bypass Vite's WS proxy
     // which does not handle reconnection after backend restarts.
     // In production, use the same origin (server serves the app).
-    const url =
-      buildDevWebSocketUrl({ path: "/ws" }) ??
-      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+    // A URL provider (not a string) so every reconnect re-reads the claimed
+    // identity — an identity claimed after connect rides the next upgrade.
+    const buildUrl = () => {
+      const url =
+        buildDevWebSocketUrl({ path: "/ws" }) ??
+        `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+      const identity = getClaimedIdentityHeaderValue();
+      return identity === null
+        ? url
+        : `${url}?identity=${encodeURIComponent(identity)}`;
+    };
 
-    this.socket = new ReconnectingWebSocket(url, undefined, {
+    this.socket = new ReconnectingWebSocket(buildUrl, undefined, {
       minReconnectionDelay: 1000,
       maxReconnectionDelay: 30000,
       reconnectionDelayGrowFactor: 1.5,
@@ -137,6 +154,25 @@ export class WebSocketManager {
     if (pluginSignal.success) {
       for (const cb of this.pluginSignalCallbacks) {
         cb(pluginSignal.data);
+      }
+      return;
+    }
+
+    // Ephemeral presence broadcasts: per-thread viewer rosters and the compact
+    // sidebar summary. Lenient parse — additive per-viewer fields from a newer
+    // server degrade to defaults instead of dropping the roster.
+    const threadPresence = threadPresenceMessageLenientSchema.safeParse(parsed);
+    if (threadPresence.success) {
+      for (const cb of this.threadPresenceCallbacks) {
+        cb(threadPresence.data);
+      }
+      return;
+    }
+
+    const presenceSummary = presenceSummaryMessageLenientSchema.safeParse(parsed);
+    if (presenceSummary.success) {
+      for (const cb of this.presenceSummaryCallbacks) {
+        cb(presenceSummary.data);
       }
       return;
     }
@@ -219,6 +255,29 @@ export class WebSocketManager {
     return () => {
       this.pluginSignalCallbacks.delete(callback);
     };
+  }
+
+  onThreadPresence(callback: ThreadPresenceCallback): () => void {
+    this.threadPresenceCallbacks.add(callback);
+    return () => {
+      this.threadPresenceCallbacks.delete(callback);
+    };
+  }
+
+  onPresenceSummary(callback: PresenceSummaryCallback): () => void {
+    this.presenceSummaryCallbacks.add(callback);
+    return () => {
+      this.presenceSummaryCallbacks.delete(callback);
+    };
+  }
+
+  /**
+   * Ephemeral composer-typing signal; the server holds it under a short TTL,
+   * so callers re-send `typing: true` while typing continues. Dropped silently
+   * when the socket is down — presence is cosmetic.
+   */
+  sendTyping(threadId: string, typing: boolean): void {
+    this.sendMessage({ type: "typing", threadId, typing });
   }
 
   /**

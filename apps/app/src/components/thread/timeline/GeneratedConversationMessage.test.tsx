@@ -36,7 +36,9 @@ function renderChildCompleted() {
     <MemoryRouter>
       <RouteNavigationProvider>
         <ConversationMessageContent
+          actorHandle={null}
           role="user"
+          showAuthor={false}
           initiator="system"
           childOrigin={null}
           senderThreadId={null}
@@ -120,7 +122,9 @@ function renderAgentMessage(
     <MemoryRouter>
       <RouteNavigationProvider>
         <ConversationMessageContent
+          actorHandle={null}
           role="user"
+          showAuthor={false}
           initiator="agent"
           childOrigin={null}
           senderThreadId="thr_agent"

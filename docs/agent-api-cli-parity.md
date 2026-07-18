@@ -215,6 +215,45 @@ The SDK area is named `hosts`; the end-user CLI terminology is `machine`.
 
 Provider CLI keys are `claudeCode`, `codex`, and `cursor`.
 
+## Multiplayer identity, presence, and members
+
+Clients may claim an attribution identity when they are created. Identity is
+self-asserted metadata, not authorization; Connect admission remains the
+security boundary.
+
+```ts
+const bb = createNodeBbSdk({
+  claimedIdentity: {
+    handle: "collaborator",
+    displayName: "Collaborator",
+    imageUrl: null,
+    clientId: "automation-1",
+  },
+});
+
+const presence = await bb.presence.get();
+```
+
+The SDK sends the encoded `x-bb-claimed-identity` value on HTTP requests and
+the equivalent `identity` query parameter on its realtime WebSocket. Without a
+claimed identity, the local server attributes activity to its local-operator
+default. `presence.get()` returns the complete current per-thread viewer and
+typing snapshot; realtime presence messages remain the low-latency update
+path.
+
+Connect member management has matching SDK and CLI surfaces:
+
+| SDK                             | CLI                          |
+| ------------------------------- | ---------------------------- |
+| `bb.members.list()`             | `bb members list`            |
+| `bb.members.add({ handle })`    | `bb members add <handle>`    |
+| `bb.members.remove({ handle })` | `bb members remove <handle>` |
+
+All three CLI commands support `--json`. They are owner-console-only: a request
+that arrived through the Connect tunnel is rejected even if a remote member
+can otherwise use the bb server. The connect worker owns the authoritative
+member list, so these commands require this bb to be enrolled in Connect.
+
 ## Settings and system information
 
 The SDK methods live under `bb.system`:

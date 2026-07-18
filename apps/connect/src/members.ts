@@ -292,6 +292,48 @@ async function resolveOwnerSessionUserId(
   return verifySessionCookie(cookie, secret, db);
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function resolveServerCredentialOwnerUserId(
+  request: Request,
+  serverId: string,
+  db: ConnectDb,
+): Promise<string | null> {
+  const authorization = request.headers.get("authorization") ?? "";
+  const credential = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  if (!credential) return null;
+
+  const ownedServer = await db
+    .select({
+      credentialHash: server.credentialHash,
+      revokedAt: server.revokedAt,
+      userId: server.userId,
+    })
+    .from(server)
+    .where(eq(server.id, serverId))
+    .get();
+  if (
+    !ownedServer ||
+    ownedServer.revokedAt !== null ||
+    ownedServer.credentialHash === null
+  ) {
+    return null;
+  }
+  return (await sha256Hex(credential)) === ownedServer.credentialHash
+    ? ownedServer.userId
+    : null;
+}
+
 /** Testable owner-session member API using either D1 or in-memory SQLite. */
 export async function handleServerMembersWithDb(
   request: Request,
@@ -315,14 +357,23 @@ export async function handleServerMembersWithDb(
     });
   }
 
-  const sessionUserId = await resolveOwnerSessionUserId(request, secret, db);
-  if (!sessionUserId) return jsonError("forbidden", 403);
-  const ownedServer = await db
-    .select({ id: server.id })
-    .from(server)
-    .where(and(eq(server.id, route.serverId), eq(server.userId, sessionUserId)))
-    .get();
-  if (!ownedServer) return jsonError("forbidden", 403);
+  const credentialOwnerUserId = await resolveServerCredentialOwnerUserId(
+    request,
+    route.serverId,
+    db,
+  );
+  const ownerUserId =
+    credentialOwnerUserId ??
+    (await resolveOwnerSessionUserId(request, secret, db));
+  if (!ownerUserId) return jsonError("forbidden", 403);
+  if (credentialOwnerUserId === null) {
+    const ownedServer = await db
+      .select({ id: server.id })
+      .from(server)
+      .where(and(eq(server.id, route.serverId), eq(server.userId, ownerUserId)))
+      .get();
+    if (!ownedServer) return jsonError("forbidden", 403);
+  }
 
   if (request.method === "GET") {
     return Response.json(await listServerMembers(db, route.serverId));
@@ -343,7 +394,7 @@ export async function handleServerMembersWithDb(
     const result = await addServerMember(
       db,
       route.serverId,
-      sessionUserId,
+      ownerUserId,
       body.handle,
     );
     if (!result.ok) {
@@ -361,7 +412,7 @@ export async function handleServerMembersWithDb(
   const removed = await removeServerMember(
     db,
     route.serverId,
-    sessionUserId,
+    ownerUserId,
     route.memberUserId!,
   );
   return removed

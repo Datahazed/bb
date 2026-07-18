@@ -17,6 +17,7 @@ import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
+import { registerMemberRoutes } from "./routes/members.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
@@ -465,6 +466,7 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerPresenceRoutes(publicApi, deps);
+  registerMemberRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);

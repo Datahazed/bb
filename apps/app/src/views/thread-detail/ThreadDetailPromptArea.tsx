@@ -91,6 +91,8 @@ import {
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { ThreadTypingIndicator } from "@/components/thread/presence/ThreadPresenceIndicators";
+import { useTypingEmitter } from "@/hooks/useTypingEmitter";
 import { queuedInputToDraft } from "./threadQueuedMessages";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import {
@@ -618,6 +620,11 @@ export function ThreadDetailPromptArea({
     },
     [inlineEditingQueuedMessage, removeStoredPromptAttachment],
   );
+  useTypingEmitter({
+    threadId: thread.id,
+    draftText: activeComposerDraft.text,
+    enabled: !shouldHideComposer,
+  });
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const isPromptEmpty = useCallback(
     () => !hasPromptDraftInput,
@@ -1344,6 +1351,7 @@ export function ThreadDetailPromptArea({
   const promptStack = useMemo(
     () => (
       <>
+        <ThreadTypingIndicator threadId={thread.id} />
         <ThreadWorkflowCard
           workflow={activeWorkflow}
           isExpanded={isWorkflowExpanded}

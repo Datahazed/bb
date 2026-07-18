@@ -31,6 +31,16 @@ let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle>;
 let sessionOrdinal = 0;
 
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 beforeEach(() => {
   sqlite = new Database(":memory:");
   sqlite.pragma("foreign_keys = ON");
@@ -71,14 +81,16 @@ function seedServer(
   id: string,
   ownerUserId: string,
   subdomain = "owner",
+  credentialHash = "hash",
+  name = "default",
 ): void {
   db.insert(server)
     .values({
       id,
       userId: ownerUserId,
-      name: "default",
+      name,
       subdomain,
-      credentialHash: "hash",
+      credentialHash,
       createdAt: NOW,
     })
     .run();
@@ -189,6 +201,92 @@ describe("owner member-management API", () => {
       db,
       route("server-1"),
     );
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts the same server's tunnel credential across member management", async () => {
+    const credential = "bbcred_server_one";
+    db.update(server)
+      .set({ credentialHash: await sha256Hex(credential) })
+      .where(eq(server.id, "server-1"))
+      .run();
+
+    const added = await handleServerMembersWithDb(
+      new Request("https://getbb.app/api/servers/server-1/members", {
+        method: "POST",
+        headers: { authorization: `Bearer ${credential}` },
+        body: JSON.stringify({ handle: "invited" }),
+      }),
+      SECRET,
+      db,
+      route("server-1"),
+    );
+    expect(added.status).toBe(201);
+
+    const listed = await handleServerMembersWithDb(
+      new Request("https://getbb.app/api/servers/server-1/members", {
+        headers: { authorization: `Bearer ${credential}` },
+      }),
+      SECRET,
+      db,
+      route("server-1"),
+    );
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toEqual([
+      expect.objectContaining({ userId: "member-user", handle: "invited" }),
+    ]);
+
+    const removed = await handleServerMembersWithDb(
+      new Request(
+        "https://getbb.app/api/servers/server-1/members/member-user",
+        {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${credential}` },
+        },
+      ),
+      SECRET,
+      db,
+      route("server-1", "member-user"),
+    );
+    expect(removed.status).toBe(204);
+  });
+
+  it("rejects a wrong tunnel credential", async () => {
+    const response = await handleServerMembersWithDb(
+      new Request("https://getbb.app/api/servers/server-1/members", {
+        headers: { authorization: "Bearer wrong" },
+      }),
+      SECRET,
+      db,
+      route("server-1"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("cannot use one server credential to manage another server", async () => {
+    const credential = "bbcred_server_one";
+    db.update(server)
+      .set({ credentialHash: await sha256Hex(credential) })
+      .where(eq(server.id, "server-1"))
+      .run();
+    seedServer(
+      "server-2",
+      "owner-user",
+      "owner-two",
+      "different-hash",
+      "second",
+    );
+
+    const response = await handleServerMembersWithDb(
+      new Request("https://getbb.app/api/servers/server-2/members", {
+        headers: { authorization: `Bearer ${credential}` },
+      }),
+      SECRET,
+      db,
+      route("server-2"),
+    );
+
     expect(response.status).toBe(403);
   });
 

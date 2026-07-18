@@ -185,6 +185,8 @@ export async function resolveAccountUserId(
 }
 
 export interface AccountServerListing {
+  /** Stable server id used by owner-only server-scoped APIs. */
+  id: string;
   /** Routing label (`server.subdomain`) — `<handle>.getbb.app`. */
   handle: string;
   /** Human-readable row name; falls back to handle when empty. */
@@ -209,6 +211,7 @@ export async function listAccountServers(
 ): Promise<AccountServerListing[]> {
   const rows = await db
     .select({
+      id: server.id,
       subdomain: server.subdomain,
       name: server.name,
       lastSeenAt: server.lastSeenAt,
@@ -229,7 +232,7 @@ export async function listAccountServers(
       connected &&
       lastSeenMs != null &&
       now - lastSeenMs < SERVER_OFFLINE_AFTER_MS;
-    return { handle, name, live };
+    return { id: row.id, handle, name, live };
   });
 }
 

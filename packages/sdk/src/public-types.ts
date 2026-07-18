@@ -26,6 +26,8 @@ export type * from "./areas/environments.js";
 export type * from "./areas/files.js";
 export type * from "./areas/guide.js";
 export type * from "./areas/hosts.js";
+export type * from "./areas/members.js";
+export type * from "./areas/presence.js";
 export type * from "./areas/plugins.js";
 export type * from "./areas/projects.js";
 export type * from "./areas/providers.js";

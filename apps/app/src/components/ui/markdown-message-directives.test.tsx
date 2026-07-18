@@ -507,7 +507,9 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              actorHandle={null}
               role="user"
+              showAuthor={false}
               attachments={null}
               childOrigin={null}
               initiator="user"

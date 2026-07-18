@@ -17,6 +17,7 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api-types";
+import { getClaimedIdentity } from "@/lib/claimed-identity-store";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
@@ -593,7 +594,9 @@ function buildOptimisticUserMessageRow({
         }
       : null;
   return {
-    actorHandle: null,
+    // Mirror the attribution the server will record for this send: our own
+    // claimed handle, or null in the local-operator (no identity) case.
+    actorHandle: getClaimedIdentity()?.handle ?? null,
     id,
     kind: "conversation",
     role: "user",

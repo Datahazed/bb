@@ -526,7 +526,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -545,7 +547,9 @@ export function Overview() {
       <StoryRow label="short">
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -567,7 +571,9 @@ export function Overview() {
       >
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -590,7 +596,9 @@ export function Overview() {
       >
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -612,7 +620,9 @@ export function Overview() {
       >
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -634,7 +644,9 @@ export function Overview() {
       >
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -653,7 +665,9 @@ export function Overview() {
       <StoryRow label="with image" hint="single localImage attachment">
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -676,7 +690,9 @@ export function Overview() {
       >
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="user"
             senderThreadId={null}
@@ -706,7 +722,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
@@ -729,7 +747,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
@@ -753,7 +773,9 @@ export function Overview() {
       >
         <div className="flex w-full max-w-[760px] flex-col gap-3">
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
@@ -769,7 +791,9 @@ export function Overview() {
             turnRequest={acceptedSteer}
           />
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="system"
             senderThreadId={null}
@@ -791,7 +815,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="system"
             senderThreadId={null}
@@ -813,7 +839,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="system"
             senderThreadId={null}
@@ -835,7 +863,9 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            actorHandle={null}
             role="user"
+            showAuthor={false}
             childOrigin={null}
             initiator="system"
             senderThreadId={null}
@@ -866,7 +896,9 @@ export function ParentChildSystemMessages() {
         >
           <TimelineStage>
             <ConversationMessageContent
+              actorHandle={null}
               role="user"
+              showAuthor={false}
               initiator="system"
               senderThreadId={null}
               senderThreadTitle={null}

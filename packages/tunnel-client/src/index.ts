@@ -1,6 +1,7 @@
 export type { TunnelClientLogger } from "./logger.js";
 export {
   headersForLoopbackRequest,
+  TUNNEL_ORIGIN_HEADER,
   type LoopbackHeaderRewrite,
 } from "./headers.js";
 export { humanizeTransportError } from "./humanize.js";

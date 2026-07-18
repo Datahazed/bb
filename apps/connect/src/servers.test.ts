@@ -157,8 +157,16 @@ describe("listAccountServers", () => {
     const listed = await listAccountServers(db, "acct-a", now.getTime());
     expect(listed).toEqual(
       expect.arrayContaining([
-        { handle: "sawyer", name: "default", live: true },
-        { handle: "sawyer-desktop", name: "desktop", live: false },
+        expect.objectContaining({
+          handle: "sawyer",
+          name: "default",
+          live: true,
+        }),
+        expect.objectContaining({
+          handle: "sawyer-desktop",
+          name: "desktop",
+          live: false,
+        }),
       ]),
     );
     expect(listed).toHaveLength(2);
@@ -196,9 +204,21 @@ describe("listAccountServers", () => {
     const listed = await listAccountServers(db, "acct-a", now.getTime());
     expect(listed).toEqual(
       expect.arrayContaining([
-        { handle: "empty-name", name: "empty-name", live: true },
-        { handle: "revoked-box", name: "revoked", live: false },
-        { handle: "never-paired", name: "never", live: false },
+        expect.objectContaining({
+          handle: "empty-name",
+          name: "empty-name",
+          live: true,
+        }),
+        expect.objectContaining({
+          handle: "revoked-box",
+          name: "revoked",
+          live: false,
+        }),
+        expect.objectContaining({
+          handle: "never-paired",
+          name: "never",
+          live: false,
+        }),
       ]),
     );
   });

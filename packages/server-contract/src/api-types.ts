@@ -3,6 +3,7 @@ export * from "./api/projects.js";
 export * from "./api/environments.js";
 export * from "./api/files.js";
 export * from "./api/hosts.js";
+export * from "./api/members.js";
 export * from "./api/plugins.js";
 export * from "./api/presence.js";
 export * from "./api/system.js";

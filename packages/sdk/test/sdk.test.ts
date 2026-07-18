@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { Environment, JsonValue } from "@bb/domain";
+import {
+  CLAIMED_IDENTITY_HEADER,
+  encodeClaimedIdentityHeader,
+  type Environment,
+  type JsonValue,
+} from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
 import { ThreadWaitTimeoutError } from "../src/areas/threads.js";
 import type { FetchImplementation } from "../src/response.js";
+import { resolveRealtimeUrl } from "../src/realtime-url.js";
 
 interface CapturedRequest {
   bodyText: string | undefined;
@@ -103,6 +109,107 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("lists, adds, and removes Connect members through the members area", async () => {
+    const member = {
+      userId: "user-1",
+      handle: "collaborator",
+      displayName: "Collaborator",
+      imageUrl: null,
+      addedByUserId: "owner-1",
+      createdAt: 123,
+    };
+    const queue = createFetchQueue([
+      { body: { members: [member] } },
+      { body: member, status: 201 },
+      { body: { ok: true } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.members.list()).resolves.toEqual([member]);
+    await expect(sdk.members.add({ handle: "collaborator" })).resolves.toEqual(
+      member,
+    );
+    await expect(
+      sdk.members.remove({ handle: "collaborator" }),
+    ).resolves.toEqual({ ok: true });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/members",
+      },
+      {
+        bodyText: JSON.stringify({ handle: "collaborator" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/members",
+      },
+      {
+        bodyText: JSON.stringify({ handle: "collaborator" }),
+        method: "DELETE",
+        url: "http://bb.test/api/v1/members",
+      },
+    ]);
+  });
+
+  it("gets the complete presence snapshot", async () => {
+    const snapshot = {
+      threads: {
+        "thread-1": [
+          {
+            handle: "collaborator",
+            displayName: "Collaborator",
+            imageUrl: null,
+            typing: true,
+          },
+        ],
+      },
+    };
+    const queue = createFetchQueue([{ body: snapshot }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.presence.get()).resolves.toEqual(snapshot);
+    expect(queue.requests[0]?.url).toBe("http://bb.test/api/v1/presence");
+  });
+
+  it("sets claimed identity on HTTP and realtime transports", async () => {
+    const identity = {
+      handle: "collaborator",
+      displayName: "Collaborator",
+      imageUrl: null,
+      clientId: "cli-1",
+    };
+    let receivedHeaders: Headers | undefined;
+    const transport = createHttpTransport({
+      baseUrl: "https://bb.test",
+      claimedIdentity: identity,
+      fetch: async (_input, init) => {
+        receivedHeaders = new Headers(init?.headers);
+        return jsonResponse({ body: { threads: {} } });
+      },
+      runtime: "node",
+    });
+    const sdk = createBbSdk({ transport });
+
+    await sdk.presence.get();
+    const encoded = encodeClaimedIdentityHeader(identity);
+    expect(receivedHeaders?.get(CLAIMED_IDENTITY_HEADER)).toBe(encoded);
+    expect(resolveRealtimeUrl({ transport })).toBe(
+      `wss://bb.test/ws?identity=${encodeURIComponent(encoded)}`,
+    );
+  });
+
   it("sends thread pane presentation actions through the typed transport", async () => {
     const queue = createFetchQueue([{ body: { delivered: 3 } }]);
     const sdk = createBbSdk({

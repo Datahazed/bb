@@ -35,6 +35,21 @@ message agents, or inspect projects, providers, and environments.
   server does not read the file.
 - Use `bb-app client ssh-target list --json` to inspect mappings.
 
+## Multiplayer Members
+
+- `bb members list|add <handle>|remove <handle>` manages which Connect
+  accounts may access this bb through the gate (all subcommands take
+  `--json`). Members get full app access; their messages and actions are
+  attributed to their claimed identity, and presence shows who is viewing or
+  typing in each thread.
+- Member management is owner-console-only: it is rejected for sessions
+  arriving through the Connect tunnel, and requires the server to be enrolled
+  in Connect.
+- Identity is claimed, not verified: clients self-assert a handle via the
+  `x-bb-claimed-identity` header (SDK clients can set it via the
+  `claimedIdentity` option). Requests without one attribute to the machine's
+  local operator.
+
 ## App Settings
 
 - Settings → General holds server-backed app-wide preferences, such as the
