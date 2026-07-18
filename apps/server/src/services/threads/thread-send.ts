@@ -68,6 +68,7 @@ type SendThreadMessagePayload = SendMessageRequest & {
 };
 
 export interface SendThreadMessageArgs {
+  actorHandle?: string | null;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
   payload: SendThreadMessagePayload;
@@ -114,6 +115,7 @@ interface SendThreadMessageQueueRequest {
 }
 
 interface AppendAndQueueSendThreadMessageArgs {
+  actorHandle: string | null;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   db: DbConnection;
   environmentId: string | null;
@@ -314,6 +316,7 @@ function captureUserMessageSentTelemetry(
 }
 
 function appendAndQueueSendThreadMessageInTransaction({
+  actorHandle,
   beforeAppendInTransaction,
   db,
   environmentId,
@@ -335,6 +338,7 @@ function appendAndQueueSendThreadMessageInTransaction({
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
           {
+            actorHandle,
             threadId: thread.id,
             environmentId,
             type: "client/turn/requested",
@@ -392,6 +396,8 @@ export async function sendThreadMessage(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
+  const actorHandle =
+    senderThreadId === null ? (args.actorHandle ?? null) : null;
   let inputGroups = payload.inputGroups
     ? payload.inputGroups.map((inputGroup) =>
         senderThreadId
@@ -457,6 +463,7 @@ export async function sendThreadMessage(
 
   if (
     await dispatchTurnDuringReprovision({
+      actorHandle,
       beforeRequestAppendInTransaction: args.beforeAppendInTransaction,
       deps,
       environment,
@@ -490,6 +497,7 @@ export async function sendThreadMessage(
 
   if (mode === "start") {
     const command = await prepareReadyThreadTurnCommand(deps, {
+      actorHandle,
       thread,
       // A send/steer always targets an already-started thread; forking only
       // happens at create time.
@@ -511,6 +519,7 @@ export async function sendThreadMessage(
       syncGeneratedTitle: false,
     });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+      actorHandle,
       beforeAppendInTransaction: ({ tx }) => {
         args.beforeAppendInTransaction?.({ tx });
         ensureThreadCanStartRequest(thread);
@@ -585,6 +594,7 @@ export async function sendThreadMessage(
     hostId: readyEnvironment.hostId,
   });
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+    actorHandle,
     thread,
     input,
     ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -607,6 +617,7 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+    actorHandle,
     beforeAppendInTransaction: args.beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,

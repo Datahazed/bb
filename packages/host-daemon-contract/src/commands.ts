@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 58 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 59 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -256,6 +256,14 @@ interface GroupedPromptInputCommand {
   inputGroups?: HostDaemonPromptInput[][];
 }
 
+export const turnSpeakerSchema = z
+  .object({
+    handle: z.string().min(1),
+    displayName: z.string().min(1),
+  })
+  .strict();
+export type TurnSpeaker = z.infer<typeof turnSpeakerSchema>;
+
 function flattenPromptInputGroups(
   inputGroups: readonly HostDaemonPromptInput[][],
 ): HostDaemonPromptInput[] {
@@ -296,6 +304,7 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
     // at least one input, enforced by the refinement below.
     input: z.array(promptInputSchema),
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
+    speaker: turnSpeakerSchema.optional(),
     threadStoragePath: z.string().min(1).optional(),
     /** Present means fork the new thread from this source provider session
      *  instead of starting fresh; absent means a normal start. */
@@ -338,6 +347,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     requestId: clientTurnRequestIdSchema,
     input: z.array(promptInputSchema).min(1),
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
+    speaker: turnSpeakerSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,

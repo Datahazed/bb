@@ -1,5 +1,11 @@
 import { getThread } from "@bb/db";
-import { PERSONAL_PROJECT_ID, threadSchema } from "@bb/domain";
+import {
+  CLAIMED_IDENTITY_HEADER,
+  PERSONAL_PROJECT_ID,
+  encodeClaimedIdentityHeader,
+  threadSchema,
+  type ClaimedIdentity,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
 import {
@@ -17,6 +23,7 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 interface CreateThreadBodyOverrides {
+  claimedIdentity?: ClaimedIdentity;
   environment: unknown;
   origin?: string;
   originPluginId?: string;
@@ -29,7 +36,16 @@ async function postCreateThread(
 ): Promise<Response> {
   return harness.app.request("/api/v1/threads", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(overrides.claimedIdentity !== undefined
+        ? {
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader(
+              overrides.claimedIdentity,
+            ),
+          }
+        : {}),
+    },
     body: JSON.stringify({
       origin: overrides.origin ?? "sdk",
       ...(overrides.originPluginId !== undefined
@@ -106,13 +122,10 @@ describe("project-default thread environment", () => {
         hostId: host.id,
         path: sourcePath,
       });
-      const { provision, threadId } = await createAndCaptureProvision(
-        harness,
-        {
-          projectId: project.id,
-          environment: { type: "project-default" },
-        },
-      );
+      const { provision, threadId } = await createAndCaptureProvision(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
       expect(provision).toEqual(explicit);
       // Non-plugin origins surface a null plugin attribution.
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
@@ -153,6 +166,33 @@ describe("project-default thread environment", () => {
 });
 
 describe("plugin thread attribution", () => {
+  it("records the creator for human origins", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const response = await postCreateThread(harness, project.id, {
+        claimedIdentity: {
+          clientId: "browser-alice",
+          displayName: "Alice",
+          handle: "alice",
+          imageUrl: null,
+        },
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+        origin: "app",
+      });
+
+      expect(response.status).toBe(201);
+      const created = threadSchema.parse(await readJson(response));
+      expect(getThread(harness.db, created.id)?.createdByHandle).toBe("alice");
+    });
+  });
+
   it("persists and surfaces originPluginId for plugin-origin threads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -168,6 +208,12 @@ describe("plugin thread attribution", () => {
       });
 
       const response = await postCreateThread(harness, project.id, {
+        claimedIdentity: {
+          clientId: "browser-alice",
+          displayName: "Alice",
+          handle: "alice",
+          imageUrl: null,
+        },
         origin: "plugin",
         originPluginId: "linear",
         environment: {
@@ -180,6 +226,7 @@ describe("plugin thread attribution", () => {
       const created = threadSchema.parse(await readJson(response));
       expect(created.originPluginId).toBe("linear");
       expect(getThread(harness.db, created.id)?.originPluginId).toBe("linear");
+      expect(getThread(harness.db, created.id)?.createdByHandle).toBeNull();
 
       const getResponse = await harness.app.request(
         `/api/v1/threads/${created.id}`,

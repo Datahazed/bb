@@ -3,11 +3,13 @@ import {
   typedRoutes,
   type PublicApiSchema,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
+import { setPendingInteractionResolvedByHandle } from "@bb/db";
 import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import { getRequestActor } from "../../services/actors.js";
 
 const pendingInteractionIdSchema = z
   .string()
@@ -56,15 +58,19 @@ export function registerThreadInteractionRoutes(
 
   post(routes.resolveInteraction, (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      deps.pendingInteractions.resolvePendingInteraction({
-        threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
-        resolution: payload,
-      }),
+    const interactionId = parsePendingInteractionId(
+      context.req.param("interactionId"),
     );
+    const interaction = deps.pendingInteractions.resolvePendingInteraction({
+      threadId: thread.id,
+      interactionId,
+      resolution: payload,
+    });
+    setPendingInteractionResolvedByHandle(deps.db, {
+      id: interactionId,
+      resolvedByHandle: getRequestActor(context as unknown as Context).handle,
+    });
+    return context.json(interaction);
   });
 
   post(routes.respondToInteraction, (context, payload) => {

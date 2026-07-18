@@ -276,6 +276,8 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   ensureThreadCanStartRequest(thread);
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
+  const actorHandle =
+    senderThreadId === null ? args.queuedMessages[0]!.actorHandle : null;
   let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
     formatQueuedMessageInputForSender({
       input: toThreadQueuedMessage(claimedQueuedMessage).content,
@@ -320,6 +322,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     hostId: environment.hostId,
   });
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+    actorHandle,
     environment,
     execution,
     input,
@@ -339,6 +342,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         throw createQueuedMessageClaimLostError();
       }
       const request = appendClientTurnEventInTransaction(tx, {
+        actorHandle,
         environmentId: thread.environmentId,
         execution,
         initiator,
@@ -430,6 +434,10 @@ async function sendClaimedQueuedMessageForThread(
     thread: args.thread,
   });
   await sendThreadMessage(deps, {
+    actorHandle:
+      args.queuedMessages[0]!.senderThreadId === null
+        ? args.queuedMessages[0]!.actorHandle
+        : null,
     beforeAppendInTransaction: ({ tx }) => {
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,

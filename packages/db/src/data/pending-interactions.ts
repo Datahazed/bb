@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -283,6 +283,28 @@ export function setPendingInteractionResolved(
     status: "resolved",
     statusReason: null,
   });
+}
+
+export function setPendingInteractionResolvedByHandle(
+  db: PendingInteractionWriteConnection,
+  args: {
+    id: string;
+    resolvedByHandle: string;
+  },
+): PendingInteractionRow | null {
+  return (
+    db
+      .update(pendingInteractions)
+      .set({ resolvedByHandle: args.resolvedByHandle })
+      .where(
+        and(
+          eq(pendingInteractions.id, args.id),
+          isNull(pendingInteractions.resolvedByHandle),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
 }
 
 export function setPendingInteractionResolving(

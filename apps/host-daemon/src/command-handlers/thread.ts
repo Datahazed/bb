@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import type { PromptInput } from "@bb/domain";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
+import type { TurnSpeaker } from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
@@ -26,7 +27,7 @@ interface ResumeThreadRuntimeIfMissingArgs {
 interface StageThreadCommandInputArgs {
   command: Pick<
     TurnSubmitCommand,
-    "input" | "inputGroups" | "requestId" | "threadId"
+    "input" | "inputGroups" | "requestId" | "speaker" | "threadId"
   >;
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   projectId: string;
@@ -82,6 +83,50 @@ function groupedInputForRuntime(
       ? input
       : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...input],
   );
+}
+
+export function annotateSpeakerInput(
+  input: readonly PromptInput[],
+  speaker: TurnSpeaker,
+): PromptInput[] {
+  const annotation = `[from @${speaker.handle}] `;
+  const firstTextIndex = input.findIndex((item) => item.type === "text");
+  if (firstTextIndex === -1) {
+    return [{ type: "text", text: annotation, mentions: [] }, ...input];
+  }
+  return input.map((item, index) =>
+    index === firstTextIndex && item.type === "text"
+      ? { ...item, text: `${annotation}${item.text}` }
+      : item,
+  );
+}
+
+function annotateStagedSpeaker(
+  staged: StagedThreadCommandInput,
+  speaker: TurnSpeaker | undefined,
+): StagedThreadCommandInput {
+  if (speaker === undefined) {
+    return staged;
+  }
+  if (staged.inputGroups !== undefined) {
+    const [firstGroup, ...remainingGroups] = staged.inputGroups;
+    if (firstGroup === undefined) {
+      return staged;
+    }
+    const inputGroups = [
+      annotateSpeakerInput(firstGroup, speaker),
+      ...remainingGroups,
+    ];
+    return {
+      ...staged,
+      input: groupedInputForRuntime(inputGroups),
+      inputGroups,
+    };
+  }
+  return {
+    ...staged,
+    input: annotateSpeakerInput(staged.input, speaker),
+  };
 }
 
 async function requireSupportedProviderCliForThreadStart({
@@ -192,12 +237,15 @@ export async function startThread(
     );
     await fs.mkdir(confined, { recursive: true });
   }
-  const staged = await stageThreadCommandInput({
-    command,
-    fetchProjectAttachment: options.fetchProjectAttachment,
-    projectId: command.projectId,
-    threadStorageRootPath: options.threadStorageRootPath,
-  });
+  const staged = annotateStagedSpeaker(
+    await stageThreadCommandInput({
+      command,
+      fetchProjectAttachment: options.fetchProjectAttachment,
+      projectId: command.projectId,
+      threadStorageRootPath: options.threadStorageRootPath,
+    }),
+    command.speaker,
+  );
   try {
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -306,12 +354,15 @@ export async function submitTurn(
   entry: RuntimeEntry,
   options: CommandDispatchOptions,
 ): Promise<HostDaemonCommandResult<"turn.submit">> {
-  const staged = await stageThreadCommandInput({
-    command,
-    fetchProjectAttachment: options.fetchProjectAttachment,
-    projectId: command.resumeContext.projectId,
-    threadStorageRootPath: options.threadStorageRootPath,
-  });
+  const staged = annotateStagedSpeaker(
+    await stageThreadCommandInput({
+      command,
+      fetchProjectAttachment: options.fetchProjectAttachment,
+      projectId: command.resumeContext.projectId,
+      threadStorageRootPath: options.threadStorageRootPath,
+    }),
+    command.speaker,
+  );
   const stagedCommand = {
     ...command,
     input: staged.input,

@@ -52,9 +52,7 @@ export function onClientSocketMessage(
       deps.watchInterests.unsubscribe(socket, parsed.target);
       break;
     case "typing":
-      // Presence typing signal; folded into presence state by the hub once
-      // multiplayer presence lands. Accepted (not an error) so newer clients
-      // never get their socket closed by an older server mid-rollout.
+      deps.hub.setTyping(socket, parsed.threadId, parsed.typing);
       break;
     default: {
       const _exhaustive: never = parsed;
@@ -70,7 +68,7 @@ export function onClientSocketClose(
   },
   socket: ClientSocket,
 ): void {
-  releaseSocketActor(socket);
   deps.watchInterests.releaseSocket(socket);
   deps.hub.unregisterClient(socket);
+  releaseSocketActor(socket);
 }

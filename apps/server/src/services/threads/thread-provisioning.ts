@@ -46,6 +46,7 @@ import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
+  actorHandle?: string | null;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   // Non-null ⇒ provision this thread by cloning the source provider session
@@ -62,6 +63,7 @@ interface RequestThreadProvisionArgs {
 }
 
 interface RequestThreadReprovisionArgs {
+  actorHandle?: string | null;
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
   environment: Environment;
   provisionEventSequence: number;
@@ -221,6 +223,7 @@ async function startThreadIfEnvironmentReady(
   // established and the thread lands idle; the user steers the first executed
   // turn later. Submitted fork prompts carry their input and run immediately.
   await requestThreadStart(deps, {
+    actorHandle: args.context.request.actorHandle,
     thread: args.thread,
     environment: {
       id: args.environment.id,
@@ -255,6 +258,7 @@ export function requestThreadProvision(
   const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
   const target: TurnRequestTarget = { kind: "thread-start" };
   const request = appendClientTurnEvent(deps, {
+    actorHandle: initiator === "user" ? (args.actorHandle ?? null) : null,
     threadId: args.thread.id,
     environmentId: args.thread.environmentId,
     type: "client/turn/requested",
@@ -274,6 +278,7 @@ export function requestThreadProvision(
     requestSequence: request.sequence,
   });
   appendClientTurnEvent(deps, {
+    actorHandle: initiator === "user" ? (args.actorHandle ?? null) : null,
     threadId: args.thread.id,
     environmentId: args.thread.environmentId,
     type: "client/thread/start",
@@ -307,6 +312,7 @@ export function requestThreadReprovision(
           tx,
           {
             threadId: args.thread.id,
+            actorHandle: args.actorHandle ?? null,
             environmentId: args.environment.id,
             type: "client/turn/requested",
             input: args.input,
@@ -345,6 +351,7 @@ export function requestThreadReprovision(
   );
 
   const context = createReprovisioningContext({
+    actorHandle: args.actorHandle ?? null,
     clientRequestId: request.requestId,
     provisionEventSequence: args.provisionEventSequence,
     execution: args.execution,

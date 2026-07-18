@@ -8,6 +8,7 @@ import {
   type SystemChangeKind,
   type ThreadChangeKind,
   type ThreadChangeMetadata,
+  type PresenceViewer,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -19,8 +20,10 @@ import type {
 } from "@bb/host-daemon-contract";
 import {
   pluginSignalSchema,
+  presenceSummaryMessageSchema,
   serverMessageSchema,
   terminalServerMessageSchema,
+  threadPresenceMessageSchema,
   threadOpenSignalSchema,
   threadPaneActionSignalSchema,
   type ThreadPaneAction,
@@ -28,6 +31,10 @@ import {
   type ThreadOpenSplit,
   type TerminalServerMessage,
 } from "@bb/server-contract";
+import {
+  PresenceService,
+  type PresenceSnapshot,
+} from "../services/presence.js";
 
 interface HubSocket {
   close(code?: number, reason?: string): void;
@@ -103,6 +110,10 @@ export interface RecordHostOnlineRpcResponseArgs {
   sessionId: string;
 }
 
+export interface NotificationHubOptions {
+  presenceTypingTtlMs?: number;
+}
+
 export type HostOnlineRpcResponseDisposition =
   | { handled: true }
   | { handled: false; reason: "stale" }
@@ -168,6 +179,18 @@ export class NotificationHub implements DbNotifier {
     string,
     Set<ThreadEventWaiter>
   >();
+  private readonly presence: PresenceService;
+
+  constructor(options: NotificationHubOptions = {}) {
+    this.presence = new PresenceService({
+      onThreadChanged: (threadId, viewers) => {
+        this.broadcastPresence(threadId, viewers);
+      },
+      ...(options.presenceTypingTtlMs === undefined
+        ? {}
+        : { typingTtlMs: options.presenceTypingTtlMs }),
+    });
+  }
 
   registerClient(socket: HubSocket): void {
     if (!this.clientKeysBySocket.has(socket)) {
@@ -190,6 +213,10 @@ export class NotificationHub implements DbNotifier {
       sockets.delete(socket);
       if (sockets.size === 0) {
         this.clientSocketsByKey.delete(key);
+      }
+      const threadId = this.threadIdFromDetailKey(key);
+      if (threadId !== null) {
+        this.presence.unsubscribe(threadId, socket);
       }
     }
 
@@ -279,16 +306,24 @@ export class NotificationHub implements DbNotifier {
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     this.registerClient(socket);
     const key = subscriptionKey(target);
-    this.clientKeysBySocket.get(socket)?.add(key);
+    const keys = this.clientKeysBySocket.get(socket);
+    const alreadySubscribed = keys?.has(key) ?? false;
+    keys?.add(key);
 
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
     sockets.add(socket);
     this.clientSocketsByKey.set(key, sockets);
+    if (target.kind === "thread-detail" && !alreadySubscribed) {
+      const result = this.presence.subscribe(target.threadId, socket);
+      if (result === "unchanged") {
+        this.sendThreadPresenceToSocket(socket, target.threadId);
+      }
+    }
   }
 
   unsubscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     const key = subscriptionKey(target);
-    this.clientKeysBySocket.get(socket)?.delete(key);
+    const wasSubscribed = this.clientKeysBySocket.get(socket)?.delete(key);
 
     const sockets = this.clientSocketsByKey.get(key);
     if (!sockets) {
@@ -298,6 +333,17 @@ export class NotificationHub implements DbNotifier {
     if (sockets.size === 0) {
       this.clientSocketsByKey.delete(key);
     }
+    if (target.kind === "thread-detail" && wasSubscribed) {
+      this.presence.unsubscribe(target.threadId, socket);
+    }
+  }
+
+  setTyping(socket: HubSocket, threadId: string, typing: boolean): void {
+    this.presence.setTyping(socket, threadId, typing);
+  }
+
+  getPresenceSnapshot(): PresenceSnapshot {
+    return this.presence.snapshot();
   }
 
   recordDaemonSessionPlatform(sessionId: string, platform: HostPlatform): void {
@@ -769,6 +815,66 @@ export class NotificationHub implements DbNotifier {
       waiter.resolve(true);
     }
     this.daemonRegistrationWaiters.delete(hostId);
+  }
+
+  /**
+   * Presence summaries are partial patches: consumers merge the supplied
+   * thread entries into their cache, and an empty handle array removes that
+   * thread's entry.
+   */
+  private broadcastPresence(
+    threadId: string,
+    viewers: readonly PresenceViewer[],
+  ): void {
+    const detailResult = threadPresenceMessageSchema.safeParse({
+      type: "thread-presence",
+      threadId,
+      viewers,
+    });
+    const summaryResult = presenceSummaryMessageSchema.safeParse({
+      type: "presence-summary",
+      threads: { [threadId]: viewers.map((viewer) => viewer.handle) },
+    });
+    if (!detailResult.success || !summaryResult.success) {
+      console.error(
+        "Skipping invalid realtime presence broadcast",
+        detailResult.success ? summaryResult.error : detailResult.error,
+      );
+      return;
+    }
+
+    this.notifyClientsByKeySet(
+      this.clientSocketsByKey.get(
+        subscriptionKey({ kind: "thread-detail", threadId }),
+      ) ?? [],
+      JSON.stringify(detailResult.data),
+    );
+    this.notifyClientsByKeySet(
+      this.clientSocketsByKey.get(subscriptionKey({ kind: "thread-list" })) ??
+        [],
+      JSON.stringify(summaryResult.data),
+    );
+  }
+
+  private sendThreadPresenceToSocket(
+    socket: HubSocket,
+    threadId: string,
+  ): void {
+    const result = threadPresenceMessageSchema.safeParse({
+      type: "thread-presence",
+      threadId,
+      viewers: this.presence.snapshot().threads[threadId] ?? [],
+    });
+    if (!result.success) {
+      console.error("Skipping invalid realtime presence sync", result.error);
+      return;
+    }
+    socket.send(JSON.stringify(result.data));
+  }
+
+  private threadIdFromDetailKey(key: string): string | null {
+    const prefix = "thread-detail:";
+    return key.startsWith(prefix) ? key.slice(prefix.length) : null;
   }
 
   private notifyClients(message: ChangedMessage): void {

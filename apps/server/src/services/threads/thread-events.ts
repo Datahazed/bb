@@ -59,6 +59,7 @@ interface ThreadEventTransactionDeps {
 }
 
 export interface ClientTurnRequestedEventArgs {
+  actorHandle?: string | null;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
@@ -83,6 +84,7 @@ export interface PreparedClientTurnRequestedEventArgs extends ClientTurnRequeste
 }
 
 export interface ClientTurnLifecycleEventArgs {
+  actorHandle?: string | null;
   environmentId: string | null;
   initiator: ThreadTurnInitiator;
   requestMethod: "thread/start" | "turn/start";
@@ -139,6 +141,7 @@ export interface BuildCwdBranchEntriesArgs {
 }
 
 export interface AppendThreadInterruptedEventArgs {
+  actorHandle?: string | null;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -298,6 +301,7 @@ function appendBuiltClientTurnRequestedEvent(
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequest {
   const sequence = append({
+    actorHandle: args.actorHandle ?? null,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: args.type,
@@ -315,6 +319,7 @@ function appendBuiltClientTurnEvent(
     case "client/thread/start":
     case "client/turn/start":
       return append({
+        actorHandle: args.actorHandle ?? null,
         threadId: args.threadId,
         environmentId: args.environmentId,
         type: args.type,
@@ -602,6 +607,7 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequestWithNotification {
   const eventArgs: AppendThreadEventArgs = {
+    actorHandle: args.actorHandle ?? null,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: args.type,
@@ -811,6 +817,7 @@ export function appendThreadInterruptedEventInTransaction(
   args: AppendThreadInterruptedEventArgs,
 ): number {
   return appendThreadEventInTransaction(db, {
+    actorHandle: args.actorHandle ?? null,
     threadId: args.threadId,
     type: "system/thread/interrupted",
     scope: threadScope(),

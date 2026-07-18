@@ -13,6 +13,7 @@ import {
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
   setPendingInteractionResolved,
+  setPendingInteractionResolvedByHandle,
 } from "../../src/data/pending-interactions.js";
 import { createThread } from "../../src/data/threads.js";
 
@@ -169,6 +170,18 @@ describe("pending interactions", () => {
       id: older.id,
       status: "resolved",
     });
+    expect(
+      setPendingInteractionResolvedByHandle(db, {
+        id: older.id,
+        resolvedByHandle: "alice",
+      }),
+    ).toMatchObject({ resolvedByHandle: "alice" });
+    expect(
+      setPendingInteractionResolvedByHandle(db, {
+        id: older.id,
+        resolvedByHandle: "bob",
+      }),
+    ).toBeNull();
   });
 
   it("interrupts pending interactions for matching provider threads only", () => {

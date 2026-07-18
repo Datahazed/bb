@@ -26,6 +26,9 @@ export {
   HOST_CHANGE_KINDS,
   hostChangedMessageSchema,
   hostChangeKindSchema,
+  presenceSummaryMessageLenientSchema,
+  presenceSummaryMessageSchema,
+  presenceViewerSchema,
   PROJECT_CHANGE_KINDS,
   projectChangedMessageSchema,
   projectChangeKindSchema,
@@ -38,6 +41,8 @@ export {
   threadChangeKindSchema,
   threadChangeMetadataSchema,
   THREAD_CHANGE_KINDS,
+  threadPresenceMessageLenientSchema,
+  threadPresenceMessageSchema,
 } from "@bb/domain";
 
 export type {
@@ -47,6 +52,8 @@ export type {
   EnvironmentChangedMessage,
   HostChangeKind,
   HostChangedMessage,
+  PresenceSummaryMessage,
+  PresenceViewer,
   ProjectChangeKind,
   ProjectChangedMessage,
   RealtimeSubscriptionTarget,
@@ -56,6 +63,7 @@ export type {
   ThreadChangeMetadata,
   ThreadChangeKind,
   ThreadChangedMessage,
+  ThreadPresenceMessage,
   UnsubscribeMessage,
   JsonValue,
 } from "@bb/domain";

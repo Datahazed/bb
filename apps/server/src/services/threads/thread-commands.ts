@@ -1,6 +1,8 @@
 import {
   environments,
   events,
+  countDistinctThreadEventActors,
+  getCollaborator,
   getAppSettings,
   getExperiments,
   threads,
@@ -33,6 +35,7 @@ import {
   type HostDaemonAcpLaunchSpec,
   type HostDaemonCommand,
   type TurnSubmitTarget,
+  type TurnSpeaker,
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
@@ -85,6 +88,7 @@ interface ThreadUnarchiveCommandEnvironment {
 }
 
 export interface ThreadStartCommandArgs {
+  actorHandle?: string | null;
   environment: ThreadStartCommandEnvironment;
   execution: ResolvedThreadExecutionOptions;
   // Non-null ⇒ clone the parent's provider session at its branch point (native
@@ -101,6 +105,7 @@ export interface ThreadStartCommandArgs {
 }
 
 interface PreparedTurnSubmitCommandBuildArgs {
+  speaker?: TurnSpeaker;
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<AppDeps, "config" | "db">;
   environmentId: string;
@@ -115,6 +120,7 @@ interface PreparedTurnSubmitCommandBuildArgs {
 }
 
 interface PrepareTurnSubmitCommandPayloadArgs {
+  actorHandle?: string | null;
   environment: ThreadRuntimeCommandEnvironment;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
@@ -179,6 +185,28 @@ function providerSupportsThreadRename(providerId: string): boolean {
   }
 
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsRename;
+}
+
+function resolveTurnSpeaker(
+  deps: Pick<AppDeps, "db">,
+  args: { actorHandle?: string | null; threadId: string },
+): TurnSpeaker | undefined {
+  if (!args.actorHandle) {
+    return undefined;
+  }
+  if (
+    countDistinctThreadEventActors(deps.db, {
+      excludedHandle: args.actorHandle,
+      threadId: args.threadId,
+    }) < 1
+  ) {
+    return undefined;
+  }
+  const collaborator = getCollaborator(deps.db, args.actorHandle);
+  return {
+    handle: args.actorHandle,
+    displayName: collaborator?.displayName ?? args.actorHandle,
+  };
 }
 
 function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
@@ -338,6 +366,10 @@ export async function buildThreadStartCommand(
     model: args.execution.model,
   });
   const acpLaunchSpec = buildAcpLaunchSpecForProviderId(deps, args.providerId);
+  const speaker = resolveTurnSpeaker(deps, {
+    actorHandle: args.actorHandle,
+    threadId: args.thread.id,
+  });
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -354,6 +386,7 @@ export async function buildThreadStartCommand(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
+    ...(speaker !== undefined ? { speaker } : {}),
     options: toRuntimeExecutionOptions({
       ...args,
       claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
@@ -391,6 +424,7 @@ function buildPreparedTurnSubmitCommandPayload(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
+    ...(args.speaker !== undefined ? { speaker: args.speaker } : {}),
     options: toRuntimeExecutionOptions({
       ...args,
       claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
@@ -453,6 +487,10 @@ export async function prepareTurnSubmitCommandPayload(
     environment: args.environment,
     model: args.execution.model,
   });
+  const speaker = resolveTurnSpeaker(deps, {
+    actorHandle: args.actorHandle,
+    threadId: args.thread.id,
+  });
   return buildPreparedTurnSubmitCommandPayload({
     claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     deps,
@@ -464,6 +502,7 @@ export async function prepareTurnSubmitCommandPayload(
       ? { inputGroups: args.inputGroups }
       : {}),
     providerThreadId,
+    ...(speaker !== undefined ? { speaker } : {}),
     runtimeContext,
     target: args.target,
     threadId: args.thread.id,

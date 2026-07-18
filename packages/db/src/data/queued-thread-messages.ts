@@ -26,6 +26,7 @@ import {
 } from "./order-keys.js";
 
 export interface CreateQueuedThreadMessageInput {
+  actorHandle?: string | null;
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
@@ -216,6 +217,7 @@ function queuedMessageGroupingEnvelopeMatches(
 ): boolean {
   return (
     firstQueuedMessage !== null &&
+    queuedMessage.actorHandle === firstQueuedMessage.actorHandle &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
@@ -491,6 +493,7 @@ export function createQueuedThreadMessage(
           threadId: input.threadId,
           content: JSON.stringify(input.content),
           senderThreadId: input.senderThreadId ?? null,
+          actorHandle: input.actorHandle ?? null,
           model: input.model,
           reasoningLevel: input.reasoningLevel,
           permissionMode: input.permissionMode,

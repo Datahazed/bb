@@ -1,5 +1,11 @@
-import { createQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
 import {
+  createQueuedThreadMessage,
+  getPendingInteraction,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import {
+  CLAIMED_IDENTITY_HEADER,
+  encodeClaimedIdentityHeader,
   turnScope,
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   USER_QUESTION_MAX_SELECTED,
@@ -338,6 +344,12 @@ describe("public thread interaction routes", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-alice",
+              displayName: "Alice",
+              handle: "alice",
+              imageUrl: null,
+            }),
           },
           body: JSON.stringify(createAllowOnceResolution()),
         },
@@ -348,6 +360,10 @@ describe("public thread interaction routes", () => {
         status: "resolving",
         resolution: createAllowOnceResolution(),
       });
+      expect(
+        getPendingInteraction(harness.db, registered.interaction.id)
+          ?.resolvedByHandle,
+      ).toBe("alice");
 
       const duplicateResolveResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}/resolve`,
@@ -947,9 +963,9 @@ describe("public thread interaction routes", () => {
         message:
           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
       });
-      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        0,
-      );
+      expect(
+        listQueuedThreadMessages(harness.db, activeThread.id),
+      ).toHaveLength(0);
     });
   });
 

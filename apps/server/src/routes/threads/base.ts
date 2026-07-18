@@ -23,9 +23,10 @@ import {
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { getRequestActor } from "../../services/actors.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
 import {
   requestEnvironmentCleanup,
@@ -263,6 +264,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const thread = await createThreadFromRequest(deps, {
       ...payload,
+      createdByHandle:
+        payload.origin === "plugin"
+          ? null
+          : getRequestActor(context as unknown as Context).handle,
       origin: payload.origin,
     });
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);

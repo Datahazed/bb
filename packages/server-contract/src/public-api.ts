@@ -115,6 +115,7 @@ import type {
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
+  PresenceSnapshotResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
@@ -1172,6 +1173,15 @@ export const publicApiRoutes = {
         threadFilesRawQuerySchema,
       ),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  presence: {
+    snapshot: defineRoute({
+      path: "/presence",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<PresenceSnapshotResponse>(),
     }),
   },
 

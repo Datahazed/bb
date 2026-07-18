@@ -208,6 +208,7 @@ interface HasProviderTurnCompletedEventAtOrAfterArgs {
 }
 
 export interface RequestThreadStopArgs extends ThreadStopCommandArgs {
+  actorHandle?: string | null;
   interruptionReason: SystemThreadInterruptedReason;
 }
 
@@ -421,6 +422,7 @@ interface ApplyActiveTurnInterruptionArgs {
 }
 
 interface MarkThreadStopRequestedWithEventArgs {
+  actorHandle?: string | null;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -491,6 +493,7 @@ function appendThreadInterruptedEventIfMissingInTransaction(
     return false;
   }
   appendThreadInterruptedEventInTransaction(deps.db, {
+    actorHandle: args.actorHandle ?? null,
     threadId: args.threadId,
     reason: args.reason,
   });
@@ -519,6 +522,7 @@ function markThreadStoppingWithEventInTransaction(
   }
   deps.hub.notifyThread(args.threadId, ["status-changed"]);
   appendThreadInterruptedEventInTransaction(deps.db, {
+    actorHandle: args.actorHandle ?? null,
     threadId: args.threadId,
     reason: args.reason,
   });
@@ -1142,6 +1146,7 @@ export function requestThreadStop(
           hub: notificationBuffer,
         },
         {
+          actorHandle: args.actorHandle ?? null,
           reason: args.interruptionReason,
           threadId: args.threadId,
         },
@@ -1197,6 +1202,7 @@ function dispatchThreadStopCommand(
 function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
+  actorHandle?: string | null,
 ): void {
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
@@ -1231,6 +1237,7 @@ function requestPreStartThreadStop(
 
       if (currentThread.status !== "stopping") {
         markThreadStoppingWithEventInTransaction(txDeps, {
+          actorHandle: actorHandle ?? null,
           reason: "manual-stop",
           threadId: currentThread.id,
         });
@@ -1302,6 +1309,7 @@ export function requestThreadStopForCurrentState(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
+  actorHandle?: string | null,
 ): void {
   // An active thread (or one with a live start RPC in flight) stops via the
   // runtime stop RPC; a stopping thread with a live turn re-dispatches that
@@ -1316,6 +1324,7 @@ export function requestThreadStopForCurrentState(
       return;
     }
     requestThreadStop(deps, {
+      actorHandle: actorHandle ?? null,
       environmentId: environment.id,
       hostId: environment.hostId,
       interruptionReason: "manual-stop",
@@ -1329,7 +1338,7 @@ export function requestThreadStopForCurrentState(
     thread.status === "stopping" ||
     hasActiveThreadProvisioningContext(thread.id)
   ) {
-    requestPreStartThreadStop(deps, thread);
+    requestPreStartThreadStop(deps, thread, actorHandle);
   }
 }
 

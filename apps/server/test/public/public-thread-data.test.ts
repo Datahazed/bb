@@ -19,6 +19,8 @@ import {
   upsertProjectExecutionDefaults,
 } from "@bb/db";
 import {
+  CLAIMED_IDENTITY_HEADER,
+  encodeClaimedIdentityHeader,
   encodeClientTurnRequestIdNumber,
   threadQueuedMessageSchema,
   threadScope,
@@ -92,6 +94,85 @@ const clientTurnRequestedDataSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 describe("public thread data routes", () => {
+  it("attributes direct human sends to the resolved request actor", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-alice",
+              displayName: "Alice",
+              handle: "alice",
+              imageUrl: null,
+            }),
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Human-authored message" }],
+            mode: "start",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(
+        harness.db
+          .select({ actorHandle: events.actorHandle })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, thread.id),
+              eq(events.type, "client/turn/requested"),
+            ),
+          )
+          .get(),
+      ).toEqual({ actorHandle: "alice" });
+    });
+  });
+
+  it("attributes manual stops to the resolved request actor", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        {
+          method: "POST",
+          headers: {
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-alice",
+              displayName: "Alice",
+              handle: "alice",
+              imageUrl: null,
+            }),
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        harness.db
+          .select({ actorHandle: events.actorHandle })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, thread.id),
+              eq(events.type, "system/thread/interrupted"),
+            ),
+          )
+          .get(),
+      ).toEqual({ actorHandle: "alice" });
+    });
+  });
+
   it("manages sections through the canonical public route lifecycle", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -2818,6 +2899,12 @@ describe("public thread data routes", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-alice",
+              displayName: "Alice",
+              handle: "alice",
+              imageUrl: null,
+            }),
           },
           body: JSON.stringify({
             input: [{ type: "text", text: "Queued message ready to send" }],
@@ -2844,7 +2931,7 @@ describe("public thread data routes", () => {
       });
       expect("inputGroups" in queued.command).toBe(false);
       const requestedEvent = harness.db
-        .select({ data: events.data })
+        .select({ actorHandle: events.actorHandle, data: events.data })
         .from(events)
         .where(
           and(
@@ -2852,8 +2939,11 @@ describe("public thread data routes", () => {
             eq(events.type, "client/turn/requested"),
           ),
         )
-        .get();
+        .orderBy(events.sequence)
+        .all()
+        .at(-1);
       expect(requestedEvent).toBeTruthy();
+      expect(requestedEvent?.actorHandle).toBe("alice");
       expect(
         Object.hasOwn(JSON.parse(requestedEvent!.data), "inputGroups"),
       ).toBe(false);

@@ -655,6 +655,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.speaker":
+    "turn commands omit speaker attribution until a thread has more than one distinct human actor.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1666,7 +1668,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("parses section mentions in thread.start", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(58);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(59);
 
     expect(
       hostDaemonCommandSchema.parse({

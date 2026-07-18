@@ -13,6 +13,7 @@ import type {
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
+  createdByHandle?: string | null;
   /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin | null;
   /**

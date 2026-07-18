@@ -54,6 +54,7 @@ describe("queued thread messages", () => {
   it("creates a queued message", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actorHandle: "alice",
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -65,6 +66,7 @@ describe("queued thread messages", () => {
     expect(queuedMessage.id).toMatch(/^qmsg_/);
     expect(queuedMessage.threadId).toBe(thread.id);
     expect(queuedMessage.content).toBe(JSON.stringify(defaultInput));
+    expect(queuedMessage.actorHandle).toBe("alice");
     expect(queuedMessage.model).toBe("gpt-5");
     expect(queuedMessage.serviceTier).toBe("default");
     expect(queuedMessage.groupWithNext).toBe(false);

@@ -67,6 +67,18 @@ function mustCreateThreadSection(
 }
 
 describe("threads", () => {
+  it("records the human creator handle", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      createdByHandle: "alice",
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    expect(thread.createdByHandle).toBe("alice");
+    expect(getThread(db, thread.id)?.createdByHandle).toBe("alice");
+  });
+
   it("summarizes favicon attention for active sidebar threads", () => {
     vi.useFakeTimers();
     try {

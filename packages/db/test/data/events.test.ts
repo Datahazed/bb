@@ -17,6 +17,7 @@ import {
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
+  countDistinctThreadEventActors,
   findStoredEventRow,
   getActiveStoredTurnId,
   getHighWaterMarks,
@@ -198,6 +199,51 @@ describe("events", () => {
     });
     const all = listEvents(db, { threadId: thread.id });
     expect(all).toHaveLength(2);
+  });
+
+  it("stores event actors and counts distinct human speakers", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        actorHandle: "alice",
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "first" }),
+      },
+      {
+        actorHandle: "bob",
+        threadId: thread.id,
+        sequence: 2,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "second" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "system" }),
+      },
+    ]);
+
+    expect(listEvents(db, { threadId: thread.id })).toMatchObject([
+      { actorHandle: "alice" },
+      { actorHandle: "bob" },
+      { actorHandle: null },
+    ]);
+    expect(
+      countDistinctThreadEventActors(db, { threadId: thread.id }),
+    ).toBe(2);
+    expect(
+      countDistinctThreadEventActors(db, {
+        excludedHandle: "alice",
+        threadId: thread.id,
+      }),
+    ).toBe(1);
   });
 
   it("stores derived item columns when provided", () => {

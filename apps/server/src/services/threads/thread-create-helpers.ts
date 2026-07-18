@@ -170,6 +170,7 @@ export function createThreadRecord(
 
   try {
     const thread = createThread(deps.db, deps.hub, {
+      createdByHandle: args.request.createdByHandle ?? null,
       projectId: args.request.projectId,
       environmentId: args.environmentId,
       providerId: args.request.providerId,

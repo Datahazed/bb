@@ -303,6 +303,7 @@ export {
   getLatestThreadOutputEventRow,
   getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
+  countDistinctThreadEventActors,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
@@ -451,6 +452,7 @@ export {
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
   setPendingInteractionResolved,
+  setPendingInteractionResolvedByHandle,
 } from "./pending-interactions.js";
 export type {
   CreatePendingInteractionInput,

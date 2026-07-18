@@ -1,5 +1,6 @@
 import {
   and,
+  countDistinct,
   desc,
   eq,
   gt,
@@ -11,6 +12,7 @@ import {
   max,
   notExists,
   notInArray,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -65,6 +67,7 @@ const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
 const isEnvironmentDirectoryUpdateEventData = sql`json_extract(${events.data}, '$.operation') = 'environment_directory_update'`;
 
 export interface InsertEventInput {
+  actorHandle?: string | null;
   threadId: string;
   environmentId?: string | null;
   scope: ThreadEventScope;
@@ -132,6 +135,7 @@ export type AppendStoredThreadEventArgs<
   TType extends ThreadEventType = ThreadEventType,
 > = {
   [TEventType in TType]: {
+    actorHandle?: string | null;
     data: StoredThreadEventDataForType<TEventType>;
     environmentId?: string | null;
     providerThreadId?: string | null;
@@ -194,8 +198,8 @@ export function insertEvents(
     const createdAt = input.createdAt ?? Date.now();
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
     const result = db.run(
-      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
-          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.data}, ${createdAt})`,
+      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, actor_handle, data, created_at)
+          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.actorHandle ?? null}, ${input.data}, ${createdAt})`,
     );
     if (result.changes > 0) {
       insertedCount++;
@@ -585,7 +589,7 @@ export function appendStoredThreadEventsInTransaction(
 
     db.run(
       sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
+        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, actor_handle, data, created_at)
         VALUES (
           ${createEventId()},
           ${args.threadId},
@@ -597,6 +601,7 @@ export function appendStoredThreadEventsInTransaction(
           ${args.type},
           ${itemFields.itemId},
           ${itemFields.itemKind},
+          ${args.actorHandle ?? null},
           ${JSON.stringify(args.data)},
           ${now}
         )`,
@@ -614,6 +619,29 @@ export function appendStoredThreadEventsInTransaction(
   }
 
   return sequences;
+}
+
+export function countDistinctThreadEventActors(
+  db: DbQueryConnection,
+  args: {
+    excludedHandle?: string;
+    threadId: string;
+  },
+): number {
+  const row = db
+    .select({ actorCount: countDistinct(events.actorHandle) })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        isNotNull(events.actorHandle),
+        args.excludedHandle === undefined
+          ? undefined
+          : ne(events.actorHandle, args.excludedHandle),
+      ),
+    )
+    .get();
+  return row?.actorCount ?? 0;
 }
 
 export function appendStoredThreadEvent<TType extends ThreadEventType>(

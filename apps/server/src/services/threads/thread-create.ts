@@ -432,6 +432,10 @@ async function createProvisioningThread(
       "client/turn/requested",
     );
     context = requestThreadProvision(deps, {
+      actorHandle:
+        args.request.startedOnBehalfOf === null
+          ? (args.request.createdByHandle ?? null)
+          : null,
       thread,
       environmentIntent: args.environmentIntent,
       execution,
@@ -472,6 +476,10 @@ export async function createThreadFromRequest(
     visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
   } = {
     ...rawRequestInput,
+    createdByHandle:
+      rawRequestInput.origin === "plugin"
+        ? null
+        : (rawRequestInput.createdByHandle ?? null),
     visibility: rawRequestInput.visibility ?? "visible",
   };
   const project = requirePublicProjectForThreadCreate(

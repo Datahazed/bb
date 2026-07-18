@@ -24,10 +24,11 @@ import {
   type PublicApiSchema,
   type SendMessageRequest,
 } from "@bb/server-contract";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { getRequestActor } from "../../services/actors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   requestEnvironmentCleanup,
@@ -177,6 +178,7 @@ function assertPinnedThreadOrderResult(
 }
 
 interface CreateQueuedMessageForThreadArgs {
+  actorHandle: string;
   payload: CreateQueuedMessageRequest;
   thread: Thread;
 }
@@ -229,6 +231,7 @@ async function createQueuedMessageForThread(
     targetThread: thread,
   });
   const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
+    actorHandle: senderThreadId === null ? args.actorHandle : null,
     threadId: thread.id,
     content: payload.input,
     senderThreadId,
@@ -267,9 +270,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const actor = getRequestActor(context as unknown as Context);
     if (payload.mode === "queue-if-active" && thread.status === "active") {
       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
       await createQueuedMessageForThread(deps, {
+        actorHandle: actor.handle,
         payload: queuedMessagePayloadFromSendRequest(payload),
         thread,
       });
@@ -279,6 +284,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     await sendThreadMessage(deps, {
+      actorHandle: actor.handle,
       environment,
       payload,
       thread,
@@ -290,6 +296,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.createQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const queuedMessage = await createQueuedMessageForThread(deps, {
+      actorHandle: getRequestActor(context as unknown as Context).handle,
       payload,
       thread,
     });
@@ -405,7 +412,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    requestThreadStopForCurrentState(
+      deps,
+      thread,
+      environment,
+      getRequestActor(context as unknown as Context).handle,
+    );
     return context.json({ ok: true });
   });
 

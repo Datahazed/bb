@@ -64,6 +64,7 @@ export const threadForkDescriptorSchema = z.object({
 });
 
 export const threadProvisionCommonPayloadSchema = z.object({
+  actorHandle: z.string().nullable().default(null),
   branchSlug: z.string().nullable().default(null),
   clientRequestId: clientTurnRequestIdSchema,
   environmentIntent: threadProvisionEnvironmentIntentSchema,
@@ -191,6 +192,7 @@ export type ThreadProvisionProvisionableContext =
   | ThreadProvisionWorkspaceReadyContext;
 
 export interface CreateMetadataPendingContextArgs {
+  actorHandle?: string | null;
   clientRequestId: ClientTurnRequestId;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
@@ -218,6 +220,7 @@ export interface CreateEnvironmentProvisioningContextArgs {
 }
 
 export interface CreateReprovisioningContextArgs {
+  actorHandle?: string | null;
   clientRequestId: ClientTurnRequestId;
   environmentId: string;
   provisionEventSequence: number;
@@ -332,6 +335,7 @@ export function createMetadataPendingContext(
 ): ThreadProvisionMetadataPendingContext {
   return {
     request: {
+      actorHandle: args.actorHandle ?? null,
       branchSlug: null,
       clientRequestId: args.clientRequestId,
       environmentIntent: args.environmentIntent,
@@ -436,6 +440,7 @@ export function createReprovisioningContext(
 ): ThreadProvisionEnvironmentProvisioningContext {
   return {
     request: {
+      actorHandle: args.actorHandle ?? null,
       branchSlug: null,
       environmentIntent: {
         type: "reuse",

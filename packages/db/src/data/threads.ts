@@ -243,6 +243,7 @@ export function upsertThreadTitleSearchSegments(
 }
 
 export interface CreateThreadInput {
+  createdByHandle?: string | null;
   projectId: string;
   environmentId?: string | null;
   providerId: string;
@@ -290,6 +291,7 @@ export function createThread(
           originKind,
           childOrigin: null,
           originPluginId: input.originPluginId ?? null,
+          createdByHandle: input.createdByHandle ?? null,
           visibility,
           lastReadAt: now,
           latestAttentionAt: now,
