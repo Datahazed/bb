@@ -130,9 +130,22 @@ export const unsubscribeMessageSchema = z.object({
 });
 export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 
+/**
+ * Ephemeral composer-typing signal. The server folds it into presence state
+ * with a short TTL; it is never persisted. Older servers drop the message on
+ * parse, which is an acceptable degradation for a purely cosmetic signal.
+ */
+export const typingMessageSchema = z.object({
+  type: z.literal("typing"),
+  threadId: z.string().min(1),
+  typing: z.boolean(),
+});
+export type TypingMessage = z.infer<typeof typingMessageSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
+  typingMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -239,6 +252,44 @@ export const systemChangedMessageSchema = z
   .strict();
 export type SystemChangedMessage = z.infer<typeof systemChangedMessageSchema>;
 
+/**
+ * Multiplayer presence broadcasts. Viewer sets are derived server-side from
+ * live websocket subscriptions (a socket subscribed to thread-detail:<id> with
+ * a claimed identity is "viewing"); nothing is persisted. `thread-presence`
+ * goes to that thread's detail subscribers; `presence-summary` is the compact
+ * sidebar form sent to thread-list subscribers.
+ */
+export const presenceViewerSchema = z
+  .object({
+    handle: z.string().min(1),
+    displayName: z.string().min(1),
+    // null = no avatar; clients render initials.
+    imageUrl: z.string().nullable(),
+    typing: z.boolean(),
+  })
+  .strict();
+export type PresenceViewer = z.infer<typeof presenceViewerSchema>;
+
+export const threadPresenceMessageSchema = z
+  .object({
+    type: z.literal("thread-presence"),
+    threadId: z.string().min(1),
+    viewers: z.array(presenceViewerSchema).readonly(),
+  })
+  .strict();
+export type ThreadPresenceMessage = z.infer<typeof threadPresenceMessageSchema>;
+
+export const presenceSummaryMessageSchema = z
+  .object({
+    type: z.literal("presence-summary"),
+    // threadId -> handles currently viewing that thread.
+    threads: z.record(z.string(), z.array(z.string()).readonly()),
+  })
+  .strict();
+export type PresenceSummaryMessage = z.infer<
+  typeof presenceSummaryMessageSchema
+>;
+
 export const changedMessageSchema = z.discriminatedUnion("entity", [
   threadChangedMessageSchema,
   projectChangedMessageSchema,
@@ -325,3 +376,27 @@ export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
   hostChangedMessageLenientSchema,
   systemChangedMessageLenientSchema,
 ]);
+
+/**
+ * Lenient inbound counterparts for presence broadcasts: unknown fields are
+ * stripped and additive per-viewer fields from a newer server degrade to
+ * defaults instead of dropping the whole roster. Output remains assignable to
+ * the strict message types.
+ */
+export const threadPresenceMessageLenientSchema = z.object({
+  type: z.literal("thread-presence"),
+  threadId: z.string().min(1),
+  viewers: z.array(
+    z.object({
+      handle: z.string().min(1),
+      displayName: z.string().min(1),
+      imageUrl: z.string().nullable().catch(null),
+      typing: z.boolean().catch(false),
+    }),
+  ),
+});
+
+export const presenceSummaryMessageLenientSchema = z.object({
+  type: z.literal("presence-summary"),
+  threads: z.record(z.string(), z.array(z.string())),
+});

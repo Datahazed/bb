@@ -495,6 +495,9 @@ export const threads = sqliteTable(
     // Id of the plugin that spawned this thread (create origin "plugin").
     // NULL for every other origin.
     originPluginId: text("origin_plugin_id"),
+    // Normalized handle of the human who created the thread. NULL = created by
+    // an agent/plugin/system origin or pre-multiplayer history.
+    createdByHandle: text("created_by_handle"),
     visibility: text("visibility", { enum: threadVisibilityValues })
       .notNull()
       .default("visible"),
@@ -612,6 +615,23 @@ export const threadDynamicContextFileStates = sqliteTable(
   ],
 );
 
+// Claimed multiplayer identities, upserted from the x-bb-claimed-identity
+// handshake on request/socket connect. bb never verifies these: admission is
+// enforced at the boundary (connect gate / network) and any admitted client
+// has owner parity, so attribution is honor-system by design. Keyed by
+// normalized handle — the same handle on two devices is the same person; a
+// rename creates a new collaborator and history keeps the old handle.
+// Attribution columns elsewhere store the handle as plain text (no FK): adding
+// an FK would force drizzle to rebuild the large events table, and dangling
+// handles are harmless soft references.
+export const collaborators = sqliteTable("collaborators", {
+  handle: text("handle").primaryKey(),
+  displayName: text("display_name").notNull(),
+  imageUrl: text("image_url"),
+  firstSeenAt: integer("first_seen_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+});
+
 export const events = sqliteTable(
   "events",
   {
@@ -629,6 +649,9 @@ export const events = sqliteTable(
     type: text("type").$type<ThreadEventType>().notNull(),
     itemId: text("item_id"),
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
+    // Normalized handle of the human who initiated this event. NULL = not
+    // human-initiated (agent/provider/system) or pre-multiplayer history.
+    actorHandle: text("actor_handle"),
     data: text("data").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
   },
@@ -738,6 +761,10 @@ export const queuedThreadMessages = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     senderThreadId: text("sender_thread_id"),
+    // Normalized handle of the human who queued the message, carried through
+    // so attribution survives the queue. NULL = queued by a non-human sender
+    // (e.g. another thread) or pre-multiplayer history.
+    actorHandle: text("actor_handle"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
@@ -868,6 +895,9 @@ export const pendingInteractions = sqliteTable(
     status: text("status").$type<PendingInteractionStatus>().notNull(),
     payload: text("payload").notNull(),
     resolution: text("resolution"),
+    // Normalized handle of the human who resolved the interaction. NULL =
+    // unresolved, resolved by system/expiry, or pre-multiplayer history.
+    resolvedByHandle: text("resolved_by_handle"),
     statusReason: text("status_reason"),
     createdAt: integer("created_at").notNull(),
     expiresAt: integer("expires_at"),

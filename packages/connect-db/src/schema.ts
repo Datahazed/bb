@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -168,6 +169,33 @@ export const server = sqliteTable(
 );
 
 /**
+ * Non-owner accounts the gate admits to a server, with full owner parity once
+ * inside. This row is admission ONLY: identity inside the server is
+ * self-claimed by clients, and the gate's audit log is the sole verified
+ * access record. The member list is managed exclusively by the server's
+ * owner. `user_id` index serves the "servers I'm a member of" lookup.
+ */
+export const serverMember = sqliteTable(
+  "server_member",
+  {
+    serverId: text("server_id")
+      .notNull()
+      .references(() => server.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    addedByUserId: text("added_by_user_id")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.serverId, table.userId] }),
+    index("server_member_user_id_idx").on(table.userId),
+  ],
+);
+
+/**
  * One-time codes exchanged during pairing.
  *   - `server-pair`: browser-approval flow mints this; the tunnel client
  *     exchanges it for the durable credential (binds to a server row).
@@ -252,6 +280,7 @@ export const schema = {
   profile,
   labelClaim,
   server,
+  serverMember,
   machine,
   connectCode,
   auditLog,

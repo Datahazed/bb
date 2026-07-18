@@ -50,6 +50,11 @@ export function onClientSocketMessage(
       deps.hub.unsubscribe(socket, parsed.target);
       deps.watchInterests.unsubscribe(socket, parsed.target);
       break;
+    case "typing":
+      // Presence typing signal; folded into presence state by the hub once
+      // multiplayer presence lands. Accepted (not an error) so newer clients
+      // never get their socket closed by an older server mid-rollout.
+      break;
     default: {
       const _exhaustive: never = parsed;
       throw new Error(`Unhandled client message: ${_exhaustive}`);

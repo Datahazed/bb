@@ -191,6 +191,12 @@ const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "payload", type: "text", notNull: true, primaryKey: false },
   { name: "resolution", type: "text", notNull: false, primaryKey: false },
   {
+    name: "resolved_by_handle",
+    type: "text",
+    notNull: false,
+    primaryKey: false,
+  },
+  {
     name: "status_reason",
     type: "text",
     notNull: false,

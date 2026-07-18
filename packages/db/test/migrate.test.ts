@@ -213,18 +213,54 @@ interface SeededLargeValueBackfillValues {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const migrationJournalEntries = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+  ) as { entries: { tag: string; when: number }[] }
+).entries;
+
 const latestMigrationWhen = Math.max(
-  ...(
-    JSON.parse(
-      readFileSync(
-        resolve(__dirname, "../drizzle/meta/_journal.json"),
-        "utf-8",
-      ),
-    ) as { entries: { when: number }[] }
-  ).entries.map((entry) => entry.when),
+  ...migrationJournalEntries.map((entry) => entry.when),
 );
 
+function migrationWhenByTag(tag: string): number {
+  const entry = migrationJournalEntries.find((e) => e.tag === tag);
+  if (entry === undefined) {
+    throw new Error(`migration journal entry not found: ${tag}`);
+  }
+  return entry.when;
+}
+
+const permissionModesMigrationWhen = migrationWhenByTag(
+  "0078_permission_modes",
+);
+
+const multiplayerAttributionMigrationWhen = migrationWhenByTag(
+  "0079_multiplayer-collaborators",
+);
+
+// 0079 adds the collaborators table and four attribution columns. Tests that
+// rewind and replay it must strip those artifacts first or its CREATE/ALTER
+// statements collide with the head schema.
+function dropMultiplayerAttributionArtifacts(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS collaborators").run();
+  for (const [table, column] of [
+    ["events", "actor_handle"],
+    ["threads", "created_by_handle"],
+    ["queued_thread_messages", "actor_handle"],
+    ["pending_interactions", "resolved_by_handle"],
+  ] as const) {
+    const exists = db.$client
+      .prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?")
+      .get(table, column);
+    if (exists !== undefined) {
+      db.$client.prepare(`ALTER TABLE ${table} DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
+  dropMultiplayerAttributionArtifacts(db);
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
@@ -1184,9 +1220,10 @@ describe("migrate", () => {
           inheritedQueue.id,
           fallbackQueue.id,
         );
+      dropMultiplayerAttributionArtifacts(db);
       db.$client
-        .prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?")
-        .run(latestMigrationWhen);
+        .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+        .run(permissionModesMigrationWhen);
 
       migrate(db);
 
@@ -1461,6 +1498,16 @@ describe("migrate", () => {
           `,
         )
         .run("branch-local-thread-tabs", branchLocalThreadTabsMigrationWhen);
+      // The branch-local repair rebuilds pending_interactions at its 0059
+      // shape, so 0079 must replay afterwards to restore resolved_by_handle —
+      // mirroring the real branch-local ledger, which has no rows after the
+      // branch point.
+      dropMultiplayerAttributionArtifacts(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(multiplayerAttributionMigrationWhen);
 
       migrate(db);
 
@@ -1567,6 +1614,7 @@ describe("migrate", () => {
           "ALTER TABLE system_experiments ADD COLUMN thread_splits integer DEFAULT false NOT NULL",
         )
         .run();
+      dropMultiplayerAttributionArtifacts(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",
@@ -1659,6 +1707,7 @@ describe("migrate", () => {
         ALTER TABLE system_experiments
           ADD COLUMN thread_splits integer DEFAULT false NOT NULL;
       `);
+      dropMultiplayerAttributionArtifacts(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -3188,6 +3237,8 @@ describe("migrate", () => {
         "item_kind",
         "data",
         "created_at",
+        // Re-appended by the 0079 replay; ALTER TABLE ADD places it last.
+        "actor_handle",
       ]);
       const eventIndexNames = readIndexNames({
         db,
