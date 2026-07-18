@@ -188,7 +188,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   },
   skipped: {
     label: "Skipped",
-    icon: "CircleDashed",
+    icon: "SkipForward",
     className: "text-muted-foreground",
   },
   succeeded: {
