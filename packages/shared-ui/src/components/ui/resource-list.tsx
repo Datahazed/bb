@@ -922,19 +922,26 @@ export function ResourceDetailPanel({
   );
 }
 
+export interface ResourcePromptContextItem {
+  icon: IconName;
+  label: ReactNode;
+}
+
 /**
- * Read-only authored instructions shown on a resource detail page.
+ * Read-only preview of the saved input to an AI composer.
  *
- * The quiet bordered surface and message glyph borrow the same anatomy as a
- * queued prompt without implying that this view is an active composer. The
- * section action should take the user to the real editing composer.
+ * The instruction stays visually connected to the context it will run with,
+ * while the absence of input and send controls keeps this distinct from the
+ * real editing composer.
  */
-export function ResourcePromptArtifact({
+export function ResourcePromptPreview({
   children,
   className,
+  context = [],
 }: {
   children: ReactNode;
   className?: string;
+  context?: readonly ResourcePromptContextItem[];
 }) {
   return (
     <div
@@ -943,16 +950,26 @@ export function ResourcePromptArtifact({
         className,
       )}
     >
-      <div className="flex min-w-0 items-start gap-2.5 px-3 py-2.5">
-        <Icon
-          name="MessageSquare"
-          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-          {children}
-        </div>
+      <div className="min-w-0 whitespace-pre-wrap px-3 py-3 text-sm leading-relaxed text-foreground">
+        {children}
       </div>
+      {context.length > 0 ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/35 px-3 py-2 text-xs text-muted-foreground">
+          {context.map((item, index) => (
+            <span
+              key={index}
+              className="inline-flex min-w-0 items-center gap-1.5"
+            >
+              <Icon
+                name={item.icon}
+                className="size-3.5 shrink-0"
+                aria-hidden
+              />
+              <span className="min-w-0 truncate">{item.label}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

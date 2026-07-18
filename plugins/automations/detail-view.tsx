@@ -17,7 +17,7 @@ import {
   ResourceDetailFacts,
   ResourceDetailPage,
   ResourceDetailPanel,
-  ResourcePromptArtifact,
+  ResourcePromptPreview,
   ResourceDetailStack,
   ResourceLocationMeta,
   ResourceMeta,
@@ -382,7 +382,24 @@ export function AutomationDetailView({
           }
         >
           {execution.mode === "agent" ? (
-            <ResourcePromptArtifact>{execution.prompt}</ResourcePromptArtifact>
+            <ResourcePromptPreview
+              context={[
+                {
+                  icon: "Brain",
+                  label: `${execution.providerId} · ${execution.model}`,
+                },
+                {
+                  icon: "Folder",
+                  label: automationEnvironmentLabel(execution),
+                },
+                {
+                  icon: "Lock",
+                  label: formatPermissionMode(execution.permissionMode),
+                },
+              ]}
+            >
+              {execution.prompt}
+            </ResourcePromptPreview>
           ) : (
             <ResourceDetailPanel
               surface="recessed"
@@ -403,20 +420,8 @@ export function AutomationDetailView({
             </ResourceDetailPanel>
           )}
 
-          <ResourceDetailFacts className="mt-4">
-            {execution.mode === "agent" ? (
-              <>
-                <ResourceDetailFact label="Runs with">
-                  {execution.providerId} · {execution.model}
-                </ResourceDetailFact>
-                <ResourceDetailFact label="Environment">
-                  {automationEnvironmentLabel(execution)}
-                </ResourceDetailFact>
-                <ResourceDetailFact label="Permissions">
-                  {formatPermissionMode(execution.permissionMode)}
-                </ResourceDetailFact>
-              </>
-            ) : (
+          {execution.mode === "script" ? (
+            <ResourceDetailFacts className="mt-4">
               <>
                 <ResourceDetailFact label="Runtime">
                   {execution.interpreter ?? "bash"} ·{" "}
@@ -428,8 +433,8 @@ export function AutomationDetailView({
                   </ResourceDetailFact>
                 ) : null}
               </>
-            )}
-          </ResourceDetailFacts>
+            </ResourceDetailFacts>
+          ) : null}
         </ResourceDefinitionSection>
 
         <ResourceActivitySection label="Run history">
