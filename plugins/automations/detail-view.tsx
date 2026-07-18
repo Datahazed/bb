@@ -17,6 +17,7 @@ import {
   ResourceDetailFacts,
   ResourceDetailPage,
   ResourceDetailPanel,
+  ResourcePromptArtifact,
   ResourceDetailStack,
   ResourceLocationMeta,
   ResourceMeta,
@@ -380,27 +381,27 @@ export function AutomationDetailView({
             />
           }
         >
-          <ResourceDetailPanel
-            surface="recessed"
-            className={cn(
-              "px-3 py-2",
-              execution.mode === "script" &&
-                execution.script &&
-                "max-h-[42dvh] overflow-auto",
-            )}
-          >
-            {execution.mode === "agent" ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {execution.prompt}
-              </p>
-            ) : execution.script ? (
-              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {execution.script}
-              </pre>
-            ) : execution.scriptFile ? (
-              <span className="font-mono text-xs">{execution.scriptFile}</span>
-            ) : null}
-          </ResourceDetailPanel>
+          {execution.mode === "agent" ? (
+            <ResourcePromptArtifact>{execution.prompt}</ResourcePromptArtifact>
+          ) : (
+            <ResourceDetailPanel
+              surface="recessed"
+              className={cn(
+                "px-3 py-2",
+                execution.script && "max-h-[42dvh] overflow-auto",
+              )}
+            >
+              {execution.script ? (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {execution.script}
+                </pre>
+              ) : execution.scriptFile ? (
+                <span className="font-mono text-xs">
+                  {execution.scriptFile}
+                </span>
+              ) : null}
+            </ResourceDetailPanel>
+          )}
 
           <ResourceDetailFacts className="mt-4">
             {execution.mode === "agent" ? (
@@ -421,12 +422,11 @@ export function AutomationDetailView({
                   {execution.interpreter ?? "bash"} ·{" "}
                   {Math.round(execution.timeoutMs / 1000)}s timeout
                 </ResourceDetailFact>
-                <ResourceDetailFact label="Environment">
-                  Host
-                </ResourceDetailFact>
-                <ResourceDetailFact label="Source">
-                  {execution.scriptFile ?? "Inline script"}
-                </ResourceDetailFact>
+                {execution.scriptFile ? (
+                  <ResourceDetailFact label="Source" mono>
+                    {execution.scriptFile}
+                  </ResourceDetailFact>
+                ) : null}
               </>
             )}
           </ResourceDetailFacts>

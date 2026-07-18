@@ -922,6 +922,41 @@ export function ResourceDetailPanel({
   );
 }
 
+/**
+ * Read-only authored instructions shown on a resource detail page.
+ *
+ * The quiet bordered surface and message glyph borrow the same anatomy as a
+ * queued prompt without implying that this view is an active composer. The
+ * section action should take the user to the real editing composer.
+ */
+export function ResourcePromptArtifact({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-surface-raised-solid",
+        className,
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-2.5 px-3 py-2.5">
+        <Icon
+          name="MessageSquare"
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ResourceDetailList({
   children,
   className,
