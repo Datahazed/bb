@@ -371,6 +371,12 @@ describe("public thread interaction routes", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-bob",
+              displayName: "Bob",
+              handle: "bob",
+              imageUrl: null,
+            }),
           },
           body: JSON.stringify(createAllowOnceResolution()),
         },
@@ -381,6 +387,10 @@ describe("public thread interaction routes", () => {
         status: "resolving",
         resolution: createAllowOnceResolution(),
       });
+      expect(
+        getPendingInteraction(harness.db, registered.interaction.id)
+          ?.resolvedByHandle,
+      ).toBe("alice");
 
       const conflictingResolveResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}/resolve`,
@@ -417,6 +427,118 @@ describe("public thread interaction routes", () => {
       );
       expect(postResolveListResponse.status).toBe(200);
       await expect(readJson(postResolveListResponse)).resolves.toEqual([]);
+    });
+  });
+
+  it("attributes plugin responses and cancellations to the first responder", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        session: { id: "host-public-plugin-interaction-attribution" },
+      });
+      const firstResult =
+        harness.deps.pendingInteractions.requestPluginInteraction({
+          pluginId: "secrets",
+          threadId: thread.id,
+          rendererId: "secret-request",
+          title: "Add secrets",
+          payload: { fields: [{ name: "API_KEY" }] },
+          timeoutMs: 10_000,
+        });
+      const [firstInteraction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      if (!firstInteraction) {
+        throw new Error("Expected a pending plugin interaction");
+      }
+
+      const respondResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${firstInteraction.id}/respond`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-alice",
+              displayName: "Alice",
+              handle: "alice",
+              imageUrl: null,
+            }),
+          },
+          body: JSON.stringify({ value: { accepted: true } }),
+        },
+      );
+      expect(respondResponse.status).toBe(200);
+      await expect(firstResult).resolves.toEqual({
+        outcome: "submitted",
+        value: { accepted: true },
+      });
+      expect(
+        getPendingInteraction(harness.db, firstInteraction.id)
+          ?.resolvedByHandle,
+      ).toBe("alice");
+
+      const duplicateResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${firstInteraction.id}/respond`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-bob",
+              displayName: "Bob",
+              handle: "bob",
+              imageUrl: null,
+            }),
+          },
+          body: JSON.stringify({ value: { accepted: false } }),
+        },
+      );
+      expect(duplicateResponse.status).toBe(409);
+      expect(
+        getPendingInteraction(harness.db, firstInteraction.id)
+          ?.resolvedByHandle,
+      ).toBe("alice");
+
+      const cancelledResult =
+        harness.deps.pendingInteractions.requestPluginInteraction({
+          pluginId: "secrets",
+          threadId: thread.id,
+          rendererId: "secret-request",
+          title: "Add another secret",
+          payload: { fields: [{ name: "SECOND_KEY" }] },
+          timeoutMs: 10_000,
+        });
+      const [cancelledInteraction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      if (!cancelledInteraction) {
+        throw new Error("Expected a pending plugin interaction to cancel");
+      }
+      const cancelResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${cancelledInteraction.id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            [CLAIMED_IDENTITY_HEADER]: encodeClaimedIdentityHeader({
+              clientId: "browser-bob",
+              displayName: "Bob",
+              handle: "bob",
+              imageUrl: null,
+            }),
+          },
+        },
+      );
+      expect(cancelResponse.status).toBe(200);
+      await expect(cancelledResult).resolves.toEqual({
+        outcome: "cancelled",
+        reason: "user",
+      });
+      expect(
+        getPendingInteraction(harness.db, cancelledInteraction.id)
+          ?.resolvedByHandle,
+      ).toBe("bob");
     });
   });
 

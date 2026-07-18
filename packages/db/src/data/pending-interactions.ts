@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -47,6 +47,7 @@ export interface SetPendingInteractionTerminalStateArgs {
   allowedCurrentStatuses?: readonly PendingInteractionStatus[];
   id: string;
   resolution: string | null;
+  resolvedByHandle?: string;
   resolvedAt?: number;
   status: "interrupted" | "resolved";
   statusReason: string | null;
@@ -55,6 +56,7 @@ export interface SetPendingInteractionTerminalStateArgs {
 export interface SetPendingInteractionResolvingArgs {
   id: string;
   resolution: string;
+  resolvedByHandle?: string;
 }
 
 export interface InterruptPendingInteractionsForThreadsArgs {
@@ -119,6 +121,9 @@ function updatePendingInteractionTerminalState(
         resolution: args.resolution,
         statusReason: args.statusReason,
         resolvedAt: args.resolvedAt ?? now,
+        ...(args.resolvedByHandle === undefined
+          ? {}
+          : { resolvedByHandle: args.resolvedByHandle }),
         updatedAt: now,
       })
       .where(
@@ -274,37 +279,19 @@ export function setPendingInteractionResolved(
   args: {
     id: string;
     resolution: string;
+    resolvedByHandle?: string;
   },
 ): PendingInteractionRow | null {
   return updatePendingInteractionTerminalState(db, {
     id: args.id,
     allowedCurrentStatuses: ["pending", "resolving"],
     resolution: args.resolution,
+    ...(args.resolvedByHandle === undefined
+      ? {}
+      : { resolvedByHandle: args.resolvedByHandle }),
     status: "resolved",
     statusReason: null,
   });
-}
-
-export function setPendingInteractionResolvedByHandle(
-  db: PendingInteractionWriteConnection,
-  args: {
-    id: string;
-    resolvedByHandle: string;
-  },
-): PendingInteractionRow | null {
-  return (
-    db
-      .update(pendingInteractions)
-      .set({ resolvedByHandle: args.resolvedByHandle })
-      .where(
-        and(
-          eq(pendingInteractions.id, args.id),
-          isNull(pendingInteractions.resolvedByHandle),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
 }
 
 export function setPendingInteractionResolving(
@@ -320,6 +307,9 @@ export function setPendingInteractionResolving(
         status: "resolving",
         resolution: args.resolution,
         statusReason: null,
+        ...(args.resolvedByHandle === undefined
+          ? {}
+          : { resolvedByHandle: args.resolvedByHandle }),
         updatedAt: now,
       })
       .where(
@@ -337,6 +327,7 @@ export function setPendingInteractionInterrupted(
   db: PendingInteractionWriteConnection,
   args: {
     id: string;
+    resolvedByHandle?: string;
     statusReason: string;
   },
 ): PendingInteractionRow | null {
@@ -344,6 +335,9 @@ export function setPendingInteractionInterrupted(
     id: args.id,
     allowedCurrentStatuses: ["pending", "resolving"],
     resolution: null,
+    ...(args.resolvedByHandle === undefined
+      ? {}
+      : { resolvedByHandle: args.resolvedByHandle }),
     status: "interrupted",
     statusReason: args.statusReason,
   });

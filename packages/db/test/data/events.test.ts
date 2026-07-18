@@ -201,49 +201,63 @@ describe("events", () => {
     expect(all).toHaveLength(2);
   });
 
-  it("stores event actors and counts distinct human speakers", () => {
+  it("counts distinct attributed human message authors only", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
       {
-        actorHandle: "alice",
         threadId: thread.id,
         sequence: 1,
-        type: "system/error",
+        type: "client/turn/requested",
         ...threadEventFields,
-        data: JSON.stringify({ message: "first" }),
+        data: clientTurnRequestData("request-null", "legacy message"),
+      },
+      {
+        actorHandle: "alice",
+        threadId: thread.id,
+        sequence: 2,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData("request-alice", "alice message"),
       },
       {
         actorHandle: "bob",
         threadId: thread.id,
-        sequence: 2,
-        type: "system/error",
-        ...threadEventFields,
-        data: JSON.stringify({ message: "second" }),
-      },
-      {
-        threadId: thread.id,
         sequence: 3,
-        type: "system/error",
+        type: "system/thread/interrupted",
         ...threadEventFields,
-        data: JSON.stringify({ message: "system" }),
+        data: JSON.stringify({ reason: "manual-stop" }),
       },
     ]);
 
     expect(listEvents(db, { threadId: thread.id })).toMatchObject([
+      { actorHandle: null },
       { actorHandle: "alice" },
       { actorHandle: "bob" },
-      { actorHandle: null },
     ]);
     expect(
       countDistinctThreadEventActors(db, { threadId: thread.id }),
-    ).toBe(2);
+    ).toBe(1);
     expect(
       countDistinctThreadEventActors(db, {
         excludedHandle: "alice",
         threadId: thread.id,
       }),
-    ).toBe(1);
+    ).toBe(0);
+
+    insertEvents(db, noopNotifier, [
+      {
+        actorHandle: "bob",
+        threadId: thread.id,
+        sequence: 4,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData("request-bob", "bob message"),
+      },
+    ]);
+    expect(
+      countDistinctThreadEventActors(db, { threadId: thread.id }),
+    ).toBe(2);
   });
 
   it("stores derived item columns when provided", () => {

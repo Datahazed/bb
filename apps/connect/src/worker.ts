@@ -250,6 +250,13 @@ function isHostManagementMutation(request: Request, pathname: string): boolean {
   );
 }
 
+function isLocalMemberManagementPath(pathname: string): boolean {
+  return (
+    pathname === "/api/v1/members" ||
+    pathname.startsWith("/api/v1/members/")
+  );
+}
+
 /** Cache namespace for a resolved routing key plus optional share target. */
 export function cacheNamespace(
   routingKey: string,
@@ -438,6 +445,17 @@ export default {
         sessionUserId !== null &&
         (await admitServerMember(db, resolved.server.id, sessionUserId, label));
       if (!isMember) return text("bb connect: not your server\n", 403);
+    }
+
+    // Member management is deliberately local owner-console functionality.
+    // Enforce that at the gate so even tunnels opened by pre-marker clients
+    // cannot forward this surface to the local server. This also precedes the
+    // WebSocket branch below, so an upgrade cannot bypass the same boundary.
+    if (isLocalMemberManagementPath(url.pathname)) {
+      return Response.json(
+        { error: "member management is only available from the owner console" },
+        { status: 403 },
+      );
     }
 
     const doRequest = requestForTunnelDo(request, target, "session");

@@ -20,7 +20,10 @@ import type {
   ThreadPresenceMessage,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
-import { getClaimedIdentityHeaderValue } from "./claimed-identity-store";
+import {
+  getClaimedIdentityHeaderValue,
+  subscribeClaimedIdentity,
+} from "./claimed-identity-store";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
@@ -57,6 +60,8 @@ export class WebSocketManager {
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
   private hasConnected = false;
   private connectionState: WebSocketConnectionState = "connecting";
+  private unsubscribeIdentity: (() => void) | null = null;
+  private lastIdentityHeaderValue: string | null = null;
 
   connect(): void {
     if (this.socket) return;
@@ -107,6 +112,20 @@ export class WebSocketManager {
         this.hasConnected ? "reconnecting" : "connecting",
       );
     };
+
+    // The claimed identity is bound at upgrade time via ?identity=, so a
+    // save/edit/clear after connect must rebind the live socket. Reconnect
+    // through partysocket's own machinery: the URL provider re-reads the
+    // identity, and onopen re-subscribes and reseeds presence as usual.
+    this.lastIdentityHeaderValue = getClaimedIdentityHeaderValue();
+    this.unsubscribeIdentity = subscribeClaimedIdentity(() => {
+      const next = getClaimedIdentityHeaderValue();
+      if (next === this.lastIdentityHeaderValue) {
+        return;
+      }
+      this.lastIdentityHeaderValue = next;
+      this.socket?.reconnect();
+    });
   }
 
   /**
@@ -191,6 +210,8 @@ export class WebSocketManager {
   }
 
   disconnect(): void {
+    this.unsubscribeIdentity?.();
+    this.unsubscribeIdentity = null;
     if (this.socket) {
       this.socket.close();
       this.socket = null;

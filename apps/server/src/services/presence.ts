@@ -5,8 +5,7 @@ export const PRESENCE_TYPING_TTL_MS = 6_000;
 
 interface ViewerState {
   actorsBySocket: Map<object, ClaimedIdentity>;
-  typing: boolean;
-  typingTimeout: ReturnType<typeof setTimeout> | null;
+  typingTimeoutsBySocket: Map<object, ReturnType<typeof setTimeout>>;
 }
 
 interface PresenceServiceArgs {
@@ -61,8 +60,7 @@ export class PresenceService {
       this.viewersByThread.get(threadId) ?? new Map<string, ViewerState>();
     const viewer = viewers.get(actor.handle) ?? {
       actorsBySocket: new Map<object, ClaimedIdentity>(),
-      typing: false,
-      typingTimeout: null,
+      typingTimeoutsBySocket: new Map<object, ReturnType<typeof setTimeout>>(),
     };
     viewer.actorsBySocket.set(socket, actor);
     viewers.set(actor.handle, viewer);
@@ -89,9 +87,9 @@ export class PresenceService {
     if (viewer === undefined || viewers === undefined) {
       return;
     }
+    this.clearSocketTyping(viewer, socket);
     viewer.actorsBySocket.delete(socket);
     if (viewer.actorsBySocket.size === 0) {
-      this.clearTypingTimeout(viewer);
       viewers.delete(handle);
     }
     if (viewers.size === 0) {
@@ -110,26 +108,26 @@ export class PresenceService {
       return;
     }
 
-    this.clearTypingTimeout(viewer);
+    const wasTyping = viewer.typingTimeoutsBySocket.size > 0;
+    this.clearSocketTyping(viewer, socket);
     if (!typing) {
-      if (viewer.typing) {
-        viewer.typing = false;
+      if (wasTyping && viewer.typingTimeoutsBySocket.size === 0) {
         this.emitIfChanged(threadId);
       }
       return;
     }
 
-    const wasTyping = viewer.typing;
-    viewer.typing = true;
-    viewer.typingTimeout = setTimeout(() => {
-      viewer.typingTimeout = null;
-      if (!viewer.typing) {
+    const typingTimeout = setTimeout(() => {
+      if (viewer.typingTimeoutsBySocket.get(socket) !== typingTimeout) {
         return;
       }
-      viewer.typing = false;
-      this.emitIfChanged(threadId);
+      viewer.typingTimeoutsBySocket.delete(socket);
+      if (viewer.typingTimeoutsBySocket.size === 0) {
+        this.emitIfChanged(threadId);
+      }
     }, this.typingTtlMs);
-    viewer.typingTimeout.unref();
+    typingTimeout.unref();
+    viewer.typingTimeoutsBySocket.set(socket, typingTimeout);
 
     if (!wasTyping) {
       this.emitIfChanged(threadId);
@@ -147,12 +145,13 @@ export class PresenceService {
     return { threads };
   }
 
-  private clearTypingTimeout(viewer: ViewerState): void {
-    if (viewer.typingTimeout === null) {
+  private clearSocketTyping(viewer: ViewerState, socket: object): void {
+    const typingTimeout = viewer.typingTimeoutsBySocket.get(socket);
+    if (typingTimeout === undefined) {
       return;
     }
-    clearTimeout(viewer.typingTimeout);
-    viewer.typingTimeout = null;
+    clearTimeout(typingTimeout);
+    viewer.typingTimeoutsBySocket.delete(socket);
   }
 
   private emitIfChanged(threadId: string): boolean {
@@ -181,7 +180,7 @@ export class PresenceService {
           handle,
           displayName: actor.displayName,
           imageUrl: actor.imageUrl,
-          typing: viewer.typing,
+          typing: viewer.typingTimeoutsBySocket.size > 0,
         };
       });
   }

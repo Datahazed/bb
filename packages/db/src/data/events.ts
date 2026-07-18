@@ -634,6 +634,7 @@ export function countDistinctThreadEventActors(
     .where(
       and(
         eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
         isNotNull(events.actorHandle),
         args.excludedHandle === undefined
           ? undefined

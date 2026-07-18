@@ -213,6 +213,72 @@ describe("thread presence", () => {
     releaseSocketActor(detailSocket);
   });
 
+  it("keeps a handle typing while another socket remains explicitly active", () => {
+    const hub = new NotificationHub();
+    const firstSocket = createMockHubSocket();
+    const secondSocket = createMockHubSocket();
+    registerSocketActor(firstSocket, sawyer);
+    registerSocketActor(secondSocket, { ...sawyer, clientId: "browser-2" });
+    hub.subscribe(firstSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+    hub.subscribe(secondSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+
+    hub.setTyping(firstSocket, "thread-1", true);
+    hub.setTyping(secondSocket, "thread-1", true);
+    hub.setTyping(firstSocket, "thread-1", false);
+    expect(hub.getPresenceSnapshot().threads["thread-1"]?.[0]?.typing).toBe(
+      true,
+    );
+
+    hub.setTyping(secondSocket, "thread-1", false);
+    expect(hub.getPresenceSnapshot().threads["thread-1"]?.[0]?.typing).toBe(
+      false,
+    );
+    hub.unregisterClient(firstSocket);
+    hub.unregisterClient(secondSocket);
+    releaseSocketActor(firstSocket);
+    releaseSocketActor(secondSocket);
+  });
+
+  it("keeps a handle typing when one socket TTL expires before another", async () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub({ presenceTypingTtlMs: 50 });
+    const firstSocket = createMockHubSocket();
+    const secondSocket = createMockHubSocket();
+    registerSocketActor(firstSocket, sawyer);
+    registerSocketActor(secondSocket, { ...sawyer, clientId: "browser-2" });
+    hub.subscribe(firstSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+    hub.subscribe(secondSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+
+    hub.setTyping(firstSocket, "thread-1", true);
+    await vi.advanceTimersByTimeAsync(25);
+    hub.setTyping(secondSocket, "thread-1", true);
+    await vi.advanceTimersByTimeAsync(25);
+    expect(hub.getPresenceSnapshot().threads["thread-1"]?.[0]?.typing).toBe(
+      true,
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(hub.getPresenceSnapshot().threads["thread-1"]?.[0]?.typing).toBe(
+      false,
+    );
+    hub.unregisterClient(firstSocket);
+    hub.unregisterClient(secondSocket);
+    releaseSocketActor(firstSocket);
+    releaseSocketActor(secondSocket);
+  });
+
   it("folds typing protocol messages into presence and removes presence before releasing the actor", () => {
     const hub = new NotificationHub();
     const deps = protocolDeps(hub);

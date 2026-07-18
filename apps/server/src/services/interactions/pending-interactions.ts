@@ -69,12 +69,14 @@ interface RegisterPendingInteractionArgs {
 }
 
 interface ResolvePendingInteractionArgs {
+  actorHandle?: string;
   interactionId: string;
   resolution: PendingInteractionResolution;
   threadId: string;
 }
 
 interface QueueInteractionResolutionCommandArgs {
+  actorHandle?: string;
   interaction: PendingInteraction;
   resolution: PendingInteractionResolution;
 }
@@ -525,6 +527,7 @@ export class PendingInteractionLifecycle {
   }
 
   respondToPluginInteraction(args: {
+    actorHandle?: string;
     interactionId: string;
     threadId: string;
     value: JsonValue;
@@ -537,6 +540,9 @@ export class PendingInteractionLifecycle {
     const updated = setPendingInteractionResolved(this.deps.db, {
       id: current.id,
       resolution: JSON.stringify({ kind: "plugin_submitted" }),
+      ...(args.actorHandle === undefined
+        ? {}
+        : { resolvedByHandle: args.actorHandle }),
     });
     if (!updated)
       throw buildResolveConflictError(this.requireInteraction(current.id));
@@ -550,6 +556,7 @@ export class PendingInteractionLifecycle {
   }
 
   cancelPluginInteraction(args: {
+    actorHandle?: string;
     interactionId: string;
     threadId: string;
     reason: PluginInteractionCancelReason;
@@ -563,6 +570,9 @@ export class PendingInteractionLifecycle {
     }
     const updated = setPendingInteractionInterrupted(this.deps.db, {
       id: current.id,
+      ...(args.actorHandle === undefined
+        ? {}
+        : { resolvedByHandle: args.actorHandle }),
       statusReason: args.reason,
     });
     if (!updated)
@@ -610,6 +620,9 @@ export class PendingInteractionLifecycle {
     validatePendingInteractionResolution(current, args.resolution);
 
     const updated = this.queueInteractionResolutionCommand({
+      ...(args.actorHandle === undefined
+        ? {}
+        : { actorHandle: args.actorHandle }),
       interaction: current,
       resolution: args.resolution,
     });
@@ -818,6 +831,9 @@ export class PendingInteractionLifecycle {
       const resolving = setPendingInteractionResolving(tx, {
         id: args.interaction.id,
         resolution: resolutionJson,
+        ...(args.actorHandle === undefined
+          ? {}
+          : { resolvedByHandle: args.actorHandle }),
       });
       if (resolving) {
         return resolving;

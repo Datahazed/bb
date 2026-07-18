@@ -452,7 +452,6 @@ export {
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
   setPendingInteractionResolved,
-  setPendingInteractionResolvedByHandle,
 } from "./pending-interactions.js";
 export type {
   CreatePendingInteractionInput,

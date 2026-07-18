@@ -1,4 +1,5 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { drizzle } from "drizzle-orm/d1";
 import {
   auditLog,
@@ -46,6 +47,19 @@ type AddServerMemberResult =
       reason: "already-member" | "cannot-add-owner" | "unknown-handle";
     };
 
+interface AtomicBatchDb {
+  batch(
+    queries: readonly [BatchItem<"sqlite">, BatchItem<"sqlite">],
+  ): Promise<readonly unknown[]>;
+}
+
+interface MemberAuditValues {
+  userId: string;
+  action: "member-added" | "member-admitted" | "member-removed";
+  detail: Record<string, string>;
+  createdAt: Date;
+}
+
 function jsonError(error: string, status: number): Response {
   return Response.json({ error }, { status });
 }
@@ -73,25 +87,25 @@ function affectedRows(result: unknown): number {
   throw new Error("server member mutation did not report affected rows");
 }
 
+function supportsAtomicBatch(db: ConnectDb): db is ConnectDb & AtomicBatchDb {
+  return "batch" in db && typeof db.batch === "function";
+}
+
+function auditLogValues(values: MemberAuditValues) {
+  return {
+    id: crypto.randomUUID(),
+    userId: values.userId,
+    action: values.action,
+    detail: JSON.stringify(values.detail),
+    createdAt: values.createdAt,
+  };
+}
+
 async function appendAuditLog(
   db: ConnectDb,
-  values: {
-    userId: string;
-    action: "member-added" | "member-admitted" | "member-removed";
-    detail: Record<string, string>;
-    createdAt: Date;
-  },
+  values: MemberAuditValues,
 ): Promise<void> {
-  await db
-    .insert(auditLog)
-    .values({
-      id: crypto.randomUUID(),
-      userId: values.userId,
-      action: values.action,
-      detail: JSON.stringify(values.detail),
-      createdAt: values.createdAt,
-    })
-    .run();
+  await db.insert(auditLog).values(auditLogValues(values)).run();
 }
 
 /** Parse the owner member-management API path before host routing. */
@@ -220,28 +234,37 @@ export async function addServerMember(
   }
 
   try {
-    await db
-      .insert(serverMember)
-      .values({
-        serverId,
-        userId: target.userId,
-        addedByUserId: ownerUserId,
+    const memberInsert = db.insert(serverMember).values({
+      serverId,
+      userId: target.userId,
+      addedByUserId: ownerUserId,
+      createdAt: now,
+    });
+    const auditInsert = db.insert(auditLog).values(
+      auditLogValues({
+        userId: ownerUserId,
+        action: "member-added",
+        detail: { serverId, memberUserId: target.userId },
         createdAt: now,
-      })
-      .run();
+      }),
+    );
+    if (supportsAtomicBatch(db)) {
+      await db.batch([memberInsert, auditInsert]);
+    } else {
+      // better-sqlite3 (used by the in-memory tests) has no batch method. Its
+      // transaction callback and statements are synchronous, giving the same
+      // all-or-nothing behavior as D1's implicit batch transaction.
+      await db.transaction(() => {
+        memberInsert.run();
+        auditInsert.run();
+      });
+    }
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return { ok: false, reason: "already-member" };
     }
     throw error;
   }
-
-  await appendAuditLog(db, {
-    userId: ownerUserId,
-    action: "member-added",
-    detail: { serverId, memberUserId: target.userId },
-    createdAt: now,
-  });
   return {
     ok: true,
     member: {
@@ -262,24 +285,53 @@ export async function removeServerMember(
   memberUserId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const result = await db
-    .delete(serverMember)
-    .where(
-      and(
-        eq(serverMember.serverId, serverId),
-        eq(serverMember.userId, memberUserId),
-      ),
-    )
-    .run();
-  if (affectedRows(result) === 0) return false;
+  const membershipFilter = and(
+    eq(serverMember.serverId, serverId),
+    eq(serverMember.userId, memberUserId),
+  );
+  if (supportsAtomicBatch(db)) {
+    const auditId = crypto.randomUUID();
+    const action = "member-removed";
+    const detail = JSON.stringify({ serverId, memberUserId });
+    // Insert the audit row only when the member exists, then delete it in the
+    // same D1 batch. This preserves the absent-member 404 without opening a
+    // race between an existence check and the atomic mutation.
+    const conditionalAuditInsert = db.insert(auditLog).select((qb) =>
+      qb
+        .select({
+          id: sql<string>`${auditId}`.as("id"),
+          userId: sql<string>`${ownerUserId}`.as("user_id"),
+          action: sql<string>`${action}`.as("action"),
+          detail: sql<string>`${detail}`.as("detail"),
+          ipAddress: sql<string | null>`null`.as("ip_address"),
+          createdAt: sql<Date>`${now.getTime()}`.as("created_at"),
+        })
+        .from(serverMember)
+        .where(membershipFilter)
+        .limit(1),
+    );
+    const memberDelete = db.delete(serverMember).where(membershipFilter);
+    const results = await db.batch([conditionalAuditInsert, memberDelete]);
+    return affectedRows(results[1]) > 0;
+  }
 
-  await appendAuditLog(db, {
-    userId: ownerUserId,
-    action: "member-removed",
-    detail: { serverId, memberUserId },
-    createdAt: now,
+  // See the add path above: this branch is the synchronous better-sqlite3
+  // test double, whose transaction rolls the delete back if auditing fails.
+  return await db.transaction((tx) => {
+    const result = tx.delete(serverMember).where(membershipFilter).run();
+    if (affectedRows(result) === 0) return false;
+    tx.insert(auditLog)
+      .values(
+        auditLogValues({
+          userId: ownerUserId,
+          action: "member-removed",
+          detail: { serverId, memberUserId },
+          createdAt: now,
+        }),
+      )
+      .run();
+    return true;
   });
-  return true;
 }
 
 async function resolveOwnerSessionUserId(

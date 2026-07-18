@@ -42,7 +42,8 @@ describe("PresenceStore", () => {
     store.setThreadViewers("thr_stale", [viewer("alice")]);
     store.patchSummary({ thr_stale: ["alice"] });
 
-    store.replaceAll({ thr_live: [viewer("bob", true)] });
+    const generation = store.beginSnapshot();
+    store.applySnapshot({ thr_live: [viewer("bob", true)] }, generation);
 
     expect(store.getThreadViewers("thr_stale")).toEqual([]);
     expect(store.getSummaryHandles("thr_stale")).toEqual([]);
@@ -51,6 +52,62 @@ describe("PresenceStore", () => {
     ]);
     // Summary handles derive from the snapshot's viewer rosters.
     expect(store.getSummaryHandles("thr_live")).toEqual(["bob"]);
+  });
+
+  it("does not let an in-flight snapshot clobber a newer realtime update", () => {
+    const store = new PresenceStore();
+    const generation = store.beginSnapshot();
+    // Arrives while the snapshot request is still in flight.
+    store.setThreadViewers("thr_1", [viewer("carol", true)]);
+    store.patchSummary({ thr_1: ["carol"] });
+
+    // The (older) snapshot resolves afterward with stale data for thr_1.
+    store.applySnapshot(
+      { thr_1: [viewer("alice")], thr_2: [viewer("bob")] },
+      generation,
+    );
+
+    expect(store.getThreadViewers("thr_1").map((v) => v.handle)).toEqual([
+      "carol",
+    ]);
+    expect(store.getSummaryHandles("thr_1")).toEqual(["carol"]);
+    // Untouched threads still seed from the snapshot.
+    expect(store.getThreadViewers("thr_2").map((v) => v.handle)).toEqual([
+      "bob",
+    ]);
+    expect(store.getSummaryHandles("thr_2")).toEqual(["bob"]);
+  });
+
+  it("does not let an in-flight snapshot resurrect a realtime removal", () => {
+    const store = new PresenceStore();
+    store.setThreadViewers("thr_1", [viewer("alice")]);
+    store.patchSummary({ thr_1: ["alice"] });
+
+    const generation = store.beginSnapshot();
+    // The viewer leaves while the snapshot request is still in flight.
+    store.setThreadViewers("thr_1", []);
+    store.patchSummary({ thr_1: [] });
+
+    // The (older) snapshot still lists the departed viewer.
+    store.applySnapshot({ thr_1: [viewer("alice")] }, generation);
+
+    expect(store.getThreadViewers("thr_1")).toEqual([]);
+    expect(store.getSummaryHandles("thr_1")).toEqual([]);
+  });
+
+  it("guards viewer rosters and summaries independently", () => {
+    const store = new PresenceStore();
+    const generation = store.beginSnapshot();
+    // Only the summary is touched while the snapshot is in flight.
+    store.patchSummary({ thr_1: ["carol"] });
+
+    store.applySnapshot({ thr_1: [viewer("alice")] }, generation);
+
+    // The untouched roster seeds from the snapshot; the touched summary wins.
+    expect(store.getThreadViewers("thr_1").map((v) => v.handle)).toEqual([
+      "alice",
+    ]);
+    expect(store.getSummaryHandles("thr_1")).toEqual(["carol"]);
   });
 
   it("returns a stable reference for an unchanged roster", () => {

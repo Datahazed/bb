@@ -4,7 +4,6 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Context, Hono } from "hono";
-import { setPendingInteractionResolvedByHandle } from "@bb/db";
 import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -62,13 +61,10 @@ export function registerThreadInteractionRoutes(
       context.req.param("interactionId"),
     );
     const interaction = deps.pendingInteractions.resolvePendingInteraction({
+      actorHandle: getRequestActor(context as unknown as Context).handle,
       threadId: thread.id,
       interactionId,
       resolution: payload,
-    });
-    setPendingInteractionResolvedByHandle(deps.db, {
-      id: interactionId,
-      resolvedByHandle: getRequestActor(context as unknown as Context).handle,
     });
     return context.json(interaction);
   });
@@ -84,6 +80,7 @@ export function registerThreadInteractionRoutes(
     }
     return context.json(
       deps.pendingInteractions.respondToPluginInteraction({
+        actorHandle: getRequestActor(context as unknown as Context).handle,
         threadId: thread.id,
         interactionId: parsePendingInteractionId(
           context.req.param("interactionId"),
@@ -97,6 +94,7 @@ export function registerThreadInteractionRoutes(
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       deps.pendingInteractions.cancelPluginInteraction({
+        actorHandle: getRequestActor(context as unknown as Context).handle,
         threadId: thread.id,
         interactionId: parsePendingInteractionId(
           context.req.param("interactionId"),

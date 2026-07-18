@@ -23,6 +23,14 @@ export class PresenceStore {
   private viewersByThreadId = new Map<string, readonly PresenceViewer[]>();
   private summaryHandlesByThreadId = new Map<string, readonly string[]>();
   private listeners = new Set<() => void>();
+  // Ordering guard for the async snapshot: every applied realtime message
+  // bumps `generation` and stamps the thread ids it touched. The snapshot
+  // captures the generation before its HTTP request and, when it resolves,
+  // skips any thread a newer realtime message already updated or removed —
+  // live broadcasts always beat the older snapshot.
+  private generation = 0;
+  private viewerTouchGeneration = new Map<string, number>();
+  private summaryTouchGeneration = new Map<string, number>();
 
   attach(manager: WebSocketManager): () => void {
     const unsubscribePresence = manager.onThreadPresence((message) => {
@@ -42,6 +50,7 @@ export class PresenceStore {
   }
 
   private async seedFromSnapshot(): Promise<void> {
+    const sinceGeneration = this.beginSnapshot();
     let snapshot: PresenceSnapshotResponse;
     try {
       snapshot = await request<PresenceSnapshotResponse>(
@@ -51,24 +60,59 @@ export class PresenceStore {
       // Presence is cosmetic; a failed seed just waits for live broadcasts.
       return;
     }
-    this.replaceAll(snapshot.threads);
+    this.applySnapshot(snapshot.threads, sinceGeneration);
   }
 
-  /** Full-state replace from the HTTP snapshot (complete current rosters). */
-  replaceAll(
+  /** Capture before requesting a snapshot; pass the result to applySnapshot. */
+  beginSnapshot(): number {
+    return this.generation;
+  }
+
+  /**
+   * Apply the HTTP snapshot (complete current rosters): flush entries absent
+   * from it and replace the rest — except threads a realtime message touched
+   * after `sinceGeneration`, whose newer live state (including removal) wins.
+   */
+  applySnapshot(
     threads: Record<string, readonly PresenceViewer[]>,
+    sinceGeneration: number,
   ): void {
-    this.viewersByThreadId = new Map();
-    this.summaryHandlesByThreadId = new Map();
-    for (const [threadId, viewers] of Object.entries(threads)) {
-      if (viewers.length === 0) {
-        continue;
+    const untouched = (touches: Map<string, number>, threadId: string) =>
+      (touches.get(threadId) ?? 0) <= sinceGeneration;
+    for (const threadId of [...this.viewersByThreadId.keys()]) {
+      if (
+        !(threadId in threads) &&
+        untouched(this.viewerTouchGeneration, threadId)
+      ) {
+        this.viewersByThreadId.delete(threadId);
       }
-      this.viewersByThreadId.set(threadId, viewers);
-      this.summaryHandlesByThreadId.set(
-        threadId,
-        viewers.map((viewer) => viewer.handle),
-      );
+    }
+    for (const threadId of [...this.summaryHandlesByThreadId.keys()]) {
+      if (
+        !(threadId in threads) &&
+        untouched(this.summaryTouchGeneration, threadId)
+      ) {
+        this.summaryHandlesByThreadId.delete(threadId);
+      }
+    }
+    for (const [threadId, viewers] of Object.entries(threads)) {
+      if (untouched(this.viewerTouchGeneration, threadId)) {
+        if (viewers.length === 0) {
+          this.viewersByThreadId.delete(threadId);
+        } else {
+          this.viewersByThreadId.set(threadId, viewers);
+        }
+      }
+      if (untouched(this.summaryTouchGeneration, threadId)) {
+        if (viewers.length === 0) {
+          this.summaryHandlesByThreadId.delete(threadId);
+        } else {
+          this.summaryHandlesByThreadId.set(
+            threadId,
+            viewers.map((viewer) => viewer.handle),
+          );
+        }
+      }
     }
     this.notify();
   }
@@ -77,6 +121,8 @@ export class PresenceStore {
     threadId: string,
     viewers: readonly PresenceViewer[],
   ): void {
+    this.generation += 1;
+    this.viewerTouchGeneration.set(threadId, this.generation);
     if (viewers.length === 0) {
       this.viewersByThreadId.delete(threadId);
     } else {
@@ -86,7 +132,9 @@ export class PresenceStore {
   }
 
   patchSummary(threads: Record<string, readonly string[]>): void {
+    this.generation += 1;
     for (const [threadId, handles] of Object.entries(threads)) {
+      this.summaryTouchGeneration.set(threadId, this.generation);
       if (handles.length === 0) {
         this.summaryHandlesByThreadId.delete(threadId);
       } else {

@@ -13,7 +13,6 @@ import {
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
   setPendingInteractionResolved,
-  setPendingInteractionResolvedByHandle,
 } from "../../src/data/pending-interactions.js";
 import { createThread } from "../../src/data/threads.js";
 
@@ -164,21 +163,21 @@ describe("pending interactions", () => {
         decision: "allow_for_session",
         grantedPermissions: null,
       }),
+      resolvedByHandle: "alice",
     });
 
     expect(resolved).toMatchObject({
       id: older.id,
+      resolvedByHandle: "alice",
       status: "resolved",
     });
     expect(
-      setPendingInteractionResolvedByHandle(db, {
+      setPendingInteractionResolved(db, {
         id: older.id,
-        resolvedByHandle: "alice",
-      }),
-    ).toMatchObject({ resolvedByHandle: "alice" });
-    expect(
-      setPendingInteractionResolvedByHandle(db, {
-        id: older.id,
+        resolution: JSON.stringify({
+          decision: "allow_for_session",
+          grantedPermissions: null,
+        }),
         resolvedByHandle: "bob",
       }),
     ).toBeNull();

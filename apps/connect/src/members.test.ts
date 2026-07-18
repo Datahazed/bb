@@ -16,9 +16,11 @@ import {
 } from "@bb/connect-db";
 
 import {
+  addServerMember,
   admitServerMember,
   handleServerMembersWithDb,
   matchServerMembersRoute,
+  removeServerMember,
 } from "./members.js";
 
 const MIGRATIONS_DIR = fileURLToPath(
@@ -458,6 +460,56 @@ describe("owner member-management API", () => {
       route("server-1", "member-user"),
     );
     expect(response.status).toBe(404);
+  });
+
+  it("rolls back an added member when its audit insert fails", async () => {
+    sqlite.exec("DROP TABLE audit_log");
+
+    await expect(
+      addServerMember(
+        db,
+        "server-1",
+        "owner-user",
+        "invited",
+        NOW,
+      ),
+    ).rejects.toThrow(/audit_log/iu);
+    expect(
+      db
+        .select()
+        .from(serverMember)
+        .where(eq(serverMember.serverId, "server-1"))
+        .all(),
+    ).toEqual([]);
+  });
+
+  it("rolls back a removed member when its audit insert fails", async () => {
+    db.insert(serverMember)
+      .values({
+        serverId: "server-1",
+        userId: "member-user",
+        addedByUserId: "owner-user",
+        createdAt: NOW,
+      })
+      .run();
+    sqlite.exec("DROP TABLE audit_log");
+
+    await expect(
+      removeServerMember(
+        db,
+        "server-1",
+        "owner-user",
+        "member-user",
+        NOW,
+      ),
+    ).rejects.toThrow(/audit_log/iu);
+    expect(
+      db
+        .select({ userId: serverMember.userId })
+        .from(serverMember)
+        .where(eq(serverMember.serverId, "server-1"))
+        .all(),
+    ).toEqual([{ userId: "member-user" }]);
   });
 });
 

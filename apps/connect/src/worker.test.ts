@@ -933,6 +933,70 @@ describe("gate worker share hosts", () => {
     expect(captured).toHaveLength(1);
   });
 
+  it.each([
+    ["owner", OWNER, "GET", "/api/v1/members"],
+    ["owner", OWNER, "POST", "/api/v1/members"],
+    ["owner", OWNER, "DELETE", "/api/v1/members/user-member"],
+    ["member", OTHER, "GET", "/api/v1/members"],
+    ["member", OTHER, "POST", "/api/v1/members"],
+    ["member", OTHER, "DELETE", "/api/v1/members/user-member"],
+  ] as const)(
+    "blocks %s visitor %s %s before the tunnel",
+    async (_sessionKind, sessionUserId, method, path) => {
+      mockVerifySession.mockResolvedValue(sessionUserId);
+      if (sessionUserId === OTHER) mockAdmitServerMember.mockResolvedValue(true);
+      const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", path, { method }),
+        env as never,
+        ctx,
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: "member management is only available from the owner console",
+      });
+      expect(captured).toHaveLength(0);
+      expect(mockServeWithCache).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks member-management websocket upgrades before the tunnel", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("upgraded"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/members/live", {
+        headers: { upgrade: "websocket" },
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(403);
+    expect(captured).toHaveLength(0);
+  });
+
+  it.each([
+    ["owner", OWNER],
+    ["member", OTHER],
+  ] as const)(
+    "continues forwarding unrelated /api/v1 paths for a %s visitor",
+    async (_sessionKind, sessionUserId) => {
+      mockVerifySession.mockResolvedValue(sessionUserId);
+      if (sessionUserId === OTHER) mockAdmitServerMember.mockResolvedValue(true);
+      const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+        env as never,
+        ctx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(captured).toHaveLength(1);
+    },
+  );
+
   it("does not treat a desktop cookie as member identity", async () => {
     mockParseCookie.mockImplementation((_header, name) =>
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
