@@ -1001,9 +1001,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        readonly: "readonly";
         full: "full";
-        "workspace-write": "workspace-write";
+        auto: "auto";
+        "accept-edits": "accept-edits";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -1030,9 +1030,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        readonly: "readonly";
         full: "full";
-        "workspace-write": "workspace-write";
+        auto: "auto";
+        "accept-edits": "accept-edits";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -2130,15 +2130,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             max: "max";
             ultra: "ultra";
         }>;
-        permissionMode: z$1.ZodEnum<{
-            readonly: "readonly";
-            full: "full";
-            "workspace-write": "workspace-write";
-        }>;
         source: z$1.ZodEnum<{
             "client/thread/start": "client/thread/start";
             "client/turn/requested": "client/turn/requested";
             "client/turn/start": "client/turn/start";
+        }>;
+        permissionMode: z$1.ZodEnum<{
+            readonly: "readonly";
+            full: "full";
+            auto: "auto";
+            "accept-edits": "accept-edits";
+            "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
 }, z$1.core.$strip>, z$1.ZodObject<{
@@ -2340,9 +2342,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsUserQuestion: z$1.ZodBoolean;
         supportsFork: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-            readonly: "readonly";
             full: "full";
-            "workspace-write": "workspace-write";
+            auto: "auto";
+            "accept-edits": "accept-edits";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2523,9 +2525,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        readonly: "readonly";
         full: "full";
-        "workspace-write": "workspace-write";
+        auto: "auto";
+        "accept-edits": "accept-edits";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -3001,9 +3003,9 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            readonly: "readonly";
+            auto: "auto";
+            "accept-edits": "accept-edits";
             full: "full";
-            "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -3796,20 +3798,26 @@ declare const hostDaemonCommandRegistry: {
             memoryEnabled: z$1.ZodOptional<z$1.ZodBoolean>;
             providerSubagentsEnabled: z$1.ZodOptional<z$1.ZodBoolean>;
         }, z$1.core.$strip>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            permissionMode: z$1.ZodLiteral<"accept-edits">;
+            permissionScope: z$1.ZodLiteral<"workspace">;
+            approvalReviewer: z$1.ZodLiteral<"user">;
+            permissionEscalation: z$1.ZodEnum<{
+                ask: "ask";
+                deny: "deny";
+            }>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            permissionMode: z$1.ZodLiteral<"auto">;
+            permissionScope: z$1.ZodLiteral<"workspace">;
+            approvalReviewer: z$1.ZodLiteral<"automatic">;
+            permissionEscalation: z$1.ZodEnum<{
+                ask: "ask";
+                deny: "deny";
+            }>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
+            permissionScope: z$1.ZodLiteral<"full">;
+            approvalReviewer: z$1.ZodNull;
             permissionEscalation: z$1.ZodNull;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            permissionMode: z$1.ZodLiteral<"workspace-write">;
-            permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
-                deny: "deny";
-            }>;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            permissionMode: z$1.ZodLiteral<"readonly">;
-            permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
-                deny: "deny";
-            }>;
         }, z$1.core.$strip>], "permissionMode">>;
         instructions: z$1.ZodString;
         dynamicTools: z$1.ZodArray<z$1.ZodObject<{
@@ -4203,20 +4211,26 @@ declare const hostDaemonCommandRegistry: {
             memoryEnabled: z$1.ZodOptional<z$1.ZodBoolean>;
             providerSubagentsEnabled: z$1.ZodOptional<z$1.ZodBoolean>;
         }, z$1.core.$strip>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            permissionMode: z$1.ZodLiteral<"accept-edits">;
+            permissionScope: z$1.ZodLiteral<"workspace">;
+            approvalReviewer: z$1.ZodLiteral<"user">;
+            permissionEscalation: z$1.ZodEnum<{
+                ask: "ask";
+                deny: "deny";
+            }>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            permissionMode: z$1.ZodLiteral<"auto">;
+            permissionScope: z$1.ZodLiteral<"workspace">;
+            approvalReviewer: z$1.ZodLiteral<"automatic">;
+            permissionEscalation: z$1.ZodEnum<{
+                ask: "ask";
+                deny: "deny";
+            }>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
+            permissionScope: z$1.ZodLiteral<"full">;
+            approvalReviewer: z$1.ZodNull;
             permissionEscalation: z$1.ZodNull;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            permissionMode: z$1.ZodLiteral<"workspace-write">;
-            permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
-                deny: "deny";
-            }>;
-        }, z$1.core.$strip>, z$1.ZodObject<{
-            permissionMode: z$1.ZodLiteral<"readonly">;
-            permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
-                deny: "deny";
-            }>;
         }, z$1.core.$strip>], "permissionMode">>;
         acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
             displayName: z$1.ZodString;
@@ -6303,9 +6317,9 @@ declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
             supportsUserQuestion: z$1.ZodBoolean;
             supportsFork: z$1.ZodBoolean;
             supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-                readonly: "readonly";
+                auto: "auto";
+                "accept-edits": "accept-edits";
                 full: "full";
-                "workspace-write": "workspace-write";
             }>>;
         }, z$1.core.$strip>;
         composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -7612,11 +7626,11 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         max: "max";
         ultra: "ultra";
     }>>;
-    permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
-        readonly: "readonly";
+    permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
+        auto: "auto";
+        "accept-edits": "accept-edits";
         full: "full";
-        "workspace-write": "workspace-write";
-    }>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         providerId: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -7787,11 +7801,11 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         max: "max";
         ultra: "ultra";
     }>>;
-    permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
-        readonly: "readonly";
+    permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
+        auto: "auto";
+        "accept-edits": "accept-edits";
         full: "full";
-        "workspace-write": "workspace-write";
-    }>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -7917,11 +7931,11 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
         max: "max";
         ultra: "ultra";
     }>>;
-    permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
-        readonly: "readonly";
+    permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
+        auto: "auto";
+        "accept-edits": "accept-edits";
         full: "full";
-        "workspace-write": "workspace-write";
-    }>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8143,9 +8157,9 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            readonly: "readonly";
+            auto: "auto";
+            "accept-edits": "accept-edits";
             full: "full";
-            "workspace-write": "workspace-write";
         }>;
         serviceTier: z$1.ZodEnum<{
             default: "default";
@@ -8819,9 +8833,9 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        readonly: "readonly";
+        auto: "auto";
+        "accept-edits": "accept-edits";
         full: "full";
-        "workspace-write": "workspace-write";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";

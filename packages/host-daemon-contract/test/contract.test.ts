@@ -1640,6 +1640,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         instructions: "Be concise.",
@@ -1663,6 +1665,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {
@@ -1684,7 +1688,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("parses section mentions in thread.start", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(57);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(58);
 
     expect(
       hostDaemonCommandSchema.parse({
@@ -1721,6 +1725,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         instructions: "Be a helpful thread.",
@@ -1756,6 +1762,60 @@ describe("host-daemon command schemas", () => {
     });
   });
 
+  it.each([
+    {
+      permissionMode: "accept-edits" as const,
+      permissionScope: "workspace" as const,
+      approvalReviewer: "user" as const,
+    },
+    {
+      permissionMode: "auto" as const,
+      permissionScope: "workspace" as const,
+      approvalReviewer: "automatic" as const,
+    },
+  ])(
+    "parses explicit $permissionMode runtime enforcement",
+    ({ permissionMode, permissionScope, approvalReviewer }) => {
+      const command = {
+        type: "thread.start" as const,
+        environmentId: "env_123",
+        threadId: "thr_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged" as const,
+        },
+        projectId: "proj_123",
+        providerId: "codex",
+        requestId: CLIENT_REQUEST_ID,
+        input: [{ type: "text" as const, text: "hello", mentions: [] }],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default" as const,
+          reasoningLevel: "medium" as const,
+          workflowsEnabled: false,
+          permissionMode,
+          permissionScope,
+          approvalReviewer,
+          permissionEscalation: "ask" as const,
+        },
+        instructions: "Be concise.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append" as const,
+      };
+
+      expect(hostDaemonCommandSchema.parse(command)).toMatchObject({
+        options: { permissionMode, permissionScope, approvalReviewer },
+      });
+      expect(
+        hostDaemonCommandSchema.safeParse({
+          ...command,
+          options: { ...command.options, permissionScope: "full" },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it("parses section mentions in turn.submit follow-ups", () => {
     expect(
       hostDaemonCommandSchema.parse({
@@ -1786,6 +1846,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {
@@ -1841,6 +1903,8 @@ describe("host-daemon command schemas", () => {
         reasoningLevel: "medium",
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
       instructions: "Be a helpful thread.",
@@ -1873,6 +1937,8 @@ describe("host-daemon command schemas", () => {
         reasoningLevel: "medium",
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
       resumeContext: {
@@ -1939,6 +2005,8 @@ describe("host-daemon command schemas", () => {
         reasoningLevel: "medium",
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
       instructions: "Be a helpful thread.",
@@ -1964,6 +2032,8 @@ describe("host-daemon command schemas", () => {
         reasoningLevel: "medium",
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
       acpLaunchSpec: ACP_LAUNCH_SPEC,
@@ -2074,6 +2144,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {
@@ -2116,6 +2188,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {
@@ -2151,6 +2225,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {
@@ -2186,6 +2262,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         instructions: "Be concise.",
@@ -2215,6 +2293,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         instructions: "Be concise.",
@@ -2238,6 +2318,8 @@ describe("host-daemon command schemas", () => {
           reasoningLevel: "medium",
           workflowsEnabled: false,
           permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
           permissionEscalation: null,
         },
         resumeContext: {

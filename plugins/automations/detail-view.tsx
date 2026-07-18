@@ -149,9 +149,9 @@ function formatPermissionMode(
     { mode: "agent" }
   >["permissionMode"],
 ): string {
-  if (permissionMode === "readonly") return "Read-only";
-  if (permissionMode === "workspace-write") return "Workspace write";
-  return "Full access";
+  if (permissionMode === "accept-edits") return "Accept Edits";
+  if (permissionMode === "auto") return "Approve for me";
+  return "Full Access";
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {

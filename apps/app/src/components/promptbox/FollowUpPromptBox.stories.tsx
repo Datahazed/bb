@@ -113,13 +113,13 @@ const codexModelLoadError = {
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
+  { value: "accept-edits", label: "Accept Edits" },
+  { value: "auto", label: "Approve for me" },
   { value: "full", label: "Full Access", tone: "warning" },
-  { value: "workspace-write", label: "Workspace Write" },
-  { value: "readonly", label: "Readonly" },
 ];
 
 const basePermission: ExecutionPermissionConfig = {
-  value: "workspace-write",
+  value: "auto",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -163,7 +163,7 @@ const readOnlyExecution = makeExecutionControlsProps({
 });
 
 const readOnlyPermission: ExecutionPermissionConfig = {
-  value: "readonly",
+  value: "accept-edits",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -513,7 +513,7 @@ function makeStoryQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 0,
@@ -534,7 +534,7 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_4", "Compare the queue in light and dark themes."),
   makeStoryQueuedMessage("q_5", "Verify keyboard reordering from each grip."),
   makeStoryQueuedMessage("q_6", "Run the prompt-box typecheck."),
-  makeStoryQueuedMessage("q_7", "Review the drawer at a narrow width."),
+  makeStoryQueuedMessage("q_7", "Review the queue at a narrow width."),
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
@@ -1023,7 +1023,7 @@ export function QueuedWorkspace() {
     <StoryCard>
       <StoryRow
         label="eight queued follow-ups"
-        hint="drag the header up, reorder by the grip, then choose Edit from a row menu"
+        hint="the centered handle stays quiet; hover the header to reveal the right-aligned caret"
       >
         <Row
           submitMode={{ kind: "queue", onStop: noop }}

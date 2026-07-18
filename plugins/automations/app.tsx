@@ -435,7 +435,6 @@ function routeOf(automation: AutomationResponse): DetailRoute {
   return { projectId: automation.projectId, automationId: automation.id };
 }
 
-// ---------------------------------------------------------------------------
 // Shared bits.
 // ---------------------------------------------------------------------------
 
