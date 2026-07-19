@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,13 @@ import {
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
+import {
+  PluginComposerHostProvider,
+  PluginComposerHostScopeProvider,
+  type PluginComposerHost,
+  usePublishPluginComposerHost,
+} from "./plugin-composer-host";
+import { PluginContext } from "./plugin-context";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
@@ -33,6 +40,7 @@ import {
   type OpenPluginPanelArgs,
 } from "./PluginPanelActions";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import type { PromptDraftState } from "@/lib/prompt-draft";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -393,6 +401,163 @@ describe("useComposer", () => {
     expect(
       JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
     ).toHaveLength(1);
+  });
+
+  it("binds composer writes to the active queued-message editor", () => {
+    registerComposerProbe("queued");
+
+    function QueuedComposerHarness() {
+      const [queuedMessageId, setQueuedMessageId] = useState("qmsg_1");
+      const [draft, setDraft] = useState<PromptDraftState>({
+        text: "queued draft",
+        mentions: [],
+        attachments: [
+          {
+            type: "localFile",
+            path: "uploads/queued-spec.md",
+            name: "queued-spec.md",
+            sizeBytes: 42,
+          },
+        ],
+      });
+      const draftRef = useRef(draft);
+      draftRef.current = draft;
+      const host = useMemo<PluginComposerHost>(
+        () => ({
+          scope: {
+            kind: "queued-message",
+            threadId: "thr_queue",
+            queuedMessageId,
+          },
+          draft,
+          getCurrent: () => draftRef.current,
+          setDraft,
+          focus: () => {},
+        }),
+        [draft, queuedMessageId],
+      );
+
+      return (
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerAccessories />
+          <div data-testid="queued-attachments">
+            {JSON.stringify(draft.attachments)}
+          </div>
+          <button type="button" onClick={() => setQueuedMessageId("qmsg_2")}>
+            change-queued-scope
+          </button>
+        </PluginComposerHostProvider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_queue"]}>
+        <QueuedComposerHarness />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("scope: queued-message")).toBeDefined();
+
+    fireEvent.click(screen.getByText("queued-replace"));
+    expect(screen.getByTestId("queued-composer-text").textContent).toBe(
+      "replacement",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("queued-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("change-queued-scope"));
+    expect(screen.getByText("scope: queued-message")).toBeDefined();
+  });
+
+  it("shares a queued-message host with sibling plugin surfaces in the pane", () => {
+    function HostPublisher({ host }: { host: PluginComposerHost | null }) {
+      usePublishPluginComposerHost(host);
+      return null;
+    }
+
+    function SiblingPluginProbe() {
+      const composer = useComposer();
+      return (
+        <>
+          <div data-testid="sibling-scope">{composer.scope.kind}</div>
+          <div data-testid="sibling-text">{composer.text}</div>
+          <button
+            type="button"
+            onClick={() => composer.setText("sibling replacement")}
+          >
+            sibling-replace
+          </button>
+        </>
+      );
+    }
+
+    function QueuedPaneHarness() {
+      const [isEditing, setIsEditing] = useState(true);
+      const [draft, setDraft] = useState<PromptDraftState>({
+        text: "queued draft",
+        mentions: [],
+        attachments: [
+          {
+            type: "localFile",
+            path: "uploads/queued-spec.md",
+            name: "queued-spec.md",
+            sizeBytes: 42,
+          },
+        ],
+      });
+      const host = useMemo<PluginComposerHost | null>(
+        () =>
+          isEditing
+            ? {
+                scope: {
+                  kind: "queued-message",
+                  threadId: "thr_queue",
+                  queuedMessageId: "qmsg_1",
+                },
+                draft,
+                getCurrent: () => draft,
+                setDraft,
+                focus: () => {},
+              }
+            : null,
+        [draft, isEditing],
+      );
+      return (
+        <PluginComposerHostScopeProvider>
+          <HostPublisher host={host} />
+          <PluginContext.Provider value="demo">
+            <SiblingPluginProbe />
+          </PluginContext.Provider>
+          <div data-testid="sibling-attachments">
+            {JSON.stringify(draft.attachments)}
+          </div>
+          <button type="button" onClick={() => setIsEditing(false)}>
+            dismiss-queued-edit
+          </button>
+        </PluginComposerHostScopeProvider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_queue"]}>
+        <QueuedPaneHarness />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("sibling-scope").textContent).toBe(
+      "queued-message",
+    );
+    expect(screen.getByTestId("sibling-text").textContent).toBe("queued draft");
+    fireEvent.click(screen.getByText("sibling-replace"));
+    expect(screen.getByTestId("sibling-text").textContent).toBe(
+      "sibling replacement",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("sibling-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("dismiss-queued-edit"));
+    expect(screen.getByTestId("sibling-scope").textContent).toBe("thread");
   });
 
   it("targets the new-thread composer without leaking replacements to thread drafts", () => {
