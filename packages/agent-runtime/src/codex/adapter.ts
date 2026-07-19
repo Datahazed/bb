@@ -15,7 +15,6 @@ import {
   getThreadEventScopeTurnId,
   jsonValueSchema,
   requireThreadEventScopeTurnId,
-  turnScope,
 } from "@bb/domain";
 import type {
   ClientTurnRequestId,
@@ -76,6 +75,7 @@ import {
   buildCodexSubAgentCompletedEvent,
   buildCodexSubAgentStartedEvent,
   parseCodexSubAgentActivityEvent,
+  type CodexSubAgentActivityEvent,
   type CodexTrackedSubAgent,
 } from "./subagent-activity-translation.js";
 
@@ -863,6 +863,16 @@ interface CodexPendingDelegationTurnLink {
   parentTurnId: string;
 }
 
+interface CodexInteractionClassification {
+  kind: "followup" | "message";
+  turnId: string;
+}
+
+interface CodexDeferredTurnStart {
+  event: ThreadEvent;
+  pendingEvents: ThreadEvent[];
+}
+
 function collectStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -1107,6 +1117,22 @@ export function createCodexProviderAdapter(
     string,
     CodexRawCommandOutputState
   >();
+  const interactionClassificationsByProviderThreadId = new Map<
+    string,
+    Map<string, CodexInteractionClassification>
+  >();
+  const unclassifiedInteractionsByProviderThreadId = new Map<
+    string,
+    CodexSubAgentActivityEvent[]
+  >();
+  const deferredTurnStartsByProviderThreadId = new Map<
+    string,
+    Map<string, CodexDeferredTurnStart>
+  >();
+  const seenInteractionTurnIdsByCallIdByProviderThreadId = new Map<
+    string,
+    Map<string, string>
+  >();
   const delegationParentToolCallIdsByProviderThreadId = new Map<
     string,
     string
@@ -1241,6 +1267,19 @@ export function createCodexProviderAdapter(
       return;
     }
     rawCommandOutputStateByProviderThreadId.delete(paramsResult.data.threadId);
+    nativeTurnStartClientRequestIdsByProviderThreadId.delete(
+      paramsResult.data.threadId,
+    );
+    interactionClassificationsByProviderThreadId.delete(
+      paramsResult.data.threadId,
+    );
+    unclassifiedInteractionsByProviderThreadId.delete(
+      paramsResult.data.threadId,
+    );
+    deferredTurnStartsByProviderThreadId.delete(paramsResult.data.threadId);
+    seenInteractionTurnIdsByCallIdByProviderThreadId.delete(
+      paramsResult.data.threadId,
+    );
     clearCodexDelegationParentState(paramsResult.data.threadId);
     clearGitWritableRootsByProviderThreadId({
       providerThreadId: paramsResult.data.threadId,
@@ -1294,88 +1333,35 @@ export function createCodexProviderAdapter(
   function removeNativeTurnStartClientRequestId(args: {
     clientRequestId: ClientTurnRequestId;
     providerThreadId: string;
-  }): void {
+  }): boolean {
     const sequences = nativeTurnStartClientRequestIdsByProviderThreadId.get(
       args.providerThreadId,
     );
     if (!sequences || sequences.length === 0) {
-      return;
+      return false;
     }
     const nextSequences = [...sequences];
     const sequenceIndex = nextSequences.indexOf(args.clientRequestId);
     if (sequenceIndex === -1) {
-      return;
+      return false;
     }
     nextSequences.splice(sequenceIndex, 1);
     if (nextSequences.length === 0) {
       nativeTurnStartClientRequestIdsByProviderThreadId.delete(
         args.providerThreadId,
       );
-      return;
+      return true;
     }
     nativeTurnStartClientRequestIdsByProviderThreadId.set(
       args.providerThreadId,
       nextSequences,
     );
-  }
-
-  function shiftNativeTurnStartClientRequestId(
-    providerThreadId: string,
-  ): ClientTurnRequestId | undefined {
-    const sequences =
-      nativeTurnStartClientRequestIdsByProviderThreadId.get(providerThreadId);
-    if (!sequences || sequences.length === 0) {
-      return undefined;
-    }
-    const [clientRequestId, ...remainingSequences] = sequences;
-    if (remainingSequences.length === 0) {
-      nativeTurnStartClientRequestIdsByProviderThreadId.delete(
-        providerThreadId,
-      );
-    } else {
-      nativeTurnStartClientRequestIdsByProviderThreadId.set(
-        providerThreadId,
-        remainingSequences,
-      );
-    }
-    return clientRequestId;
+    return true;
   }
 
   function attachAcceptedUserMessageCorrelation(
     event: ThreadEvent,
   ): ThreadEvent[] {
-    if (event.type === "turn/completed") {
-      if (event.providerThreadId !== null) {
-        nativeTurnStartClientRequestIdsByProviderThreadId.delete(
-          event.providerThreadId,
-        );
-      }
-      return [event];
-    }
-
-    if (event.type === "turn/started") {
-      const clientRequestId = shiftNativeTurnStartClientRequestId(
-        event.providerThreadId,
-      );
-      if (clientRequestId === undefined) {
-        return [event];
-      }
-      const turnId = requireThreadEventScopeTurnId({
-        type: event.type,
-        scope: event.scope,
-      });
-      return [
-        event,
-        {
-          type: "turn/input/accepted",
-          threadId: event.threadId,
-          providerThreadId: event.providerThreadId,
-          scope: turnScope(turnId),
-          clientRequestId,
-        },
-      ];
-    }
-
     if (
       (event.type !== "item/started" && event.type !== "item/completed") ||
       event.item.type !== "userMessage"
@@ -1383,7 +1369,26 @@ export function createCodexProviderAdapter(
       return [event];
     }
 
-    return [];
+    const clientRequestId = event.item.clientRequestId;
+    if (
+      clientRequestId === undefined ||
+      event.providerThreadId === null ||
+      !removeNativeTurnStartClientRequestId({
+        clientRequestId,
+        providerThreadId: event.providerThreadId,
+      })
+    ) {
+      return [];
+    }
+    return buildAcceptedUserMessageEvent({
+      clientRequestId,
+      providerThreadId: event.providerThreadId,
+      threadId: event.threadId,
+      turnId: requireThreadEventScopeTurnId({
+        type: event.type,
+        scope: event.scope,
+      }),
+    });
   }
 
   function enqueuePendingDelegationTurnLink(args: {
@@ -1593,6 +1598,100 @@ export function createCodexProviderAdapter(
     return buildCodexSubAgentCompletedEvent(args);
   }
 
+  function beginCodexTrackedSubAgent(args: {
+    activity: CodexSubAgentActivityEvent;
+    tool: CodexTrackedSubAgent["tool"];
+  }): ThreadEvent[] {
+    const tracked: CodexTrackedSubAgent = {
+      agentPath: args.activity.item.agentPath,
+      agentThreadId: args.activity.item.agentThreadId,
+      callId: args.activity.item.id,
+      parentProviderThreadId: args.activity.providerThreadId,
+      parentTurnId: args.activity.turnId,
+      terminal: false,
+      tool: args.tool,
+    };
+    trackedSubAgentsByCallId.set(tracked.callId, tracked);
+    trackedSubAgentCallIdsByAgentThreadId.set(
+      tracked.agentThreadId,
+      tracked.callId,
+    );
+
+    const [startedEvent] = attachCodexDelegationParentLinks([
+      buildCodexSubAgentStartedEvent(tracked),
+    ]);
+    if (
+      startedEvent?.type === "item/started" &&
+      startedEvent.item.type === "toolCall"
+    ) {
+      tracked.parentToolCallId = startedEvent.item.parentToolCallId;
+    }
+    // Codex currently multiplexes child turns onto the root provider
+    // thread, even though the activity includes a distinct agent thread
+    // id. Queue a FIFO fallback in addition to the explicit id mapping.
+    enqueuePendingDelegationTurnLink({
+      callId: tracked.callId,
+      parentTurnId: tracked.parentTurnId,
+      providerThreadId: tracked.parentProviderThreadId,
+    });
+    return startedEvent ? [startedEvent] : [];
+  }
+
+  function consumeCodexInteractionClassification(args: {
+    callId: string;
+    providerThreadId: string;
+  }): CodexInteractionClassification["kind"] | undefined {
+    const classifications = interactionClassificationsByProviderThreadId.get(
+      args.providerThreadId,
+    );
+    if (!classifications) {
+      return undefined;
+    }
+    const classification = classifications.get(args.callId);
+    if (!classification) {
+      return undefined;
+    }
+    classifications.delete(args.callId);
+    if (classifications.size === 0) {
+      interactionClassificationsByProviderThreadId.delete(
+        args.providerThreadId,
+      );
+    }
+    return classification.kind;
+  }
+
+  function recordCodexInteraction(
+    activity: CodexSubAgentActivityEvent,
+  ): boolean {
+    const seenInteractions =
+      seenInteractionTurnIdsByCallIdByProviderThreadId.get(
+        activity.providerThreadId,
+      ) ?? new Map<string, string>();
+    if (seenInteractions.has(activity.item.id)) {
+      return false;
+    }
+    seenInteractions.set(activity.item.id, activity.turnId);
+    seenInteractionTurnIdsByCallIdByProviderThreadId.set(
+      activity.providerThreadId,
+      seenInteractions,
+    );
+    return true;
+  }
+
+  function queueUnclassifiedCodexInteraction(
+    activity: CodexSubAgentActivityEvent,
+  ): void {
+    const pendingInteractions =
+      unclassifiedInteractionsByProviderThreadId.get(
+        activity.providerThreadId,
+      ) ?? [];
+    pendingInteractions.push(activity);
+    unclassifiedInteractionsByProviderThreadId.set(
+      activity.providerThreadId,
+      pendingInteractions,
+    );
+  }
+
   function translateCodexSubAgentActivity(
     event: ProviderRuntimeEvent,
   ): ThreadEvent[] | null {
@@ -1606,43 +1705,45 @@ export function createCodexProviderAdapter(
         if (trackedSubAgentsByCallId.has(activity.item.id)) {
           return [];
         }
-        const tracked: CodexTrackedSubAgent = {
-          agentPath: activity.item.agentPath,
-          agentThreadId: activity.item.agentThreadId,
-          callId: activity.item.id,
-          parentProviderThreadId: activity.providerThreadId,
-          parentTurnId: activity.turnId,
-          terminal: false,
-        };
-        trackedSubAgentsByCallId.set(tracked.callId, tracked);
-        trackedSubAgentCallIdsByAgentThreadId.set(
-          tracked.agentThreadId,
-          tracked.callId,
-        );
-
-        const [startedEvent] = attachCodexDelegationParentLinks([
-          buildCodexSubAgentStartedEvent(tracked),
-        ]);
-        if (
-          startedEvent?.type === "item/started" &&
-          startedEvent.item.type === "toolCall"
-        ) {
-          tracked.parentToolCallId = startedEvent.item.parentToolCallId;
-        }
-        // Codex currently multiplexes child turns onto the root provider
-        // thread, even though the activity includes a distinct agent thread
-        // id. Queue a FIFO fallback in addition to the explicit id mapping.
-        enqueuePendingDelegationTurnLink({
-          callId: tracked.callId,
-          parentTurnId: tracked.parentTurnId,
-          providerThreadId: tracked.parentProviderThreadId,
+        return beginCodexTrackedSubAgent({
+          activity,
+          tool: "spawnAgent",
         });
-        return startedEvent ? [startedEvent] : [];
       }
-      case "interacted":
-        // Messaging an existing agent is activity within the original
-        // delegation, not a new timeline row.
+      case "interacted": {
+        const classification = consumeCodexInteractionClassification({
+          callId: activity.item.id,
+          providerThreadId: activity.providerThreadId,
+        });
+        if (!recordCodexInteraction(activity)) {
+          return [];
+        }
+        if (trackedSubAgentsByCallId.has(activity.item.id)) {
+          return [];
+        }
+        const activeCallId = trackedSubAgentCallIdsByAgentThreadId.get(
+          activity.item.agentThreadId,
+        );
+        const activeTracked = activeCallId
+          ? trackedSubAgentsByCallId.get(activeCallId)
+          : undefined;
+        if (activeTracked && !activeTracked.terminal) {
+          // A message delivered into an already-running child stays within
+          // that delegation and does not create a second timeline row.
+          return [];
+        }
+        if (classification === "message") {
+          return [];
+        }
+        if (classification === "followup") {
+          return beginCodexTrackedSubAgent({
+            activity,
+            tool: "resumeAgent",
+          });
+        }
+        queueUnclassifiedCodexInteraction(activity);
         return [];
+      }
       case "interrupted": {
         const callId = trackedSubAgentCallIdsByAgentThreadId.get(
           activity.item.agentThreadId,
@@ -1660,6 +1761,171 @@ export function createCodexProviderAdapter(
         return completed ? [completed] : [];
       }
     }
+  }
+
+  function materializeUnclassifiedCodexInteraction(
+    event: ThreadEvent,
+  ): ThreadEvent[] {
+    if (event.type !== "turn/started" || event.providerThreadId === null) {
+      return [];
+    }
+    const turnId = requireThreadEventScopeTurnId({
+      type: event.type,
+      scope: event.scope,
+    });
+    const pendingDelegationLinks =
+      pendingDelegationTurnLinksByProviderThreadId.get(event.providerThreadId);
+    if (
+      pendingDelegationLinks?.some(
+        (pendingLink) => pendingLink.parentTurnId !== turnId,
+      )
+    ) {
+      return [];
+    }
+
+    const pendingInteractions = unclassifiedInteractionsByProviderThreadId.get(
+      event.providerThreadId,
+    );
+    if (!pendingInteractions) {
+      return [];
+    }
+
+    let interactionIndex = pendingInteractions.length - 1;
+    while (
+      interactionIndex >= 0 &&
+      pendingInteractions[interactionIndex]?.turnId === turnId
+    ) {
+      interactionIndex -= 1;
+    }
+    if (interactionIndex === -1) {
+      return [];
+    }
+    const [activity] = pendingInteractions.splice(interactionIndex, 1);
+    if (!activity) {
+      return [];
+    }
+
+    if (pendingInteractions.length === 0) {
+      unclassifiedInteractionsByProviderThreadId.delete(event.providerThreadId);
+    }
+    return beginCodexTrackedSubAgent({
+      activity,
+      tool: "resumeAgent",
+    });
+  }
+
+  function materializeUnclassifiedCodexInteractions(
+    events: ThreadEvent[],
+  ): ThreadEvent[] {
+    const materializedEvents: ThreadEvent[] = [];
+    for (const event of events) {
+      const providerThreadId = getCodexEventProviderThreadId(event);
+      const turnId = getThreadEventScopeTurnId(event.scope);
+      const deferredTurnStarts = providerThreadId
+        ? deferredTurnStartsByProviderThreadId.get(providerThreadId)
+        : undefined;
+      const deferredTurnStart = turnId
+        ? deferredTurnStarts?.get(turnId)
+        : undefined;
+      if (
+        providerThreadId &&
+        turnId &&
+        deferredTurnStarts &&
+        deferredTurnStart
+      ) {
+        if (event.type === "turn/started") {
+          continue;
+        }
+        const clientRequestId =
+          (event.type === "item/started" || event.type === "item/completed") &&
+          event.item.type === "userMessage"
+            ? event.item.clientRequestId
+            : undefined;
+        const pendingNativeTurnStarts =
+          nativeTurnStartClientRequestIdsByProviderThreadId.get(
+            providerThreadId,
+          );
+        const isNativeUserMessage =
+          clientRequestId !== undefined &&
+          pendingNativeTurnStarts?.includes(clientRequestId);
+        const isChildUserMessage =
+          (event.type === "item/started" || event.type === "item/completed") &&
+          event.item.type === "userMessage" &&
+          !isNativeUserMessage;
+        if (
+          !isNativeUserMessage &&
+          !isChildUserMessage &&
+          event.type !== "turn/completed"
+        ) {
+          deferredTurnStart.pendingEvents.push(event);
+          continue;
+        }
+
+        deferredTurnStarts.delete(turnId);
+        if (deferredTurnStarts.size === 0) {
+          deferredTurnStartsByProviderThreadId.delete(providerThreadId);
+        }
+        if (isNativeUserMessage) {
+          materializedEvents.push(
+            deferredTurnStart.event,
+            ...deferredTurnStart.pendingEvents,
+          );
+        } else {
+          materializedEvents.push(
+            ...materializeUnclassifiedCodexInteraction(deferredTurnStart.event),
+            deferredTurnStart.event,
+            ...deferredTurnStart.pendingEvents,
+          );
+        }
+        materializedEvents.push(event);
+        continue;
+      }
+
+      if (event.type === "turn/started" && event.providerThreadId !== null) {
+        const startedTurnId = requireThreadEventScopeTurnId({
+          type: event.type,
+          scope: event.scope,
+        });
+        const pendingInteractions =
+          unclassifiedInteractionsByProviderThreadId.get(
+            event.providerThreadId,
+          );
+        const pendingNativeTurnStarts =
+          nativeTurnStartClientRequestIdsByProviderThreadId.get(
+            event.providerThreadId,
+          );
+        const pendingDelegationLinks =
+          pendingDelegationTurnLinksByProviderThreadId.get(
+            event.providerThreadId,
+          );
+        const hasKnownDelegation = pendingDelegationLinks?.some(
+          (pendingLink) => pendingLink.parentTurnId !== startedTurnId,
+        );
+        if (
+          pendingInteractions?.length &&
+          pendingNativeTurnStarts?.length &&
+          !hasKnownDelegation
+        ) {
+          const nextDeferredTurnStarts =
+            deferredTurnStartsByProviderThreadId.get(event.providerThreadId) ??
+            new Map<string, CodexDeferredTurnStart>();
+          nextDeferredTurnStarts.set(startedTurnId, {
+            event,
+            pendingEvents: [],
+          });
+          deferredTurnStartsByProviderThreadId.set(
+            event.providerThreadId,
+            nextDeferredTurnStarts,
+          );
+          continue;
+        }
+        materializedEvents.push(
+          ...materializeUnclassifiedCodexInteraction(event),
+        );
+      }
+      materializedEvents.push(event);
+    }
+    return materializedEvents;
   }
 
   function completeFinishedCodexSubAgentTurns(
@@ -1704,9 +1970,23 @@ export function createCodexProviderAdapter(
       return true;
     }
 
-    const { threadId: providerThreadId, item } = paramsResult.data;
+    const { threadId: providerThreadId, turnId, item } = paramsResult.data;
 
     if (item.type === "function_call") {
+      if (item.name === "followup_task" || item.name === "send_message") {
+        const classifications =
+          interactionClassificationsByProviderThreadId.get(providerThreadId) ??
+          new Map<string, CodexInteractionClassification>();
+        classifications.set(item.call_id, {
+          kind: item.name === "followup_task" ? "followup" : "message",
+          turnId,
+        });
+        interactionClassificationsByProviderThreadId.set(
+          providerThreadId,
+          classifications,
+        );
+        return true;
+      }
       if (!CODEX_SHELL_TOOL_NAMES.has(item.name)) {
         return true;
       }
@@ -1758,11 +2038,57 @@ export function createCodexProviderAdapter(
     return true;
   }
 
-  function reconcileRawCommandOutputLifecycle(events: ThreadEvent[]): void {
+  function reconcileCodexTurnLifecycle(events: ThreadEvent[]): void {
     for (const event of events) {
-      if (event.type === "turn/completed") {
-        if (event.providerThreadId !== null) {
-          rawCommandOutputStateByProviderThreadId.delete(
+      if (
+        (event.type !== "turn/started" && event.type !== "turn/completed") ||
+        event.providerThreadId === null
+      ) {
+        continue;
+      }
+      const turnId = requireThreadEventScopeTurnId({
+        type: event.type,
+        scope: event.scope,
+      });
+      if (event.type === "turn/started") {
+        continue;
+      }
+
+      rawCommandOutputStateByProviderThreadId.delete(event.providerThreadId);
+
+      const classifications = interactionClassificationsByProviderThreadId.get(
+        event.providerThreadId,
+      );
+      if (classifications) {
+        for (const [callId, classification] of classifications) {
+          if (classification.turnId === turnId) {
+            classifications.delete(callId);
+          }
+        }
+        if (classifications.size === 0) {
+          interactionClassificationsByProviderThreadId.delete(
+            event.providerThreadId,
+          );
+        }
+      }
+
+      const seenInteractions =
+        seenInteractionTurnIdsByCallIdByProviderThreadId.get(
+          event.providerThreadId,
+        );
+      if (seenInteractions) {
+        const pendingCallIds = new Set(
+          unclassifiedInteractionsByProviderThreadId
+            .get(event.providerThreadId)
+            ?.map((activity) => activity.item.id) ?? [],
+        );
+        for (const [callId, parentTurnId] of seenInteractions) {
+          if (parentTurnId === turnId && !pendingCallIds.has(callId)) {
+            seenInteractions.delete(callId);
+          }
+        }
+        if (seenInteractions.size === 0) {
+          seenInteractionTurnIdsByCallIdByProviderThreadId.delete(
             event.providerThreadId,
           );
         }
@@ -1991,6 +2317,7 @@ export function createCodexProviderAdapter(
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
+              clientUserMessageId: command.clientRequestId,
               input: toCodexUserInput(input),
               approvalPolicy: permissionSettings.approvalPolicy,
               approvalsReviewer: permissionSettings.approvalsReviewer,
@@ -2076,18 +2403,23 @@ export function createCodexProviderAdapter(
 
       const subAgentActivityEvents = translateCodexSubAgentActivity(event);
       if (subAgentActivityEvents !== null) {
-        reconcileRawCommandOutputLifecycle(subAgentActivityEvents);
+        reconcileCodexTurnLifecycle(subAgentActivityEvents);
         return applyRecoveredCommandOutput(subAgentActivityEvents);
       }
 
-      const translatedEvents = translateCodexEvent(event).flatMap(
-        attachAcceptedUserMessageCorrelation,
+      const translatedEvents = translateCodexEvent(event);
+      const eventsWithMaterializedInteractions =
+        materializeUnclassifiedCodexInteractions(translatedEvents);
+      const eventsWithAcceptedUserMessages =
+        eventsWithMaterializedInteractions.flatMap(
+          attachAcceptedUserMessageCorrelation,
+        );
+      const parentLinkedEvents = attachCodexDelegationParentLinks(
+        eventsWithAcceptedUserMessages,
       );
-      const parentLinkedEvents =
-        attachCodexDelegationParentLinks(translatedEvents);
       const completedSubAgentEvents =
         completeFinishedCodexSubAgentTurns(parentLinkedEvents);
-      reconcileRawCommandOutputLifecycle(completedSubAgentEvents);
+      reconcileCodexTurnLifecycle(completedSubAgentEvents);
       return applyRecoveredCommandOutput(completedSubAgentEvents);
     },
 

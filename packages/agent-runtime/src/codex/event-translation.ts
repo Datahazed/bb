@@ -11,7 +11,7 @@ import type {
   ThreadEventTurnStatus,
   ThreadEventUserContent,
 } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { clientTurnRequestIdSchema, threadScope, turnScope } from "@bb/domain";
 import { toOptionalRecord } from "../shared/adapter-utils.js";
 import { createUnhandledProviderEvent } from "../shared/provider-unhandled-event.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
@@ -430,9 +430,19 @@ function translateCodexItem(
       const content = parsedItem.content
         .map((entry) => translateCodexUserContent(entry))
         .filter((entry) => entry.type !== "text" || entry.text.length > 0);
+      const clientRequestId = clientTurnRequestIdSchema.safeParse(
+        parsedItem.clientId,
+      );
       return {
         kind: "translated",
-        item: { type: "userMessage", id: parsedItem.id, content },
+        item: {
+          type: "userMessage",
+          id: parsedItem.id,
+          content,
+          ...(clientRequestId.success
+            ? { clientRequestId: clientRequestId.data }
+            : {}),
+        },
       };
     }
     case "commandExecution":

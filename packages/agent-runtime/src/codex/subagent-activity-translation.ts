@@ -25,6 +25,7 @@ export interface CodexTrackedSubAgent {
   parentToolCallId?: string;
   parentTurnId: string;
   terminal: boolean;
+  tool: "resumeAgent" | "spawnAgent";
 }
 
 export function parseCodexSubAgentActivityEvent(
@@ -62,7 +63,7 @@ function buildSubAgentToolCallItem(
   return {
     type: "toolCall",
     id: tracked.callId,
-    tool: "spawnAgent",
+    tool: tracked.tool,
     arguments: {
       senderThreadId: tracked.parentProviderThreadId,
       receiverThreadIds: [tracked.agentThreadId],

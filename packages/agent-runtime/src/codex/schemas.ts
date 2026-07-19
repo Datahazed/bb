@@ -358,6 +358,7 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("userMessage"),
       id: z.string(),
+      clientId: z.string().nullable().optional(),
       content: z.array(codexUserInputSchema),
     })
     .passthrough(),
