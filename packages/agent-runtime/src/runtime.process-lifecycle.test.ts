@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   rmSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +43,26 @@ interface ProviderAccountErrorParams {
   providerThreadId: string;
   threadId: string;
   turnId: string;
+}
+
+const unixIt = process.platform === "win32" ? it.skip : it;
+
+function readProcessGroupId(pid: number): number {
+  return Number.parseInt(
+    execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], {
+      encoding: "utf8",
+    }).trim(),
+    10,
+  );
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 describe("createAgentRuntime process lifecycle", () => {
@@ -395,6 +416,80 @@ rl.on("line", (line) => {
   });
 
   // ---- Process lifecycle ----
+
+  unixIt("isolates each provider in its own process group", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+      const providerProcess = manager.requireProviderProcess({
+        processKey: "fake",
+        providerId: "fake",
+      });
+      const providerPid = providerProcess.child.pid;
+
+      expect(providerPid).toBeTypeOf("number");
+      expect(readProcessGroupId(providerPid!)).toBe(providerPid);
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+  unixIt("force kills the provider's entire process group", async () => {
+    const grandchildPidPath = join(tmpDir, "grandchild.pid");
+    const processTreeScript = join(tmpDir, "process-tree-provider.cjs");
+    writeFileSync(
+      processTreeScript,
+      `const { spawn } = require("node:child_process");
+      const { writeFileSync } = require("node:fs");
+      const grandchild = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
+        stdio: "ignore",
+      });
+      writeFileSync(process.env.GRANDCHILD_PID_PATH, String(grandchild.pid));
+      process.on("SIGTERM", () => {});
+      setInterval(() => {}, 1000);`,
+    );
+    const manager = createProviderProcessManager({
+      adapterProcessEnv: { GRANDCHILD_PID_PATH: grandchildPidPath },
+      onProcessExit: vi.fn(),
+      scriptPath: processTreeScript,
+      workspacePath: tmpDir,
+    });
+    let grandchildPid: number | undefined;
+
+    try {
+      await manager.ensureProvider({
+        processKey: "fake",
+        providerId: "fake",
+      });
+      await waitForRuntimeState({
+        label: "provider grandchild pid",
+        predicate: () => existsSync(grandchildPidPath),
+      });
+      grandchildPid = Number.parseInt(readFileSync(grandchildPidPath, "utf8"));
+
+      await manager.shutdownProvider({
+        processKey: "fake",
+        providerId: "fake",
+        timeoutMs: 50,
+      });
+      await waitForRuntimeState({
+        label: "provider grandchild exit",
+        predicate: () => !isProcessAlive(grandchildPid!),
+      });
+
+      expect(isProcessAlive(grandchildPid)).toBe(false);
+    } finally {
+      if (grandchildPid !== undefined && isProcessAlive(grandchildPid)) {
+        process.kill(grandchildPid, "SIGKILL");
+      }
+      await manager.shutdown();
+    }
+  });
 
   it("fires onProcessExit when provider crashes", async () => {
     const exitInfo = vi.fn();

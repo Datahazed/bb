@@ -266,21 +266,7 @@ export class RuntimeProviderProcessManager {
     const shutdownPromises: Promise<void>[] = [];
 
     for (const [processKey, providerProcess] of this.processes) {
-      shutdownPromises.push(
-        new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            providerProcess.child.kill("SIGKILL");
-            resolve();
-          }, 5000);
-
-          providerProcess.child.on("exit", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-
-          providerProcess.child.kill("SIGTERM");
-        }),
-      );
+      shutdownPromises.push(this.terminateProviderProcess({ providerProcess }));
       for (const [, pending] of providerProcess.pending) {
         pending.reject(new Error("Runtime shutting down"));
       }
@@ -331,6 +317,7 @@ export class RuntimeProviderProcessManager {
       command: processConfig.command,
       args: processConfig.args,
       cwd: this.args.workspacePath,
+      detached: process.platform !== "win32",
       env,
     });
 
@@ -417,7 +404,7 @@ export class RuntimeProviderProcessManager {
       const timeoutMs = args.timeoutMs ?? 5000;
       const softTimer = setTimeout(() => {
         if (!hasChildProcessExited(args.providerProcess.child)) {
-          args.providerProcess.child.kill("SIGKILL");
+          signalProviderProcessGroup(args.providerProcess.child, "SIGKILL");
         }
       }, timeoutMs);
       const hardTimer = setTimeout(resolve, timeoutMs + 1000);
@@ -428,7 +415,7 @@ export class RuntimeProviderProcessManager {
         resolve();
       });
 
-      args.providerProcess.child.kill("SIGTERM");
+      signalProviderProcessGroup(args.providerProcess.child, "SIGTERM");
     });
   }
 
@@ -515,6 +502,28 @@ export class RuntimeProviderProcessManager {
  */
 export function hasChildProcessExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
+}
+
+function signalProviderProcessGroup(
+  child: ChildProcess,
+  signal: NodeJS.Signals,
+): void {
+  if (process.platform !== "win32" && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "ESRCH"
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  child.kill(signal);
 }
 
 function getChildProcessExitStatus(
