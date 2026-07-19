@@ -33,7 +33,7 @@ interface SetupResult {
   thread: Thread;
 }
 
-function setup(): SetupResult {
+function setup(status: Thread["status"] = "starting"): SetupResult {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
@@ -47,6 +47,7 @@ function setup(): SetupResult {
   const thread = createThread(db, noopNotifier, {
     projectId: project.id,
     providerId: "claude-code",
+    status,
   });
   return { db, thread };
 }
@@ -285,6 +286,166 @@ function insertCrossWindowSubagentEvents(
   ]);
 }
 
+function insertSplitPagePendingSteerEvents(
+  db: DbConnection,
+  thread: Thread,
+): void {
+  const targetRequestId = requestId(10);
+  const steerRequestId = requestId(11);
+  const fallbackRequestId = requestId(12);
+  const activeRequestId = requestId(13);
+  insertEvents(db, noopNotifier, [
+    {
+      threadId: thread.id,
+      sequence: 1,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: targetRequestId,
+        senderThreadId: null,
+        input: [{ type: "text", text: "Start target turn.", mentions: [] }],
+        target: { kind: "new-turn" },
+        execution,
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 2,
+      type: "turn/started",
+      scope: turnScope("target-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({}),
+    },
+    {
+      threadId: thread.id,
+      sequence: 3,
+      type: "turn/input/accepted",
+      scope: turnScope("target-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ clientRequestId: targetRequestId }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 4,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: steerRequestId,
+        senderThreadId: null,
+        input: [
+          { type: "text", text: "STALE_PENDING_STEER", mentions: [] },
+        ],
+        target: { kind: "steer", expectedTurnId: "target-turn" },
+        execution,
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 10,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: fallbackRequestId,
+        senderThreadId: null,
+        input: [{ type: "text", text: "Fallback turn.", mentions: [] }],
+        target: { kind: "new-turn" },
+        execution,
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 11,
+      type: "turn/started",
+      scope: turnScope("fallback-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({}),
+    },
+    {
+      threadId: thread.id,
+      sequence: 12,
+      type: "turn/input/accepted",
+      scope: turnScope("fallback-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ clientRequestId: fallbackRequestId }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 20,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: activeRequestId,
+        senderThreadId: null,
+        input: [{ type: "text", text: "Active turn.", mentions: [] }],
+        target: { kind: "new-turn" },
+        execution,
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 21,
+      type: "turn/started",
+      scope: turnScope("active-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({}),
+    },
+    {
+      threadId: thread.id,
+      sequence: 22,
+      type: "turn/input/accepted",
+      scope: turnScope("active-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ clientRequestId: activeRequestId }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 23,
+      type: "turn/completed",
+      scope: turnScope("target-turn"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ status: "completed" }),
+    },
+  ]);
+}
+
 function nestedRows(row: TimelineRow): readonly TimelineRow[] {
   if (row.kind === "turn") {
     return row.children ?? [];
@@ -360,5 +521,37 @@ describe("thread timeline parented pagination", () => {
     expect(rowTexts(delegation?.childRows ?? [])).toContain(
       "SECOND_SUBAGENT_OUTPUT",
     );
+  });
+
+  it("does not resurrect a pending steer on an older split page", () => {
+    const { db, thread } = setup("active");
+    insertSplitPagePendingSteerEvents(db, thread);
+
+    const timeline = buildThreadTimeline(db, thread, {
+      includeProviderUnhandledOperations: false,
+      includeNestedRows: true,
+      maxSeq: 23,
+      page: {
+        kind: "older",
+        beforeCursor: {
+          anchorId: `${thread.id}:user-seed:10`,
+          anchorSeq: 10,
+        },
+        segmentLimit: 1,
+      },
+    });
+    const rows = flattenRows(timeline.rows);
+
+    expect(rowTexts(rows)).toContain("Start target turn.");
+    expect(rowTexts(rows)).not.toContain("STALE_PENDING_STEER");
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "user" &&
+          row.turnRequest.kind === "steer" &&
+          row.turnRequest.status === "pending",
+      ),
+    ).toBe(false);
   });
 });

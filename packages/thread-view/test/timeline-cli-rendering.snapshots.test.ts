@@ -479,7 +479,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
   });
 
-  it("shows an unacknowledged active-turn steer from the client request", () => {
+  it("shows an unacknowledged steer while its target turn remains active", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([
       event.turnStarted(),
@@ -496,7 +496,6 @@ describe("timeline CLI rendering snapshots", () => {
         command: "sqlite3 ~/.bb-dev/bb.db '.tables'",
       }),
       event.assistantCompleted({ itemId: "assistant-1", text: "Done." }),
-      event.turnCompleted(),
     ]);
 
     expect(messageKinds(timeline.messages)).toEqual([
@@ -504,11 +503,7 @@ describe("timeline CLI rendering snapshots", () => {
       "command",
       "assistant-text",
     ]);
-    expect(timeline.turnRows).toHaveLength(1);
-    expect(timeline.turnRows[0]).toMatchObject({
-      kind: "turn",
-      status: "completed",
-    });
+    expect(timeline.turnRows).toHaveLength(0);
     expect(
       timeline.rows.some(
         (row) => row.kind === "conversation" && row.role === "user",
@@ -531,12 +526,11 @@ describe("timeline CLI rendering snapshots", () => {
       status: "pending",
     });
     expect(timeline.text).toMatchInlineSnapshot(`
-      "── Worked for (5ms) ────────────────────────────────────────
-        ── Ran 2 commands
-          ── Ran pnpm test
-            $ pnpm test
-          ── Ran sqlite3 ~/.bb-dev/bb.db '.tables'
-            $ sqlite3 ~/.bb-dev/bb.db '.tables'
+      "── Ran 2 commands ──────────────────────────────────────────
+        ── Ran pnpm test
+          $ pnpm test
+        ── Ran sqlite3 ~/.bb-dev/bb.db '.tables'
+          $ sqlite3 ~/.bb-dev/bb.db '.tables'
 
       ── Assistant ───────────────────────────────────────────────
       Done.

@@ -15,6 +15,7 @@ import type {
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import {
+  getThreadEventScopeTurnId,
   isBackgroundAgentTaskType,
   readTerminalOutputLines,
   type ActiveThinking,
@@ -822,7 +823,22 @@ function buildPendingSteerRowsFromEvents(
   events: ThreadEventWithMeta[],
   options: ThreadTimelineFromEventsBaseOptions,
 ): TimelineUserConversationRow[] {
+  // Pending steers describe current tail state. Historical pages must not
+  // resurrect a request whose settlement is outside their event window.
+  if (!options.isLatestPage) {
+    return [];
+  }
+
   const orderedEvents = getOrderedThreadEvents(events);
+  const completedTurnIds = new Set(
+    orderedEvents.flatMap(({ event }) => {
+      if (event.type !== "turn/completed") {
+        return [];
+      }
+      const turnId = getThreadEventScopeTurnId(event.scope);
+      return turnId ? [turnId] : [];
+    }),
+  );
   const acceptedClientRequestById = buildAcceptedClientRequestById({
     context: acceptedClientRequestContext,
     events: orderedEvents,
@@ -830,6 +846,14 @@ function buildPendingSteerRowsFromEvents(
   const pendingSteerRows: TimelineUserConversationRow[] = [];
 
   for (const { event, meta } of orderedEvents) {
+    if (
+      event.type === "client/turn/requested" &&
+      (event.target.kind === "auto" || event.target.kind === "steer") &&
+      event.target.expectedTurnId !== null &&
+      completedTurnIds.has(event.target.expectedTurnId)
+    ) {
+      continue;
+    }
     const pendingSteers = parsePendingSteersFromClientRequest({
       acceptedClientRequest:
         event.type === "client/turn/requested"

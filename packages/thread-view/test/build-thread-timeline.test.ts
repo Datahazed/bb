@@ -675,6 +675,7 @@ function buildTimelineRows(
   events: ThreadEventWithMeta[],
   threadStatus: BuildTimelineRowsThreadStatus = "idle",
   workspaceRoot: string | null = null,
+  isLatestPage = true,
 ): TimelineRow[] {
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
@@ -684,7 +685,7 @@ function buildTimelineRows(
       includeDebugRawEvents: false,
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
-      isLatestPage: true,
+      isLatestPage,
       threadStatus,
       threadName: "",
       turnMessageDetail: "full",
@@ -1355,6 +1356,69 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       rows.filter((row) => row.kind === "conversation" && row.role === "user"),
     ).toHaveLength(0);
+  });
+
+  it("does not resurrect an unaccepted steer on a historical page", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const targetTurnStarted = event.turnStarted({ turnId: "turn-target" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-target" },
+      text: "Please account for the restart",
+    });
+
+    const rows = buildTimelineRows(
+      fromRows([targetTurnStarted, steerRequest]),
+      "active",
+      null,
+      false,
+    );
+
+    expect(
+      rows.filter((row) => row.kind === "conversation" && row.role === "user"),
+    ).toHaveLength(0);
+  });
+
+  it("drops an unaccepted steer after its target turn completes while another turn remains active", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const text = "also a source: WAI-ARIA APG";
+    const activeTurnStarted = event.turnStarted({ turnId: "turn-active" });
+    const targetTurnStarted = event.turnStarted({ turnId: "turn-target" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-target" },
+      text,
+    });
+    const fallbackRequest = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text,
+    });
+    const targetTurnCompleted = event.turnCompleted({
+      turnId: "turn-target",
+    });
+
+    const rows = buildTimelineRows(
+      fromRows([
+        activeTurnStarted,
+        targetTurnStarted,
+        steerRequest,
+        fallbackRequest,
+        targetTurnCompleted,
+      ]),
+      "active",
+    );
+    const userRows = rows.filter(
+      (row) => row.kind === "conversation" && row.role === "user",
+    );
+
+    expect(userRows).toEqual([
+      expect.objectContaining({
+        sourceSeqStart: fallbackRequest.seq,
+        text,
+        turnRequest: {
+          kind: "message",
+          status: "pending",
+        },
+      }),
+    ]);
   });
 
   it("uses accepted context to classify stale steers as messages when the accepted turn is visible", () => {
