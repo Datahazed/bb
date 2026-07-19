@@ -105,7 +105,14 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
-import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
+import {
+  requestComposerFocus,
+  subscribeComposerFocusRequests,
+} from "@/lib/composer-focus-requests";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -407,6 +414,10 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
     return false;
   }
   return "focusPrompt" in state && state.focusPrompt === true;
+}
+
+export function requestRootComposePluginFocus(storageKey: string | null): void {
+  requestComposerFocus(storageKey);
 }
 
 interface BuildMobileRecentThreadsArgs {
@@ -1091,6 +1102,28 @@ export function RootComposeView() {
         attachments: promptDraft.attachments,
       }),
     [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+  );
+  const pluginComposerHost = useMemo<PluginComposerHost>(
+    () => ({
+      scope: { kind: "new-thread", projectId },
+      draft: {
+        text: promptDraft.text,
+        mentions: promptDraft.mentions,
+        attachments: promptDraft.attachments,
+      },
+      getCurrent: promptDraft.getCurrent,
+      setDraft: promptDraft.setDraft,
+      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
+    }),
+    [
+      projectId,
+      promptDraft.attachments,
+      promptDraft.getCurrent,
+      promptDraft.mentions,
+      promptDraft.setDraft,
+      promptDraft.storageKey,
+      promptDraft.text,
+    ],
   );
   const rootComposeZenModeStorageKey = useMemo(
     () =>
@@ -3557,6 +3590,7 @@ export function RootComposeView() {
       mentionRanges={promptDraft.mentions}
       onChange={promptDraft.setTextAndMentions}
       onSubmit={submitPrompt}
+      pluginComposerHost={pluginComposerHost}
       isSubmitting={createThread.isPending}
       disabled={isSubmitDisabled}
       zenModeStorageKey={rootComposeZenModeStorageKey}
@@ -3599,66 +3633,68 @@ export function RootComposeView() {
       {providerCliInstallLogDialog}
       {machineSetupDialog}
       {rootPanelToggle}
-      <RootComposeSecondaryContent
-        contentClassName={
-          showEmptyWelcome
-            ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-            : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
-        }
-        isSecondaryPanelOpen={isSecondaryPanelOpen}
-        onToggleSecondaryPanel={handleToggleSecondaryPanel}
-        panelTogglePositionClassName={panelTogglePositionClassName}
-        secondaryPanel={{
-          activeTab: activeFixedSecondaryTab,
-          canUseGitUi: false,
-          environmentId: rootPanelEnvironmentId ?? undefined,
-          metadataContent: rootPanelMetadataContent,
-          workspaceRootPath:
-            rootPanelEnvironment?.path ??
-            (rootPanelTerminalTarget?.kind === "host_path"
-              ? (rootPanelTerminalTarget.cwd ?? undefined)
-              : undefined),
-          fileTabs,
-          fileTabContent,
-          renderBrowserDeck,
-          isBrowserTabActive,
-          isOpen: isSecondaryPanelOpen,
-          showConversationCollapseControl: false,
-          showGitDiffTab: false,
-          showInfoTab: false,
-          showNewTabButton: true,
-          inlinePanelToggle: "reserved",
-          onClose: closeSecondaryPanel,
-          onCollapse: closeSecondaryPanel,
-          onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
-          onFileTabReorder: reorderFileTab,
-          onOpenNewTab: handleOpenNewTab,
-          onOpenFilePreview: handleOpenFilePreview,
-          onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-          onPanelFocus: handleSecondaryPanelFocus,
-          onPanelChange: handleSecondaryPanelChange,
-        }}
-      >
-        {showEmptyWelcome ? (
-          <RootComposeEmptyWelcome
-            onCompose={handleStartComposing}
-            onAddProject={quickCreateProject.openCreateDialog}
-            addProjectDisabled={
-              !quickCreateProject.isAvailable || quickCreateProject.isCreating
-            }
-          />
-        ) : (
-          <>
-            {promptBox}
-            <RootComposeMobileRecents
-              highlightedThreadId={lastCreatedThreadId}
-              projectNamesById={mobileRecentProjectNamesById}
-              showCreatingRow={createThread.isPending}
-              threads={mobileRecentThreads}
+      <PluginComposerHostProvider value={pluginComposerHost}>
+        <RootComposeSecondaryContent
+          contentClassName={
+            showEmptyWelcome
+              ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+              : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+          }
+          isSecondaryPanelOpen={isSecondaryPanelOpen}
+          onToggleSecondaryPanel={handleToggleSecondaryPanel}
+          panelTogglePositionClassName={panelTogglePositionClassName}
+          secondaryPanel={{
+            activeTab: activeFixedSecondaryTab,
+            canUseGitUi: false,
+            environmentId: rootPanelEnvironmentId ?? undefined,
+            metadataContent: rootPanelMetadataContent,
+            workspaceRootPath:
+              rootPanelEnvironment?.path ??
+              (rootPanelTerminalTarget?.kind === "host_path"
+                ? (rootPanelTerminalTarget.cwd ?? undefined)
+                : undefined),
+            fileTabs,
+            fileTabContent,
+            renderBrowserDeck,
+            isBrowserTabActive,
+            isOpen: isSecondaryPanelOpen,
+            showConversationCollapseControl: false,
+            showGitDiffTab: false,
+            showInfoTab: false,
+            showNewTabButton: true,
+            inlinePanelToggle: "reserved",
+            onClose: closeSecondaryPanel,
+            onCollapse: closeSecondaryPanel,
+            onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+            onFileTabReorder: reorderFileTab,
+            onOpenNewTab: handleOpenNewTab,
+            onOpenFilePreview: handleOpenFilePreview,
+            onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+            onPanelFocus: handleSecondaryPanelFocus,
+            onPanelChange: handleSecondaryPanelChange,
+          }}
+        >
+          {showEmptyWelcome ? (
+            <RootComposeEmptyWelcome
+              onCompose={handleStartComposing}
+              onAddProject={quickCreateProject.openCreateDialog}
+              addProjectDisabled={
+                !quickCreateProject.isAvailable || quickCreateProject.isCreating
+              }
             />
-          </>
-        )}
-      </RootComposeSecondaryContent>
+          ) : (
+            <>
+              {promptBox}
+              <RootComposeMobileRecents
+                highlightedThreadId={lastCreatedThreadId}
+                projectNamesById={mobileRecentProjectNamesById}
+                showCreatingRow={createThread.isPending}
+                threads={mobileRecentThreads}
+              />
+            </>
+          )}
+        </RootComposeSecondaryContent>
+      </PluginComposerHostProvider>
     </>
   );
 }
