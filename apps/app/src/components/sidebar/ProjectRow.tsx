@@ -2134,6 +2134,11 @@ export const ChronologicalSectionThreadSections = memo(
                   ? {
                       duration: 180,
                       easing: "cubic-bezier(0.2, 0, 0, 1)",
+                      // The default side effect imperatively hides the source
+                      // row, then restores its pre-animation opacity. If that
+                      // cleanup lands after our projected-drag state clears,
+                      // it can restore the stale 0.25 drag opacity forever.
+                      sideEffects: null,
                     }
                   : null
               }

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
+import type { ComponentProps } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -27,6 +29,26 @@ const mockUpdateEnvironment = vi.hoisted(() => ({
 const mockDraftThreadIds = vi.hoisted(() => ({
   current: new Set<string>(),
 }));
+const mockSectionDragOverlay = vi.hoisted(() => ({
+  dndContextProps: undefined as unknown,
+  dropAnimation: undefined as unknown,
+}));
+
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dnd-kit/core")>();
+  const { createElement } = await import("react");
+  return {
+    ...actual,
+    DndContext: (props: ComponentProps<typeof actual.DndContext>) => {
+      mockSectionDragOverlay.dndContextProps = props;
+      return createElement(actual.DndContext, props);
+    },
+    DragOverlay: (props: ComponentProps<typeof actual.DragOverlay>) => {
+      mockSectionDragOverlay.dropAnimation = props.dropAnimation;
+      return createElement(actual.DragOverlay, props);
+    },
+  };
+});
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
@@ -295,6 +317,55 @@ describe("ProjectRow interactions", () => {
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("keeps the drop animation from restoring stale source-row opacity", () => {
+    const store = createStore();
+    const queryClient = new QueryClient();
+    const sectionId = "sec_drag";
+
+    render(
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ChronologicalSectionThreadSections
+              threadListState={{
+                status: "ready",
+                threads: [
+                  makeThread({ id: "thr_drag", sectionId }),
+                  makeThread({ id: "thr_loose", createdAt: 1 }),
+                ],
+              }}
+              compareThreads={() => 0}
+              sections={[{ id: sectionId, name: "Drag target" }]}
+              collapsedThreadIds={new Set()}
+              collapsedEnvironmentIds={new Set()}
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={vi.fn()}
+              topLevelSectionOrder={[
+                buildSidebarEntitySectionId("section", sectionId),
+                "threads",
+              ]}
+              onTopLevelSectionOrderChange={vi.fn()}
+              pinnedReorderPending={false}
+              pinnedThreads={[]}
+              onReorderPinnedThread={vi.fn()}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    act(() => {
+      const dndContextProps = mockSectionDragOverlay.dndContextProps as {
+        onDragStart?: (event: { active: { id: string } }) => void;
+      };
+      dndContextProps.onDragStart?.({ active: { id: "thr_drag" } });
+    });
+
+    expect(mockSectionDragOverlay.dropAnimation).toMatchObject({
+      sideEffects: null,
+    });
   });
 
   it("shows a working draft before Plan for a collapsed section", () => {
