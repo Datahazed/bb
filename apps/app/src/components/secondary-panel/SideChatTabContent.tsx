@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,7 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
   QueuedMessagesList,
@@ -96,9 +98,17 @@ import {
 } from "@/lib/side-chat-create-request";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { useComposerTextEffect } from "@/lib/composer-text-effects";
 import { BbHttpError } from "@/lib/sdk";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
+
+let pluginComposerHostOwnershipSequence = 0;
+
+function createPluginComposerHostIdentity(scopeIdentity: string): string {
+  pluginComposerHostOwnershipSequence += 1;
+  return `${scopeIdentity}:ownership:${pluginComposerHostOwnershipSequence}`;
+}
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
 import {
   buildSideChatSubmitMode,
@@ -459,6 +469,12 @@ export function SideChatTabContent({
     parentThreadId: sourceThread.id,
     tabId: tab.id,
   });
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(
+    childThreadId ?? "",
+    {
+      enabled: childThreadId !== null,
+    },
+  );
   const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
@@ -498,8 +514,20 @@ export function SideChatTabContent({
     action: QueuedMessageProcessingAction;
     id: string;
   } | null>(null);
-  const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] =
+  const [inlineEditingQueuedMessageState, setInlineEditingQueuedMessage] =
     useState<InlineQueuedMessageEditState | null>(null);
+  const inlineEditingQueuedMessage = useMemo(
+    () =>
+      inlineEditingQueuedMessageState !== null &&
+      inlineEditingQueuedMessageState.ownerThreadId === childThreadId &&
+      queuedMessages.some(
+        (message) =>
+          message.id === inlineEditingQueuedMessageState.queuedMessageId,
+      )
+        ? inlineEditingQueuedMessageState
+        : null,
+    [childThreadId, inlineEditingQueuedMessageState, queuedMessages],
+  );
   const inlineEditSessionIdRef = useRef(0);
   const [inlineComposerTarget, setInlineComposerTarget] =
     useState<HTMLDivElement | null>(null);
@@ -528,12 +556,128 @@ export function SideChatTabContent({
     }),
     [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
+  const currentPromptDraftRef = useRef(currentPromptDraft);
+  const inlineEditingQueuedMessageRef =
+    useRef<InlineQueuedMessageEditState | null>(inlineEditingQueuedMessage);
+  useLayoutEffect(() => {
+    currentPromptDraftRef.current = currentPromptDraft;
+    inlineEditingQueuedMessageRef.current = inlineEditingQueuedMessage;
+  }, [currentPromptDraft, inlineEditingQueuedMessage]);
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),
     [currentPromptDraft],
   );
   const activeComposerDraft =
     inlineEditingQueuedMessage?.draft ?? currentPromptDraft;
+  const queuedEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+  const queuedEditOwnerThreadId =
+    inlineEditingQueuedMessage?.ownerThreadId ?? null;
+  const queuedEditMessageId =
+    inlineEditingQueuedMessage?.queuedMessageId ?? null;
+  const queuedComposerIdentity = useMemo(
+    () =>
+      queuedEditSessionId === null ||
+      queuedEditOwnerThreadId === null ||
+      queuedEditMessageId === null
+        ? null
+        : {
+            editSessionId: queuedEditSessionId,
+            ownerThreadId: queuedEditOwnerThreadId,
+            queuedMessageId: queuedEditMessageId,
+          },
+    [queuedEditMessageId, queuedEditOwnerThreadId, queuedEditSessionId],
+  );
+  const activeComposerIdentity = queuedComposerIdentity
+    ? `queued-message:${queuedComposerIdentity.ownerThreadId}:${queuedComposerIdentity.queuedMessageId}:${queuedComposerIdentity.editSessionId}`
+    : `side-chat:${sourceThread.projectId}:${sourceThread.id}:${tab.id}:${childThreadId ?? ""}`;
+  const activeComposerHostIdentity = useMemo(
+    () =>
+      createPluginComposerHostIdentity(
+        `${activeComposerIdentity}:${isActive ? "active" : "inactive"}`,
+      ),
+    [activeComposerIdentity, isActive],
+  );
+  const activeComposerIdentityRef = useRef<string | null>(null);
+  const activeComposerDraftRef = useRef(activeComposerDraft);
+  activeComposerDraftRef.current = activeComposerDraft;
+  const pluginComposerHostBinding = useMemo<
+    Omit<PluginComposerHost, "draft">
+  >(() => {
+    const identity = activeComposerHostIdentity;
+    const initialDraft = activeComposerDraftRef.current;
+    const queuedEdit = queuedComposerIdentity;
+    const isCurrentQueuedEdit = (
+      current: InlineQueuedMessageEditState | null,
+    ): current is InlineQueuedMessageEditState =>
+      queuedEdit !== null &&
+      current?.editSessionId === queuedEdit.editSessionId &&
+      current.ownerThreadId === queuedEdit.ownerThreadId &&
+      current.queuedMessageId === queuedEdit.queuedMessageId;
+
+    return {
+      scope:
+        queuedEdit === null
+          ? {
+              kind: "side-chat",
+              projectId: sourceThread.projectId,
+              parentThreadId: sourceThread.id,
+              tabId: tab.id,
+              childThreadId,
+            }
+          : {
+              kind: "queued-message",
+              threadId: queuedEdit.ownerThreadId,
+              queuedMessageId: queuedEdit.queuedMessageId,
+            },
+      textEffectKey: identity,
+      threadRowStatusThreadId: sourceThread.id,
+      getCurrent: () => {
+        if (activeComposerIdentityRef.current !== identity) {
+          return initialDraft;
+        }
+        const currentQueuedEdit = inlineEditingQueuedMessageRef.current;
+        return isCurrentQueuedEdit(currentQueuedEdit)
+          ? currentQueuedEdit.draft
+          : currentPromptDraftRef.current;
+      },
+      setDraft: (draft) => {
+        if (activeComposerIdentityRef.current !== identity) {
+          return;
+        }
+        if (queuedEdit !== null) {
+          setInlineEditingQueuedMessage((current) =>
+            isCurrentQueuedEdit(current) ? { ...current, draft } : current,
+          );
+          return;
+        }
+        setStoredPromptDraft(draft);
+      },
+      focus: () => {
+        if (activeComposerIdentityRef.current === identity) {
+          setComposerFocusNonce((nonce) => nonce + 1);
+        }
+      },
+    };
+  }, [
+    activeComposerHostIdentity,
+    childThreadId,
+    queuedComposerIdentity,
+    setStoredPromptDraft,
+    sourceThread.id,
+    sourceThread.projectId,
+    tab.id,
+  ]);
+  const pluginComposerHost = useMemo<PluginComposerHost>(
+    () => ({
+      ...pluginComposerHostBinding,
+      draft: activeComposerDraft,
+    }),
+    [activeComposerDraft, pluginComposerHostBinding],
+  );
+  const activePluginComposerHost = isActive ? pluginComposerHost : null;
+  const composerTextEffect = useComposerTextEffect(
+    activePluginComposerHost?.textEffectKey ?? null,
+  );
   const activeComposerDraftInput = useMemo(
     () => promptDraftToInput(activeComposerDraft),
     [activeComposerDraft],
@@ -656,12 +800,6 @@ export function SideChatTabContent({
     surfaceKey: childThreadId !== null ? `side-chat:${childThreadId}` : tab.id,
     threadId: childThreadId ?? "",
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(
-    childThreadId ?? "",
-    {
-      enabled: childThreadId !== null,
-    },
-  );
   const childHasUserMessage = useMemo(
     () => timelineRowsContainUserMessage(childTimeline.timelineRows),
     [childTimeline.timelineRows],
@@ -691,20 +829,15 @@ export function SideChatTabContent({
   }, [queuedMessages]);
   useEffect(() => {
     if (
-      inlineEditingQueuedMessage &&
-      (inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
-        !queuedMessages.some(
-          (message) =>
-            message.id === inlineEditingQueuedMessage.queuedMessageId,
-        ))
+      inlineEditingQueuedMessageState &&
+      inlineEditingQueuedMessage === null
     ) {
       dismissInlineQueuedMessageEditor();
     }
   }, [
-    childThreadId,
     dismissInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,
-    queuedMessages,
+    inlineEditingQueuedMessageState,
   ]);
 
   childThreadIdRef.current = childThreadId;
@@ -719,6 +852,16 @@ export function SideChatTabContent({
   }
   queuedMessageCountRef.current = queuedMessages.length;
 
+  useLayoutEffect(() => {
+    activeComposerIdentityRef.current = isActive
+      ? activeComposerHostIdentity
+      : null;
+    return () => {
+      if (activeComposerIdentityRef.current === activeComposerHostIdentity) {
+        activeComposerIdentityRef.current = null;
+      }
+    };
+  }, [activeComposerHostIdentity, isActive]);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -1525,7 +1668,8 @@ export function SideChatTabContent({
       // snapshots, so the displayed label can't drift from the permission the
       // side chat actually runs with. Undefined until defaults load, which
       // keeps the picker hidden rather than guessing.
-      value: inlineEditingQueuedMessage?.permissionMode ?? sideChatPermissionMode,
+      value:
+        inlineEditingQueuedMessage?.permissionMode ?? sideChatPermissionMode,
       options: permissionModeOptions,
       onChange: noop,
       supported: supportsPermissionModeSelection,
@@ -1589,6 +1733,8 @@ export function SideChatTabContent({
           attachments={attachmentsConfig}
           stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
+          pluginComposerHost={activePluginComposerHost}
+          textEffect={composerTextEffect}
           composerTarget={inlineComposerTarget}
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
@@ -1598,6 +1744,7 @@ export function SideChatTabContent({
           permissionReadOnly
           typeahead={typeaheadConfig}
           promptActions={promptActions}
+          suppressPluginComposerAccessories={!isActive}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
           // A side chat is a secondary composer: it stays mounted (often hidden)

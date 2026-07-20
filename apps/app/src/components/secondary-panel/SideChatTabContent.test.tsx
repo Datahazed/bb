@@ -2,15 +2,18 @@
 
 import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { StrictMode, Suspense, startTransition, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { SideChatTabContent } from "./SideChatTabContent";
 
@@ -21,8 +24,11 @@ const mocks = vi.hoisted(() => ({
   defaultExecutionPermissionMode: "auto" as "accept-edits" | "auto" | "full",
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
+  latestPluginComposerHost: null as PluginComposerHost | null,
   promptMentionArgs: [] as unknown[],
   promptMentionSetQuery: vi.fn(),
+  suspendedComposerMessage: null as string | null,
+  composerSuspension: null as Promise<never> | null,
   sendThreadMessageMutateAsync: vi.fn(),
   threadCreationReasoningLevel: "medium",
   threadCreationSelectedModel: "gpt-5",
@@ -31,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   timelineRowsProps: [] as Array<{
     onSendToMainMessage?: (target: { messageText: string }) => void;
   }>,
+  transitionComposerMessage: null as string | null,
   threadRuntimeDisplayStatus: "idle",
   queuedMessages: [] as ThreadQueuedMessage[],
   toastError: vi.fn(),
@@ -47,8 +54,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     focusEndKey,
     permission,
     permissionReadOnly,
+    pluginComposerHost,
     readOnly,
     stack,
+    suppressPluginComposerAccessories,
+    textEffect,
     typeahead,
   }: {
     attachments: {
@@ -81,6 +91,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     focusEndKey?: string | number;
     permissionReadOnly?: boolean;
     permission: { value?: string };
+    pluginComposerHost?: PluginComposerHost | null;
     readOnly?: boolean;
     typeahead: {
       command: {
@@ -92,92 +103,144 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
     };
     stack: ReactNode | null;
-  }) => (
-    <div>
-      <input
-        data-testid="side-chat-composer"
-        data-focus-end-key={focusEndKey}
-        value={composer.message}
-        onChange={(event) => composer.onChangeMessage(event.target.value, [])}
-      />
-      <button type="button" onClick={composer.onSubmit}>
-        Send
-      </button>
-      <button type="button" onClick={() => execution.model.onChange("o4-mini")}>
-        Use o4-mini
-      </button>
-      <button
-        type="button"
-        onClick={() => execution.reasoning.onChange("high")}
-      >
-        Use high reasoning
-      </button>
-      <button
-        type="button"
-        onClick={() => execution.serviceTier?.onChange("fast")}
-      >
-        Use fast mode
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          void attachments.onAttachFiles?.([
-            new File(["hello"], "note.md", { type: "text/markdown" }),
-          ])
-        }
-      >
-        Attach
-      </button>
-      <button
-        type="button"
-        onClick={() => typeahead.mention.onQueryChange("readme")}
-      >
-        Mention query
-      </button>
-      <button
-        type="button"
-        onClick={() => typeahead.command.onQueryChange("review")}
-      >
-        Command query
-      </button>
-      <span data-testid="command-trigger">{typeahead.command.trigger}</span>
-      <span data-testid="side-chat-stack-state">
-        {stack === null ? "null" : "provided"}
-      </span>
-      <span data-testid="side-chat-selected-model">
-        {execution.model.selected}
-      </span>
-      <span data-testid="side-chat-selected-reasoning">
-        {execution.reasoning.value}
-      </span>
-      <span data-testid="side-chat-selected-service-tier">
-        {execution.serviceTier?.value}
-      </span>
-      <span data-testid="side-chat-selected-permission">
-        {permission.value}
-      </span>
-      <span data-testid="side-chat-attachment-count">
-        {attachments.items.length}
-      </span>
-      <span data-testid="side-chat-execution-read-only">
-        {executionReadOnly ? "true" : "false"}
-      </span>
-      <span data-testid="side-chat-read-only">
-        {readOnly ? "true" : "false"}
-      </span>
-      <span data-testid="side-chat-permission-read-only">
-        {permissionReadOnly ? "true" : "false"}
-      </span>
-      {stack}
-      <button
-        type="button"
-        disabled={!composer.canModifierSubmit}
-        onClick={composer.onModifierSubmit}
-      >
-        Steer
-      </button>
-    </div>
-  ),
+    suppressPluginComposerAccessories?: boolean;
+    textEffect?: string | null;
+  }) => {
+    if (
+      mocks.composerSuspension !== null &&
+      composer.message === mocks.suspendedComposerMessage
+    ) {
+      throw mocks.composerSuspension;
+    }
+    mocks.latestPluginComposerHost = pluginComposerHost ?? null;
+    return (
+      <div>
+        <input
+          data-testid="side-chat-composer"
+          data-focus-end-key={focusEndKey}
+          data-plugin-accessories-suppressed={
+            suppressPluginComposerAccessories ? "true" : "false"
+          }
+          value={composer.message}
+          onChange={(event) => composer.onChangeMessage(event.target.value, [])}
+        />
+        <button type="button" onClick={composer.onSubmit}>
+          Send
+        </button>
+        {mocks.transitionComposerMessage !== null ? (
+          <button
+            type="button"
+            onClick={() =>
+              startTransition(() => {
+                composer.onChangeMessage(
+                  mocks.transitionComposerMessage ?? "",
+                  [],
+                );
+              })
+            }
+          >
+            Transition side draft
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => execution.model.onChange("o4-mini")}
+        >
+          Use o4-mini
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.reasoning.onChange("high")}
+        >
+          Use high reasoning
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.serviceTier?.onChange("fast")}
+        >
+          Use fast mode
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            void attachments.onAttachFiles?.([
+              new File(["hello"], "note.md", { type: "text/markdown" }),
+            ])
+          }
+        >
+          Attach
+        </button>
+        <button
+          type="button"
+          onClick={() => typeahead.mention.onQueryChange("readme")}
+        >
+          Mention query
+        </button>
+        <button
+          type="button"
+          onClick={() => typeahead.command.onQueryChange("review")}
+        >
+          Command query
+        </button>
+        <span data-testid="command-trigger">{typeahead.command.trigger}</span>
+        <span data-testid="side-chat-stack-state">
+          {stack === null ? "null" : "provided"}
+        </span>
+        <span data-testid="side-chat-selected-model">
+          {execution.model.selected}
+        </span>
+        <span data-testid="side-chat-selected-reasoning">
+          {execution.reasoning.value}
+        </span>
+        <span data-testid="side-chat-selected-service-tier">
+          {execution.serviceTier?.value}
+        </span>
+        <span data-testid="side-chat-selected-permission">
+          {permission.value}
+        </span>
+        <span data-testid="side-chat-attachment-count">
+          {attachments.items.length}
+        </span>
+        <span data-testid="side-chat-execution-read-only">
+          {executionReadOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-read-only">
+          {readOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-permission-read-only">
+          {permissionReadOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-plugin-scope">
+          {pluginComposerHost
+            ? JSON.stringify(pluginComposerHost.scope)
+            : "null"}
+        </span>
+        <span data-testid="side-chat-text-effect">{textEffect ?? "none"}</span>
+        <button
+          type="button"
+          disabled={!pluginComposerHost}
+          onClick={() => {
+            if (!pluginComposerHost) return;
+            pluginComposerHost.setDraft({
+              ...pluginComposerHost.getCurrent(),
+              text: "Plugin replacement",
+            });
+            pluginComposerHost.focus();
+          }}
+        >
+          Plugin replace
+        </button>
+        {stack}
+        <button
+          type="button"
+          disabled={!composer.canModifierSubmit}
+          onClick={composer.onModifierSubmit}
+        >
+          Steer
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
@@ -500,19 +563,48 @@ afterEach(() => {
   mocks.commandSuggestionArgs.length = 0;
   mocks.defaultExecutionOptionsThreadIds.length = 0;
   mocks.promptMentionArgs.length = 0;
+  mocks.composerSuspension = null;
+  mocks.suspendedComposerMessage = null;
   mocks.queuedMessages = [];
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
   mocks.defaultExecutionPermissionMode = "auto";
+  mocks.latestPluginComposerHost = null;
   mocks.threadCreationReasoningLevel = "medium";
   mocks.threadCreationSelectedModel = "gpt-5";
   mocks.threadCreationServiceTier = undefined;
+  mocks.transitionComposerMessage = null;
   mocks.threadRuntimeDisplayStatus = "idle";
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   vi.clearAllMocks();
 });
 
 describe("SideChatTabContent", () => {
+  function ParentDraftProbe() {
+    const draft = usePromptDraftStorage({
+      kind: "thread",
+      projectId: "proj_parent",
+      threadId: "thr_parent",
+    });
+    return (
+      <>
+        <span data-testid="parent-composer-draft">{draft.text}</span>
+        <button
+          type="button"
+          onClick={() =>
+            draft.setDraft({
+              text: "Keep parent draft",
+              mentions: [],
+              attachments: [],
+            })
+          }
+        >
+          Seed parent draft
+        </button>
+      </>
+    );
+  }
+
   function makeQueuedMessage(
     overrides: Partial<ThreadQueuedMessage> = {},
   ): ThreadQueuedMessage {
@@ -630,6 +722,267 @@ describe("SideChatTabContent", () => {
     );
   });
 
+  it("suppresses inactive plugin accessories and restores them without remounting the editor", () => {
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({
+        isActive: false,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+    const composer = screen.getByTestId<HTMLInputElement>("side-chat-composer");
+
+    fireEvent.change(composer, { target: { value: "Retained side draft" } });
+    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("true");
+
+    rerender(
+      buildSideChatElement({
+        isActive: true,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+
+    expect(screen.getByTestId("side-chat-composer")).toBe(composer);
+    expect(composer.value).toBe("Retained side draft");
+    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("false");
+  });
+
+  it("exposes only the visible side-chat draft to plugins before and after child creation", async () => {
+    mocks.uploadPromptAttachmentMutateAsync.mockResolvedValueOnce({
+      type: "localFile",
+      path: "thread-storage/uploads/note.md",
+      name: "note.md",
+      mimeType: "text/markdown",
+      sizeBytes: 5,
+    });
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      <>
+        <ParentDraftProbe />
+        {buildSideChatElement({ onSetThreadId, threadId: null })}
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Seed parent draft" }));
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Visible side-chat draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+        "1",
+      ),
+    );
+
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_parent",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
+    expect(screen.getByTestId("parent-composer-draft").textContent).toBe(
+      "Keep parent draft",
+    );
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "1",
+    );
+
+    rerender(
+      <>
+        <ParentDraftProbe />
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </>,
+    );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_parent",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: "thr_side",
+    });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("parent-composer-draft").textContent).toBe(
+      "Keep parent draft",
+    );
+  });
+
+  it("keeps the initial plugin host writable through StrictMode effect replay", () => {
+    render(
+      <StrictMode>
+        {buildSideChatElement({
+          onSetThreadId: vi.fn(),
+          threadId: null,
+        })}
+      </StrictMode>,
+    );
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Strict side draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "1",
+    );
+  });
+
+  it("ignores stale plugin writes after side-chat ownership changes and unmounts", () => {
+    const onSetThreadId = vi.fn();
+    const view = render(
+      buildSideChatElement({ onSetThreadId, threadId: null }),
+    );
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Current side draft" },
+    });
+    const staleDraftHost = mocks.latestPluginComposerHost;
+    expect(staleDraftHost).not.toBeNull();
+
+    view.rerender(
+      buildSideChatElement({ onSetThreadId, threadId: "thr_side" }),
+    );
+    act(() => {
+      staleDraftHost?.setDraft({
+        text: "Stale replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+
+    const staleActiveHost = mocks.latestPluginComposerHost;
+    view.rerender(
+      buildSideChatElement({
+        isActive: false,
+        onSetThreadId,
+        threadId: "thr_side",
+      }),
+    );
+    expect(screen.getByTestId("side-chat-plugin-scope").textContent).toBe(
+      "null",
+    );
+    act(() => {
+      staleActiveHost?.setDraft({
+        text: "Hidden replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+
+    view.rerender(
+      buildSideChatElement({
+        isActive: true,
+        onSetThreadId,
+        threadId: "thr_side",
+      }),
+    );
+    const reactivatedHost = mocks.latestPluginComposerHost;
+    expect(reactivatedHost).not.toBe(staleActiveHost);
+    act(() => {
+      staleActiveHost?.setDraft({
+        text: "Reactivated stale replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+    act(() => {
+      reactivatedHost?.setDraft({
+        text: "Current activation replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current activation replacement",
+    );
+
+    view.unmount();
+    act(() => {
+      reactivatedHost?.setDraft({
+        text: "Unmounted replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+  });
+
+  it("keeps the published host on committed state when a queued draft render suspends", () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    const onSetThreadId = vi.fn();
+    const view = render(
+      <Suspense fallback={<div>Suspended side chat</div>}>
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </Suspense>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const committedHost = mocks.latestPluginComposerHost;
+    expect(committedHost?.getCurrent().text).toBe("Queued side message");
+
+    mocks.suspendedComposerMessage = "Uncommitted queued edit";
+    mocks.composerSuspension = new Promise<never>(() => {});
+    mocks.transitionComposerMessage = "Uncommitted queued edit";
+    view.rerender(
+      <Suspense fallback={<div>Suspended side chat</div>}>
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </Suspense>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transition side draft" }),
+    );
+
+    expect(screen.queryByText("Suspended side chat")).toBeNull();
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Queued side message",
+    );
+    expect(committedHost?.getCurrent().text).toBe("Queued side message");
+
+    view.unmount();
+  });
+
   it("keeps permission locked while model controls remain editable", () => {
     renderDraftSideChat();
 
@@ -646,7 +999,20 @@ describe("SideChatTabContent", () => {
   });
 
   it("updates an inline queue row with its captured version and execution values", async () => {
-    mocks.queuedMessages = [makeQueuedMessage()];
+    mocks.queuedMessages = [
+      makeQueuedMessage({
+        content: [
+          { type: "text", text: "Queued side message", mentions: [] },
+          {
+            type: "localFile",
+            path: "thread-storage/uploads/queued-note.md",
+            name: "queued-note.md",
+            mimeType: "text/markdown",
+            sizeBytes: 7,
+          },
+        ],
+      }),
+    ];
     renderSideChat({ threadId: "thr_side" });
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Untouched bottom side draft" },
@@ -675,17 +1041,45 @@ describe("SideChatTabContent", () => {
     expect(
       screen.getByTestId("side-chat-permission-read-only").textContent,
     ).toBe("true");
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "queued-message",
+      threadId: "thr_side",
+      queuedMessageId: "qmsg_side_1",
+    });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
 
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Edited side queue" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() =>
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
         expectedUpdatedAt: 17,
         id: "thr_side",
-        input: [{ type: "text", text: "Edited side queue", mentions: [] }],
+        input: [
+          { type: "text", text: "Plugin replacement", mentions: [] },
+          {
+            type: "localFile",
+            path: "thread-storage/uploads/queued-note.md",
+            name: "queued-note.md",
+            mimeType: "text/markdown",
+            sizeBytes: 7,
+          },
+        ],
         queuedMessageId: "qmsg_side_1",
       }),
     );
@@ -708,27 +1102,55 @@ describe("SideChatTabContent", () => {
       target: { value: "Bottom side draft" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const staleChildQueuedHost = mocks.latestPluginComposerHost;
 
     rerender(
       buildSideChatElement({ onSetThreadId, threadId: "thr_side_next" }),
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
-        "value",
-        "Bottom side draft",
-      ),
+    act(() => {
+      staleChildQueuedHost?.setDraft({
+        text: "Stale child replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Bottom side draft",
     );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toMatchObject({
+      kind: "side-chat",
+      childThreadId: "thr_side_next",
+    });
 
     rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const staleRemovedRowHost = mocks.latestPluginComposerHost;
     mocks.queuedMessages = [];
     rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
-    await waitFor(() =>
-      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
-        "value",
-        "Bottom side draft",
-      ),
+    act(() => {
+      staleRemovedRowHost?.setDraft({
+        text: "Stale removed-row replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Bottom side draft",
     );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toMatchObject({
+      kind: "side-chat",
+      childThreadId: "thr_side",
+    });
   });
 
   it("does not move a delayed side-queue upload into a later editor or bottom draft", async () => {
