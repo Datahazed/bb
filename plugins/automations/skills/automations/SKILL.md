@@ -79,7 +79,7 @@ Managing:
 ```bash
 bb plugin run automations list --project <id>
 bb plugin run automations show <automationId> --project <id>
-bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags]
+bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [agent update flags]
 bb plugin run automations pause <automationId> --project <id>
 bb plugin run automations resume <automationId> --project <id>
 bb plugin run automations run <automationId> --project <id> [--idempotency-key <key>]
@@ -88,3 +88,21 @@ bb plugin run automations delete <automationId> --project <id> --yes
 ```
 
 Every command supports `--json`.
+
+Updating an agent automation preserves every omitted execution field and edits
+the existing automation in place. Use any combination of `--prompt` and
+`--permission-mode accept-edits|auto|full`, then choose at most one
+execution target:
+
+```bash
+bb plugin run automations update <automationId> --project <id> \
+  --environment <environment-id-or-path>
+bb plugin run automations update <automationId> --project <id> \
+  --target-thread <thread-id>
+bb plugin run automations update <automationId> --project <id> \
+  --new-environment worktree [--base-branch <branch>]
+```
+
+`--target-thread`, `--environment`, and `--new-environment` are mutually
+exclusive. These flags apply only to agent automations; script automations have
+no execution environment.

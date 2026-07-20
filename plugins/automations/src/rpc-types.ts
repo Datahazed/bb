@@ -171,6 +171,38 @@ function requireExactlyOneScriptSource(
 export const automationExecutionRequestSchema =
   automationExecutionSchema.superRefine(requireExactlyOneScriptSource);
 
+export const agentExecutionTargetSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("target-thread"),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("environment"),
+      environment: agentEnvironmentSchema,
+    })
+    .strict(),
+]);
+export type AgentExecutionTarget = z.infer<typeof agentExecutionTargetSchema>;
+
+export const agentExecutionUpdateSchema = z
+  .object({
+    prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH).optional(),
+    permissionMode: permissionModeSchema.optional(),
+    target: agentExecutionTargetSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.prompt !== undefined ||
+      value.permissionMode !== undefined ||
+      value.target !== undefined,
+    { message: "at least one agent execution field is required" },
+  );
+export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
+
 export const automationResponseSchema = z
   .object({
     id: z.string(),
@@ -248,14 +280,20 @@ export const updateAutomationInputSchema = z
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH).optional(),
     trigger: automationTriggerSchema.optional(),
     execution: automationExecutionRequestSchema.optional(),
+    agent: agentExecutionUpdateSchema.optional(),
   })
   .strict()
   .refine(
     (value) =>
       value.name !== undefined ||
       value.trigger !== undefined ||
-      value.execution !== undefined,
+      value.execution !== undefined ||
+      value.agent !== undefined,
     { message: "at least one field is required" },
+  )
+  .refine(
+    (value) => value.execution === undefined || value.agent === undefined,
+    { message: "execution and agent updates cannot be combined" },
   );
 export type UpdateAutomationInput = z.infer<typeof updateAutomationInputSchema>;
 

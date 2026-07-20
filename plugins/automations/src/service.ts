@@ -25,6 +25,7 @@ import {
   AUTOMATION_RUNS_LIMIT_MAX,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
+  type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
@@ -145,6 +146,32 @@ async function resolveStoredExecution(args: {
 
 function encodeRunCursor(startedAt: number, id: string): string {
   return Buffer.from(`${startedAt}:${id}`, "utf8").toString("base64url");
+}
+
+function applyAgentExecutionUpdate(
+  execution: AutomationExecution,
+  update: AgentExecutionUpdate,
+): Extract<AutomationExecution, { mode: "agent" }> {
+  if (execution.mode !== "agent") {
+    throw new Error("Agent execution options can only update agent automations");
+  }
+
+  const next = {
+    ...execution,
+    ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
+    ...(update.permissionMode !== undefined
+      ? { permissionMode: update.permissionMode }
+      : {}),
+  };
+  if (update.target === undefined) return next;
+  if (update.target.type === "target-thread") {
+    return { ...next, targetThreadId: update.target.threadId };
+  }
+  const { targetThreadId: _targetThreadId, ...withoutTargetThread } = next;
+  return {
+    ...withoutTargetThread,
+    environment: update.target.environment,
+  };
 }
 
 function parseRunCursor(
@@ -283,6 +310,9 @@ export function createAutomationService(args: {
     async update(input) {
       await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
+      if (input.execution !== undefined && input.agent !== undefined) {
+        throw new Error("execution and agent updates cannot be combined");
+      }
       const now = Date.now();
       const patch: Parameters<typeof updateAutomation>[1]["patch"] = {};
       if (input.name !== undefined) patch.name = input.name;
@@ -297,6 +327,12 @@ export function createAutomationService(args: {
           automationId: current.id,
           execution: input.execution,
         });
+      }
+      if (input.agent !== undefined) {
+        patch.execution = applyAgentExecutionUpdate(
+          parseAutomationExecution(current.execution),
+          input.agent,
+        );
       }
       const updated = updateAutomation(db, {
         projectId: input.projectId,

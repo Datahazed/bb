@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
+  AgentExecutionUpdate,
   AutomationResponse,
   AutomationRunResponse,
   AutomationScriptInterpreter,
@@ -164,6 +165,24 @@ async function resolvePermissionMode(
   throw new Error(`Provider ${providerId} has no supported default permission mode.`);
 }
 
+function validateAgentTargetOptions(args: ParsedArgs): void {
+  const targetOptionNames = ["target-thread", "environment", "new-environment"] as const;
+  const providedTargetOptions = targetOptionNames.filter((name) => args.flags.has(name));
+  for (const name of providedTargetOptions) {
+    if (!flag(args, name)) {
+      throw new Error(`Missing required option --${name} <value>.`);
+    }
+  }
+  if (providedTargetOptions.length > 1) {
+    throw new Error(
+      "Cannot combine target options: --target-thread, --environment, and --new-environment.",
+    );
+  }
+  if (args.flags.has("base-branch") && !args.flags.has("new-environment")) {
+    throw new Error("--base-branch requires --new-environment worktree.");
+  }
+}
+
 function parseScriptInterpreter(
   value: string | undefined,
 ): AutomationScriptInterpreter | undefined {
@@ -264,6 +283,7 @@ async function buildCreateExecution(
     if (!provider || !model) {
       throw new Error("Agent automations require --provider and --model alongside --prompt.");
     }
+    validateAgentTargetOptions(args);
     return {
       mode: "agent",
       prompt,
@@ -278,7 +298,12 @@ async function buildCreateExecution(
       ...(flag(args, "target-thread") ? { targetThreadId: flag(args, "target-thread") } : {}),
     };
   }
-  if (args.flags.has("environment") || args.flags.has("new-environment") || args.flags.has("base-branch")) {
+  if (
+    args.flags.has("target-thread") ||
+    args.flags.has("environment") ||
+    args.flags.has("new-environment") ||
+    args.flags.has("base-branch")
+  ) {
     throw new Error("Script automations do not accept environment flags.");
   }
   if (script !== undefined && scriptFile !== undefined) {
@@ -299,7 +324,44 @@ async function buildCreateExecution(
   };
 }
 
-function buildUpdateRequest(args: ParsedArgs): UpdateAutomationInput {
+async function buildAgentExecutionUpdate(
+  bb: Pick<BbPluginApi, "sdk">,
+  args: ParsedArgs,
+): Promise<AgentExecutionUpdate | undefined> {
+  const agentOptionNames = [
+    "prompt",
+    "permission-mode",
+    "target-thread",
+    "environment",
+    "new-environment",
+    "base-branch",
+  ] as const;
+  if (!agentOptionNames.some((name) => args.flags.has(name))) return undefined;
+
+  validateAgentTargetOptions(args);
+  const update: AgentExecutionUpdate = {};
+  if (args.flags.has("prompt")) update.prompt = requireFlag(args, "prompt");
+  if (args.flags.has("permission-mode")) {
+    update.permissionMode = parsePermissionMode(requireFlag(args, "permission-mode"));
+  }
+  if (args.flags.has("target-thread")) {
+    update.target = {
+      type: "target-thread",
+      threadId: requireFlag(args, "target-thread"),
+    };
+  } else if (args.flags.has("environment") || args.flags.has("new-environment")) {
+    update.target = {
+      type: "environment",
+      environment: await buildAgentEnvironment(bb, args),
+    };
+  }
+  return update;
+}
+
+async function buildUpdateRequest(
+  bb: Pick<BbPluginApi, "sdk">,
+  args: ParsedArgs,
+): Promise<UpdateAutomationInput> {
   const projectId = requireFlag(args, "project");
   const automationId = args.positionals[0];
   if (!automationId) throw new Error("Missing automationId.");
@@ -309,8 +371,12 @@ function buildUpdateRequest(args: ParsedArgs): UpdateAutomationInput {
   if (flag(args, "cron") !== undefined || flag(args, "timezone") !== undefined || flag(args, "at") !== undefined || flag(args, "in") !== undefined) {
     request.trigger = buildTrigger(args);
   }
-  if (request.name === undefined && request.trigger === undefined) {
-    throw new Error("No changes requested. Provide --name, --cron + --timezone, --at, or --in.");
+  const agentUpdate = await buildAgentExecutionUpdate(bb, args);
+  if (agentUpdate !== undefined) request.agent = agentUpdate;
+  if (request.name === undefined && request.trigger === undefined && request.agent === undefined) {
+    throw new Error(
+      "No changes requested. Provide --name, schedule flags, --prompt, --permission-mode, or one target option.",
+    );
   }
   return request;
 }
@@ -387,7 +453,7 @@ function helpText(): string {
 bb automation list --project <id>
 bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>)
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>]
+bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [--prompt <text>] [--permission-mode <accept-edits|auto|full>] [--target-thread <id> | --environment <id-or-path> | --new-environment worktree [--base-branch <branch>]]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
@@ -457,7 +523,7 @@ export function registerAutomationCli(args: {
           return { exitCode: 0, stdout: json ?? printAutomation(found) };
         }
         if (command === "update") {
-          const updated = await service.update(buildUpdateRequest(parsed));
+          const updated = await service.update(await buildUpdateRequest(bb, parsed));
           const json = optionalJson(parsed, updated);
           return { exitCode: 0, stdout: json ?? `Automation ${updated.id} updated\n${printAutomation(updated)}` };
         }
