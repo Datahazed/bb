@@ -29,6 +29,13 @@ import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadPaneEntryPoints } from "./useThreadPaneEntryPoints";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -259,7 +266,14 @@ function ThreadPaneEntryPointButtons({
   projectId: string;
   threadId: string;
 }) {
-  const { openDiff, openTerminal, isBusy } = useThreadPaneEntryPoints({
+  const {
+    openDiff,
+    openTerminal,
+    newTerminal,
+    openTerminalSession,
+    runningTerminals,
+    isBusy,
+  } = useThreadPaneEntryPoints({
     projectId,
     threadId,
   });
@@ -276,17 +290,41 @@ function ThreadPaneEntryPointButtons({
       >
         <Icon name="FileDiff" />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={HEADER_ICON_BUTTON_CLASS}
-        aria-label="Open terminal pane"
-        disabled={isBusy}
-        onClick={openTerminal}
-      >
-        <Icon name="Terminal" />
-      </Button>
+      {/* Click reveals the thread's terminal (creating the first); threads can
+          hold any number, so alt-click and the context menu start more. */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={HEADER_ICON_BUTTON_CLASS}
+            aria-label="Open terminal pane"
+            disabled={isBusy}
+            onClick={(event) =>
+              event.altKey ? newTerminal() : openTerminal()
+            }
+          >
+            <Icon name="Terminal" />
+          </Button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={newTerminal}>
+            <Icon name="Plus" />
+            New terminal
+          </ContextMenuItem>
+          {runningTerminals.length > 0 ? <ContextMenuSeparator /> : null}
+          {runningTerminals.map((terminal) => (
+            <ContextMenuItem
+              key={terminal.id}
+              onSelect={() => openTerminalSession(terminal.id)}
+            >
+              <Icon name="Terminal" />
+              {terminal.title}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
     </>
   );
 }

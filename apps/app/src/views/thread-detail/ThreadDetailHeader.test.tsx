@@ -32,6 +32,9 @@ vi.mock("./useThreadPaneEntryPoints", () => ({
   useThreadPaneEntryPoints: () => ({
     openDiff: vi.fn(),
     openTerminal: vi.fn(),
+    newTerminal: vi.fn(),
+    openTerminalSession: vi.fn(),
+    runningTerminals: [],
     isBusy: false,
   }),
 }));

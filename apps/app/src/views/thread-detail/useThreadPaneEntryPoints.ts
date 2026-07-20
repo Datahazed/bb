@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import {
@@ -27,8 +27,22 @@ interface UseThreadPaneEntryPointsArgs {
 
 interface ThreadPaneEntryPoints {
   openDiff(): void;
+  /** Reveals the thread's terminal (open tab, else running session), creating
+   * the first one when none exists. */
   openTerminal(): void;
+  /** Always starts another terminal session for the thread and opens its tab —
+   * threads can hold any number of terminals. */
+  newTerminal(): void;
+  /** Reveals or opens the tab for one specific running session. */
+  openTerminalSession(terminalId: string): void;
+  /** Running sessions for this thread, for pickers over `openTerminalSession`. */
+  runningTerminals: readonly TerminalSessionSummary[];
   isBusy?: boolean;
+}
+
+export interface TerminalSessionSummary {
+  id: string;
+  title: string;
 }
 
 function revealTab(
@@ -87,6 +101,39 @@ export function useThreadPaneEntryPoints({
     applyContent({ kind: "diff", projectId, threadId });
   }, [applyContent, projectId, threadId]);
 
+  const openTerminalSession = useCallback(
+    (terminalId: string) => {
+      applyContent({
+        kind: "terminal",
+        terminalId,
+        target: { kind: "thread", threadId },
+      });
+    },
+    [applyContent, threadId],
+  );
+
+  const newTerminal = useCallback(() => {
+    if (createTerminal.isPending || isCreatingTerminalRef.current) {
+      return;
+    }
+    isCreatingTerminalRef.current = true;
+    createTerminal.mutate(
+      {
+        threadId,
+        cols: TERMINAL_COLS,
+        rows: TERMINAL_ROWS,
+      },
+      {
+        onSuccess: (session) => {
+          openTerminalSession(session.id);
+        },
+        onSettled: () => {
+          isCreatingTerminalRef.current = false;
+        },
+      },
+    );
+  }, [createTerminal, openTerminalSession, threadId]);
+
   const openTerminal = useCallback(() => {
     const layout = store.get(splitLayoutAtom);
     if (layout === null) {
@@ -126,55 +173,39 @@ export function useThreadPaneEntryPoints({
       (session) => session.status === "running",
     );
     if (runningSession !== undefined) {
-      applyContent({
-        kind: "terminal",
-        terminalId: runningSession.id,
-        target: { kind: "thread", threadId },
-      });
+      openTerminalSession(runningSession.id);
       return;
     }
 
-    if (
-      isLoadingTerminals ||
-      createTerminal.isPending ||
-      isCreatingTerminalRef.current
-    ) {
+    if (isLoadingTerminals) {
       return;
     }
-    isCreatingTerminalRef.current = true;
-    createTerminal.mutate(
-      {
-        threadId,
-        cols: TERMINAL_COLS,
-        rows: TERMINAL_ROWS,
-      },
-      {
-        onSuccess: (session) => {
-          applyContent({
-            kind: "terminal",
-            terminalId: session.id,
-            target: { kind: "thread", threadId },
-          });
-        },
-        onSettled: () => {
-          isCreatingTerminalRef.current = false;
-        },
-      },
-    );
+    newTerminal();
   }, [
-    applyContent,
-    createTerminal,
     isLoadingTerminals,
     navigate,
+    newTerminal,
+    openTerminalSession,
     projectId,
     store,
     terminalsQuery.data?.sessions,
     threadId,
   ]);
 
+  const runningTerminals = useMemo<readonly TerminalSessionSummary[]>(
+    () =>
+      (terminalsQuery.data?.sessions ?? [])
+        .filter((session) => session.status === "running")
+        .map((session) => ({ id: session.id, title: session.title })),
+    [terminalsQuery.data?.sessions],
+  );
+
   return {
     openDiff,
     openTerminal,
+    newTerminal,
+    openTerminalSession,
+    runningTerminals,
     isBusy: isLoadingTerminals || createTerminal.isPending,
   };
 }
