@@ -1,17 +1,24 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
-import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
+import {
+  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+} from "./sidebarRowClasses";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
 } from "./sidebarThreadShortcuts";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
@@ -157,7 +164,10 @@ function renderThreadRow({
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPluginThreadRowStatusesForTest();
+});
 
 describe("ThreadRow", () => {
   it("puts the draft icon in the trailing status slot", () => {
@@ -177,6 +187,88 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
     expect(screen.queryByText("⌘3")).toBeNull();
+  });
+
+  it("replaces the draft icon with a shimmering plugin status and restores it when cleared", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+    const { container } = renderThreadRow({ hasComposerDraft: true });
+
+    const runningIcon = screen.getByLabelText("Plugin improving draft");
+    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
+    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
+    expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
+
+    act(() => {
+      setPluginThreadRowStatus("thr_test", "composer-status-test", null);
+    });
+
+    expect(
+      screen.queryByLabelText("Plugin improving draft"),
+    ).toBeNull();
+    expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
+  });
+
+  it("shows a plugin status instead of a keyboard shortcut when no native status applies", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+
+    renderThreadRow({ shortcutKey: "3" });
+
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByText("⌘3")).toBeNull();
+  });
+
+  it("renders a shimmering plugin status with the semantic success tone", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+      tone: "success",
+    });
+    renderThreadRow({ hasComposerDraft: true });
+
+    const runningIcon = screen.getByLabelText("Plugin improving draft");
+    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
+    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(runningIcon.classList)).toContain(
+      SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+    );
+    expect(Array.from(runningIcon.classList)).not.toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+  });
+
+  it("replaces the generic working indicator with a shimmering plugin status", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+    const { container } = renderThreadRow({
+      hasComposerDraft: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const runningIcon = screen.getByLabelText("Plugin improving draft");
+    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
+    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
+    ).not.toBeNull();
   });
 
   it("replaces the active working spinner with a shimmering draft icon", () => {

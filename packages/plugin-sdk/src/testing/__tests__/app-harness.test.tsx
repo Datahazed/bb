@@ -4,6 +4,7 @@ import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
+  PluginComposerApi,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -72,6 +73,11 @@ function RealtimeConnectionProbe() {
   return <div>Realtime: {state}</div>;
 }
 
+let capturedComposerVisualSetters: Pick<
+  PluginComposerApi,
+  "setTextEffect" | "setThreadRowStatus"
+> | null = null;
+
 function InlineVis({
   attributes,
   source,
@@ -92,6 +98,10 @@ function InlineVis({
 
 function ComposerProbe() {
   const composer = useComposer();
+  capturedComposerVisualSetters = {
+    setTextEffect: composer.setTextEffect,
+    setThreadRowStatus: composer.setThreadRowStatus,
+  };
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
@@ -107,6 +117,21 @@ function ComposerProbe() {
       </button>
       <button type="button" onClick={() => composer.clear()}>
         clear
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          composer.setThreadRowStatus({
+            icon: "AiContentGenerator01",
+            label: "Plugin improving draft",
+            effect: "shimmer",
+          })
+        }
+      >
+        set row status
+      </button>
+      <button type="button" onClick={() => composer.setThreadRowStatus(null)}>
+        clear row status
       </button>
       <button type="button" onClick={() => composer.addQuote("picked text")}>
         quote
@@ -354,5 +379,107 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
+  });
+
+  it("records composer thread-row status changes", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+
+    fireEvent.click(slot.getByText("set row status"));
+    expect(slot.composer.threadRowStatus).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+
+    fireEvent.click(slot.getByText("clear row status"));
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(2);
+  });
+
+  it("ignores thread-row status changes outside a thread composer", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: null },
+      { context: { projectId: "proj_1", threadId: null } },
+    );
+
+    fireEvent.click(slot.getByText("set row status"));
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.threadRowStatusCalls).toEqual([]);
+  });
+
+  it("invalidates visual-state setters through both unmount controls", () => {
+    for (const control of ["top-level", "lifecycle"] as const) {
+      const slot = renderSlot(
+        app.composerAccessories[0]!,
+        { projectId: "proj_1", threadId: "thr_1" },
+        { context: { projectId: "proj_1", threadId: "thr_1" } },
+      );
+      const setters = capturedComposerVisualSetters;
+      if (setters === null)
+        throw new Error("composer setters were not captured");
+
+      setters.setTextEffect("shimmer");
+      setters.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "Plugin improving draft",
+        effect: "shimmer",
+        tone: "success",
+      });
+      expect(slot.composer.textEffect).toBe("shimmer");
+      expect(slot.composer.threadRowStatus?.tone).toBe("success");
+
+      if (control === "top-level") slot.unmount();
+      else slot.lifecycle.unmount();
+      expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.threadRowStatus).toBeNull();
+
+      setters.setTextEffect("shimmer");
+      setters.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "late status",
+        effect: "shimmer",
+      });
+      expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.threadRowStatus).toBeNull();
+      expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+      expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+    }
+  });
+
+  it("invalidates visual-state setters when Testing Library cleans up the root", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setters = capturedComposerVisualSetters;
+    if (setters === null) throw new Error("composer setters were not captured");
+
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+    cleanup();
+
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "late status",
+      effect: "shimmer",
+    });
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

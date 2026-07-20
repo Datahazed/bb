@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
@@ -53,6 +54,7 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
@@ -68,6 +70,8 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -141,6 +145,33 @@ function ThreadDraftIndicator({
       {...(!isWorking && hideIdleLabel
         ? { "aria-hidden": true }
         : { "aria-label": label ?? undefined })}
+    />
+  );
+}
+
+function PluginThreadRowStatusIndicator({
+  status,
+}: {
+  status: PluginComposerThreadRowStatus;
+}) {
+  return (
+    <Icon
+      name={pluginIconName(status.icon)}
+      className={cn(
+        "pointer-events-none shrink-0",
+        COARSE_POINTER_ICON_SIZE_CLASS,
+        status.effect === "shimmer"
+          ? [
+              "animate-shine-icon",
+              status.tone === "success"
+                ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+                : SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            ]
+          : status.tone === "success"
+            ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+            : "text-muted-foreground",
+      )}
+      aria-label={status.label}
     />
   );
 }
@@ -360,10 +391,21 @@ export function CollapsedThreadStatusGlyph({
     />
   );
 }
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps;
+type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
+  pluginStatus: PluginComposerThreadRowStatus | null;
+};
 
-function ThreadTrailingIndicator(props: ThreadTrailingIndicatorProps) {
-  if (resolveThreadListIndicator(props) === "none") {
+function ThreadTrailingIndicator({
+  pluginStatus,
+  ...statusProps
+}: ThreadTrailingIndicatorProps) {
+  const indicatorKind = resolveThreadListIndicator(statusProps);
+  const pluginStatusIsVisible =
+    pluginStatus !== null &&
+    indicatorKind !== "unread-error" &&
+    indicatorKind !== "waiting-for-input";
+
+  if (indicatorKind === "none" && !pluginStatusIsVisible) {
     return null;
   }
 
@@ -375,7 +417,11 @@ function ThreadTrailingIndicator(props: ThreadTrailingIndicatorProps) {
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
-      <ThreadStatusGlyph {...props} />
+      {pluginStatusIsVisible ? (
+        <PluginThreadRowStatusIndicator status={pluginStatus} />
+      ) : (
+        <ThreadStatusGlyph {...statusProps} />
+      )}
     </span>
   );
 }
@@ -396,6 +442,7 @@ function ThreadRowComponent({
     getThreadConversationCollapsedAtom(thread.id),
   );
   const shortcut = useSidebarThreadShortcut(thread.id);
+  const pluginThreadRowStatus = usePluginThreadRowStatus(thread.id);
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy = isRuntimeBusyThread(thread);
@@ -563,7 +610,9 @@ function ThreadRowComponent({
             label={`${labelTitle} — open in split`}
           />
         ) : null}
-        {shortcut && trailingIndicatorKind === "none" ? (
+        {shortcut &&
+        trailingIndicatorKind === "none" &&
+        pluginThreadRowStatus === null ? (
           <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
             {shortcut.label}
           </kbd>
@@ -594,6 +643,7 @@ function ThreadRowComponent({
                   hideIdleDraftLabel={
                     !hasHiddenChildren && trailingIndicatorKind === "draft"
                   }
+                  pluginStatus={pluginThreadRowStatus}
                 />
               </span>
               <div

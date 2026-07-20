@@ -18,6 +18,8 @@ import {
   type PluginComposerAccessoryRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
+  type PluginComposerTextEffect,
+  type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageDirectiveRegistration,
@@ -86,6 +88,12 @@ export type NavigateCall =
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
+  /** Latest host-rendered text effect requested by the plugin. */
+  textEffect: PluginComposerTextEffect | null;
+  textEffectCalls: Array<PluginComposerTextEffect | null>;
+  /** Latest host-rendered thread-row status requested by the plugin. */
+  threadRowStatus: PluginComposerThreadRowStatus | null;
+  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -108,6 +116,17 @@ interface SlotEnv {
   navigateCalls: NavigateCall[];
   composer: TestComposerStore;
   composerLog: ComposerLog;
+}
+
+function SlotLifecycleGuard({
+  children,
+  onUnmount,
+}: {
+  children: ReactNode;
+  onUnmount: () => void;
+}) {
+  useEffect(() => () => onUnmount(), [onUnmount]);
+  return children;
 }
 
 interface TestRealtimeConnectionStore {
@@ -715,10 +734,15 @@ export function renderSlot<
     get text() {
       return composerText;
     },
+    textEffect: null,
+    textEffectCalls: [],
+    threadRowStatus: null,
+    threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
   };
+  const composerOwnership = { active: true };
   const composer: TestComposerStore = {
     getSnapshot: () => composerText,
     subscribe(listener) {
@@ -738,6 +762,16 @@ export function renderSlot<
       },
       clear() {
         commitComposerText("");
+      },
+      setTextEffect(effect) {
+        if (!composerOwnership.active) return;
+        composerLog.textEffect = effect;
+        composerLog.textEffectCalls.push(effect);
+      },
+      setThreadRowStatus(status) {
+        if (!composerOwnership.active || threadId === null) return;
+        composerLog.threadRowStatus = status;
+        composerLog.threadRowStatusCalls.push(status);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
@@ -780,18 +814,25 @@ export function renderSlot<
     composerLog,
   };
 
-  const Component = registration.component;
-  const element: ReactElement = (
+  const releaseComposerOwnership = (): void => {
+    if (!composerOwnership.active) return;
+    composerOwnership.active = false;
+    composerLog.textEffect = null;
+    composerLog.threadRowStatus = null;
+  };
+  const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>
-      <Component {...props} />
+      <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
+        {ui}
+      </SlotLifecycleGuard>
     </SlotEnvContext.Provider>
   );
+  const Component = registration.component;
+  const element = renderSlotTree(<Component {...props} />);
   const result = render(element);
 
   const rerenderSlot = (ui: ReactNode): void => {
-    result.rerender(
-      <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
-    );
+    result.rerender(renderSlotTree(ui));
   };
   const emitRealtime = async (
     channel: string,
@@ -813,10 +854,15 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
+  const unmountSlot = (): void => {
+    if (!composerOwnership.active) return;
+    result.unmount();
+  };
 
   return {
     ...result,
     rerender: rerenderSlot,
+    unmount: unmountSlot,
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
@@ -824,6 +870,6 @@ export function renderSlot<
     composer: composerLog,
     behavior: { emitRealtime, setRealtimeConnectionState },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
-    lifecycle: { rerender: rerenderSlot, unmount: result.unmount },
+    lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };
 }

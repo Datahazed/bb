@@ -7,6 +7,7 @@ import type {
   BbNavigate,
   PluginComposerApi,
   PluginComposerMention,
+  PluginComposerThreadRowStatus,
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
@@ -16,6 +17,8 @@ import { usePluginId } from "@/components/plugin/plugin-context";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
+import { setComposerTextEffect } from "@/lib/composer-text-effects";
+import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
@@ -254,7 +257,8 @@ export function useBbNavigate(): BbNavigate {
       // The canonical thread path carries the owning project, which the
       // plugin does not know — resolve it, falling back to the projectless
       // path when the lookup fails.
-      void sdk.threads.get({ threadId })
+      void sdk.threads
+        .get({ threadId })
         .then((thread) =>
           navigate(
             getThreadRoutePath({ projectId: thread.projectId, threadId }),
@@ -347,6 +351,22 @@ function reconcileComposerMentions(
   });
 }
 
+function createComposerScopeOwnership(scopeKey: string) {
+  let active = true;
+  return {
+    scopeKey,
+    activate() {
+      active = true;
+    },
+    invalidate() {
+      active = false;
+    },
+    isActive() {
+      return active;
+    },
+  };
+}
+
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
@@ -370,6 +390,7 @@ export function useComposer(): PluginComposerApi {
   const routeDraft = usePromptDraftStorage(routeScope);
   const getCurrent = composerHost?.getCurrent ?? routeDraft.getCurrent;
   const setDraft = composerHost?.setDraft ?? routeDraft.setDraft;
+  const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   const hostFocus = composerHost?.focus;
   const focusActiveComposer = useCallback(() => {
     if (hostFocus) {
@@ -413,6 +434,95 @@ export function useComposer(): PluginComposerApi {
   const clear = useCallback(() => {
     setText("");
   }, [setText]);
+
+  const composerScope = composerHost?.scope;
+  const threadRowStatusThreadId =
+    composerScope?.kind === "thread" || composerScope?.kind === "queued-message"
+      ? composerScope.threadId
+      : composerScope === undefined && threadId !== undefined
+        ? threadId
+        : null;
+  const threadRowStatusScopeKey =
+    composerScope?.kind === "queued-message"
+      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
+      : threadRowStatusThreadId === null
+        ? "new-thread"
+        : `thread:${threadRowStatusThreadId}`;
+  const composerOwnershipScopeKey =
+    composerScope?.kind === "queued-message"
+      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
+      : composerScope?.kind === "thread"
+        ? `thread:${composerScope.threadId}`
+        : composerScope?.kind === "new-thread"
+          ? `new-thread:${composerScope.projectId ?? "null"}`
+          : threadId !== undefined
+            ? `thread:${threadId}`
+            : `new-thread:${projectId ?? "null"}`;
+  const scopeOwnershipKey = [
+    pluginId,
+    composerOwnershipScopeKey,
+    textEffectKey ?? "null",
+    threadRowStatusScopeKey,
+  ].join("\u0000");
+  const scopeOwnership = useMemo(
+    () => createComposerScopeOwnership(scopeOwnershipKey),
+    [scopeOwnershipKey],
+  );
+  const visualStateOwner = useMemo(
+    () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
+    [pluginId, scopeOwnershipKey],
+  );
+  const setTextEffect = useCallback(
+    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
+      if (!scopeOwnership.isActive()) return;
+      setComposerTextEffect(textEffectKey, pluginId, effect, visualStateOwner);
+    },
+    [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
+  );
+  const setThreadRowStatus = useCallback(
+    (status: PluginComposerThreadRowStatus | null) => {
+      if (
+        !scopeOwnership.isActive() ||
+        threadRowStatusScopeKey === "new-thread"
+      ) {
+        return;
+      }
+      setPluginThreadRowStatus(
+        threadRowStatusThreadId,
+        pluginId,
+        status,
+        visualStateOwner,
+      );
+    },
+    [
+      pluginId,
+      scopeOwnership,
+      threadRowStatusScopeKey,
+      threadRowStatusThreadId,
+      visualStateOwner,
+    ],
+  );
+
+  useEffect(() => {
+    scopeOwnership.activate();
+    return () => {
+      scopeOwnership.invalidate();
+      setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
+      setPluginThreadRowStatus(
+        threadRowStatusThreadId,
+        pluginId,
+        null,
+        visualStateOwner,
+      );
+    };
+  }, [
+    pluginId,
+    scopeOwnership,
+    textEffectKey,
+    threadRowStatusScopeKey,
+    threadRowStatusThreadId,
+    visualStateOwner,
+  ]);
 
   const addQuote = useCallback(
     (text: string) => {
@@ -469,7 +579,6 @@ export function useComposer(): PluginComposerApi {
   );
 
   const focus = focusActiveComposer;
-  const composerScope = composerHost?.scope;
   const composerText = composerHost?.draft.text ?? routeDraft.text;
 
   return useMemo(
@@ -483,6 +592,8 @@ export function useComposer(): PluginComposerApi {
       setText,
       updateText,
       clear,
+      setTextEffect,
+      setThreadRowStatus,
       addQuote,
       insertMention,
       focus,
@@ -496,6 +607,8 @@ export function useComposer(): PluginComposerApi {
       insertMention,
       projectId,
       setText,
+      setTextEffect,
+      setThreadRowStatus,
       threadId,
       updateText,
     ],

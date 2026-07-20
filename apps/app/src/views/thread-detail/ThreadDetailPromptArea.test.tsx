@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
@@ -76,6 +77,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     permissionReadOnly,
     pluginComposerHost,
     stack,
+    textEffect,
   }: {
     attachments: {
       items: readonly unknown[];
@@ -103,6 +105,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     permissionReadOnly?: boolean;
     pluginComposerHost?: PluginComposerHost | null;
     stack: ReactNode;
+    textEffect?: "shimmer" | null;
   }) => (
     <div data-testid="follow-up-prompt-box">
       <div data-testid="submit-mode">
@@ -121,6 +124,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         {permissionReadOnly ? "true" : "false"}
       </div>
       <div data-testid="attachment-count">{attachments.items.length}</div>
+      <div data-testid="composer-text-effect">{textEffect ?? "none"}</div>
       <div data-testid="plugin-composer-scope">
         {pluginComposerHost
           ? `${pluginComposerHost.scope.kind}:${
@@ -812,6 +816,70 @@ describe("ThreadDetailPromptArea", () => {
         }) as HTMLInputElement
       ).value,
     ).toBe("First plugin update + second plugin update");
+  });
+
+  it("renders text effects only for the active queued edit session", () => {
+    mocks.queuedMessages = [
+      makeQueuedMessage({ id: "qmsg_1" }),
+      makeQueuedMessage({ id: "qmsg_2" }),
+    ];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const firstHost = mocks.pluginComposerHost!;
+    act(() => {
+      setComposerTextEffect(
+        firstHost.textEffectKey,
+        "composer-effect-test",
+        "shimmer",
+      );
+    });
+    expect(screen.getByTestId("composer-text-effect").textContent).toBe(
+      "shimmer",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 2" }),
+    );
+    expect(screen.getByTestId("composer-text-effect").textContent).toBe("none");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const secondHost = mocks.pluginComposerHost!;
+    expect(secondHost.textEffectKey).not.toBe(firstHost.textEffectKey);
+
+    act(() => {
+      setComposerTextEffect(
+        firstHost.textEffectKey,
+        "composer-effect-test",
+        "shimmer",
+      );
+    });
+    expect(screen.getByTestId("composer-text-effect").textContent).toBe("none");
+    act(() => {
+      setComposerTextEffect(
+        secondHost.textEffectKey,
+        "composer-effect-test",
+        "shimmer",
+      );
+    });
+    expect(screen.getByTestId("composer-text-effect").textContent).toBe(
+      "shimmer",
+    );
+
+    act(() => {
+      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", null);
+      setComposerTextEffect(
+        secondHost.textEffectKey,
+        "composer-effect-test",
+        null,
+      );
+    });
   });
 
   it("ignores a stale plugin write after the queued edit changes", () => {
