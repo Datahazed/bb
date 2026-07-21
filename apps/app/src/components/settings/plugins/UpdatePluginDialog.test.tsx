@@ -21,6 +21,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     source: "npm:@example/linear@^1.6.0",
     name: "Linear",
     icon: null,
+    compactIconUrl: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,

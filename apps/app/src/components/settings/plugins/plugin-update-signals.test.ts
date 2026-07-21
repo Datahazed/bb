@@ -20,6 +20,7 @@ function plugin(
     name: null,
     source: "npm:@example/linear@^1.6.0",
     icon: null,
+    compactIconUrl: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,

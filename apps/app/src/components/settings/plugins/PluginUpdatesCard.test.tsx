@@ -36,6 +36,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     description: null,
     name: "Linear",
     icon: null,
+    compactIconUrl: null,
     source: "npm:@example/linear@^1.6.0",
     logoUrl: null,
     logoDarkUrl: null,
