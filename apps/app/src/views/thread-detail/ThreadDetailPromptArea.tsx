@@ -25,7 +25,9 @@ import type {
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
+  PluginComposerHostProvider,
   type PluginComposerHost,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
@@ -50,7 +52,7 @@ import type {
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
-import { useComposerTextEffect } from "@/lib/composer-text-effects";
+import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
@@ -306,11 +308,11 @@ export function ThreadDetailPromptArea({
     commitInlineQueuedMessage,
   });
   clearAttachmentErrorRef.current = () => setAttachmentError(null);
-  const promptTextEffect = useComposerTextEffect(promptDraft.storageKey);
+  const promptTextEffects = useComposerTextEffects(promptDraft.storageKey);
   const queuedComposerTextEffectKey = inlineEditingQueuedMessage
     ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
     : null;
-  const queuedComposerTextEffect = useComposerTextEffect(
+  const queuedComposerTextEffects = useComposerTextEffects(
     queuedComposerTextEffectKey,
   );
   const [expandedBannerSection, setExpandedBannerSection] =
@@ -500,11 +502,18 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const pluginComposerHostBinding = useMemo<Omit<
-    PluginComposerHost,
-    "draft"
-  > | null>(() => {
-    if (!inlineEditingQueuedMessage) return null;
+  const pluginComposerHostBinding = useMemo<
+    Omit<PluginComposerHost, "draft">
+  >(() => {
+    if (!inlineEditingQueuedMessage) {
+      return {
+        scope: { kind: "thread", threadId: thread.id },
+        textEffectKey: promptDraft.storageKey,
+        getCurrent: promptDraft.getCurrent,
+        setDraft: promptDraft.setDraft,
+        focus: () => setEditFocusNonce((nonce) => nonce + 1),
+      };
+    }
 
     const {
       draft: initialDraft,
@@ -540,17 +549,17 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
+    promptDraft.getCurrent,
+    promptDraft.setDraft,
+    promptDraft.storageKey,
     thread.id,
   ]);
-  const pluginComposerHost = useMemo<PluginComposerHost | null>(
-    () =>
-      pluginComposerHostBinding && inlineEditingQueuedMessage
-        ? {
-            ...pluginComposerHostBinding,
-            draft: inlineEditingQueuedMessage.draft,
-          }
-        : null,
-    [inlineEditingQueuedMessage, pluginComposerHostBinding],
+  const pluginComposerHost = useMemo<PluginComposerHost>(
+    () => ({
+      ...pluginComposerHostBinding,
+      draft: activeComposerDraft,
+    }),
+    [activeComposerDraft, pluginComposerHostBinding],
   );
   usePublishPluginComposerHost(pluginComposerHost);
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
@@ -1149,13 +1158,26 @@ export function ThreadDetailPromptArea({
         threadId={thread.id}
       />
     );
-    if (!activePromptMode && !goal) {
-      return pendingInteractionComposer;
-    }
     return (
       <div className="space-y-2">
-        {activePromptModeCard}
-        {activeGoalCard}
+        {activePromptMode ? activePromptModeCard : null}
+        {goal ? activeGoalCard : null}
+        <PluginComposerHostProvider value={pluginComposerHost}>
+          <PluginComposerBanners
+            view={{
+              scope: pluginComposerHost.scope,
+              layout: "expanded",
+              draft: {
+                text: pluginComposerHost.draft.text,
+                isEmpty:
+                  pluginComposerHost.draft.text.trim().length === 0 &&
+                  pluginComposerHost.draft.attachments.length === 0,
+                attachmentCount: pluginComposerHost.draft.attachments.length,
+              },
+              run: { isRunning: false, isSubmitting: false },
+            }}
+          />
+        </PluginComposerHostProvider>
         {pendingInteractionComposer}
       </div>
     );
@@ -1169,8 +1191,11 @@ export function ThreadDetailPromptArea({
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       pluginComposerHost={pluginComposerHost}
-      textEffect={
-        inlineEditingQueuedMessage ? queuedComposerTextEffect : promptTextEffect
+      pluginComposerScope={pluginComposerHost.scope}
+      textEffects={
+        inlineEditingQueuedMessage
+          ? queuedComposerTextEffects
+          : promptTextEffects
       }
       composerTarget={inlineComposerTarget}
       zenModeResetKey={thread.id}

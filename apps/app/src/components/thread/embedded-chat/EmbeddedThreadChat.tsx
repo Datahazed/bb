@@ -57,7 +57,7 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
-import { useComposerTextEffect } from "@/lib/composer-text-effects";
+import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
@@ -147,7 +147,7 @@ export interface EmbeddedThreadChatComposerProps {
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /** Thread whose row status plugin composer accessories reflect. */
+  /** Thread whose row status plugin composer customizations reflect. */
   threadRowStatusThreadId?: string;
   /** ORed into queue-pending guards for consumer-owned submit mutations. */
   isExternalSubmitPending?: boolean;
@@ -179,7 +179,7 @@ interface EmbeddedThreadChatSharedProps {
   providerId: string;
   /** Environment context for mentions and command suggestions. */
   promptContextEnvironmentId: string | null;
-  /** Retained hidden surfaces pass false to pause read tracking + accessories. */
+  /** Retained hidden surfaces pass false to pause read tracking + composer customizations. */
   isActive?: boolean;
   resolveMentionLink: PromptMentionLinkResolver;
   timeline?: UseThreadTimelineControllerResult;
@@ -211,8 +211,7 @@ interface EmbeddedThreadChatSharedProps {
   measure?: "panel" | "page";
 }
 
-export interface EmbeddedThreadChatComposerModeProps
-  extends EmbeddedThreadChatSharedProps {
+export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
   variant: "compact";
   composer: EmbeddedThreadChatComposerProps;
   footer?: never;
@@ -312,9 +311,12 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: isActive ? threadQuery.data : undefined,
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId ?? "", {
-    enabled: threadId !== null,
-  });
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(
+    threadId ?? "",
+    {
+      enabled: threadId !== null,
+    },
+  );
 
   const [shouldLoadExecutionOptions, setShouldLoadExecutionOptions] = useState(
     composer.deferExecutionOptionsUntilActive !== true,
@@ -598,9 +600,10 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setAttachmentError(null);
     setIsTurnSubmitting(true);
-    void (sendOrQueueInput
-      ? sendOrQueueInput(submittedInput, executionContext)
-      : defaultSendOrQueueInput(submittedInput)
+    void (
+      sendOrQueueInput
+        ? sendOrQueueInput(submittedInput, executionContext)
+        : defaultSendOrQueueInput(submittedInput)
     )
       .catch((error) => {
         if (!isMountedRef.current) {
@@ -787,7 +790,10 @@ function EmbeddedThreadChatWithComposer({
   const setStoredPromptDraft = promptDraft.setDraft;
   const threadRowStatusThreadId =
     composer.threadRowStatusThreadId ?? threadId ?? undefined;
-  const pluginComposerHost = useMemo<PluginComposerHost | null>(() => {
+  const pluginComposerHostBinding = useMemo<Omit<
+    PluginComposerHost,
+    "draft"
+  > | null>(() => {
     if (bottomScope === null && queuedComposerIdentity === null) {
       return null;
     }
@@ -819,7 +825,6 @@ function EmbeddedThreadChatWithComposer({
       ...(threadRowStatusThreadId !== undefined
         ? { threadRowStatusThreadId }
         : {}),
-      draft: activeComposerDraftRef.current,
       getCurrent: () => {
         if (activeComposerIdentityRef.current !== identity) {
           return initialDraft;
@@ -856,15 +861,15 @@ function EmbeddedThreadChatWithComposer({
     threadRowStatusThreadId,
     updateInlineQueuedMessage,
   ]);
-  const pluginComposerHostWithDraft = useMemo<PluginComposerHost | null>(
+  const pluginComposerHost = useMemo<PluginComposerHost | null>(
     () =>
-      pluginComposerHost === null
+      pluginComposerHostBinding === null
         ? null
-        : { ...pluginComposerHost, draft: activeComposerDraft },
-    [activeComposerDraft, pluginComposerHost],
+        : { ...pluginComposerHostBinding, draft: activeComposerDraft },
+    [activeComposerDraft, pluginComposerHostBinding],
   );
-  const activePluginComposerHost = isActive ? pluginComposerHostWithDraft : null;
-  const composerTextEffect = useComposerTextEffect(
+  const activePluginComposerHost = isActive ? pluginComposerHost : null;
+  const composerTextEffects = useComposerTextEffects(
     activePluginComposerHost?.textEffectKey ?? null,
   );
 
@@ -1023,8 +1028,7 @@ function EmbeddedThreadChatWithComposer({
             supported: supportsPermissionModeSelection,
           }
         : {
-            value:
-              inlineEditingQueuedMessage?.permissionMode ?? permissionMode,
+            value: inlineEditingQueuedMessage?.permissionMode ?? permissionMode,
             options: permissionModeOptions,
             onChange: setPermissionMode,
             supported: supportsPermissionModeSelection,
@@ -1086,7 +1090,7 @@ function EmbeddedThreadChatWithComposer({
           stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
           pluginComposerHost={activePluginComposerHost}
-          textEffect={composerTextEffect}
+          textEffects={composerTextEffects}
           composerTarget={inlineComposerTarget}
           environmentSummary={composer.environmentSummary}
           contextWindowUsage={null}
@@ -1099,7 +1103,7 @@ function EmbeddedThreadChatWithComposer({
           }
           typeahead={typeaheadConfig}
           promptActions={promptActions}
-          suppressPluginComposerAccessories={!isActive}
+          suppressPluginComposerCustomizations={!isActive}
           zenModeResetKey={surfaceKey}
           focusEndKey={
             // Composite only when an external nonce is supplied, so existing

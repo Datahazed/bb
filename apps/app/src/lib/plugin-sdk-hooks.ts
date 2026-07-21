@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type {
   BbContext,
   BbNavigate,
+  ComposerView,
   PluginComposerApi,
   PluginComposerMention,
   PluginComposerThreadRowStatus,
@@ -13,8 +21,14 @@ import type {
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
-import { usePluginId } from "@/components/plugin/plugin-context";
-import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import {
+  PluginSlotOwnershipContext,
+  usePluginId,
+} from "@/components/plugin/plugin-context";
+import {
+  PluginComposerViewContext,
+  usePluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -23,7 +37,10 @@ import {
   usePromptDraftStorage,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
-import { appendQuoteAndAttachmentsToDraft } from "@/lib/prompt-draft";
+import {
+  appendQuoteAndAttachmentsToDraft,
+  isPromptDraftEmpty,
+} from "@/lib/prompt-draft";
 import {
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
@@ -367,6 +384,121 @@ function createComposerScopeOwnership(scopeKey: string) {
   };
 }
 
+let composerVisualOwnerSequence = 0;
+
+type ComposerInputLockListener = () => void;
+type ComposerInputLockOwner = string | symbol;
+
+const inputLocksByStorageKey = new Map<
+  string,
+  Map<ComposerInputLockOwner, string>
+>();
+const inputLockListenersByStorageKey = new Map<
+  string,
+  Set<ComposerInputLockListener>
+>();
+
+function notifyComposerInputLock(storageKey: string): void {
+  const listeners = inputLockListenersByStorageKey.get(storageKey);
+  if (!listeners) return;
+  for (const listener of [...listeners]) listener();
+}
+
+/** Read whether any plugin currently owns an input lock for this composer. */
+export function getComposerInputLock(storageKey: string | null): boolean {
+  if (storageKey === null) return false;
+  return (inputLocksByStorageKey.get(storageKey)?.size ?? 0) > 0;
+}
+
+function setComposerInputLock(
+  storageKey: string | null,
+  pluginId: string,
+  locked: boolean,
+  owner: ComposerInputLockOwner,
+): void {
+  if (storageKey === null) return;
+  const wasLocked = getComposerInputLock(storageKey);
+  let owners = inputLocksByStorageKey.get(storageKey);
+  if (locked) {
+    if (!owners) {
+      owners = new Map();
+      inputLocksByStorageKey.set(storageKey, owners);
+    }
+    owners.set(owner, pluginId);
+  } else {
+    owners?.delete(owner);
+    if (owners?.size === 0) inputLocksByStorageKey.delete(storageKey);
+  }
+  if (getComposerInputLock(storageKey) !== wasLocked) {
+    notifyComposerInputLock(storageKey);
+  }
+}
+
+export function subscribeComposerInputLock(
+  storageKey: string | null,
+  listener: ComposerInputLockListener,
+): () => void {
+  if (storageKey === null) return () => {};
+  let listeners = inputLockListenersByStorageKey.get(storageKey);
+  if (!listeners) {
+    listeners = new Set();
+    inputLockListenersByStorageKey.set(storageKey, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) inputLockListenersByStorageKey.delete(storageKey);
+  };
+}
+
+/** Subscribe a prompt-box host to plugin-owned input locks for its draft key. */
+export function useComposerInputLock(storageKey: string | null): boolean {
+  const subscribe = useCallback(
+    (listener: ComposerInputLockListener) =>
+      subscribeComposerInputLock(storageKey, listener),
+    [storageKey],
+  );
+  const getSnapshot = useCallback(
+    () => getComposerInputLock(storageKey),
+    [storageKey],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Reactive read-side of the active composer, with a route-backed fallback. */
+export function useComposerView(): ComposerView {
+  const providedView = useContext(PluginComposerViewContext);
+  const composerHost = usePluginComposerHost();
+  const { projectId, threadId } = useRouteState();
+  const routeScope: PromptDraftScope = useMemo(
+    () =>
+      threadId !== undefined && projectId !== undefined
+        ? { kind: "thread", projectId, threadId }
+        : { kind: "new-thread" },
+    [projectId, threadId],
+  );
+  const routeDraft = usePromptDraftStorage(routeScope);
+  const draft = composerHost?.draft ?? routeDraft;
+  const fallback = useMemo<ComposerView>(
+    () => ({
+      scope:
+        composerHost?.scope ??
+        (threadId !== undefined
+          ? { kind: "thread", threadId }
+          : { kind: "new-thread", projectId: projectId ?? null }),
+      layout: "expanded",
+      draft: {
+        text: draft.text,
+        isEmpty: isPromptDraftEmpty(draft),
+        attachmentCount: draft.attachments.length,
+      },
+      run: { isRunning: false, isSubmitting: false },
+    }),
+    [composerHost?.scope, draft, projectId, threadId],
+  );
+  return providedView ?? fallback;
+}
+
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
@@ -378,6 +510,7 @@ function createComposerScopeOwnership(scopeKey: string) {
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
+  const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -477,16 +610,67 @@ export function useComposer(): PluginComposerApi {
     () => createComposerScopeOwnership(scopeOwnershipKey),
     [scopeOwnershipKey],
   );
-  const visualStateOwner = useMemo(
-    () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
+  const { visualStateOwner, visualStateOwnerOrder } = useMemo(
+    () => ({
+      visualStateOwner: Symbol(`${pluginId}:${scopeOwnershipKey}`),
+      visualStateOwnerOrder: composerVisualOwnerSequence++,
+    }),
     [pluginId, scopeOwnershipKey],
   );
+  const releaseVisualState = useCallback(() => {
+    scopeOwnership.invalidate();
+    setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
+    setComposerInputLock(textEffectKey, pluginId, false, visualStateOwner);
+    setPluginThreadRowStatus(
+      threadRowStatusThreadId,
+      pluginId,
+      null,
+      visualStateOwner,
+    );
+  }, [
+    pluginId,
+    scopeOwnership,
+    textEffectKey,
+    threadRowStatusThreadId,
+    visualStateOwner,
+  ]);
+  const registerVisualStateOwner = useCallback(() => {
+    slotOwnershipRegistry?.register(visualStateOwner, releaseVisualState);
+  }, [releaseVisualState, slotOwnershipRegistry, visualStateOwner]);
   const setTextEffect = useCallback(
     (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
       if (!scopeOwnership.isActive()) return;
-      setComposerTextEffect(textEffectKey, pluginId, effect, visualStateOwner);
+      if (effect !== null) registerVisualStateOwner();
+      setComposerTextEffect(
+        textEffectKey,
+        pluginId,
+        effect,
+        visualStateOwner,
+        visualStateOwnerOrder,
+      );
     },
-    [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
+    [
+      pluginId,
+      registerVisualStateOwner,
+      scopeOwnership,
+      textEffectKey,
+      visualStateOwner,
+      visualStateOwnerOrder,
+    ],
+  );
+  const setInputLock = useCallback(
+    (locked: boolean) => {
+      if (!scopeOwnership.isActive()) return;
+      if (locked) registerVisualStateOwner();
+      setComposerInputLock(textEffectKey, pluginId, locked, visualStateOwner);
+    },
+    [
+      pluginId,
+      registerVisualStateOwner,
+      scopeOwnership,
+      textEffectKey,
+      visualStateOwner,
+    ],
   );
   const setThreadRowStatus = useCallback(
     (status: PluginComposerThreadRowStatus | null) => {
@@ -496,6 +680,7 @@ export function useComposer(): PluginComposerApi {
       ) {
         return;
       }
+      if (status !== null) registerVisualStateOwner();
       setPluginThreadRowStatus(
         threadRowStatusThreadId,
         pluginId,
@@ -505,6 +690,7 @@ export function useComposer(): PluginComposerApi {
     },
     [
       pluginId,
+      registerVisualStateOwner,
       scopeOwnership,
       threadRowStatusScopeKey,
       threadRowStatusThreadId,
@@ -515,21 +701,14 @@ export function useComposer(): PluginComposerApi {
   useEffect(() => {
     scopeOwnership.activate();
     return () => {
-      scopeOwnership.invalidate();
-      setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
-      setPluginThreadRowStatus(
-        threadRowStatusThreadId,
-        pluginId,
-        null,
-        visualStateOwner,
-      );
+      releaseVisualState();
+      slotOwnershipRegistry?.unregister(visualStateOwner);
     };
   }, [
-    pluginId,
+    releaseVisualState,
     scopeOwnership,
-    textEffectKey,
+    slotOwnershipRegistry,
     threadRowStatusScopeKey,
-    threadRowStatusThreadId,
     visualStateOwner,
   ]);
 
@@ -602,6 +781,7 @@ export function useComposer(): PluginComposerApi {
       updateText,
       clear,
       setTextEffect,
+      setInputLock,
       setThreadRowStatus,
       addQuote,
       insertMention,
@@ -617,6 +797,7 @@ export function useComposer(): PluginComposerApi {
       projectId,
       setText,
       setTextEffect,
+      setInputLock,
       setThreadRowStatus,
       threadId,
       updateText,

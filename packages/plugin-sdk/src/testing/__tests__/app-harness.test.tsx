@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
   PluginComposerApi,
@@ -19,6 +19,7 @@ const {
   definePluginApp,
   experimental_ThreadChat: ThreadChat,
   useComposer,
+  useComposerView,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -77,7 +78,7 @@ function RealtimeConnectionProbe() {
 
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "setTextEffect" | "setThreadRowStatus"
+  "setTextEffect" | "setInputLock" | "setThreadRowStatus"
 > | null = null;
 
 function InlineVis({
@@ -100,8 +101,10 @@ function InlineVis({
 
 function ComposerProbe() {
   const composer = useComposer();
+  const view = useComposerView();
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
+    setInputLock: composer.setInputLock,
     setThreadRowStatus: composer.setThreadRowStatus,
   };
   return (
@@ -111,6 +114,13 @@ function ComposerProbe() {
         {JSON.stringify(composer.scope)}
       </span>
       <span data-testid="composer-text">{composer.text}</span>
+      <span data-testid="composer-view-text">{view.draft.text}</span>
+      <span data-testid="composer-attachment-count">
+        {view.draft.attachmentCount}
+      </span>
+      <span data-testid="composer-is-empty">
+        {String(view.draft.isEmpty)}
+      </span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -129,7 +139,6 @@ function ComposerProbe() {
           composer.setThreadRowStatus({
             icon: "AiContentGenerator01",
             label: "Plugin improving draft",
-            effect: "shimmer",
           })
         }
       >
@@ -214,14 +223,15 @@ const app = await loadPluginApp(
       id: "inline-vis",
       component: InlineVis,
     });
-    builder.slots.composerAccessory({
-      id: "composer",
-      component: ComposerProbe,
-    });
     builder.slots.homepageSection({
       id: "realtime-connection",
       title: "Realtime connection",
       component: RealtimeConnectionProbe,
+    });
+    builder.composer.customize({
+      id: "improve-prompt",
+      scopes: ["thread", "new-thread"],
+      actions: [{ id: "improve", component: ComposerProbe }],
     });
   }),
 );
@@ -250,6 +260,106 @@ describe("loadPluginApp", () => {
     expect(app.messageDirectives).toEqual([
       { id: "inline-vis", component: InlineVis },
     ]);
+  });
+
+  it("captures composer customizations", () => {
+    expect(app.composerCustomizations).toEqual([
+      {
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: ComposerProbe }],
+      },
+    ]);
+  });
+
+  it("mirrors host isolation for malformed composer regions and duplicate entries", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const malformed = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "nested",
+          actions: {} as never,
+          banners: [
+            { id: "banner", component: ComposerProbe },
+            { id: "banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "bad", label: "", run: () => {} },
+            { id: "good", label: "Good", run: () => {} },
+          ],
+        });
+      }),
+    );
+
+    expect(malformed.composerCustomizations).toEqual([
+      {
+        id: "nested",
+        banners: [{ id: "banner", component: ComposerProbe }],
+        plusMenu: [{ id: "good", label: "Good", run: expect.any(Function) }],
+      },
+    ]);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("actions: must be an array"),
+    );
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining('duplicate id "banner"'),
+    );
+  });
+
+  it("does not reserve nested ids for malformed composer contributions", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warning.mockClear();
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "reused-after-malformed",
+          actions: [
+            { id: "same-action", component: null as never },
+            { id: "same-action", component: ComposerProbe },
+          ],
+          banners: [
+            {
+              id: "same-banner",
+              chrome: "dialog" as never,
+              component: ComposerProbe,
+            },
+            { id: "same-banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "same-menu", label: "", run: () => {} },
+            { id: "same-menu", label: "Valid menu", run: () => {} },
+          ],
+          richText: {
+            effects: [
+              { id: "same-effect", className: "", match: () => [] },
+              {
+                id: "same-effect",
+                className: "valid-effect",
+                match: () => [],
+              },
+            ],
+          },
+        });
+      }),
+    );
+
+    const [customization] = captured.composerCustomizations;
+    expect(customization?.actions?.map(({ id }) => id)).toEqual([
+      "same-action",
+    ]);
+    expect(customization?.banners?.map(({ id }) => id)).toEqual([
+      "same-banner",
+    ]);
+    expect(customization?.plusMenu?.map(({ id }) => id)).toEqual(["same-menu"]);
+    expect(customization?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "same-effect",
+    ]);
+    expect(warning).toHaveBeenCalledTimes(4);
+    expect(
+      warning.mock.calls.some(([reason]) =>
+        String(reason).includes("duplicate id"),
+      ),
+    ).toBe(false);
   });
 
   it("rejects invalid and duplicate messageDirective ids like the host", async () => {
@@ -297,7 +407,9 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow('slots.experimental_messageAction: "run" must be a function');
+    ).rejects.toThrow(
+      'slots.experimental_messageAction: "run" must be a function',
+    );
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
@@ -464,16 +576,16 @@ describe("renderSlot", () => {
 
   it("reads, replaces, functionally updates, and clears isolated composer text", () => {
     const threadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: "thr_1" },
         composer: { text: "seed" },
       },
     );
     const newThreadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: null },
         composer: { text: "new-thread seed" },
@@ -510,8 +622,8 @@ describe("renderSlot", () => {
       childThreadId: null,
     } satisfies PluginComposerScope;
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_parent" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "side-chat draft", scope: sideChatScope } },
     );
 
@@ -521,15 +633,82 @@ describe("renderSlot", () => {
       ),
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.label).toBe(
-      "Plugin improving draft",
+    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+  });
+
+  it("drives host-originated composer text and scope changes", async () => {
+    const initialScope = {
+      kind: "queued-message",
+      threadId: "thr_1",
+      queuedMessageId: "qmsg_1",
+    } satisfies PluginComposerScope;
+    const nextScope = {
+      kind: "side-chat",
+      projectId: "proj_1",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    } satisfies PluginComposerScope;
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      {
+        composer: {
+          text: "initial draft",
+          scope: initialScope,
+          attachmentCount: 2,
+        },
+      },
+    );
+
+    expect(slot.getByTestId("composer-attachment-count").textContent).toBe("2");
+    expect(slot.composer.scope).toEqual(initialScope);
+    expect(slot.composer.attachmentCount).toBe(2);
+
+    await slot.behavior.setComposerText("host edit");
+    expect(slot.getByTestId("composer-text").textContent).toBe("host edit");
+    expect(slot.getByTestId("composer-view-text").textContent).toBe(
+      "host edit",
+    );
+
+    await slot.behavior.setComposerScope(nextScope);
+    expect(
+      JSON.parse(
+        slot.getByTestId("composer-scope-details").textContent ?? "{}",
+      ),
+    ).toEqual(nextScope);
+    expect(slot.composer.scope).toEqual(nextScope);
+  });
+
+  it.each([
+    {
+      name: "attachment-only",
+      text: "",
+      attachmentCount: 1,
+      expected: "false",
+    },
+    {
+      name: "whitespace-only",
+      text: " \n\t ",
+      attachmentCount: 0,
+      expected: "true",
+    },
+  ])("reports $name composer drafts as empty=$expected", (draft) => {
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: draft },
+    );
+
+    expect(slot.getByTestId("composer-is-empty").textContent).toBe(
+      draft.expected,
     );
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: null, threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "draft" } },
     );
 
@@ -547,8 +726,8 @@ describe("renderSlot", () => {
 
   it("records composer thread-row status changes", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
 
@@ -556,7 +735,6 @@ describe("renderSlot", () => {
     expect(slot.composer.threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
 
     fireEvent.click(slot.getByText("clear row status"));
@@ -566,8 +744,8 @@ describe("renderSlot", () => {
 
   it("ignores thread-row status changes outside a thread composer", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: null } },
     );
 
@@ -579,71 +757,78 @@ describe("renderSlot", () => {
   it("invalidates visual-state setters through both unmount controls", () => {
     for (const control of ["top-level", "lifecycle"] as const) {
       const slot = renderSlot(
-        app.composerAccessories[0]!,
-        { projectId: "proj_1", threadId: "thr_1" },
+        app.composerCustomizations[0]!.actions![0]!,
+        {},
         { context: { projectId: "proj_1", threadId: "thr_1" } },
       );
       const setters = capturedComposerVisualSetters;
       if (setters === null)
         throw new Error("composer setters were not captured");
 
-      setters.setTextEffect("shimmer");
+      setters.setTextEffect({ className: "improve-shimmer" });
+      setters.setInputLock(true);
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
-        effect: "shimmer",
         tone: "success",
       });
-      expect(slot.composer.textEffect).toBe("shimmer");
+      expect(slot.composer.textEffect).toEqual({
+        className: "improve-shimmer",
+      });
+      expect(slot.composer.inputLocked).toBe(true);
       expect(slot.composer.threadRowStatus?.tone).toBe("success");
 
       if (control === "top-level") slot.unmount();
       else slot.lifecycle.unmount();
       expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.inputLocked).toBe(false);
       expect(slot.composer.threadRowStatus).toBeNull();
 
-      setters.setTextEffect("shimmer");
+      setters.setTextEffect({ className: "late-effect" });
+      setters.setInputLock(true);
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "late status",
-        effect: "shimmer",
       });
       expect(slot.composer.textEffect).toBeNull();
       expect(slot.composer.threadRowStatus).toBeNull();
-      expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+      expect(slot.composer.textEffectCalls).toEqual([
+        { className: "improve-shimmer" },
+      ]);
+      expect(slot.composer.inputLockCalls).toEqual([true]);
       expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
     }
   });
 
   it("invalidates visual-state setters when Testing Library cleans up the root", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
 
-    setters.setTextEffect("shimmer");
+    setters.setTextEffect({ className: "cleanup-effect" });
     setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     cleanup();
 
     expect(slot.composer.textEffect).toBeNull();
     expect(slot.composer.threadRowStatus).toBeNull();
 
-    setters.setTextEffect("shimmer");
+    setters.setTextEffect({ className: "late-effect" });
     setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "late status",
-      effect: "shimmer",
     });
     expect(slot.composer.textEffect).toBeNull();
     expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.textEffectCalls).toEqual([
+      { className: "cleanup-effect" },
+    ]);
     expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

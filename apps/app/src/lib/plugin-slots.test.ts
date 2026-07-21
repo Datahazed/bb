@@ -31,7 +31,7 @@ function registrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
+    composerCustomizations: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -59,7 +59,12 @@ describe("plugin slot store", () => {
         homepageSections: [
           { id: "a", title: "Alpha", component: SectionComponent },
         ],
-        composerAccessories: [{ id: "pick", component: SectionComponent }],
+        composerCustomizations: [
+          {
+            id: "pick",
+            actions: [{ id: "pick", component: SectionComponent }],
+          },
+        ],
       }),
     );
 
@@ -67,8 +72,8 @@ describe("plugin slot store", () => {
     expect(
       snapshot.homepageSections.map((section) => section.pluginId),
     ).toEqual(["alpha", "zeta"]);
-    expect(snapshot.composerAccessories).toHaveLength(1);
-    expect(snapshot.composerAccessories[0]?.pluginId).toBe("alpha");
+    expect(snapshot.composerCustomizations).toHaveLength(1);
+    expect(snapshot.composerCustomizations[0]?.pluginId).toBe("alpha");
   });
 
   it("replaces a plugin's registrations wholesale (never appends)", () => {
@@ -98,6 +103,29 @@ describe("plugin slot store", () => {
     // The generation bumps per replacement so mount sites can remount slot
     // components (fresh error-boundary state) on reload.
     expect(snapshot.homepageSections[0]?.generation).toBe(2);
+  });
+
+  it("replaces composer customizations wholesale with generation metadata", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [{ id: "first" }, { id: "second" }],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [{ id: "replacement" }],
+      }),
+    );
+
+    expect(
+      getPluginSlotSnapshot().composerCustomizations.map((registration) => ({
+        id: registration.id,
+        pluginId: registration.pluginId,
+        generation: registration.generation,
+      })),
+    ).toEqual([{ id: "replacement", pluginId: "demo", generation: 2 }]);
   });
 
   it("removes a plugin's registrations and notifies subscribers", () => {

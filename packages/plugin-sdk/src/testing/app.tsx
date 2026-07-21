@@ -13,9 +13,10 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type BbContext,
   type BbNavigate,
+  type ComposerCustomization,
+  type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
-  type PluginComposerAccessoryRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
@@ -41,6 +42,17 @@ import {
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
+import { isComposerDraftEmpty } from "../internal/composer-view.js";
+import {
+  collectComposerCustomization,
+  PLUGIN_SLOT_ID_PATTERN,
+  requireComponent,
+  requireMessageDirectiveId,
+  requireNonEmptyString,
+  requireOptionalString,
+  requireSlotId,
+  requireUniqueId,
+} from "../internal/composer-customization-validation.js";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -92,9 +104,16 @@ export type NavigateCall =
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
+  /** Latest host-provided composer scope. */
+  readonly scope: PluginComposerScope;
+  /** Latest host-provided attachment count exposed through `useComposerView()`. */
+  readonly attachmentCount: number;
   /** Latest host-rendered text effect requested by the plugin. */
   textEffect: PluginComposerTextEffect | null;
   textEffectCalls: Array<PluginComposerTextEffect | null>;
+  /** Whether this plugin currently holds the composer input lock. */
+  inputLocked: boolean;
+  inputLockCalls: boolean[];
   /** Latest host-rendered thread-row status requested by the plugin. */
   threadRowStatus: PluginComposerThreadRowStatus | null;
   threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
@@ -104,8 +123,11 @@ export interface ComposerLog {
 }
 
 interface TestComposerStore {
-  api: Omit<PluginComposerApi, "text">;
-  getSnapshot(): string;
+  api: Omit<PluginComposerApi, "scope" | "text">;
+  getAttachmentCount(): number;
+  getScope(): PluginComposerScope;
+  getText(): string;
+  getVersionSnapshot(): number;
   subscribe(listener: () => void): () => void;
 }
 
@@ -171,9 +193,6 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
     typeof (value as { setup?: unknown }).setup === "function"
   );
 }
-
-const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /**
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
@@ -293,15 +312,44 @@ const testPluginSdkApp = {
   },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
-    const text = useSyncExternalStore(
+    const version = useSyncExternalStore(
       composer.subscribe,
-      composer.getSnapshot,
-      composer.getSnapshot,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
     );
-    return useMemo(() => ({ ...composer.api, text }), [composer, text]);
+    return useMemo(
+      () => ({
+        ...composer.api,
+        scope: composer.getScope(),
+        text: composer.getText(),
+      }),
+      [composer, version],
+    );
   },
   experimental_ThreadChat: TestThreadChat,
   experimental_Markdown: TestMarkdown,
+  useComposerView(): ComposerView {
+    const composer = useSlotEnv("useComposerView").composer;
+    const version = useSyncExternalStore(
+      composer.subscribe,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
+    );
+    return useMemo(() => {
+      const text = composer.getText();
+      const attachmentCount = composer.getAttachmentCount();
+      return {
+        scope: composer.getScope(),
+        layout: "expanded",
+        draft: {
+          text,
+          isEmpty: isComposerDraftEmpty(text, attachmentCount),
+          attachmentCount,
+        },
+        run: { isRunning: false, isSubmitting: false },
+      };
+    }, [composer, version]);
+  },
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -330,7 +378,7 @@ export interface CapturedPluginApp {
   settingsSections: PluginSettingsSectionRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
-  composerAccessories: PluginComposerAccessoryRegistration[];
+  composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -345,67 +393,9 @@ export type PluginAppSource =
   | PluginAppModule
   | (() => Promise<PluginAppDefinition | PluginAppModule>);
 
-function requireSlotId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireMessageDirectiveId(kind: string, value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
-  ) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireNonEmptyString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${kind}: "${field}" must be a non-empty string`);
-  }
-  return value;
-}
-
-function requireOptionalString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string | undefined {
-  if (value !== undefined && typeof value !== "string") {
-    throw new Error(`${kind}: "${field}" must be a string when set`);
-  }
-  return value;
-}
-
-function requireComponent<T>(kind: string, value: unknown): T {
-  if (typeof value !== "function") {
-    throw new Error(`${kind}: "component" must be a React component function`);
-  }
-  return value as T;
-}
-
-function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
-  if (seen.has(id)) {
-    throw new Error(`${kind}: duplicate id "${id}"`);
-  }
-  seen.add(id);
-}
-
 /**
- * Validation ported from the BB app's collector
- * (apps/app/src/lib/plugin-app-definition.ts) so a registration the host
- * would reject fails here with the same message.
+ * Uses the same registration validation as the BB app collector so a
+ * registration the host would reject fails here with the same message.
  */
 function collectRegistrations(
   definition: PluginAppDefinition,
@@ -415,7 +405,7 @@ function collectRegistrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
+    composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
@@ -427,7 +417,7 @@ function collectRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
-    composerAccessory: new Set<string>(),
+    composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -523,15 +513,6 @@ function collectRegistrations(
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
-      composerAccessory(registration) {
-        const kind = "slots.composerAccessory";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.composerAccessory, id);
-        captured.composerAccessories.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
         const id = requireSlotId(kind, registration?.id);
@@ -606,6 +587,18 @@ function collectRegistrations(
         });
       },
     },
+    composer: {
+      customize(registration) {
+        const customization = collectComposerCustomization(
+          registration,
+          seenIds.composerCustomization,
+          (reason) => console.warn(reason),
+        );
+        if (customization !== null) {
+          captured.composerCustomizations.push(customization);
+        }
+      },
+    },
   });
 
   return captured;
@@ -661,8 +654,12 @@ export interface RenderSlotOptions<
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
-  /** Initial state for this render's isolated `useComposer()` scope. */
-  composer?: { text?: string; scope?: PluginComposerScope };
+  /** Initial state for this render's isolated composer scope and view. */
+  composer?: {
+    text?: string;
+    scope?: PluginComposerScope;
+    attachmentCount?: number;
+  };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -676,6 +673,10 @@ export interface RenderedSlotBehaviorDrivers {
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
   ): Promise<void>;
+  /** Replace composer text as a host-originated edit, wrapped in act. */
+  setComposerText(text: string): Promise<void>;
+  /** Replace the scope snapshots returned by composer hooks, wrapped in act. */
+  setComposerScope(scope: PluginComposerScope): Promise<void>;
 }
 
 /** Read-only call/write logs produced while the slot is mounted. */
@@ -827,25 +828,39 @@ export function renderSlot<
 
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
-  const composerScope: PluginComposerScope =
+  let composerScope: PluginComposerScope =
     options.composer?.scope ??
     (threadId !== null
       ? { kind: "thread", threadId }
       : { kind: "new-thread", projectId });
 
   let composerText = options.composer?.text ?? "";
+  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerVersion = 0;
   const composerListeners = new Set<() => void>();
+  const notifyComposerListeners = () => {
+    composerVersion += 1;
+    for (const listener of composerListeners) listener();
+  };
   const commitComposerText = (next: string) => {
     if (next === composerText) return;
     composerText = next;
-    for (const listener of composerListeners) listener();
+    notifyComposerListeners();
   };
   const composerLog: ComposerLog = {
     get text() {
       return composerText;
     },
+    get scope() {
+      return composerScope;
+    },
+    get attachmentCount() {
+      return composerAttachmentCount;
+    },
     textEffect: null,
     textEffectCalls: [],
+    inputLocked: false,
+    inputLockCalls: [],
     threadRowStatus: null,
     threadRowStatusCalls: [],
     quotes: [],
@@ -854,13 +869,15 @@ export function renderSlot<
   };
   const composerOwnership = { active: true };
   const composer: TestComposerStore = {
-    getSnapshot: () => composerText,
+    getAttachmentCount: () => composerAttachmentCount,
+    getScope: () => composerScope,
+    getText: () => composerText,
+    getVersionSnapshot: () => composerVersion,
     subscribe(listener) {
       composerListeners.add(listener);
       return () => composerListeners.delete(listener);
     },
     api: {
-      scope: composerScope,
       setText(next) {
         commitComposerText(next);
       },
@@ -874,6 +891,11 @@ export function renderSlot<
         if (!composerOwnership.active) return;
         composerLog.textEffect = effect;
         composerLog.textEffectCalls.push(effect);
+      },
+      setInputLock(locked) {
+        if (!composerOwnership.active) return;
+        composerLog.inputLocked = locked;
+        composerLog.inputLockCalls.push(locked);
       },
       setThreadRowStatus(status) {
         if (!composerOwnership.active || composerScope.kind === "new-thread") {
@@ -927,6 +949,7 @@ export function renderSlot<
     if (!composerOwnership.active) return;
     composerOwnership.active = false;
     composerLog.textEffect = null;
+    composerLog.inputLocked = false;
     composerLog.threadRowStatus = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
@@ -963,6 +986,17 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
+  const setComposerText = async (text: string): Promise<void> => {
+    await act(async () => commitComposerText(text));
+  };
+  const setComposerScope = async (
+    scope: PluginComposerScope,
+  ): Promise<void> => {
+    await act(async () => {
+      composerScope = scope;
+      notifyComposerListeners();
+    });
+  };
   const unmountSlot = (): void => {
     if (!composerOwnership.active) return;
     result.unmount();
@@ -975,9 +1009,16 @@ export function renderSlot<
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
+    setComposerText,
+    setComposerScope,
     navigateCalls,
     composer: composerLog,
-    behavior: { emitRealtime, setRealtimeConnectionState },
+    behavior: {
+      emitRealtime,
+      setRealtimeConnectionState,
+      setComposerText,
+      setComposerScope,
+    },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };

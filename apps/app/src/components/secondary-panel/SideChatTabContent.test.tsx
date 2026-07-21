@@ -57,8 +57,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost,
     readOnly,
     stack,
-    suppressPluginComposerAccessories,
-    textEffect,
+    suppressPluginComposerCustomizations,
+    textEffects,
     typeahead,
   }: {
     attachments: {
@@ -103,8 +103,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
     };
     stack: ReactNode | null;
-    suppressPluginComposerAccessories?: boolean;
-    textEffect?: string | null;
+    suppressPluginComposerCustomizations?: boolean;
+    textEffects?: readonly { effect: string | { className: string } }[];
   }) => {
     if (
       mocks.composerSuspension !== null &&
@@ -118,8 +118,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         <input
           data-testid="side-chat-composer"
           data-focus-end-key={focusEndKey}
-          data-plugin-accessories-suppressed={
-            suppressPluginComposerAccessories ? "true" : "false"
+          data-plugin-customizations-suppressed={
+            suppressPluginComposerCustomizations ? "true" : "false"
           }
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}
@@ -215,7 +215,15 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
             ? JSON.stringify(pluginComposerHost.scope)
             : "null"}
         </span>
-        <span data-testid="side-chat-text-effect">{textEffect ?? "none"}</span>
+        <span data-testid="side-chat-text-effect">
+          {textEffects && textEffects.length > 0
+            ? textEffects
+                .map(({ effect }) =>
+                  typeof effect === "string" ? effect : effect.className,
+                )
+                .join(",")
+            : "none"}
+        </span>
         <button
           type="button"
           disabled={!pluginComposerHost}
@@ -722,7 +730,7 @@ describe("SideChatTabContent", () => {
     );
   });
 
-  it("suppresses inactive plugin accessories and restores them without remounting the editor", () => {
+  it("suppresses inactive plugin customizations and restores them without remounting the editor", () => {
     const onSetThreadId = vi.fn();
     const { rerender } = render(
       buildSideChatElement({
@@ -734,7 +742,7 @@ describe("SideChatTabContent", () => {
     const composer = screen.getByTestId<HTMLInputElement>("side-chat-composer");
 
     fireEvent.change(composer, { target: { value: "Retained side draft" } });
-    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("true");
+    expect(composer.dataset.pluginCustomizationsSuppressed).toBe("true");
 
     rerender(
       buildSideChatElement({
@@ -746,7 +754,7 @@ describe("SideChatTabContent", () => {
 
     expect(screen.getByTestId("side-chat-composer")).toBe(composer);
     expect(composer.value).toBe("Retained side draft");
-    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("false");
+    expect(composer.dataset.pluginCustomizationsSuppressed).toBe("false");
   });
 
   it("exposes only the visible side-chat draft to plugins before and after child creation", async () => {
