@@ -14,6 +14,7 @@ import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
   ignoredJsonRpcResultSchema,
+  JsonRpcRequestTimeoutError,
   type PendingJsonRpcRequest,
   sendJsonRpcRequest,
 } from "./runtime-json-rpc.js";
@@ -61,6 +62,7 @@ export interface RuntimeProviderProcessManagerArgs {
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
+  initializeTimeoutMs?: number;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderIdentityWaitersInterrupted: (
     providerProcess: RuntimeProviderProcess,
@@ -156,63 +158,76 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
-      const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
-      const providerProcess = this.spawnProvider({
-        adapter,
-        processKey: args.processKey,
-        providerId: args.providerId,
-      });
-
-      try {
-        if (hasChildProcessExited(providerProcess.child)) {
-          const stderr = providerProcess.stderrChunks.join("\n").slice(0, 500);
-          throw new Error(
-            `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
-              (stderr ? `\nstderr: ${stderr}` : ""),
-          );
-        }
-
-        const initCmd = adapter.buildCommandPlan({ type: "initialize" });
-        if (initCmd.kind === "request") {
-          await sendJsonRpcRequest({
-            child: providerProcess.child,
-            message: initCmd,
-            pending: providerProcess.pending,
-            getNextId: this.args.getNextRequestId,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
-        }
-
-        const providerSkillRoots = filterSkillRootsForProvider({
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
+        const providerProcess = this.spawnProvider({
+          adapter,
+          processKey: args.processKey,
           providerId: args.providerId,
-          skillRoots: this.args.skillRoots,
         });
-        if (providerSkillRoots.length > 0) {
-          const skillRootsCmd = adapter.buildCommandPlan({
-            type: "skills/configure",
-            skillRoots: providerSkillRoots,
-          });
-          if (skillRootsCmd.kind === "request") {
+
+        try {
+          if (hasChildProcessExited(providerProcess.child)) {
+            const stderr = providerProcess.stderrChunks.join("\n").slice(0, 500);
+            throw new Error(
+              `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
+                (stderr ? `\nstderr: ${stderr}` : ""),
+            );
+          }
+
+          const initCmd = adapter.buildCommandPlan({ type: "initialize" });
+          if (initCmd.kind === "request") {
             await sendJsonRpcRequest({
               child: providerProcess.child,
-              message: skillRootsCmd,
+              message: initCmd,
               pending: providerProcess.pending,
               getNextId: this.args.getNextRequestId,
               resultSchema: ignoredJsonRpcResultSchema,
+              timeoutMs: this.args.initializeTimeoutMs,
             });
           }
-        }
-      } catch (startupError) {
-        await this.cleanupFailedStartup({
-          processKey: args.processKey,
-          providerId: args.providerId,
-          providerProcess,
-          startupError:
+
+          const providerSkillRoots = filterSkillRootsForProvider({
+            providerId: args.providerId,
+            skillRoots: this.args.skillRoots,
+          });
+          if (providerSkillRoots.length > 0) {
+            const skillRootsCmd = adapter.buildCommandPlan({
+              type: "skills/configure",
+              skillRoots: providerSkillRoots,
+            });
+            if (skillRootsCmd.kind === "request") {
+              await sendJsonRpcRequest({
+                child: providerProcess.child,
+                message: skillRootsCmd,
+                pending: providerProcess.pending,
+                getNextId: this.args.getNextRequestId,
+                resultSchema: ignoredJsonRpcResultSchema,
+              });
+            }
+          }
+          return;
+        } catch (startupError) {
+          const error =
             startupError instanceof Error
               ? startupError
-              : new Error(String(startupError)),
-        });
-        throw startupError;
+              : new Error(String(startupError));
+          await this.cleanupFailedStartup({
+            processKey: args.processKey,
+            providerId: args.providerId,
+            providerProcess,
+            startupError: error,
+          });
+          if (
+            attempt === 1 &&
+            !this.shuttingDown &&
+            error instanceof JsonRpcRequestTimeoutError &&
+            error.method === "initialize"
+          ) {
+            continue;
+          }
+          throw error;
+        }
       }
     })();
 

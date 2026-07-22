@@ -9,7 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { turnScope, type ThreadEvent } from "@bb/domain";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type {
+  ProviderAdapter,
+  ProviderAdapterFactory,
+} from "./provider-adapter.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { RuntimeProviderProcessManager } from "./runtime-provider-process.js";
 import { RuntimeThreadIdentityRegistry } from "./runtime-thread-identity.js";
@@ -25,8 +28,10 @@ import type { AgentRuntimeOptions } from "./types.js";
 import type { ProviderRuntimeEvent } from "./runtime-json-rpc.js";
 
 interface CreateProviderProcessManagerArgs {
+  adapterFactory?: ProviderAdapterFactory;
   adapterProcessEnv?: Record<string, string>;
   env?: Record<string, string>;
+  initializeTimeoutMs?: number;
   onStderr?: NonNullable<AgentRuntimeOptions["onStderr"]>;
   onProcessExit: NonNullable<AgentRuntimeOptions["onProcessExit"]>;
   scriptPath: string;
@@ -65,8 +70,10 @@ describe("createAgentRuntime process lifecycle", () => {
     let nextRequestId = 1;
     return new RuntimeProviderProcessManager({
       additionalWorkspaceWriteRoots: [],
-      adapterFactory: () =>
-        createNoopInitializeAdapter(args.scriptPath, args.adapterProcessEnv),
+      adapterFactory:
+        args.adapterFactory ??
+        (() =>
+          createNoopInitializeAdapter(args.scriptPath, args.adapterProcessEnv)),
       bridgeBundleDir: undefined,
       captureThreadExitState: (threadId) => ({
         activeTurnId: null,
@@ -78,7 +85,17 @@ describe("createAgentRuntime process lifecycle", () => {
         identityRegistry.createProviderState({ providerId }),
       env: args.env,
       getNextRequestId: () => nextRequestId++,
-      handleStdoutLine: () => undefined,
+      handleStdoutLine: ({ line, providerProcess }) => {
+        const message: unknown = JSON.parse(line);
+        if (!isJsonRecord(message)) return;
+        const id = message.id;
+        if (typeof id !== "string" && typeof id !== "number") return;
+        const pending = providerProcess.pending.get(id);
+        if (!pending || !("result" in message)) return;
+        providerProcess.pending.delete(id);
+        pending.resolve(message.result);
+      },
+      initializeTimeoutMs: args.initializeTimeoutMs,
       onProcessExit: args.onProcessExit,
       onProviderIdentityWaitersInterrupted: (providerProcess) =>
         identityRegistry.resolvePendingIdentityWaiters(
@@ -1262,6 +1279,65 @@ rl.on("line", (line) => {
       runtime.ensureProvider({ providerId: "fake" }),
     ).rejects.toThrow(/exited/i);
     await runtime.shutdown();
+  });
+
+  it("retries provider startup once when initialize times out", async () => {
+    const attemptsPath = join(tmpDir, "initialize-timeout-attempts.txt");
+    const logPath = join(tmpDir, "initialize-timeout-log.txt");
+    const initializeTimeoutScript = join(tmpDir, "initialize-timeout.cjs");
+    writeFileSync(
+      initializeTimeoutScript,
+      `const fs = require("fs");
+      const readline = require("readline");
+      const attemptsPath = process.argv[2];
+      const logPath = process.argv[3];
+      const previousAttempts = fs.existsSync(attemptsPath)
+        ? Number(fs.readFileSync(attemptsPath, "utf8"))
+        : 0;
+      const attempt = previousAttempts + 1;
+      fs.writeFileSync(attemptsPath, String(attempt));
+      fs.appendFileSync(logPath, "spawn:" + attempt + "\\n");
+      setInterval(() => {}, 1000);
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on("line", (line) => {
+        const msg = JSON.parse(line);
+        if (msg.method !== "initialize") return;
+        fs.appendFileSync(logPath, "initialize:" + attempt + "\\n");
+        if (attempt === 1) return;
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+      });`,
+    );
+    const manager = createProviderProcessManager({
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(scriptPath);
+        return {
+          ...adapter,
+          process: {
+            command: "node",
+            args: [initializeTimeoutScript, attemptsPath, logPath],
+          },
+        };
+      },
+      initializeTimeoutMs: 500,
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await manager.ensureProvider({
+        processKey: "fake",
+        providerId: "fake",
+      });
+      expect(readLogLines(logPath)).toEqual([
+        "spawn:1",
+        "initialize:1",
+        "spawn:2",
+        "initialize:2",
+      ]);
+    } finally {
+      await manager.shutdown();
+    }
   });
 
   it("removes the cached provider and retries when startup skill configuration fails", async () => {
