@@ -230,6 +230,26 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.list_skills": {
+    skills: [
+      {
+        id: `skill_${"a".repeat(64)}`,
+        name: "review",
+        description: "Review the current diff",
+        filePath: "/home/user/.bb/skills/review/SKILL.md",
+        rootKind: "bb-data-dir",
+        linked: false,
+      },
+    ],
+  },
+  "host.delete_skill": {
+    deletedPath: "/home/user/.bb/skills/review",
+  },
+  "host.write_skill": {
+    outcome: "written",
+    filePath: "/home/user/.bb/skills/review/SKILL.md",
+    sha256: "b".repeat(64),
+  },
   "host.caffeinate": {
     enabled: true,
     supported: true,
@@ -989,6 +1009,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  it("uses protocol version 63 for the skill management contract", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(63);
+  });
+
   it("binds Plan cancellation to a required turn id and typed result", () => {
     expect(
       hostDaemonCommandSchema.parse({
@@ -1698,8 +1722,6 @@ describe("host-daemon command schemas", () => {
   });
 
   it("parses section mentions in thread.start", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(59);
-
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -2455,6 +2477,28 @@ describe("host-daemon command schemas", () => {
         },
         targetBranch: "main lock",
         commitMessage: "Merge branch",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("limits host.write_skill to daemon-derived bb roots", () => {
+    const base = {
+      type: "host.write_skill",
+      name: "review",
+      cwd: null,
+      content: "# Review",
+      expectedSha256: "a".repeat(64),
+    } as const;
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...base,
+        scope: "bb-user",
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...base,
+        scope: "claude-user",
       }).success,
     ).toBe(false);
   });

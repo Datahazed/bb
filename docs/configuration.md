@@ -420,6 +420,16 @@ The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
 ports).
 
+## Experiments
+
+Experimental surfaces are off by default and can be changed in Settings →
+Experiments or with `bb settings experiment <key> <true|false>`. The `toolsHub`
+experiment exposes the unified Skills, Plugins, and Automations management UI.
+It is a UI-only gate: installed skills, automation execution, plugin runtimes,
+CLI commands, and backend APIs keep working while the Tools Hub is off. The
+separate `plugins` experiment still controls whether user-installed plugin code
+loads.
+
 ## Plugins
 
 User-installed plugins are gated behind the "Plugins" experiment (Settings →
@@ -444,7 +454,7 @@ Plugin state lives under the data dir:
 
 BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside the
 app and install from the local bundled copy — no network, no remote catalog.
-Discover them with `bb plugin search` or Settings → Plugins → Browse; users
+Discover them with `bb plugin search` or Tools → Plugins → Browse; users
 cannot add, remove, or configure the official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
@@ -465,18 +475,18 @@ the plugin so it can be surfaced as needing attention.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Settings → Plugins or with `bb plugin enable workflows`. Its six
-settings accept base-10 integer strings through Settings → Plugins or
+under Tools → Plugins or with `bb plugin enable workflows`. Its six
+settings accept base-10 integer strings through Tools → Plugins or
 `bb plugin config workflows set <key> <value>`:
 
-| Key                    |    Default |       Allowed range | Behavior                                                       |
-| ---------------------- | ---------: | ------------------: | -------------------------------------------------------------- |
-| `maxActiveRuns`        |        `4` |            `1`–`32` | Concurrent runs across the plugin; changes apply live.         |
-| `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                         |
-| `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                              |
-| `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.                    |
-| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                        |
-| `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.               |
+| Key                    |    Default |       Allowed range | Behavior                                               |
+| ---------------------- | ---------: | ------------------: | ------------------------------------------------------ |
+| `maxActiveRuns`        |        `4` |            `1`–`32` | Concurrent runs across the plugin; changes apply live. |
+| `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                 |
+| `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                      |
+| `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.            |
+| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                |
+| `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.       |
 
 The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
