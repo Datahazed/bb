@@ -46,6 +46,7 @@ import type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
+  PluginSystemMessages,
   PluginThreadActionContext,
   PluginThreadActionResult,
   PluginThreadEventHandler,
@@ -105,6 +106,7 @@ export type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
+  PluginSystemMessages,
   PluginThreadActionContext,
   PluginThreadActionRegistration,
   PluginThreadActionResult,
@@ -557,6 +559,7 @@ export function createPluginApi(options: {
       ports: readonly number[];
     }[],
   ) => void;
+  sendSystemMessage: PluginSystemMessages["send"];
 }): PluginApiHandle {
   const {
     pluginId,
@@ -574,6 +577,7 @@ export function createPluginApi(options: {
     validateSharedPortDeclaration,
     declareSharedPorts,
     replaceDeclaredSharedPorts,
+    sendSystemMessage,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -1255,6 +1259,18 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimentalSystemMessageInputSchema = z.object({
+    systemMessageKind: z.literal("workflow-finished"),
+    text: z.string().min(1),
+    threadId: z.string().min(1),
+  });
+  const experimental_systemMessages: PluginSystemMessages = {
+    async send(args) {
+      assertLive();
+      await sendSystemMessage(experimentalSystemMessageInputSchema.parse(args));
+    },
+  };
+
   const server: PluginServerApi = {
     get loopbackBaseUrl(): string {
       assertLive();
@@ -1316,6 +1332,7 @@ export function createPluginApi(options: {
     ui,
     events,
     status,
+    experimental_systemMessages,
     server,
     hosts,
     get sdk(): BbSdk {

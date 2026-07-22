@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SystemMessageKind, SystemMessageSubject } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import { generatedConversationTitle } from "./GeneratedConversationMessage.js";
+import {
+  generatedConversationTitle,
+  workflowNotificationIconName,
+} from "./GeneratedConversationMessage.js";
 
 const threadSubject: SystemMessageSubject = {
   kind: "thread",
@@ -29,6 +32,7 @@ function systemTitle({
     sourceIsPluginSideChat: false,
     systemMessageKind,
     systemMessageSubject,
+    workflowNotification: null,
   });
 }
 
@@ -128,6 +132,39 @@ describe("generatedConversationTitle — system source", () => {
   });
 });
 
+describe("generatedConversationTitle — workflow notification", () => {
+  it("uses the shared workflow icon", () => {
+    expect(workflowNotificationIconName()).toBe("Workflow");
+  });
+
+  it("names the workflow and exposes its terminal status", () => {
+    const title = generatedConversationTitle({
+      childOrigin: null,
+      sourceKind: "system",
+      sourceName: "BB",
+      sourceThreadId: null,
+      sourceIsSideChat: false,
+      sourceIsPluginSideChat: false,
+      systemMessageKind: "unlabeled",
+      systemMessageSubject: null,
+      workflowNotification: {
+        bodyStart: 80,
+        name: "p1-infra",
+        runId: "wfr_123",
+        status: "succeeded",
+      },
+    });
+
+    expect(title.plain).toBe("Workflow p1-infra succeeded");
+    expect(title.segments.map((segment) => segment.text)).toEqual([
+      "Workflow",
+      "p1-infra",
+      "succeeded",
+    ]);
+    expect(title.segments[1]?.em).toBe(true);
+  });
+});
+
 describe("generatedConversationTitle — agent source", () => {
   it("links the sender thread name (reference pattern, unchanged)", () => {
     const title = generatedConversationTitle({
@@ -139,6 +176,7 @@ describe("generatedConversationTitle — agent source", () => {
       sourceIsPluginSideChat: false,
       systemMessageKind: "unlabeled",
       systemMessageSubject: null,
+      workflowNotification: null,
     });
 
     expect(title.plain).toBe("Message from Worker 2");

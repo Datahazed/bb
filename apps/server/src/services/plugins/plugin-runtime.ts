@@ -980,6 +980,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         deps.sharedPorts?.replaceDeclarationsForOwner(row.id, declarations);
       },
+      sendSystemMessage: (args) => {
+        if (!deps.sendSystemMessage) {
+          throw new Error(
+            "plugin system messages are unavailable in this host",
+          );
+        }
+        return deps.sendSystemMessage(args);
+      },
     });
     try {
       // Fresh instance per load: guarantees re-imports see current sources.

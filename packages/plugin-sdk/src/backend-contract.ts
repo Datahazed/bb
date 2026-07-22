@@ -676,6 +676,18 @@ export interface PluginStatusApi {
   needsConfiguration(message: string): void;
 }
 
+export interface PluginSystemMessages {
+  /**
+   * Deliver a trusted system-originated turn. If the thread is active, the
+   * message waits in its queue; otherwise it starts the next turn immediately.
+   */
+  send(args: {
+    systemMessageKind: "workflow-finished";
+    text: string;
+    threadId: string;
+  }): Promise<void>;
+}
+
 /**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
@@ -708,6 +720,8 @@ export interface BbPluginApi {
   readonly events: PluginEvents;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
+  /** Trusted structured system-message delivery. */
+  readonly experimental_systemMessages: PluginSystemMessages;
   /** Read-only facts about the running server (loopback base URL). */
   readonly server: PluginServerApi;
   /** Server-to-daemon host control-plane declarations. */

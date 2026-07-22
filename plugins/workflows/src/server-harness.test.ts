@@ -336,6 +336,13 @@ describe("workflows plugin", () => {
     await eventually(() => {
       expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
     });
+    expect(harness.systemMessages).toEqual([
+      expect.objectContaining({
+        threadId: "thread-test",
+        systemMessageKind: "workflow-finished",
+        text: expect.stringContaining("BB workflow finished"),
+      }),
+    ]);
 
     await expect(workflowStatus(harness, started.runId)).resolves.toMatchObject(
       {

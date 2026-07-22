@@ -277,6 +277,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   ensureThreadCanStartRequest(thread);
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
+  const systemMessageKind = args.queuedMessages[0]!.systemMessageKind;
   let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
     formatQueuedMessageInputForSender({
       input: toThreadQueuedMessage(claimedQueuedMessage).content,
@@ -306,7 +307,11 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     senderThreadId,
   );
   const initiator: ThreadTurnInitiator =
-    senderThreadId === null ? "user" : "agent";
+    systemMessageKind !== null
+      ? "system"
+      : senderThreadId === null
+        ? "user"
+        : "agent";
   if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
@@ -357,6 +362,9 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         ...(inputGroups.length > 1 ? { inputGroups } : {}),
         requestMethod: "turn/start",
         senderThreadId,
+        ...(systemMessageKind !== null
+          ? { systemMessageKind, systemMessageSubject: null }
+          : {}),
         source: "tell",
         target: { kind: "new-turn" },
         threadId: thread.id,
@@ -460,6 +468,9 @@ async function sendClaimedQueuedMessageForThread(
     },
     thread: args.thread,
     trigger: "auto-dispatch",
+    ...(args.queuedMessages[0]!.systemMessageKind !== null
+      ? { systemMessageKind: args.queuedMessages[0]!.systemMessageKind }
+      : {}),
   });
   return queuedMessage;
 }

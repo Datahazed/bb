@@ -248,12 +248,16 @@ function useConversationTocItems({
 
     for (const row of timelineRows) {
       if (row.kind !== "conversation") continue;
+      if (row.role === "user" && row.initiator === "system") continue;
       const item: TocItem = {
         id: row.id,
         label: toTocLabel({ attachments: row.attachments, text: row.text }),
-        role: row.role,
+        role:
+          row.role === "assistant" || row.initiator === "agent"
+            ? "assistant"
+            : "user",
       };
-      if (row.role === "user") {
+      if (item.role === "user") {
         userItems.push(item);
       } else {
         agentItems.push(item);

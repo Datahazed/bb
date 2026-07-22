@@ -159,6 +159,32 @@ describe("queued thread messages", () => {
     });
   });
 
+  it("stores system provenance and clears it when a user edits the message", () => {
+    const { db, thread } = setup();
+    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      systemMessageKind: "workflow-finished",
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(queuedMessage.systemMessageKind).toBe("workflow-finished");
+    const result = updateQueuedThreadMessage(db, noopNotifier, {
+      content: altInput,
+      expectedUpdatedAt: queuedMessage.updatedAt,
+      id: queuedMessage.id,
+      threadId: thread.id,
+    });
+
+    expect(result).toMatchObject({
+      kind: "updated",
+      queuedMessage: { systemMessageKind: null },
+    });
+  });
+
   it("rejects a second update based on the same queued message version", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {

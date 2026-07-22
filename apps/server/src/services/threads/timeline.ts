@@ -1175,9 +1175,15 @@ export function buildThreadConversationOutline(
     if (row.kind !== "conversation") {
       continue;
     }
+    if (row.role === "user" && row.initiator === "system") {
+      continue;
+    }
     items.push({
       id: row.id,
-      role: row.role,
+      role:
+        row.role === "assistant" || row.initiator === "agent"
+          ? "assistant"
+          : "user",
       preview: toConversationOutlinePreview(row.text),
       attachmentSummary: toConversationOutlineAttachmentSummary(
         row.attachments,

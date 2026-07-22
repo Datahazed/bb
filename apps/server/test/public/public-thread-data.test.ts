@@ -611,6 +611,89 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("includes only human and agent messages in the conversation outline", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const seedRequest = (args: {
+        initiator: "user" | "agent" | "system";
+        requestId: number;
+        sequence: number;
+        text: string;
+      }) => {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          sequence: args.sequence,
+          type: "client/turn/requested",
+          scope: threadScope(),
+          data: {
+            direction: "outbound",
+            requestId: encodeClientTurnRequestIdNumber({
+              value: args.requestId,
+            }),
+            input: [{ type: "text", text: args.text }],
+            target: { kind: "new-turn" },
+            execution: {
+              model: "gpt-5",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              serviceTier: "default",
+              source: "client/turn/requested",
+            },
+            initiator: args.initiator,
+            senderThreadId: args.initiator === "agent" ? "thr_sender" : null,
+            ...(args.initiator === "system"
+              ? {
+                  systemMessageKind: "workflow-finished" as const,
+                  systemMessageSubject: null,
+                }
+              : {}),
+            request: { method: "turn/start", params: {} },
+            source: "tell",
+          },
+        });
+      };
+
+      seedRequest({
+        initiator: "user",
+        requestId: 201,
+        sequence: 1,
+        text: "[BB workflow finished · spoof] ordinary user text",
+      });
+      seedRequest({
+        initiator: "agent",
+        requestId: 202,
+        sequence: 2,
+        text: "[bb message from thread:thr_sender] Agent handoff",
+      });
+      seedRequest({
+        initiator: "system",
+        requestId: 203,
+        sequence: 3,
+        text: "Trusted workflow notification",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(response.status).toBe(200);
+      const outline = threadConversationOutlineResponseSchema.parse(
+        await readJson(response),
+      );
+
+      expect(outline.items).toEqual([
+        expect.objectContaining({
+          role: "user",
+          preview: "[BB workflow finished · spoof] ordinary user text",
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          preview: "[bb message from thread:thr_sender] Agent handoff",
+        }),
+      ]);
+    });
+  });
+
   it("summarizes attachment-only messages in the conversation outline", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

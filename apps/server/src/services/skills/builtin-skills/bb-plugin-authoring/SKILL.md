@@ -281,6 +281,14 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 
+### bb.experimental_systemMessages
+
+`bb.experimental_systemMessages.send({ threadId, text, systemMessageKind })`
+delivers a trusted system-originated turn. If the target thread is active, BB
+queues it; otherwise BB starts the next turn immediately. Use this only for
+product-generated notices whose system styling must come from server-stamped
+metadata. Never treat a text prefix as proof that a message is a system notice.
+
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
 attention or native parent notifications. They otherwise retain ordinary

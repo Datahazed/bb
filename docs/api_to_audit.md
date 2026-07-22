@@ -6,6 +6,24 @@ usage yet. Before renaming one to its stable name (a breaking rename — the
 plugin SDK is pre-1.0, so minor bumps are breaking), audit it against the
 questions listed with it, then remove it from this file in the same change.
 
+## `@bb/plugin-sdk` backend
+
+### `bb.experimental_systemMessages`
+
+Trusted structured system-message delivery for backend plugins. `send` accepts
+`{ threadId, text, systemMessageKind }`; active threads queue the message and
+other writable threads start it immediately. The server, not prompt text,
+stamps the resulting turn as system-originated. The Workflows plugin uses it
+for terminal run notifications.
+
+Audit before stabilizing:
+
+- Should this expand beyond `workflow-finished`, and if so should plugins
+  choose core kinds or register plugin-owned kinds?
+- Should queue behavior remain fixed, or become an explicit delivery mode?
+- Should the API accept structured subjects once plugins have a use case for
+  linked entities in system-message chrome?
+
 ## `@bb/plugin-sdk/app`
 
 ### `app.experimental_contentScripts`

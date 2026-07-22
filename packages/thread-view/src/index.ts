@@ -1,6 +1,11 @@
 export { formatThreadTimelineText } from "./format-timeline-text.js";
 export { parseAgentMessageEnvelope } from "./agent-message-envelope.js";
 export type { AgentMessageEnvelope } from "./agent-message-envelope.js";
+export { parseWorkflowNotificationEnvelope } from "./workflow-notification-envelope.js";
+export type {
+  WorkflowNotificationEnvelope,
+  WorkflowNotificationStatus,
+} from "./workflow-notification-envelope.js";
 export type { ThreadTimelineTextFormat } from "./format-timeline-text.js";
 export { assertNever } from "./assert-never.js";
 export {

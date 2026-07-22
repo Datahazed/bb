@@ -11,7 +11,11 @@ import {
   notInArray,
   or,
 } from "drizzle-orm";
-import type { PermissionMode, PromptInput } from "@bb/domain";
+import type {
+  PermissionMode,
+  PromptInput,
+  SystemMessageKind,
+} from "@bb/domain";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -29,6 +33,7 @@ export interface CreateQueuedThreadMessageInput {
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
+  systemMessageKind?: SystemMessageKind | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
@@ -217,6 +222,7 @@ function queuedMessageGroupingEnvelopeMatches(
   return (
     firstQueuedMessage !== null &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
+    queuedMessage.systemMessageKind === firstQueuedMessage.systemMessageKind &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
@@ -491,6 +497,7 @@ export function createQueuedThreadMessage(
           threadId: input.threadId,
           content: JSON.stringify(input.content),
           senderThreadId: input.senderThreadId ?? null,
+          systemMessageKind: input.systemMessageKind ?? null,
           model: input.model,
           reasoningLevel: input.reasoningLevel,
           permissionMode: input.permissionMode,
@@ -533,6 +540,9 @@ export function updateQueuedThreadMessage(
         .update(queuedThreadMessages)
         .set({
           content: JSON.stringify(input.content),
+          // Editing is a human action. The replacement must not inherit
+          // trusted system provenance from the queued notification.
+          systemMessageKind: null,
           updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))

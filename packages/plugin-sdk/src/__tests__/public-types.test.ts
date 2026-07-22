@@ -7,6 +7,7 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_systemMessages"
   | "hosts"
   | "http"
   | "log"
@@ -65,6 +66,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginSharedPortTunnelIdentity",
   "PluginStatusApi",
   "PluginStorage",
+  "PluginSystemMessages",
   "PluginThreadActionContext",
   "PluginThreadActionRegistration",
   "PluginThreadActionResult",

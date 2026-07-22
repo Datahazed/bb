@@ -60,6 +60,7 @@ const BB_PLUGIN_API_KEYS = [
   "agents",
   "ui",
   "events",
+  "experimental_systemMessages",
   "status",
   "server",
   "hosts",
@@ -215,12 +216,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],
-  messageDirective: [
-    "attributes",
-    "source",
-    "message",
-    "openWorkspaceFile",
-  ],
+  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
   experimental_messageAction: [
     "threadId",
     "message",

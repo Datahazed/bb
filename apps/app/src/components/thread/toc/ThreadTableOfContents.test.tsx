@@ -163,6 +163,32 @@ function outlineResponse(
   return { items, maxSeq: items.length };
 }
 
+function outlineUser(
+  id: string,
+  preview: string,
+  overrides: Partial<ThreadConversationOutlineItem> = {},
+): ThreadConversationOutlineItem {
+  return {
+    id,
+    role: "user",
+    preview,
+    attachmentSummary: null,
+    ...overrides,
+  };
+}
+
+function outlineAssistant(
+  id: string,
+  preview: string,
+): ThreadConversationOutlineItem {
+  return {
+    id,
+    role: "assistant",
+    preview,
+    attachmentSummary: null,
+  };
+}
+
 function setOutline(items: ThreadConversationOutlineItem[] | undefined): void {
   vi.mocked(useThreadConversationOutline).mockReturnValue({
     data: items === undefined ? undefined : outlineResponse(items),
@@ -386,32 +412,39 @@ describe("ThreadTableOfContents", () => {
     expect(screen.queryByText("Your messages")).not.toBeNull();
   });
 
+  it("omits system rows from the timeline fallback", async () => {
+    const systemRow = {
+      ...userConversationRow(4),
+      initiator: "system" as const,
+      systemMessageKind: "workflow-finished" as const,
+      text: "Workflow notice that must not enter the ToC",
+    };
+
+    render(
+      <TocHost
+        timelineRows={[
+          userConversationRow(1),
+          systemRow,
+          userConversationRow(2),
+          userConversationRow(3),
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText("Your messages")).not.toBeNull();
+    expect(
+      screen.queryByText("Workflow notice that must not enter the ToC"),
+    ).toBeNull();
+  });
+
   it("renders the full conversation outline, including attachment-only labels", async () => {
     setOutline([
-      {
-        id: "u1",
-        role: "user",
-        preview: "First question",
-        attachmentSummary: null,
-      },
-      {
-        id: "a1",
-        role: "assistant",
-        preview: "First answer",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Second question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "",
+      outlineUser("u1", "First question"),
+      outlineAssistant("a1", "First answer"),
+      outlineUser("u2", "Second question"),
+      outlineUser("u3", "", {
         attachmentSummary: { imageCount: 1, fileCount: 0 },
-      },
+      }),
     ]);
 
     // timelineRows is empty: the minimap lists the full thread from the outline,
@@ -427,28 +460,18 @@ describe("ThreadTableOfContents", () => {
 
   it("renders an agent-to-agent message source as a thread mention", async () => {
     setOutline([
-      {
-        id: "u1",
-        role: "user",
-        preview: "First question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview:
-          "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
+      outlineUser("u1", "First question"),
+      outlineAssistant(
+        "u2",
+        "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
+      ),
+      outlineUser("u3", "Third question"),
+      outlineUser("u4", "Fourth question"),
     ]);
 
     render(<TocHost timelineRows={[]} />);
+
+    fireEvent.click(await screen.findByText("Agent messages"));
 
     expect(await screen.findByText("Agent")).not.toBeNull();
     expect(
@@ -479,25 +502,13 @@ describe("ThreadTableOfContents", () => {
       nestedThread,
     ]);
     setOutline([
-      {
-        id: "u1",
-        role: "user",
-        preview: "First question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview:
-          "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
+      outlineUser("u1", "First question"),
+      outlineAssistant(
+        "u2",
+        "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
+      ),
+      outlineUser("u3", "Third question"),
+      outlineUser("u4", "Fourth question"),
     ]);
 
     render(
@@ -511,6 +522,8 @@ describe("ThreadTableOfContents", () => {
         </ThreadTitleMentionResourcesProvider>
       </QueryClientProvider>,
     );
+
+    fireEvent.click(await screen.findByText("Agent messages"));
 
     expect(await screen.findByText("Ask Calendar specialist")).not.toBeNull();
     expect(screen.queryByText("@thread:thr_nested")).toBeNull();
@@ -532,24 +545,9 @@ describe("ThreadTableOfContents", () => {
     scrollElement.appendChild(timelineRowElement("u2"));
     const loadOlder = vi.fn();
     setOutline([
-      {
-        id: "u1",
-        role: "user",
-        preview: "First question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Loaded question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
+      outlineUser("u1", "First question"),
+      outlineUser("u2", "Loaded question"),
+      outlineUser("u3", "Third question"),
     ]);
 
     render(
@@ -572,24 +570,9 @@ describe("ThreadTableOfContents", () => {
       scrollElement.appendChild(timelineRowElement("u_old"));
     });
     setOutline([
-      {
-        id: "u_old",
-        role: "user",
-        preview: "Ancient question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Second question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
+      outlineUser("u_old", "Ancient question"),
+      outlineUser("u2", "Second question"),
+      outlineUser("u3", "Third question"),
     ]);
 
     render(
@@ -608,24 +591,9 @@ describe("ThreadTableOfContents", () => {
   it("does not paginate when there are no older pages to load", async () => {
     const loadOlder = vi.fn();
     setOutline([
-      {
-        id: "missing",
-        role: "user",
-        preview: "Unreachable",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Second question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
+      outlineUser("missing", "Unreachable"),
+      outlineUser("u2", "Second question"),
+      outlineUser("u3", "Third question"),
     ]);
 
     render(

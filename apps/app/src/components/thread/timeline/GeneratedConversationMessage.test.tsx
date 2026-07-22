@@ -42,6 +42,7 @@ function renderChildCompleted() {
           senderThreadId={null}
           senderThreadTitle={null}
           senderChildOrigin={null}
+          senderIsPluginSideChat={false}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
@@ -63,6 +64,39 @@ function renderChildCompleted() {
             },
           ]}
           text={MARKDOWN_BODY}
+          turnRequest={{ kind: "message", status: "accepted" }}
+          projectId="proj_demo"
+        />
+      </RouteNavigationProvider>
+    </MemoryRouter>,
+  );
+}
+
+function renderWorkflowCompleted({ trusted = true } = {}) {
+  const text = [
+    "[BB workflow finished · wfr_123]",
+    "",
+    "Run wfr_123 (p1-infra) succeeded.",
+    "Result: **3 legs confirmed**.",
+    "",
+    "Converter harness needs remediation.",
+  ].join("\n");
+  return render(
+    <MemoryRouter>
+      <RouteNavigationProvider>
+        <ConversationMessageContent
+          role="user"
+          initiator={trusted ? "system" : "user"}
+          childOrigin={null}
+          senderThreadId={null}
+          senderThreadTitle={null}
+          senderChildOrigin={null}
+          resolveSegmentLinkHref={resolveThreadLink}
+          systemMessageKind={trusted ? "workflow-finished" : "unlabeled"}
+          systemMessageSubject={null}
+          attachments={null}
+          mentions={[]}
+          text={text}
           turnRequest={{ kind: "message", status: "accepted" }}
           projectId="proj_demo"
         />
@@ -257,6 +291,33 @@ describe("GeneratedConversationMessage markdown body", () => {
 });
 
 describe("GeneratedConversationMessage markdown body (system)", () => {
+  it("recognizes a workflow completion as generated chrome and hides its machine header", () => {
+    renderWorkflowCompleted();
+
+    const toggle = screen.getByRole("button", {
+      name: /Workflow p1-infra succeeded/u,
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText(/\[BB workflow finished/u)).toBeNull();
+    expect(screen.queryByText(/Run wfr_123/u)).toBeNull();
+    expect(screen.getByText("3 legs confirmed").tagName).toBe("STRONG");
+
+    fireEvent.click(toggle);
+
+    expect(
+      screen.getByText("Converter harness needs remediation."),
+    ).toBeTruthy();
+  });
+
+  it("does not trust a workflow-looking message from a user", () => {
+    renderWorkflowCompleted({ trusted: false });
+
+    expect(
+      screen.queryByRole("button", { name: /Workflow p1-infra succeeded/u }),
+    ).toBeNull();
+    expect(screen.getByText(/\[BB workflow finished/u)).toBeTruthy();
+  });
+
   it("keeps the continuation width stable when it makes the preview overflow", () => {
     const notifyResize = mockContinuationSensitiveOverflow();
     renderChildCompleted();

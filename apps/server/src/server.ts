@@ -27,6 +27,7 @@ import {
   createPluginService,
   type PluginService,
 } from "./services/plugins/plugin-service.js";
+import { sendPluginSystemMessage } from "./services/threads/plugin-system-messages.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -414,6 +415,7 @@ export function createApp(
   });
   const pluginService = createPluginService({
     db: deps.db,
+    sendSystemMessage: (args) => sendPluginSystemMessage(deps, args),
     hub: deps.hub,
     logger: deps.logger,
     pendingInteractions: deps.pendingInteractions,

@@ -60,8 +60,9 @@ const CHILD_COMPLETED_BODY = [
 ].join("\n");
 
 const CHILD_COMPLETED_TOKEN = "@thread:thr_child2";
-const CHILD_COMPLETED_TOKEN_START =
-  CHILD_COMPLETED_BODY.indexOf(CHILD_COMPLETED_TOKEN);
+const CHILD_COMPLETED_TOKEN_START = CHILD_COMPLETED_BODY.indexOf(
+  CHILD_COMPLETED_TOKEN,
+);
 const CHILD_COMPLETED_MENTIONS: readonly PromptTextMention[] = [
   {
     start: CHILD_COMPLETED_TOKEN_START,
@@ -154,6 +155,19 @@ const SYSTEM_ROWS: readonly SystemRowFixture[] = [
   },
 ];
 
+const WORKFLOW_NOTIFICATION = [
+  "[BB workflow finished · wfr_84b2de36]",
+  "",
+  "Run wfr_84b2de36 (p1-infra) succeeded.",
+  "Result: **5 build legs finished**; 3 confirmed and 2 need remediation.",
+  "",
+  "- Local Cloudflare stack: confirmed",
+  "- Lexical-in-DO spike: confirmed",
+  "- Converter harness: refuted",
+  "",
+  "Run `bb workflows status wfr_84b2de36` for authoritative details.",
+].join("\n");
+
 export function Overview() {
   return (
     <StoryCard>
@@ -167,7 +181,7 @@ export function Overview() {
               senderThreadId={null}
               senderThreadTitle={null}
               senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+              senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind={row.systemMessageKind}
               systemMessageSubject={row.systemMessageSubject}
@@ -181,6 +195,30 @@ export function Overview() {
         </StoryRow>
       ))}
       <StoryRow
+        label="workflow completion"
+        hint="workflow completion — rendered as a generated status row with an expandable result"
+      >
+        <TimelineStage>
+          <ConversationMessageContent
+            role="user"
+            initiator="system"
+            childOrigin={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderChildOrigin={null}
+            senderIsPluginSideChat={false}
+            resolveSegmentLinkHref={resolveThreadLink}
+            systemMessageKind="workflow-finished"
+            systemMessageSubject={null}
+            text={WORKFLOW_NOTIFICATION}
+            attachments={null}
+            mentions={[]}
+            projectId="proj_demo"
+            turnRequest={acceptedMessage}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
         label="agent (reference pattern)"
         hint="agent-to-agent message — 'Message from [thread]', the pattern Family B extends"
       >
@@ -192,7 +230,7 @@ export function Overview() {
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
             senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -216,7 +254,7 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -247,7 +285,7 @@ export function ClippedAgentMessage() {
             senderThreadId="thr_host_hermes"
             senderThreadTitle="Host Hermes on Flue"
             senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}

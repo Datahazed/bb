@@ -9,6 +9,7 @@ import type {
   Environment,
   PromptInput,
   ResolvedThreadExecutionOptions,
+  SystemMessageKind,
   Thread,
   ThreadTurnInitiator,
   TurnRequestTarget,
@@ -74,6 +75,8 @@ export interface SendThreadMessageArgs {
   payload: SendThreadMessagePayload;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
+  /** Trusted server/plugin provenance; never populated from the public route. */
+  systemMessageKind?: SystemMessageKind;
 }
 
 export interface ResolveMessageSenderArgs {
@@ -125,6 +128,7 @@ interface AppendAndQueueSendThreadMessageArgs {
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
+  systemMessageKind?: SystemMessageKind;
   target: TurnRequestTarget;
   thread: Thread;
 }
@@ -325,6 +329,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   queueInTransaction,
   requestId,
   senderThreadId,
+  systemMessageKind,
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
@@ -344,6 +349,12 @@ function appendAndQueueSendThreadMessageInTransaction({
             execution,
             initiator,
             senderThreadId,
+            ...(systemMessageKind !== undefined
+              ? {
+                  systemMessageKind,
+                  systemMessageSubject: null,
+                }
+              : {}),
             requestMethod: "turn/start",
             source: "tell",
             target,
@@ -393,6 +404,9 @@ export async function sendThreadMessage(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
+  if (args.systemMessageKind !== undefined && senderThreadId !== null) {
+    throw new Error("A system message cannot have an agent sender");
+  }
   let inputGroups = payload.inputGroups
     ? payload.inputGroups.map((inputGroup) =>
         senderThreadId
@@ -436,7 +450,12 @@ export async function sendThreadMessage(
   });
   // Agent-originated CLI sends still appear as normal turn requests in the
   // timeline, while initiator lets policy distinguish the source.
-  const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
+  const initiator: ThreadTurnInitiator =
+    args.systemMessageKind !== undefined
+      ? "system"
+      : senderThreadId
+        ? "agent"
+        : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =
@@ -476,6 +495,12 @@ export async function sendThreadMessage(
       input,
       inputGroups,
       senderThreadId,
+      ...(args.systemMessageKind !== undefined
+        ? {
+            systemMessageKind: args.systemMessageKind,
+            systemMessageSubject: null,
+          }
+        : {}),
       thread,
     })
   ) {
@@ -562,6 +587,9 @@ export async function sendThreadMessage(
       },
       requestId,
       senderThreadId,
+      ...(args.systemMessageKind !== undefined
+        ? { systemMessageKind: args.systemMessageKind }
+        : {}),
       target,
       thread,
     });
@@ -630,6 +658,9 @@ export async function sendThreadMessage(
     },
     requestId,
     senderThreadId,
+    ...(args.systemMessageKind !== undefined
+      ? { systemMessageKind: args.systemMessageKind }
+      : {}),
     target,
     thread,
   });

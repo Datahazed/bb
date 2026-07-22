@@ -19,6 +19,7 @@ import type {
   PluginThreadActionToast,
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
+import type { SendPluginSystemMessageArgs } from "../threads/plugin-system-messages.js";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -69,6 +70,8 @@ export interface LoadedPlugin {
 
 export interface PluginServiceDeps {
   db: DbConnection;
+  /** Trusted plugin-only system-message delivery, supplied by the full server. */
+  sendSystemMessage?: (args: SendPluginSystemMessageArgs) => Promise<void>;
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
   sharedPorts?: Pick<
     HostSharedPortCoordinator,

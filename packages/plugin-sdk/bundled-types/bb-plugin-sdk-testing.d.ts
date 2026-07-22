@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginThreadActionContext, PluginThreadActionResult, PluginInteractionRequest } from '@bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSystemMessages, PluginSettingDescriptors, PluginAgentConfiguration, PluginThreadActionContext, PluginThreadActionResult, PluginInteractionRequest } from '@bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -174,6 +174,8 @@ interface FakePluginInspectionState {
     readonly needsConfigurationMessages: string[];
     /** Recorded `bb.sdk` calls + stub control. */
     readonly sdk: FakeSdkHarness;
+    /** Trusted system-message sends, in call order. */
+    readonly systemMessages: ReadonlyArray<Parameters<PluginSystemMessages["send"]>[0]>;
     readonly registrations: FakePluginRegistrations;
     readonly sharedPortDeclarations: Array<{
         hostId: string;

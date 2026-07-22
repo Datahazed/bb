@@ -1,0 +1,1 @@
+ALTER TABLE `queued_thread_messages` ADD `system_message_kind` text;

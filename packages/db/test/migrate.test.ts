@@ -249,6 +249,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  dropQueuedSystemMessageKindColumn(db);
   db.$client
     .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
     .run();
@@ -287,6 +288,19 @@ function dropRewindAddedTables(db: DbConnection): void {
   // threads.origin_plugin_id was added by 0051; rewind it the same way.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
   dropProjectGitRemoteUrlColumn(db);
+}
+
+function dropQueuedSystemMessageKindColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "system_message_kind")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE queued_thread_messages DROP COLUMN system_message_kind",
+      )
+      .run();
+  }
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -390,6 +404,7 @@ function dropSideChatPluginExperimentColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
     .run();
+  dropQueuedSystemMessageKindColumn(db);
 }
 
 // Thread-search replay scenarios start from a full `migrate(db)` and then roll
@@ -472,6 +487,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropQueuedSystemMessageKindColumn(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`

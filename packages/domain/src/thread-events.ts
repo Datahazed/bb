@@ -48,6 +48,7 @@ export const systemMessageKindValues = [
   "child-failed",
   "child-interrupted",
   "child-outcome-batch",
+  "workflow-finished",
   "unlabeled",
 ] as const;
 export const systemMessageKindSchema = z.enum(systemMessageKindValues);

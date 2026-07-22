@@ -6,7 +6,12 @@ import type {
   SystemMessageSubject,
   ThreadChildOrigin,
 } from "@bb/domain";
-import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
+import type {
+  TimelineTitle,
+  TimelineTitleSegment,
+  WorkflowNotificationEnvelope,
+  WorkflowNotificationStatus,
+} from "@bb/thread-view";
 import { type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -70,6 +75,7 @@ interface GeneratedConversationMessageProps {
   systemMessageSubject: SystemMessageSubject | null;
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workflowNotification: WorkflowNotificationEnvelope | null;
 }
 
 type GeneratedConversationSourceKind = "agent" | "system";
@@ -101,6 +107,7 @@ interface GeneratedConversationTitleArgs {
   sourceIsPluginSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
+  workflowNotification: WorkflowNotificationEnvelope | null;
 }
 
 export function generatedConversationBodySlice({
@@ -214,9 +221,34 @@ function systemMessageTitleSegments(
       return subject !== null && subject.kind === "thread-batch"
         ? [verbSegment(`${subject.count} threads updated`)]
         : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
+    case "workflow-finished":
+      return [verbSegment("Workflow finished")];
     case "unlabeled":
       return SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
   }
+}
+
+function workflowNotificationStatusLabel(
+  status: WorkflowNotificationStatus,
+): string {
+  switch (status) {
+    case "succeeded":
+      return "succeeded";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "was cancelled";
+  }
+}
+
+function workflowNotificationTitleSegments(
+  notification: WorkflowNotificationEnvelope,
+): TimelineTitleSegment[] {
+  return [
+    verbSegment("Workflow"),
+    subjectSegment(notification.name, null),
+    verbSegment(workflowNotificationStatusLabel(notification.status)),
+  ];
 }
 
 export function generatedConversationTitle({
@@ -228,6 +260,7 @@ export function generatedConversationTitle({
   sourceIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
+  workflowNotification,
 }: GeneratedConversationTitleArgs): TimelineTitle {
   // The lead-in names the relationship to the source: a fork branched from it
   // ("Forked from"), a side chat is replying to it ("Replying to"); any other
@@ -268,7 +301,9 @@ export function generatedConversationTitle({
             truncate: true,
           }),
         ]
-      : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
+      : workflowNotification === null
+        ? systemMessageTitleSegments(systemMessageKind, systemMessageSubject)
+        : workflowNotificationTitleSegments(workflowNotification);
 
   return {
     action: sideChatAction,
@@ -310,15 +345,22 @@ export function systemMessageIconName(
       return "AlertCircle";
     case "child-outcome-batch":
       return "ListTodo";
+    case "workflow-finished":
+      return "Workflow";
     case "unlabeled":
       return "Info";
   }
+}
+
+export function workflowNotificationIconName(): IconName {
+  return "Workflow";
 }
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
   childOrigin: ThreadChildOrigin | null,
   systemMessageKind: SystemMessageKind,
+  workflowNotification: WorkflowNotificationEnvelope | null,
 ): IconName {
   // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
   // source kind; in practice fork anchors are always agent-initiated.
@@ -329,7 +371,9 @@ function generatedConversationIconName(
     case "agent":
       return "MessageSquare";
     case "system":
-      return systemMessageIconName(systemMessageKind);
+      return workflowNotification === null
+        ? systemMessageIconName(systemMessageKind)
+        : workflowNotificationIconName();
   }
 }
 
@@ -442,6 +486,7 @@ export const GeneratedConversationMessage = memo(
     systemMessageSubject,
     text,
     turnRequest,
+    workflowNotification,
   }: GeneratedConversationMessageProps) {
     const trimStartLength = text.length - text.trimStart().length;
     const messageText = text.trim();
@@ -469,6 +514,7 @@ export const GeneratedConversationMessage = memo(
           sourceIsPluginSideChat,
           systemMessageKind,
           systemMessageSubject,
+          workflowNotification,
         }),
       [
         childOrigin,
@@ -479,6 +525,7 @@ export const GeneratedConversationMessage = memo(
         sourceIsPluginSideChat,
         systemMessageKind,
         systemMessageSubject,
+        workflowNotification,
       ],
     );
     const sourceTitleContent =
@@ -497,6 +544,7 @@ export const GeneratedConversationMessage = memo(
       sourceKind,
       childOrigin,
       systemMessageKind,
+      workflowNotification,
     );
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.

@@ -1,6 +1,7 @@
 import type {
   TimelineConversationAttachments,
   TimelineRow,
+  TimelineUserConversationRow,
 } from "@bb/server-contract";
 import { ThreadTimelineSurface } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
@@ -15,13 +16,21 @@ const now = 1_800_000_000_000;
 function conversationRow({
   attachments = null,
   id,
+  initiator = "user",
   role,
+  senderThreadId = null,
+  systemMessageKind = "unlabeled",
+  systemMessageSubject = null,
   text,
   index,
 }: {
   attachments?: TimelineConversationAttachments | null;
   id: string;
+  initiator?: TimelineUserConversationRow["initiator"];
   role: "user" | "assistant";
+  senderThreadId?: TimelineUserConversationRow["senderThreadId"];
+  systemMessageKind?: TimelineUserConversationRow["systemMessageKind"];
+  systemMessageSubject?: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
   index: number;
 }): TimelineRow {
@@ -41,10 +50,10 @@ function conversationRow({
     return {
       ...base,
       role: "user",
-      initiator: "user",
-      senderThreadId: null,
-      systemMessageKind: "unlabeled",
-      systemMessageSubject: null,
+      initiator,
+      senderThreadId,
+      systemMessageKind,
+      systemMessageSubject,
       turnRequest: {
         kind: "message",
         status: "accepted",
@@ -59,9 +68,8 @@ function conversationRow({
   };
 }
 
-const timelineRows: TimelineRow[] = Array.from(
-  { length: 18 },
-  (_, turnIndex) => [
+const timelineRows: TimelineRow[] = [
+  ...Array.from({ length: 18 }, (_, turnIndex) => [
     conversationRow({
       id: `row_user_${turnIndex + 1}`,
       role: "user",
@@ -88,8 +96,34 @@ const timelineRows: TimelineRow[] = Array.from(
       index: turnIndex * 2 + 1,
       text: `Agent response ${turnIndex + 1}: keep the active item synced to the timeline viewport, preserve the locked segmented tabs, and leave enough repeated content in the story for the bottom-only fade to appear when the panel list overflows.`,
     }),
-  ],
-).flat();
+  ]).flat(),
+  conversationRow({
+    id: "row_system_child_complete",
+    role: "user",
+    initiator: "system",
+    index: 36,
+    systemMessageKind: "child-completed",
+    systemMessageSubject: {
+      kind: "thread",
+      threadId: "thr_indexer",
+      threadName: "Indexer",
+    },
+    text: "All indexing work completed and the search fixtures passed.",
+  }),
+  conversationRow({
+    id: "row_system_workflow_complete",
+    role: "user",
+    initiator: "system",
+    index: 37,
+    systemMessageKind: "workflow-finished",
+    text: [
+      "[BB workflow finished · wfr_84b2de36]",
+      "",
+      "Run wfr_84b2de36 (p1-infra) succeeded.",
+      "Result: 5 build legs finished; 3 confirmed and 2 need remediation.",
+    ].join("\n"),
+  }),
+];
 
 export function Default() {
   return (

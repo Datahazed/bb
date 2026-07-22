@@ -43,6 +43,7 @@ import type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
+  PluginSystemMessages,
   PluginThreadActionContext,
   PluginThreadActionResult,
   PluginThreadEventHandler,
@@ -343,6 +344,10 @@ export interface FakePluginInspectionState {
   readonly needsConfigurationMessages: string[];
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
+  /** Trusted system-message sends, in call order. */
+  readonly systemMessages: ReadonlyArray<
+    Parameters<PluginSystemMessages["send"]>[0]
+  >;
   readonly registrations: FakePluginRegistrations;
   readonly sharedPortDeclarations: Array<{
     hostId: string;
@@ -1852,6 +1857,21 @@ function createFakePluginHostInternal(
     },
   };
 
+  const systemMessages: Array<Parameters<PluginSystemMessages["send"]>[0]> = [];
+  const experimental_systemMessages: PluginSystemMessages = {
+    async send(args) {
+      assertLive();
+      systemMessages.push(structuredClone(args));
+      // Preserve the fake host's existing SDK send seam so plugin tests can
+      // inject delivery failures without a real thread service.
+      await sdk.threads.send({
+        threadId: args.threadId,
+        input: [{ type: "text", text: args.text, mentions: [] }],
+        mode: "queue-if-active",
+      });
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1866,6 +1886,7 @@ function createFakePluginHostInternal(
     ui,
     events,
     status,
+    experimental_systemMessages,
     server,
     hosts,
     get sdk() {
@@ -1925,6 +1946,7 @@ function createFakePluginHostInternal(
     needsConfigurationMessages,
     sharedPortDeclarations,
     sdk: sdkHarness,
+    systemMessages,
     registrations: {
       settingsDescriptors,
       httpRoutes,

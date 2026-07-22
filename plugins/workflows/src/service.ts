@@ -1135,19 +1135,10 @@ export function createWorkflowService(
     const settings = settingsForRun(latest);
     if (!beginNotificationAttempt(db, run.id)) return;
     try {
-      await bb.sdk.threads.send({
+      await bb.experimental_systemMessages.send({
         threadId: latest.originThreadId,
-        mode: "queue-if-active",
-        input: [
-          {
-            type: "text",
-            text: formatWorkflowNotification(
-              latest,
-              settings.maxNotificationBytes,
-            ),
-            mentions: [],
-          },
-        ],
+        systemMessageKind: "workflow-finished",
+        text: formatWorkflowNotification(latest, settings.maxNotificationBytes),
       });
       markNotificationSent(db, run.id);
     } catch (error) {

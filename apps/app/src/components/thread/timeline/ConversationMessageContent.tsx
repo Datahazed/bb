@@ -5,7 +5,10 @@ import type {
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
-import { fileNameFromPath } from "@bb/thread-view";
+import {
+  fileNameFromPath,
+  parseWorkflowNotificationEnvelope,
+} from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   MarkdownPreview,
@@ -401,6 +404,42 @@ function UserConversationMessage({
   text,
   turnRequest,
 }: UserConversationMessageProps) {
+  const workflowNotification =
+    initiator === "system" && systemMessageKind === "workflow-finished"
+      ? parseWorkflowNotificationEnvelope(text)
+      : null;
+  if (workflowNotification !== null) {
+    const bodyText = text.slice(workflowNotification.bodyStart);
+    const bodyMentions = shiftMentionsToTextRange({
+      mentions,
+      rangeStart: workflowNotification.bodyStart,
+      rangeEnd: workflowNotification.bodyStart + bodyText.length,
+    });
+    return (
+      <GeneratedConversationMessage
+        attachmentItems={attachmentItems}
+        childOrigin={null}
+        mentions={bodyMentions}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+        projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
+        resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
+        sourceKind="system"
+        sourceName="BB"
+        sourceThreadId={null}
+        sourceIsSideChat={false}
+        sourceIsPluginSideChat={false}
+        systemMessageKind={systemMessageKind}
+        systemMessageSubject={null}
+        text={bodyText}
+        turnRequest={turnRequest}
+        workflowNotification={workflowNotification}
+      />
+    );
+  }
+
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
@@ -432,6 +471,7 @@ function UserConversationMessage({
         systemMessageSubject={systemMessageSubject}
         text={body.text}
         turnRequest={turnRequest}
+        workflowNotification={null}
       />
     );
   }
@@ -463,6 +503,7 @@ function UserConversationMessage({
         systemMessageSubject={systemMessageSubject}
         text={body.text}
         turnRequest={turnRequest}
+        workflowNotification={null}
       />
     );
   }

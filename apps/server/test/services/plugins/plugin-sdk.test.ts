@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getThread,
+  listQueuedThreadMessages,
   migrate,
   setExperiments,
   type DbConnection,
@@ -73,6 +74,7 @@ describe("plugin bb.sdk bind gate", () => {
     label: "sawyer-air",
     baseDomain: "getbb.app",
   });
+  const sendSystemMessage = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -83,8 +85,10 @@ describe("plugin bb.sdk bind gate", () => {
     sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
     ensureSharedPortTunnel.mockClear();
+    sendSystemMessage.mockClear();
     service = createPluginService({
       db,
+      sendSystemMessage,
       sharedPorts,
       ensureSharedPortTunnel,
       hub: {
@@ -120,6 +124,29 @@ describe("plugin bb.sdk bind gate", () => {
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
     expect(typeof api.sdk.threads.fork).toBe("function");
     expect(typeof api.sdk.threads.spawn).toBe("function");
+  });
+
+  it("delivers validated trusted system messages through the server callback", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-system-message",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "system-message");
+    const message = {
+      threadId: "thr_origin",
+      systemMessageKind: "workflow-finished" as const,
+      text: "Workflow finished",
+    };
+
+    await api.experimental_systemMessages.send(message);
+
+    expect(sendSystemMessage).toHaveBeenCalledWith(message);
+    await expect(
+      (
+        api.experimental_systemMessages.send as (args: unknown) => Promise<void>
+      )({ ...message, systemMessageKind: "child-completed" }),
+    ).rejects.toThrow();
   });
 
   it("marks a plugin error when its factory touches bb.sdk at load time", async () => {
@@ -324,6 +351,17 @@ describe("plugin bb.sdk against a running server", () => {
           input: [{ type: "text", text: "Continue", mentions: [] }],
         }),
       ).resolves.toEqual({ ok: true });
+      await api.experimental_systemMessages.send({
+        threadId: operable.id,
+        systemMessageKind: "workflow-finished",
+        text: "Workflow finished",
+      });
+      expect(listQueuedThreadMessages(server.db, operable.id)).toContainEqual(
+        expect.objectContaining({
+          systemMessageKind: "workflow-finished",
+          senderThreadId: null,
+        }),
+      );
       await expect(
         api.sdk.threads.stop({ threadId: operable.id }),
       ).resolves.toEqual({ ok: true });
