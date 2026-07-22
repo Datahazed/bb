@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SystemMessageKind, SystemMessageSubject } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import {
-  generatedConversationTitle,
-  workflowNotificationIconName,
-} from "./GeneratedConversationMessage.js";
+import { generatedConversationTitle } from "./GeneratedConversationMessage.js";
 
 const threadSubject: SystemMessageSubject = {
   kind: "thread",
@@ -133,10 +130,6 @@ describe("generatedConversationTitle — system source", () => {
 });
 
 describe("generatedConversationTitle — workflow notification", () => {
-  it("uses the shared workflow icon", () => {
-    expect(workflowNotificationIconName()).toBe("Workflow");
-  });
-
   it("names the workflow and exposes its terminal status", () => {
     const title = generatedConversationTitle({
       childOrigin: null,

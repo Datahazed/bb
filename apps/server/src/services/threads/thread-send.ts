@@ -462,7 +462,7 @@ export async function sendThreadMessage(
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
       : null;
-  if (senderThreadId === null) {
+  if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource:

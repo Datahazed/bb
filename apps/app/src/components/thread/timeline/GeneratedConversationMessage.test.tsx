@@ -91,6 +91,7 @@ function renderWorkflowCompleted({ trusted = true } = {}) {
           senderThreadId={null}
           senderThreadTitle={null}
           senderChildOrigin={null}
+          senderIsPluginSideChat={false}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind={trusted ? "workflow-finished" : "unlabeled"}
           systemMessageSubject={null}

@@ -352,15 +352,10 @@ export function systemMessageIconName(
   }
 }
 
-export function workflowNotificationIconName(): IconName {
-  return "Workflow";
-}
-
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
   childOrigin: ThreadChildOrigin | null,
   systemMessageKind: SystemMessageKind,
-  workflowNotification: WorkflowNotificationEnvelope | null,
 ): IconName {
   // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
   // source kind; in practice fork anchors are always agent-initiated.
@@ -371,9 +366,7 @@ function generatedConversationIconName(
     case "agent":
       return "MessageSquare";
     case "system":
-      return workflowNotification === null
-        ? systemMessageIconName(systemMessageKind)
-        : workflowNotificationIconName();
+      return systemMessageIconName(systemMessageKind);
   }
 }
 
@@ -544,7 +537,6 @@ export const GeneratedConversationMessage = memo(
       sourceKind,
       childOrigin,
       systemMessageKind,
-      workflowNotification,
     );
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.

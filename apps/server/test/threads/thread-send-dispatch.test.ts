@@ -1,9 +1,12 @@
 import {
   archiveThread,
+  createQueuedThreadMessage,
   getQueuedThreadMessage,
   getThread,
+  getThreadExecutionOverride,
   listQueuedThreadMessages,
   markThreadDeleted,
+  setThreadExecutionOverride,
   updateThread,
 } from "@bb/db";
 import {
@@ -16,10 +19,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   listQueuedThreadCommands,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -190,6 +195,83 @@ describe("queued message dispatch gate", () => {
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
       expect(getQueuedThreadMessage(harness.db, queued.id)).not.toBeNull();
+    });
+  });
+
+  it("does not restore a queued system message's model as a user override", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-system-message-model",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/system-message-model",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/system-message-model",
+        status: "ready",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "claude-code",
+        status: "idle",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "claude-sonnet-5",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type === "host.list_files") {
+            return { ok: true, result: { files: [], truncated: false } };
+          }
+          if (command.type === "host.read_file") {
+            return {
+              ok: false,
+              errorCode: "ENOENT",
+              errorMessage: `Path does not exist: ${command.path}`,
+            };
+          }
+          if (command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [
+                  availableModelFixture({ model: "claude-opus-4-8[1m]" }),
+                  availableModelFixture({ model: "claude-sonnet-5" }),
+                ],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected host RPC command ${command.type}`);
+        },
+      });
+      const queued = createQueuedThreadMessage(harness.db, harness.hub, {
+        threadId: thread.id,
+        content: textInput("Workflow finished"),
+        systemMessageKind: "workflow-finished",
+        model: "claude-opus-4-8[1m]",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      await sendQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: "claude-sonnet-5",
+        reasoningLevelOverride: null,
+      });
     });
   });
 });
