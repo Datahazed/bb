@@ -36,6 +36,7 @@ interface QueryOptions {
 
 const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
+const SYSTEM_EXECUTION_OPTIONS_REFETCH_MS = 60_000;
 
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
@@ -83,6 +84,7 @@ export function useSystemExecutionOptions(
         signal,
       }),
     enabled,
+    refetchInterval: SYSTEM_EXECUTION_OPTIONS_REFETCH_MS,
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,

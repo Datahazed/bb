@@ -39,6 +39,8 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   modelLoadError: null,
 };
 
+const SYSTEM_EXECUTION_OPTIONS_REFETCH_MS = 60_000;
+
 const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
 
 const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
@@ -53,6 +55,36 @@ afterEach(() => {
 });
 
 describe("useSystemExecutionOptions", () => {
+  it("polls while mounted because provider model availability can change", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(
+      EXECUTION_OPTIONS_RESPONSE,
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+
+    renderHook(
+      () => useSystemExecutionOptions({ providerId: "claude-code" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
+    });
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: systemExecutionOptionsQueryKey({
+        environmentId: null,
+        hostId: null,
+        providerId: "claude-code",
+      }),
+    });
+
+    expect(query?.options).toEqual(
+      expect.objectContaining({
+        refetchInterval: SYSTEM_EXECUTION_OPTIONS_REFETCH_MS,
+      }),
+    );
+  });
+
   it("separates requests and cache entries for different hosts", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       args?.hostId === "host-a"
