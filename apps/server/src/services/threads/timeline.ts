@@ -11,15 +11,15 @@ import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
-  TimelinePaginationCursor,
   ThreadConversationOutlineAttachmentSummary,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import {
-  findTimelineSegmentAnchorSequenceAfter,
   findTimelineWindowBudgetFloorSequence,
   getEnvironment,
+  findUnfinishedTurnCoveringSequence,
+  hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
   listRecentStoredEventRows,
@@ -27,6 +27,9 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
+  isTimelineCursorSequencePresent,
+  listItemEventSpansByItemIds,
+  listStoredItemLifecycleRowsByItemIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -37,14 +40,21 @@ import {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
 } from "@bb/db";
-import type { DbConnection, StoredEventRow } from "@bb/db";
+import type {
+  DbConnection,
+  InlineOutputCharLimit,
+  StandardTimelineSegmentAnchorRow,
+  StoredEventRow,
+} from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "../lib/duration.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
   paginateTimelineRows,
+  readInTurnCursorSequence,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
+  type TimelineInTurnWindowStart,
 } from "./timeline-pagination.js";
 
 export type {
@@ -110,6 +120,13 @@ interface BuildThreadTimelineOptions {
   eventBudget: number;
   includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
+  /**
+   * Cap on the inline output a window reads out of SQLite, applied during the
+   * read rather than to the finished rows. The window renders a preview either
+   * way, so reading a 300 KB command output only to shorten it after projection
+   * is pure I/O and `JSON.parse` cost. `null` reads payloads as stored.
+   */
+  maxInlineOutputChars: InlineOutputCharLimit;
   /** Thread high-water event sequence this window reflects (echoed to clients). */
   maxSeq: number;
   page: ThreadTimelinePageRequest;
@@ -203,8 +220,9 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 }
 
 interface TimelineEventRowSelection {
-  acceptedClientRequestContextRows: StoredEventRow[];
   contextOnlyToolCallIds: Set<string>;
+  /** See {@link paginateTimelineRows}. */
+  inTurnWindowStart: TimelineInTurnWindowStart | null;
   /** See {@link paginateTimelineRows}. */
   knownHasOlderSegments: boolean | null;
   paginationPage: ThreadTimelinePageRequest;
@@ -214,9 +232,18 @@ interface TimelineEventRowSelection {
 }
 
 interface TimelineWindowRowsArgs {
-  includeParentContext?: boolean;
   rows: readonly StoredEventRow[];
   threadId: string;
+}
+
+/**
+ * Parent/child backfill reads whole event payloads, so unlike the other window
+ * backfills it has to say how much inline output it is willing to read.
+ */
+interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
+  includeParentContext?: boolean;
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
 }
 
 interface TimelineWindowParentedRowsResult {
@@ -227,21 +254,6 @@ interface TimelineWindowParentedRowsResult {
 interface SelectAcceptedClientRequestContextRowsArgs {
   rows: readonly StoredEventRow[];
   threadId: string;
-}
-
-interface CollectSteerClientRequestIdsBeforeCursorArgs {
-  beforeCursor: TimelinePaginationCursor;
-  rows: readonly StoredEventRow[];
-}
-
-interface SplitFutureSteerAcceptedContextRowsArgs {
-  beforeCursor: TimelinePaginationCursor;
-  rows: readonly StoredEventRow[];
-}
-
-interface SplitFutureSteerAcceptedContextRowsResult {
-  contextRows: StoredEventRow[];
-  rows: StoredEventRow[];
 }
 
 export function toThreadEventWithMeta(
@@ -324,58 +336,6 @@ function collectSteerClientRequestIdsNeedingAcceptedContext(
   return [...clientRequestIds];
 }
 
-function collectSteerClientRequestIdsBeforeCursor(
-  args: CollectSteerClientRequestIdsBeforeCursorArgs,
-): ReadonlySet<ClientTurnRequestId> {
-  const clientRequestIds = new Set<ClientTurnRequestId>();
-  for (const row of args.rows) {
-    if (row.sequence >= args.beforeCursor.anchorSeq) {
-      continue;
-    }
-    const clientRequestId = tryReadSteerClientTurnRequestedRequestId(row);
-    if (clientRequestId !== null) {
-      clientRequestIds.add(clientRequestId);
-    }
-  }
-  return clientRequestIds;
-}
-
-function splitFutureSteerAcceptedContextRows(
-  args: SplitFutureSteerAcceptedContextRowsArgs,
-): SplitFutureSteerAcceptedContextRowsResult {
-  const steerClientRequestIds = collectSteerClientRequestIdsBeforeCursor(args);
-  if (steerClientRequestIds.size === 0) {
-    return {
-      contextRows: [],
-      rows: [...args.rows],
-    };
-  }
-
-  const contextRows: StoredEventRow[] = [];
-  const rows: StoredEventRow[] = [];
-  for (const row of args.rows) {
-    if (
-      row.type !== "turn/input/accepted" ||
-      row.sequence <= args.beforeCursor.anchorSeq
-    ) {
-      rows.push(row);
-      continue;
-    }
-
-    const clientRequestId = parseAcceptedInputClientRequestId(row);
-    if (steerClientRequestIds.has(clientRequestId)) {
-      contextRows.push(row);
-      continue;
-    }
-    rows.push(row);
-  }
-
-  return {
-    contextRows,
-    rows,
-  };
-}
-
 function mergeStoredEventRowsById(
   rows: readonly StoredEventRow[],
 ): StoredEventRow[] {
@@ -446,7 +406,7 @@ function collectStoredParentToolCallIds(
 
 function ensureTimelineWindowParentedRows(
   db: DbConnection,
-  args: TimelineWindowRowsArgs,
+  args: TimelineWindowParentedRowsArgs,
 ): TimelineWindowParentedRowsResult {
   let rows = [...args.rows];
   const rowIds = new Set(rows.map((row) => row.id));
@@ -466,6 +426,7 @@ function ensureTimelineWindowParentedRows(
 
     const childRows = listStoredEventRowsByParentToolCallIds(db, {
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      maxInlineOutputChars: args.maxInlineOutputChars,
       parentToolCallIds: toolCallIdsToFetch,
       threadId: args.threadId,
     });
@@ -495,6 +456,7 @@ function ensureTimelineWindowParentedRows(
   );
   const parentRows = listStoredToolCallRowsByItemIds(db, {
     itemIds: missingParentToolCallIds,
+    maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
   });
   const newParentRows = parentRows.filter((row) => !rowIds.has(row.id));
@@ -513,6 +475,33 @@ function ensureTimelineWindowParentedRows(
   };
 }
 
+/**
+ * Lowest sequence any of these requests was made at.
+ *
+ * The accepted row for a request always follows the request itself, so this is
+ * the only floor that is guaranteed not to skip one. Searching from the newest
+ * row in the window instead looks safe and is not: the window carries rows
+ * backfilled from *past* its own upper bound — the latest state of an in-window
+ * background task, a tool call's children — and a floor taken from those can
+ * sit above an accepted row the window is missing.
+ */
+function minSequenceOfClientRequests(
+  rows: readonly StoredEventRow[],
+  clientRequestIds: ReadonlySet<ClientTurnRequestId>,
+): number {
+  let minSequence = Number.POSITIVE_INFINITY;
+  for (const row of rows) {
+    if (row.type !== "client/turn/requested") {
+      continue;
+    }
+    const requestId = tryReadClientTurnRequestedRequestId(row);
+    if (requestId !== null && clientRequestIds.has(requestId)) {
+      minSequence = Math.min(minSequence, row.sequence);
+    }
+  }
+  return Number.isFinite(minSequence) ? minSequence : 0;
+}
+
 function selectAcceptedClientRequestContextRows(
   db: DbConnection,
   args: SelectAcceptedClientRequestContextRowsArgs,
@@ -525,7 +514,10 @@ function selectAcceptedClientRequestContextRows(
   }
 
   return listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
-    afterSequence: maxStoredEventSequence(args.rows),
+    afterSequence: minSequenceOfClientRequests(
+      args.rows,
+      new Set(clientRequestIds),
+    ),
     clientRequestIds,
     threadId: args.threadId,
   });
@@ -607,16 +599,18 @@ function selectFullTimelineEventRows(
   db: DbConnection,
   thread: Thread,
   page: ThreadTimelinePageRequest,
+  maxInlineOutputChars: InlineOutputCharLimit,
 ): TimelineEventRowSelection {
   return {
-    acceptedClientRequestContextRows: [],
     contextOnlyToolCallIds: new Set(),
+    inTurnWindowStart: null,
     knownHasOlderSegments: null,
     paginationPage: page,
     responsePageKind: page.kind,
     rows: listRecentStoredEventRows(db, {
       threadId: thread.id,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      maxInlineOutputChars,
     }),
     strategy: "full",
   };
@@ -672,6 +666,95 @@ function ensureTimelineWindowTurnStartedRows(
   }
 
   return mergeStoredEventRowsById([...turnStartedRows, ...args.rows]);
+}
+
+interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
+  /** Exclusive upper bound of the window, or undefined for the latest page. */
+  beforeSequence: number | undefined;
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
+  /** Inclusive lower bound of the window. */
+  sequenceStart: number;
+}
+
+/**
+ * Makes a window cut inside a turn own whole items rather than halves of them.
+ *
+ * A cut on a user message never lands inside an item. A cut on the event budget
+ * does: an `npm run dev` that starts at sequence 2,706 and fails at 5,450
+ * straddles any cut in between, and each side then projects its own row under
+ * the same row id — one of them permanently "pending", and whichever the client
+ * merges last wins.
+ *
+ * The rule is that an item belongs to the newest window holding any of its real
+ * rows. So this window drops the items that a newer window will also show, and
+ * backfills the earlier lifecycle rows of the ones it keeps. Background-task
+ * items are left alone: they deliberately outlive their window and
+ * {@link ensureTimelineWindowBackgroundTaskStateRows} already carries their
+ * current state forward.
+ */
+function ensureInTurnWindowWholeItemRows(
+  db: DbConnection,
+  args: InTurnWindowItemRowsArgs,
+): StoredEventRow[] {
+  const windowItemIds = new Set<string>();
+  for (const row of args.rows) {
+    if (
+      row.itemId !== null &&
+      row.itemKind !== "backgroundTask" &&
+      row.sequence >= args.sequenceStart
+    ) {
+      windowItemIds.add(row.itemId);
+    }
+  }
+  if (windowItemIds.size === 0) {
+    return [...args.rows];
+  }
+
+  // Spans, not lifecycle rows. An item emits between its start and its end —
+  // output deltas, reasoning text, tool progress — and an unfinished item has
+  // no end at all, so "does this item reach past the cut" cannot be answered
+  // from `item/started` and `item/completed`.
+  const spans = listItemEventSpansByItemIds(db, {
+    itemIds: [...windowItemIds],
+    threadId: args.threadId,
+  });
+  const itemIdsOwnedByNewerWindow = new Set<string>();
+  const itemIdsStartingBeforeWindow = new Set<string>();
+  for (const span of spans) {
+    if (
+      args.beforeSequence !== undefined &&
+      span.maxSequence >= args.beforeSequence
+    ) {
+      itemIdsOwnedByNewerWindow.add(span.itemId);
+      continue;
+    }
+    if (span.minSequence < args.sequenceStart) {
+      itemIdsStartingBeforeWindow.add(span.itemId);
+    }
+  }
+
+  const rows = args.rows.filter(
+    (row) => row.itemId === null || !itemIdsOwnedByNewerWindow.has(row.itemId),
+  );
+  if (itemIdsStartingBeforeWindow.size === 0) {
+    return rows;
+  }
+
+  // This window owns these items, so it needs the lifecycle rows that fell
+  // below the cut — without them a finished command renders "pending" and
+  // carries neither its command line nor its start time. Only the two lifecycle
+  // types are fetched: the rest of what an item emitted below the cut is the
+  // older page's content, and pulling all of it back would restore exactly the
+  // unbounded read this window exists to avoid.
+  const backfillRows = listStoredItemLifecycleRowsByItemIds(db, {
+    itemIds: [...itemIdsStartingBeforeWindow],
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    threadId: args.threadId,
+  }).filter((row) => row.sequence < args.sequenceStart);
+  return backfillRows.length === 0
+    ? rows
+    : mergeStoredEventRowsById([...backfillRows, ...rows]);
 }
 
 /**
@@ -761,19 +844,32 @@ interface ResolveTimelineSegmentWindowArgs {
 
 interface ResolvedTimelineSegmentWindow {
   beforeSequence: number | undefined;
+  /**
+   * Whether either boundary of this window falls inside a turn rather than on a
+   * user message. See {@link ensureInTurnWindowWholeItemRows}.
+   */
+  cutsInsideTurn: boolean;
   /** Segments this page will actually return; ≤ `page.segmentLimit`. */
   effectiveSegmentLimit: number;
   hasAnchors: boolean;
+  /** See {@link paginateTimelineRows}; non-null for a window cut inside a turn. */
+  inTurnWindowStart: TimelineInTurnWindowStart | null;
   /** See {@link paginateTimelineRows}; null when the sentinel infers it. */
   knownHasOlderSegments: boolean | null;
   sequenceStart: number;
 }
 
+interface ResolveTimelineWindowBoundsArgs {
+  anchors: readonly StandardTimelineSegmentAnchorRow[];
+  budgetFloorSequence: number | undefined;
+  segmentLimit: number;
+  threadId: string;
+}
+
 /**
  * Number of leading (newest) anchors whose segments fit inside the event
- * budget, clamped to at least one: a single turn larger than the whole budget
- * still has to render, and returning zero segments would present an empty
- * thread rather than a slow one.
+ * budget. Zero means the newest turn on its own is larger than the whole
+ * budget, which is what forces the in-turn window below.
  */
 function countAffordableAnchors(
   anchors: readonly { sequence: number }[],
@@ -787,7 +883,87 @@ function countAffordableAnchors(
   const affordable = anchors.filter(
     (anchor) => anchor.sequence >= budgetFloorSequence,
   ).length;
-  return Math.max(1, Math.min(maxSegments, affordable));
+  return Math.min(maxSegments, affordable);
+}
+
+/**
+ * Where a page's window starts, given the anchors available to it.
+ *
+ * Normally that is an anchor: the oldest user message whose segment fits the
+ * budget. When not one anchor fits, the newest turn alone is bigger than the
+ * budget, and cutting on anchors bounds nothing — an agent working through a
+ * 3,900-event turn re-reads and re-projects all of it on every update, and the
+ * page reports no older rows, so nothing else can shrink it either. Such a
+ * window starts at the budget floor instead, mid-turn, and pages backwards from
+ * there.
+ *
+ * Only while the turn is unfinished. A finished turn collapses into one summary
+ * row spanning the whole turn, and two pages cannot each own that row; an
+ * unfinished turn projects its work as ordinary top-level rows that page and
+ * merge like any others. So a finished oversized turn keeps the old behaviour:
+ * one segment, whole turn, however much that costs.
+ *
+ * One row is still turn-scoped rather than per-item across an unfinished turn:
+ * the context-compaction banner is keyed by turn id, deliberately, so a
+ * `thread/compacted` event with no item id can join its lifecycle rows. A turn
+ * that compacts twice on opposite sides of the cut therefore emits the banner
+ * from both pages instead of once. The client keys rows by id and renders one,
+ * so the effect is which of the two compactions it is dated from.
+ *
+ * Delegation children are another aggregate, but one that cannot tolerate the
+ * same duplicate-id merge: each page would hold a different `childRows` subset
+ * under the same parent row and the client would discard one. Parent closure
+ * also follows every descendant without sequence bounds, so pretending to cut
+ * there would silently restore the unbounded read. A cut crossed by a parented
+ * event therefore keeps the whole turn, just like a finished turn, until
+ * nested delegation rows have their own pagination contract.
+ */
+function resolveTimelineWindowBounds(
+  db: DbConnection,
+  args: ResolveTimelineWindowBoundsArgs,
+): Pick<
+  ResolvedTimelineSegmentWindow,
+  "effectiveSegmentLimit" | "inTurnWindowStart" | "sequenceStart"
+> & { affordableAnchorCount: number } {
+  const { anchors, budgetFloorSequence, segmentLimit, threadId } = args;
+  const affordable = countAffordableAnchors(
+    anchors,
+    budgetFloorSequence,
+    segmentLimit,
+  );
+  const unfinishedTurnId =
+    affordable === 0 && budgetFloorSequence !== undefined
+      ? findUnfinishedTurnCoveringSequence(db, {
+          sequence: budgetFloorSequence,
+          threadId,
+        })
+      : null;
+  if (
+    affordable === 0 &&
+    budgetFloorSequence !== undefined &&
+    unfinishedTurnId !== null &&
+    !hasParentedEventCrossingSequence(db, {
+      sequence: budgetFloorSequence,
+      threadId,
+    })
+  ) {
+    return {
+      affordableAnchorCount: 0,
+      effectiveSegmentLimit: segmentLimit,
+      inTurnWindowStart: { sequenceStart: budgetFloorSequence, threadId },
+      sequenceStart: budgetFloorSequence,
+    };
+  }
+
+  // At least one segment always comes back: returning zero would present an
+  // empty thread rather than a slow one.
+  const segmentCount = Math.max(1, affordable);
+  return {
+    affordableAnchorCount: segmentCount,
+    effectiveSegmentLimit: segmentCount,
+    inTurnWindowStart: null,
+    sequenceStart: anchors[segmentCount - 1]?.sequence ?? 0,
+  };
 }
 
 /**
@@ -810,26 +986,59 @@ function resolveTimelineSegmentWindow(
   const { eventBudget, page, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
+    cutsInsideTurn: false,
     effectiveSegmentLimit: page.segmentLimit,
     hasAnchors: false,
+    inTurnWindowStart: null,
     knownHasOlderSegments: null,
     sequenceStart: 0,
   };
 
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
-    const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
-      sequence: cursor.anchorSeq,
-      threadId,
-    });
-    if (!cursorAnchor || cursorAnchor.rowId !== cursor.anchorId) {
-      const anyAnchor = listTimelineSegmentAnchorsDescending(db, {
-        limit: 1,
+    const inTurnCursorSequence = readInTurnCursorSequence(cursor, threadId);
+    if (inTurnCursorSequence === null) {
+      const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
+        sequence: cursor.anchorSeq,
         threadId,
       });
-      if (anyAnchor.length === 0) {
-        return noAnchors;
+      if (!cursorAnchor || cursorAnchor.rowId !== cursor.anchorId) {
+        const anyAnchor = listTimelineSegmentAnchorsDescending(db, {
+          limit: 1,
+          threadId,
+        });
+        if (anyAnchor.length === 0) {
+          return noAnchors;
+        }
+        // A cursor whose sequence still exists is one this server issued from a
+        // page it built; only the *anchor* predicate no longer agrees that the
+        // row there starts a segment. That disagreement is possible because the
+        // predicate is SQL and the projection is not — a steer accepted into a
+        // turn other than the one it named is a user message to the projection
+        // and not an anchor here — and refusing the cursor over it strands
+        // every older page behind it. The window is defined by the sequence, so
+        // honour it. A cursor naming no event at all is genuinely stale.
+        if (
+          !isTimelineCursorSequencePresent(db, {
+            sequence: cursor.anchorSeq,
+            threadId,
+          })
+        ) {
+          throw new ApiError(
+            400,
+            "invalid_request",
+            "Timeline pagination cursor is no longer available",
+          );
+        }
       }
+    } else if (
+      !isTimelineCursorSequencePresent(db, {
+        sequence: inTurnCursorSequence,
+        threadId,
+      })
+    ) {
+      // An in-turn cursor names no stored row, so this is the only check that it
+      // came from a page rather than from a client picking a number.
       throw new ApiError(
         400,
         "invalid_request",
@@ -841,26 +1050,33 @@ function resolveTimelineSegmentWindow(
       limit: page.segmentLimit + 1,
       threadId,
     });
-    const beforeSequence = findTimelineSegmentAnchorSequenceAfter(db, {
-      sequence: cursor.anchorSeq,
-      threadId,
-    });
-    const affordable = countAffordableAnchors(
-      precedingAnchors,
-      findTimelineWindowBudgetFloorSequence(db, {
+    const bounds = resolveTimelineWindowBounds(db, {
+      anchors: precedingAnchors,
+      budgetFloorSequence: findTimelineWindowBudgetFloorSequence(db, {
         beforeSequence: cursor.anchorSeq,
         eventBudget,
         excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
         threadId,
       }),
-      page.segmentLimit,
-    );
+      segmentLimit: page.segmentLimit,
+      threadId,
+    });
     return {
-      beforeSequence,
-      effectiveSegmentLimit: affordable,
+      // Every cursor names the first sequence the page that issued it covered,
+      // so this page ends exactly there. Reading up to the *next anchor* past
+      // the cursor instead — and trimming that segment off after projecting it
+      // — meant an older page read one whole extra segment beyond its budget:
+      // on a thread with a 3,900-event turn, 5,513 events against a budget of
+      // 1,500, all to discard the surplus.
+      beforeSequence: cursor.anchorSeq,
+      cutsInsideTurn:
+        inTurnCursorSequence !== null || bounds.inTurnWindowStart !== null,
+      effectiveSegmentLimit: bounds.effectiveSegmentLimit,
       hasAnchors: true,
-      knownHasOlderSegments: precedingAnchors.length > affordable,
-      sequenceStart: precedingAnchors[affordable - 1]?.sequence ?? 0,
+      inTurnWindowStart: bounds.inTurnWindowStart,
+      knownHasOlderSegments:
+        precedingAnchors.length > bounds.affordableAnchorCount,
+      sequenceStart: bounds.sequenceStart,
     };
   }
 
@@ -871,23 +1087,27 @@ function resolveTimelineSegmentWindow(
   if (newestAnchors.length === 0) {
     return noAnchors;
   }
-  const affordable = countAffordableAnchors(
-    newestAnchors,
-    findTimelineWindowBudgetFloorSequence(db, {
+  const bounds = resolveTimelineWindowBounds(db, {
+    anchors: newestAnchors,
+    budgetFloorSequence: findTimelineWindowBudgetFloorSequence(db, {
       eventBudget,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       threadId,
     }),
-    page.segmentLimit,
-  );
+    segmentLimit: page.segmentLimit,
+    threadId,
+  });
   return {
     beforeSequence: undefined,
-    effectiveSegmentLimit: affordable,
+    cutsInsideTurn: bounds.inTurnWindowStart !== null,
+    effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
+    inTurnWindowStart: bounds.inTurnWindowStart,
     // Budgeted windows read exactly the segments they return, so "is there
     // more" comes from the anchor list rather than an over-read segment.
-    knownHasOlderSegments: newestAnchors.length > affordable,
-    sequenceStart: newestAnchors[affordable - 1]?.sequence ?? 0,
+    knownHasOlderSegments:
+      newestAnchors.length > bounds.affordableAnchorCount,
+    sequenceStart: bounds.sequenceStart,
   };
 }
 
@@ -896,6 +1116,7 @@ function selectStandardTimelineEventRows(
   thread: Thread,
   page: ThreadTimelinePageRequest,
   eventBudget: number,
+  maxInlineOutputChars: InlineOutputCharLimit,
 ): TimelineEventRowSelection {
   const window = resolveTimelineSegmentWindow(db, {
     eventBudget,
@@ -903,23 +1124,39 @@ function selectStandardTimelineEventRows(
     threadId: thread.id,
   });
   if (!window.hasAnchors) {
-    return selectFullTimelineEventRows(db, thread, page);
+    return selectFullTimelineEventRows(
+      db,
+      thread,
+      page,
+      maxInlineOutputChars,
+    );
   }
 
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
+  const windowRows = listStoredTimelineWindowEventRows(db, {
+    beforeSequence,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    maxInlineOutputChars,
+    sequenceStart,
+    threadId: thread.id,
+  });
+  const wholeItemWindowRows = window.cutsInsideTurn
+    ? ensureInTurnWindowWholeItemRows(db, {
+        beforeSequence,
+        maxInlineOutputChars,
+        rows: windowRows,
+        sequenceStart,
+        threadId: thread.id,
+      })
+    : windowRows;
   const selectedRowsWithInWindowTaskState =
     ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
       rows: ensureTimelineWindowTurnStartedRows(db, {
         threadId: thread.id,
-        rows: listStoredTimelineWindowEventRows(db, {
-          beforeSequence,
-          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-          sequenceStart,
-          threadId: thread.id,
-        }),
+        rows: wholeItemWindowRows,
       }),
     });
   const selectedRows =
@@ -932,19 +1169,10 @@ function selectStandardTimelineEventRows(
           }),
         })
       : selectedRowsWithInWindowTaskState;
-  const selectedRowsWithContext =
-    page.kind === "older"
-      ? splitFutureSteerAcceptedContextRows({
-          beforeCursor: page.beforeCursor,
-          rows: selectedRows,
-        })
-      : {
-          contextRows: [],
-          rows: selectedRows,
-        };
   const selectedRowsWithParentedContext = ensureTimelineWindowParentedRows(db, {
+    maxInlineOutputChars,
     threadId: thread.id,
-    rows: selectedRowsWithContext.rows,
+    rows: selectedRows,
   });
   const selectedRowsWithParentedTurnStarts =
     ensureTimelineWindowTurnStartedRows(db, {
@@ -953,9 +1181,9 @@ function selectStandardTimelineEventRows(
     });
 
   return {
-    acceptedClientRequestContextRows: selectedRowsWithContext.contextRows,
     contextOnlyToolCallIds:
       selectedRowsWithParentedContext.contextOnlyToolCallIds,
+    inTurnWindowStart: window.inTurnWindowStart,
     knownHasOlderSegments: window.knownHasOlderSegments,
     paginationPage:
       page.kind === "older"
@@ -983,6 +1211,7 @@ function selectTimelineEventRows(
     thread,
     options.page,
     options.eventBudget,
+    options.maxInlineOutputChars,
   );
 }
 
@@ -1091,13 +1320,10 @@ function buildThreadTimelineInternal(
     profile,
     "accepted-client-request-context-query",
     () =>
-      mergeStoredEventRowsById([
-        ...eventSelection.acceptedClientRequestContextRows,
-        ...selectAcceptedClientRequestContextRows(db, {
-          rows: rawEventRows,
-          threadId: thread.id,
-        }),
-      ]),
+      selectAcceptedClientRequestContextRows(db, {
+        rows: rawEventRows,
+        threadId: thread.id,
+      }),
   );
   const decodedRawEvents = measureThreadTimelineStage(
     profile,
@@ -1172,11 +1398,12 @@ function buildThreadTimelineInternal(
     profile,
     "pagination-segmentation",
     () =>
-      paginateTimelineRows(
-        timeline.rows,
-        eventSelection.paginationPage,
-        eventSelection.knownHasOlderSegments,
-      ),
+      paginateTimelineRows({
+        inTurnWindowStart: eventSelection.inTurnWindowStart,
+        knownHasOlderSegments: eventSelection.knownHasOlderSegments,
+        page: eventSelection.paginationPage,
+        rows: timeline.rows,
+      }),
   );
   if (profile) {
     profile.responseRowCount = paginatedTimeline.rows.length;
@@ -1448,6 +1675,9 @@ export function buildTimelineTurnSummaryDetails(
   });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     includeParentContext: false,
+    // This route is what "open the turn to view the full output" opens, so it
+    // is the one read that must never shorten a payload.
+    maxInlineOutputChars: null,
     threadId: thread.id,
     rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
   }).rows;
