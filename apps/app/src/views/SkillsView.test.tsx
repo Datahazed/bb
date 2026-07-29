@@ -233,7 +233,7 @@ function renderRegistrySkillRoute() {
 }
 
 describe("SkillsOverview", () => {
-  it("renders flat rows with provider filter and sort controls", () => {
+  it("defaults to bb skills and renders both filter controls", () => {
     const markup = render({
       skills: [
         makeSkill({ name: "claude-skill", provider: "claude-code" }),
@@ -245,9 +245,9 @@ describe("SkillsOverview", () => {
         }),
       ],
     });
-    expect(markup).toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Agent"');
+    expect(markup).toContain('aria-label="Agent: 1 selected"');
+    expect(markup).toContain('aria-label="Source"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
@@ -255,12 +255,57 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Built-in");
     expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
+    expect(markup).not.toContain("claude-skill");
     expect(markup.indexOf("Library")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
-    expect(markup.indexOf("bb-skill")).toBeLessThan(
-      markup.indexOf("claude-skill"),
+  });
+
+  it("filters built-in and plugin-bundled bb skills by source", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "library-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+          makeSkill({
+            name: "bb-cli",
+            provider: null,
+            scope: "bb-builtin",
+          }),
+          makeSkill({
+            name: "automations",
+            provider: null,
+            scope: "plugin",
+            pluginId: "automations",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
     );
+
+    expect(screen.getByText("library-skill")).toBeTruthy();
+    expect(screen.getByText("bb-cli")).toBeTruthy();
+    expect(screen.getByText("automations")).toBeTruthy();
+    expect(screen.getByText("Automations · bb plugin")).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Built-in bb" }));
+
+    expect(screen.getByText("bb-cli")).toBeTruthy();
+    expect(screen.queryByText("library-skill")).toBeNull();
+    expect(screen.queryByText("automations")).toBeNull();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin-bundled" }));
+
+    expect(screen.getByText("automations")).toBeTruthy();
+    expect(screen.queryByText("bb-cli")).toBeNull();
   });
 
   it("renders browse content as the active full-page collection mode", () => {

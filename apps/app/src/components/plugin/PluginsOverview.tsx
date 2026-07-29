@@ -9,6 +9,7 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListState,
+  ResourceOptionMenu,
   ResourceSortMenu,
   ResourceToolbar,
   type ResourceCollectionMode,
@@ -31,6 +32,7 @@ import {
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse";
+type PluginSourceFilter = "all" | "builtin";
 
 function modeFromSearchParams(
   value: string | null,
@@ -69,6 +71,7 @@ export function PluginsOverview() {
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
+  const [sourceFilter, setSourceFilter] = useState<PluginSourceFilter>("all");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
@@ -92,6 +95,9 @@ export function PluginsOverview() {
     () =>
       plugins
         .filter((plugin) => {
+          if (sourceFilter === "builtin" && plugin.provenance !== "builtin") {
+            return false;
+          }
           if (normalizedInstalledQuery.length === 0) return true;
           return [
             plugin.id,
@@ -114,11 +120,15 @@ export function PluginsOverview() {
           );
           return installedSortDirection === "asc" ? result : -result;
         }),
-    [installedSortDirection, normalizedInstalledQuery, plugins],
+    [installedSortDirection, normalizedInstalledQuery, plugins, sourceFilter],
   );
   const installedPagination = useResourcePagination(visiblePlugins, {
     pageSize: installedPageSize,
-    resetKey: [normalizedInstalledQuery, installedSortDirection].join("\u0000"),
+    resetKey: [
+      normalizedInstalledQuery,
+      sourceFilter,
+      installedSortDirection,
+    ].join("\u0000"),
   });
   const hasInstalledPagination =
     !listQuery.isError &&
@@ -188,16 +198,30 @@ export function PluginsOverview() {
             onSearchChange={setInstalledQuery}
             containedControls
             controls={
-              <ResourceSortMenu
-                value="alpha"
-                direction={installedSortDirection}
-                options={[{ id: "alpha", label: "Plugin name" }]}
-                onChange={() =>
-                  setInstalledSortDirection((current) =>
-                    current === "asc" ? "desc" : "asc",
-                  )
-                }
-              />
+              <>
+                <ResourceOptionMenu
+                  label="Source"
+                  icon="PackageReceive"
+                  value={sourceFilter}
+                  options={[
+                    { id: "all", label: "All plugins" },
+                    { id: "builtin", label: "Built-in bb" },
+                  ]}
+                  onChange={(value) =>
+                    setSourceFilter(value as PluginSourceFilter)
+                  }
+                />
+                <ResourceSortMenu
+                  value="alpha"
+                  direction={installedSortDirection}
+                  options={[{ id: "alpha", label: "Plugin name" }]}
+                  onChange={() =>
+                    setInstalledSortDirection((current) =>
+                      current === "asc" ? "desc" : "asc",
+                    )
+                  }
+                />
+              </>
             }
           />
         }
@@ -226,7 +250,11 @@ export function PluginsOverview() {
         ) : plugins.length > 0 && visiblePlugins.length === 0 ? (
           <ResourceListState
             state="empty"
-            message={`No plugins match "${installedQuery}"`}
+            message={
+              normalizedInstalledQuery.length > 0
+                ? `No plugins match "${installedQuery}"`
+                : "No plugins match this filter."
+            }
           />
         ) : (
           <InstalledPluginsTab plugins={installedPagination.items} />

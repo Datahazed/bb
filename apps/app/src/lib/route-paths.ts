@@ -4,9 +4,9 @@ import { matchPath } from "react-router-dom";
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const SETTINGS_ROUTE_PATH = "/settings";
-// Settings buckets (general, files, …) plus legacy plugin routes that redirect
-// to the canonical Tools → Plugins surfaces. The static "plugins" segment must
-// win over :section so those old deep links resolve before redirecting.
+// Settings buckets (general, files, …) plus plugin settings routes. The static
+// "plugins" segment must win over :section so the plugin manager can redirect
+// to Tools Hub while individual plugin configuration remains in Settings.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";

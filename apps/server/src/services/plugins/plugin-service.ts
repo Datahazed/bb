@@ -1250,12 +1250,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   ): PluginCapabilitySummary {
     const capabilities: PluginCapabilitySummary = [];
     if (manifest !== undefined) {
-      for (const skillName of manifest.skillNames) {
+      for (const skill of manifest.skills) {
         capabilities.push({
           kind: "skill",
-          id: skillName,
-          label: skillName,
-          detail: "Skill this plugin adds to your agents",
+          id: skill.name,
+          label: skill.name,
+          detail: skill.description ?? `Teach agents how to use ${skill.name}.`,
         });
       }
       for (const theme of manifest.themes) {
@@ -1280,7 +1280,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         kind: "thread-integration",
         id: `thread-action:${action.id}`,
         label: action.title,
-        detail: "Thread action",
+        detail: action.confirm ?? `Run ${action.title} from a thread.`,
       });
     }
     for (const provider of exposedPlugin?.handle.mentionProviders ?? []) {
@@ -1288,7 +1288,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         kind: "thread-integration",
         id: `mention:${provider.id}`,
         label: provider.label,
-        detail: `Mentions with ${provider.triggers.join(", ")}`,
+        detail: `Reference ${provider.label.toLowerCase()} in prompts with ${provider.triggers.join(", ")}.`,
       });
     }
     return capabilities;

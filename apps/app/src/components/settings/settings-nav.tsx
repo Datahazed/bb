@@ -88,8 +88,7 @@ export function useSettingsNavState(): SettingsNavState {
     settingsSections.map((section) => section.pluginId),
   );
   const pluginListQuery = usePluginList({
-    enabled:
-      !toolsHubEnabled && (pluginsEnabled || settingsSectionPluginIds.size > 0),
+    enabled: pluginsEnabled || settingsSectionPluginIds.size > 0,
   });
 
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
@@ -130,13 +129,11 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  const pluginEntries = toolsHubEnabled
-    ? []
-    : (pluginListQuery.data?.plugins ?? []).filter(
-        (plugin) =>
-          plugin.enabled &&
-          (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
-      );
+  const pluginEntries = (pluginListQuery.data?.plugins ?? []).filter(
+    (plugin) =>
+      plugin.enabled &&
+      (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
+  );
   return {
     activePluginId,
     activeProviderId,

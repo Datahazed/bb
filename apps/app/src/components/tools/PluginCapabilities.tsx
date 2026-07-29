@@ -92,26 +92,17 @@ interface PluginCapabilityItem {
   mono?: boolean;
 }
 
-function capabilityDetail(kind: string, id?: string): ReactNode {
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span>{kind}</span>
-      {id ? <span className="break-all font-mono">{id}</span> : null}
-    </span>
-  );
-}
-
 function namedSurface(
   prefix: string,
   id: string,
   title: string | undefined,
-  kind: string,
+  describe: (label: string) => string,
 ): PluginCapabilityItem {
   const label = title?.trim() || id;
   return {
     key: `${prefix}:${id}`,
     label,
-    detail: capabilityDetail(kind, label === id ? undefined : id),
+    detail: describe(label),
     mono: label === id,
   };
 }
@@ -120,28 +111,49 @@ function namedSlotItems(
   pluginId: string,
   slots: readonly { pluginId: string; id: string; title?: string }[],
   prefix: string,
-  kind: string,
+  describe: (label: string) => string,
 ): PluginCapabilityItem[] {
   return slots
     .filter((slot) => slot.pluginId === pluginId)
-    .map((slot) => namedSurface(prefix, slot.id, slot.title, kind));
+    .map((slot) => namedSurface(prefix, slot.id, slot.title, describe));
 }
 
 function pluginAppSurfaceItems(
-  pluginId: string,
+  plugin: PluginListItem,
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
+  const pluginId = plugin.id;
   const namedSlots = [
-    [slots.navPanels, "nav", "Navigation panel"],
-    [slots.homepageSections, "homepage", "Homepage section"],
-    [slots.threadPanelActions, "thread-panel", "Thread panel action"],
-    [slots.pendingInteractions, "input", "Input renderer"],
-    [slots.sidebarFooterActions, "sidebar", "Sidebar action"],
-    [slots.messageActions, "message-action", "Message action"],
+    [slots.navPanels, "nav", (label: string) => `Open ${label} in bb.`],
+    [
+      slots.homepageSections,
+      "homepage",
+      (label: string) => `Show ${label} on the homepage.`,
+    ],
+    [
+      slots.threadPanelActions,
+      "thread-panel",
+      (label: string) => `Open ${label} from a thread.`,
+    ],
+    [
+      slots.pendingInteractions,
+      "input",
+      (label: string) => `Collect input for ${label}.`,
+    ],
+    [
+      slots.sidebarFooterActions,
+      "sidebar",
+      (label: string) => `Open ${label} from the sidebar.`,
+    ],
+    [
+      slots.messageActions,
+      "message-action",
+      (label: string) => `Run ${label} on a thread message.`,
+    ],
   ] as const;
   return [
-    ...namedSlots.flatMap(([items, prefix, kind]) =>
-      namedSlotItems(pluginId, items, prefix, kind),
+    ...namedSlots.flatMap(([items, prefix, describe]) =>
+      namedSlotItems(pluginId, items, prefix, describe),
     ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
@@ -151,7 +163,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:action`,
             action.id,
             undefined,
-            "Composer action",
+            (label) => `Run ${label} from the composer.`,
           ),
         ),
         ...(slot.banners ?? []).map((banner) =>
@@ -159,7 +171,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:banner`,
             banner.id,
             undefined,
-            "Composer banner",
+            (label) => `Show ${label} above the composer.`,
           ),
         ),
         ...(slot.plusMenu ?? []).map((item) =>
@@ -167,7 +179,9 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:plus-menu`,
             item.id,
             item.label,
-            "Composer plus-menu item",
+            (label) =>
+              item.description ??
+              `Add ${label.toLowerCase()} from the composer.`,
           ),
         ),
         ...(slot.richText?.effects ?? []).map((effect) =>
@@ -175,21 +189,21 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:rich-text`,
             effect.id,
             undefined,
-            "Composer text effect",
+            (label) => `Apply ${label} while composing.`,
           ),
         ),
       ]),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
-        ...namedSurface("file", slot.id, slot.title, "File opener"),
-        detail: (
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>File opener</span>
-            <span className="font-mono">
-              {slot.extensions.map((extension) => `.${extension}`).join(", ")}
-            </span>
-          </span>
+        ...namedSurface(
+          "file",
+          slot.id,
+          slot.title,
+          (label) =>
+            `Open ${slot.extensions
+              .map((extension) => `.${extension}`)
+              .join(", ")} files with ${label}.`,
         ),
       })),
     ...slots.messageDirectives
@@ -197,10 +211,27 @@ function pluginAppSurfaceItems(
       .map((slot) => ({
         key: `directive:${slot.id}`,
         label: `::${slot.id}`,
-        detail: "Message renderer",
+        detail: `Render ::${slot.id} content inside assistant messages.`,
         mono: true,
       })),
   ];
+}
+
+function pluginServiceDescription(plugin: PluginListItem): string {
+  const name = plugin.name ?? plugin.id;
+  return plugin.description
+    ? `Runs in the background. ${plugin.description}`
+    : `Runs ${name} work in the background.`;
+}
+
+function pluginScheduleDescription(
+  plugin: PluginListItem,
+  cron: string,
+): string {
+  const purpose =
+    plugin.description ??
+    `Runs scheduled work for ${plugin.name ?? plugin.id}.`;
+  return `Runs on ${cron}. ${purpose}`;
 }
 
 function PluginCapabilityGroup({
@@ -263,7 +294,7 @@ export function PluginIncludes({
   const settingsSections = slots.settingsSections.filter(
     (slot) => slot.pluginId === plugin.id,
   );
-  const appItems = pluginAppSurfaceItems(plugin.id, slots);
+  const appItems = pluginAppSurfaceItems(plugin, slots);
   if (
     plugin.app.hasApp &&
     appItems.length === 0 &&
@@ -272,7 +303,9 @@ export function PluginIncludes({
     appItems.push({
       key: "frontend-app",
       label: "Frontend app",
-      detail: "Surface names are available while the plugin app is loaded",
+      detail:
+        plugin.description ??
+        `Provides ${plugin.name ?? plugin.id} screens while its app is loaded.`,
     });
   }
 
@@ -281,17 +314,20 @@ export function PluginIncludes({
       ([key, descriptor]) => ({
         key: `setting:${key}`,
         label: descriptor.label,
-        detail: capabilityDetail("Setting", key),
+        detail:
+          descriptor.description ??
+          `Configure ${descriptor.label.toLowerCase()}.`,
       }),
     ),
-    ...settingsSections.map((slot) =>
-      namedSurface(
+    ...settingsSections.map((slot) => {
+      const item = namedSurface(
         "settings-section",
         slot.id,
         slot.title,
-        "Custom settings section",
-      ),
-    ),
+        (label) => slot.description ?? `Configure ${label} in Settings.`,
+      );
+      return item;
+    }),
   ];
   if (hasSettings && settingsItems.length === 0) {
     settingsItems.push({
@@ -309,7 +345,13 @@ export function PluginIncludes({
       .map((capability) => ({
         key: `${capability.kind}:${capability.id}`,
         label: capability.label,
-        detail: capability.detail ?? undefined,
+        detail:
+          capability.detail ??
+          (kind === "theme"
+            ? `Apply the ${capability.label} theme to bb.`
+            : kind === "skill"
+              ? `Teach agents how to use ${capability.label}.`
+              : `Use ${capability.label} in bb.`),
         mono: kind === "skill" || kind === "agent-tool",
       }));
 
@@ -348,7 +390,7 @@ export function PluginIncludes({
       items: plugin.services.map((service) => ({
         key: service.name,
         label: service.name,
-        detail: "Background service",
+        detail: pluginServiceDescription(plugin),
         mono: true,
       })),
     },
@@ -358,7 +400,7 @@ export function PluginIncludes({
       items: plugin.schedules.map((schedule) => ({
         key: schedule.name,
         label: schedule.name,
-        detail: capabilityDetail("Cron", schedule.cron),
+        detail: pluginScheduleDescription(plugin, schedule.cron),
         mono: true,
       })),
     },
@@ -484,7 +526,7 @@ export function PluginActivity({
         >
           <span className="block">{service.name}</span>
           <span className="block text-xs text-muted-foreground">
-            Background service
+            {pluginServiceDescription(plugin)}
           </span>
         </ResourceDetailListItem>
       ))}

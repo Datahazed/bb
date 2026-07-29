@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { Link } from "react-router-dom";
 import {
   ResourceActivitySection,
+  ResourceDetailActionRow,
   ResourceDetailConfigurationSection,
   ResourceDetailFact,
   ResourceDetailFacts,
@@ -14,8 +16,8 @@ import {
   ResourceListState,
   ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
+import { Button } from "@bb/shared-ui/button";
 import { Switch } from "@bb/shared-ui/switch";
-import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginReleaseFacts,
   PluginUpdateBanner,
@@ -33,6 +35,7 @@ import {
   subscribePluginFrontendDiagnostics,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   if (plugin.provenance === "builtin") return "Built-in";
@@ -207,7 +210,17 @@ export function PluginDetail({
         </ResourceDetailIncludesSection>
         {hasSettings ? (
           <ResourceDetailConfigurationSection label="Settings">
-            <PluginSettingsDetail plugin={plugin} />
+            <ResourceDetailActionRow
+              label="Configure this plugin in Settings"
+              description="Plugin configuration stays with the rest of your app settings."
+              action={
+                <Button asChild size="sm" variant="outline">
+                  <Link to={getSettingsPluginRoutePath(plugin.id)}>
+                    Open Settings
+                  </Link>
+                </Button>
+              }
+            />
           </ResourceDetailConfigurationSection>
         ) : null}
         {hasActivity ? (

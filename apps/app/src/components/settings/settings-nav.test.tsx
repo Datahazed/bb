@@ -10,6 +10,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSettingsNavState } from "./settings-nav";
 
 const mocks = vi.hoisted(() => ({
+  usePluginList: vi.fn(),
   useSystemConfig: vi.fn(),
 }));
 
@@ -18,7 +19,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
-  usePluginList: () => ({ data: { plugins: [] } }),
+  usePluginList: mocks.usePluginList,
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
@@ -43,6 +44,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  mocks.usePluginList.mockReturnValue({ data: { plugins: [] } });
   mocks.useSystemConfig.mockReset();
   mocks.useSystemConfig.mockReturnValue({
     data: {
@@ -109,6 +111,17 @@ describe("useSettingsNavState", () => {
   });
 
   it("removes plugin management from Settings while Tools Hub is enabled", () => {
+    mocks.usePluginList.mockReturnValue({
+      data: {
+        plugins: [
+          {
+            id: "connect",
+            enabled: true,
+            hasSettings: true,
+          },
+        ],
+      },
+    });
     mocks.useSystemConfig.mockReturnValue({
       data: {
         experiments: {
@@ -125,6 +138,8 @@ describe("useSettingsNavState", () => {
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(result.current.pluginEntries).toEqual([]);
+    expect(result.current.pluginEntries.map((plugin) => plugin.id)).toEqual([
+      "connect",
+    ]);
   });
 });

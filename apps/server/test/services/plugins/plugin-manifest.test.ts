@@ -115,6 +115,22 @@ describe("plugin manifest", () => {
     expect(manifest.branding.compactIconPath).toBeUndefined();
   });
 
+  it("reads plugin skill descriptions from SKILL.md frontmatter", async () => {
+    await mkdir(join(rootDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(rootDir, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review code for correctness.\n---\n# Review\n",
+    );
+    await writeManifest();
+
+    expect((await readPluginManifest(rootDir)).skills).toEqual([
+      {
+        name: "review",
+        description: "Review code for correctness.",
+      },
+    ]);
+  });
+
   it("requires path-shaped icons to use branding.experimental_icon", async () => {
     await writeManifest(undefined, {
       ...validBb,

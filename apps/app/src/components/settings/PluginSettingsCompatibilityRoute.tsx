@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import {
-  getPluginDetailRoutePath,
-  getPluginsRoutePath,
-} from "@/lib/route-paths";
+import { getPluginsRoutePath } from "@/lib/route-paths";
 
-/** Keeps the existing Settings manager available while Tools Hub is off. */
+/**
+ * Replaces the legacy plugin manager with Tools Hub while preserving each
+ * plugin's Settings page.
+ */
 export function PluginSettingsCompatibilityRoute({
   children,
 }: {
@@ -18,15 +18,7 @@ export function PluginSettingsCompatibilityRoute({
 
   if (toolsHubEnabled === undefined) return null;
   if (!toolsHubEnabled) return children;
+  if (pluginId !== undefined) return children;
 
-  return (
-    <Navigate
-      to={
-        pluginId
-          ? getPluginDetailRoutePath({ pluginId })
-          : getPluginsRoutePath()
-      }
-      replace
-    />
-  );
+  return <Navigate to={getPluginsRoutePath()} replace />;
 }

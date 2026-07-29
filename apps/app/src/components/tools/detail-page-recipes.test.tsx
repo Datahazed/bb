@@ -136,7 +136,7 @@ describe("Plugin detail recipe", () => {
           kind: "skill",
           id: "review",
           label: "review",
-          detail: "Skill this plugin adds to your agents",
+          detail: "Review code for correctness and maintainability.",
         },
         {
           kind: "theme",
@@ -154,7 +154,7 @@ describe("Plugin detail recipe", () => {
           kind: "thread-integration",
           id: "mention:pr",
           label: "Pull requests",
-          detail: "Mentions with #",
+          detail: "Reference pull requests in prompts with #.",
         },
       ],
     });
@@ -173,6 +173,12 @@ describe("Plugin detail recipe", () => {
       expect(group, `no group rendered for ${heading}`).not.toBeNull();
       expect(within(group as HTMLElement).getByText(item)).toBeTruthy();
     }
+    expect(
+      screen.getByText("Review code for correctness and maintainability."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Reference pull requests in prompts with #."),
+    ).toBeTruthy();
   });
 
   it("keeps browser-registered app surfaces in Includes", () => {
@@ -197,6 +203,44 @@ describe("Plugin detail recipe", () => {
 
     expect(screen.getByText("App surfaces")).toBeTruthy();
     expect(screen.getByText("Issues")).toBeTruthy();
+    expect(screen.getByText("Open Issues in bb.")).toBeTruthy();
+  });
+
+  it("describes background capabilities by purpose and timing", () => {
+    renderPlugin({
+      ...PLUGIN,
+      services: [{ name: "github-sync", state: "running" }],
+      schedules: [
+        {
+          name: "issue-refresh",
+          cron: "0 * * * *",
+          lastRunAt: null,
+          nextRunAt: Date.parse("2026-07-29T00:00:00.000Z"),
+          lastStatus: null,
+          lastError: null,
+        },
+      ],
+    });
+
+    expect(
+      screen.getAllByText(
+        "Runs in the background. Browse GitHub issues and pull requests in BB.",
+      ),
+    ).toHaveLength(2);
+    expect(
+      screen.getByText(
+        "Runs on 0 * * * *. Browse GitHub issues and pull requests in BB.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Background service")).toBeNull();
+  });
+
+  it("links Settings to the plugin's configuration page", () => {
+    renderPlugin({ ...PLUGIN, hasSettings: true });
+
+    expect(
+      screen.getByRole("link", { name: "Open Settings" }).getAttribute("href"),
+    ).toBe("/settings/plugins/github");
   });
 
   it("explains an empty Includes instead of dropping the section", () => {

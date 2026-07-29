@@ -74,11 +74,18 @@ describe("PluginSettingsCompatibilityRoute", () => {
     expect(screen.queryByText("Tools plugin detail")).toBeNull();
   });
 
-  it("redirects legacy Settings plugin routes to Tools Hub when enabled", () => {
+  it("keeps plugin configuration in Settings while Tools Hub is enabled", () => {
     renderRoute("/settings/plugins/example", true);
 
-    expect(screen.getByText("Tools plugin detail")).toBeTruthy();
-    expect(screen.queryByText("Settings plugin detail")).toBeNull();
+    expect(screen.getByText("Settings plugin detail")).toBeTruthy();
+    expect(screen.queryByText("Tools plugin detail")).toBeNull();
+  });
+
+  it("redirects the legacy Settings plugin manager to Tools Hub when enabled", () => {
+    renderRoute("/settings/plugins", true);
+
+    expect(screen.getByText("Tools plugins")).toBeTruthy();
+    expect(screen.queryByText("Settings plugin manager")).toBeNull();
   });
 
   it("renders neither management surface while configuration is loading", () => {

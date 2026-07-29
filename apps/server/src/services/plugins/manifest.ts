@@ -1,8 +1,10 @@
 import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import matter from "gray-matter";
 import semver from "semver";
 import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
 import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
+import { z } from "zod";
 
 export interface PluginManifest {
   /** Sanitized plugin id derived from the package name. */
@@ -47,12 +49,11 @@ export interface PluginManifest {
    * empty array opts out. Missing directories resolve to no skills.
    */
   skillsRootPaths: string[];
-  /**
-   * Names of the skills found under `skillsRootPaths`, resolved once here so
-   * the frequently-called plugin list never does filesystem work. A skill is a
-   * directory containing SKILL.md, and its directory name is its name.
-   */
-  skillNames: string[];
+  /** Skills found under `skillsRootPaths`, including their user-facing purpose. */
+  skills: Array<{
+    name: string;
+    description: string | null;
+  }>;
   rootDir: string;
 }
 
@@ -72,9 +73,17 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
   return resolved;
 }
 
-/** Skill directory names under the given roots, sorted and de-duplicated. */
-async function readSkillNames(rootPaths: string[]): Promise<string[]> {
-  const names = new Set<string>();
+const skillCapabilityFrontmatterSchema = z
+  .object({
+    description: z.string().trim().min(1),
+  })
+  .passthrough();
+
+/** Plugin skills under the given roots, sorted and de-duplicated. */
+async function readSkillSummaries(
+  rootPaths: string[],
+): Promise<PluginManifest["skills"]> {
+  const skills = new Map<string, string | null>();
   for (const rootPath of rootPaths) {
     let entries;
     try {
@@ -88,15 +97,27 @@ async function readSkillNames(rootPaths: string[]): Promise<string[]> {
         // lstat, not stat: a symlinked SKILL.md is rejected by the skill
         // loader, so counting it here would advertise a skill the agent never
         // loads.
-        const skillFile = await lstat(join(rootPath, entry.name, "SKILL.md"));
+        const skillPath = join(rootPath, entry.name, "SKILL.md");
+        const skillFile = await lstat(skillPath);
         if (!skillFile.isFile()) continue;
+        const parsed = matter(await readFile(skillPath, "utf8"));
+        const frontmatter = skillCapabilityFrontmatterSchema.safeParse(
+          parsed.data,
+        );
+        if (!skills.has(entry.name)) {
+          skills.set(
+            entry.name,
+            frontmatter.success ? frontmatter.data.description : null,
+          );
+        }
       } catch {
         continue;
       }
-      names.add(entry.name);
     }
   }
-  return [...names].sort();
+  return [...skills]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, description]) => ({ name, description }));
 }
 
 /**
@@ -254,7 +275,7 @@ export async function readPluginManifest(
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     themes,
     skillsRootPaths,
-    skillNames: await readSkillNames(skillsRootPaths),
+    skills: await readSkillSummaries(skillsRootPaths),
     rootDir,
   };
 }

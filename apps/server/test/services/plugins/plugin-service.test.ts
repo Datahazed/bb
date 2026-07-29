@@ -99,8 +99,14 @@ describe("plugin service", () => {
     await mkdir(join(rootDir, "skills", "review"), { recursive: true });
     await mkdir(join(rootDir, "skills", "triage"), { recursive: true });
     await mkdir(join(rootDir, "skills", "not-a-skill"), { recursive: true });
-    await writeFile(join(rootDir, "skills", "review", "SKILL.md"), "# review");
-    await writeFile(join(rootDir, "skills", "triage", "SKILL.md"), "# triage");
+    await writeFile(
+      join(rootDir, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review code for correctness.\n---\n# review",
+    );
+    await writeFile(
+      join(rootDir, "skills", "triage", "SKILL.md"),
+      "---\nname: triage\ndescription: Triage incoming issues.\n---\n# triage",
+    );
     await writeFile(join(rootDir, "midnight.css"), ":root { --canvas: #000; }");
     await writePlugin(workDir, {
       name: "bb-plugin-capabilities",
@@ -140,13 +146,13 @@ describe("plugin service", () => {
         kind: "skill",
         id: "review",
         label: "review",
-        detail: "Skill this plugin adds to your agents",
+        detail: "Review code for correctness.",
       },
       {
         kind: "skill",
         id: "triage",
         label: "triage",
-        detail: "Skill this plugin adds to your agents",
+        detail: "Triage incoming issues.",
       },
       {
         kind: "theme",
@@ -164,7 +170,7 @@ describe("plugin service", () => {
         kind: "thread-integration",
         id: "mention:issues",
         label: "Issues",
-        detail: "Mentions with #",
+        detail: "Reference issues in prompts with #.",
       },
     ]);
 

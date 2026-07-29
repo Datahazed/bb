@@ -414,6 +414,36 @@ describe("PluginsOverview", () => {
     expect(builtInPills[0]?.parentElement?.className).toContain("py-0");
   });
 
+  it("defaults to all plugins and can filter to built-in bb plugins", async () => {
+    installFetch(true, [
+      AUTOMATIONS_PLUGIN,
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "local-plugin",
+        name: "Local plugin",
+        source: "path:/plugins/local-plugin",
+        provenance: "direct",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(screen.getByText("Local plugin")).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Built-in bb" }));
+
+    expect(screen.getByText("Automations")).toBeTruthy();
+    expect(screen.queryByText("Local plugin")).toBeNull();
+  });
+
   it("uses the same passive provenance tag for built-in and BB Official plugins", async () => {
     installFetch(true, [
       AUTOMATIONS_PLUGIN,

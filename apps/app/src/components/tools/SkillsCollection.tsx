@@ -12,6 +12,7 @@ import {
   ResourceListPanel,
   ResourceListState,
   ResourceMultiSelectMenu,
+  ResourceOptionMenu,
   ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/provider-icon";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
+type ResourceSkillSourceFilter = "all" | "bb-builtin" | "plugin";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
@@ -113,6 +115,10 @@ function includedPluginDescription(skill: SkillSummary): string {
   return `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider)} plugin)`;
 }
 
+function pluginProvenanceLabel(skill: SkillSummary): string {
+  return `${providerPluginDisplayName(skill)} · ${providerLabel(skill.provider)} plugin`;
+}
+
 function skillMutationDisabledReason(skill: SkillSummary): string {
   if (skill.scope === "bb-builtin") return "Built-in skill";
   if (skill.scope === "plugin") return "Bundled with plugin";
@@ -134,6 +140,8 @@ function SkillRow({
       titleMeta={
         skill.scope === "bb-builtin" ? (
           <ProvenancePill label="Built-in" />
+        ) : skill.scope === "plugin" ? (
+          <ProvenancePill label={pluginProvenanceLabel(skill)} />
         ) : undefined
       }
       description={description}
@@ -180,7 +188,9 @@ export function SkillsOverview({
 }: SkillsOverviewProps) {
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
-  >([]);
+  >(["bb"]);
+  const [sourceFilter, setSourceFilter] =
+    useState<ResourceSkillSourceFilter>("all");
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -206,6 +216,7 @@ export function SkillsOverview({
     }));
   }, [providerCounts]);
   useEffect(() => {
+    if (providerCounts.size === 0) return;
     setProviderFilters((current) =>
       current.filter((provider) => providerCounts.has(provider)),
     );
@@ -222,6 +233,9 @@ export function SkillsOverview({
         providerFilters.length > 0 &&
         !providerFilters.includes(skillProviderFilterId(skill))
       ) {
+        return false;
+      }
+      if (sourceFilter !== "all" && skill.scope !== sourceFilter) {
         return false;
       }
       return (
@@ -246,12 +260,20 @@ export function SkillsOverview({
           : left.name.localeCompare(right.name);
       return sortDirection === "asc" ? base : -base;
     });
-  }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
+  }, [
+    normalizedQuery,
+    providerFilters,
+    skills,
+    sortDirection,
+    sortMode,
+    sourceFilter,
+  ]);
   const libraryPagination = useResourcePagination(visibleSkills, {
     pageSize: libraryPageSize,
     resetKey: [
       normalizedQuery,
       providerFilters.join(","),
+      sourceFilter,
       sortMode,
       sortDirection,
     ].join("\u0000"),
@@ -285,10 +307,12 @@ export function SkillsOverview({
     <ResourceListState
       state="empty"
       message={
-        normalizedQuery === "" && providerFilters.length === 0
+        normalizedQuery === "" &&
+        providerFilters.length === 0 &&
+        sourceFilter === "all"
           ? "No skills in your library."
           : normalizedQuery === ""
-            ? "No skills match these agents."
+            ? "No skills match these filters."
             : `No skills match "${query}"`
       }
     />
@@ -346,6 +370,19 @@ export function SkillsOverview({
                     options={providerOptions}
                     onChange={(values) =>
                       setProviderFilters(values as ResourceProviderFilter[])
+                    }
+                  />
+                  <ResourceOptionMenu
+                    label="Source"
+                    icon="PackageReceive"
+                    value={sourceFilter}
+                    options={[
+                      { id: "all", label: "All sources" },
+                      { id: "bb-builtin", label: "Built-in bb" },
+                      { id: "plugin", label: "Plugin-bundled" },
+                    ]}
+                    onChange={(value) =>
+                      setSourceFilter(value as ResourceSkillSourceFilter)
                     }
                   />
                   <ResourceSortMenu
