@@ -312,18 +312,38 @@ describe("PluginDetail capability inventory", () => {
     expect(includes).not.toBeNull();
     const inventory = within(includes as HTMLElement);
     expect(inventory.getByText("Run monitor")).toBeTruthy();
-    expect(inventory.getByText("Navigation panel")).toBeTruthy();
+    expect(inventory.getByText("Open Run monitor in bb.")).toBeTruthy();
     expect(inventory.getByText("enhance-prompt")).toBeTruthy();
-    expect(inventory.getByText("Composer action")).toBeTruthy();
+    expect(
+      inventory.getByText("Run enhance-prompt from the composer."),
+    ).toBeTruthy();
     expect(inventory.getByText("Advanced preferences")).toBeTruthy();
-    expect(inventory.getByText("Custom settings section")).toBeTruthy();
+    expect(
+      inventory.getByText("Configure Advanced preferences in Settings."),
+    ).toBeTruthy();
     expect(inventory.getByText("API token")).toBeTruthy();
-    expect(inventory.getByText("apiToken")).toBeTruthy();
+    expect(inventory.getByText("Configure api token.")).toBeTruthy();
     expect(inventory.getByText("bb capability")).toBeTruthy();
     expect(inventory.getByText("watch")).toBeTruthy();
     expect(inventory.getByText("sync")).toBeTruthy();
+    expect(
+      inventory.getAllByText(
+        "Runs in the background. Browse GitHub issues and pull requests in BB.",
+      ),
+    ).toHaveLength(2);
     expect(inventory.getByText("daily-cleanup")).toBeTruthy();
-    expect(inventory.getByText("0 9 * * *")).toBeTruthy();
+    expect(
+      inventory.getByText(
+        "Runs on 0 9 * * *. Browse GitHub issues and pull requests in BB.",
+      ),
+    ).toBeTruthy();
+    for (const implementationLabel of [
+      "Navigation panel",
+      "Composer action",
+      "Custom settings section",
+    ]) {
+      expect(inventory.queryByText(implementationLabel)).toBeNull();
+    }
     expect(includes?.textContent).not.toContain("2 background services");
 
     const groups = includes?.querySelectorAll("[data-plugin-capability-group]");

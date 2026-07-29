@@ -304,8 +304,9 @@ export function PluginIncludes({
       key: "frontend-app",
       label: "Frontend app",
       detail:
-        plugin.description ??
-        `Provides ${plugin.name ?? plugin.id} screens while its app is loaded.`,
+        plugin.description !== null
+          ? `Adds app screens to bb. ${plugin.description}`
+          : `Provides ${plugin.name ?? plugin.id} screens while its app is loaded.`,
     });
   }
 
