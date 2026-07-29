@@ -1,5 +1,16 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -8,6 +19,9 @@ import type {
 } from "@bb/server-contract";
 import {
   BRANCH_NAMES,
+  HOST_IDS,
+  HOST_NAMES,
+  makeHost,
   makeProject,
   makeThreadListEntry,
 } from "../../../.ladle/story-fixtures";
@@ -23,6 +37,7 @@ import {
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
 import {
+  hostsQueryKey,
   sidebarNavigationQueryKey,
   threadSearchQueryKey,
 } from "@/hooks/queries/query-keys";
@@ -34,6 +49,11 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+  sidebarOrganizationModeAtom,
+  type SidebarOrganizationMode,
+} from "./sidebarCollapsedAtoms";
 
 export default {
   title: "Sidebar/Overview",
@@ -208,6 +228,42 @@ const loadedSidebarNavigation = {
   ],
 } satisfies SidebarBootstrapResponse;
 
+const emptySidebarNavigation = {
+  ...loadedSidebarNavigation,
+  personalProject: {
+    ...loadedSidebarNavigation.personalProject,
+    threads: [],
+  },
+  projects: loadedSidebarNavigation.projects.map((project) => ({
+    ...project,
+    threads: [],
+  })),
+} satisfies SidebarBootstrapResponse;
+
+const machineStoryHosts = [
+  makeHost(),
+  makeHost({ id: HOST_IDS.remote, name: HOST_NAMES.remote }),
+];
+
+const machineSidebarNavigation = {
+  ...loadedSidebarNavigation,
+  personalProject: {
+    ...loadedSidebarNavigation.personalProject,
+    threads: loadedSidebarNavigation.personalProject.threads.map((thread) => ({
+      ...thread,
+      environmentHostId: HOST_IDS.local,
+    })),
+  },
+  projects: loadedSidebarNavigation.projects.map((project) => ({
+    ...project,
+    threads: project.threads.map((thread) => ({
+      ...thread,
+      environmentHostId:
+        project.id === docsProject.id ? HOST_IDS.remote : HOST_IDS.local,
+    })),
+  })),
+} satisfies SidebarBootstrapResponse;
+
 const searchResponse = {
   active: {
     total: 2,
@@ -313,15 +369,21 @@ function LoadingSidebar() {
   );
 }
 
-function LoadedSidebar() {
+function LoadedSidebar({
+  hosts,
+  navigation = loadedSidebarNavigation,
+}: {
+  hosts?: typeof machineStoryHosts;
+  navigation?: SidebarBootstrapResponse;
+}) {
   const queryClient = useQueryClient();
   const [isSeeded, setIsSeeded] = useState(false);
 
   useEffect(() => {
-    queryClient.setQueryData(
-      SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
-      loadedSidebarNavigation,
-    );
+    queryClient.setQueryData(SIDEBAR_NAVIGATION_STORY_QUERY_KEY, navigation);
+    if (hosts) {
+      queryClient.setQueryData(hostsQueryKey(), hosts);
+    }
     setIsSeeded(true);
 
     return () => {
@@ -329,8 +391,14 @@ function LoadedSidebar() {
         queryKey: SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
         exact: true,
       });
+      if (hosts) {
+        queryClient.removeQueries({
+          queryKey: hostsQueryKey(),
+          exact: true,
+        });
+      }
     };
-  }, [queryClient]);
+  }, [hosts, navigation, queryClient]);
 
   if (!isSeeded) {
     return <LoadingSidebar />;
@@ -340,6 +408,86 @@ function LoadedSidebar() {
     <Suspense fallback={<LoadingSidebar />}>
       <ProjectList onNewProject={noop} onProjectSelect={noop} />
     </Suspense>
+  );
+}
+
+function OrganizationSidebar({
+  hosts,
+  mode,
+  navigation,
+}: {
+  hosts?: typeof machineStoryHosts;
+  mode: SidebarOrganizationMode;
+  navigation?: SidebarBootstrapResponse;
+}) {
+  const [store] = useState(() => createStore());
+  const [isModeSeeded, setIsModeSeeded] = useState(false);
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+          },
+        },
+      }),
+  );
+
+  useLayoutEffect(() => {
+    setIsModeSeeded(false);
+
+    let localStorage: Storage | null = null;
+    let persistedMode: string | null = null;
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage = window.localStorage;
+        persistedMode = localStorage.getItem(
+          SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+        );
+      } catch {
+        localStorage = null;
+      }
+    }
+
+    const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
+
+    try {
+      store.set(sidebarOrganizationModeAtom, mode);
+    } finally {
+      if (localStorage) {
+        try {
+          if (persistedMode === null) {
+            localStorage.removeItem(SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY);
+          } else {
+            localStorage.setItem(
+              SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+              persistedMode,
+            );
+          }
+        } catch {
+          // The story can still use its isolated store if persistence is blocked.
+        }
+      }
+    }
+
+    setIsModeSeeded(true);
+
+    return unsubscribe;
+  }, [mode, store]);
+
+  return (
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <SidebarFrame>
+          {isModeSeeded ? (
+            <LoadedSidebar hosts={hosts} navigation={navigation} />
+          ) : (
+            <LoadingSidebar />
+          )}
+        </SidebarFrame>
+      </QueryClientProvider>
+    </Provider>
   );
 }
 
@@ -441,6 +589,49 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="search">
         <SearchSidebar />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function OrganizationModes() {
+  return (
+    <StoryCard
+      labelWidth="120px"
+      columns={["Populated", "No threads"]}
+      className="min-w-max items-start"
+    >
+      <StoryRow label="By project">
+        <OrganizationSidebar
+          mode="project"
+          navigation={loadedSidebarNavigation}
+        />
+        <OrganizationSidebar
+          mode="project"
+          navigation={emptySidebarNavigation}
+        />
+      </StoryRow>
+      <StoryRow label="Manually">
+        <OrganizationSidebar
+          mode="chronological"
+          navigation={loadedSidebarNavigation}
+        />
+        <OrganizationSidebar
+          mode="chronological"
+          navigation={emptySidebarNavigation}
+        />
+      </StoryRow>
+      <StoryRow label="By machine">
+        <OrganizationSidebar
+          mode="machine"
+          hosts={machineStoryHosts}
+          navigation={machineSidebarNavigation}
+        />
+        <OrganizationSidebar
+          mode="machine"
+          hosts={machineStoryHosts}
+          navigation={emptySidebarNavigation}
+        />
       </StoryRow>
     </StoryCard>
   );
