@@ -22,6 +22,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
+import { resolveToolsBreadcrumbs } from "@/components/tools/tools-navigation";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -59,27 +60,14 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
-  getAutomationsRoutePath,
-  getAutomationDetailRoutePath,
   getLegacyProjectComposeRoutePath,
-  getPluginsRoutePath,
   getProjectSettingsRoutePath,
-  getRegistrySkillsRoutePath,
   getRootComposeRoutePath,
-  getSkillsRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
-  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
-  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
-  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-  TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -105,164 +93,6 @@ const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;
 const SIDEBAR_DEFAULT_WIDTH = 320;
-
-export interface ToolsBreadcrumbSegment {
-  label: string;
-  to?: string;
-}
-
-function routeResourceLabel(value: string | undefined, fallback: string) {
-  if (!value) return fallback;
-  let decoded = value;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch {
-    // React Router may already have decoded the segment; use it as-is.
-  }
-  const segments = decoded.split("/").filter(Boolean);
-  return segments.at(-1) ?? fallback;
-}
-
-export function resolveToolsBreadcrumbs(
-  pathname: string,
-  search = "",
-  resourceLabel?: string | null,
-): ToolsBreadcrumbSegment[] | null {
-  const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
-  const pluginsCrumb = { label: "Plugins", to: getPluginsRoutePath() };
-  const automationsCrumb = {
-    label: "Automations",
-    to: getAutomationsRoutePath(),
-  };
-  const installedSkillsCrumb = {
-    label: "Installed",
-    to: getSkillsRoutePath(),
-  };
-  const browseSkillsCrumb = {
-    label: "Browse",
-    to: getRegistrySkillsRoutePath(),
-  };
-  const installedPluginsCrumb = {
-    label: "Installed",
-    to: getPluginsRoutePath(),
-  };
-  const installedAutomationsCrumb = {
-    label: "Installed",
-    to: getAutomationsRoutePath(),
-  };
-  const registrySkillDetail = matchPath(
-    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (registrySkillDetail) {
-    return [
-      skillsCrumb,
-      browseSkillsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(
-            registrySkillDetail.params.registrySkillId,
-            "Skill",
-          ),
-      },
-    ];
-  }
-  const installedSkillDetail = matchPath(
-    TOOLS_SKILL_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (installedSkillDetail) {
-    return [
-      skillsCrumb,
-      installedSkillsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(installedSkillDetail.params.skillId, "Skill"),
-      },
-    ];
-  }
-  const isPluginBrowse =
-    pathname === TOOLS_PLUGIN_BROWSE_ROUTE_PATH ||
-    (pathname === getPluginsRoutePath() &&
-      new URLSearchParams(search).get("view") === "browse");
-  if (isPluginBrowse) return [pluginsCrumb, { label: "Browse" }];
-  const pluginDetail = matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, pathname);
-  if (pluginDetail) {
-    return [
-      pluginsCrumb,
-      installedPluginsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(pluginDetail.params.pluginId, "Plugin"),
-      },
-    ];
-  }
-  const automationEdit = matchPath(TOOLS_AUTOMATION_EDIT_ROUTE_PATH, pathname);
-  if (automationEdit) {
-    const automationLabel = routeResourceLabel(
-      automationEdit.params.automationId,
-      "Automation",
-    );
-    const automationDetailPath =
-      automationEdit.params.projectId && automationEdit.params.automationId
-        ? getAutomationDetailRoutePath({
-            projectId: automationEdit.params.projectId,
-            automationId: automationEdit.params.automationId,
-          })
-        : getAutomationsRoutePath();
-    return [
-      automationsCrumb,
-      installedAutomationsCrumb,
-      { label: automationLabel, to: automationDetailPath },
-      { label: "Edit" },
-    ];
-  }
-  const automationDetail = matchPath(
-    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (automationDetail) {
-    return [
-      automationsCrumb,
-      installedAutomationsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(
-            automationDetail.params.automationId,
-            "Automation",
-          ),
-      },
-    ];
-  }
-  const isAutomationBrowse =
-    pathname === TOOLS_AUTOMATION_BROWSE_ROUTE_PATH ||
-    (pathname === getAutomationsRoutePath() &&
-      new URLSearchParams(search).get("view") === "browse");
-  if (isAutomationBrowse) return [automationsCrumb, { label: "Browse" }];
-  const isSkillsBrowse =
-    pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH ||
-    (pathname === getSkillsRoutePath() &&
-      new URLSearchParams(search).get("view") === "browse");
-  if (isSkillsBrowse) return [skillsCrumb, { label: "Browse" }];
-  if (
-    pathname === "/tools" ||
-    pathname === getSkillsRoutePath() ||
-    pathname === "/skills"
-  ) {
-    return [skillsCrumb, { label: "Installed" }];
-  }
-  if (pathname === getPluginsRoutePath()) {
-    return [pluginsCrumb, { label: "Installed" }];
-  }
-  if (pathname === getAutomationsRoutePath() || pathname === "/automations") {
-    return [automationsCrumb, { label: "Installed" }];
-  }
-  return null;
-}
 
 function clampSidebarWidth(value: number) {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
@@ -443,10 +273,6 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
-  "/tools": { title: "Skills" },
-  "/tools/skills": { title: "Skills" },
-  "/tools/plugins": { title: "Plugins" },
-  "/tools/automations": { title: "Automations" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
 };
@@ -459,12 +285,7 @@ function resolveRouteTitle(
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
-  return (
-    routeTitles[pathname] ??
-    (pathname === "/tools" || pathname.startsWith("/tools/")
-      ? routeTitles["/tools"]
-      : undefined)
-  );
+  return routeTitles[pathname];
 }
 
 interface AppHeaderProps {
@@ -819,31 +640,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  const toolsPluginDetailMatch = matchPath(
-    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsSkillDetailMatch = matchPath(
-    TOOLS_SKILL_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsRegistrySkillDetailMatch = matchPath(
-    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsAutomationDetailMatch = matchPath(
-    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsAutomationEditMatch = matchPath(
-    TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsBreadcrumbs = resolveToolsBreadcrumbs(
-    location.pathname,
-    location.search,
-    resourceRouteLabel,
-  );
+  // Gated with the rest of the Tools surface: ROOT_ROUTE_ALIASES maps /skills
+  // and /automations into Tools crumbs, so a gate-off user following an old
+  // link would otherwise see Tools chrome for the whole config fetch before
+  // ToolsExperimentGate redirects them away.
+  const toolsBreadcrumbs = toolsHubEnabled
+    ? resolveToolsBreadcrumbs(
+        location.pathname,
+        location.search,
+        resourceRouteLabel,
+      )
+    : null;
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
@@ -905,22 +712,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
-    if (toolsSkillDetailMatch) {
-      return "Skill · Skills";
-    }
-    if (toolsRegistrySkillDetailMatch) {
-      return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills`;
-    }
-    if (toolsPluginDetailMatch) {
-      return "Plugin · Plugins";
-    }
-    const automationDetailMatch =
-      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
-    if (automationDetailMatch) {
-      return "Automation · Automations";
-    }
     if (toolsBreadcrumbs) {
-      return toolsBreadcrumbs.at(-1)?.label ?? "bb";
+      const sectionLabel = toolsBreadcrumbs[0]?.label ?? "BB";
+      const pageLabel = toolsBreadcrumbs.at(-1)?.label ?? sectionLabel;
+      return pageLabel === sectionLabel
+        ? sectionLabel
+        : `${pageLabel} · ${sectionLabel}`;
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

@@ -490,40 +490,21 @@ describe("public project skills route", () => {
     });
   });
 
-  it("omits registry entries whose real source has no loadable SKILL.md", async () => {
+  it("lists registry entries without resolving every skill source", async () => {
     await withTestHarness(async (harness) => {
       vi.stubEnv("VERCEL_OIDC_TOKEN", "");
       const homepage = [
         String.raw`\"source\":\"owner/available-repo\",\"skillId\":\"available-skill\",\"name\":\"Available skill\",\"installs\":200`,
         String.raw`\"source\":\"owner/stale-repo\",\"skillId\":\"stale-skill\",\"name\":\"Stale skill\",\"installs\":100`,
       ].join("\n");
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async (input: string | URL) => {
-          const url = String(input);
-          if (url === "https://www.skills.sh/") {
-            return new Response(homepage, { status: 200 });
-          }
-          if (
-            url.includes("raw.githubusercontent.com/owner/available-repo") &&
-            url.endsWith("/skills/available-skill/SKILL.md")
-          ) {
-            return new Response("# Available skill\n", { status: 200 });
-          }
-          if (
-            url === "https://www.skills.sh/owner/available-repo/available-skill"
-          ) {
-            return new Response(
-              registryHtml({
-                source: "owner/available-repo",
-                skillId: "available-skill",
-              }),
-              { status: 200 },
-            );
-          }
-          return new Response(null, { status: 404 });
-        }),
-      );
+      const fetchMock = vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "https://www.skills.sh/") {
+          return new Response(homepage, { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
 
       const response = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=24",
@@ -536,8 +517,13 @@ describe("public project skills route", () => {
       };
       expect(body.skills.map((skill) => skill.id)).toEqual([
         "owner/available-repo/available-skill",
+        "owner/stale-repo/stale-skill",
       ]);
-      expect(body.pagination).toMatchObject({ total: 1, hasMore: false });
+      expect(body.pagination).toMatchObject({ total: 2, hasMore: false });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith("https://www.skills.sh/", {
+        signal: expect.any(AbortSignal),
+      });
 
       const staleDetail = await harness.app.request(
         "/api/v1/skills-registry/detail?source=owner%2Fstale-repo&skillId=stale-skill",
@@ -546,11 +532,99 @@ describe("public project skills route", () => {
     });
   });
 
+  it("loads and caches GitHub stars separately from the registry list", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = [
+        String.raw`\"source\":\"owner/shared-repo\",\"skillId\":\"first-skill\",\"name\":\"First skill\",\"installs\":200`,
+        String.raw`\"source\":\"owner/shared-repo\",\"skillId\":\"second-skill\",\"name\":\"Second skill\",\"installs\":100`,
+      ].join("\n");
+      const fetchMock = vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "https://www.skills.sh/") {
+          return new Response(homepage, { status: 200 });
+        }
+        if (url === "https://api.github.com/repos/owner/shared-repo") {
+          return Response.json({ stargazers_count: 27_053 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const listResponse = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=24",
+      );
+      const listBody = (await readJson(listResponse)) as {
+        skills: Array<{ stars: number | null }>;
+      };
+
+      expect(listResponse.status).toBe(200);
+      expect(listBody.skills.map((skill) => skill.stars)).toEqual([null, null]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const firstStarsResponse = await harness.app.request(
+        "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo",
+      );
+      const secondStarsResponse = await harness.app.request(
+        "/api/v1/skills-registry/repository-stars?source=github.com%2Fowner%2Fshared-repo",
+      );
+
+      expect(firstStarsResponse.status).toBe(200);
+      expect(await readJson(firstStarsResponse)).toEqual({ stars: 27_053 });
+      expect(secondStarsResponse.status).toBe(200);
+      expect(await readJson(secondStarsResponse)).toEqual({ stars: 27_053 });
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            String(input) === "https://api.github.com/repos/owner/shared-repo",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("caches registry card descriptions independently of the list", async () => {
+    await withTestHarness(async (harness) => {
+      const registryEntryHtml = [
+        registryHtml({
+          source: "owner/summary-repo",
+          skillId: "summary-skill",
+        }),
+        "Summary</div><p>Loaded card description.</p>SKILL.md",
+      ].join("");
+      const fetchMock = vi.fn(async (input: string | URL) => {
+        if (
+          String(input) ===
+          "https://www.skills.sh/owner/summary-repo/summary-skill"
+        ) {
+          return new Response(registryEntryHtml, { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const firstResponse = await harness.app.request(
+        "/api/v1/skills-registry/entry?id=owner%2Fsummary-repo%2Fsummary-skill",
+      );
+      const secondResponse = await harness.app.request(
+        "/api/v1/skills-registry/entry?id=owner%2Fsummary-repo%2Fsummary-skill",
+      );
+
+      expect(firstResponse.status).toBe(200);
+      expect(await readJson(firstResponse)).toMatchObject({
+        summary: "Loaded card description.",
+      });
+      expect(secondResponse.status).toBe(200);
+      expect(await readJson(secondResponse)).toMatchObject({
+        summary: "Loaded card description.",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
-      installServerRegistrySkillMock.mockResolvedValueOnce({
-        filePath: "/data/skills/find-skills/SKILL.md",
-      });
+      const filePath = "/data/skills/find-skills/SKILL.md";
+      installServerRegistrySkillMock.mockResolvedValueOnce({ filePath });
       vi.stubGlobal(
         "fetch",
         vi.fn(
@@ -577,10 +651,10 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({
-        ok: true,
-        filePath: "/data/skills/find-skills/SKILL.md",
-      });
+      // Asserts the shape registrySkillInstallResponseSchema actually accepts;
+      // mocking a richer resolve value and asserting it back only proves the
+      // route spreads its mock.
+      expect(await readJson(response)).toEqual({ ok: true, filePath });
       expect(installServerRegistrySkillMock).toHaveBeenCalledWith({
         dataDir: harness.deps.config.dataDir,
         packageRef: "vercel-labs/skills",
@@ -622,6 +696,81 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  it("rejects a parent-directory segment before any upstream request", async () => {
+    await withTestHarness(async (harness) => {
+      installServerRegistrySkillMock.mockClear();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            registrySkillId: "github.com/../find-skills",
+          }),
+        },
+      );
+
+      // encodeURIComponent leaves ".." intact and `new URL` then normalizes it,
+      // which would walk an authenticated request to another path on skills.sh.
+      expect(response.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects a dash exposed by stripping the github.com prefix", async () => {
+    await withTestHarness(async (harness) => {
+      installServerRegistrySkillMock.mockClear();
+      // This id passes the leading-dash guard on the whole source; the dash is
+      // only exposed once "github.com/" is stripped to derive the package ref,
+      // which is handed to the skills CLI as a bare argv element.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              registryHtml({
+                source: "github.com/-x",
+                skillId: "find-skills",
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            registrySkillId: "github.com/-x/find-skills",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects a parent-directory segment on the detail route", async () => {
+    await withTestHarness(async (harness) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/detail?source=github.com%2F..&skillId=x",
+      );
+
+      expect(response.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 

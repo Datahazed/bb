@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { RegistrySkill } from "@bb/server-contract";
+import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineId } from "./machine.js";
@@ -67,6 +69,98 @@ function addWorkspaceOptions(command: Command): Command {
     )
     .option("--environment <id>", "Project environment workspace")
     .option("--json", "Print machine-readable JSON output");
+}
+
+/**
+ * Enrichment fans out one request per item, and each one proxies to GitHub or
+ * skills.sh. `--per-page` goes up to 100, so both the concurrency and the
+ * number of items enriched are capped: unauthenticated GitHub allows 60
+ * requests/hour/IP, and an uncapped burst exhausts that in a single search.
+ */
+const REGISTRY_ENRICH_CONCURRENCY = 6;
+const REGISTRY_ENRICH_LIMIT = 48;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(limit, items.length)) },
+    async () => {
+      while (next < items.length) {
+        const index = next++;
+        results[index] = await run(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+async function enrichRegistryStars(
+  registry: SkillsRegistryArea,
+  skills: readonly RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const sources = [
+    ...new Map(
+      skills
+        .filter((skill) => skill.stars === null)
+        .map((skill) => [skill.source.toLowerCase(), skill.source]),
+    ).entries(),
+  ].slice(0, REGISTRY_ENRICH_LIMIT);
+  const starsBySource = new Map(
+    await mapWithConcurrency(
+      sources,
+      REGISTRY_ENRICH_CONCURRENCY,
+      async ([sourceKey, source]) => {
+        const stars = await registry
+          .repositoryStars({ source })
+          .then((result) => result.stars)
+          .catch(() => null);
+        return [sourceKey, stars] as const;
+      },
+    ),
+  );
+  return skills.map((skill) => {
+    if (skill.stars !== null) return skill;
+    const stars = starsBySource.get(skill.source.toLowerCase());
+    return stars === null || stars === undefined ? skill : { ...skill, stars };
+  });
+}
+
+/**
+ * The registry list deliberately no longer resolves summaries server-side —
+ * that preflight was removed because it made browsing O(N) slow. The CLI has
+ * no per-card lazy loading to compensate with, so it resolves the missing
+ * summaries here instead, under the same caps as stars.
+ */
+async function enrichRegistrySummaries(
+  registry: SkillsRegistryArea,
+  skills: readonly RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const missing = skills
+    .filter((skill) => skill.summary === null)
+    .slice(0, REGISTRY_ENRICH_LIMIT);
+  if (missing.length === 0) return [...skills];
+  const summaryById = new Map(
+    await mapWithConcurrency(
+      missing,
+      REGISTRY_ENRICH_CONCURRENCY,
+      async (skill) => {
+        const entry = await registry
+          .get({ registrySkillId: skill.id })
+          .catch(() => null);
+        return [skill.id, entry?.summary ?? null] as const;
+      },
+    ),
+  );
+  return skills.map((skill) => {
+    const summary = summaryById.get(skill.id);
+    return summary == null ? skill : { ...skill, summary };
+  });
 }
 
 export function registerSkillCommands(
@@ -197,12 +291,20 @@ export function registerSkillCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (query: string | undefined, options: SkillSearchOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.registry.search({
+        const registry = createCliBbSdk(getUrl()).skills.registry;
+        const result = await registry.search({
           query,
           page: parseNonnegativeInteger(options.page, 0),
           perPage: parseNonnegativeInteger(options.perPage, 24),
         });
-        if (outputJson(options, result)) return;
+        const enrichedResult = {
+          ...result,
+          skills: await enrichRegistrySummaries(
+            registry,
+            await enrichRegistryStars(registry, result.skills),
+          ),
+        };
+        if (outputJson(options, enrichedResult)) return;
         console.log(
           renderBorderlessTable(
             {
@@ -210,7 +312,7 @@ export function registerSkillCommands(
               colWidths: [48, 12, 10, 48],
               trimTrailingWhitespace: true,
             },
-            result.skills.map((entry) => [
+            enrichedResult.skills.map((entry) => [
               entry.id,
               String(entry.installs),
               entry.stars === null ? "—" : String(entry.stars),
@@ -231,19 +333,23 @@ export function registerSkillCommands(
       action(async (registrySkillId: string, options: JsonOutputOptions) => {
         const registry = createCliBbSdk(getUrl()).skills.registry;
         const skillEntry = await registry.get({ registrySkillId });
-        const detail = await registry.detail({
-          source: skillEntry.source,
-          skillId: skillEntry.skillId,
-        });
-        const result = { skill: skillEntry, detail };
+        const [detail, [enrichedSkillEntry]] = await Promise.all([
+          registry.detail({
+            source: skillEntry.source,
+            skillId: skillEntry.skillId,
+          }),
+          enrichRegistryStars(registry, [skillEntry]),
+        ]);
+        const result = { skill: enrichedSkillEntry ?? skillEntry, detail };
         if (outputJson(options, result)) return;
-        console.log(`Name: ${skillEntry.name}`);
-        console.log(`ID: ${skillEntry.id}`);
-        console.log(`Source: ${skillEntry.source}`);
-        console.log(`Installs: ${skillEntry.installs}`);
-        console.log(`Stars: ${skillEntry.stars ?? "—"}`);
-        console.log(`URL: ${skillEntry.url}`);
-        if (skillEntry.summary) console.log(`Summary: ${skillEntry.summary}`);
+        console.log(`Name: ${result.skill.name}`);
+        console.log(`ID: ${result.skill.id}`);
+        console.log(`Source: ${result.skill.source}`);
+        console.log(`Installs: ${result.skill.installs}`);
+        console.log(`Stars: ${result.skill.stars ?? "—"}`);
+        console.log(`URL: ${result.skill.url}`);
+        if (result.skill.summary)
+          console.log(`Summary: ${result.skill.summary}`);
         console.log(`Revision: ${detail.hash ?? "unknown"}`);
         if (detail.files === null) {
           console.log("Files: unavailable");

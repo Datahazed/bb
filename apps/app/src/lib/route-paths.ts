@@ -13,7 +13,9 @@ export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
-export const TOOLS_SKILL_DETAIL_ROUTE_PATH = "/tools/skills/installed/:skillId";
+export const TOOLS_SKILL_DETAIL_ROUTE_PATH = "/tools/skills/library/:skillId";
+export const LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH =
+  "/tools/skills/installed/:skillId";
 export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
 export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
   "/tools/skills/registry/:registrySkillId";
@@ -119,7 +121,7 @@ export interface SkillDetailRoutePathArgs {
 export function getSkillDetailRoutePath({
   skillId,
 }: SkillDetailRoutePathArgs): string {
-  return `${TOOLS_SKILLS_ROUTE_PATH}/installed/${encodeURIComponent(skillId)}`;
+  return `${TOOLS_SKILLS_ROUTE_PATH}/library/${encodeURIComponent(skillId)}`;
 }
 
 export interface RegistrySkillDetailRoutePathArgs {
@@ -218,6 +220,7 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,

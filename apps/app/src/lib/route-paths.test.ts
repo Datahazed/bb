@@ -67,7 +67,7 @@ describe("route path helpers", () => {
       getSkillDetailRoutePath({
         skillId: "skill_abc123",
       }),
-    ).toBe("/tools/skills/installed/skill_abc123");
+    ).toBe("/tools/skills/library/skill_abc123");
     expect(
       getRegistrySkillDetailRoutePath({
         registrySkillId: "moss-skills/moss-notes",
@@ -94,6 +94,7 @@ describe("route path helpers", () => {
     for (const path of [
       "/tools",
       "/tools/skills",
+      "/tools/skills/library/skill_abc123",
       "/tools/skills/installed/skill_abc123",
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
       "/tools/plugins",

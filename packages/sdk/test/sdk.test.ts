@@ -1233,6 +1233,7 @@ describe("@bb/sdk", () => {
       services: [],
       schedules: [],
       cliCommand: null,
+      capabilities: [],
       hasSettings: false,
       app: { hasApp: false, bundle: null },
       logoUrl: null,
@@ -1512,6 +1513,7 @@ describe("@bb/sdk", () => {
           pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
         },
       },
+      { body: { stars: 27_053 } },
       { body: { ok: true, filePath: "/skills/useful-skill/SKILL.md" } },
     ]);
     const sdk = createBbSdk({
@@ -1528,6 +1530,9 @@ describe("@bb/sdk", () => {
     await expect(sdk.skills.registry.search()).resolves.toMatchObject({
       skills: [registrySkill],
     });
+    await expect(
+      sdk.skills.registry.repositoryStars({ source: registrySkill.source }),
+    ).resolves.toEqual({ stars: 27_053 });
     await expect(
       sdk.skills.registry.install({
         registrySkillId: registrySkill.id,
@@ -1546,6 +1551,11 @@ describe("@bb/sdk", () => {
       {
         method: "GET",
         url: "http://bb.test/api/v1/skills-registry?page=0&perPage=24",
+        bodyText: undefined,
+      },
+      {
+        method: "GET",
+        url: "http://bb.test/api/v1/skills-registry/repository-stars?source=owner%2Frepo",
         bodyText: undefined,
       },
       {

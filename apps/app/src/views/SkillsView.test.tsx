@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
+import type { ComponentProps } from "react";
 import {
-  act,
   cleanup,
   fireEvent,
   render as renderDom,
@@ -9,19 +9,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
+import { buildRegistrySkillReferencePrompt } from "@/lib/skills-registry";
 import { SkillDetailView } from "../components/tools/SkillDetailView";
+import { RegistrySkillDetailView } from "../components/tools/SkillsBrowse";
 import {
-  fetchRegistrySkills,
-  fetchRegistrySkillEntry,
-  installRegistrySkill,
   RegistrySkillsBrowsePage,
-  resolveInstalledRegistrySkill,
   SkillDetailDialogView,
   SkillsLibrary,
   SkillsOverview,
@@ -67,7 +64,21 @@ function makeRegistrySkill(
   };
 }
 
-function renderInstalledSkillRoute() {
+function requestPath(input: RequestInfo | URL): string {
+  const url = new URL(String(input), window.location.origin);
+  return `${url.pathname}${url.search}`;
+}
+
+function LocationStateProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location-state">
+      {JSON.stringify(location.state)}
+    </output>
+  );
+}
+
+function renderLibrarySkillRoute() {
   const fetchMock = vi.fn(
     async () =>
       new Response(
@@ -84,11 +95,11 @@ function renderInstalledSkillRoute() {
   vi.stubGlobal("fetch", fetchMock);
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   renderDom(
-    <MemoryRouter initialEntries={["/tools/skills/installed/skill_missing"]}>
+    <MemoryRouter initialEntries={["/tools/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/tools/skills/installed/:skillId"
+            path="/tools/skills/library/:skillId"
             element={<SkillsLibrary />}
           />
         </Routes>
@@ -111,12 +122,127 @@ function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
   );
 }
 
+function renderSkillDetailDialog(
+  skill: SkillSummary,
+  overrides: Partial<ComponentProps<typeof SkillDetailDialogView>> = {},
+) {
+  return renderDom(
+    <SkillDetailDialogView
+      skill={skill}
+      files={["SKILL.md"]}
+      selectedPath="SKILL.md"
+      onSelectPath={() => {}}
+      content={`# ${skill.name}`}
+      isLoadingContent={false}
+      isContentError={false}
+      canEdit={false}
+      canDelete={false}
+      canOpenInEditor={false}
+      isDeleting={false}
+      onEdit={() => {}}
+      onRetry={() => {}}
+      onDelete={() => {}}
+      onOpenInEditor={() => {}}
+      {...overrides}
+    />,
+  );
+}
+
+function renderRegistryBrowse(
+  overrides: Partial<ComponentProps<typeof RegistrySkillsBrowsePage>> = {},
+) {
+  return renderDom(
+    <RegistrySkillsBrowsePage
+      skills={[makeRegistrySkill()]}
+      pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
+      isLoading={false}
+      hasError={false}
+      query=""
+      onQueryChange={() => {}}
+      onPageChange={() => {}}
+      onFork={() => {}}
+      onSelect={() => {}}
+      {...overrides}
+    />,
+  );
+}
+
+function stubRegistryFetch(
+  registrySkill: RegistrySkill,
+  options: {
+    detail?: boolean;
+    list?: boolean;
+  } = {},
+) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestPath(input);
+    if (url.startsWith("/api/v1/skills-registry?")) {
+      return new Response(
+        JSON.stringify({
+          skills: options.list ? [registrySkill] : [],
+          pagination: {
+            page: 0,
+            perPage: 24,
+            total: options.list ? 1 : 0,
+            hasMore: false,
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.startsWith("/api/v1/skills-registry/entry?")) {
+      return new Response(JSON.stringify(registrySkill), { status: 200 });
+    }
+    if (
+      url.startsWith("/api/v1/skills-registry/detail?") &&
+      options.detail !== false
+    ) {
+      return new Response(
+        JSON.stringify({
+          id: registrySkill.id,
+          source: registrySkill.source,
+          skillId: registrySkill.skillId,
+          hash: null,
+          files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function renderRegistrySkillRoute() {
+  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+  return renderDom(
+    <MemoryRouter
+      initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
+    >
+      <QueryClientWrapper>
+        <Routes>
+          <Route
+            path="/tools/skills/registry/:registrySkillId"
+            element={<SkillsLibrary />}
+          />
+        </Routes>
+      </QueryClientWrapper>
+    </MemoryRouter>,
+  );
+}
+
 describe("SkillsOverview", () => {
   it("renders flat rows with provider filter and sort controls", () => {
     const markup = render({
       skills: [
         makeSkill({ name: "claude-skill", provider: "claude-code" }),
-        makeSkill({ name: "bb-skill", provider: null, scope: "bb-user" }),
+        makeSkill({
+          name: "bb-skill",
+          provider: null,
+          scope: "bb-builtin",
+          manageable: false,
+        }),
       ],
     });
     expect(markup).toContain("claude-skill");
@@ -124,45 +250,17 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-label="Agent"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
-    expect(markup).toContain("Installed");
+    expect(markup).toContain("Library");
     expect(markup).toContain("Browse");
+    expect(markup).toContain("Built-in");
+    expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
-    expect(markup).not.toContain("group-hover:translate-x-1");
-    expect(markup).toContain("group-hover:opacity-100");
-    expect(markup.indexOf("Installed")).toBeLessThan(
+    expect(markup.indexOf("Library")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
     expect(markup.indexOf("bb-skill")).toBeLessThan(
       markup.indexOf("claude-skill"),
     );
-    expect(markup).not.toContain('aria-expanded="true"');
-  });
-
-  it("marks built-in skill rows with the shared provenance badge", () => {
-    renderDom(
-      <SkillsOverview
-        skills={[
-          makeSkill({
-            name: "bb-cli",
-            provider: null,
-            scope: "bb-builtin",
-            manageable: false,
-          }),
-        ]}
-        isLoading={false}
-        hasError={false}
-        onCreateSkill={() => {}}
-        onSelectSkill={() => {}}
-      />,
-    );
-
-    const builtInPill = screen.getByText("Built-in").parentElement;
-    expect(builtInPill?.className).toContain("rounded-md");
-    expect(builtInPill?.className).toContain("bg-surface-recessed/45");
-    expect(builtInPill?.className).toContain("text-subtle-foreground");
-    expect(builtInPill?.className).toContain("font-medium");
-    expect(builtInPill?.className).toContain("px-1.5");
-    expect(builtInPill?.className).toContain("py-0");
   });
 
   it("renders browse content as the active full-page collection mode", () => {
@@ -180,14 +278,10 @@ describe("SkillsOverview", () => {
             isLoading={false}
             hasError={false}
             query=""
-            pendingSkillId={null}
             onQueryChange={() => {}}
             onPageChange={() => {}}
-            onInstall={() => {}}
-            onUninstall={() => {}}
+            onFork={() => {}}
             onSelect={() => {}}
-            isInstalled={() => true}
-            canUninstall={() => true}
           />
         }
         onCreateSkill={() => {}}
@@ -196,248 +290,6 @@ describe("SkillsOverview", () => {
     );
 
     expect(markup).toContain("Useful skill");
-    expect(markup).toContain('href="https://www.skills.sh/"');
-    expect(markup).toContain("powered by");
-    expect(markup).toContain('aria-label="123.5K installs"');
-    expect(markup).toContain('aria-label="654 stars"');
-    expect(markup).toContain(
-      "grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-2.5",
-    );
-    expect(markup).not.toContain("overflow-x-auto");
-    expect(markup).toContain("Uninstall Useful skill from bb");
-    expect(markup).toContain('aria-label="View details for Useful skill"');
-  });
-
-  it("paginates installed skills after sorting and filtering", () => {
-    const skills = Array.from({ length: 12 }, (_, index) => {
-      const ordinal = String(index + 1).padStart(2, "0");
-      return makeSkill({
-        name: `skill-${ordinal}`,
-        filePath: `/skills/skill-${ordinal}/SKILL.md`,
-      });
-    });
-    renderDom(
-      <SkillsOverview
-        skills={skills}
-        isLoading={false}
-        hasError={false}
-        onCreateSkill={() => {}}
-        onSelectSkill={() => {}}
-      />,
-    );
-
-    expect(screen.getByText("1–10 of 12")).toBeTruthy();
-    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
-    expect(screen.getByText("skill-10")).toBeTruthy();
-    expect(screen.queryByText("skill-11")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(screen.getByText("11–12 of 12")).toBeTruthy();
-    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
-    expect(screen.queryByText("skill-10")).toBeNull();
-    expect(screen.getByText("skill-11")).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-  });
-
-  it("fits whole installed rows without stretching the list to the anchored pagination footer", async () => {
-    const skills = Array.from({ length: 30 }, (_, index) => {
-      const ordinal = String(index + 1).padStart(2, "0");
-      return makeSkill({
-        name: `skill-${ordinal}`,
-        filePath: `/skills/skill-${ordinal}/SKILL.md`,
-      });
-    });
-    let viewportHeight = 760;
-    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "clientHeight",
-    );
-    const resizeCallbacks = new Set<ResizeObserverCallback>();
-
-    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
-      configurable: true,
-      get() {
-        return this.id === "skills-installed-results" ? viewportHeight : 0;
-      },
-    });
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function getBoundingClientRect(this: HTMLElement) {
-        const height = this.hasAttribute("data-resource-list-panel")
-          ? viewportHeight
-          : this.hasAttribute("data-resource-row")
-            ? 50
-            : 0;
-        return new DOMRect(0, 0, 800, height);
-      },
-    );
-    vi.stubGlobal(
-      "ResizeObserver",
-      class ResizeObserverMock {
-        constructor(private readonly callback: ResizeObserverCallback) {
-          resizeCallbacks.add(callback);
-        }
-        observe() {}
-        unobserve() {}
-        disconnect() {
-          resizeCallbacks.delete(this.callback);
-        }
-      },
-    );
-
-    try {
-      renderDom(
-        <SkillsOverview
-          skills={skills}
-          isLoading={false}
-          hasError={false}
-          onCreateSkill={() => {}}
-          onSelectSkill={() => {}}
-        />,
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText("1–15 of 30")).toBeTruthy();
-      });
-      const viewport = document.getElementById("skills-installed-results");
-      const footer = document.querySelector(
-        "[data-resource-collection-footer]",
-      );
-      const collectionContent = document.querySelector(
-        "[data-resource-collection-content]",
-      );
-      const listPanel = document.querySelector("[data-resource-list-panel]");
-      expect(viewport?.contains(footer)).toBe(false);
-      expect(viewport?.classList.contains("[&>div]:!flex")).toBe(false);
-      expect(collectionContent).toBeNull();
-      expect(listPanel?.classList.contains("flex-1")).toBe(false);
-      fireEvent.click(screen.getByRole("button", { name: "Next" }));
-      expect(screen.getByText("16–30 of 30")).toBeTruthy();
-
-      viewportHeight = 410;
-      act(() => {
-        for (const callback of resizeCallbacks) {
-          callback([], {} as ResizeObserver);
-        }
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("9–16 of 30")).toBeTruthy();
-      });
-      expect(screen.getByText("Page 2 of 4")).toBeTruthy();
-      expect(screen.getByText("skill-16")).toBeTruthy();
-    } finally {
-      if (clientHeightDescriptor === undefined) {
-        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
-      } else {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "clientHeight",
-          clientHeightDescriptor,
-        );
-      }
-    }
-  });
-
-  it("does not reserve a sticky pagination footer for one installed page", () => {
-    const skills = Array.from({ length: 3 }, (_, index) =>
-      makeSkill({
-        name: `skill-${index + 1}`,
-        filePath: `/skills/skill-${index + 1}/SKILL.md`,
-      }),
-    );
-
-    renderDom(
-      <SkillsOverview
-        skills={skills}
-        isLoading={false}
-        hasError={false}
-        onCreateSkill={() => {}}
-        onSelectSkill={() => {}}
-      />,
-    );
-
-    expect(
-      document.querySelector("[data-resource-collection-footer]"),
-    ).toBeNull();
-    expect(
-      document.querySelector("[data-resource-collection-content]"),
-    ).toBeNull();
-    expect(
-      document
-        .querySelector("[data-resource-list-panel]")
-        ?.classList.contains("flex-1"),
-    ).toBe(false);
-  });
-
-  it("confirms before uninstalling an installed skill from a Browse card", () => {
-    const registrySkill = makeRegistrySkill();
-    const onUninstall = vi.fn();
-    renderDom(
-      <RegistrySkillsBrowsePage
-        skills={[registrySkill]}
-        pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
-        isLoading={false}
-        hasError={false}
-        query=""
-        pendingSkillId={null}
-        onQueryChange={() => {}}
-        onPageChange={() => {}}
-        onInstall={() => {}}
-        onUninstall={onUninstall}
-        onSelect={() => {}}
-        isInstalled={() => true}
-        canUninstall={() => true}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Uninstall Useful skill from bb",
-      }),
-    );
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(
-      screen.getByText('Remove "Useful skill" from your bb skills?'),
-    ).toBeTruthy();
-    expect(onUninstall).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
-    expect(onUninstall).toHaveBeenCalledOnce();
-    expect(onUninstall).toHaveBeenCalledWith(registrySkill);
-  });
-
-  it("keeps name-only installed matches passive without proven provenance", () => {
-    const registrySkill = makeRegistrySkill();
-    renderDom(
-      <RegistrySkillsBrowsePage
-        skills={[registrySkill]}
-        pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
-        isLoading={false}
-        hasError={false}
-        query=""
-        pendingSkillId={null}
-        onQueryChange={() => {}}
-        onPageChange={() => {}}
-        onInstall={() => {}}
-        onUninstall={() => {}}
-        onSelect={() => {}}
-        isInstalled={() => true}
-        canUninstall={() => false}
-      />,
-    );
-
-    expect(
-      screen.getByLabelText("Installed Useful skill as a bb skill"),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", {
-        name: "Uninstall Useful skill from bb",
-      }),
-    ).toBeNull();
   });
 
   it("disables provider filters that have no matching skills", async () => {
@@ -473,10 +325,6 @@ describe("SkillsOverview", () => {
     ).toBeNull();
   });
 
-  it("renders a New bb skill create action", () => {
-    expect(render({ skills: [] })).toContain("New bb skill");
-  });
-
   it("keeps edit and delete actions in detail rather than overview rows", () => {
     const markup = render({
       skills: [
@@ -495,19 +343,10 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain('aria-label="Delete provider-skill"');
   });
 
-  it("keeps create out of the list (templates live in the menu, not a panel)", () => {
-    // The page is never truly empty (built-ins always ship), so there is no
-    // persistent teaching panel; the create templates live in the closed menu.
-    const markup = render({ skills: [] });
-    expect(markup).toContain("New bb skill");
-    expect(markup).not.toContain("Start from an example");
-  });
-
   it("shows a loading skeleton", () => {
     const markup = render({ skills: [], isLoading: true });
     expect(markup).toContain('role="status"');
     expect(markup).toContain("Loading skills");
-    expect(markup).toContain("animate-pulse");
     expect(markup).not.toContain("Start from an example");
   });
 
@@ -520,222 +359,50 @@ describe("SkillsOverview", () => {
   });
 });
 
-describe("SkillsLibrary installed detail routing", () => {
-  it("keeps a detail loading state while the installed skill list resolves", () => {
+describe("SkillsLibrary library detail routing", () => {
+  it("keeps a detail loading state while the skill library resolves", () => {
     vi.spyOn(sdk.skills, "list").mockImplementation(
       () => new Promise(() => {}),
     );
 
-    renderInstalledSkillRoute();
+    renderLibrarySkillRoute();
 
     expect(screen.getByText("Loading skill")).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
   });
 
-  it("shows a retryable detail error when installed skills fail to load", async () => {
+  it("shows a retryable detail error when the skill library fails to load", async () => {
     vi.spyOn(sdk.skills, "list").mockRejectedValue(
       new Error("skills unavailable"),
     );
 
-    renderInstalledSkillRoute();
+    renderLibrarySkillRoute();
 
     expect(await screen.findByText("Couldn't load skill.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
   });
 
-  it("shows not found on an unknown installed skill detail route", async () => {
+  it("shows not found on an unknown library skill detail route", async () => {
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
 
-    renderInstalledSkillRoute();
+    const fetchMock = renderLibrarySkillRoute();
 
-    expect(await screen.findByText("Skill not found.")).toBeTruthy();
+    const notFound = await screen.findByText("Skill not found.");
+    // Skill detail-route states use the same detail-width treatment as the
+    // plugin and automation routes rather than a list-shaped empty state.
+    expect(notFound.closest("[data-resource-detail-state]")).not.toBeNull();
     expect(screen.queryByText("New bb skill")).toBeNull();
-  });
-
-  it("does not load the registry collection for an installed route", async () => {
-    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
-    const fetchMock = renderInstalledSkillRoute();
-
-    expect(await screen.findByText("Skill not found.")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
-  it("keeps uninstall available for an installed registry skill after reload", async () => {
-    const registrySkill = makeRegistrySkill();
-    const installedSkill = makeSkill({
-      name: registrySkill.skillId,
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-      registrySkillId: registrySkill.id,
-    });
-    vi.spyOn(sdk.skills, "list").mockResolvedValue({
-      skills: [installedSkill],
-    });
-    const removeSkill = vi
-      .spyOn(sdk.skills, "remove")
-      .mockResolvedValue({ deletedPath: "/home/u/.bb/skills/useful-skill" });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.startsWith("/api/v1/skills-registry/entry?")) {
-          return new Response(JSON.stringify(registrySkill), { status: 200 });
-        }
-        if (url.startsWith("/api/v1/skills-registry/detail?")) {
-          return new Response(
-            JSON.stringify({
-              id: registrySkill.id,
-              source: registrySkill.source,
-              skillId: registrySkill.skillId,
-              hash: null,
-              files: [{ path: "SKILL.md", contents: "# Useful skill" }],
-            }),
-            { status: 200 },
-          );
-        }
-        return new Response(null, { status: 404 });
-      }),
-    );
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    renderDom(
-      <MemoryRouter
-        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
-      >
-        <QueryClientWrapper>
-          <Routes>
-            <Route
-              path="/tools/skills/registry/:registrySkillId"
-              element={<SkillsLibrary />}
-            />
-          </Routes>
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Uninstall Useful skill from bb",
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
-    await waitFor(() => {
-      expect(removeSkill).toHaveBeenCalledWith({
-        projectId: PERSONAL_PROJECT_ID,
-        skillId: installedSkill.id,
-        environmentId: null,
-      });
-    });
-  });
-
-  it("updates an installed detail in place and keeps uninstall available", async () => {
-    const registrySkill = makeRegistrySkill();
-    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.startsWith("/api/v1/skills-registry/entry?")) {
-          return new Response(JSON.stringify(registrySkill), { status: 200 });
-        }
-        if (url.startsWith("/api/v1/skills-registry/detail?")) {
-          return new Response(
-            JSON.stringify({
-              id: registrySkill.id,
-              source: registrySkill.source,
-              skillId: registrySkill.skillId,
-              hash: null,
-              files: [{ path: "SKILL.md", contents: "# Useful skill" }],
-            }),
-            { status: 200 },
-          );
-        }
-        if (
-          url === "/api/v1/skills-registry/install" &&
-          init?.method === "POST"
-        ) {
-          return new Response(
-            JSON.stringify({
-              ok: true,
-              filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-            }),
-            { status: 200 },
-          );
-        }
-        return new Response(null, { status: 404 });
-      }),
-    );
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    const view = renderDom(
-      <MemoryRouter
-        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
-      >
-        <QueryClientWrapper>
-          <Routes>
-            <Route
-              path="/tools/skills/registry/:registrySkillId"
-              element={<SkillsLibrary />}
-            />
-          </Routes>
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    const install = await screen.findByRole("button", {
-      name: "Install Useful skill as a bb skill",
-    });
-    expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
-    expect(view.container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
-    fireEvent.click(install);
-
-    const uninstall = await screen.findByRole("button", {
-      name: "Uninstall Useful skill from bb",
-    });
-    expect(uninstall.textContent).toContain("Installed");
-    fireEvent.click(uninstall);
-    expect(await screen.findByRole("dialog")).toBeTruthy();
-  });
-
   it("does not offer installation when a direct registry source is unavailable", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.startsWith("/api/v1/skills-registry?")) {
-          return new Response(
-            JSON.stringify({
-              skills: [],
-              pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
-            }),
-            { status: 200 },
-          );
-        }
-        if (url.startsWith("/api/v1/skills-registry/entry?")) {
-          return new Response(JSON.stringify(registrySkill), { status: 200 });
-        }
-        return new Response(null, { status: 404 });
-      }),
-    );
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    renderDom(
-      <MemoryRouter
-        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
-      >
-        <QueryClientWrapper>
-          <Routes>
-            <Route
-              path="/tools/skills/registry/:registrySkillId"
-              element={<SkillsLibrary />}
-            />
-          </Routes>
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
+    stubRegistryFetch(registrySkill, { detail: false });
+    renderRegistrySkillRoute();
 
     expect(
       await screen.findByText(
@@ -743,13 +410,208 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: /Install Useful skill/ }),
+      screen.queryByRole("button", { name: /Fork Useful skill/ }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Fork Useful skill/,
+      }),
+    ).toBeNull();
+  });
+
+  it("opens the composer from a registry card with the reference prompt", async () => {
+    const registrySkill = makeRegistrySkill();
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = stubRegistryFetch(registrySkill, { list: true });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+            <Route path="/" element={<LocationStateProbe />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Fork Useful skill into a new bb skill",
+      }),
+    );
+
+    const state = JSON.parse(
+      (await screen.findByTestId("location-state")).textContent ?? "null",
+    );
+    expect(state).toEqual({
+      focusPrompt: true,
+      initialPrompt: buildRegistrySkillReferencePrompt(registrySkill),
+      replaceInitialPrompt: true,
+      createDraftKind: "skill",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => requestPath(input) === "/api/v1/skills-registry/install",
+      ),
+    ).toBe(false);
+  });
+
+  it("loads repository stars once and progressively updates every matching card", async () => {
+    const firstSkill = makeRegistrySkill({
+      id: "owner/shared-repo/first-skill",
+      source: "owner/shared-repo",
+      skillId: "first-skill",
+      name: "First skill",
+      stars: null,
+    });
+    const secondSkill = makeRegistrySkill({
+      id: "owner/shared-repo/second-skill",
+      source: "owner/shared-repo",
+      skillId: "second-skill",
+      name: "Second skill",
+      stars: null,
+    });
+    let resolveStars: ((response: Response) => void) | undefined;
+    const starsResponse = new Promise<Response>((resolve) => {
+      resolveStars = resolve;
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        return Promise.resolve(
+          Response.json({
+            skills: [firstSkill, secondSkill],
+            pagination: {
+              page: 0,
+              perPage: 24,
+              total: 2,
+              hasMore: false,
+            },
+          }),
+        );
+      }
+      if (
+        url ===
+        "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo"
+      ) {
+        return starsResponse;
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("Second skill")).toBeTruthy();
+    expect(screen.queryByLabelText(/stars$/u)).toBeNull();
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            requestPath(input) ===
+            "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo",
+        ),
+      ).toHaveLength(1);
+    });
+
+    resolveStars?.(Response.json({ stars: 27_053 }));
+
+    expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
+  });
+
+  it("renders registry cards before progressively loading their descriptions", async () => {
+    const registrySkill = makeRegistrySkill({ summary: null });
+    let resolveEntry: ((response: Response) => void) | undefined;
+    const entryResponse = new Promise<Response>((resolve) => {
+      resolveEntry = resolve;
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        return Promise.resolve(
+          Response.json({
+            skills: [registrySkill],
+            pagination: {
+              page: 0,
+              perPage: 24,
+              total: 1,
+              hasMore: false,
+            },
+          }),
+        );
+      }
+      if (
+        url === "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill"
+      ) {
+        return entryResponse;
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Useful skill")).toBeTruthy();
+    expect(screen.queryByText("Loaded after the card")).toBeNull();
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            requestPath(input) ===
+            "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
+        ),
+      ).toHaveLength(1);
+    });
+
+    resolveEntry?.(
+      Response.json({
+        ...registrySkill,
+        summary: "Loaded after the card",
+      }),
+    );
+
+    expect(await screen.findByText("Loaded after the card")).toBeTruthy();
   });
 });
 
 describe("RegistrySkillsBrowsePage", () => {
-  it("renders the authoritative page order, exposes social proof, and pages forward", async () => {
+  it("uses the shared error state and retry action", () => {
+    const onRetry = vi.fn();
+    renderRegistryBrowse({
+      skills: [],
+      pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
+      hasError: true,
+      onRetry,
+    });
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Couldn't load skills.sh.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("renders the authoritative page order, exposes social proof, and pages forward", () => {
     const onPageChange = vi.fn();
     const alpha = makeRegistrySkill({
       id: "owner/repo/alpha",
@@ -766,47 +628,33 @@ describe("RegistrySkillsBrowsePage", () => {
       stars: 10,
     });
     const onSelect = vi.fn();
-    renderDom(
-      <RegistrySkillsBrowsePage
-        skills={[alpha, zulu]}
-        pagination={{ page: 0, perPage: 24, total: 48, hasMore: true }}
-        isLoading={false}
-        hasError={false}
-        query=""
-        pendingSkillId={null}
-        onQueryChange={() => {}}
-        onPageChange={onPageChange}
-        onInstall={() => {}}
-        onUninstall={() => {}}
-        onSelect={onSelect}
-        isInstalled={(skill) => skill.id === alpha.id}
-      />,
-    );
+    const onFork = vi.fn();
+    renderRegistryBrowse({
+      skills: [alpha, zulu],
+      pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
+      onPageChange,
+      onFork,
+      onSelect,
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "View details for Alpha" }),
     );
     expect(onSelect).toHaveBeenCalledWith(alpha);
     expect(screen.getByText("1–2 of 48")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /skills\.sh/ })).toBeTruthy();
-    expect(screen.getByText("powered by")).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
     expect(
-      screen
-        .getByLabelText("Installed Alpha as a bb skill")
-        .querySelector('[data-icon="Check"]'),
-    ).not.toBeNull();
-    const zuluInstall = screen.getByRole("button", {
-      name: "Install Zulu as a bb skill",
+      screen.getByRole("button", {
+        name: "Fork Alpha into a new bb skill",
+      }).textContent,
+    ).toBe("");
+    const zuluCreate = screen.getByRole("button", {
+      name: "Fork Zulu into a new bb skill",
     });
-    expect(zuluInstall.textContent).toBe("");
-    expect(zuluInstall.querySelector('[data-icon="Download"]')).not.toBeNull();
-    fireEvent.pointerMove(zuluInstall);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Install Zulu",
-    );
+    fireEvent.click(zuluCreate);
+    expect(onFork).toHaveBeenCalledWith(zulu);
+    expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
     const alphaTitle = screen.getByText("Alpha");
@@ -820,6 +668,56 @@ describe("RegistrySkillsBrowsePage", () => {
   });
 });
 
+describe("RegistrySkillDetailView reference creation", () => {
+  it("keeps forking available whether or not a local copy exists", () => {
+    const registrySkill = makeRegistrySkill();
+    const onFork = vi.fn();
+    const props = {
+      skill: registrySkill,
+      detail: {
+        id: registrySkill.id,
+        source: registrySkill.source,
+        skillId: registrySkill.skillId,
+        hash: null,
+        files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+      },
+      localSkill: null,
+      localPath: null,
+      onRetry: () => {},
+      onFork,
+      onEditLocalSkill: () => {},
+    };
+    const view = renderDom(<RegistrySkillDetailView {...props} />);
+
+    const forkButton = screen.getByRole("button", {
+      name: "Fork Useful skill into a new bb skill",
+    });
+    expect(forkButton.textContent).toContain("Fork");
+    fireEvent.click(forkButton);
+    expect(onFork).toHaveBeenCalledWith(registrySkill);
+    expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
+
+    view.rerender(
+      <RegistrySkillDetailView
+        {...props}
+        localSkill={makeSkill({
+          name: registrySkill.skillId,
+          provider: null,
+          scope: "bb-user",
+          registrySkillId: registrySkill.id,
+        })}
+        localPath="/home/u/.bb/skills/useful-skill/SKILL.md"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Fork Useful skill into a new bb skill",
+      }),
+    );
+    expect(onFork).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("SkillDetailDialogView", () => {
   it("presents built-in ownership passively without an actions menu", async () => {
     const skill = makeSkill({
@@ -828,33 +726,10 @@ describe("SkillDetailDialogView", () => {
       scope: "bb-builtin",
       manageable: false,
     });
-    renderDom(
-      <SkillDetailDialogView
-        skill={skill}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={() => {}}
-        content="# bb CLI"
-        isLoadingContent={false}
-        isContentError={false}
-        canEdit={false}
-        canDelete={false}
-        canOpenInEditor={false}
-        isDeleting={false}
-        onEdit={() => {}}
-        onRetry={() => {}}
-        onDelete={() => {}}
-        onOpenInEditor={() => {}}
-      />,
-    );
+    renderSkillDetailDialog(skill);
 
     const builtIn = screen.getByLabelText("bb-cli is built into bb");
     expect(builtIn.textContent).toBe("Built-in");
-    expect(builtIn.className).toContain("bg-transparent");
-    expect(builtIn.className).toContain("border-border/70");
-    expect(
-      builtIn.querySelector('[data-icon="PackageReceive"]'),
-    ).not.toBeNull();
     expect(screen.queryByRole("button", { name: "bb-cli actions" })).toBeNull();
     fireEvent.pointerMove(builtIn);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
@@ -862,96 +737,42 @@ describe("SkillDetailDialogView", () => {
     );
   });
 
-  it("shows plugin-provided provenance as a passive lifecycle status", async () => {
-    const skill = makeSkill({
-      name: "documents",
-      provider: "codex",
-      scope: "plugin",
-      pluginId: "documents",
-      manageable: false,
-    });
-    renderDom(
-      <SkillDetailDialogView
-        skill={skill}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={() => {}}
-        content="# Documents"
-        isLoadingContent={false}
-        isContentError={false}
-        canEdit={false}
-        canDelete={false}
-        canOpenInEditor
-        isDeleting={false}
-        onEdit={() => {}}
-        onRetry={() => {}}
-        onDelete={() => {}}
-        onOpenInEditor={() => {}}
-      />,
-    );
+  it.each([
+    {
+      skill: makeSkill({
+        name: "documents",
+        provider: "codex",
+        scope: "plugin",
+        pluginId: "documents",
+        manageable: false,
+      }),
+      accessibleLabel: "documents is included with Documents (Codex plugin)",
+      tooltip: "Included with Documents (Codex plugin)",
+    },
+    {
+      skill: makeSkill({
+        name: "plugin-notes",
+        provider: null,
+        scope: "plugin",
+        pluginId: "skill-catalog-fixture",
+        manageable: false,
+      }),
+      accessibleLabel:
+        "plugin-notes is included with Skill catalog fixture (bb plugin)",
+      tooltip: "Included with Skill catalog fixture (bb plugin)",
+    },
+  ])("presents $skill.name as plugin-provided", async (example) => {
+    renderSkillDetailDialog(example.skill);
 
-    const included = screen.getByLabelText(
-      "documents is included with Documents (Codex plugin)",
-    );
+    const included = screen.getByLabelText(example.accessibleLabel);
     expect(included.textContent).toBe("Included");
     expect(
-      included.querySelector('[data-icon="PackageReceive"]'),
-    ).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /documents plugin/i }),
+      screen.queryByRole("button", { name: `${example.skill.name} actions` }),
     ).toBeNull();
-    expect(screen.queryByTestId("plugin-logo-documents")).toBeNull();
-    expect(screen.queryByText("Editable", { exact: true })).toBeNull();
-
     fireEvent.pointerMove(included);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Included with Documents (Codex plugin)",
+      example.tooltip,
     );
-    expect(
-      screen.queryByRole("button", { name: "documents actions" }),
-    ).toBeNull();
-  });
-
-  it("identifies a bb plugin-provided skill without provider provenance", async () => {
-    const skill = makeSkill({
-      name: "plugin-notes",
-      provider: null,
-      scope: "plugin",
-      pluginId: "skill-catalog-fixture",
-      manageable: false,
-    });
-    renderDom(
-      <SkillDetailDialogView
-        skill={skill}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={() => {}}
-        content="# Plugin notes"
-        isLoadingContent={false}
-        isContentError={false}
-        canEdit={false}
-        canDelete={false}
-        canOpenInEditor={false}
-        isDeleting={false}
-        onEdit={() => {}}
-        onRetry={() => {}}
-        onDelete={() => {}}
-        onOpenInEditor={() => {}}
-      />,
-    );
-
-    const included = screen.getByLabelText(
-      "plugin-notes is included with Skill catalog fixture (bb plugin)",
-    );
-    expect(included.textContent).toBe("Included");
-    fireEvent.pointerMove(included);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Included with Skill catalog fixture (bb plugin)",
-    );
-    expect(screen.queryByText("Imported", { exact: true })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "plugin-notes actions" }),
-    ).toBeNull();
   });
 
   it("labels externally discovered provider skills as imported", async () => {
@@ -961,33 +782,12 @@ describe("SkillDetailDialogView", () => {
       scope: "claude-user",
       manageable: true,
     });
-    renderDom(
-      <SkillDetailDialogView
-        skill={skill}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={() => {}}
-        content="# Code review"
-        isLoadingContent={false}
-        isContentError={false}
-        canEdit
-        canDelete
-        canOpenInEditor={false}
-        isDeleting={false}
-        onEdit={() => {}}
-        onRetry={() => {}}
-        onDelete={() => {}}
-        onOpenInEditor={() => {}}
-      />,
-    );
+    renderSkillDetailDialog(skill, { canEdit: true, canDelete: true });
 
     const imported = screen.getByLabelText(
       "code-review is imported from Claude Code",
     );
     expect(imported.textContent).toBe("Imported");
-    expect(imported.className).toContain("min-w-20");
-    expect(imported.className).toContain("border");
-    expect(imported.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(imported);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Discovered from Claude Code",
@@ -1003,32 +803,16 @@ describe("SkillDetailDialogView", () => {
       filePath: "/home/u/.bb/skills/bb-skill/SKILL.md",
     });
     const onEdit = vi.fn();
-    renderDom(
-      <SkillDetailDialogView
-        skill={skill}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectPath={() => {}}
-        content="# bb skill"
-        isLoadingContent={false}
-        isContentError={false}
-        canEdit
-        canDelete
-        canOpenInEditor={false}
-        isDeleting={false}
-        onEdit={onEdit}
-        onRetry={() => {}}
-        onDelete={() => {}}
-        onOpenInEditor={() => {}}
-      />,
-    );
+    renderSkillDetailDialog(skill, {
+      canEdit: true,
+      canDelete: true,
+      onEdit,
+    });
 
-    const pathButton = screen.getByRole("button", {
+    screen.getByRole("button", {
       name: "Copy skill path: /home/u/.bb/skills/bb-skill",
     });
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
-    expect(pathButton.className).toContain("cursor-pointer");
-    expect(pathButton.className).toContain("hover:bg-state-hover");
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "bb-skill actions" }),
     );
@@ -1039,48 +823,16 @@ describe("SkillDetailDialogView", () => {
 });
 
 describe("SkillDetailView registry states", () => {
-  it("lets short Markdown previews end with their content", () => {
+  it("links to the source and omits social proof", () => {
+    // Fork is the sole registry acquisition action and lives on
+    // RegistrySkillDetailView, so this page renders no acquisition control at
+    // all — only the external source link and the skill body.
     renderDom(
-      <SkillDetailView
-        title="grill-me"
-        path="skills.sh/mattpocock/skills/grill-me"
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{
-          kind: "ready",
-          content: "# grill-me\n\nRun a `/grilling` session.",
-        }}
-      />,
-    );
-
-    const definition = screen
-      .getByText("SKILL.md")
-      .closest("[data-resource-detail-section]");
-    const previewPanel = definition?.querySelector(".rounded-md.border");
-
-    expect(previewPanel).not.toBeNull();
-    expect(previewPanel?.className).not.toContain("min-h-80");
-    expect(previewPanel?.className).not.toContain("overflow-auto");
-  });
-
-  it("omits social proof, links before install, and confirms uninstall", () => {
-    const onInstall = vi.fn();
-    const onUninstall = vi.fn();
-    const view = renderDom(
       <SkillDetailView
         leading={<span>Skill</span>}
         title="find-skills"
         path="skills.sh/vercel-labs/skills/find-skills"
         pathHref="https://www.skills.sh/vercel-labs/skills/find-skills"
-        headerControl={{
-          kind: "install",
-          skillName: "find-skills",
-          installed: false,
-          pending: false,
-          onInstall,
-          onUninstall,
-        }}
         files={["SKILL.md"]}
         selectedPath="SKILL.md"
         onSelectFile={() => {}}
@@ -1102,210 +854,6 @@ describe("SkillDetailView registry states", () => {
         .getByRole("heading", { name: "Find skills" })
         .closest(".overflow-auto"),
     ).toBeNull();
-    const installButton = screen.getByRole("button", {
-      name: /Install find-skills/,
-    });
-    expect(installButton.className).toContain("border-input");
-    fireEvent.click(installButton);
-    expect(onInstall).toHaveBeenCalledOnce();
-
-    view.rerender(
-      <SkillDetailView
-        leading={<span>Skill</span>}
-        title="find-skills"
-        path="~/.bb/skills/find-skills/SKILL.md"
-        headerControl={{
-          kind: "install",
-          skillName: "find-skills",
-          installed: true,
-          pending: false,
-          onInstall,
-          onUninstall,
-        }}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{ kind: "ready", content: "# Find skills" }}
-      />,
-    );
-
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.queryByText("Registry social proof")).toBeNull();
-    const uninstallButton = screen.getByRole("button", {
-      name: "Uninstall find-skills from bb",
-    });
-    expect(uninstallButton.className).toContain("group/install");
-    expect(uninstallButton.className).toContain("border-success/30");
-    expect(uninstallButton.className).toContain("bg-success/10");
-    expect(uninstallButton.querySelector('[data-icon="Check"]')).not.toBeNull();
-    expect(uninstallButton.innerHTML).toContain("group-hover/install:opacity");
-    fireEvent.click(uninstallButton);
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(onUninstall).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
-    expect(onUninstall).toHaveBeenCalledOnce();
-  });
-});
-
-describe("installRegistrySkill", () => {
-  it("imports one bb-owned user skill", async () => {
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) => ({
-        ok: true,
-        json: async () => ({
-          ok: true,
-          filePath: "/home/u/.bb/skills/skill/SKILL.md",
-        }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const skill = makeRegistrySkill({
-      id: "owner/repo/skill",
-      skillId: "skill",
-      name: "Skill",
-      url: "https://skills.sh/owner/repo/skill",
-    });
-
-    await expect(installRegistrySkill({ skill })).resolves.toEqual({
-      ok: true,
-      filePath: "/home/u/.bb/skills/skill/SKILL.md",
-    });
-
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const request = fetchMock.mock.calls[0];
-    expect(request?.[0]).toBe("/api/v1/skills-registry/install");
-    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
-      registrySkillId: "owner/repo/skill",
-    });
-    expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty(
-      "projectId",
-    );
-    expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty(
-      "providers",
-    );
-    expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty("scope");
-  });
-});
-
-describe("resolveInstalledRegistrySkill", () => {
-  it("resolves a registry entry only to an exact persisted provenance match", () => {
-    const registrySkill = makeRegistrySkill({
-      skillId: "Useful Skill",
-      name: "Useful skill",
-    });
-    const installed = makeSkill({
-      name: "useful-skill",
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-      registrySkillId: registrySkill.id,
-    });
-
-    expect(
-      resolveInstalledRegistrySkill(registrySkill, [
-        makeSkill({ name: "useful-skill", scope: "bb-builtin" }),
-        installed,
-      ]),
-    ).toBe(installed);
-    expect(
-      resolveInstalledRegistrySkill(registrySkill, [
-        makeSkill({ name: "useful-skill", provider: "codex" }),
-      ]),
-    ).toBeNull();
-  });
-
-  it("does not treat same-path, same-name, or different-source skills as installed", () => {
-    const registrySkill = makeRegistrySkill();
-    const duplicateSource = makeRegistrySkill({
-      id: "another/repository/useful-skill",
-      source: "another/repository",
-    });
-    const installed = makeSkill({
-      name: "A different display name",
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-      registrySkillId: registrySkill.id,
-    });
-    const sameNameInAnotherSlot = makeSkill({
-      name: registrySkill.skillId,
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/not-useful-skill/SKILL.md",
-    });
-    const claudeCopy = makeSkill({
-      name: registrySkill.skillId,
-      provider: "claude-code",
-      scope: "claude-user",
-      filePath: "/home/u/.claude/skills/useful-skill/SKILL.md",
-    });
-
-    expect(resolveInstalledRegistrySkill(registrySkill, [installed])).toBe(
-      installed,
-    );
-    expect(
-      resolveInstalledRegistrySkill(duplicateSource, [installed]),
-    ).toBeNull();
-    expect(
-      resolveInstalledRegistrySkill(registrySkill, [
-        makeSkill({
-          name: registrySkill.skillId,
-          provider: null,
-          scope: "bb-user",
-          filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-          registrySkillId: null,
-        }),
-      ]),
-    ).toBeNull();
-    expect(
-      resolveInstalledRegistrySkill(registrySkill, [sameNameInAnotherSlot]),
-    ).toBeNull();
-    expect(
-      resolveInstalledRegistrySkill(registrySkill, [claudeCopy]),
-    ).toBeNull();
-  });
-});
-
-describe("fetchRegistrySkills", () => {
-  it("requests and validates a registry page", async () => {
-    const skill = makeRegistrySkill();
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        skills: [skill],
-        pagination: { page: 2, perPage: 12, total: 73, hasMore: true },
-      }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await fetchRegistrySkills({ query: "useful", page: 2 });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/skills-registry?q=useful&page=2&perPage=12",
-    );
-    expect(result.skills).toEqual([skill]);
-    expect(result.pagination).toEqual({
-      page: 2,
-      perPage: 12,
-      total: 73,
-      hasMore: true,
-    });
-  });
-});
-
-describe("fetchRegistrySkillEntry", () => {
-  it("loads a canonical entry independently of the current browse page", async () => {
-    const skill = makeRegistrySkill();
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => skill,
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(fetchRegistrySkillEntry(skill.id)).resolves.toEqual(skill);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
-    );
+    expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
   });
 });

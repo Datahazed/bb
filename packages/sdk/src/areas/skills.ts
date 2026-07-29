@@ -2,9 +2,11 @@ import {
   registrySkillDetailSchema,
   registrySkillInstallRequestSchema,
   registrySkillInstallResponseSchema,
+  registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
   type DeleteSkillRequest,
+  type RegistryRepositoryStars,
   type RegistrySkill,
   type RegistrySkillDetail,
   type RegistrySkillInstallResponse,
@@ -42,22 +44,41 @@ export interface SkillDeleteArgs extends SkillWorkspaceArgs {
   skillId: string;
 }
 
-export interface RegistrySkillsSearchArgs {
+/**
+ * Registry calls proxy out to skills.sh and GitHub, and the browse grid fans
+ * out one per card. Callers pass their query's AbortSignal so abandoning a
+ * page cancels its requests instead of leaving them in flight.
+ */
+export interface AbortableArgs {
+  signal?: AbortSignal;
+}
+
+export interface RegistrySkillsSearchArgs extends AbortableArgs {
   query?: string;
   page?: number;
   perPage?: number;
 }
 
-export interface RegistrySkillIdArgs {
+export interface RegistrySkillIdArgs extends AbortableArgs {
   registrySkillId: string;
 }
 
-export interface RegistrySkillSourceArgs {
+export interface RegistrySkillSourceArgs extends AbortableArgs {
   source: string;
   skillId: string;
 }
 
-export type RegistrySkillInstallArgs = RegistrySkillIdArgs;
+export interface RegistryRepositoryArgs extends AbortableArgs {
+  source: string;
+}
+
+/**
+ * Install is a mutation and deliberately takes no signal: its body is parsed
+ * with a strict schema, so an extra key would throw at runtime.
+ */
+export interface RegistrySkillInstallArgs {
+  registrySkillId: string;
+}
 
 export interface SkillsRegistryArea {
   detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;
@@ -65,6 +86,9 @@ export interface SkillsRegistryArea {
   install(
     args: RegistrySkillInstallArgs,
   ): Promise<RegistrySkillInstallResponse>;
+  repositoryStars(
+    args: RegistryRepositoryArgs,
+  ): Promise<RegistryRepositoryStars>;
   search(args?: RegistrySkillsSearchArgs): Promise<RegistrySkillsPage>;
 }
 
@@ -103,6 +127,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry/detail?${query.toString()}`,
         registrySkillDetailSchema,
+        { signal: input.signal },
       );
     },
     async get(input) {
@@ -110,6 +135,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry/entry?${query.toString()}`,
         registrySkillSchema,
+        { signal: input.signal },
       );
     },
     async install(input) {
@@ -124,6 +150,14 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         },
       );
     },
+    async repositoryStars(input) {
+      const query = new URLSearchParams({ source: input.source });
+      return requestParsed(
+        `/api/v1/skills-registry/repository-stars?${query.toString()}`,
+        registryRepositoryStarsSchema,
+        { signal: input.signal },
+      );
+    },
     async search(input = {}) {
       const query = new URLSearchParams({
         page: String(input.page ?? 0),
@@ -133,6 +167,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry?${query.toString()}`,
         registrySkillsPageSchema,
+        { signal: input.signal },
       );
     },
   };
