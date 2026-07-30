@@ -27,7 +27,6 @@ import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
-  didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   useThread,
   useThreadDetailBootstrap,
@@ -634,10 +633,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     enabled:
       Boolean(threadId) && (!isThreadView || hasThreadDetailBootstrapSettled),
     refetchOnMount:
-      isThreadView &&
-      didThreadDetailBootstrapRefreshAfterMount(threadDetailBootstrapQuery)
-        ? false
-        : "always",
+      isThreadView && threadDetailBootstrapQuery.isSuccess ? true : "always",
   });
   const threadDisplayTitle = thread
     ? getThreadDisplayTitle(thread)

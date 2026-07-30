@@ -1,6 +1,11 @@
 import type { HeaderPair } from "@bb/tunnel-contract";
 
-const SKIP_REQUEST_HEADERS = new Set(["host", "content-length", "connection"]);
+const SKIP_REQUEST_HEADERS = new Set([
+  "host",
+  "content-length",
+  "connection",
+  "accept-encoding",
+]);
 
 export interface LoopbackHeaderRewrite {
   publicOrigin: string;

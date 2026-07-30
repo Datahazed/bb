@@ -981,12 +981,10 @@ describe("TunnelSession routing", () => {
     );
   });
 
-  it("preserves negotiated origin compression across the tunnel and relays 304 bodiless", async () => {
+  it("drops stale content-length/content-encoding when the origin compresses, and relays 304 bodiless", async () => {
     const plainBody = "hello ".repeat(200);
     const gzippedBody = gzipSync(Buffer.from(plainBody));
-    const acceptEncodings: Array<string | undefined> = [];
     const origin = await listen((req, res) => {
-      acceptEncodings.push(req.headers["accept-encoding"]);
       if (req.headers["if-none-match"] === 'W/"v1"') {
         res.writeHead(304, { etag: 'W/"v1"' });
         res.end();
@@ -1024,13 +1022,12 @@ describe("TunnelSession routing", () => {
     await waitForOpen(client);
     const relay = await relayReady;
     const frames = collectFrames(relay);
-    const infoMessages: string[] = [];
 
     const session = new TunnelSession({
       tunnel: client,
       log: {
         debug: () => {},
-        info: (message) => infoMessages.push(message),
+        info: () => {},
         warn: () => {},
         error: () => {},
       },
@@ -1049,14 +1046,15 @@ describe("TunnelSession routing", () => {
       relay.send(Buffer.from(encodeFrame(frame)));
     };
 
-    // The visitor's compression negotiation reaches the loopback origin, and
-    // compressed bytes cross the bandwidth-sensitive tunnel unchanged.
+    // Compressed 200: fetch decompresses, so the origin's content-encoding
+    // and (compressed-size) content-length must not ride the resp-head —
+    // relaying the smaller length would corrupt framing at the relay.
     inject({
       type: "open-http",
       streamId: 21,
       method: "GET",
-      path: "/api/v1/threads/thr_test/timeline",
-      headers: [["accept-encoding", "gzip"]],
+      path: "/asset.js",
+      headers: [],
       hasBody: false,
     });
     await waitFor(() =>
@@ -1068,27 +1066,17 @@ describe("TunnelSession routing", () => {
     if (head?.type !== "resp-head") throw new Error("missing resp-head");
     expect(head.status).toBe(200);
     const headerNames = head.headers.map(([name]) => name.toLowerCase());
-    expect(headerNames).toContain("content-encoding");
-    expect(headerNames).toContain("content-length");
+    expect(headerNames).not.toContain("content-encoding");
+    expect(headerNames).not.toContain("content-length");
     expect(headerNames).toContain("etag");
-    expect(head.headers).toContainEqual([
-      "server-timing",
-      expect.stringMatching(/^bb_connect_origin;dur=\d+(?:\.\d+)?$/),
-    ]);
     const relayedBody = Buffer.concat(
       frames
         .filter((f) => f.type === "body-chunk" && f.streamId === 21)
         .map((f) =>
           f.type === "body-chunk" ? Buffer.from(f.data) : Buffer.alloc(0),
         ),
-    );
-    expect(relayedBody).toEqual(gzippedBody);
-    expect(acceptEncodings).toEqual(["gzip"]);
-    expect(infoMessages).toEqual([
-      expect.stringContaining(
-        `responseBytes=${gzippedBody.length} contentEncoding=gzip`,
-      ),
-    ]);
+    ).toString();
+    expect(relayedBody).toBe(plainBody);
 
     // Revalidation: a 304 relays as resp-head + body-end with no chunks.
     frames.length = 0;
@@ -1096,7 +1084,7 @@ describe("TunnelSession routing", () => {
       type: "open-http",
       streamId: 22,
       method: "GET",
-      path: "/api/v1/threads/thr_test/timeline",
+      path: "/asset.js",
       headers: [["If-None-Match", 'W/"v1"']],
       hasBody: false,
     });
