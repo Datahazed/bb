@@ -5,6 +5,23 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `PluginContentScriptContext.experimental_setThreadRowStatus`
+
+Lets a plugin-lifetime content script set or clear one of its own status
+indicators on an explicit thread row. The status survives route changes and is
+cleared automatically when that frontend generation deactivates.
+
+Before stabilization, audit:
+
+- whether explicit thread targeting belongs on content-script context or a
+  dedicated app-level controller;
+- multiple simultaneous runs owned by one plugin on one thread;
+- arbitration across plugins, frontend generations, and native thread
+  statuses;
+- persistence expectations across full app reloads and multiple windows;
+- validation, accessibility labels, reduced motion, and cleanup on plugin
+  reload/disable/removal.
+
 ## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

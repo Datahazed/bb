@@ -8,6 +8,21 @@ const desktopPackageRoot = path.resolve(__dirname, "..");
 const NODE_MODULES_DIRECTORY = "node_modules";
 const NODE_PTY_PACKAGE_NAME = "node-pty";
 const BETTER_SQLITE3_PACKAGE_NAME = "better-sqlite3";
+// The packaged CLI uses the caller's Node process, whose architecture can
+// differ from the arm64 Electron app that owns these dependencies.
+const PLUGIN_BUILD_NATIVE_PACKAGE_NAMES = [
+  "@esbuild/darwin-arm64",
+  "@esbuild/darwin-x64",
+  "@tailwindcss/oxide-darwin-arm64",
+  "@tailwindcss/oxide-darwin-x64",
+  "lightningcss-darwin-arm64",
+  "lightningcss-darwin-x64",
+];
+const PACKAGED_NATIVE_PACKAGE_NAMES = [
+  NODE_PTY_PACKAGE_NAME,
+  ...PLUGIN_BUILD_NATIVE_PACKAGE_NAMES,
+  BETTER_SQLITE3_PACKAGE_NAME,
+];
 
 // better-sqlite3 must match the runtime that loads it. The packaged app runs
 // the bb server through Electron's bundled Node, so the packaged copy has to
@@ -41,15 +56,26 @@ async function isDirectory(directoryPath) {
   }
 }
 
-function isNativePackageDirectory(directoryPath, packageName) {
-  return (
-    path.basename(directoryPath) === packageName &&
-    path.basename(path.dirname(directoryPath)) === NODE_MODULES_DIRECTORY
-  );
+function packageNameForNodeModulesDirectory(directoryPath) {
+  const parentDirectory = path.dirname(directoryPath);
+  if (path.basename(parentDirectory) === NODE_MODULES_DIRECTORY) {
+    return path.basename(directoryPath);
+  }
+
+  const nodeModulesDirectory = path.dirname(parentDirectory);
+  if (
+    path.basename(nodeModulesDirectory) === NODE_MODULES_DIRECTORY &&
+    path.basename(parentDirectory).startsWith("@")
+  ) {
+    return `${path.basename(parentDirectory)}/${path.basename(directoryPath)}`;
+  }
+
+  return undefined;
 }
 
-async function findNativePackageDirectories(rootPath, packageName) {
-  const matches = [];
+async function findPackageDirectories(rootPath, packageNames) {
+  const packageNameSet = new Set(packageNames);
+  const matches = new Map(packageNames.map((packageName) => [packageName, []]));
   const pending = [rootPath];
 
   while (pending.length > 0) {
@@ -71,8 +97,9 @@ async function findNativePackageDirectories(rootPath, packageName) {
       }
 
       const childPath = path.join(directoryPath, entry.name);
-      if (isNativePackageDirectory(childPath, packageName)) {
-        matches.push(childPath);
+      const packageName = packageNameForNodeModulesDirectory(childPath);
+      if (packageName !== undefined && packageNameSet.has(packageName)) {
+        matches.get(packageName).push(childPath);
         continue;
       }
       pending.push(childPath);
@@ -80,6 +107,23 @@ async function findNativePackageDirectories(rootPath, packageName) {
   }
 
   return matches;
+}
+
+async function findNativePackageDirectories(rootPath, packageName) {
+  return (await findPackageDirectories(rootPath, [packageName])).get(
+    packageName,
+  );
+}
+
+function assertPackagedPluginBuildNativePackages(
+  appOutDir,
+  packageDirectories,
+) {
+  for (const packageName of PLUGIN_BUILD_NATIVE_PACKAGE_NAMES) {
+    if (packageDirectories.get(packageName).length === 0) {
+      throw new Error(`Unable to find ${packageName} under ${appOutDir}`);
+    }
+  }
 }
 
 async function chmodIfPresent(filePath, mode) {
@@ -181,14 +225,18 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
     throw new Error(`Packaged app output does not exist: ${appOutDir}`);
   }
 
-  const nodePtyDirectories = await findNativePackageDirectories(
+  const packageDirectories = await findPackageDirectories(
     appOutDir,
-    NODE_PTY_PACKAGE_NAME,
+    PACKAGED_NATIVE_PACKAGE_NAMES,
   );
+  const nodePtyDirectories = packageDirectories.get(NODE_PTY_PACKAGE_NAME);
   if (nodePtyDirectories.length === 0) {
-    throw new Error(`Unable to find ${NODE_PTY_PACKAGE_NAME} under ${appOutDir}`);
+    throw new Error(
+      `Unable to find ${NODE_PTY_PACKAGE_NAME} under ${appOutDir}`,
+    );
   }
   await Promise.all(nodePtyDirectories.map(prepareNodePtyPackageDirectory));
+  assertPackagedPluginBuildNativePackages(appOutDir, packageDirectories);
 
   // The Electron target is only known on the real afterPack path. Standalone
   // invocations (e.g. tests, manual node-pty repair) omit it and skip the fetch.
@@ -196,8 +244,7 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
     return { betterSqlite3Directories: [], nodePtyDirectories };
   }
 
-  const betterSqlite3Directories = await findNativePackageDirectories(
-    appOutDir,
+  const betterSqlite3Directories = packageDirectories.get(
     BETTER_SQLITE3_PACKAGE_NAME,
   );
   if (betterSqlite3Directories.length === 0) {
@@ -271,7 +318,9 @@ function parseStandaloneArguments(argv) {
 }
 
 async function main() {
-  const { appOutDir, options } = parseStandaloneArguments(process.argv.slice(2));
+  const { appOutDir, options } = parseStandaloneArguments(
+    process.argv.slice(2),
+  );
   if (appOutDir === undefined || appOutDir.length === 0) {
     throw new Error(
       "Usage: node apps/desktop/scripts/prepare-native-modules.cjs <appOutDir> " +

@@ -49,7 +49,7 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   collectComposerCustomization,
-  normalizeComposerThreadRowStatus,
+  normalizePluginThreadRowStatus,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
   requireMessageDirectiveId,
@@ -123,9 +123,6 @@ export interface ComposerLog {
   /** Whether this plugin currently holds the composer input lock. */
   inputLocked: boolean;
   inputLockCalls: boolean[];
-  /** Latest host-rendered thread-row status requested by the plugin. */
-  threadRowStatus: PluginComposerThreadRowStatus | null;
-  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -731,6 +728,16 @@ export interface ContentScriptTestMountOptions {
   pluginId: string;
   /** Defaults to 1. Pass the host generation you want the plugin to observe. */
   generation?: number;
+  /**
+   * Simulate an older compatible host that predates the optional experimental
+   * thread-row status API. Current-host behavior is enabled by default.
+   */
+  omitExperimentalThreadRowStatus?: boolean;
+}
+
+export interface ContentScriptThreadRowStatusCall {
+  threadId: string;
+  status: PluginComposerThreadRowStatus | null;
 }
 
 export interface MountedPluginContentScripts {
@@ -738,6 +745,8 @@ export interface MountedPluginContentScripts {
     readonly mountedIds: readonly string[];
     readonly signal: AbortSignal;
     readonly disposed: boolean;
+    readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
+    getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
   };
   lifecycle: {
     /** Abort, then run returned cleanup functions once in reverse order. */
@@ -760,7 +769,34 @@ export async function mountPluginContentScripts(
     id: string;
     dispose: PluginContentScriptDisposer | null;
   }> = [];
+  const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
+  const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
   let disposed = false;
+  const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
+    if (controller.signal.aborted) return;
+    if (typeof threadId !== "string" || threadId.trim().length === 0) {
+      console.warn(
+        `bb plugin "${options.pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+      );
+      return;
+    }
+    const normalizedThreadId = threadId.trim();
+    const normalizedStatus = normalizePluginThreadRowStatus(status, (reason) =>
+      console.warn(`bb plugin "${options.pluginId}": ${reason}`),
+    );
+    if (normalizedStatus === undefined) return;
+    const recordedStatus =
+      normalizedStatus === null ? null : { ...normalizedStatus };
+    threadRowStatusCalls.push({
+      threadId: normalizedThreadId,
+      status: recordedStatus,
+    });
+    if (recordedStatus === null) {
+      threadRowStatuses.delete(normalizedThreadId);
+    } else {
+      threadRowStatuses.set(normalizedThreadId, recordedStatus);
+    }
+  };
 
   const dispose = async (): Promise<void> => {
     if (disposed) return;
@@ -776,6 +812,7 @@ export async function mountPluginContentScripts(
         );
       }
     }
+    threadRowStatuses.clear();
   };
 
   try {
@@ -784,6 +821,9 @@ export async function mountPluginContentScripts(
         pluginId: options.pluginId,
         generation,
         signal: controller.signal,
+        ...(!options.omitExperimentalThreadRowStatus
+          ? { experimental_setThreadRowStatus: setThreadRowStatus }
+          : {}),
       });
       if (result !== undefined && typeof result !== "function") {
         throw new Error(
@@ -805,6 +845,16 @@ export async function mountPluginContentScripts(
       signal: controller.signal,
       get disposed() {
         return disposed;
+      },
+      get threadRowStatusCalls() {
+        return threadRowStatusCalls.map(({ threadId, status }) => ({
+          threadId,
+          status: status === null ? null : { ...status },
+        }));
+      },
+      getThreadRowStatus(threadId) {
+        const status = threadRowStatuses.get(threadId);
+        return status === undefined ? null : { ...status };
       },
     },
     lifecycle: { dispose },
@@ -1057,8 +1107,6 @@ export function renderSlot<
     textEffectCalls: [],
     inputLocked: false,
     inputLockCalls: [],
-    threadRowStatus: null,
-    threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -1092,18 +1140,6 @@ export function renderSlot<
         if (!composerOwnership.active) return;
         composerLog.inputLocked = locked;
         composerLog.inputLockCalls.push(locked);
-      },
-      setThreadRowStatus(status) {
-        if (!composerOwnership.active || composerScope.kind === "new-thread") {
-          return;
-        }
-        const normalizedStatus = normalizeComposerThreadRowStatus(
-          status,
-          (reason) => console.warn(reason),
-        );
-        if (normalizedStatus === undefined) return;
-        composerLog.threadRowStatus = normalizedStatus;
-        composerLog.threadRowStatusCalls.push(normalizedStatus);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
@@ -1151,7 +1187,6 @@ export function renderSlot<
     composerOwnership.active = false;
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
-    composerLog.threadRowStatus = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>

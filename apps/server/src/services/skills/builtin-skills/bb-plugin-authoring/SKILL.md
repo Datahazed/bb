@@ -813,11 +813,18 @@ compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal }`: `generation` is a monotonic per-window
-mount attempt number, and `signal` aborts before cleanup starts. A script may
-return nothing, a disposer, or a promise of either; async mount setup is
-time-boxed to 10 seconds. Keep long-running work outside the returned promise,
-observe `signal`, and catch failures in work the host does not await.
+`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
+`generation` is a monotonic per-window mount attempt number, and `signal`
+aborts before cleanup starts. The optional experimental setter targets an
+explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
+Use `tone: "running"` for the host's animated running treatment. The host
+scopes statuses to the calling plugin and automatically clears them when that
+frontend generation deactivates; feature-detect the setter for compatibility
+with older bb clients.
+
+A script may return nothing, a disposer, or a promise of either; async mount
+setup is time-boxed to 10 seconds. Keep long-running work outside the returned
+promise, observe `signal`, and catch failures in work the host does not await.
 
 A replacement bundle and setup validate before lifecycle cutover. The host
 then aborts and disposes the prior generation before mounting candidate scripts,
@@ -1125,11 +1132,7 @@ openThreadPanel({ actionId, title?, params? }) }`.
   `setTextEffect({ className })` paints the whole editable draft with a class
   from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
   the editor read-only and busy and auto-releases when the customization
-  unmounts or changes scope; `setThreadRowStatus({ icon, label, tone? })`
-  replaces the bound thread-row draft glyph (`null` clears it; new-thread
-  calls are no-ops): use `tone: "running"` while work is active for an
-  automatically shimmering icon, then replace it with a static
-  `tone: "success"` or `tone: "error"` terminal icon;
+  unmounts or changes scope;
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
   fresh context at send time; `focus()` focuses the caret; `scope` reports
