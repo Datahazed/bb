@@ -11,6 +11,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalStatusLabels,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -121,6 +122,8 @@ const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+/** Status labels ride on every tool-call event and share one timeline row. */
+const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
 const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
 
@@ -270,6 +273,7 @@ export interface FakeCliRecord {
 export interface FakeAgentToolRecord {
   name: string;
   description: string;
+  experimentalStatusLabels: PluginAgentToolExperimentalStatusLabels | null;
   instructions: string | null;
   /** JSON-schema object the host would send providers. */
   inputSchema: unknown;
@@ -1474,6 +1478,7 @@ function createFakePluginHostInternal(
       name: string;
       description: string;
       instructions?: string;
+      experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
       parameters: unknown;
       execute(
         params: never,
@@ -1510,6 +1515,31 @@ function createFakePluginHostInternal(
       ) {
         throw new Error(
           `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+        );
+      }
+      const experimentalStatusLabels = tool.experimental_statusLabels;
+      if (
+        experimentalStatusLabels !== undefined &&
+        (typeof experimentalStatusLabels !== "object" ||
+          experimentalStatusLabels === null ||
+          typeof experimentalStatusLabels.pending !== "string" ||
+          typeof experimentalStatusLabels.completed !== "string" ||
+          experimentalStatusLabels.pending.trim().length === 0 ||
+          experimentalStatusLabels.completed.trim().length === 0)
+      ) {
+        throw new Error(
+          `tool "${name}" experimental_statusLabels must provide non-empty pending and completed strings`,
+        );
+      }
+      if (
+        experimentalStatusLabels !== undefined &&
+        (experimentalStatusLabels.pending.length >
+          PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+          experimentalStatusLabels.completed.length >
+            PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS)
+      ) {
+        throw new Error(
+          `tool "${name}" experimental_statusLabels exceed the ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS}-character limit`,
         );
       }
       if (typeof tool.execute !== "function") {
@@ -1556,6 +1586,13 @@ function createFakePluginHostInternal(
       const record: FakeAgentToolRecord = {
         name,
         description: tool.description,
+        experimentalStatusLabels:
+          experimentalStatusLabels === undefined
+            ? null
+            : {
+                pending: experimentalStatusLabels.pending,
+                completed: experimentalStatusLabels.completed,
+              },
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions

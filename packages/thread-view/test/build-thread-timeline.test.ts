@@ -50,6 +50,7 @@ interface FileChangeItemEventArgs {
 }
 
 interface ToolCallItemEventArgs {
+  statusLabels?: { pending: string; completed: string };
   itemId?: string;
   result?: string;
   seq: number;
@@ -282,6 +283,7 @@ function fileChangeItemEvent({
 }
 
 function toolCallItemEvent({
+  statusLabels,
   itemId = "tool-call-1",
   result,
   seq,
@@ -301,6 +303,7 @@ function toolCallItemEvent({
         id: itemId,
         tool,
         ...(toolArgs ? { arguments: toolArgs } : {}),
+        ...(statusLabels ? { statusLabels } : {}),
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         ...(result ? { result } : {}),
       },
@@ -909,6 +912,36 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("preserves server-enriched plugin status labels on a tool row", () => {
+    const statusLabels = {
+      pending: "Reading project overview",
+      completed: "Read project overview",
+    };
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({
+        statusLabels,
+        seq: 2,
+        tool: "repository_context",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        statusLabels,
+        seq: 3,
+        tool: "repository_context",
+        type: "item/completed",
+      }),
+    ]);
+
+    expect(collectToolRows(rows)).toEqual([
+      expect.objectContaining({
+        statusLabels,
+        status: "completed",
+        toolName: "repository_context",
+      }),
+    ]);
+  });
+
   it("extracts the exact active Plan turn id from the accepted input scope", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const requestId = "creq_23456789ab";

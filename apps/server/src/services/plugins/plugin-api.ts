@@ -19,6 +19,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalStatusLabels,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -71,6 +72,7 @@ export type {
   PluginAgentConfigurationContext,
   PluginAgentToolContentPart,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalStatusLabels,
   PluginAgentToolRegistrationBase,
   PluginAgentToolResult,
   PluginAgents,
@@ -220,6 +222,8 @@ export interface PluginRpcHandler {
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
+  /** Native timeline labels, null when the standard BB title should render. */
+  experimentalStatusLabels: PluginAgentToolExperimentalStatusLabels | null;
   /** Instructions snippet for the thread-instructions assembly; null when
    * the registration carried none (description-only). */
   instructions: string | null;
@@ -337,6 +341,8 @@ const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 // Agent tool names are shown to (and called by) the model.
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+/** Status labels ride on every tool-call event and share one timeline row. */
+const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 
 // Thread action ids become URL path segments.
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -984,6 +990,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
+      experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
       parameters: unknown;
       execute(
         params: never,
@@ -1021,6 +1028,31 @@ export function createPluginApi(options: {
         throw new Error(
           `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
         );
+      }
+      const experimentalStatusLabels = tool.experimental_statusLabels;
+      if (experimentalStatusLabels !== undefined) {
+        if (
+          typeof experimentalStatusLabels !== "object" ||
+          experimentalStatusLabels === null ||
+          typeof experimentalStatusLabels.pending !== "string" ||
+          typeof experimentalStatusLabels.completed !== "string" ||
+          experimentalStatusLabels.pending.trim().length === 0 ||
+          experimentalStatusLabels.completed.trim().length === 0
+        ) {
+          throw new Error(
+            `tool "${name}" experimental_statusLabels must provide non-empty pending and completed strings`,
+          );
+        }
+        if (
+          experimentalStatusLabels.pending.length >
+            PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+          experimentalStatusLabels.completed.length >
+            PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
+        ) {
+          throw new Error(
+            `tool "${name}" experimental_statusLabels exceed the ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS}-character limit`,
+          );
+        }
       }
       if (typeof tool.execute !== "function") {
         throw new Error(
@@ -1085,6 +1117,13 @@ export function createPluginApi(options: {
       const record: PluginAgentToolRecord = {
         name,
         description: tool.description,
+        experimentalStatusLabels:
+          experimentalStatusLabels === undefined
+            ? null
+            : {
+                pending: experimentalStatusLabels.pending,
+                completed: experimentalStatusLabels.completed,
+              },
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions

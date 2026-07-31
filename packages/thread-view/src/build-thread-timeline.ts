@@ -597,6 +597,7 @@ function convertMessage(
           callId: message.callId,
           toolName: message.toolName,
           toolArgs: message.toolArgs,
+          ...(message.statusLabels ? { statusLabels: message.statusLabels } : {}),
           output: message.output,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,

@@ -143,6 +143,7 @@ export interface EventProjectionToolCallMessage extends EventProjectionMessageBa
   kind: "tool-call";
   toolName: string;
   toolArgs: JsonObject | null;
+  statusLabels?: { pending: string; completed: string };
   callId: string;
   parsedIntents: EventProjectionToolParsedIntent[];
   output: string;

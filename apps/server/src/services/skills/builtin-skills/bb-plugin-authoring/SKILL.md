@@ -580,6 +580,13 @@ bb.agents.registerTool({
   name: "docs_search", // [a-zA-Z0-9_-]+, unique ACROSS plugins
   description: "Search the bundled docs.",
   instructions: "Prefer docs_search over guessing conventions.", // optional, appended to thread instructions
+  // Optional experimental native timeline labels. Without these, BB shows
+  // its normal tool name and arguments. Errors/interruptions keep that
+  // standard rendering so the failing tool remains identifiable.
+  experimental_statusLabels: {
+    pending: "Searching bundled docs",
+    completed: "Searched bundled docs",
+  },
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
     return excerpts.join("\n"); // or { content: [{ type: "text", text }], isError? }
@@ -611,6 +618,14 @@ become a tool error, not a plugin crash) or a plain JSON-schema object
 session start, not mid-session. Name collisions: within one factory execution
 duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
+
+`experimental_statusLabels` is optional and supplies static, concise labels
+keyed by BB's timeline row status (`pending`, `completed`). Each label is
+limited to 80 characters; a longer label rejects the registration. BB snapshots the
+labels into each plugin tool-call event; it is not a frontend bundle hook. A
+status with no label — error, interrupted, or awaiting approval — falls back
+to BB's standard `Running tool …` / `Ran tool …` wording, as does omitting the
+field entirely.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this
@@ -1079,7 +1094,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
     onSubmit={async (request) => {
       await rpc.call("createThread", { request, sectionId });
     }}
-  />
+  />;
   ```
 
   ```ts

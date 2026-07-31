@@ -269,6 +269,61 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("keeps experimental status labels with a registered native tool", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-readable-tool",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("readable-tool")!;
+
+    api.agents.registerTool({
+      name: "repository_context",
+      description: "Read project context",
+      experimental_statusLabels: {
+        pending: "Reading project overview",
+        completed: "Read project overview",
+      },
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+
+    expect(service.findAgentTool("repository_context")?.record).toMatchObject({
+      experimentalStatusLabels: {
+        pending: "Reading project overview",
+        completed: "Read project overview",
+      },
+    });
+
+    expect(() =>
+      (api.agents.registerTool as (tool: unknown) => void)({
+        name: "invalid_status_labels",
+        description: "Invalid status-labels fixture",
+        experimental_statusLabels: { pending: "", completed: "Done" },
+        parameters: { type: "object" },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "invalid_status_labels" experimental_statusLabels must provide non-empty pending and completed strings',
+    );
+
+    // Labels ride on two stored events per call and share one timeline row.
+    expect(() =>
+      (api.agents.registerTool as (tool: unknown) => void)({
+        name: "oversized_status_labels",
+        description: "Oversized status-labels fixture",
+        experimental_statusLabels: {
+          pending: "x".repeat(81),
+          completed: "Done",
+        },
+        parameters: { type: "object" },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "oversized_status_labels" experimental_statusLabels exceed the 80-character limit',
+    );
+  });
+
   it("cross-plugin name collision drops the later registration with a status detail", async () => {
     const first = await writePlugin(workDir, {
       name: "bb-plugin-collide-a",
